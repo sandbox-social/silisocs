@@ -16,7 +16,7 @@ from concordia import __file__ as concordia_location
 from dotenv import load_dotenv
 from omegaconf import DictConfig, OmegaConf, open_dict
 
-from sim.agent_utils.base_agent import rebuild_from_json, save_agent_to_json
+from sim.agent_utils.base_agent import save_agent_to_json
 
 print(f"importing Concordia from: {concordia_location}")
 warnings.filterwarnings(action="ignore", category=FutureWarning, module="concordia")
@@ -192,8 +192,12 @@ def run_sim(
         }
         with open(filepath) as file:
             agent_json = file.read()
+        module_path = (
+            "sim_setting." + filtered_profiles[target_agent_name]["role_dict"]["module_path"]
+        )
+        agent_module = importlib.import_module(module_path)
         agents.append(
-            rebuild_from_json(
+            agent_module.AgentBuilder.rebuild_from_json(
                 agent_json,
                 model,
                 embedder,
@@ -422,12 +426,5 @@ def main(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-    # # parse input arguments
-    # parser = argparse.ArgumentParser(description="input arguments")
-    # # parser.add_argument("--load_path", type=str, default="", help="path to saved checkpoint folder")
-    # parser.add_argument(
-    #     "--example_name", type=str, default="election", help="path to saved checkpoint folder"
-    # )
-    # args = parser.parse_args()
     sys.path.insert(0, str(PROJECT_ROOT / "examples"))
     main()  # config)

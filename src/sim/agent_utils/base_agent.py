@@ -509,6 +509,45 @@ class BaseAgentBuilder(ABC):
 
         return agent
 
+    @classmethod
+    def rebuild_from_json(
+        cls,
+        json_data: str,
+        model: language_model.LanguageModel,
+        embedder: Callable[[str], np.ndarray],
+        clock: game_clock.MultiIntervalClock,
+        input_data: dict[str, Any] = {},
+    ) -> entity_agent_with_logging.EntityAgentWithLogging:
+        """Rebuilds an agent from JSON data."""
+        data = json.loads(json_data)
+
+        new_agent_memory = associative_memory.AssociativeMemory(
+            sentence_embedder=embedder,
+            clock=clock.now,
+            clock_step_size=clock.get_step_size(),
+        )
+
+        if "agent_config" not in data:
+            raise ValueError("The JSON data does not contain the agent config.")
+        agent_config = formative_memories.AgentConfig.from_dict(data.pop("agent_config"))
+
+        agent = cls.build(
+            config=agent_config,
+            model=model,
+            memory=new_agent_memory,
+            clock=clock,
+            input_data=input_data,
+        )
+        print("Rebuilding agent from JSON data")
+        for component_name in agent.get_all_context_components():
+            print(component_name, data[component_name])
+            agent.get_component(component_name).set_state(data.pop(component_name))
+
+        agent.get_act_component().set_state(data.pop("act_component"))
+
+        assert not data, f"Unused data {sorted(data)}"
+        return agent
+
 
 def save_agent_to_json(
     agent: entity_agent_with_logging.EntityAgentWithLogging,
@@ -548,41 +587,3 @@ def save_agent_to_json(
         data["agent_config"] = config.to_dict()
 
     return json.dumps(data)
-
-
-def rebuild_from_json(
-    json_data: str,
-    model: language_model.LanguageModel,
-    embedder: Callable[[str], np.ndarray],
-    clock: game_clock.MultiIntervalClock,
-    input_data: dict[str, Any] = {},
-) -> entity_agent_with_logging.EntityAgentWithLogging:
-    """Rebuilds an agent from JSON data."""
-    data = json.loads(json_data)
-
-    new_agent_memory = associative_memory.AssociativeMemory(
-        sentence_embedder=embedder,
-        clock=clock.now,
-        clock_step_size=clock.get_step_size(),
-    )
-
-    if "agent_config" not in data:
-        raise ValueError("The JSON data does not contain the agent config.")
-    agent_config = formative_memories.AgentConfig.from_dict(data.pop("agent_config"))
-
-    agent = BaseAgentBuilder.build(
-        config=agent_config,
-        model=model,
-        memory=new_agent_memory,
-        clock=clock,
-        input_data=input_data,
-    )
-    print(f"Rebuilding agent {agent.get_name()} from JSON data")
-    for component_name in agent.get_all_context_components():
-        print(component_name, data[component_name])
-        agent.get_component(component_name).set_state(data.pop(component_name))
-
-    agent.get_act_component().set_state(data.pop("act_component"))
-
-    assert not data, f"Unused data {sorted(data)}"
-    return agent

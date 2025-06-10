@@ -9,7 +9,7 @@ point at the newly created statuses.
 
 import json
 import sys
-import time
+import threading
 from collections import OrderedDict
 
 from mastodon_sim.mastodon_ops import check_env, clear_mastodon_server
@@ -37,6 +37,79 @@ def build_display_mapping(displays):
             # reuse last if we run out
             mapping[name] = available[-1]
     return mapping
+
+
+def execute_event(evt, disp2login, toot_id_map):
+    label = evt.get("label")
+    src_disp = evt["source_user"].split()[0]
+    login_user = disp2login[src_disp]
+    # get a fresh client & token
+    token = login(login_user)
+    masto = get_client()
+    masto.access_token = token
+
+    print(f"→ {label} by {login_user}")
+
+    data = evt["data"]
+    if label == "follow":
+        tgt_disp = data["target_user"].split()[0]
+        follow_user = disp2login.get(tgt_disp)
+        follow(login_user, follow_user)
+
+    elif label == "unfollow":
+        tgt_disp = data["target_user"].split()[0]
+        unfollow(login_user, disp2login.get(tgt_disp))
+
+    elif label == "post":
+        old = str(data["toot_id"])
+        text = data["post_text"]
+        status = post_status(login_user, text)
+        if status and "id" in status:
+            toot_id_map[old] = status["id"]
+
+    elif label == "reply":
+        old_reply_to = str(evt["data"]["reply_to"]["toot_id"])
+        new_parent = toot_id_map.get(old_reply_to)
+        if new_parent is None:
+            print(f"WARNING: no mapping for parent {old_reply_to}; skipping")
+            return
+        text = data["post_text"]
+        status = post_status(login_user, text, in_reply_to_id=new_parent)
+        if status and "id" in status:
+            toot_id_map[str(data["toot_id"])] = status["id"]
+
+    elif label in ("boost_toot", "boost"):
+        old = str(data["toot_id"])
+        new_id = toot_id_map.get(old)
+        if new_id is None:
+            print(f"WARNING: no mapping for boost target {old}; skipping")
+            return
+        tgt_disp = data.get("target_user", "").split()[0]
+        boost_toot(login_user, disp2login.get(tgt_disp), new_id)
+
+    elif label in ("like_toot", "like"):
+        old = str(data["toot_id"])
+        new_id = toot_id_map.get(old)
+        if new_id is None:
+            print(f"WARNING: no mapping for like target {old}; skipping")
+            return
+        tgt_disp = data.get("target_user", "").split()[0]
+        like_toot(login_user, disp2login.get(tgt_disp), new_id)
+
+    elif label == "update_profile":
+        # Only update the bio (note) using the "new_bio" field
+        new_bio = data.get("new_bio")
+        token = login(login_user)
+        masto = get_client()
+        masto.access_token = token
+        try:
+            masto.account_update_credentials(note=new_bio)
+            print(f"Updated bio for {login_user}")
+        except Exception as e:
+            print(f"Failed to update bio for {login_user}: {e}")
+
+    else:
+        print(f"-- unhandled label '{label}', skipping")
 
 
 def main(events_file):
@@ -71,85 +144,29 @@ def main(events_file):
     clear_mastodon_server(len(disp2login))
 
     # 3) prepare toot_id mapping
-    toot_map = {}
+    toot_id_map = {}
 
-    # 4) replay
-    for evt in raw:
-        label = evt["label"]
-        src_disp = evt["source_user"].split()[0]
-        login_user = disp2login[src_disp]
-        # get a fresh client & token
-        token = login(login_user)
-        masto = get_client()
-        masto.access_token = token
+    # --- Parallel follows, then sequential actions ---
+    threads = []
+    idx = 0
+    for idx, evt in enumerate(raw):
+        if evt.get("label") != "follow":
+            break
+        t = threading.Thread(target=execute_event, args=(evt, disp2login, toot_id_map))
+        t.start()
+        threads.append(t)
+    else:
+        idx += 1  # all events were follows
 
-        print(f"→ {label} by {login_user}")
+    # Wait for all follow threads to finish
+    for t in threads:
+        t.join()
 
-        data = evt["data"]
-        if label == "follow":
-            tgt_disp = data["target_user"].split()[0]
-            follow_user = disp2login.get(tgt_disp)
-            follow(login_user, follow_user)
+    # Sequentially execute the rest
+    for evt in raw[idx:]:
+        execute_event(evt, disp2login, toot_id_map)
 
-        elif label == "unfollow":
-            tgt_disp = data["target_user"].split()[0]
-            unfollow(login_user, disp2login.get(tgt_disp))
-
-        elif label == "post":
-            old = str(data["toot_id"])
-            text = data["post_text"]
-            status = post_status(login_user, text)
-            if status and "id" in status:
-                toot_map[old] = status["id"]
-
-        elif label == "reply":
-            old_reply_to = str(evt["data"]["reply_to"]["toot_id"])
-            new_parent = toot_map.get(old_reply_to)
-            if new_parent is None:
-                print(f"WARNING: no mapping for parent {old_reply_to}; skipping")
-                continue
-            text = data["post_text"]
-            status = post_status(login_user, text, in_reply_to_id=new_parent)
-            if status and "id" in status:
-                toot_map[str(data["toot_id"])] = status["id"]
-
-        elif label in ("boost_toot", "boost"):
-            old = str(data["toot_id"])
-            new_id = toot_map.get(old)
-            if new_id is None:
-                print(f"WARNING: no mapping for boost target {old}; skipping")
-                continue
-            tgt_disp = data.get("target_user", "").split()[0]
-            boost_toot(login_user, disp2login.get(tgt_disp), new_id)
-
-        elif label in ("like_toot", "like"):
-            old = str(data["toot_id"])
-            new_id = toot_map.get(old)
-            if new_id is None:
-                print(f"WARNING: no mapping for like target {old}; skipping")
-                continue
-            tgt_disp = data.get("target_user", "").split()[0]
-            like_toot(login_user, disp2login.get(tgt_disp), new_id)
-
-        elif label == "update_profile":
-            # Only update the bio (note) using the "new_bio" field
-            new_bio = data.get("new_bio")
-            token = login(login_user)
-            masto = get_client()
-            masto.access_token = token
-            try:
-                masto.account_update_credentials(note=new_bio)
-                print(f"Updated bio for {login_user}")
-            except Exception as e:
-                print(f"Failed to update bio for {login_user}: {e}")
-
-        else:
-            print(f"-- unhandled label '{label}', skipping")
-
-        # small delay to avoid hammering API
-        time.sleep(0.5)
-
-    print("Done. toot_id mapping:", toot_map)
+    print("Done. toot_id mapping:", toot_id_map)
 
 
 if __name__ == "__main__":
