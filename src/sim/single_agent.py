@@ -114,7 +114,7 @@ def run_sim(
         roles, role_parameters, action_event_logger, app_description, use_server, setup_base=False
     )
 
-    # Call replay_actions script if experiment_name is set, to populate server state
+    # Call replay_actions as a function if experiment_name is set, to populate server state
     if cfg.sim.experiment_name:
         action_events_file_path = os.path.join(
             PROJECT_ROOT,
@@ -123,37 +123,51 @@ def run_sim(
             cfg.sim.experiment_name,
             "action_events.jsonl",
         )
-        # Assuming replay_actions.py is in src/sim/scripts/
-        replay_script_file_path = os.path.join(
-            PROJECT_ROOT, "src", "sim", "scripts", "replay_actions.py"
+        replay_func_path = os.path.join(
+            PROJECT_ROOT, "src", "sim", "scripts", "replay_actions_func.py"
         )
-
-        if os.path.exists(action_events_file_path) and os.path.exists(replay_script_file_path):
+        if os.path.exists(action_events_file_path):
             print(
-                f"Attempting to replay actions from: {action_events_file_path} using {replay_script_file_path}"
+                f"Attempting to replay actions from: {action_events_file_path} using replay_actions_func"
             )
             try:
-                import subprocess
+                import importlib.util
+                import sys as _sys
 
-                subprocess.run(
-                    [sys.executable, replay_script_file_path, action_events_file_path],
-                    check=True,
-                    cwd=PROJECT_ROOT,
+                spec = importlib.util.spec_from_file_location(
+                    "sim.scripts.replay_actions_func", replay_func_path
                 )
+                replay_mod = importlib.util.module_from_spec(spec)
+                _sys.modules[spec.name] = replay_mod
+                spec.loader.exec_module(replay_mod)
+
+                # Determine episode/target_name for partial replay
+                episode_to_continue = getattr(cfg.sim, "episode_to_continue", None)
+                target_agent_name = getattr(cfg.sim, "target_agent_name", None)
+                if episode_to_continue is not None and target_agent_name:
+                    print(
+                        f"Replaying up to episode {episode_to_continue}, before {target_agent_name}"
+                    )
+                    replay_mod.replay_actions(
+                        action_events_file_path,
+                        mastodon_apps,
+                        episode_to_continue,
+                        target_agent_name,
+                    )
+                elif episode_to_continue is not None:
+                    print(f"Replaying up to episode {episode_to_continue}")
+                    replay_mod.replay_actions(
+                        action_events_file_path, mastodon_apps, episode_to_continue
+                    )
+                else:
+                    replay_mod.replay_actions(action_events_file_path, mastodon_apps)
                 print("Successfully replayed actions.")
-            except subprocess.CalledProcessError as e:
-                print(f"Error occurred while executing replay_actions.py: {e}")
-            except FileNotFoundError:
-                # This error means sys.executable or replay_script_file_path was not found by the OS.
-                print(
-                    f"Python interpreter '{sys.executable}' or script '{replay_script_file_path}' not found."
-                )
-        elif not os.path.exists(action_events_file_path):
+            except Exception as e:
+                print(f"Error occurred while executing replay_actions_func: {e}")
+        else:
             print(
                 f"Action events file not found at {action_events_file_path}. Skipping action replay."
             )
-        else:  # replay_script_file_path does not exist
-            print(f"Replay script not found at {replay_script_file_path}. Skipping action replay.")
 
     # build agents
     agents = []
@@ -332,9 +346,6 @@ def main(cfg: DictConfig):
 
         if cfg.sim.experiment_name:
             print(f"Using experiment: {cfg.sim.experiment_name}")
-            # Construct the load path based on the experiment name
-            # Assuming a default base structure if not fully specified in experiment_name
-            # Users should ensure experiment_name leads to a valid path or adjust this logic
             base_path = os.path.join(
                 PROJECT_ROOT,
                 "outputs",
@@ -342,10 +353,6 @@ def main(cfg: DictConfig):
                 cfg.sim.experiment_name,
                 "agent_checkpoints",
             )
-
-            # Attempt to find the last episode directory if base_path itself isn't the full path to episodes
-            # This part might need adjustment based on how experiment_name is structured
-            # For simplicity, let's assume experiment_name might directly lead to an episode folder or a parent
 
             potential_load_path = (
                 base_path  # Default if experiment_name points directly to an episode
@@ -362,7 +369,19 @@ def main(cfg: DictConfig):
                     if d.startswith("Episode_") and os.path.isdir(os.path.join(base_path, d))
                 ]
                 if episode_dirs:
-                    last_episode = sorted(episode_dirs, key=lambda x: int(x.split("_")[1]))[-1]
+                    # Try to find the episode number n if specified, else default to latest
+                    episode_n = cfg.sim.episode_to_continue
+                    if episode_n is not None:
+                        episode_dir = f"Episode_{episode_n}"
+                        if episode_dir in episode_dirs:
+                            last_episode = episode_dir
+                        else:
+                            print(f"Episode_{episode_n} not found, defaulting to latest episode.")
+                            last_episode = sorted(episode_dirs, key=lambda x: int(x.split("_")[1]))[
+                                -1
+                            ]
+                    else:
+                        last_episode = sorted(episode_dirs, key=lambda x: int(x.split("_")[1]))[-1]
                     potential_load_path = os.path.join(base_path, last_episode)
                     print(potential_load_path)
                 else:

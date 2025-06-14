@@ -63,6 +63,7 @@ pandas = "2.1.0"
 omegaconf = "^2.3.0"
 pyyaml = "^6.0.2"
 hydra-core = "^1.3.2"
+streamlit = "^1.45.1"
 
 [tool.poetry.group.test.dependencies]  # https://python-poetry.org/docs/master/managing-dependencies/
 commitizen = ">=3.21.3"

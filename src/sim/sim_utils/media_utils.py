@@ -73,7 +73,7 @@ class GptLanguageModel(language_model.LanguageModel):
         temperature: float = language_model.DEFAULT_TEMPERATURE,
         timeout: float = language_model.DEFAULT_TIMEOUT_SECONDS,
         media: Sequence[str] | None = None,
-        seed: int | None = None,
+        seed: int | None = 0,
     ) -> str:
         max_tokens = min(max_tokens, 4000)
 
@@ -118,7 +118,7 @@ class GptLanguageModel(language_model.LanguageModel):
                     temperature=temperature,
                     max_tokens=max_tokens,
                     timeout=timeout,
-                    seed=0,
+                    seed=seed,
                     **({"stop": stop_param} if stop_param is not None else {}),
                 )
                 has_result = True

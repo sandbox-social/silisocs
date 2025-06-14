@@ -19,3 +19,4 @@ use_news_agent: with_images
 use_server: true
 target_agent_name: null
 experiment_name: null
+episode_to_continue: null

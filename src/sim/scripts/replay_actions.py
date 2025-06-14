@@ -112,7 +112,7 @@ def execute_event(evt, disp2login, toot_id_map):
         print(f"-- unhandled label '{label}', skipping")
 
 
-def main(events_file):
+def main(events_file, target_episode=None, target_name=None):
     # 1) load and filter
     raw = []
     displays = OrderedDict()
@@ -124,6 +124,17 @@ def main(events_file):
             label = evt.get("label")
             if label in ("inner_actions", "read_profile", "episode_plan"):
                 continue
+
+            # Check if we should stop at this episode/target
+            if target_episode is not None:
+                current_episode = evt.get("episode", 0)
+                if current_episode > target_episode:
+                    break
+                if current_episode == target_episode and target_name:
+                    src_user = evt["source_user"].split()[0].lower()
+                    if src_user == target_name.lower():
+                        break
+
             raw.append(evt)
             # record display → first token
             src = evt["source_user"].split()[0]
@@ -170,7 +181,29 @@ def main(events_file):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python replay_actions.py path/to/action_events.jsonl")
+    if len(sys.argv) < 2:
+        print("Usage: python replay_actions.py path/to/action_events.jsonl [episode] [target_name]")
+        print("  episode: Stop after this episode number (optional)")
+        print("  target_name: Stop before this character's action in the target episode (optional)")
         sys.exit(1)
-    main(sys.argv[1])
+
+    events_file = sys.argv[1]
+    target_episode = None
+    target_name = None
+
+    if len(sys.argv) >= 3:
+        try:
+            target_episode = int(sys.argv[2])
+        except ValueError:
+            print(f"Warning: Invalid episode number '{sys.argv[2]}', ignoring")
+
+    if len(sys.argv) >= 4:
+        target_name = sys.argv[3]
+
+    print(f"Replaying events from: {events_file}")
+    if target_episode is not None:
+        print(f"Stopping after episode: {target_episode}")
+        if target_name:
+            print(f"Stopping before target character: {target_name}")
+
+    main(events_file, target_episode, target_name)
