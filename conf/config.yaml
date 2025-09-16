@@ -1,7 +1,7 @@
 defaults:
 - soc_sys: election_soc_sys
 - probes: election_probes
-- agents: election_agents
+- agents: election_agents_with_partisan
 - sim: election_sim
 hydra:
   job:

@@ -70,7 +70,7 @@ class GptLanguageModel(language_model.LanguageModel):
         *,
         max_tokens: int = language_model.DEFAULT_MAX_TOKENS,
         terminators: Collection[str] | None = language_model.DEFAULT_TERMINATORS,
-        temperature: float = language_model.DEFAULT_TEMPERATURE,
+        temperature: float = 0,
         timeout: float = language_model.DEFAULT_TIMEOUT_SECONDS,
         media: Sequence[str] | None = None,
         seed: int | None = 0,

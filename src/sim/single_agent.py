@@ -332,8 +332,7 @@ def main(cfg: DictConfig):
             hydra.core.hydra_config.HydraConfig.get().runtime.output_dir,
             hydra.core.hydra_config.HydraConfig.get().job.name,
         )
-        # Ensure target_agent_name and experiment_name are available in cfg.sim,
-        # defaulting to None if not provided via command line or config file.
+
         if "target_agent_name" not in cfg.sim:
             cfg.sim.target_agent_name = None
         if "experiment_name" not in cfg.sim:
@@ -385,8 +384,6 @@ def main(cfg: DictConfig):
                     potential_load_path = os.path.join(base_path, last_episode)
                     print(potential_load_path)
                 else:
-                    # This case means base_path exists but contains no Episode_ subdirectories
-                    # It might be that base_path itself is the episode directory
                     pass  # potential_load_path remains base_path
 
             if os.path.exists(potential_load_path) and any(

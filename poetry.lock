@@ -5982,6 +5982,27 @@ doc = ["intersphinx_registry", "jupyterlite-pyodide-kernel", "jupyterlite-sphinx
 test = ["Cython", "array-api-strict (>=2.0,<2.1.1)", "asv", "gmpy2", "hypothesis (>=6.30)", "meson", "mpmath", "ninja", "pooch", "pytest", "pytest-cov", "pytest-timeout", "pytest-xdist", "scikit-umfpack", "threadpoolctl"]
 
 [[package]]
+name = "seaborn"
+version = "0.13.2"
+description = "Statistical data visualization"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "seaborn-0.13.2-py3-none-any.whl", hash = "sha256:636f8336facf092165e27924f223d3c62ca560b1f2bb5dff7ab7fad265361987"},
+    {file = "seaborn-0.13.2.tar.gz", hash = "sha256:93e60a40988f4d65e9f4885df477e2fdaff6b73a9ded434c1ab356dd57eefff7"},
+]
+
+[package.dependencies]
+matplotlib = ">=3.4,<3.6.1 || >3.6.1"
+numpy = ">=1.20,<1.24.0 || >1.24.0"
+pandas = ">=1.2"
+
+[package.extras]
+dev = ["flake8", "flit", "mypy", "pandas-stubs", "pre-commit", "pytest", "pytest-cov", "pytest-xdist"]
+docs = ["ipykernel", "nbconvert", "numpydoc", "pydata_sphinx_theme (==0.10.0rc2)", "pyyaml", "sphinx (<6.0.0)", "sphinx-copybutton", "sphinx-design", "sphinx-issues"]
+stats = ["scipy (>=1.7)", "statsmodels (>=0.12)"]
+
+[[package]]
 name = "sentence-transformers"
 version = "3.4.1"
 description = "State-of-the-Art Text Embeddings"
@@ -7728,4 +7749,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<4.0"
-content-hash = "173fa8f8f55a3e6654960e239d6f9cc8762ec67338f6f6dcb8af329fabe78c85"
+content-hash = "c6107163d9de513be9d9fd30313e6c44ec84c0b02ea4136127939a0976bdf2bd"
