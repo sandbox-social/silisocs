@@ -328,6 +328,110 @@ def get_act_dict(act_df):
     return data_dict.to_dict()
 
 
+def load_data_from_folder(folder_contents):
+    """
+    Load data from folder containing separate action_events.jsonl, probe_events.jsonl,
+    and prompts_and_responses.jsonl files.
+
+    Args:
+        folder_contents: Dictionary with filename as key and file content as value
+
+    Returns
+    -------
+        Same as load_data function
+    """
+    # Extract the three required files
+    action_content = None
+    probe_content = None
+    prompts_content = None
+
+    for filename, content in folder_contents.items():
+        if filename.endswith("action_events.jsonl"):
+            action_content = content
+        elif filename.endswith("probe_events.jsonl"):
+            probe_content = content
+        elif filename.endswith("prompts_and_responses.jsonl"):
+            prompts_content = content
+
+    if not action_content:
+        raise ValueError("action_events.jsonl file not found in folder")
+    if not probe_content:
+        raise ValueError("probe_events.jsonl file not found in folder")
+
+    # Load action events
+    action_df = pd.read_json(StringIO(action_content), lines=True)
+
+    # Load probe events
+    probe_df = pd.read_json(StringIO(probe_content), lines=True)
+
+    # Combine the dataframes (similar to what the original load_data did)
+    df = pd.concat([action_df, probe_df], ignore_index=True)
+
+    names = list(df.source_user.unique())
+    name_dict = dict(zip([n.split()[0] for n in names], names, strict=False))
+
+    # replace all first name occurence with fullnames in target field
+    def replace_full(data):
+        if "target_user" in data:
+            if len(data["target_user"].split()) == 1:
+                data.update(target_user=name_dict[data["target_user"]])
+        return data
+
+    df.loc[:, "data"] = df.loc[:, "data"].apply(lambda x: replace_full(x))
+
+    # make sure all tootids are strings
+    def get_toot_id(data):
+        if "toot_id" in data:
+            data["toot_id"] = str(data["toot_id"])
+        return data
+
+    df["data"] = df.data.apply(get_toot_id)
+
+    probe_df_processed, int_df, edge_df, plan_df, act_df = post_process_output(df)
+
+    # probe_data
+    num_entries = len(probe_df_processed.loc[probe_df_processed.label == PROBE_LABEL])
+    print(str(num_entries) + " probe entries!")
+    probe_data = (
+        probe_df_processed.loc[
+            probe_df_processed.label == PROBE_LABEL, ["source_user", "response", "episode"]
+        ]
+        .groupby("episode")
+        .apply(lambda x: dict(zip(x.source_user, x.response, strict=False)))
+        .to_dict()
+    )
+
+    # final follow network
+    follow_graph = nx.from_pandas_edgelist(
+        edge_df, "source_user", "target_user", create_using=nx.DiGraph()
+    )
+
+    # active users with episode keys
+    active_users_by_episode = int_df.groupby("episode")["source_user"].apply(set).to_dict()
+
+    # interaction data
+    int_dict = get_int_dict(int_df.copy())
+
+    # toot_data
+    toot_dict = get_toot_dict(int_df.copy())
+
+    # plan_data
+    plan_dict = get_plan_dict(plan_df.copy())
+
+    # inner action data
+    act_dict = get_act_dict(act_df.copy())
+
+    return (
+        follow_graph,
+        int_dict,
+        active_users_by_episode,
+        toot_dict,
+        probe_data,
+        plan_dict,
+        act_dict,
+    )
+
+
 def load_data(input_var):
     if len(input_var) < 500:
         df = pd.read_json(input_var, lines=True)
@@ -401,20 +505,111 @@ def load_data(input_var):
 # Main entry point
 if __name__ == "__main__":
     # Set up argument parsing
-    parser = argparse.ArgumentParser(description="Run the Dash app with specific data file.")
+    parser = argparse.ArgumentParser(
+        description="Run the Dash app with specific data file or directory."
+    )
     parser.add_argument(
         "--output_file",
         type=str,
         nargs="?",
         default=None,
-        help="The path to the output log file.",
+        help="The path to the output log file (legacy single file mode).",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        nargs="?",
+        default=None,
+        help="The path to the output directory containing action_events.jsonl, probe_events.jsonl, and prompts_and_responses.jsonl.",
     )
 
     args = parser.parse_args()
 
     # Initialize variables
-    if args.output_file:
-        # Load the data using the files passed as arguments
+    serialized_initial_data = None
+
+    if args.output_dir:
+        # Load data from directory containing separate files
+
+        directory_path = Path(args.output_dir)
+        if not directory_path.exists():
+            print(f"Error: Directory {directory_path} does not exist")
+            exit(1)
+
+        if not directory_path.is_dir():
+            print(f"Error: {directory_path} is not a directory")
+            exit(1)
+
+        # Look for the required files in the directory
+        folder_contents = {}
+        required_files = ["action_events.jsonl", "probe_events.jsonl"]
+        optional_files = ["prompts_and_responses.jsonl"]
+
+        for file_pattern in required_files + optional_files:
+            file_path = directory_path / file_pattern
+            if file_path.exists():
+                with open(file_path, encoding="utf-8") as f:
+                    folder_contents[file_pattern] = f.read()
+                print(f"Loaded {file_pattern}")
+            elif file_pattern in required_files:
+                print(f"Error: Required file {file_pattern} not found in {directory_path}")
+                exit(1)
+
+        # Load the data using the folder contents
+        try:
+            (
+                follow_graph,
+                interactions_by_episode,
+                active_users_by_episode,
+                toots,
+                probe_data,
+                plan_data,
+                act_data,
+            ) = load_data_from_folder(folder_contents)
+
+            # Compute positions
+            all_positions = compute_positions(follow_graph)
+            layout = {"name": "preset", "positions": all_positions}
+
+            # Serialize the initial data
+            serialized_initial_data = serialize_data(
+                follow_graph,
+                interactions_by_episode,
+                active_users_by_episode,
+                toots,
+                probe_data,
+                plan_data,
+                act_data,
+            )
+
+            # Add raw data and prompts content
+            import io
+
+            raw_data_combined = []
+
+            for filename, content in folder_contents.items():
+                if filename.endswith("action_events.jsonl") or filename.endswith(
+                    "probe_events.jsonl"
+                ):
+                    df = pd.read_json(io.StringIO(content), lines=True)
+                    raw_data_combined.extend(df.to_dict(orient="records"))
+
+            serialized_initial_data["raw_data"] = raw_data_combined
+
+            # Store prompts_and_responses content if available
+            if "prompts_and_responses.jsonl" in folder_contents:
+                serialized_initial_data["prompts_content"] = folder_contents[
+                    "prompts_and_responses.jsonl"
+                ]
+
+            print(f"Successfully loaded data from directory: {directory_path}")
+
+        except Exception as e:
+            print(f"Error loading data from directory: {e}")
+            exit(1)
+
+    elif args.output_file:
+        # Legacy mode: Load the data using single file
         (
             follow_graph,
             interactions_by_episode,
@@ -427,7 +622,6 @@ if __name__ == "__main__":
 
         # Compute positions
         all_positions = compute_positions(follow_graph)
-
         layout = {"name": "preset", "positions": all_positions}
 
         # Serialize the initial data
@@ -440,9 +634,7 @@ if __name__ == "__main__":
             plan_data,
             act_data,
         )
-    else:
-        # No initial data provided
-        serialized_initial_data = None
+        print(f"Successfully loaded data from file: {args.output_file}")
 
     app = dash.Dash(__name__)
 
@@ -570,6 +762,35 @@ if __name__ == "__main__":
                 }
 
             </style>
+            <script>
+                // Add folder upload functionality after DOM is loaded
+                document.addEventListener('DOMContentLoaded', function() {
+                    function enableFolderUpload(uploadId) {
+                        setTimeout(function() {
+                            const uploadElement = document.getElementById(uploadId);
+                            if (uploadElement) {
+                                const inputElement = uploadElement.querySelector('input[type="file"]');
+                                if (inputElement) {
+                                    inputElement.setAttribute('webkitdirectory', '');
+                                    inputElement.setAttribute('directory', '');
+                                    console.log('Folder upload enabled for', uploadId);
+                                }
+                            }
+                        }, 1000); // Wait for Dash to render
+                    }
+
+                    enableFolderUpload('upload-app-logger');
+                    enableFolderUpload('upload-app-logger-dashboard');
+
+                    // Re-enable after any Dash updates
+                    const observer = new MutationObserver(function(mutations) {
+                        enableFolderUpload('upload-app-logger');
+                        enableFolderUpload('upload-app-logger-dashboard');
+                    });
+
+                    observer.observe(document.body, { childList: true, subtree: true });
+                });
+            </script>
         </head>
         <body>
             {%app_entry%}
@@ -613,7 +834,7 @@ if __name__ == "__main__":
                             html.Div(
                                 [
                                     html.Label(
-                                        "Upload another output file: ",
+                                        "Upload another output folder: ",
                                         style={
                                             "display": "inline-block",
                                             "marginRight": "10px",
@@ -624,43 +845,46 @@ if __name__ == "__main__":
                                             "overflow-wrap": "break-word",  # Adding this for better browser compatibility
                                         },
                                     ),
-                                    dcc.Upload(
-                                        id="upload-app-logger-dashboard",
-                                        children=html.Div(
-                                            [
-                                                html.Span(
-                                                    "Select File",
+                                    html.Div(
+                                        [
+                                            dcc.Upload(
+                                                id="upload-app-logger-dashboard",
+                                                children=html.Label(
+                                                    html.Span(
+                                                        "Select Folder",
+                                                        style={
+                                                            "fontWeight": "500",
+                                                            "fontSize": "14px",
+                                                            "fontFamily": "inherit",
+                                                            "color": "#333",
+                                                            "textDecoration": "none",
+                                                        },
+                                                    ),
                                                     style={
-                                                        "fontWeight": "500",
-                                                        "fontSize": "14px",
-                                                        "fontFamily": "inherit",
+                                                        "display": "inline-block",
+                                                        "borderWidth": "1px",
+                                                        "borderStyle": "solid",
+                                                        "borderColor": "#ccc",
+                                                        "borderRadius": "4px",
+                                                        "backgroundColor": "#f8f9fa",
+                                                        "cursor": "pointer",
+                                                        "marginRight": "10px",
+                                                        "verticalAlign": "middle",
+                                                        "boxShadow": "0 1px 2px rgba(0,0,0,0.05)",
+                                                        "transition": "background-color 0.3s",
                                                         "color": "#333",
-                                                        "textDecoration": "none",
+                                                        "padding": "8px 15px",
                                                     },
-                                                )
-                                            ],
-                                            style={
-                                                "padding": "8px 15px",
-                                            },
-                                        ),
-                                        style={
-                                            "display": "inline-block",
-                                            "borderWidth": "1px",
-                                            "borderStyle": "solid",
-                                            "borderColor": "#ccc",
-                                            "borderRadius": "4px",
-                                            "backgroundColor": "#f8f9fa",
-                                            "cursor": "pointer",
-                                            "marginRight": "10px",
-                                            "verticalAlign": "middle",
-                                            "boxShadow": "0 1px 2px rgba(0,0,0,0.05)",
-                                            "transition": "background-color 0.3s",
-                                            "color": "#333",
-                                        },
-                                        multiple=False,
+                                                ),
+                                                style={
+                                                    "display": "inline-block",
+                                                },
+                                                multiple=True,
+                                            ),
+                                        ],
                                     ),
                                     html.Button(
-                                        "Upload File",
+                                        "Upload Folder",
                                         id="upload-button-dashboard",
                                         n_clicks=0,
                                         style={
@@ -706,6 +930,9 @@ if __name__ == "__main__":
                     "borderBottom": "1px solid #eee",
                     "marginBottom": "20px",
                     "paddingBottom": "5px",
+                    "display": "flex"
+                    if serialized_initial_data
+                    else "none",  # Show if data already loaded
                 },
             ),
             # Store component to hold serialized data
@@ -719,7 +946,7 @@ if __name__ == "__main__":
                     html.Div(
                         [
                             html.Label(
-                                "Upload an events file ('run_name_events.jsonl'):",
+                                "Upload an output folder (containing action_events.jsonl, probe_events.jsonl, and prompts_and_responses.jsonl):",
                                 style={
                                     "font-size": "18px",
                                     "font-weight": "bold",
@@ -728,35 +955,44 @@ if __name__ == "__main__":
                                     "text-align": "center",
                                 },
                             ),
-                            dcc.Upload(
-                                id="upload-app-logger",
-                                children=html.Div(
-                                    [
-                                        "Drag and Drop or ",
-                                        html.A(
-                                            "Select File",
+                            html.Div(
+                                [
+                                    dcc.Upload(
+                                        id="upload-app-logger",
+                                        children=html.Label(
+                                            [
+                                                "Drag and Drop or ",
+                                                html.A(
+                                                    "Select Folder",
+                                                    style={
+                                                        "color": "#1a73e8",
+                                                        "text-decoration": "underline",
+                                                    },
+                                                ),
+                                            ],
                                             style={
-                                                "color": "#1a73e8",
-                                                "text-decoration": "underline",
+                                                "width": "100%",
+                                                "max-width": "400px",
+                                                "height": "80px",
+                                                "lineHeight": "80px",
+                                                "borderWidth": "2px",
+                                                "borderStyle": "dashed",
+                                                "borderRadius": "10px",
+                                                "textAlign": "center",
+                                                "background-color": "#f9f9f9",
+                                                "cursor": "pointer",
+                                                "margin": "0 auto",
+                                                "transition": "border 0.3s ease-in-out",
+                                                "display": "block",
                                             },
                                         ),
-                                    ]
-                                ),
-                                style={
-                                    "width": "100%",
-                                    "max-width": "400px",
-                                    "height": "80px",
-                                    "lineHeight": "80px",
-                                    "borderWidth": "2px",
-                                    "borderStyle": "dashed",
-                                    "borderRadius": "10px",
-                                    "textAlign": "center",
-                                    "background-color": "#f9f9f9",
-                                    "cursor": "pointer",
-                                    "margin": "0 auto",  # Center the upload box
-                                    "transition": "border 0.3s ease-in-out",
-                                },
-                                multiple=False,
+                                        style={
+                                            "width": "100%",
+                                            "max-width": "400px",
+                                        },
+                                        multiple=True,
+                                    ),
+                                ],
                             ),
                         ],
                         style={"width": "100%", "max-width": "500px", "margin-bottom": "30px"},
@@ -795,6 +1031,9 @@ if __name__ == "__main__":
                 style={
                     "background-color": "#f0f2f5",  # Light gray background for better contrast
                     "padding": "20px",
+                    "display": "none"
+                    if serialized_initial_data
+                    else "flex",  # Hide if data already loaded
                 },
             ),
             # Dashboard
@@ -1129,27 +1368,17 @@ if __name__ == "__main__":
                     # Thoughts Viewer Section
                     html.Div(
                         [
-                            dcc.Upload(
-                                id="upload-jsonl",
-                                children=html.Button(
-                                    "Upload prompts & responses file",
-                                    style={
-                                        "padding": "10px 20px",
-                                        "fontSize": "16px",
-                                        "backgroundColor": "#4CAF50",
-                                        "color": "white",
-                                        "border": "none",
-                                        "borderRadius": "5px",
-                                        "cursor": "pointer",
-                                    },
-                                ),
-                                multiple=False,
-                                style={"margin": "20px 0", "textAlign": "center"},
-                                max_size=-1,
-                            ),
                             html.H2(
                                 "Within-agent processing for selected agent and episode",
                                 style={"textAlign": "center"},
+                            ),
+                            html.P(
+                                "Data loaded from prompts_and_responses.jsonl in the uploaded folder.",
+                                style={
+                                    "textAlign": "center",
+                                    "fontStyle": "italic",
+                                    "color": "#666",
+                                },
                             ),
                             html.Div(id="jsonl-output"),
                             dcc.Store(id="jsonl-store"),
@@ -1158,7 +1387,9 @@ if __name__ == "__main__":
                         style={"padding": "20px"},
                     ),
                 ],
-                style={"display": "none"},  # Initially hidden; shown when data is available
+                style={
+                    "display": "block" if serialized_initial_data else "none"
+                },  # Show if data already loaded
             ),
             # Hidden div for error messages (specific to dashboard uploads)
             html.Div(id="error-message", style={"color": "red"}),
@@ -1168,31 +1399,43 @@ if __name__ == "__main__":
     @app.callback(
         Output("jsonl-output", "children"),
         [
-            Input("upload-jsonl", "contents"),
+            Input("data-store", "data"),
             Input("name-selector", "value"),
             Input("episode-slider", "value"),
         ],
         prevent_initial_call=True,
     )
-    def process_jsonl_data(contents, selected_name, selected_episode):
+    def process_jsonl_data(data_store, selected_name, selected_episode):
         """Process JSONL data with streaming and filtering."""
-        if contents is None:
-            print("contents is None")
-            return None
-        if not contents:
-            print("Contents is empty")
+        if not data_store or "prompts_content" not in data_store:
+            return html.Div(
+                [
+                    html.P("No prompts_and_responses.jsonl file found in the uploaded folder."),
+                    html.P("This file is needed to display agent thoughts and processing details."),
+                ]
+            )
 
-        print("streaming")
+        prompts_content = data_store["prompts_content"]
+        if not prompts_content:
+            return html.Div([html.P("Prompts content is empty.")])
+
+        print("Processing prompts data from folder")
         try:
+            # Convert content to base64 format that stream_filtered_jsonl expects
+            import base64
+
+            encoded_content = base64.b64encode(prompts_content.encode("utf-8")).decode("utf-8")
+            mock_contents = "data:text/plain;base64," + encoded_content
+
             # Stream and filter the data, collecting only matching records
             return [
                 create_display(record)
-                for record in stream_filtered_jsonl(contents, selected_name, selected_episode)
+                for record in stream_filtered_jsonl(mock_contents, selected_name, selected_episode)
             ]
 
         except Exception as e:
             print(f"Error processing JSONL: {e!s}")
-            return None
+            return html.Div([html.P(f"Error processing prompts data: {e!s}")])
 
     @app.callback(
         Output("plan-output", "children"),
@@ -1287,14 +1530,38 @@ if __name__ == "__main__":
 
         triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
 
-        dashboard_title_with_filename = "File:\n" + app_logger_filename_initial
+        def process_folder_contents(contents_list, filename_list):
+            """Process folder contents and return a dictionary of filename -> content"""
+            if not contents_list or not filename_list:
+                return None
+
+            folder_contents = {}
+            for content, filename in zip(contents_list, filename_list, strict=False):
+                # Extract just the filename without path
+                filename_only = filename.split("/")[-1]  # Handle both forward and back slashes
+                if filename_only.endswith(".jsonl"):
+                    # Decode the file content
+                    content_type, content_string = content.split(",")
+                    decoded = base64.b64decode(content_string)
+                    content_str = decoded.decode("utf-8")
+                    folder_contents[filename_only] = content_str
+
+            return folder_contents
+
+        dashboard_title_with_filename = "Folder:\n" + (
+            app_logger_filename_initial[0] if app_logger_filename_initial else "Unknown"
+        )
         try:
             if triggered_id == "submit-button":
                 if app_logger_contents_initial is not None:
-                    # Process app_logger
-                    content_type, content_string = app_logger_contents_initial.split(",")
-                    decoded = base64.b64decode(content_string)
-                    app_logger_string = decoded.decode("utf-8")
+                    # Process folder contents
+                    folder_contents = process_folder_contents(
+                        app_logger_contents_initial, app_logger_filename_initial
+                    )
+
+                    if not folder_contents:
+                        raise ValueError("No valid .jsonl files found in folder")
+
                     (
                         follow_graph_new,
                         interactions_by_episode_new,
@@ -1303,7 +1570,7 @@ if __name__ == "__main__":
                         probe_data_new,
                         plan_data_new,
                         act_data_new,
-                    ) = load_data(app_logger_string)
+                    ) = load_data_from_folder(folder_contents)
 
                     # Serialize the new data
                     serialized_new_data = serialize_data(
@@ -1315,23 +1582,41 @@ if __name__ == "__main__":
                         plan_data_new,
                         act_data_new,
                     )
-                    # *** Add these two lines: parse and store the raw data ***
+
+                    # Combine raw data from action and probe events for heatmap
                     import io
 
-                    raw_df = pd.read_json(io.StringIO(app_logger_string), lines=True)
-                    serialized_new_data["raw_data"] = raw_df.to_dict(orient="records")
-                    # *** End additional lines ***
+                    raw_data_combined = []
+
+                    for filename, content in folder_contents.items():
+                        if filename.endswith("action_events.jsonl") or filename.endswith(
+                            "probe_events.jsonl"
+                        ):
+                            df = pd.read_json(io.StringIO(content), lines=True)
+                            raw_data_combined.extend(df.to_dict(orient="records"))
+
+                    serialized_new_data["raw_data"] = raw_data_combined
+
+                    # Store prompts_and_responses content if available
+                    for filename, content in folder_contents.items():
+                        if filename.endswith("prompts_and_responses.jsonl"):
+                            serialized_new_data["prompts_content"] = content
+                            break
 
                     return dashboard_title_with_filename, serialized_new_data, "", ""
 
-                raise ValueError("Output Log file required.")
+                raise ValueError("Output folder required.")
 
             if triggered_id == "upload-button-dashboard":
                 if app_logger_contents_dashboard is not None:
-                    # Process app_logger
-                    content_type, content_string = app_logger_contents_dashboard.split(",")
-                    decoded = base64.b64decode(content_string)
-                    app_logger_string = decoded.decode("utf-8")
+                    # Process folder contents
+                    folder_contents = process_folder_contents(
+                        app_logger_contents_dashboard, app_logger_filename_dashboard
+                    )
+
+                    if not folder_contents:
+                        raise ValueError("No valid .jsonl files found in folder")
+
                     (
                         follow_graph_new,
                         interactions_by_episode_new,
@@ -1340,7 +1625,7 @@ if __name__ == "__main__":
                         probe_data_new,
                         plan_data_new,
                         act_data_new,
-                    ) = load_data(app_logger_string)
+                    ) = load_data_from_folder(folder_contents)
 
                     # Serialize the new data
                     serialized_new_data = serialize_data(
@@ -1352,18 +1637,32 @@ if __name__ == "__main__":
                         plan_data_new,
                         act_data_new,
                     )
-                    # *** Add these lines to store the raw file data ***
+
+                    # Combine raw data from action and probe events for heatmap
                     import io
 
-                    raw_df = pd.read_json(io.StringIO(app_logger_string), lines=True)
-                    serialized_new_data["raw_data"] = raw_df.to_dict(orient="records")
-                    # *** End additional lines ***
+                    raw_data_combined = []
+
+                    for filename, content in folder_contents.items():
+                        if filename.endswith("action_events.jsonl") or filename.endswith(
+                            "probe_events.jsonl"
+                        ):
+                            df = pd.read_json(io.StringIO(content), lines=True)
+                            raw_data_combined.extend(df.to_dict(orient="records"))
+
+                    serialized_new_data["raw_data"] = raw_data_combined
+
+                    # Store prompts_and_responses content if available
+                    for filename, content in folder_contents.items():
+                        if filename.endswith("prompts_and_responses.jsonl"):
+                            serialized_new_data["prompts_content"] = content
+                            break
 
                     dashboard_title_with_filename = (
-                        "Social Sandbox Dashboard: " + app_logger_filename_dashboard
+                        "Social Sandbox Dashboard: " + app_logger_filename_dashboard[0]
                     )
                     return dashboard_title_with_filename, serialized_new_data, "", ""
-                raise ValueError("Output Log file required for dashboard upload.")
+                raise ValueError("Output folder required for dashboard upload.")
 
             raise dash.exceptions.PreventUpdate
 
@@ -1376,7 +1675,7 @@ if __name__ == "__main__":
                     "",
                 )
             if triggered_id == "upload-button-dashboard":
-                return dash.no_update, "", f"Error uploading dashboard data: {e!s}"
+                return dash.no_update, dash.no_update, "", f"Error uploading dashboard data: {e!s}"
             return dashboard_title_with_filename, dash.no_update, "", ""
 
     @app.callback(Output("heatmap-graph", "figure"), Input("data-store", "data"))
