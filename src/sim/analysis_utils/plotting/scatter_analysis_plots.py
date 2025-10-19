@@ -472,12 +472,22 @@ class ScatterAnalyzer:
 
 def main():
     """Main function to run the analysis"""
-    # File path
-    probe_file = r"examples\election\outputs\N20_T20_Reddit.Big5_independent_v1_news_no_bias_with_images_run1\2025-08-31_23-38-45\probe_events.jsonl"
+    import argparse
 
-    # Create output directory
-    output_dir = Path("scatter_plots")
-    output_dir.mkdir(exist_ok=True)
+    parser = argparse.ArgumentParser(description="Generate scatter plots for election data")
+    parser.add_argument("--input", "-i", required=True, help="Path to probe_events.jsonl file")
+    parser.add_argument(
+        "--output-dir",
+        "-o",
+        default="scatter_plots",
+        help="Directory to save generated plots",
+    )
+
+    args = parser.parse_args()
+
+    probe_file = args.input
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Initialize analyzer
     analyzer = ScatterAnalyzer(probe_file)

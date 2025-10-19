@@ -10,6 +10,7 @@ This script creates a trellis (small multiples) chart where each subplot shows:
 import argparse
 import json
 import math
+import os
 from collections import defaultdict
 from pathlib import Path
 
@@ -1236,6 +1237,19 @@ def main():
         action="store_true",
         help="Show all runs overlaid on the same plots (same layout as default but no averaging)",
     )
+    parser.add_argument(
+        "--inputs",
+        "-i",
+        nargs="+",
+        required=True,
+        help="One or more probe_events.jsonl file paths to process (required).",
+    )
+    parser.add_argument(
+        "--output-dir",
+        "-o",
+        default="trellis_plots",
+        help="Directory to save generated plots",
+    )
     args = parser.parse_args()
 
     # Validate mutually exclusive flags
@@ -1243,20 +1257,12 @@ def main():
         print("Error: --separate and --in_one flags are mutually exclusive")
         return
 
-    # File paths - you can add more files to this list for averaging
-    probe_files = [
-        r"examples\election\outputs\N20_T20_Reddit.Big5_independent_v1_news_no_bias_with_images_run1\2025-08-31_23-38-45\probe_events.jsonl",
-        r"examples\election\outputs\N20_T20_Reddit.Big5_independent_v1_news_no_bias_with_images_run1\2025-09-10_12-54-51\probe_events.jsonl",
-        r"examples\election\outputs\N20_T20_Reddit.Big5_independent_v1_news_no_bias_with_images_run1\2025-09-10_13-29-06\probe_events.jsonl",
-        r"examples\election\outputs\N20_T20_Reddit.Big5_independent_v1_news_no_bias_with_images_run1\2025-09-10_16-48-48\probe_events.jsonl",
-        r"examples\election\outputs\N20_T20_Reddit.Big5_independent_v1_news_no_bias_with_images_run1\2025-09-10_20-35-53\probe_events.jsonl",  # Add more file paths here as needed
-        # r'path\to\second\probe_events.jsonl',
-        # r'path\to\third\probe_events.jsonl',
-    ]
+    # Normalize provided input paths. No default list - inputs are required.
+    probe_files = [p if os.path.isabs(p) else os.path.join(os.getcwd(), p) for p in args.inputs]
 
     # Create output directory
-    output_dir = Path("trellis_plots")
-    output_dir.mkdir(exist_ok=True)
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Initialize analyzer with multiple files and flags
     analyzer = TrellisAnalyzer(probe_files, separate_runs=args.separate, in_one=args.in_one)

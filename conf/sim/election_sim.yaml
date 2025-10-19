@@ -5,7 +5,7 @@ gamemasters:
 load_path: ''
 model: gpt-4.1-mini
 num_agents: 20
-num_episodes: 17
+num_episodes: 50
 persona_type: Reddit.Big5
 platform: Mastodon
 roleplaying_instructions: <system>You are simulating {name}, a character in a social

@@ -19,6 +19,7 @@ class GptLanguageModel(language_model.LanguageModel):
         model_name: str,
         *,
         api_key: str | None = None,
+        api_base: str | None = None,
         measurements: measurements_lib.Measurements | None = None,
         channel: str = language_model.DEFAULT_STATS_CHANNEL,
         log_file: str = "prompts_and_outputs.jsonl",
@@ -40,7 +41,10 @@ class GptLanguageModel(language_model.LanguageModel):
         self._model_name = model_name
         self._measurements = measurements
         self._channel = channel
-        self._client = openai.OpenAI(api_key=self._api_key)
+        if api_base:
+            self._client = openai.OpenAI(api_key=self._api_key, base_url=api_base)
+        else:
+            self._client = openai.OpenAI(api_key=self._api_key)
         self._log_file = log_file
         self.debug = debug
         self.meta_data = {"episode_idx": -1, "agent_name": ""}
@@ -201,6 +205,14 @@ def select_large_language_model(model_name, log_file, debug_mode):
             raise ValueError("GPT_API_KEY is required.")
         model = GptLanguageModel(
             api_key=GPT_API_KEY, model_name=model_name, log_file=log_file, debug=debug_mode
+        )
+    elif "Qwen" in model_name:
+        model = model = GptLanguageModel(
+            api_key="abcd",
+            model_name=model_name,
+            api_base="http://localhost:8000/v1",
+            log_file=log_file,
+            debug=debug_mode,
         )
     else:
         raise ValueError("Unknown model name.")

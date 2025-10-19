@@ -595,7 +595,6 @@ def main():
     parser.add_argument(
         "--input",
         "-i",
-        default=r"examples\election\outputs\N20_T20_Reddit.Big5_independent_v1_news_no_bias_with_images_run1\2025-08-31_23-38-45\probe_events.jsonl",
         help="Path to the probe_events.jsonl file",
     )
     parser.add_argument("--output-dir", "-o", default="plots", help="Directory to save plots")
