@@ -1,3 +1,4 @@
+import argparse
 import hashlib
 import json
 import os
@@ -1725,37 +1726,103 @@ def print_per_agent_analysis(analysis_results: dict) -> None:
                 print(f"  Variability ratio (Bradley/Bill): {bradley_var / bill_var:.2f}")
 
 
-# Entry point
-if __name__ == "__main__":
-    input_file = r"C:\Users\snehe\Documents\mastodon-sim\examples\election\outputs\N20_T1_Reddit.Big5_independent_v1_news_no_bias_with_images_run1\2025-06-19_18-19-50\prompts_and_responses.jsonl"
+def _normalize_path(p: str) -> str:
+    return p if os.path.isabs(p) else os.path.join(os.getcwd(), p)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Analyze prompts_and_responses.jsonl for voting and polls, and run jumbling or "
+            "opposing-opinion experiments."
+        )
+    )
+    parser.add_argument("--input", "-i", required=True, help="Path to prompts_and_responses.jsonl")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--jumble", dest="jumble", action="store_true", help="Apply jumbling to prompts"
+    )
+    group.add_argument(
+        "--no-jumble",
+        dest="no_jumble",
+        action="store_true",
+        help="Disable jumbling (use original prompts)",
+    )
+    group.add_argument(
+        "--opposing",
+        dest="opposing",
+        action="store_true",
+        help="Run opposing opinion transformation",
+    )
+    parser.add_argument(
+        "--num-jumbles", type=int, default=10, help="Number of jumble/variation runs per prompt"
+    )
+    parser.add_argument(
+        "--output-dir", default=".", help="Directory to save raw results and summaries"
+    )
+    parser.add_argument(
+        "--max-workers", type=int, default=10, help="Max workers for parallel LLM calls"
+    )
+
+    args = parser.parse_args(argv)
+
+    input_path = _normalize_path(args.input)
+    output_dir = _normalize_path(args.output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+
     print("Starting analysis...")
-    results = analyze_prompts_and_responses(input_file)
+    results = analyze_prompts_and_responses(input_path)
     print_analysis_results(results)
-    # print("\nStarting comprehensive prompt jumbling analysis with parallelized LLM calls...")
 
-    # # Run standard analysis
-    # jumbling_results = analyze_jumbling_effects(input_file, num_jumbles=20, disable_jumbling=False)
-    # print_comprehensive_analysis(jumbling_results)
+    disable_jumbling = False
+    opposing_opinion = False
+    # Determine mode
+    if args.opposing:
+        mode = "opposing_opinion"
+        opposing_opinion = True
+    if args.no_jumble:
+        mode = "no_jumbling"
+        disable_jumbling = True
+    if not args.opposing and not args.no_jumble:
+        mode = "jumbled"
 
-    # if 'raw_results_file' in jumbling_results:
-    #     print(f"\n📁 Raw jumbling results saved to: {jumbling_results['raw_results_file']}")
-
-    # Uncomment to run opposing opinion analysis
     print("\n" + "=" * 80)
-    print("OPPOSING OPINION ANALYSIS")
+    print(f"Running mode: {mode} (num_jumbles={args.num_jumbles})")
     print("=" * 80)
-    opposing_results = analyze_jumbling_effects(input_file, num_jumbles=1, opposing_opinion=True)
-    print_comprehensive_analysis(opposing_results)
 
-    if "raw_results_file" in opposing_results:
-        print(f"\n📁 Raw opposing opinion results saved to: {opposing_results['raw_results_file']}")
+    analysis_results = analyze_jumbling_effects(
+        input_path,
+        num_jumbles=args.num_jumbles,
+        disable_jumbling=disable_jumbling,
+        opposing_opinion=opposing_opinion,
+    )
 
-    # # Run LLM variation analysis (disable jumbling)
-    # print("\n" + "="*80)
-    # print("LLM VARIATION ANALYSIS (NO JUMBLING)")
-    # print("="*80)
-    # variation_results = analyze_jumbling_effects(input_file, num_jumbles=10, disable_jumbling=True)
-    # print_comprehensive_analysis(variation_results)
-    #
-    # if 'raw_results_file' in variation_results:
-    #     print(f"\n📁 Raw variation results saved to: {variation_results['raw_results_file']}")
+    # Move raw results into output dir if produced
+    raw = analysis_results.get("raw_results_file")
+    if raw:
+        try:
+            dst = os.path.join(output_dir, os.path.basename(raw))
+            os.replace(raw, dst)
+            analysis_results["raw_results_file"] = dst
+            print(f"Moved raw results to {dst}")
+        except Exception as e:
+            print(f"Warning: could not move raw results file: {e}")
+
+    print_comprehensive_analysis(analysis_results)
+
+    # Save JSON summary
+    summary_path = os.path.join(
+        output_dir, f"analysis_summary_{mode}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    )
+    try:
+        with open(summary_path, "w", encoding="utf-8") as f:
+            json.dump(analysis_results, f, ensure_ascii=False, indent=2)
+        print(f"Saved analysis summary to {summary_path}")
+    except Exception as e:
+        print(f"Warning: could not save analysis summary: {e}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
