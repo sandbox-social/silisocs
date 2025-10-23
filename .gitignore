@@ -16,6 +16,7 @@ reports/
 *.xls*
 *.zip*
 data/
+examples/election/outputs/
 
 # direnv
 .envrc

@@ -243,7 +243,7 @@ def generate_output_configs(cfg):
     agents = {}
     agents["inputs"] = {}
     agents["inputs"]["persona_file"] = "reddit_agents.json"
-    agents["inputs"]["news_file"] = "v1_news_no_bias"
+    agents["inputs"]["news_file"] = "v1_news_bill_bias"
     agents["base_agent"] = {}
     agents["base_agent"]["components"] = [
         {

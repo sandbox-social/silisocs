@@ -110,37 +110,25 @@ def build_agent_with_memories(obj_args, profile_item):
     return agent, store_for_local_post_analysis
 
 
-def set_up_mastodon_app_usage(roles, role_parameters, action_logger, app_description, use_server):
-    active_rates = {}
-    for agent_name, role in roles.items():
-        active_rates[agent_name] = role_parameters["active_rates_per_episode"][role]
-
-    mastodon_apps = {
-        agent_name: apps.MastodonSocialNetworkApp(
-            action_logger=action_logger,
-            perform_operations=use_server,
-            app_description=app_description,
-        )
-        for agent_name in roles
-    }
-    user_mapping = {agent_name.split()[0]: f"user{i + 1:04d}" for i, agent_name in enumerate(roles)}
-    for p in mastodon_apps:
-        mastodon_apps[p].set_user_mapping(user_mapping)
-
+def _follow_and_update_bio(roles, role_parameters, mastodon_apps, user_mapping):
     # initiailize initial social network. Pre-generate unique follow relationships
     follow_pairs = set()
     # Now, generate additional follow relationships between agents.
     role_prob_matrix = role_parameters["initial_follow_prob"]
-    agent_roles = []
+    # agent_roles = [] # This variable was unused
     for agent_i, role_i in roles.items():
         for agent_j, role_j in roles.items():
+            if agent_i == agent_j:  # Agents cannot follow themselves
+                continue
             prob = role_prob_matrix[role_i][role_j]
-            if False:
-                if follower != followee:
-                    # With a 20% chance, create mutual follow relationships.
-                    if random.random() < 0.2:
-                        follow_pairs.add((follower, followee))
-                        follow_pairs.add((followee, follower))
+            # The following block was originally if False, so it was never executed.
+            # I'm keeping it commented out to preserve the original logic.
+            # if False:
+            #     if follower != followee: # follower and followee are not defined here
+            #         # With a 20% chance, create mutual follow relationships.
+            #         if random.random() < 0.2:
+            #             follow_pairs.add((follower, followee))
+            #             follow_pairs.add((followee, follower))
             # Otherwise, with a create a one-direction follow according to stored probability.
             if random.random() < prob:
                 follow_pairs.add((agent_i, agent_j))
@@ -158,7 +146,7 @@ def set_up_mastodon_app_usage(roles, role_parameters, action_logger, app_descrip
             future.result()
         except Exception as e:
             # If a follow error occurs (e.g. already following), we simply log and ignore it.
-            print(f"Ignoring error: {e}")
+            print(f"Ignoring error during follow operation: {e}")
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = [
@@ -169,7 +157,33 @@ def set_up_mastodon_app_usage(roles, role_parameters, action_logger, app_descrip
         ]
     # Optionally, wait for all tasks to complete
     for future in concurrent.futures.as_completed(futures):
-        future.result()  # This will raise any exceptions that occurred during execution, if any
+        try:
+            future.result()
+        except Exception as e:
+            print(f"Ignoring error during bio update: {e}")
+
+
+def set_up_mastodon_app_usage(
+    roles, role_parameters, action_logger, app_description, use_server, setup_base=True
+):
+    active_rates = {}
+    for agent_name, role in roles.items():
+        active_rates[agent_name] = role_parameters["active_rates_per_episode"][role]
+
+    mastodon_apps = {
+        agent_name: apps.MastodonSocialNetworkApp(
+            action_logger=action_logger,
+            perform_operations=use_server,
+            app_description=app_description,
+        )
+        for agent_name in roles
+    }
+    user_mapping = {agent_name.split()[0]: f"user{i + 1:04d}" for i, agent_name in enumerate(roles)}
+    for p in mastodon_apps:
+        mastodon_apps[p].set_user_mapping(user_mapping)
+
+    if setup_base:
+        _follow_and_update_bio(roles, role_parameters, mastodon_apps, user_mapping)
 
     phones = {
         agent_name: apps.Phone(agent_name, apps=[mastodon_apps[agent_name]]) for agent_name in roles
