@@ -97,9 +97,10 @@ class BasicSceneTriggeringComponent(component.Component):
             self._memory.add(event)
         return scene_output
 
-    def update_after_event(self, event_statement: str):  # noqa: D102
+    def update_after_event(self, event_statement: str | None = None):  # noqa: D102
         player = self._player
-        player.observe(f"[Planned Actions for upcoming Phone Usage]: {event_statement}")
+        if event_statement:
+            player.observe(f"[Planned Actions for upcoming Phone Usage]: {event_statement}")
         if player is not None:
             self._run_phone_scene(player)
 

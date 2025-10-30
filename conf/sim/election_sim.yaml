@@ -1,6 +1,6 @@
 example_name: election
 gamemasters:
-  online_gamemaster: app_side_only_gamemaster
+  online_gamemaster: app_side_only_gamemaster_wo_thought
   reallife_gamemaster: null
 load_path: ''
 model: gpt-4.1-mini

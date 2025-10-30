@@ -89,20 +89,18 @@ class GameMaster:
         try:
             if self.roles[agent._agent_name] == "exogenous":
                 action = agent.post(self.phones[agent._agent_name].apps[0])
+                self.log_data.append(
+                    {"source_user": agent._agent_name, "label": "episode_plan", "data": action}
+                )
             else:
                 self.model.meta_data["agent_name"] = agent._agent_name
-                action = agent.act(self.action_spec)
-            event_statement = f"{agent._agent_name} acted: {action}"
-            # 2. Log the action (ensure this is thread-safe)
-            self.log_data.append(
-                {"source_user": agent._agent_name, "label": "episode_plan", "data": action}
-            )
+                action = None
 
-            # 3. Trigger the phone scene for this agent using their unique component
+            # Trigger the phone scene for this agent using their unique component
             if self.roles[agent._agent_name] != "exogenous":
-                self.agent_components[agent._agent_name].update_after_event(event_statement)
+                self.agent_components[agent._agent_name].update_after_event(action)
 
-            return event_statement
+            return action
         except Exception as e:
             # Handle any agent-specific exceptions
             return f"Error for {agent._agent_name}: {e!s}"
