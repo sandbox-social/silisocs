@@ -16,7 +16,8 @@ run_name: run1
 seed: 1
 sentence_encoder: sentence-transformers/all-mpnet-base-v2
 use_news_agent: without_images
-use_server: true
+use_server: false
+disable_language_model: true
 target_agent_name: null
 experiment_name: null
 episode_to_continue: null

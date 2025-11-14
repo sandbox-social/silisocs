@@ -4,7 +4,7 @@ from collections.abc import Collection, Sequence
 
 import openai
 import portalocker
-from concordia.language_model import language_model
+from concordia.language_model import language_model, no_language_model
 from concordia.utils import measurements as measurements_lib
 from concordia.utils import sampling
 
@@ -191,8 +191,10 @@ class GptLanguageModel(language_model.LanguageModel):
         )
 
 
-def select_large_language_model(model_name, log_file, debug_mode):
-    if "sonnet" in model_name:
+def select_large_language_model(model_name, log_file, debug_mode, disable_language_model=False):
+    if disable_language_model:
+        model = no_language_model.NoLanguageModel()
+    elif "sonnet" in model_name:
         GPT_API_KEY = os.getenv("ANTHROPIC_API_KEY")
         model = amazon_bedrock_model.AmazonBedrockLanguageModel(
             # -            model_id="anthropic.claude-3-5-sonnet-20240620-v1:0"

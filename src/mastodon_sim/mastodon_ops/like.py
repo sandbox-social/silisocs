@@ -32,12 +32,11 @@ def like_check(login_user: str, toot_id: str) -> bool:
         raise
 
 
-def like_toot(login_user: str, target_user: str, toot_id: str) -> None:
+def like_toot(login_user: str, toot_id: str) -> None:
     """Like a post from a user's timeline on Mastodon.
 
     Args:
         login_user (str): The user to log in with.
-        target_user (str): The user whose post will be liked.
         toot_id (str): The ID of the post to like.
 
     Raises
@@ -53,9 +52,9 @@ def like_toot(login_user: str, target_user: str, toot_id: str) -> None:
         mastodon.access_token = access_token
 
         # Like the post
-        logger.debug(f"{login_user} attempting to like toot {toot_id} from {target_user}...")
+        logger.debug(f"{login_user} attempting to like toot {toot_id}...")
         mastodon.status_favourite(toot_id)
-        logger.info(f"{login_user} liked post {toot_id} from {target_user}.")
+        logger.info(f"{login_user} liked post {toot_id}.")
     except ValueError as e:
         logger.error(f"Error: {e}")
         raise
@@ -67,12 +66,11 @@ def like_toot(login_user: str, target_user: str, toot_id: str) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Like a post from a user's timeline on Mastodon.")
     parser.add_argument("login_user", help="The user to log in with.")
-    parser.add_argument("target_user", help="The user whose post will be liked.")
     parser.add_argument("toot_id", help="The ID of the post to like.")
 
     args = parser.parse_args()
     try:
-        like_toot(args.login_user, args.target_user, args.toot_id)
-        print(f"Successfully liked post {args.toot_id} from {args.target_user}.")
+        like_toot(args.login_user, args.toot_id)
+        print(f"Successfully liked post {args.toot_id}.")
     except Exception as e:
-        print(f"Failed to like post {args.toot_id} from {args.target_user}. Error: {e}")
+        print(f"Failed to like post {args.toot_id}. Error: {e}")

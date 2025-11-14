@@ -49,9 +49,8 @@ from sim.sim_utils.misc_sim_utils import (
     ConfigStore,
     EventLogger,
     StdoutToLogger,
-    get_sentance_encoder,
+    get_sentence_encoder,
     post_analysis,
-    rebuild_from_saved_checkpoint,
 )
 
 
@@ -193,10 +192,10 @@ def run_sim(
         "probe", os.path.join(cfg.sim.output_rootname, "probe_events.jsonl")
     )
 
-    if load_from_checkpoint_path:
-        (agents, clock) = rebuild_from_saved_checkpoint(
-            load_from_checkpoint_path, agents, roles, config, model, memory, clock, embedder
-        )
+    # if load_from_checkpoint_path:
+    #     (agents, clock) = rebuild_from_saved_checkpoint(
+    #         load_from_checkpoint_path, agents, roles, config, model, memory, clock, embedder
+    #     )
 
     # main loop
     start_time = time.time()  # Start timing
@@ -299,7 +298,7 @@ def main(cfg: DictConfig):
     model = select_large_language_model(
         cfg.sim.model, os.path.join(cfg.sim.output_rootname, "prompts_and_responses.jsonl"), True
     )
-    embedder = get_sentance_encoder(cfg.sim.sentence_encoder)
+    embedder = get_sentence_encoder(cfg.sim.sentence_encoder)
 
     # run sim
     run_sim(

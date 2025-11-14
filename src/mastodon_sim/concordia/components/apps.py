@@ -447,10 +447,12 @@ class MastodonSocialNetworkApp(PhoneApp):
         return bio_message
 
     @app_action
-    def read_profile(self, current_user_full: str, target_user_full: str) -> tuple[str, str]:
+    def read_profile(self, current_user: str, target_user: str) -> tuple[str, str]:
         """Read a user's profile on Mastodon social network."""
-        current_user = current_user_full.split()[0]
-        target_user = target_user_full.split()[0]
+        current_user_full = str(current_user)
+        current_user = current_user.split()[0]
+        target_user_full = str(target_user)
+        target_user = target_user.split()[0]
 
         current_username = self._get_username(current_user)
         target_username = self._get_username(target_user)
@@ -770,7 +772,6 @@ class MastodonSocialNetworkApp(PhoneApp):
     def reply_to_toot(
         self,
         current_user: str,
-        target_user: str,
         status: str,
         in_reply_to_id: int,
     ) -> str:
@@ -778,7 +779,6 @@ class MastodonSocialNetworkApp(PhoneApp):
 
         Args:
             current_user (str): The username of the user posting the status.
-            target_user (str): The username of the user being who is the author of the status this post is replying to.
             status (str): The text content of the status update.
             in_reply_to_id (int): The `toot_id` of the status this post is replying to.
 
@@ -791,8 +791,6 @@ class MastodonSocialNetworkApp(PhoneApp):
         try:
             current_user_full = str(current_user)
             current_user = current_user.split()[0]
-            target_user_full = str(target_user)
-            target_user = target_user.split()[0]
             username = self._get_username(current_user)
             if self.perform_operations:
                 return_val = self._mastodon_ops.post_status(
@@ -809,7 +807,7 @@ class MastodonSocialNetworkApp(PhoneApp):
                 toot_id = ""
 
             self._print(
-                f"You replied to a toot by {target_user} with toot id {in_reply_to_id} : {status}",
+                f"You replied to the toot with toot id {in_reply_to_id} : {status}",
                 emoji="📝",
             )
             return_msg = (
@@ -820,7 +818,7 @@ class MastodonSocialNetworkApp(PhoneApp):
                     "source_user": current_user_full,
                     "label": "reply",
                     "data": {
-                        "reply_to": {"target_user": target_user_full, "toot_id": in_reply_to_id},
+                        "reply_to": {"toot_id": in_reply_to_id},
                         "toot_id": toot_id,
                         "post_text": status,
                     },
@@ -1023,26 +1021,22 @@ class MastodonSocialNetworkApp(PhoneApp):
         return full_output
 
     @app_action
-    def like_toot(self, current_user: str, target_user: str, toot_id: str) -> str:
+    def like_toot(self, current_user: str, toot_id: str) -> str:
         """Like (favorite) a toot."""
-        print("like" + current_user)
         current_user_full = str(current_user)
         current_user = current_user.split()[0]
-        target_user_full = str(target_user)
-        target_user = target_user.split()[0]
         current_username = self._get_username(current_user)
-        target_username = self._get_username(target_user)
-        self._print(
-            f"@{current_username} liking post {toot_id} from @{target_username}",
-            emoji="❤️",
-        )
-        like_message = f"{current_user} (@{current_username}) liked post {toot_id} from {target_user} (@{target_username})"
+        # self._print(
+        #     f"@{current_username} liking post {toot_id}",
+        #     emoji="❤️",
+        # )
+        like_message = f"{current_user} (@{current_username}) liked post {toot_id}"
         if self.perform_operations:
             check = self._mastodon_ops.like_check(current_username, toot_id)
             if not check:
-                self._mastodon_ops.like_toot(current_username, target_username, toot_id)
+                self._mastodon_ops.like_toot(current_username, toot_id)
             else:
-                like_message = f"{current_user} (@{current_username}) has previously liked post {toot_id} from {target_user} (@{target_username}). Please conduct a different action!!"
+                like_message = f"{current_user} (@{current_username}) has previously liked post {toot_id}. Please conduct a different action!!"
         else:
             self._print(
                 "Skipping real Mastodon API call since perform_operations is set to False",
@@ -1053,7 +1047,7 @@ class MastodonSocialNetworkApp(PhoneApp):
             {
                 "source_user": current_user_full,
                 "label": "like_toot",
-                "data": {"toot_id": str(toot_id), "target_user": target_user_full},
+                "data": {"toot_id": str(toot_id)},
             }
         )
         return like_message
@@ -1061,26 +1055,22 @@ class MastodonSocialNetworkApp(PhoneApp):
     # region[additional methods]
 
     @app_action
-    def boost_toot(self, current_user: str, target_user: str, toot_id: str) -> str:
+    def boost_toot(self, current_user: str, toot_id: str) -> str:
         """Boost (reblog) a toot."""
-        print("boost" + current_user)
         current_user_full = str(current_user)
         current_user = current_user.split()[0]
-        target_user_full = str(target_user)
-        target_user = target_user.split()[0]
         current_username = self._get_username(current_user)
-        target_username = self._get_username(target_user)
         self._print(
             f"@{current_username} boosting post {toot_id}",
             emoji="🔁",
         )
-        boost_message = f"{current_user} (@{current_username}) boosted post {toot_id} from {target_user} (@{target_username})"
+        boost_message = f"{current_user} (@{current_username}) boosted post {toot_id}"
         if self.perform_operations:
             check = self._mastodon_ops.boost_check(current_username, toot_id)
             if not check:
-                self._mastodon_ops.boost_toot(current_username, target_username, toot_id)
+                self._mastodon_ops.boost_toot(current_username, toot_id)
             else:
-                boost_message = f"{current_user} (@{current_username}) has previously boosted post {toot_id} from {target_user} (@{target_username}). Please conduct a different action!!"
+                boost_message = f"{current_user} (@{current_username}) has previously boosted post {toot_id}. Please conduct a different action!!"
         self._print(
             f"@{current_username} boosted post {toot_id}",
             emoji="✅",
@@ -1089,7 +1079,7 @@ class MastodonSocialNetworkApp(PhoneApp):
             {
                 "source_user": current_user_full,
                 "label": "boost_toot",
-                "data": {"toot_id": str(toot_id), "target_user": target_user_full},
+                "data": {"toot_id": str(toot_id)},
             }
         )
         return boost_message

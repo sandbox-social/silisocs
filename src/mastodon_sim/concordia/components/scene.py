@@ -177,7 +177,7 @@ class _PhoneComponent(component.Component):
                         name=self._player.name,
                     )
                     call_to_action = (
-                        f"{media_contents!s} Context: Sussinctly describe this image in the form of an impression that it made on {self._player.name.split()[0]} when they viewed it alongside the following text of the toot they just read on the Mastodon app: "
+                        f"{media_contents!s} Context: Succinctly describe this image in the form of an impression that it made on {self._player.name.split()[0]} when they viewed it alongside the following text of the toot they just read on the Mastodon app: "
                         + "'"
                         + toot_headline
                         + "'"

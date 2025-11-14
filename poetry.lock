@@ -1530,26 +1530,26 @@ tqdm = ["tqdm"]
 
 [[package]]
 name = "gdm-concordia"
-version = "1.8.10"
+version = "2.1.0"
 description = "A library for building a generative model of social interacions."
 optional = false
 python-versions = ">=3.11"
 files = [
-    {file = "gdm_concordia-1.8.10-py3-none-any.whl", hash = "sha256:4700cff04dbf245e69ccf8332622823eeca5542ee1ba4360dba2f0ccfbfc808b"},
-    {file = "gdm_concordia-1.8.10.tar.gz", hash = "sha256:6f1906db4c626189bc432fca2f2c51772c49564f107986818e2748e351a36327"},
+    {file = "gdm_concordia-2.1.0-py3-none-any.whl", hash = "sha256:728f9be5cff85d70738c455bf42f36c679a15d99fce502f3c9ee7f4227a3cf71"},
+    {file = "gdm_concordia-2.1.0.tar.gz", hash = "sha256:058c20d813c12df6d72281603018227365f9f8e2968cba268c35769ec4a16ab7"},
 ]
 
 [package.dependencies]
 absl-py = "*"
 boto3 = "*"
 google-cloud-aiplatform = "*"
-google-generativeai = "*"
+google-generativeai = ">=0.8"
 ipython = "*"
 jinja2 = "*"
 langchain-community = "*"
 matplotlib = "*"
 mistralai = "*"
-numpy = "*"
+numpy = ">=1.26"
 ollama = "*"
 openai = ">=1.3.0"
 pandas = "*"
@@ -7749,4 +7749,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<4.0"
-content-hash = "c6107163d9de513be9d9fd30313e6c44ec84c0b02ea4136127939a0976bdf2bd"
+content-hash = "efedb68f2c6c4ac3f55550075807efe455bef37ba4a5a14e033dd411dc4761ce"
