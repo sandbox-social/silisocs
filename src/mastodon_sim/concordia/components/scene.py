@@ -178,9 +178,7 @@ class _PhoneComponent(component.Component):
                     )
                     call_to_action = (
                         f"{media_contents!s} Context: Succinctly describe this image in the form of an impression that it made on {self._player.name.split()[0]} when they viewed it alongside the following text of the toot they just read on the Mastodon app: "
-                        + "'"
-                        + toot_headline
-                        + "'"
+                        "'" + toot_headline + "'"
                     )
                     media_desc = self._player.act(
                         action_spec=agent.ActionSpec(

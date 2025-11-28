@@ -48,7 +48,7 @@ def create_user_graph(users: list[str] | None = None) -> None:
         G.add_nodes_from(users)
 
         # Dictionary to store follower counts
-        follower_counts = {user: 0 for user in users}
+        follower_counts = dict.fromkeys(users, 0)
 
         # Add edges (follow relationships) to the graph
         for user in users:

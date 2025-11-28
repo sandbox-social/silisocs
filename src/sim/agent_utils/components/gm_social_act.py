@@ -13,6 +13,7 @@ from mastodon_sim.concordia.components import apps
 DEFAULT_SESSION_TERMINATE_STR = "The Social-Media session has been completed."
 
 import re
+from html import unescape
 
 
 def find_and_parse_action_data(data_string):
@@ -43,7 +44,7 @@ def find_and_parse_action_data(data_string):
 
     # --- Condition for parsing failure ---
     if not match:
-        print("--- PARSING FAILED ---")
+        print("--- PARSING FAILED --- ")
         return None
     # --- End of failure condition ---
 
@@ -79,7 +80,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
             component_order=component_order,
         )
         self.call_to_action_str = call_to_action_str
-        self.session = {name: 0 for name in entity_names}
+        self.session = dict.fromkeys(entity_names, 0)
         self.sm_app = sm_app
 
     @override
@@ -92,8 +93,13 @@ class SMAct(gm_components.switch_act.SwitchAct):
                 contexts[make_observation_component.DEFAULT_MAKE_OBSERVATION_COMPONENT_KEY]
             )
         if result == "":
-            active_entity_name = action_spec.call_to_action
-            active_entity_username = self.sm_app.public_get_username(active_entity_name.split()[0])
+            active_entity_name: str | None = next(
+                (s for s in self._entity_names if s in action_spec.call_to_action), None
+            )
+            if active_entity_name is not None:
+                active_entity_username = self.sm_app.public_get_username(
+                    active_entity_name.split(" ")[0]
+                )
             timeline = mastodon_ops.get_own_timeline(active_entity_username, limit=10)
 
             def _clean_html(html_string):
@@ -187,12 +193,13 @@ class SMAct(gm_components.switch_act.SwitchAct):
     def _next_game_master(  # type: ignore[misc]
         self, contexts: entity_component.ComponentContextMapping, action_spec: entity_lib.ActionSpec
     ) -> str:
-        return self.get_entity().params.get("name", "")
+        return self.get_entity()._agent_name
+        # return self.get_entity().params.get("name", "")
 
     @override
     def _next_entity_action_spec(  # type: ignore[misc]
         self, contexts: entity_component.ComponentContextMapping, action_spec: entity_lib.ActionSpec
     ) -> str:
         if self.call_to_action_str:
-            return self.call_to_action_str
+            return f"prompt: {self.call_to_action_str} ;;type: free"
         return "prompt: Conduct a social-media action. You can choose from like, reply, boost, and post. Format it correctly as: ACTION_TYPE: (action)\n TARGET_ID: (target_id)\n CONTENT: (content)\n REASONING: (reasoning)\n ;;type: free"

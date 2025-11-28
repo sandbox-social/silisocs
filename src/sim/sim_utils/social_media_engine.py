@@ -78,7 +78,8 @@ class SocialMediaEngine(simultaneous.Simultaneous):
         if premise:
             premise = f"{EVENT_TAG} {premise}"
             game_master.observe(premise)
-        while not self.terminate(game_master, verbose) and steps < max_steps:
+        # while not self.terminate(game_master, verbose) and steps < max_steps:
+        while steps < max_steps:
             if log is not None and hasattr(game_master, "get_last_log"):
                 assert hasattr(game_master, "get_last_log")  # Assertion for pytype
                 log_entry["terminate"] = game_master.get_last_log()
@@ -147,6 +148,7 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                             f"Entity {entity.name} chose action: {action}", _PRINT_COLOR
                         )
                     )
+
                 self.agent_resolve(game_master, action, verbose=verbose)
 
                 return action

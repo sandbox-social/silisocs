@@ -40,11 +40,10 @@ def get_sentence_encoder(model_name):
 
 def write_item(out_item, output_filename):
     try:
-        with file_lock:
-            with open(output_filename, "a") as f:
-                json_str = json.dumps(out_item)  # Separate this step for debugging
-                print(json_str, file=f)
-                print(f"Successfully wrote item with type: {out_item.get('label')}")  # Debug print
+        with file_lock, open(output_filename, "a") as f:
+            json_str = json.dumps(out_item)  # Separate this step for debugging
+            print(json_str, file=f)
+            print(f"Successfully wrote item with type: {out_item.get('label')}")  # Debug print
     except Exception as e:
         print(f"Error in write_item: {e}")
         print(

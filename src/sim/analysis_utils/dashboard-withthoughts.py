@@ -2140,7 +2140,7 @@ if __name__ == "__main__":
         for ep in int_episodes:
             num_active_users = len(active_users_by_episode[ep]) - 1  # dont count news agent
 
-            counts = {interaction: 0 for interaction in interaction_types}
+            counts = dict.fromkeys(interaction_types, 0)
 
             # Count interactions
             for interaction in interactions_by_episode.get(ep, []):

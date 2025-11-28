@@ -36,28 +36,29 @@ def create_agent_instances_from_config(
     prefab_agents_map: dict[str, Any] = prefabs
 
     for agent_data in agent_config_list:
-        print(agent_data)
         player_name = agent_data["name"]
         role_name = agent_data["role_dict"]["name"]
         roles[player_name] = role_name
         # --- a. Construct Prefab Name and Class Info ---
         if role_name != "exogenous":
             module_path_str = "sim_setting." + agent_data["role_dict"]["module_path"]
-            class_name_str = role_name.capitalize()
-            prefab_string = (
-                f"{module_path_str.split('sim_setting.')[1].replace('.', '__')}__{class_name_str}"
-            )
+            # class_name_str = "AgentBuilder"
+            # prefab_string = (
+            #     f"{module_path_str.split('sim_setting.')[1].replace('.', '__')}__{class_name_str}"
+            # )
+            class_name_str = "Entity"
+            prefab_string = "basic__Entity"
 
             # --- b. Load Prefab Class ---
             if prefab_string not in prefab_agents_map:
                 print(f"[Loader] Loading prefab: {prefab_string}")
                 try:
-                    # e.g., importlib.import_module("agent_lib.voter")
-                    module = importlib.import_module(module_path_str)
-                    # e.g., getattr(module, "Voter")
-                    agent_class = getattr(module, class_name_str)
+                    # e.g. importlib.import_module("sim_setting.agent_lib.voter")
+                    buildagent_module = importlib.import_module(module_path_str)
+                    # e.g., getattr(module, "AgentBuilder")
+                    buildagent_class = getattr(buildagent_module, class_name_str)
                     # Store the *instantiated* class
-                    prefab_agents_map[prefab_string] = agent_class()
+                    prefab_agents_map[prefab_string] = buildagent_class()
                 except ImportError:
                     print(f"Error: Could not import module: {module_path_str}")
                 except AttributeError:

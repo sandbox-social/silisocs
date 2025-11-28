@@ -422,8 +422,7 @@ def generate_jumbled_dataset(
 
     # Save jumbled data
     with open(output_file, "w", encoding="utf-8") as f:
-        for entry in jumbled_data:
-            f.write(json.dumps(entry) + "\n")
+        f.writelines(json.dumps(entry) + "\n" for entry in jumbled_data)
 
     print(f"Generated {len(jumbled_data)} jumbled prompts and saved to {output_file}")
 

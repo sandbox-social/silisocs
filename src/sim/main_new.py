@@ -85,12 +85,6 @@ def configure_logging(logger):
 @hydra.main(version_base=None, config_path="../../conf", config_name="config")
 def main(cfg: DictConfig):
     OmegaConf.set_struct(cfg, True)
-    # @title Load prefabs from packages to make the specific palette to use here.
-
-    prefabs = {
-        **helper_functions.get_package_classes(entity_prefabs),
-        **helper_functions.get_package_classes(game_master_prefabs),
-    }
     with open_dict(cfg):
         # Construct output_rootname using os.path.join for platform independence
         cfg.sim.output_rootname = os.path.join(
@@ -127,6 +121,12 @@ def main(cfg: DictConfig):
     )
     embedder = get_sentence_encoder(cfg.sim.sentence_encoder)
 
+    # @title Load prefabs from packages to make the specific palette to use here.
+    prefabs = {
+        **helper_functions.get_package_classes(entity_prefabs),
+        **helper_functions.get_package_classes(game_master_prefabs),
+    }
+    cfg = ConfigStore.get_config()
     num_episodes = cfg.sim.num_episodes
     use_server = cfg.sim.use_server
     call_to_action = cfg.soc_sys.call_to_action
@@ -144,7 +144,7 @@ def main(cfg: DictConfig):
     agent_data = OmegaConf.to_container(cfg.agents.directory, resolve=True)
     if not isinstance(agent_data, list):
         raise TypeError(f"Expected cfg.agents.director to be a list, but got {type(agent_data)}")
-    print(agent_data)
+
     (
         entity_agent_list,
         exogenous_agent_list,
@@ -211,6 +211,9 @@ def main(cfg: DictConfig):
         embedder=embedder,
         engine=sim_engine,
     )
+
+    # @title Run the simulation
+    results_log = runnable_simulation.play(max_steps=num_episodes)
 
 
 if __name__ == "__main__":
