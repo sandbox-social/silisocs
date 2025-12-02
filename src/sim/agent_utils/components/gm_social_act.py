@@ -34,7 +34,7 @@ def find_and_parse_action_data(data_string):
     pattern = re.compile(
         r"\s*ACTION TYPE:\s*(?P<action_type>.*?)\s*"  # <-- No `^` here
         r"TARGET ID:\s*(?P<target_id>\d+)\s*"
-        r'CONTENT:\s*"(?P<content>.*?)"\s*'
+        r"CONTENT:\s*(?P<content>.*?)\s*"
         r"REASONING:\s*(?P<reasoning>.*)$",
         re.DOTALL | re.IGNORECASE,
     )
@@ -153,7 +153,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
         active_entity, action = action_spec.call_to_action.split(":", 1)
         action_data = find_and_parse_action_data(action)
         if action_data is not None:
-            current_user = self.sm_app.public_get_username(active_entity.split()[0])
+            current_user = active_entity.split()[0]
             if action_data["action_type"].lower().strip() == "post":
                 result = self.sm_app.post_toot(current_user, action_data["content"])
             elif action_data["action_type"].lower().strip() == "reply":

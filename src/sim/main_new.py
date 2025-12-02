@@ -117,7 +117,6 @@ def main(cfg: DictConfig):
         cfg.sim.model,
         os.path.join(cfg.sim.output_rootname, "prompts_and_responses.jsonl"),
         True,
-        True,
     )
     embedder = get_sentence_encoder(cfg.sim.sentence_encoder)
 
