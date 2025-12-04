@@ -50,6 +50,7 @@ class SocialMediaGM(prefab_lib.Prefab):
         name = self.params.get("name")
         call_to_action_str = self.params.get("call_to_action_str", "")
         sm_app = self.params.get("sm_app")
+
         action_logger = EventLogger(
             "action", os.path.join(self.params.get("output_path", ""), "action_events.jsonl")
         )

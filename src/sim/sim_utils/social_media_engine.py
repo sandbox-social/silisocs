@@ -1,5 +1,6 @@
 # Make sure to import the original engine and any other tools you need
 import functools
+import os
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -10,7 +11,13 @@ from concordia.components.game_master import switch_act as switch_act_component
 from concordia.environment.engines import simultaneous
 from concordia.typing import entity as entity_lib
 from concordia.utils import concurrency
+from omegaconf import OmegaConf
 from typing_extensions import override
+
+from sim.sim_utils.agent_speech_utils import (
+    deploy_probes,
+)
+from sim.sim_utils.misc_sim_utils import ConfigStore, EventLogger
 
 DEFAULT_CALL_TO_MAKE_OBSERVATION = "{name}"
 DEFAULT_CALL_TO_NEXT_ACTING = "Which entities act next?"
@@ -78,6 +85,14 @@ class SocialMediaEngine(simultaneous.Simultaneous):
         if premise:
             premise = f"{EVENT_TAG} {premise}"
             game_master.observe(premise)
+
+        # logging setup
+        cfg = ConfigStore.get_config()
+        probe_event_logger = EventLogger(
+            "probe", os.path.join(cfg.sim.output_rootname, "probe_events.jsonl")
+        )
+        probes_config = OmegaConf.to_container(cfg.probes, resolve=True)
+
         # while not self.terminate(game_master, verbose) and steps < max_steps:
         while steps < max_steps:
             if log is not None and hasattr(game_master, "get_last_log"):
@@ -88,6 +103,18 @@ class SocialMediaEngine(simultaneous.Simultaneous):
             if log is not None and hasattr(game_master, "get_last_log"):
                 assert hasattr(game_master, "get_last_log")  # Assertion for pytype
                 log_entry["next_game_master"] = game_master.get_last_log()
+            print(game_master.name)
+            if steps > 0:
+                game_master._act_component.sm_app.action_logger.episode_idx = steps
+                # model.meta_data["episode_idx"] = steps
+                probe_event_logger.episode_idx = steps
+                print(f"Episode: {steps}. Deploying survey...", end="")
+                deploy_probes(
+                    entities,  # [agent for agent in entities if roles[agent._agent_name] != "exogenous"], # python src/sim/main_new.py "use_news_agent=None"
+                    probes_config,
+                    probe_event_logger,
+                )
+                print("complete")
 
             next_entities, next_action_specs = self.next_acting(
                 game_master, entities, log_entry=log_entry, log=log

@@ -188,11 +188,36 @@ def main(cfg: DictConfig):
             "app_description": app_description,
             "output_path": cfg.sim.output_rootname,
             "active_rates": active_rates,
+            "action_logger": action_event_logger,
         },
     )
+    # Survey Game Master
+    # Convert to questionnaires
+    # probe_event_logger = EventLogger(
+    #     "probe", os.path.join(cfg.sim.output_rootname, "probe_events.jsonl")
+    # )
+    # probes_config = OmegaConf.to_container(cfg.probes, resolve=True)
+    # questionnaires, query_questionnaire = create_interviewer_gm_with_queries(
+    #     probes_config=probes_config,
+    #     player_names=entity_player_names
+    # )
+    # prefab_agents_map["interviewer__GameMaster"] = game_master_prefabs.interviewer.GameMaster()
+    # interviewer_gm = prefab_lib.InstanceConfig(
+    #     prefab="interviewer__GameMaster",
+    #     role=prefab_lib.Role.GAME_MASTER,
+    #     params={
+    #         "name": "InterviewerGM",
+    #         "player_names": entity_player_names,
+    #         "questionnaires": questionnaires,  # Your converted queries
+    #         "verbose": False,
+    #     },
+    # )
 
     # instances = entity_agent_list + exogenous_agent_list + [configurator, social_gm]
-    instances = entity_agent_list + [configurator, social_gm]  # TODO: Set-up exogenous agents
+    instances = entity_agent_list + [
+        configurator,
+        social_gm,
+    ]  # , interviewer_gm]  # TODO: Set-up exogenous agents
     # Set-up Config
     config = prefab_lib.Config(
         default_premise="",
@@ -212,7 +237,9 @@ def main(cfg: DictConfig):
     )
 
     # @title Run the simulation
+    num_episodes = 2
     results_log = runnable_simulation.play(max_steps=num_episodes)
+    print(cfg.sim.output_rootname)
 
 
 if __name__ == "__main__":
