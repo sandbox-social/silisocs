@@ -18,10 +18,10 @@
 from typing import Literal
 
 from concordia.agents import entity_agent_with_logging
-from concordia.associative_memory import associative_memory, blank_memories
+from concordia.associative_memory.deprecated import associative_memory, blank_memories
 from concordia.clocks import game_clock
 from concordia.language_model import language_model
-from concordia.typing import component
+from concordia.typing.deprecated import component
 
 from mastodon_sim.concordia.components import apps, logging, scene
 from sim.sim_utils.misc_sim_utils import ConfigStore

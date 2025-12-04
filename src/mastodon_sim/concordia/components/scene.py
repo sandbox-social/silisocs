@@ -21,13 +21,13 @@ from typing import Literal
 
 import termcolor
 from concordia.agents import entity_agent_with_logging
-from concordia.associative_memory import blank_memories
+from concordia.associative_memory.deprecated import blank_memories
 from concordia.clocks import game_clock
 from concordia.document import interactive_document
-from concordia.environment import game_master as game_master_lib
+from concordia.environment.deprecated import game_master as game_master_lib
 from concordia.language_model import language_model
 from concordia.thought_chains import thought_chains
-from concordia.typing import agent, component
+from concordia.typing.deprecated import agent, component
 from concordia.typing.entity import OutputType
 
 from mastodon_sim import mastodon_ops

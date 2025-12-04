@@ -1,10 +1,11 @@
-import concurrent.futures
 import importlib
 import logging
 import os
+import random
 import sys
 import warnings
 from pathlib import Path
+from typing import Any
 
 import concordia.prefabs.entity as entity_prefabs
 import concordia.prefabs.game_master as game_master_prefabs
@@ -32,47 +33,126 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 # mastodon_sim functions
 from mastodon_sim.mastodon_ops import check_env, clear_mastodon_server
 from sim.agent_utils.social_media_game_master import SocialMediaGM
-from sim.sim_utils.agent_speech_utils import (
-    write_seed_toot,
-)
-from sim.sim_utils.concordia_utils_new import (
-    create_agent_instances_from_config,
-    set_up_mastodon_app_usage,
-)
 
+# from sim.sim_utils.concordia_utils_new import (
+#     create_agent_instances_from_config,
+# )
 # sim functions
 from sim.sim_utils.media_utils import select_large_language_model
 from sim.sim_utils.misc_sim_utils import (
     ConfigStore,
-    EventLogger,
     StdoutToLogger,
     get_sentence_encoder,
 )
 from sim.sim_utils.social_media_engine import SocialMediaEngine
 
 
-def post_seed_toots(agents, mastodon_apps):
-    # Parallelize the loop using ThreadPoolExecutor
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        # Submit tasks for each agent
-        futures = [
-            executor.submit(
-                lambda agent=agent: (
-                    mastodon_apps[agent._agent_name].post_toot(
-                        agent._agent_name, status=agent.seed_toot
-                    )
-                    if hasattr(agent, "seed_toot")
-                    else mastodon_apps[agent._agent_name].post_toot(
-                        agent._agent_name, status=write_seed_toot(agent)
-                    )
+def create_agent_instances_from_config(
+    agent_config_list: list[Any],
+    prefabs: dict[str, Any],
+) -> tuple[
+    list[prefab_lib.InstanceConfig],
+    list[prefab_lib.InstanceConfig],
+    dict[str, str],
+    dict[str, list[str]],
+    dict[str, str],
+    dict[str, Any],
+]:
+    """
+    Processes agent configs, creating InstanceConfig objects and loading prefabs.
+
+    - Sorts agents into 'entity' and 'exogenous' lists based on 'role_dict.name'.
+    - Dynamically imports agent classes and returns a map of prefab_string -> class_instance.
+    """
+    entity_agent_list = []
+    exogenous_agent_list = []
+    player_specific_memories_map = {}
+    player_specific_context_map = {}
+    roles = {}
+    entity_player_names = []
+    prefab_agents_map: dict[str, Any] = prefabs
+
+    for agent_data in agent_config_list:
+        player_name = agent_data["name"]
+        role_name = agent_data["role_dict"]["name"]
+        roles[player_name] = role_name
+        # --- a. Construct Prefab Name and Class Info ---
+        if role_name != "exogenous":
+            module_path_str = "sim_setting." + agent_data["role_dict"]["module_path"]
+            # class_name_str = "AgentBuilder"
+            # prefab_string = (
+            #     f"{module_path_str.split('sim_setting.')[1].replace('.', '__')}__{class_name_str}"
+            # )
+            class_name_str = "Entity"
+            prefab_string = "basic__Entity"
+
+            # --- b. Load Prefab Class ---
+            if prefab_string not in prefab_agents_map:
+                print(f"[Loader] Loading prefab: {prefab_string}")
+                try:
+                    # e.g. importlib.import_module("sim_setting.agent_lib.voter")
+                    buildagent_module = importlib.import_module(module_path_str)
+                    # e.g., getattr(module, "AgentBuilder")
+                    buildagent_class = getattr(buildagent_module, class_name_str)
+                    # Store the *instantiated* class
+                    prefab_agents_map[prefab_string] = buildagent_class()
+                except ImportError:
+                    print(f"Error: Could not import module: {module_path_str}")
+                except AttributeError:
+                    print(f"Error: Module {module_path_str} does not have class: {class_name_str}")
+                except Exception as e:
+                    print(f"An error occurred while loading prefab {prefab_string}: {e}")
+
+            # --- c. Compress Context String ---
+            context_parts = []
+            if "context" in agent_data:
+                context_parts.append(f"Biography: {agent_data['context']}")
+            if "gender" in agent_data:
+                context_parts.append(f"Gender: {agent_data['gender']}")
+            if "style" in agent_data:
+                context_parts.append(f"Communication Style: {agent_data['style']}")
+            if "party" in agent_data:
+                context_parts.append(f"Political Party: {agent_data['party']}")
+            if "traits" in agent_data and isinstance(agent_data["traits"], dict):
+                traits_str = ", ".join(f"{k}: {v}" for k, v in agent_data["traits"].items())
+                context_parts.append(f"Traits: [{traits_str}]")
+            compressed_context = "\n".join(context_parts)
+
+            # --- d. Create the InstanceConfig ---
+            agent_config = prefab_lib.InstanceConfig(
+                prefab=prefab_string,
+                role=prefab_lib.Role.ENTITY,
+                params={
+                    "name": player_name,
+                    "goal": agent_data.get("goal", "Live a normal life."),
+                    "context": compressed_context,
+                },
+            )
+
+            # --- e. Sort agent and memory data based on role_dict.name ---
+
+            entity_agent_list.append(agent_config)
+            entity_player_names.append(player_name)
+            original_memories = [agent_data.get("memories", "No specific memories.")]
+            player_specific_memories_map[player_name] = original_memories
+            player_specific_context_map[player_name] = compressed_context
+        else:
+            exogenous_agent_list.append(
+                prefab_lib.InstanceConfig(
+                    prefab="exogenous_agent__ExogenousAgent",
+                    role=prefab_lib.Role.ENTITY,
+                    params={"name": player_name},
                 )
             )
-            for agent in agents
-        ]
 
-        # Optionally, wait for all tasks to complete
-        for future in concurrent.futures.as_completed(futures):
-            future.result()  # This will raise any exceptions that occurred in the thread, if any
+    return (
+        entity_agent_list,
+        exogenous_agent_list,
+        roles,
+        player_specific_memories_map,
+        player_specific_context_map,
+        prefab_agents_map,
+    )
 
 
 def configure_logging(logger):
@@ -80,6 +160,23 @@ def configure_logging(logger):
     logging.getLogger("httpx").setLevel(logging.WARNING)
     # Redirect stdout to the logger
     sys.stdout = StdoutToLogger(logger)
+
+
+def get_sm_agent_data(roles, role_parameters):
+    active_rates = {}
+    for agent_name, role in roles.items():
+        active_rates[agent_name] = role_parameters["active_rates_per_episode"][role]
+    # initiailize initial followership network randomly based on pair role follow probabilities
+    follow_pairs = set()
+    role_prob_matrix = role_parameters["initial_follow_prob"]
+    for agent_i, role_i in roles.items():
+        for agent_j, role_j in roles.items():
+            if agent_i == agent_j:  # Agents cannot follow themselves
+                continue
+            prob = role_prob_matrix[role_i][role_j]
+            if random.random() < prob:
+                follow_pairs.add((agent_i, agent_j))
+    return active_rates, follow_pairs
 
 
 @hydra.main(version_base=None, config_path="../../conf", config_name="config")
@@ -126,20 +223,8 @@ def main(cfg: DictConfig):
         **helper_functions.get_package_classes(game_master_prefabs),
     }
     cfg = ConfigStore.get_config()
-    num_episodes = cfg.sim.num_episodes
-    use_server = cfg.sim.use_server
-    call_to_action = cfg.soc_sys.call_to_action
-    setting_info = cfg.soc_sys.setting_info
 
-    shared_memories = (
-        cfg.soc_sys.shared_agent_memories_template
-        + [cfg.soc_sys.setting_info.description]
-        + [cfg.soc_sys.social_media_usage_instructions]
-    )
-    role_parameters = setting_info["details"]["role_parameters"]
-    app_description = cfg.soc_sys.social_media_usage_instructions
-
-    # Create Agents
+    # Get Agent Entities list
     agent_data = OmegaConf.to_container(cfg.agents.directory, resolve=True)
     if not isinstance(agent_data, list):
         raise TypeError(f"Expected cfg.agents.director to be a list, but got {type(agent_data)}")
@@ -148,49 +233,57 @@ def main(cfg: DictConfig):
         entity_agent_list,
         exogenous_agent_list,
         roles,
-        entity_player_names,
         player_specific_memories_map,
         player_specific_context_map,
         prefab_agents_map,
     ) = create_agent_instances_from_config(agent_data, prefabs)
 
-    action_event_logger = EventLogger(
-        "action", os.path.join(cfg.sim.output_rootname, "action_events.jsonl")
+    # Get Game Master Entities list
+    entity_game_master_list = []
+
+    # Configurator
+    shared_memories = (
+        cfg.soc_sys.shared_agent_memories_template
+        + [cfg.soc_sys.setting_info.description]
+        + [cfg.soc_sys.social_media_usage_instructions]
     )
-    action_event_logger.episode_idx = -1
-    mastodon_app, active_rates, user_mapping = set_up_mastodon_app_usage(
-        roles, role_parameters, action_event_logger, app_description, use_server
+    entity_game_master_list.append(
+        prefab_lib.InstanceConfig(
+            prefab="formative_memories_initializer__GameMaster",
+            role=prefab_lib.Role.INITIALIZER,
+            params={
+                "name": "initial setup rules",
+                "next_game_master_name": "social media",
+                "shared_memories": shared_memories,
+                "player_specific_memories": player_specific_memories_map,
+                "player_specific_context": player_specific_context_map,
+            },
+        )
     )
 
-    # Add Game Masters
-    # Add Configurator
-    configurator = prefab_lib.InstanceConfig(
-        prefab="formative_memories_initializer__GameMaster",
-        role=prefab_lib.Role.INITIALIZER,
-        params={
-            "name": "initial setup rules",
-            "next_game_master_name": "social media",
-            "shared_memories": shared_memories,
-            "player_specific_memories": player_specific_memories_map,
-            "player_specific_context": player_specific_context_map,
-        },
-    )
     # SM Game Master
-    prefab_agents_map["SocialMedia__GameMaster"] = SocialMediaGM()
-    social_gm = prefab_lib.InstanceConfig(
-        prefab="SocialMedia__GameMaster",
-        role=prefab_lib.Role.GAME_MASTER,
-        params={
-            "name": "social media",
-            "call_to_action_str": call_to_action,
-            "sm_app_data": user_mapping,
-            "user_server": use_server,
-            "app_description": app_description,
-            "output_path": cfg.sim.output_rootname,
-            "active_rates": active_rates,
-            "action_logger": action_event_logger,
-        },
+    user_mapping = {agent_name.split()[0]: f"user{i + 1:04d}" for i, agent_name in enumerate(roles)}
+    active_rates, follow_pairs = get_sm_agent_data(
+        roles, cfg.soc_sys.setting_info["details"]["role_parameters"]
     )
+    prefab_agents_map["SocialMedia__GameMaster"] = SocialMediaGM()
+    entity_game_master_list.append(
+        prefab_lib.InstanceConfig(
+            prefab="SocialMedia__GameMaster",
+            role=prefab_lib.Role.GAME_MASTER,
+            params={
+                "name": "social media",
+                "call_to_action_str": cfg.soc_sys.call_to_action,
+                "sm_app_data": user_mapping,
+                "user_server": cfg.sim.use_server,
+                "app_description": cfg.soc_sys.social_media_usage_instructions,
+                "output_path": cfg.sim.output_rootname,
+                "active_rates": active_rates,
+                "init_follow_pairs": follow_pairs,
+            },
+        )
+    )
+
     # Survey Game Master
     # Convert to questionnaires
     # probe_event_logger = EventLogger(
@@ -213,11 +306,9 @@ def main(cfg: DictConfig):
     #     },
     # )
 
-    # instances = entity_agent_list + exogenous_agent_list + [configurator, social_gm]
-    instances = entity_agent_list + [
-        configurator,
-        social_gm,
-    ]  # , interviewer_gm]  # TODO: Set-up exogenous agents
+    exogenous_agent_list = []  # remove once exogeneous agents set up
+    instances = entity_agent_list + exogenous_agent_list + entity_game_master_list
+
     # Set-up Config
     config = prefab_lib.Config(
         default_premise="",
@@ -237,9 +328,7 @@ def main(cfg: DictConfig):
     )
 
     # @title Run the simulation
-    num_episodes = 2
-    results_log = runnable_simulation.play(max_steps=num_episodes)
-    print(cfg.sim.output_rootname)
+    results_log = runnable_simulation.play(max_steps=cfg.sim.num_episodes)
 
 
 if __name__ == "__main__":
