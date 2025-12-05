@@ -241,17 +241,41 @@ def deserialize_data(serialized):
     )
 
 
-def get_target_user(row):
+def get_target_user(row, toot_owner_dict):
+    """
+    Get target user from row, using toot_owner_dict to look up users by toot_id.
+
+    Args:
+        row: DataFrame row with label, source_user, and data fields
+        toot_owner_dict: Dictionary mapping toot_id -> user
+
+    Returns
+    -------
+        target_user string
+    """
     if row.label == "post":
         target_user = row.source_user
     elif row.label == "like_toot" or row.label == "boost_toot":
-        target_user = row.data["target_user"]
+        target_toot_id = row.data["target_toot_id"]
+        target_user = toot_owner_dict.get(target_toot_id)
     elif row.label == "reply":
-        target_user = row.data["reply_to"]["target_user"]
+        target_toot_id = row.data["reply_to"]["toot_id"]
+        target_user = toot_owner_dict.get(target_toot_id)
     return target_user
 
 
-def get_int_dict(int_df):
+def get_int_dict(int_df, toot_owner_dict):
+    """
+    Create interaction dictionary from interactions dataframe.
+
+    Args:
+        int_df: DataFrame with interaction data
+        toot_owner_dict: Dictionary mapping toot_id -> user
+
+    Returns
+    -------
+        Dictionary mapping episode -> list of interaction data
+    """
     past = dict(
         zip(
             ["post", "like_toot", "boost_toot", "reply"],
@@ -264,7 +288,7 @@ def get_int_dict(int_df):
             "action": past[x.label],
             "episode": x.episode,
             "source": x.source_user,
-            "target": get_target_user(x),
+            "target": get_target_user(x, toot_owner_dict),
             "toot_id": str(x.data["toot_id"]),
         },
         axis=1,
@@ -279,6 +303,17 @@ def get_int_dict(int_df):
 
 
 def get_toot_dict(int_df):
+    """
+    Create toot dictionary from interactions dataframe.
+    Also returns toot_owner_dict for use in get_int_dict.
+
+    Args:
+        int_df: DataFrame with interaction data
+
+    Returns
+    -------
+        tuple: (toot_dict, toot_owner_dict)
+    """
     past = dict(
         zip(
             ["post", "like_toot", "boost_toot", "reply"],
@@ -311,14 +346,90 @@ def get_toot_dict(int_df):
         axis=1,
     )
 
-    return text_df.text_data.to_dict()
+    # Create toot_owner_dict mapping toot_id -> user
+    toot_owner_dict = text_df.apply(lambda x: x.source_user, axis=1).to_dict()
+
+    return text_df.text_data.to_dict(), toot_owner_dict
 
 
-def get_plan_dict(plan_df):
-    data = plan_df.groupby("episode")[["source_user", "data"]].apply(
-        lambda x: sorted(x.to_dict("records"), key=lambda d: d["source_user"])
-    )
-    return data.to_dict()
+# def get_target_user(row):
+#     if row.label == "post":
+#         target_user = row.source_user
+#     elif row.label == "like_toot" or row.label == "boost_toot":
+#         target_user = row.data["target_user"]
+#     elif row.label == "reply":
+#         target_user = row.data["reply_to"]["target_user"]
+#     return target_user
+
+
+# def get_int_dict(int_df):
+#     past = dict(
+#         zip(
+#             ["post", "like_toot", "boost_toot", "reply"],
+#             ["posted", "liked", "boosted", "replied"],
+#             strict=False,
+#         )
+#     )
+#     int_df["int_data"] = int_df.apply(
+#         lambda x: {
+#             "action": past[x.label],
+#             "episode": x.episode,
+#             "source": x.source_user,
+#             "target": get_target_user(x),
+#             "toot_id": str(x.data["toot_id"]),
+#         },
+#         axis=1,
+#     )
+#     int_df.int_data = int_df.apply(
+#         lambda x: x.int_data | {"parent_toot_id": str(x.data["reply_to"]["toot_id"])}
+#         if x.label == "reply"
+#         else x.int_data,
+#         axis=1,
+#     )
+#     return int_df.groupby("episode")["int_data"].apply(list).to_dict()
+
+
+# def get_toot_dict(int_df):
+#     past = dict(
+#         zip(
+#             ["post", "like_toot", "boost_toot", "reply"],
+#             ["posted", "liked", "boosted", "replied"],
+#             strict=False,
+#         )
+#     )
+#     text_df = int_df.loc[(int_df.label == "post") | (int_df.label == "reply"), :].reset_index(
+#         drop=True
+#     )
+
+#     # handle Nones as toot_ids by appending an index
+#     no_toot_id = text_df.data.apply(lambda x: x["toot_id"] is None)
+#     text_df["no_toot_id_idx"] = -1
+#     text_df.loc[no_toot_id, "no_toot_id_idx"] = range(no_toot_id.sum())
+#     text_df.loc[no_toot_id, "data"] = text_df.loc[no_toot_id, :].apply(
+#         lambda x: x.data | {"toot_id": "None" + str(x.no_toot_id_idx)}, axis=1
+#     )
+
+#     text_df["toot_id"] = text_df.data.apply(lambda x: x["toot_id"])
+#     text_df = text_df.set_index("toot_id")
+#     text_df["text_data"] = text_df.apply(
+#         lambda x: {"user": x.source_user, "action": past[x.label], "content": x.data["post_text"]},
+#         axis=1,
+#     )
+#     text_df.text_data = text_df.apply(
+#         lambda x: x.text_data | {"parent_toot_id": x.data["reply_to"]["toot_id"]}
+#         if x.label == "reply"
+#         else x.text_data,
+#         axis=1,
+#     )
+
+#     return text_df.text_data.to_dict()
+
+
+# def get_plan_dict(plan_df):
+#     data = plan_df.groupby("episode")[["source_user", "data"]].apply(
+#         lambda x: sorted(x.to_dict("records"), key=lambda d: d["source_user"])
+#     )
+#     return data.to_dict()
 
 
 def get_act_dict(act_df):
@@ -371,13 +482,13 @@ def load_data_from_folder(folder_contents):
     name_dict = dict(zip([n.split()[0] for n in names], names, strict=False))
 
     # replace all first name occurence with fullnames in target field
-    def replace_full(data):
-        if "target_user" in data:
-            if len(data["target_user"].split()) == 1:
-                data.update(target_user=name_dict[data["target_user"]])
-        return data
+    # def replace_full(data):
+    #     if "target_user" in data:
+    #         if len(data["target_user"].split()) == 1:
+    #             data.update(target_user=name_dict[data["target_user"]])
+    #     return data
 
-    df.loc[:, "data"] = df.loc[:, "data"].apply(lambda x: replace_full(x))
+    # df.loc[:, "data"] = df.loc[:, "data"].apply(lambda x: replace_full(x))
 
     # make sure all tootids are strings
     def get_toot_id(data):
@@ -387,7 +498,7 @@ def load_data_from_folder(folder_contents):
 
     df["data"] = df.data.apply(get_toot_id)
 
-    probe_df_processed, int_df, edge_df, plan_df, act_df = post_process_output(df)
+    probe_df_processed, int_df, edge_df, act_df = post_process_output(df)
 
     # probe_data
     num_entries = len(probe_df_processed.loc[probe_df_processed.label == PROBE_LABEL])
@@ -412,11 +523,12 @@ def load_data_from_folder(folder_contents):
     # interaction data
     int_dict = get_int_dict(int_df.copy())
 
-    # toot_data
-    toot_dict = get_toot_dict(int_df.copy())
-
+    # toot_data (also adds target user to int_dict)
+    # toot_dict = get_toot_dict(int_df.copy())
+    toot_dict, toot_owner_dict = get_toot_dict(int_df.copy())
+    int_dict = get_int_dict(int_df.copy(), toot_owner_dict)
     # plan_data
-    plan_dict = get_plan_dict(plan_df.copy())
+    # plan_dict = get_plan_dict(plan_df.copy())
 
     # inner action data
     act_dict = get_act_dict(act_df.copy())
@@ -427,7 +539,7 @@ def load_data_from_folder(folder_contents):
         active_users_by_episode,
         toot_dict,
         probe_data,
-        plan_dict,
+        # plan_dict,
         act_dict,
     )
 

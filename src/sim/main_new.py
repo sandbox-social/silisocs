@@ -34,9 +34,6 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from mastodon_sim.mastodon_ops import check_env, clear_mastodon_server
 from sim.agent_utils.social_media_game_master import SocialMediaGM
 
-# from sim.sim_utils.concordia_utils_new import (
-#     create_agent_instances_from_config,
-# )
 # sim functions
 from sim.sim_utils.media_utils import select_large_language_model
 from sim.sim_utils.misc_sim_utils import (
@@ -181,6 +178,7 @@ def get_sm_agent_data(roles, role_parameters):
 
 @hydra.main(version_base=None, config_path="../../conf", config_name="config")
 def main(cfg: DictConfig):
+    # load config
     OmegaConf.set_struct(cfg, True)
     with open_dict(cfg):
         # Construct output_rootname using os.path.join for platform independence
@@ -189,25 +187,30 @@ def main(cfg: DictConfig):
             hydra.core.hydra_config.HydraConfig.get().job.name,
         )
     os.makedirs(cfg.sim.output_rootname, exist_ok=True)
-    # make cfg globally accessible through ConfigStore import
+    # make globally accessible with ConfigStore.get_config() through "from sim.sim_utils.misc_sim_utils import ConfigStore"
     ConfigStore.set_config(cfg)
 
+    # give system logger to hydra to configure
     logger = logging.getLogger(__name__)
     configure_logging(logger)
 
+    # set example package to be imported as "sim_setting"
     package = importlib.import_module(cfg.sim.example_name)
     sys.modules["sim_setting"] = package
 
+    # server state
     if cfg.sim.use_server:
         check_env()
         clear_mastodon_server(len(cfg.agents.directory))
     else:
         input("Sim will not use the Mastodon server. Confirm by pressing any key to continue.")
 
+    # load .env file with environment variables
     load_dotenv(PROJECT_ROOT)
 
-    # SEED = cfg.sim.seed
-    # random.seed(SEED)
+    # set random seed
+    SEED = cfg.sim.seed
+    random.seed(SEED)
 
     # load language models
     model = select_large_language_model(
@@ -217,31 +220,29 @@ def main(cfg: DictConfig):
     )
     embedder = get_sentence_encoder(cfg.sim.sentence_encoder)
 
-    # @title Load prefabs from packages to make the specific palette to use here.
-    prefabs = {
+    # initialize the entity map to which references to entities defined below will be added
+    entity_map = {
         **helper_functions.get_package_classes(entity_prefabs),
         **helper_functions.get_package_classes(game_master_prefabs),
     }
-    cfg = ConfigStore.get_config()
 
     # Get Agent Entities list
     agent_data = OmegaConf.to_container(cfg.agents.directory, resolve=True)
     if not isinstance(agent_data, list):
         raise TypeError(f"Expected cfg.agents.director to be a list, but got {type(agent_data)}")
-
     (
         entity_agent_list,
         exogenous_agent_list,
         roles,
         player_specific_memories_map,
         player_specific_context_map,
-        prefab_agents_map,
-    ) = create_agent_instances_from_config(agent_data, prefabs)
+        entity_map,
+    ) = create_agent_instances_from_config(agent_data, entity_map)
 
     # Get Game Master Entities list
     entity_game_master_list = []
 
-    # Configurator
+    # Add Configurator Game Master
     shared_memories = (
         cfg.soc_sys.shared_agent_memories_template
         + [cfg.soc_sys.setting_info.description]
@@ -261,12 +262,12 @@ def main(cfg: DictConfig):
         )
     )
 
-    # SM Game Master
+    # Add Social Media Game Master
     user_mapping = {agent_name.split()[0]: f"user{i + 1:04d}" for i, agent_name in enumerate(roles)}
     active_rates, follow_pairs = get_sm_agent_data(
         roles, cfg.soc_sys.setting_info["details"]["role_parameters"]
     )
-    prefab_agents_map["SocialMedia__GameMaster"] = SocialMediaGM()
+    entity_map["SocialMedia__GameMaster"] = SocialMediaGM()
     entity_game_master_list.append(
         prefab_lib.InstanceConfig(
             prefab="SocialMedia__GameMaster",
@@ -275,7 +276,7 @@ def main(cfg: DictConfig):
                 "name": "social media",
                 "call_to_action_str": cfg.soc_sys.call_to_action,
                 "sm_app_data": user_mapping,
-                "user_server": cfg.sim.use_server,
+                "use_server": cfg.sim.use_server,
                 "app_description": cfg.soc_sys.social_media_usage_instructions,
                 "output_path": cfg.sim.output_rootname,
                 "active_rates": active_rates,
@@ -284,7 +285,7 @@ def main(cfg: DictConfig):
         )
     )
 
-    # Survey Game Master
+    # Add Survey Game Master
     # Convert to questionnaires
     # probe_event_logger = EventLogger(
     #     "probe", os.path.join(cfg.sim.output_rootname, "probe_events.jsonl")
@@ -294,31 +295,31 @@ def main(cfg: DictConfig):
     #     probes_config=probes_config,
     #     player_names=entity_player_names
     # )
-    # prefab_agents_map["interviewer__GameMaster"] = game_master_prefabs.interviewer.GameMaster()
-    # interviewer_gm = prefab_lib.InstanceConfig(
-    #     prefab="interviewer__GameMaster",
-    #     role=prefab_lib.Role.GAME_MASTER,
-    #     params={
-    #         "name": "InterviewerGM",
-    #         "player_names": entity_player_names,
-    #         "questionnaires": questionnaires,  # Your converted queries
-    #         "verbose": False,
-    #     },
+    # entity_map["interviewer__GameMaster"] = game_master_prefabs.interviewer.GameMaster()
+    # entity_game_master_list.append(
+    #     prefab_lib.InstanceConfig(
+    #         prefab="interviewer__GameMaster",
+    #         role=prefab_lib.Role.GAME_MASTER,
+    #         params={
+    #             "name": "InterviewerGM",
+    #             "player_names": entity_player_names,
+    #             "questionnaires": questionnaires,  # Your converted queries
+    #             "verbose": False,
+    #         },
+    #     )
     # )
 
     exogenous_agent_list = []  # remove once exogeneous agents set up
-    instances = entity_agent_list + exogenous_agent_list + entity_game_master_list
 
     # Set-up Config
     config = prefab_lib.Config(
         default_premise="",
         default_max_steps=120,
-        prefabs=prefab_agents_map,
-        instances=instances,
+        prefabs=entity_map,
+        instances=entity_agent_list + exogenous_agent_list + entity_game_master_list,
     )
 
-    # Run Simulation
-
+    # Configure the Simulation
     sim_engine = SocialMediaEngine()
     runnable_simulation = simulation.Simulation(
         config=config,
@@ -327,10 +328,10 @@ def main(cfg: DictConfig):
         engine=sim_engine,
     )
 
-    # @title Run the simulation
+    # Run the Simulation
     results_log = runnable_simulation.play(max_steps=cfg.sim.num_episodes)
 
 
 if __name__ == "__main__":
     sys.path.insert(0, str(PROJECT_ROOT / "examples"))
-    main()  # config)
+    main()

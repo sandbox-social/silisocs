@@ -35,12 +35,12 @@ def post_process_output(df):
     interaction_types = ["post", "like_toot", "boost_toot", "reply"]
     int_df = df.loc[df.label.isin(interaction_types), :].reset_index(drop=True)
 
-    interaction_types = ["episode_plan"]
-    plan_df = df.loc[df.label.isin(interaction_types), :].reset_index(drop=True)
+    # interaction_types = ["episode_plan"]
+    # plan_df = df.loc[df.label.isin(interaction_types), :].reset_index(drop=True)
 
     interaction_types = ["inner_actions"]
     act_df = df.loc[df.label.isin(interaction_types), :].reset_index(drop=True)
-    return probe_df, int_df, edge_df, plan_df, act_df
+    return probe_df, int_df, edge_df, act_df
 
 
 def episodewise_graphbuild(edge_df):

@@ -106,7 +106,10 @@ class SocialMediaEngine(simultaneous.Simultaneous):
             print(game_master.name)
             if steps > 0:
                 game_master._act_component.sm_app.action_logger.episode_idx = steps
-                # model.meta_data["episode_idx"] = steps
+                game_master._act_component._model.agent_names = [
+                    agent._agent_name for agent in entities
+                ]
+                game_master._act_component._model.meta_data["episode_idx"] = steps
                 probe_event_logger.episode_idx = steps
                 print(f"Episode: {steps}. Deploying survey...", end="")
                 deploy_probes(
