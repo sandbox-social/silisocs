@@ -1,6 +1,7 @@
 import concurrent.futures
 import dataclasses
 import os
+import random
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -11,8 +12,12 @@ from concordia.language_model import language_model
 from concordia.typing import prefab as prefab_lib
 
 from mastodon_sim.concordia.components import apps
-from mastodon_sim.mastodon_ops import update_bio
+
+# from mastodon_sim.mastodon_ops import update_bio
 from sim.agent_utils.components import gm_social_act, social_make_observation
+from sim.sim_utils.agent_speech_utils import (
+    write_seed_toot,
+)
 from sim.sim_utils.misc_sim_utils import EventLogger
 
 
@@ -25,12 +30,10 @@ class SocialMediaGM(prefab_lib.Prefab):
         default_factory=lambda: {
             "name": "mastodon-game-master",
             "call_to_action_str": "",
-            "sm_app_data": {},
+            "sm_user_data": {},
             "use_server": False,
             "app_description": "",
             "output_path": "",
-            "active_rates": {},
-            "init_follow_pairs": set(),
         }
     )
     entities: Sequence[entity_agent_with_logging.EntityAgentWithLogging] = ()
@@ -52,7 +55,7 @@ class SocialMediaGM(prefab_lib.Prefab):
         """
         name = self.params.get("name")
         call_to_action_str = self.params.get("call_to_action_str", "")
-        sm_app = self.params.get("sm_app")
+        user_data = self.params["sm_user_data"]
 
         action_logger = EventLogger(
             "action", os.path.join(self.params.get("output_path", ""), "action_events.jsonl")
@@ -63,13 +66,16 @@ class SocialMediaGM(prefab_lib.Prefab):
             perform_operations=self.params.get("use_server", False),
             app_description=self.params.get("app_description", ""),
         )
-        mastodon_app.set_user_mapping(self.params.get("sm_app_data", {}))
-        # TODO: Replace with helper functions
-        self.set_initial_sm_server_state(
-            self.params.get("init_follow_pairs", {}),
-            mastodon_app,
-            self.params.get("sm_app_data", {}),
-        )
+
+        user_mapping = {
+            agent_name.split()[0]: f"user{i + 1:04d}"
+            for i, agent_name in enumerate(user_data["roles"])
+        }  # first name keys
+        print(user_mapping)
+        mastodon_app.set_user_mapping(user_mapping)
+
+        active_rates = self.set_app_state(mastodon_app, user_data)
+
         player_names = [entity.name for entity in self.entities]
         make_observation_key = social_make_observation.DEFAULT_MAKE_OBSERVATION_COMPONENT_KEY
         make_observation = social_make_observation.SimpleMakeObservation(
@@ -93,6 +99,7 @@ class SocialMediaGM(prefab_lib.Prefab):
             component_order=component_order,
             call_to_action_str=call_to_action_str,
             sm_app=mastodon_app,
+            active_rates=active_rates,
         )
 
         game_master = entity_agent_with_logging.EntityAgentWithLogging(
@@ -103,48 +110,64 @@ class SocialMediaGM(prefab_lib.Prefab):
 
         return game_master
 
-    def set_initial_sm_server_state(self, follow_pairs, mastodon_app, user_mapping):
-        # 1. Set initial followership network.
+    def set_agent_user_data(
+        self,
+        mastodon_app: apps.MastodonSocialNetworkApp,
+        agent,
+        following_list,
+    ) -> None:
+        agent_name = agent._agent_name
+
+        # initial list of users the agent is following
+        for followee in following_list:
+            mastodon_app.follow_user(agent_name, followee)
+
+        # initial bio
+        mastodon_app.update_profile(agent_name, bio="")
+
+        # user's first post
+        if hasattr(agent, "seed_toot"):
+            mastodon_app.post_toot(agent_name, status=agent.seed_toot)
+        else:
+            mastodon_app.post_toot(agent_name, status=write_seed_toot(agent))
+
+    def set_app_state(
+        self,
+        mastodon_app: apps.MastodonSocialNetworkApp,
+        user_data: dict[str, Any],
+    ) -> dict[str, Any]:
+        # initiailize initial followership network randomly based on pair role follow probabilities
+        role_prob_matrix = user_data["role_parameters"]["initial_follow_prob"]
+
+        active_rates: dict[str, float] = {}
+        following_lists: dict[str, list] = {}
+        for agent_i, role_i in user_data["roles"].items():
+            # per-step rate at which user is active
+            active_rates[agent_i] = user_data["role_parameters"]["active_rates_per_episode"][role_i]
+
+            following_lists[agent_i] = []
+            for agent_j, role_j in user_data["roles"].items():
+                if agent_i == agent_j:  # Agents cannot follow themselves
+                    continue
+                prob = role_prob_matrix[role_i][role_j]
+                if random.random() < prob:
+                    following_lists[agent_i].append(agent_j)
+
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = []
-            for follower, followee in follow_pairs:
-                # Submit the follow operation from the appropriate mastodon app instance.
-                futures.append(executor.submit(mastodon_app.follow_user, follower, followee))
+            for agent in self.entities:
+                futures.append(
+                    executor.submit(
+                        self.set_agent_user_data,
+                        mastodon_app,
+                        agent,
+                        following_lists[agent._agent_name],
+                    )
+                )
         for future in concurrent.futures.as_completed(futures):
             try:
                 future.result()
             except Exception as e:
-                print(f"Ignoring error during follow operation: {e}")
+                print(f"Ignoring error during sm user data setting: {e}")
 
-        # 2. Set bios
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [
-                executor.submit(
-                    update_bio, user_mapping[agent_name], display_name=agent_name, bio=""
-                )  # update with generated bios?
-                for agent_name in user_mapping
-            ]
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                future.result()
-            except Exception as e:
-                print(f"Ignoring error during bio update: {e}")
-
-        # 3. Post seed messages
-        # with concurrent.futures.ThreadPoolExecutor() as executor:
-        #     futures = [
-        #         executor.submit(
-        #             lambda agent=agent: (
-        #                 mastodon_apps[agent._agent_name].post_toot(
-        #                     agent._agent_name, status=agent.seed_toot
-        #                 )
-        #                 if hasattr(agent, "seed_toot")
-        #                 else mastodon_apps[agent._agent_name].post_toot(
-        #                     agent._agent_name, status=write_seed_toot(agent)
-        #                 )
-        #             )
-        #         )
-        #         for agent in agents
-        #     ]
-        # for future in concurrent.futures.as_completed(futures):
-        #     future.result()
+        return active_rates
