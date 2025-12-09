@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from typing import Any
 
 from concordia.components import game_master as gm_components
 from concordia.components.game_master import make_observation as make_observation_component
@@ -73,6 +74,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
         sm_app: apps.MastodonSocialNetworkApp,
         component_order: Sequence[str] | None = None,
         call_to_action_str: str = "",
+        active_rates: dict[str, Any] = {},
     ):
         super().__init__(
             model=model,
@@ -82,6 +84,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
         self.call_to_action_str = call_to_action_str
         self.session = dict.fromkeys(entity_names, 0)
         self.sm_app = sm_app
+        self.active_rates = active_rates
 
     @override
     def _make_observation(  # type: ignore[misc]
@@ -96,11 +99,20 @@ class SMAct(gm_components.switch_act.SwitchAct):
             active_entity_name: str | None = next(
                 (s for s in self._entity_names if s in action_spec.call_to_action), None
             )
-            if active_entity_name is not None:
+            num_timeline_posts_in_observation = 10
+            # timeline = self.sm_app.get_own_timeline(
+            #     active_entity_name, num_timeline_posts_in_observation
+            # )
+
+            if (active_entity_name is not None) and (self.sm_app.perform_operations):
                 active_entity_username = self.sm_app.public_get_username(
                     active_entity_name.split(" ")[0]
                 )
-            timeline = mastodon_ops.get_own_timeline(active_entity_username, limit=10)
+                timeline = mastodon_ops.get_own_timeline(
+                    active_entity_username, limit=num_timeline_posts_in_observation
+                )
+            else:
+                timeline = []
 
             def _clean_html(html_string):
                 clean_text = re.sub("<[^<]+?>", "", unescape(html_string))

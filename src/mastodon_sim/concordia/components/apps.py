@@ -381,7 +381,7 @@ class MastodonSocialNetworkApp(PhoneApp):
     """
 
     action_logger: Any = None
-    perform_operations: bool = True
+    perform_operations: bool = False
     app_description: str = "MastodonSocialNetworkApp"
     _log_color: COLOR_TYPE = dataclasses.field(default="blue", init=False)
     _mastodon_ops: Any = dataclasses.field(default=None, init=False)
@@ -413,7 +413,8 @@ class MastodonSocialNetworkApp(PhoneApp):
 
     def _get_username(self, display_name: str) -> str:
         """Get the username for a given display name."""
-        username = self._user_mapping.get(display_name)
+        current_user = display_name.split()[0]
+        username = self._user_mapping.get(current_user)
         # self._print(f"Mapped {display_name} to @{username}", emoji="🔗")
         if not username:
             raise ValueError(f"No username found for display name: {display_name}")
