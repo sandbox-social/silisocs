@@ -234,3 +234,60 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                 log_entry = _get_empty_log_entry()
             if checkpoint_callback is not None:
                 checkpoint_callback(steps)
+
+    # @override
+    # def next_acting(
+    #     self,
+    #     game_master: entity_lib.Entity,
+    #     entities: Sequence[entity_lib.Entity],
+    #     log_entry: dict[str, Any] | None = None,
+    #     log: list[Mapping[str, Any]] | None = None,
+    # ) -> tuple[
+    #     Sequence[entity_lib.Entity], Sequence[entity_lib.ActionSpec]
+    # ]:  # pytype: disable=signature-mismatch
+    #     """Return the next action spec for an entity."""
+    #     entities_by_name = {entity.name: entity for entity in entities}
+    #     if game_master._agent_name == "social_media":
+    #         next_entity_names = [
+    #             agent._agent_name
+    #             for agent in entities
+    #             if game_master.active_rates[agent._agent_name] > random.random()
+    #         ]
+    #     else:
+    #         next_object_names_string = game_master.act(
+    #             action_spec=entity_lib.ActionSpec(
+    #                 call_to_action=self._call_to_next_acting,
+    #                 output_type=entity_lib.OutputType.NEXT_ACTING,
+    #                 options=tuple(entities_by_name.keys()),
+    #             )
+    #         )
+    #     next_entity_names = next_object_names_string.split(",")
+    #     if log is not None and hasattr(game_master, "get_last_log"):
+    #         assert hasattr(game_master, "get_last_log")  # Assertion for pytype
+    #         if log is not None and log_entry is not None and hasattr(game_master, "get_last_log"):
+    #             log_entry["next_acting"] = game_master.get_last_log()
+
+    #     action_spec_by_name = {}
+    #     for next_entity_name in next_entity_names:
+    #         next_action_spec_string = game_master.act(
+    #             action_spec=entity_lib.ActionSpec(
+    #                 call_to_action=self._call_to_next_action_spec.format(name=next_entity_name),
+    #                 output_type=entity_lib.OutputType.NEXT_ACTION_SPEC,
+    #             )
+    #         )
+    #         action_spec_by_name[next_entity_name] = engine_lib.action_spec_parser(
+    #             next_action_spec_string
+    #         )
+
+    #         if log is not None and hasattr(game_master, "get_last_log"):
+    #             assert hasattr(game_master, "get_last_log")  # Assertion for pytype
+    #             if (
+    #                 log is not None
+    #                 and log_entry is not None
+    #                 and hasattr(game_master, "get_last_log")
+    #             ):
+    #                 log_entry["next_acting"] = game_master.get_last_log()
+    #     return (
+    #         [entities_by_name[entity_name] for entity_name in next_entity_names],
+    #         [action_spec_by_name[entity_name] for entity_name in next_entity_names],
+    #     )
