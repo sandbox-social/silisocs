@@ -1,5 +1,6 @@
 import concurrent.futures
 import dataclasses
+import importlib
 import os
 import random
 from collections.abc import Mapping, Sequence
@@ -11,9 +12,6 @@ from concordia.components import game_master as gm_components
 from concordia.language_model import language_model
 from concordia.typing import prefab as prefab_lib
 
-from mastodon_sim.concordia.components import apps
-
-# from mastodon_sim.mastodon_ops import update_bio
 from sim.agent_utils.components import gm_social_act, social_make_observation
 from sim.sim_utils.agent_speech_utils import (
     write_seed_toot,
@@ -22,13 +20,14 @@ from sim.sim_utils.misc_sim_utils import EventLogger
 
 
 @dataclasses.dataclass
-class SocialMediaGM(prefab_lib.Prefab):
+class GameMaster(prefab_lib.Prefab):
     """A prefab entity implementing a social media game master."""
 
     description: str = "A social-media game master."
     params: Mapping[str, Any] = dataclasses.field(
         default_factory=lambda: {
-            "name": "mastodon-game-master",
+            "name": "social-media-game-master",
+            "app_module": "",
             "call_to_action_str": "",
             "sm_user_data": {},
             "use_server": False,
@@ -61,7 +60,8 @@ class SocialMediaGM(prefab_lib.Prefab):
             "action", os.path.join(self.params.get("output_path", ""), "action_events.jsonl")
         )
         action_logger.episode_idx = 0
-        mastodon_app = apps.MastodonSocialNetworkApp(
+        apps = importlib.import_module(self.params["app_module"] + ".apps")
+        sm_app = apps.SocialNetworkApp(
             action_logger=action_logger,
             perform_operations=self.params.get("use_server", False),
             app_description=self.params.get("app_description", ""),
@@ -72,9 +72,9 @@ class SocialMediaGM(prefab_lib.Prefab):
             for i, agent_name in enumerate(user_data["roles"])
         }  # first name keys
         print(user_mapping)
-        mastodon_app.set_user_mapping(user_mapping)
+        sm_app.set_user_mapping(user_mapping)
 
-        active_rates = self.set_app_state(mastodon_app, user_data)
+        active_rates = self.set_app_state(sm_app, user_data)
 
         player_names = [entity.name for entity in self.entities]
         make_observation_key = social_make_observation.DEFAULT_MAKE_OBSERVATION_COMPONENT_KEY
@@ -98,7 +98,7 @@ class SocialMediaGM(prefab_lib.Prefab):
             entity_names=player_names,
             component_order=component_order,
             call_to_action_str=call_to_action_str,
-            sm_app=mastodon_app,
+            sm_app=sm_app,
             active_rates=active_rates,
         )
 
@@ -112,7 +112,7 @@ class SocialMediaGM(prefab_lib.Prefab):
 
     def set_agent_user_data(
         self,
-        mastodon_app: apps.MastodonSocialNetworkApp,
+        sm_app,
         agent,
         following_list,
     ) -> None:
@@ -120,20 +120,20 @@ class SocialMediaGM(prefab_lib.Prefab):
 
         # initial list of users the agent is following
         for followee in following_list:
-            mastodon_app.follow_user(agent_name, followee)
+            sm_app.follow_user(agent_name, followee)
 
         # initial bio
-        mastodon_app.update_profile(agent_name, bio="")
+        sm_app.update_profile(agent_name, bio="")
 
         # user's first post
         if hasattr(agent, "seed_toot"):
-            mastodon_app.post_toot(agent_name, status=agent.seed_toot)
+            sm_app.post_toot(agent_name, status=agent.seed_toot)
         else:
-            mastodon_app.post_toot(agent_name, status=write_seed_toot(agent))
+            sm_app.post_toot(agent_name, status=write_seed_toot(agent))
 
     def set_app_state(
         self,
-        mastodon_app: apps.MastodonSocialNetworkApp,
+        sm_app,
         user_data: dict[str, Any],
     ) -> dict[str, Any]:
         # initiailize initial followership network randomly based on pair role follow probabilities
@@ -159,7 +159,7 @@ class SocialMediaGM(prefab_lib.Prefab):
                 futures.append(
                     executor.submit(
                         self.set_agent_user_data,
-                        mastodon_app,
+                        sm_app,
                         agent,
                         following_lists[agent._agent_name],
                     )

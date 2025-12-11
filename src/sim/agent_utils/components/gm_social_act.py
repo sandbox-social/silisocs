@@ -8,9 +8,6 @@ from concordia.typing import entity as entity_lib
 from concordia.typing import entity_component
 from typing_extensions import override
 
-from mastodon_sim import mastodon_ops
-from mastodon_sim.concordia.components import apps
-
 DEFAULT_SESSION_TERMINATE_STR = "The Social-Media session has been completed."
 
 import re
@@ -71,7 +68,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
         self,
         model: language_model.LanguageModel,
         entity_names: Sequence[str],
-        sm_app: apps.MastodonSocialNetworkApp,
+        sm_app,
         component_order: Sequence[str] | None = None,
         call_to_action_str: str = "",
         active_rates: dict[str, Any] = {},
@@ -96,23 +93,14 @@ class SMAct(gm_components.switch_act.SwitchAct):
                 contexts[make_observation_component.DEFAULT_MAKE_OBSERVATION_COMPONENT_KEY]
             )
         if result == "":
-            active_entity_name: str | None = next(
-                (s for s in self._entity_names if s in action_spec.call_to_action), None
+            print(action_spec.call_to_action)
+            active_entity_name = next(
+                s for s in self._entity_names if s in action_spec.call_to_action
             )
             num_timeline_posts_in_observation = 10
-            # timeline = self.sm_app.get_own_timeline(
-            #     active_entity_name, num_timeline_posts_in_observation
-            # )
-
-            if (active_entity_name is not None) and (self.sm_app.perform_operations):
-                active_entity_username = self.sm_app.public_get_username(
-                    active_entity_name.split(" ")[0]
-                )
-                timeline = mastodon_ops.get_own_timeline(
-                    active_entity_username, limit=num_timeline_posts_in_observation
-                )
-            else:
-                timeline = []
+            timeline = self.sm_app.get_own_timeline(
+                active_entity_name, num_timeline_posts_in_observation
+            )
 
             def _clean_html(html_string):
                 clean_text = re.sub("<[^<]+?>", "", unescape(html_string))
@@ -130,7 +118,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
                 #         name=self._player.name,
                 #     )
                 #     call_to_action = (
-                #         f"{media_contents!s} Context: Succinctly describe this image in the form of an impression that it made on {self._player.name.split()[0]} when they viewed it alongside the following text of the toot they just read on the Mastodon app: "
+                #         f"{media_contents!s} Context: Succinctly describe this image in the form of an impression that it made on {self._player.name.split()[0]} when they viewed it alongside the following text of the toot they just read on the Social Media app: "
                 #         + "'"
                 #         + toot_headline
                 #         + "'"
@@ -215,3 +203,24 @@ class SMAct(gm_components.switch_act.SwitchAct):
         if self.call_to_action_str:
             return f"prompt: {self.call_to_action_str} ;;type: free"
         return "prompt: Conduct a social-media action. You can choose from like, reply, boost, and post. Format it correctly as: ACTION_TYPE: (action)\n TARGET_ID: (target_id)\n CONTENT: (content)\n REASONING: (reasoning)\n ;;type: free"
+
+    # @override
+    # def _next_acting(
+    #     self,
+    #     contexts: entity_component.ComponentContextMapping,
+    #     action_spec: entity_lib.ActionSpec) -> str:
+    #     context = self._context_for_action(contexts)
+    #     if DEFAULT_NEXT_ACTING_COMPONENT_KEY in contexts:
+    #         result = str(contexts[DEFAULT_NEXT_ACTING_COMPONENT_KEY])
+    #         self._log(result, context, action_spec)
+    #     else:
+    #         # YOLO case
+    #         chain_of_thought = interactive_document.InteractiveDocument(self._model)
+    #         chain_of_thought.statement(context)
+    #         next_entity_index = chain_of_thought.multiple_choice_question(
+    #             question=action_spec.call_to_action,
+    #             answers=self._entity_names)
+    #         result = self._entity_names[next_entity_index]
+    #         self._log(result, chain_of_thought, action_spec)
+
+    #     return result

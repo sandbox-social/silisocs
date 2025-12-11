@@ -76,11 +76,11 @@ class MastodonActionSuggester(action_spec_ignored.ActionSpecIgnored):
             raise ValueError(f"Negative probabilities not allowed: {negative_probs}")
 
         # Sum probabilities using Decimal for precise comparison
-        total = Decimal("0")
+        total = Decimal(0)
         for prob in probs.values():
             total += Decimal(str(prob)).quantize(Decimal("0.00001"), rounding=ROUND_HALF_UP)
 
-        if total != Decimal("1"):
+        if total != Decimal(1):
             raise ValueError(
                 f"Action probabilities must sum to exactly 1.0 (got {float(total)}). "
                 "Please adjust probabilities to ensure they sum to 100%."

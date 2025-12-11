@@ -36,7 +36,7 @@ from sim.sim_utils.agent_speech_utils import (
     deploy_probes,
     write_seed_toot,
 )
-from sim.sim_utils.concordia_utils import (
+from sim.sim_utils.concordia_utils_deprecated import (
     build_agent_with_memories,
     generate_concordia_memory_objects,
     make_profiles,
@@ -50,7 +50,6 @@ from sim.sim_utils.misc_sim_utils import (
     EventLogger,
     StdoutToLogger,
     get_sentence_encoder,
-    post_analysis,
 )
 
 
@@ -252,8 +251,8 @@ def run_sim(
                 with open(file_path, "w") as file:
                     file.write(json_data)
 
-    if output_post_analysis:
-        post_analysis(env, model, agents, roles, local_post_analyze_data, cfg.sim.output_rootname)
+    # if output_post_analysis:
+    #     post_analysis(env, model, agents, roles, local_post_analyze_data, cfg.sim.output_rootname)
 
 
 def configure_logging(logger):

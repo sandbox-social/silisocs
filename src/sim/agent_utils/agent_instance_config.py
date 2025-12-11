@@ -36,12 +36,9 @@ def create_agent_instances_from_config(
         # --- a. Construct Prefab Name and Class Info ---
         if role_name != "exogenous":
             module_path_str = "sim_setting." + agent_data["role_dict"]["module_path"]
-            # class_name_str = "AgentBuilder"
-            # prefab_string = (
-            #     f"{module_path_str.split('sim_setting.')[1].replace('.', '__')}__{class_name_str}"
-            # )
             class_name_str = "Entity"
-            prefab_string = "basic__Entity"
+            prefab_string = module_path_str.split(".")[-1] + "__" + class_name_str
+            prefab_string = role_name + "__" + class_name_str
 
             # --- b. Load Prefab Class ---
             if prefab_string not in prefab_agents_map:

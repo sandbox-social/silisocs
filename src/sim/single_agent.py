@@ -36,7 +36,7 @@ from mastodon_sim.mastodon_ops import check_env, clear_mastodon_server
 from sim.sim_utils.agent_speech_utils import (
     deploy_probes,
 )
-from sim.sim_utils.concordia_utils import (
+from sim.sim_utils.concordia_utils_deprecated import (
     build_agent_with_memories,
     generate_concordia_memory_objects,
     make_profiles,
@@ -50,7 +50,6 @@ from sim.sim_utils.misc_sim_utils import (
     EventLogger,
     StdoutToLogger,
     get_sentence_encoder,
-    post_analysis,
 )
 
 
@@ -312,8 +311,8 @@ def run_sim(
                 with open(file_path, "w") as file:
                     file.write(json.dumps(json_data, indent=4))
 
-    if output_post_analysis:
-        post_analysis(env, model, agents, roles, local_post_analyze_data, cfg.sim.output_rootname)
+    # if output_post_analysis:
+    #     post_analysis(env, model, agents, roles, local_post_analyze_data, cfg.sim.output_rootname)
 
 
 def configure_logging(logger):

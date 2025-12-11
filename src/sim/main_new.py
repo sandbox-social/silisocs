@@ -16,26 +16,34 @@ from concordia import __file__ as concordia_location
 from concordia.prefabs.simulation import generic as simulation
 from concordia.typing import prefab as prefab_lib
 from concordia.utils import helper_functions
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf, open_dict
 
+print(r"""
+   _____ ____   __  ______  ____  ____ __  __   _____ ____  _____ ____ ___   __
+  / ___//   |  / | / / __ \/ __ )/ __ \| |/ /  / ___// __ \/ ___//  _//   | / /
+  \__ \/ /| | /  |/ / / / / __  | / / /|   /   \__ \/ / / / /    / / / /| |/ /
+ ___/ / ___ |/ /|  / /_/ / /_/ / /_/ //   |   ___/ / /_/ / /____/ / / ___ | /__
+/____/_/  |_/_/ |_/_____/_____/\____//_/|_|  /____/\____/\____/___//_/  /_/___/
+""")
+print("=" * 50)
 print(f"importing Concordia from: {concordia_location}")
 warnings.filterwarnings(action="ignore", category=FutureWarning, module="concordia")
 
-# concordia functions
+print("=" * 50)
 
 # Go up two levels to set current working directory to project root
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 print("project root: " + str(PROJECT_ROOT))
+print("=" * 50)
 os.chdir(PROJECT_ROOT)
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-# mastodon_sim functions
-from mastodon_sim.mastodon_ops import check_env, clear_mastodon_server
-from sim.agent_utils.agent_instance_config import create_agent_instances_from_config
 
 # sim functions
-from sim.agent_utils.social_media_game_master import SocialMediaGM
+from sim.agent_utils.agent_instance_config import create_agent_instances_from_config
+from sim.config_schema import register_configs
 from sim.sim_utils.media_utils import select_large_language_model
 from sim.sim_utils.misc_sim_utils import (
     ConfigStore,
@@ -43,6 +51,10 @@ from sim.sim_utils.misc_sim_utils import (
     get_sentence_encoder,
 )
 from sim.sim_utils.social_media_engine import SocialMediaEngine
+
+# Specify which example to use
+EXAMPLE_NAME = "election"
+register_configs(EXAMPLE_NAME)
 
 
 def configure_logging(logger):
@@ -54,35 +66,49 @@ def configure_logging(logger):
 
 @hydra.main(version_base=None, config_path="../../conf", config_name="config")
 def main(cfg: DictConfig):
-    # load config
+    """
+    Main experiment function.
+
+    Args:
+        cfg: Structured configuration object with full type hints
+    """
+    # Load config - enable struct mode for validation
     OmegaConf.set_struct(cfg, True)
+
+    # Temporarily allow adding new fields to set output_rootname
     with open_dict(cfg):
         # Construct output_rootname using os.path.join for platform independence
         cfg.sim.output_rootname = os.path.join(
-            hydra.core.hydra_config.HydraConfig.get().runtime.output_dir,
-            hydra.core.hydra_config.HydraConfig.get().job.name,
+            HydraConfig.get().runtime.output_dir,
+            HydraConfig.get().job.name,
         )
+
+    # Create output directory
     os.makedirs(cfg.sim.output_rootname, exist_ok=True)
-    # make globally accessible with ConfigStore.get_config() through "from sim.sim_utils.misc_sim_utils import ConfigStore"
+
+    # Make globally accessible with ConfigStore.get_config()
+    # through "from sim.sim_utils.misc_sim_utils import ConfigStore"
     ConfigStore.set_config(cfg)
 
     # give system logger to hydra to configure
     logger = logging.getLogger(__name__)
     configure_logging(logger)
 
+    print(f"Running experiment: {cfg.soc_sys.exp_name}")
+    print(f"Number of agents: {cfg.sim.num_agents}")
+    print(f"Number of episodes: {cfg.sim.num_episodes}")
+    print(f"Model: {cfg.sim.model}")
+    print(f"Output directory: {cfg.sim.output_rootname}")
+
     # set example package to be imported as "sim_setting"
     package = importlib.import_module(cfg.sim.example_name)
     sys.modules["sim_setting"] = package
 
-    # server state
-    if cfg.sim.use_server:
-        check_env()
-        clear_mastodon_server(len(cfg.agents.directory))
-    else:
-        input("Sim will not use the Mastodon server. Confirm by pressing any key to continue.")
-
     # load .env file with environment variables
-    load_dotenv(PROJECT_ROOT)
+    if load_dotenv(find_dotenv()):
+        logger.info("Successfully loaded .env file from:" + find_dotenv())
+    else:
+        logger.warning("Warning: .env file not found or empty.")
 
     # set random seed
     SEED = cfg.sim.seed
@@ -115,6 +141,8 @@ def main(cfg: DictConfig):
         entity_map,
     ) = create_agent_instances_from_config(agent_data, entity_map)
 
+    social_media_gm_name = cfg.sim.app_module + " social media"
+
     # Get Game Master Entities list
     entity_game_master_instance_list = []
 
@@ -130,7 +158,7 @@ def main(cfg: DictConfig):
             role=prefab_lib.Role.INITIALIZER,
             params={
                 "name": "initial setup rules",
-                "next_game_master_name": "social media",
+                "next_game_master_name": social_media_gm_name,
                 "shared_memories": shared_memories,
                 "player_specific_memories": player_specific_memories_map,
                 "player_specific_context": player_specific_context_map,
@@ -141,15 +169,19 @@ def main(cfg: DictConfig):
     # Add Social Media Game Master
     sm_user_data: dict[str, Any] = {
         "roles": roles,
-        "role_parameters": cfg.soc_sys.setting_info["details"]["role_parameters"],
+        "role_parameters": cfg.soc_sys.setting_info.details.role_parameters,
     }
-    entity_map["SocialMedia__GameMaster"] = SocialMediaGM()
+    gm_module = importlib.import_module(
+        "sim.agent_utils." + cfg.sim.social_media_gamemaster_filename
+    )
+    entity_map[cfg.sim.social_media_gamemaster_filename + "__GameMaster"] = gm_module.GameMaster()
     entity_game_master_instance_list.append(
         prefab_lib.InstanceConfig(
-            prefab="SocialMedia__GameMaster",
+            prefab=cfg.sim.social_media_gamemaster_filename + "__GameMaster",
             role=prefab_lib.Role.GAME_MASTER,
             params={
-                "name": "social media",
+                "name": social_media_gm_name,
+                "app_module": cfg.sim.app_module,
                 "call_to_action_str": cfg.soc_sys.call_to_action,
                 "sm_user_data": sm_user_data,
                 "use_server": cfg.sim.use_server,

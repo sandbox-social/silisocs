@@ -1,17 +1,23 @@
 queries_data:
   0:
+    query_type: VotePref
     interaction_premise_template:
+      candidate: null
       candidate1: Bill Fredrickson
       candidate2: Bradley Carter
-    query_type: VotePref
   1:
+    query_type: Favorability
     interaction_premise_template:
       candidate: Bill Fredrickson
-    query_type: Favorability
+      candidate1: null
+      candidate2: null
   2:
+    query_type: Favorability
     interaction_premise_template:
       candidate: Bradley Carter
-    query_type: Favorability
+      candidate1: null
+      candidate2: null
   3:
     query_type: VoteIntent
+    interaction_premise_template: null
 query_lib_module: config_utils.agent_query_lib

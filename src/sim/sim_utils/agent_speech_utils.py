@@ -17,9 +17,9 @@ def write_seed_toot(agent):
     call_to_speech = DEFAULT_CALL_TO_SPEECH.format(
         name=agent._agent_name,
     )
-    interaction_premise = f"{agent._agent_name} has to make their first toot on Mastodon\n"
+    interaction_premise = f"{agent._agent_name} has to make their first post on Social Media\n"
     interrogation = interaction_premise
-    interrogation += "Thought on Mastodon Toot: In less than 100 words, write a toot that aligns with your views and background."
+    interrogation += "Thought on Social Media post: In less than 100 words, write a toot that aligns with your views and background."
     agent_says = agent.act(
         action_spec=entity.ActionSpec(
             call_to_action="Context: " + interrogation + call_to_speech,
@@ -40,7 +40,7 @@ def write_seed_toot(agent):
 
 class AgentQuery(ABC):
     """
-    A parent class for queries
+    A parent class for queries. name and query_text defined in children
     """
 
     def __init__(self, query_data=None):
@@ -49,7 +49,12 @@ class AgentQuery(ABC):
         for component_name, component in self.query_text.items():
             if "static_labels" in component:
                 # print(component)
-                assert component["static_labels"] == list(query_data[component_name].keys()), (
+                premise_actors = [
+                    actor
+                    for actor in query_data[component_name]
+                    if query_data[component_name][actor] is not None
+                ]
+                assert component["static_labels"] == premise_actors, (
                     "query data doesn't match query"
                 )
                 self.question_template += component["text"].format(**query_data[component_name])

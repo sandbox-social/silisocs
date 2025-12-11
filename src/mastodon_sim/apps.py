@@ -15,6 +15,8 @@ from typing import Any, Literal, get_type_hints
 import docstring_parser  # pytype: disable=import-error  # Fails on GitHub.
 import termcolor
 
+from mastodon_sim.mastodon_ops import check_env, clear_mastodon_server
+
 _DATE_FORMAT = "%Y-%m-%d %H:%M"
 
 _ARGUMENT_REGEX = re.compile(r"(?P<param>\w+):\s*(?P<value>[^\n]+)")
@@ -325,30 +327,30 @@ class PhoneApp(metaclass=abc.ABCMeta):
             return f"Error invoking action {action.name}: {e}"
 
 
-# endregion
+# # endregion
 
-# region[Phone]
+# # region[Phone]
 
 
-@dataclasses.dataclass(frozen=True)
-class Phone:
-    """Represent a player's phone."""
+# @dataclasses.dataclass(frozen=True)
+# class Phone:
+#     """Represent a player's phone."""
 
-    player_name: str
-    apps: Sequence[PhoneApp]
+#     player_name: str
+#     apps: Sequence[PhoneApp]
 
-    def description(self):
-        """Return a description of the phone and its apps."""
-        return textwrap.dedent(f"""\
-    {self.player_name} has a smartphone.
-    {self.player_name} uses their phone frequently to achieve their daily goals.
-    {self.player_name}'s phone has only the following apps available:
-    {", ".join(self.app_names())}."
-    """)
+#     def description(self):
+#         """Return a description of the phone and its apps."""
+#         return textwrap.dedent(f"""\
+#     {self.player_name} has a smartphone.
+#     {self.player_name} uses their phone frequently to achieve their daily goals.
+#     {self.player_name}'s phone has only the following apps available:
+#     {", ".join(self.app_names())}."
+#     """)
 
-    def app_names(self):
-        """Return the names of the apps installed on the phone."""
-        return [a.name() for a in self.apps]
+#     def app_names(self):
+#         """Return the names of the apps installed on the phone."""
+#         return [a.name() for a in self.apps]
 
 
 # Parse multiline argument text to a text dictionary:
@@ -359,12 +361,11 @@ def _parse_argument_text(args_text: str) -> dict[str, str]:
     return {m.group("param"): m.group("value").strip() for m in matches if m.group("value").strip()}
 
 
-()
 # region[Mastodon Social Network App]
 
 
 @dataclasses.dataclass
-class MastodonSocialNetworkApp(PhoneApp):
+class SocialNetworkApp(PhoneApp):
     """Mastodon social network app.
         description = (
             "MastodonSocialNetworkApp is a social media application similar to"
@@ -393,6 +394,14 @@ class MastodonSocialNetworkApp(PhoneApp):
             from mastodon_sim import mastodon_ops
 
             self._mastodon_ops = mastodon_ops
+
+            # server state
+            check_env()
+            clear_mastodon_server(len(self._user_mapping) + 1)
+        else:
+            input(
+                "Sim will not use the deployed Mastodon server. Confirm by pressing any key to continue."
+            )
 
     def name(self) -> str:
         """Define the name of the app."""
@@ -894,7 +903,7 @@ class MastodonSocialNetworkApp(PhoneApp):
         return str_timeline
 
     @app_action
-    def get_own_timeline(self, current_user: str, limit: int) -> str:
+    def get_own_timeline(self, current_user: str, limit: int, return_str: bool = False) -> str:
         """Read the Mastodon social network feed for the current user."""
         current_user_full = str(current_user)
         current_user = current_user.split()[0]
@@ -903,6 +912,7 @@ class MastodonSocialNetworkApp(PhoneApp):
             f"Fetching @{username}'s timeline (limit: {limit})",
             emoji="🏠",
         )
+
         if self.perform_operations:
             timeline = self._mastodon_ops.get_own_timeline(username, limit=limit)
         else:
@@ -915,7 +925,6 @@ class MastodonSocialNetworkApp(PhoneApp):
             f"Retrieved {len(timeline)} posts from @{username}'s timeline",
             emoji="📊",
         )
-        str_timeline = self.print_and_return_timeline(timeline)
 
         self.action_logger.log(
             {
@@ -925,7 +934,10 @@ class MastodonSocialNetworkApp(PhoneApp):
             }
         )
 
-        return "Own Mastodon Timeline:\n" + str_timeline
+        if return_str:
+            str_timeline = self.print_and_return_timeline(timeline)
+            return "Own Mastodon Timeline:\n" + str_timeline
+        return timeline
 
     # @app_action
     # def get_user_timeline(self, current_user: str, target_user: str, limit: int) -> str:
