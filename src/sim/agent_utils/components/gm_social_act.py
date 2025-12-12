@@ -1,14 +1,18 @@
+import random
 from collections.abc import Sequence
 from typing import Any
 
 from concordia.components import game_master as gm_components
 from concordia.components.game_master import make_observation as make_observation_component
+from concordia.document import interactive_document
 from concordia.language_model import language_model
 from concordia.typing import entity as entity_lib
 from concordia.typing import entity_component
 from typing_extensions import override
 
 DEFAULT_SESSION_TERMINATE_STR = "The Social-Media session has been completed."
+
+DEFAULT_NEXT_ACTING_COMPONENT_KEY = "__next_acting__"
 
 import re
 from html import unescape
@@ -189,12 +193,20 @@ class SMAct(gm_components.switch_act.SwitchAct):
         self._log(result, "", action_spec)
         return result
 
+    # optionally switch to a survey game master
     @override
     def _next_game_master(  # type: ignore[misc]
         self, contexts: entity_component.ComponentContextMapping, action_spec: entity_lib.ActionSpec
     ) -> str:
-        return self.get_entity()._agent_name
-        # return self.get_entity().params.get("name", "")
+        game_masters_by_name = action_spec.options
+        context = game_masters_by_name
+        game_master = (
+            "surveyprobe_GameMaster"
+            if "surveyprobe_GameMaster" in game_masters_by_name
+            else self.get_entity()._agent_name
+        )
+        self._log(game_master, context, action_spec)
+        return game_master
 
     @override
     def _next_entity_action_spec(  # type: ignore[misc]
@@ -204,23 +216,31 @@ class SMAct(gm_components.switch_act.SwitchAct):
             return f"prompt: {self.call_to_action_str} ;;type: free"
         return "prompt: Conduct a social-media action. You can choose from like, reply, boost, and post. Format it correctly as: ACTION_TYPE: (action)\n TARGET_ID: (target_id)\n CONTENT: (content)\n REASONING: (reasoning)\n ;;type: free"
 
-    # @override
-    # def _next_acting(
-    #     self,
-    #     contexts: entity_component.ComponentContextMapping,
-    #     action_spec: entity_lib.ActionSpec) -> str:
-    #     context = self._context_for_action(contexts)
-    #     if DEFAULT_NEXT_ACTING_COMPONENT_KEY in contexts:
-    #         result = str(contexts[DEFAULT_NEXT_ACTING_COMPONENT_KEY])
-    #         self._log(result, context, action_spec)
-    #     else:
-    #         # YOLO case
-    #         chain_of_thought = interactive_document.InteractiveDocument(self._model)
-    #         chain_of_thought.statement(context)
-    #         next_entity_index = chain_of_thought.multiple_choice_question(
-    #             question=action_spec.call_to_action,
-    #             answers=self._entity_names)
-    #         result = self._entity_names[next_entity_index]
-    #         self._log(result, chain_of_thought, action_spec)
+    # cycle through active users
+    @override
+    def _next_acting(
+        self, contexts: entity_component.ComponentContextMapping, action_spec: entity_lib.ActionSpec
+    ) -> str:
+        context = self._context_for_action(contexts)  # don't know what this does
 
-    #     return result
+        if DEFAULT_NEXT_ACTING_COMPONENT_KEY in contexts:
+            entity_names = str(contexts[DEFAULT_NEXT_ACTING_COMPONENT_KEY]).split(",")
+
+            # random activation case specified by active_rates
+            result = ",".join(
+                entity_name
+                for entity_name in entity_names
+                if self.active_rates[entity_name] > random.random()
+            )
+            self._log(result, context, action_spec)
+        else:
+            # YOLO case
+            chain_of_thought = interactive_document.InteractiveDocument(self._model)
+            chain_of_thought.statement(context)
+            next_entity_index = chain_of_thought.multiple_choice_question(
+                question=action_spec.call_to_action, answers=self._entity_names
+            )
+            result = self._entity_names[next_entity_index]
+            self._log(result, chain_of_thought, action_spec)
+
+        return result

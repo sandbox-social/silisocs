@@ -201,7 +201,7 @@ def main(cfg: DictConfig):
     #     probes_config=probes_config,
     #     player_names=entity_player_names
     # )
-    # entity_map["interviewer__GameMaster"] = game_master_prefabs.interviewer.GameMaster()
+    # entity_map["survey_probe__GameMaster"] = game_master_prefabs.interviewer.GameMaster()
     # entity_game_master_list.append(
     #     prefab_lib.InstanceConfig(
     #         prefab="interviewer__GameMaster",

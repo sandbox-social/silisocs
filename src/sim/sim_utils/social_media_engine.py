@@ -235,59 +235,48 @@ class SocialMediaEngine(simultaneous.Simultaneous):
             if checkpoint_callback is not None:
                 checkpoint_callback(steps)
 
-    # @override
-    # def next_acting(
-    #     self,
-    #     game_master: entity_lib.Entity,
-    #     entities: Sequence[entity_lib.Entity],
-    #     log_entry: dict[str, Any] | None = None,
-    #     log: list[Mapping[str, Any]] | None = None,
-    # ) -> tuple[
-    #     Sequence[entity_lib.Entity], Sequence[entity_lib.ActionSpec]
-    # ]:  # pytype: disable=signature-mismatch
-    #     """Return the next action spec for an entity."""
-    #     entities_by_name = {entity.name: entity for entity in entities}
-    #     if game_master._agent_name == "social_media":
-    #         next_entity_names = [
-    #             agent._agent_name
-    #             for agent in entities
-    #             if game_master.active_rates[agent._agent_name] > random.random()
-    #         ]
-    #     else:
-    #         next_object_names_string = game_master.act(
-    #             action_spec=entity_lib.ActionSpec(
-    #                 call_to_action=self._call_to_next_acting,
-    #                 output_type=entity_lib.OutputType.NEXT_ACTING,
-    #                 options=tuple(entities_by_name.keys()),
-    #             )
-    #         )
-    #     next_entity_names = next_object_names_string.split(",")
-    #     if log is not None and hasattr(game_master, "get_last_log"):
-    #         assert hasattr(game_master, "get_last_log")  # Assertion for pytype
-    #         if log is not None and log_entry is not None and hasattr(game_master, "get_last_log"):
-    #             log_entry["next_acting"] = game_master.get_last_log()
+    @override
+    def next_game_master(
+        self,
+        game_master: entity_lib.Entity,
+        game_masters: Sequence[entity_lib.Entity],
+        verbose: bool = False,
+    ) -> entity_lib.Entity:
+        """Select which game master to use for the next step."""
+        if len(game_masters) == 1:
+            return game_masters[0]
+        initializer_gm_name = "initial setup rules"
 
-    #     action_spec_by_name = {}
-    #     for next_entity_name in next_entity_names:
-    #         next_action_spec_string = game_master.act(
-    #             action_spec=entity_lib.ActionSpec(
-    #                 call_to_action=self._call_to_next_action_spec.format(name=next_entity_name),
-    #                 output_type=entity_lib.OutputType.NEXT_ACTION_SPEC,
-    #             )
-    #         )
-    #         action_spec_by_name[next_entity_name] = engine_lib.action_spec_parser(
-    #             next_action_spec_string
-    #         )
+        game_masters_by_name = {
+            game_master_.name: game_master_
+            for game_master_ in game_masters
+            if game_master_.name != initializer_gm_name
+        }
+        gm_list = [
+            game_master_.name
+            for game_master_ in game_masters
+            if game_master_.name != initializer_gm_name
+        ]
 
-    #         if log is not None and hasattr(game_master, "get_last_log"):
-    #             assert hasattr(game_master, "get_last_log")  # Assertion for pytype
-    #             if (
-    #                 log is not None
-    #                 and log_entry is not None
-    #                 and hasattr(game_master, "get_last_log")
-    #             ):
-    #                 log_entry["next_acting"] = game_master.get_last_log()
-    #     return (
-    #         [entities_by_name[entity_name] for entity_name in next_entity_names],
-    #         [action_spec_by_name[entity_name] for entity_name in next_entity_names],
-    #     )
+        if game_master.name == initializer_gm_name:
+            next_game_master_name = gm_list[0]
+        else:
+            # cycle through non-Instantiator game_masters
+            next_game_master_name = gm_list[(gm_list.index(game_master.name) + 1) % len(gm_list)]
+
+        # next_game_master_name = game_master.act(
+        #     action_spec=entity_lib.ActionSpec(
+        #         call_to_action=self._call_to_next_game_master,
+        #         output_type=entity_lib.OutputType.NEXT_GAME_MASTER,
+        #         options=tuple(game_masters_by_name.keys()),
+        #     )
+        # )
+
+        if verbose:
+            print(termcolor.colored(f"Game master: {next_game_master_name}", _PRINT_COLOR))
+        if next_game_master_name not in game_masters_by_name:
+            raise ValueError(
+                f"Selected game master {next_game_master_name} not found in:"
+                f" {game_masters_by_name.keys()}"
+            )
+        return game_masters_by_name[next_game_master_name]

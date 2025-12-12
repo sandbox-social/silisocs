@@ -22,14 +22,14 @@ def generate_sim_config(example_name):
     default_sim_config["app_module"] = "mastodon_sim"
     default_sim_config["social_media_gamemaster_filename"] = "social_media_game_master"
     default_sim_config["load_path"] = ""
+
+    # Example specific:
+    default_sim_config["example_name"] = example_name
     default_sim_config["roleplaying_instructions"] = (
         "<system>"
         "You are simulating {name}, a character in a social science experiment. Always use third-person limited perspective when describing {name}'s thoughts and actions. Your goal is to determine the single most appropriate action {name} would take next on a social media platform."
         "</system>"
     )
-
-    # Example specific:
-    default_sim_config["example_name"] = example_name
     default_sim_config["use_server"] = (
         False  # server (e.g. www.social-sandbox.com, www.socialsandbox2.com)
     )
