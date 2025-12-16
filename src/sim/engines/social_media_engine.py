@@ -89,9 +89,9 @@ class SocialMediaEngine(simultaneous.Simultaneous):
         # logging setup
         cfg = ConfigStore.get_config()
         probe_event_logger = EventLogger(
-            "probe", os.path.join(cfg.sim.output_rootname, "probe_events.jsonl")
+            "probe", os.path.join(cfg.sc.sim.output_rootname, "probe_events.jsonl")
         )
-        probes_config = OmegaConf.to_container(cfg.probes, resolve=True)
+        probes_config = OmegaConf.to_container(cfg.sc.probes, resolve=True)
 
         # while not self.terminate(game_master, verbose) and steps < max_steps:
         while steps < max_steps:
@@ -236,7 +236,7 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                 checkpoint_callback(steps)
 
     @override
-    def next_game_master(
+    def next_game_master(  # type: ignore[misc]
         self,
         game_master: entity_lib.Entity,
         game_masters: Sequence[entity_lib.Entity],

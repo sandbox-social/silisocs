@@ -12,7 +12,7 @@ from concordia.components import game_master as gm_components
 from concordia.language_model import language_model
 from concordia.typing import prefab as prefab_lib
 
-from sim.agent_utils.components import gm_social_act, social_make_observation
+from sim.entities.components import gm_social_act, social_make_observation
 from sim.sim_utils.agent_speech_utils import (
     write_seed_toot,
 )

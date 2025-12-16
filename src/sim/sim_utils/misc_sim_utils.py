@@ -1,7 +1,10 @@
+import importlib
 import json
 import logging
+import os
+import sys
 import threading
-from typing import cast
+from typing import Any, cast
 
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
@@ -12,6 +15,53 @@ import warnings
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore")
     import sentence_transformers
+
+
+def get_scenario_config_type():
+    # This line is now outside the function, as discussed, and reads the environment variable
+    SCENARIO_NAME_RUNTIME = os.environ.get("SCENARIO_NAME", "election")
+
+    # Dynamically determine the module path for the concrete config
+    CONFIG_MODULE_PATH = (
+        f"scenarios.{SCENARIO_NAME_RUNTIME}.config_dataclasses"  # Or whatever your file is
+    )
+    CONFIG_CLASS_NAME = (
+        f"{SCENARIO_NAME_RUNTIME.capitalize()}ScenarioConfig"  # e.g., "ElectionScenarioConfig"
+    )
+
+    # 1. Import the concrete config class dynamically
+    # NOTE: This only loads the class object, not an instance.
+    scenario_module = importlib.import_module(CONFIG_MODULE_PATH)
+    ConcreteScenarioConfigClass = getattr(scenario_module, CONFIG_CLASS_NAME)
+
+
+def write_concordia_logs(results_log, output_rootname):
+    file_path = os.path.join(output_rootname, "logs.html")
+    try:
+        with open(file_path, "w", encoding="utf-8") as html_file:
+            html_file.write(results_log)
+        print(f"HTML content successfully saved to {file_path}")
+    except OSError as e:
+        print(f"Error saving HTML content: {e}")
+
+
+def get_prefab_instance(entity_prefab):
+    print(f"[Loader] Loading prefab: {entity_prefab}")
+    entity_name, entity_type = entity_prefab.split("__")
+    try:
+        # e.g. importlib.import_module("example_sim_pkg.entity_lib.voter")
+        build_entity_module = importlib.import_module(f"example_sim_pkg.entity_lib.{entity_name}")
+        # e.g., getattr(module, "AgentBuilder")
+        build_entity_class = getattr(build_entity_module, entity_type)
+        print(type(build_entity_class))
+    except ImportError:
+        print(f"Error: Could not import module: {entity_name}")
+    except AttributeError:
+        print(f"Error: Module {entity_name} does not have class: {entity_type}")
+    except Exception as e:
+        print(f"An error occurred while loading prefab {entity_prefab}: {e}")
+    # return the *instantiated* class
+    return build_entity_class()
 
 
 # Create a custom StreamHandler that redirects stdout to the logger
@@ -72,14 +122,14 @@ class EventLogger:
 
 
 class ConfigStore:
-    _config: DictConfig | None = None
+    _config: Any = None  # DictConfig | None = None
 
     @classmethod
-    def set_config(cls, cfg: DictConfig) -> None:
+    def set_config(cls, cfg: DictConfig | Any) -> None:
         cls._config = cfg
 
     @classmethod
-    def get_config(cls) -> DictConfig:
+    def get_config(cls) -> Any:
         # Try to get from local store first
         if cls._config is not None:
             return cls._config
@@ -94,6 +144,13 @@ class ConfigStore:
             raise ValueError("Config not found in HydraConfig")
         except ValueError:
             raise RuntimeError("Configuration not initialized. Run main script first.")
+
+
+def configure_logging(logger):
+    # supress verbose printing of hydra's api logging so only warnings (or greater issues) are printed
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    # Redirect stdout to the logger
+    sys.stdout = StdoutToLogger(logger)
 
 
 # def read_token_data(file_path):

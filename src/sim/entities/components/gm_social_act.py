@@ -218,9 +218,9 @@ class SMAct(gm_components.switch_act.SwitchAct):
 
     # cycle through active users
     @override
-    def _next_acting(
+    def _next_acting(  # type: ignore[misc]
         self, contexts: entity_component.ComponentContextMapping, action_spec: entity_lib.ActionSpec
-    ) -> str:
+    ) -> str:  # type: ignore
         context = self._context_for_action(contexts)  # don't know what this does
 
         if DEFAULT_NEXT_ACTING_COMPONENT_KEY in contexts:
