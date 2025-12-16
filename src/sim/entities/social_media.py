@@ -16,7 +16,7 @@ from sim.entities.components import gm_social_act, social_make_observation
 from sim.sim_utils.agent_speech_utils import (
     write_seed_toot,
 )
-from sim.sim_utils.misc_sim_utils import EventLogger
+from sim.sim_utils.misc_sim_utils import ConfigStore, EventLogger
 
 
 @dataclasses.dataclass
@@ -26,13 +26,13 @@ class GameMaster(prefab_lib.Prefab):
     description: str = "A social-media game master."
     params: Mapping[str, Any] = dataclasses.field(
         default_factory=lambda: {
-            "name": "social-media-game-master",
-            "app_module": "",
-            "call_to_action_str": "",
+            "name": "social-media_game-master",
+            "calls_to_action": {},
+            "app_module_path": "",
+            "sim_role": {},
             "sm_user_data": {},
             "use_server": False,
             "app_description": "",
-            "output_path": "",
         }
     )
     entities: Sequence[entity_agent_with_logging.EntityAgentWithLogging] = ()
@@ -52,15 +52,20 @@ class GameMaster(prefab_lib.Prefab):
         -------
           An entity.
         """
-        name = self.params.get("name")
-        call_to_action_str = self.params.get("call_to_action_str", "")
+        name = str(self.params.get("name"))
+        calls_to_action = self.params.get(
+            "call_to_action", {"social media action": "Take an action on social media"}
+        )
         user_data = self.params["sm_user_data"]
+        call_to_sm_action = calls_to_action["social media action"]
 
+        cfg = ConfigStore.get_config()
         action_logger = EventLogger(
-            "action", os.path.join(self.params.get("output_path", ""), "action_events.jsonl")
+            "action",
+            os.path.join(cfg.sc.sim.output_rootname, f"{name.split('_')[0]}_action_events.jsonl"),
         )
         action_logger.episode_idx = 0
-        apps = importlib.import_module(self.params["app_module"] + ".apps")
+        apps = importlib.import_module(self.params["app_module_path"] + ".apps")
         sm_app = apps.SocialNetworkApp(
             action_logger=action_logger,
             perform_operations=self.params.get("use_server", False),
@@ -97,7 +102,7 @@ class GameMaster(prefab_lib.Prefab):
             model=model,
             entity_names=player_names,
             component_order=component_order,
-            call_to_action_str=call_to_action_str,
+            call_to_action_str=call_to_sm_action,
             sm_app=sm_app,
             active_rates=active_rates,
         )

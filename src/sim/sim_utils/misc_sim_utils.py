@@ -27,11 +27,11 @@ def write_concordia_logs(results_log, output_rootname):
         print(f"Error saving HTML content: {e}")
 
 
-def get_prefab_instance(scenario_name, entity_prefab, module_path):
+def get_prefab_instance(entity_prefab, module_path):
     print(f"[Loader] Loading prefab: {entity_prefab} from {module_path}")
     entity_name, entity_type = entity_prefab.split("__")
     try:
-        # e.g. importlib.import_module("example_sim_pkg.entity_lib.voter")
+        # e.g. importlib.import_module("scenarios.election.entity_lib.voter")
         build_entity_module = importlib.import_module(module_path)
         # e.g., getattr(module, "Entity")
         build_entity_class = getattr(build_entity_module, entity_type)

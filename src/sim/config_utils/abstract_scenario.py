@@ -11,7 +11,7 @@ from omegaconf import MISSING
 # ==================================================
 @dataclass
 class SimConfig:
-    app_module: str = "mastodon_sim"
+    app_module_path: str = "mastodon_sim"
     load_path: str = ""
     llm_name: str = "gpt-4o-mini"
     num_agents: int = 20

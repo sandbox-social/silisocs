@@ -64,7 +64,7 @@ def get_news_agent_configs(
             "type": "local",
             "coverage": "local news",
             "schedule": "hourly",
-            "mastodon_username": "storhampton_gazette",
+            "sm_account_username": "storhampton_gazette",
             "seed_post": "Good morning, Storhampton! Tune in for the latest local news updates.",
         },
         "national": {
@@ -72,7 +72,7 @@ def get_news_agent_configs(
             "type": "national",
             "coverage": "national news",
             "schedule": "hourly",
-            "mastodon_username": "national_news_network",
+            "sm_account_username": "national_news_network",
             "seed_post": "Good morning, Storhampton! Tune in for the latest national news updates.",
         },
         "international": {
@@ -80,7 +80,7 @@ def get_news_agent_configs(
             "type": "international",
             "coverage": "international news",
             "schedule": "hourly",
-            "mastodon_username": "global_news_network",
+            "sm_account_username": "global_news_network",
             "seed_post": "Good morning, Storhampton! Tune in for the latest international news updates.",
         },
     }
@@ -229,8 +229,8 @@ def get_agents_config(sim: SimConfig) -> tuple[AgentsConfig, dict[Any, Any]]:
         directory=all_agents,
         initial_observations=[
             "{name} is at home, they have just woken up.",
-            "{name} remembers they want to update their Mastodon bio.",
-            "{name} remembers they want to read their Mastodon feed to catch up on news",
+            "{name} remembers they want to update their social media account bio.",
+            "{name} remembers they want to read their social media feed to catch up on news",
         ],
         inputs=AgentInputs(
             news_file=agents_dict["inputs"]["news_file"],
@@ -332,10 +332,10 @@ def get_soc_sys_config(
     SocialMediaGM = GameMasterConfig(
         prefab=SOCIAL_MEDIA_GAMEMASTER_FILENAME + "__GameMaster",
         params=SocialMediaParams(
-            name="social media game master",
+            name="mastodon_gm",
             calls_to_action={"social_media_action": CALL_TO_ACTION},
             sim_role=sim_role,
-            app_module=sim.app_module,
+            app_module_path=sim.app_module_path,
             sm_user_data=sm_user_data,
             use_server=USE_SERVER,
             app_description=SOCIAL_MEDIA_USAGE_INSTRUCTIONS,

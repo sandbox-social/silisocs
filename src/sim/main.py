@@ -89,6 +89,7 @@ def main(cfg: ExperimentConfig):
         hydra.core.hydra_config.HydraConfig.get().runtime.output_dir,
         hydra.core.hydra_config.HydraConfig.get().job.name,
     )
+    print(f"Storing output:{cfg.sc.sim.output_rootname}")
     os.makedirs(cfg.sc.sim.output_rootname, exist_ok=True)
 
     # instantiate system logger and load environment variables from .env file
@@ -131,9 +132,7 @@ def main(cfg: ExperimentConfig):
     instances = sc.agents.directory + sc.soc_sys.game_masters
 
     custom_entity_map = {
-        instance.prefab: get_prefab_instance(
-            SCENARIO_NAME, instance.prefab, instance.params.sim_role.module_path
-        )
+        instance.prefab: get_prefab_instance(instance.prefab, instance.params.sim_role.module_path)
         for instance in instances
         if instance.prefab not in concordia_entity_map
     }
