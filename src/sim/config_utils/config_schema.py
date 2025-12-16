@@ -3,9 +3,6 @@ from typing import Any
 
 from omegaconf import MISSING, OmegaConf
 
-# Reference for traceability (remove for deployment)
-from scenarios.election.config_constants import SCENARIO_NAME
-
 # ============================================================================
 # Structured Configuration Loading
 # ============================================================================
@@ -29,7 +26,7 @@ class ExperimentConfig:
 # ============================================================================
 
 
-def register_configs(scenario_name: str | None = SCENARIO_NAME):
+def register_configs(scenario_name: str | None):
     """
     Register structured experiment configs with Hydra's ConfigStore.
 
@@ -83,7 +80,7 @@ def register_configs(scenario_name: str | None = SCENARIO_NAME):
 
     hydra_overrides = {
         "job": {"name": job_label_with_time},
-        "run": {"dir": f"scenarios/{scenario_name}/outputs/{job_label}"},
+        "run": {"dir": f"src/scenarios/{scenario_name}/outputs/{job_label}"},
         "output_subdir": f"configs/{job_label}",
     }
 
@@ -118,4 +115,104 @@ def register_configs(scenario_name: str | None = SCENARIO_NAME):
 
     cs.store(name="config_schema", node=ConcreteExperimentConfig)
 
-    return ConcreteExperimentConfig
+    return ConcreteExperimentConfig, sc_cfg, hydra_overrides
+
+
+# ============================================================================
+# Main Block for Writing Configs
+# ============================================================================
+
+if __name__ == "__main__":
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="Generate Hydra config YAML files")
+    parser.add_argument(
+        "--scenario", type=str, required=True, help="Name of the scenario to generate configs for"
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="conf",
+        help="Base output directory for config files (default: conf)",
+    )
+    args = parser.parse_args()
+
+    # Register and generate configs
+    print(f"Generating configs for scenario: {args.scenario}")
+    _, sc_cfg, hydra_overrides = register_configs(args.scenario)
+
+    # Create output directory structure
+    base_dir = Path(args.output_dir)
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create subdirectories
+    hydra_dir = base_dir / "hydra"
+    sim_dir = base_dir / "sim"
+    agents_dir = base_dir / "agents"
+    soc_sys_dir = base_dir / "soc_sys"
+    probes_dir = base_dir / "probes"
+
+    for dir_path in [hydra_dir, sim_dir, agents_dir, soc_sys_dir, probes_dir]:
+        dir_path.mkdir(parents=True, exist_ok=True)
+
+    # Write hydra config
+    hydra_file = hydra_dir / f"{args.scenario}_hydra.yaml"
+    with open(hydra_file, "w") as f:
+        OmegaConf.save(config=hydra_overrides, f=f)
+    print(f"✓ Written: {hydra_file}")
+
+    # Write sim config
+    sim_file = sim_dir / f"{args.scenario}_sim.yaml"
+    with open(sim_file, "w") as f:
+        OmegaConf.save(config=sc_cfg.sim, f=f)
+    print(f"✓ Written: {sim_file}")
+
+    # Write agents config
+    agents_file = agents_dir / f"{args.scenario}_agents.yaml"
+    with open(agents_file, "w") as f:
+        OmegaConf.save(config=sc_cfg.agents, f=f)
+    print(f"✓ Written: {agents_file}")
+
+    # Write soc_sys config
+    soc_sys_file = soc_sys_dir / f"{args.scenario}_soc_sys.yaml"
+    with open(soc_sys_file, "w") as f:
+        OmegaConf.save(config=sc_cfg.soc_sys, f=f)
+    print(f"✓ Written: {soc_sys_file}")
+
+    # Write probes config
+    probes_file = probes_dir / f"{args.scenario}_probes.yaml"
+    with open(probes_file, "w") as f:
+        OmegaConf.save(config=sc_cfg.probes, f=f)
+    print(f"✓ Written: {probes_file}")
+
+    # Write root config with references to all components
+    root_config = {
+        "defaults": [
+            {"hydra": f"{args.scenario}_hydra"},
+            {"sim": f"{args.scenario}_sim"},
+            {"agents": f"{args.scenario}_agents"},
+            {"soc_sys": f"{args.scenario}_soc_sys"},
+            {"probes": f"{args.scenario}_probes"},
+            "_self_",
+        ]
+    }
+    root_file = base_dir / "config.yaml"
+    with open(root_file, "w") as f:
+        OmegaConf.save(config=root_config, f=f)
+    print(f"✓ Written: {root_file}")
+
+    print(f"\n✅ Config generation complete! Files written to: {base_dir.absolute()}")
+    print("\nDirectory structure:")
+    print(f"  {base_dir}/")
+    print("  ├── config.yaml")
+    print("  ├── hydra/")
+    print(f"  │   └── {args.scenario}_hydra.yaml")
+    print("  ├── sim/")
+    print(f"  │   └── {args.scenario}_sim.yaml")
+    print("  ├── agents/")
+    print(f"  │   └── {args.scenario}_agents.yaml")
+    print("  ├── soc_sys/")
+    print(f"  │   └── {args.scenario}_soc_sys.yaml")
+    print("  └── probes/")
+    print(f"      └── {args.scenario}_probes.yaml")

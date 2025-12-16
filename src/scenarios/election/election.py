@@ -58,7 +58,7 @@ class Scenario(AbstractScenario):
         Defines which derived agent class corresponds to which role.
         """
         return {
-            # "news": ExogenousAgent,
+            # "news_account": ExogenousAgent,
             # "voter": SimpleAgent,
         }
 

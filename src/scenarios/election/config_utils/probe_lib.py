@@ -1,6 +1,6 @@
 import re
 
-from sim_utils.agent_speech_utils import AgentQuery
+from sim.sim_utils.agent_speech_utils import AgentQuery
 
 
 class VotePref(AgentQuery):

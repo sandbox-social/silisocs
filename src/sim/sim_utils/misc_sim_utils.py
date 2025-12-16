@@ -17,24 +17,6 @@ with warnings.catch_warnings():
     import sentence_transformers
 
 
-def get_scenario_config_type():
-    # This line is now outside the function, as discussed, and reads the environment variable
-    SCENARIO_NAME_RUNTIME = os.environ.get("SCENARIO_NAME", "election")
-
-    # Dynamically determine the module path for the concrete config
-    CONFIG_MODULE_PATH = (
-        f"scenarios.{SCENARIO_NAME_RUNTIME}.config_dataclasses"  # Or whatever your file is
-    )
-    CONFIG_CLASS_NAME = (
-        f"{SCENARIO_NAME_RUNTIME.capitalize()}ScenarioConfig"  # e.g., "ElectionScenarioConfig"
-    )
-
-    # 1. Import the concrete config class dynamically
-    # NOTE: This only loads the class object, not an instance.
-    scenario_module = importlib.import_module(CONFIG_MODULE_PATH)
-    ConcreteScenarioConfigClass = getattr(scenario_module, CONFIG_CLASS_NAME)
-
-
 def write_concordia_logs(results_log, output_rootname):
     file_path = os.path.join(output_rootname, "logs.html")
     try:
@@ -45,13 +27,13 @@ def write_concordia_logs(results_log, output_rootname):
         print(f"Error saving HTML content: {e}")
 
 
-def get_prefab_instance(entity_prefab):
-    print(f"[Loader] Loading prefab: {entity_prefab}")
+def get_prefab_instance(scenario_name, entity_prefab, module_path):
+    print(f"[Loader] Loading prefab: {entity_prefab} from {module_path}")
     entity_name, entity_type = entity_prefab.split("__")
     try:
         # e.g. importlib.import_module("example_sim_pkg.entity_lib.voter")
-        build_entity_module = importlib.import_module(f"example_sim_pkg.entity_lib.{entity_name}")
-        # e.g., getattr(module, "AgentBuilder")
+        build_entity_module = importlib.import_module(module_path)
+        # e.g., getattr(module, "Entity")
         build_entity_class = getattr(build_entity_module, entity_type)
         print(type(build_entity_class))
     except ImportError:

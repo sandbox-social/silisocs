@@ -101,7 +101,7 @@ def deploy_probes_to_agent(agent, queries, probe_event_logger):
 
 
 def deploy_probes(agents, probes, probe_event_logger):
-    query_lib_module = "example_sim_pkg" + probes["query_lib_module"]
+    query_lib_module = probes["query_lib_module"]
     queries_data = probes["queries_data"].values()
     queries = []
     for query_data in queries_data:

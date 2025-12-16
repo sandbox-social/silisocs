@@ -61,13 +61,19 @@ PARTISAN_TYPES = ["conservative", "progressive"]
 CANDIDATE_INFO = {
     "conservative": {
         "name": "Bill Fredrickson",
-        "gender": "male",
-        "policy_proposals": "providing tax breaks to local industry and creating jobs to help grow the economy.",
+        "policy_proposals": [
+            "providing tax breaks to local industry and creating jobs to help grow the economy."
+        ],
+        "persona": "Bill Fredrickson is a 45 year old local businessman with conservative politics and an outgoing personality.",
+        "style": "Bill Fredrickson uses direct language, writes about local political issues, and comments playfully on sports.",
     },
     "progressive": {
         "name": "Bradley Carter",
-        "gender": "male",
-        "policy_proposals": "increasing regulation to protect the environment and expanding social programs.",
+        "policy_proposals": [
+            "increasing regulation to protect the environment and expanding social programs."
+        ],
+        "persona": "Bradley Carter is a 35 year old high school teacher with progressive politics and an activist personality.",
+        "style": "Bradley Carter uses inviting language, writes about local political issues, and comments on local nature.",
     },
 }
 

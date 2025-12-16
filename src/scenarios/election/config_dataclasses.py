@@ -12,6 +12,8 @@ from sim.config_utils.abstract_scenario import (
     AbstractGameMasterParams,
     AbstractInteractionPremiseTemplate,
     AbstractSettingDetails,
+    AgentParams,
+    SimRole,
 )
 
 # ============================================================================
@@ -20,38 +22,19 @@ from sim.config_utils.abstract_scenario import (
 
 
 @dataclass
-class SimRole:
-    name: str
-    model_module_path: str
-
-
-@dataclass
-class SocialMediaUserParams:
-    name: str
+class SocialMediaUserParams(AgentParams):
     seed_post: str
-    simrole_dict: SimRole
     bio: str
-    context: str
-    style: str
 
 
 @dataclass
-class Voter(SocialMediaUserParams):
-    policy_proposals: str
-    goal: str
-    gender: str
+class VoterParams(SocialMediaUserParams):
+    election_info: str
 
 
 @dataclass
-class NewsAccount(SocialMediaUserParams):
+class NewsAccountParams(SocialMediaUserParams):
     posts: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass
-class Candidate(SocialMediaUserParams):
-    policy_proposals: str
-    goal: str
-    gender: str
 
 
 @dataclass(kw_only=True)
@@ -80,7 +63,6 @@ class AgentInputs(AbstractAgentInputs):
 @dataclass
 class CandidateInfo:
     name: str
-    gender: str
     policy_proposals: str
 
 
@@ -93,20 +75,20 @@ class CandidatesInfo:
 @dataclass
 class ActiveRatesPerStep:
     candidate: float = 0.7
-    exogenous: float = 1.0
+    news_account: float = 1.0
     voter: float = 0.8
 
 
 @dataclass
 class InitialFollowProb:
     candidate: dict[str, float] = field(
-        default_factory=lambda: {"candidate": 0.4, "news": 1.0, "voter": 0.4}
+        default_factory=lambda: {"candidate": 0.4, "news_account": 1.0, "voter": 0.4}
     )
-    news: dict[str, float] = field(
-        default_factory=lambda: {"candidate": 0.4, "news": 1.0, "voter": 0.4}
+    news_account: dict[str, float] = field(
+        default_factory=lambda: {"candidate": 0.4, "news_account": 1.0, "voter": 0.4}
     )
     voter: dict[str, float] = field(
-        default_factory=lambda: {"candidate": 0.4, "news": 1.0, "voter": 0.4}
+        default_factory=lambda: {"candidate": 0.4, "news_account": 1.0, "voter": 0.4}
     )
 
 
@@ -118,23 +100,24 @@ class SimRoleParameters:
 
 @dataclass
 class UserData:
-    simrole_parameters: SimRoleParameters
-    simroles: dict[str, str] = field(default_factory=dict)
+    sim_role_parameters: SimRoleParameters
+    sim_roles: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
 class SettingDetails(AbstractSettingDetails):
     candidate_info: CandidatesInfo
-    simrole_parameters: SimRoleParameters
+    sim_role_parameters: SimRoleParameters
 
 
 @dataclass
 class SocialMediaParams(AbstractGameMasterParams):
-    name: str = "Social Media Game Master"
-    call_to_action: str = "Engage with social media"
+    name: str
+    calls_to_action: dict[str, str]
+    sim_role: SimRole
     app_module: str = "mastodon_sim"
     sm_user_data: UserData = field(
-        default_factory=lambda: UserData(simrole_parameters=SimRoleParameters(), simroles={})
+        default_factory=lambda: UserData(sim_role_parameters=SimRoleParameters(), sim_roles={})
     )
     use_server: bool = False
     app_description: str = "Social media platform simulation"
@@ -177,4 +160,4 @@ class SocSysConfig:
 @dataclass
 class ProbesConfig:
     queries_data: dict[int, Any] = field(default_factory=dict)
-    query_lib_module: str = "scenarios.election.probe_lib"
+    query_lib_module: str = "scenarios.election.config_utils.probe_lib"

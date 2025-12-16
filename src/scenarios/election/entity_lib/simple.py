@@ -43,7 +43,7 @@ class Entity(prefab_lib.Prefab):
           An entity.
         """
         agent_name = self.params.get("name", "Alice")
-        randomize_choices = self.params.get("randomize_choices", True)
+
         election_info = self.params.get("election_info", "")
 
         instructions = agent_components.instructions.Instructions(
@@ -89,7 +89,7 @@ class Entity(prefab_lib.Prefab):
         act_component = agent_components.concat_act_component.ConcatActComponent(
             model=model,
             component_order=component_order,
-            randomize_choices=randomize_choices,
+            randomize_choices=False,
         )
 
         agent = entity_agent_with_logging.EntityAgentWithLogging(

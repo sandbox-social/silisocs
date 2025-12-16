@@ -10,6 +10,7 @@ from sim.config_utils.abstract_scenario import (
     QueryData,
     SettingInfo,
     SimConfig,
+    SimRole,
 )
 
 from .config_constants import (
@@ -28,20 +29,18 @@ from .config_dataclasses import (
     AgentConfig,
     AgentInputs,
     AgentsConfig,
-    Candidate,
     CandidateInfo,
     CandidatesInfo,
     InitialFollowProb,
     InteractionPremiseTemplate,
-    NewsAccount,
+    NewsAccountParams,
     ProbesConfig,
     SettingDetails,
-    SimRole,
     SimRoleParameters,
     SocialMediaParams,
     SocSysConfig,
     UserData,
-    Voter,
+    VoterParams,
 )
 
 # ============================================================================
@@ -94,16 +93,20 @@ def get_news_agent_configs(
         posts = {k: v[0] if include_images else "" for k, v in news.items()}
 
     # Create AgentConfig for news agent using dataclass
+    sim_role = SimRole(
+        name="news_account", module_path="scenarios.election.entity_lib.simple"
+    )  # exogenous")
     agent_config = AgentConfig(
-        prefab="exogeneous__Entity",
-        params=NewsAccount(
+        prefab=sim_role.module_path.split(".")[-1] + "__Entity",
+        params=NewsAccountParams(
             name=news_data["name"],
-            simrole_dict=SimRole(name="news", model_module_path="agent_lib.exogenous"),
+            sim_role=sim_role,
             seed_post=news_data.get("seed_post", ""),
             bio=f"Providing {news_data['coverage']} to the users of Storhampton.social.",
             posts=posts,
-            context="",
+            context="A small-town newspaper covering local politics",
             style="",
+            goal=None,
         ),
     )
     news_agent_configs.append(agent_config)
@@ -113,7 +116,7 @@ def get_news_agent_configs(
 
 def get_followership_connection_stats(roles: list) -> dict[Any, dict[Any, Any]]:
     """Generate followership statistics."""
-    fully_connected_targets = ["candidate", "news"]
+    fully_connected_targets = ["candidate", "news_account"]
     p_from_to: dict[str, dict[str, float]] = {}
     for role_i in roles:
         p_from_to[role_i] = {}
@@ -138,25 +141,28 @@ def get_agents_config(sim: SimConfig) -> tuple[AgentsConfig, dict[Any, Any]]:
         "inputs": input_data,
         "directory": [],
     }
-
-    # Add candidates
+    policy_text = ""
+    for partisan_type in PARTISAN_TYPES:
+        candidate = CANDIDATE_INFO[partisan_type]
+        policy_text += (
+            f"{candidate['name']} campaigns on {' and '.join(candidate['policy_proposals'])}"
+        )
+    # Add candidates (one of each partisan type)
     candidate_configs: list[AgentConfig] = []
-    # One of each partisan type
+    sim_role = SimRole(name="candidate", module_path="scenarios.election.entity_lib.simple")
     for partisan_type in PARTISAN_TYPES:
         candidate = CANDIDATE_INFO[partisan_type].copy()
-        policy_text = f"{candidate['name']} campaigns on {candidate['policy_proposals']}"
         agent_config = AgentConfig(
-            prefab="candidate_Entity",
-            params=Candidate(
-                name=candidate["name"],
+            prefab=sim_role.module_path.split(".")[-1] + "__Entity",
+            params=VoterParams(
+                name=str(candidate["name"]),
                 seed_post="",
-                simrole_dict=SimRole(name="candidate", model_module_path="agent_lib.simple"),
+                sim_role=sim_role,
                 bio="",
-                gender=candidate["gender"],
-                policy_proposals=policy_text,
+                election_info=policy_text,
                 goal=f"{candidate['name']}'s goal is to win the election and become the mayor of Storhampton.",
-                context="",
-                style="",
+                context=str(candidate["persona"]),
+                style=str(candidate["style"]),
             ),
         )
         candidate_configs.append(agent_config)
@@ -190,22 +196,28 @@ def get_agents_config(sim: SimConfig) -> tuple[AgentsConfig, dict[Any, Any]]:
     with open(
         f"src/scenarios/election/input/personas/{agents_dict['inputs']['persona_file']}"
     ) as f:
-        persona_rows = json.load(f)
+        persona_data = json.load(f)
 
     voter_configs: list[AgentConfig] = []
-    for row in persona_rows[: num_agents - len(candidate_configs)]:
+    sim_role = SimRole(name="voter", module_path="scenarios.election.entity_lib.simple")
+    for persona in persona_data[: num_agents - len(candidate_configs)]:
+        collapsed_persona_fields = (
+            "\n".join(
+                f"{k}: {v}" for k, v in persona.items() if k not in ["Name", "User_Reference"]
+            )
+            + "\n"
+        )
         agent_config = AgentConfig(
-            prefab="voter__Entity",
-            params=Voter(
-                name=row["Name"],
+            prefab=sim_role.module_path.split(".")[-1] + "__Entity",
+            params=VoterParams(
+                name=persona["Name"],
                 goal=" Their goal is have a good day and vote in the election.",
-                gender=row["Sex"],
-                simrole_dict=SimRole(name="voter", model_module_path="agent_lib.simple"),
-                policy_proposals=policy_text,
+                sim_role=sim_role,
+                election_info=policy_text,
                 seed_post="",
                 bio="",
-                context=row["Context"],
-                style=row["Style"],
+                context=collapsed_persona_fields,
+                style=persona["Style"],
             ),
         )
         voter_configs.append(agent_config)
@@ -214,7 +226,7 @@ def get_agents_config(sim: SimConfig) -> tuple[AgentsConfig, dict[Any, Any]]:
     all_agents = voter_configs + candidate_configs + news_agent_configs
 
     agents_config = AgentsConfig(
-        directory=list(all_agents),
+        directory=all_agents,
         initial_observations=[
             "{name} is at home, they have just woken up.",
             "{name} remembers they want to update their Mastodon bio.",
@@ -231,14 +243,14 @@ def get_agents_config(sim: SimConfig) -> tuple[AgentsConfig, dict[Any, Any]]:
 
 def get_auxillary_agent_data_from_config(
     agent_config_list: list[AgentConfig],
-) -> tuple[dict[str, Any], dict[str, str], dict[str, str]]:
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, str]]:
     roles: dict[str, Any] = {}
     player_specific_memories_map = {}
     player_specific_context_map = {}
     for agent_data in agent_config_list:
-        roles[agent_data.params.name] = agent_data.params.simrole_dict.name
+        roles[agent_data.params.name] = agent_data.params.sim_role.name
         context_parts = [agent_data.params.context]
-        player_specific_memories_map[agent_data.params.name] = ""
+        player_specific_memories_map[agent_data.params.name] = [""]
         player_specific_context_map[agent_data.params.name] = "\n".join(context_parts)
     return (roles, player_specific_memories_map, player_specific_context_map)
 
@@ -257,7 +269,7 @@ def get_soc_sys_config(
             f"{candidate['name']} campaigns on {' and '.join(candidate['policy_proposals'])}"
         )
         candidate_info_dict[partisan_type] = CandidateInfo(
-            name=candidate["name"], gender=candidate["gender"], policy_proposals=policy_text
+            name=str(candidate["name"]), policy_proposals=policy_text
         )
 
     candidates_info = CandidatesInfo(
@@ -266,12 +278,12 @@ def get_soc_sys_config(
     )
 
     # Build role parameters
-    active_rates = ActiveRatesPerStep(candidate=0.7, voter=0.8, exogenous=1.0)
-    roles_tmp = ["candidate", "news", "voter"]
+    active_rates = ActiveRatesPerStep(candidate=0.7, voter=0.8, news_account=1.0)
+    roles_tmp = ["candidate", "news_account", "voter"]
     initial_follow_prob_dict = get_followership_connection_stats(roles_tmp)
     initial_follow_prob = InitialFollowProb(
         candidate=initial_follow_prob_dict.get("candidate", {}),
-        news=initial_follow_prob_dict.get("news", {}),
+        news_account=initial_follow_prob_dict.get("news_account", {}),
         voter=initial_follow_prob_dict.get("voter", {}),
     )
 
@@ -283,9 +295,9 @@ def get_soc_sys_config(
         get_auxillary_agent_data_from_config(agent_data)
     )
 
-    sm_user_data = UserData(simrole_parameters=simrole_params, simroles=simroles)
+    sm_user_data = UserData(sim_role_parameters=simrole_params, sim_roles=simroles)
     setting_details = SettingDetails(
-        candidate_info=candidates_info, simrole_parameters=simrole_params
+        candidate_info=candidates_info, sim_role_parameters=simrole_params
     )
 
     description = "\n".join([candidate_info_dict[p].policy_proposals for p in PARTISAN_TYPES])
@@ -316,12 +328,14 @@ def get_soc_sys_config(
         ),
     )
 
+    sim_role = SimRole(name="social media game master", module_path="sim.entities.social_media")
     SocialMediaGM = GameMasterConfig(
         prefab=SOCIAL_MEDIA_GAMEMASTER_FILENAME + "__GameMaster",
         params=SocialMediaParams(
-            name="mastodon",
+            name="social media game master",
+            calls_to_action={"social_media_action": CALL_TO_ACTION},
+            sim_role=sim_role,
             app_module=sim.app_module,
-            call_to_action=CALL_TO_ACTION,
             sm_user_data=sm_user_data,
             use_server=USE_SERVER,
             app_description=SOCIAL_MEDIA_USAGE_INSTRUCTIONS,
@@ -349,16 +363,20 @@ def get_probes_config(sim: SimConfig) -> ProbesConfig:
             0: QueryData(
                 query_type="VotePref",
                 interaction_premise_template=InteractionPremiseTemplate(
-                    candidate1=candidates[0], candidate2=candidates[1]
+                    candidate1=str(candidates[0]), candidate2=str(candidates[1])
                 ),
             ),
             1: QueryData(
                 query_type="Favorability",
-                interaction_premise_template=InteractionPremiseTemplate(candidate=candidates[0]),
+                interaction_premise_template=InteractionPremiseTemplate(
+                    candidate=str(candidates[0])
+                ),
             ),
             2: QueryData(
                 query_type="Favorability",
-                interaction_premise_template=InteractionPremiseTemplate(candidate=candidates[1]),
+                interaction_premise_template=InteractionPremiseTemplate(
+                    candidate=str(candidates[1])
+                ),
             ),
             3: QueryData(query_type="VoteIntent"),
         }

@@ -69,7 +69,7 @@ class GameMaster(prefab_lib.Prefab):
 
         user_mapping = {
             agent_name.split()[0]: f"user{i + 1:04d}"
-            for i, agent_name in enumerate(user_data["roles"])
+            for i, agent_name in enumerate(user_data["sim_roles"])
         }  # first name keys
         print(user_mapping)
         sm_app.set_user_mapping(user_mapping)
@@ -126,8 +126,8 @@ class GameMaster(prefab_lib.Prefab):
         sm_app.update_profile(agent_name, bio="")
 
         # user's first post
-        if hasattr(agent, "seed_toot"):
-            sm_app.post_toot(agent_name, status=agent.seed_toot)
+        if hasattr(agent, "seed_post"):
+            sm_app.post_toot(agent_name, status=agent.seed_post)
         else:
             sm_app.post_toot(agent_name, status=write_seed_toot(agent))
 
@@ -137,16 +137,18 @@ class GameMaster(prefab_lib.Prefab):
         user_data: dict[str, Any],
     ) -> dict[str, Any]:
         # initiailize initial followership network randomly based on pair role follow probabilities
-        role_prob_matrix = user_data["role_parameters"]["initial_follow_prob"]
+        role_prob_matrix = user_data["sim_role_parameters"]["initial_follow_prob"]
 
         active_rates: dict[str, float] = {}
         following_lists: dict[str, list] = {}
-        for agent_i, role_i in user_data["roles"].items():
+        for agent_i, role_i in user_data["sim_roles"].items():
             # per-step rate at which user is active
-            active_rates[agent_i] = user_data["role_parameters"]["active_rates_per_episode"][role_i]
+            active_rates[agent_i] = user_data["sim_role_parameters"]["active_rates_per_episode"][
+                role_i
+            ]
 
             following_lists[agent_i] = []
-            for agent_j, role_j in user_data["roles"].items():
+            for agent_j, role_j in user_data["sim_roles"].items():
                 if agent_i == agent_j:  # Agents cannot follow themselves
                     continue
                 prob = role_prob_matrix[role_i][role_j]

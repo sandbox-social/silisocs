@@ -39,6 +39,23 @@ class SimConfig:
 
 
 @dataclass
+class SimRole:
+    name: str
+    module_path: str
+
+
+@dataclass
+class AgentParams:
+    name: str
+    context: (
+        str  # holds all persona information (demographic+personality). Is used to create backstory
+    )
+    sim_role: SimRole
+    style: str  # post writing style and topics
+    goal: str | None
+
+
+@dataclass
 class AbstractAgentInputs:
     pass
 
@@ -73,7 +90,8 @@ class InitializerConfig(prefab_lib.InstanceConfig):
 @dataclass
 class AbstractGameMasterParams:
     name: str
-    call_to_action: str
+    calls_to_action: dict[str, str]
+    sim_role: SimRole
 
 
 @dataclass(kw_only=True)
