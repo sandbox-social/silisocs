@@ -17,9 +17,24 @@
 from concordia.components.agent import constant
 from concordia.typing import logging
 
+from sim.sim_utils.misc_sim_utils import ConfigStore
+
 # from sim.sim_utils.misc_sim_utils import ConfigStore
 
 DEFAULT_INSTRUCTIONS_PRE_ACT_KEY = "Role playing instructions"
+CONCORDIA_DEFAULT_INSTRUCTIONS = (
+    "The instructions for how to play the role of {agent_name} are as "
+    "follows. This is a social science experiment studying how well you "
+    "play the role of a character named {agent_name}. The experiment "
+    "is structured as a tabletop roleplaying game (like dungeons and "
+    "dragons). However, in this case it is a serious social science "
+    "experiment and simulation. The goal is to be realistic. It is "
+    "important to play the role of a person like {agent_name} as "
+    "accurately as possible, i.e., by responding in ways that you think "
+    "it is likely a person like {agent_name} would respond, and taking "
+    "into account all information about {agent_name} that you have. "
+    "Always use third-person limited perspective."
+)
 
 
 class Instructions(constant.Constant):
@@ -32,19 +47,7 @@ class Instructions(constant.Constant):
         pre_act_key: str = DEFAULT_INSTRUCTIONS_PRE_ACT_KEY,
         logging_channel: logging.LoggingChannel = logging.NoOpLoggingChannel,
     ):
-        # cfg = ConfigStore.get_config()
-        # state = cfg.sim.roleplaying_instructions
-        # state = (
-        #     f'The instructions for how to play the role of {agent_name} are as '
-        #     'follows. This is a social science experiment studying how well you '
-        #     f'play the role of a character named {agent_name}. The experiment '
-        #     'is structured as a tabletop roleplaying game (like dungeons and '
-        #     'dragons). However, in this case it is a serious social science '
-        #     'experiment and simulation. The goal is to be realistic. It is '
-        #     f'important to play the role of a person like {agent_name} as '
-        #     f'accurately as possible, i.e., by responding in ways that you think '
-        #     f'it is likely a person like {agent_name} would respond, and taking '
-        #     f'into account all information about {agent_name} that you have. '
-        #     'Always use third-person limited perspective.'
-        # )
+        cfg = ConfigStore.get_config()
+        state = cfg.sim.roleplaying_instructions
+
         super().__init__(state=state, pre_act_key=pre_act_key, logging_channel=logging_channel)

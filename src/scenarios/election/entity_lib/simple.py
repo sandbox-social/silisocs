@@ -54,12 +54,12 @@ class Entity(prefab_lib.Prefab):
         election_info_key = "Election Information"
         election_information = agent_components.constant.Constant(
             state=(election_info),
-            pre_act_label="Scenario Information\n",
+            pre_act_label="Scenario Information",
         )
 
         observation_to_memory = agent_components.observation.ObservationToMemory()
 
-        observation_label = "\nObservation"
+        observation_label = "Observation"
         observation = agent_components.observation.LastNObservations(
             history_length=100, pre_act_label=observation_label
         )

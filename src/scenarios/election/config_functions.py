@@ -16,12 +16,14 @@ from sim.config_utils.abstract_scenario import (
 from .config_constants import (
     BASE_FOLLOWERSHIP_CONNECTION_PROBABILITY,
     CALL_TO_ACTION,
+    CANDIDATE_ACTIVE_RATE,
     CANDIDATE_INFO,
     PARTISAN_TYPES,
     SCENARIO_NAME,
     SHARED_MEMORIES_TEMPLATE,
     SOCIAL_MEDIA_GAMEMASTER_FILENAME,
     SOCIAL_MEDIA_USAGE_INSTRUCTIONS,
+    VOTER_ACTIVE_RATE,
 )
 from .config_dataclasses import (
     ActiveRatesPerStep,
@@ -144,7 +146,7 @@ def get_agents_config(sim: SimConfig) -> tuple[AgentsConfig, dict[Any, Any]]:
     for partisan_type in PARTISAN_TYPES:
         candidate = CANDIDATE_INFO[partisan_type]
         policy_text += (
-            f"{candidate['name']} campaigns on {' and '.join(candidate['policy_proposals'])}"
+            f"{candidate['name']} campaigns on {' and '.join(candidate['policy_proposals'])}. \n"
         )
     # Add candidates (one of each partisan type)
     candidate_configs: list[AgentConfig] = []
@@ -210,7 +212,7 @@ def get_agents_config(sim: SimConfig) -> tuple[AgentsConfig, dict[Any, Any]]:
             prefab=sim_role.module_path.split(".")[-1] + "__Entity",
             params=VoterParams(
                 name=persona["Name"],
-                goal=" Their goal is have a good day and vote in the election.",
+                goal="Their goal is have a good day and vote in the election.",
                 sim_role=sim_role,
                 election_info=policy_text,
                 seed_post="",
@@ -277,7 +279,9 @@ def get_soc_sys_config(
     )
 
     # Build role parameters
-    active_rates = ActiveRatesPerStep(candidate=0.7, voter=0.8, news_account=1.0)
+    active_rates = ActiveRatesPerStep(
+        candidate=CANDIDATE_ACTIVE_RATE, voter=VOTER_ACTIVE_RATE, news_account=1.0
+    )
     roles_tmp = ["candidate", "news_account", "voter"]
     initial_follow_prob_dict = get_followership_connection_stats(roles_tmp)
     initial_follow_prob = InitialFollowProb(
@@ -299,7 +303,7 @@ def get_soc_sys_config(
         candidate_info=candidates_info, sim_role_parameters=simrole_params
     )
 
-    description = "\n".join([candidate_info_dict[p].policy_proposals for p in PARTISAN_TYPES])
+    description = " \n".join([candidate_info_dict[p].policy_proposals for p in PARTISAN_TYPES])
 
     setting_info = SettingInfo(description=description, details=setting_details)
 

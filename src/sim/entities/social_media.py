@@ -55,10 +55,10 @@ class GameMaster(prefab_lib.Prefab):
         """
         name = str(self.params.get("name"))
         calls_to_action = self.params.get(
-            "call_to_action", {"social media action": "Take an action on social media"}
+            "calls_to_action", {"social media action": "Take an action on social media"}
         )
         user_data = self.params["sm_user_data"]
-        call_to_sm_action = calls_to_action["social media action"]
+        call_to_sm_action = calls_to_action["social_media_action"]
 
         cfg = ConfigStore.get_config()
         action_logger = EventLogger(

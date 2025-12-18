@@ -21,18 +21,19 @@ from sim.config_utils.abstract_scenario import (
 # ============================================================================
 
 
-@dataclass
+@dataclass(frozen=True)
 class SocialMediaUserParams(AgentParams):
     seed_post: str
     bio: str
+    goal: str | None
 
 
-@dataclass
+@dataclass(frozen=True)
 class VoterParams(SocialMediaUserParams):
     election_info: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class NewsAccountParams(SocialMediaUserParams):
     posts: dict[str, str] = field(default_factory=dict)
 
@@ -49,7 +50,7 @@ class AgentConfig(prefab_lib.InstanceConfig):
 # ============================================================================
 
 
-@dataclass
+@dataclass(frozen=True)
 class AgentInputs(AbstractAgentInputs):
     news_file: str = "default_news.json"
     persona_file: str = "personas.csv"
@@ -60,26 +61,26 @@ class AgentInputs(AbstractAgentInputs):
 # ============================================================================
 
 
-@dataclass
+@dataclass(frozen=True)
 class CandidateInfo:
     name: str
     policy_proposals: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class CandidatesInfo:
     conservative: CandidateInfo
     progressive: CandidateInfo
 
 
-@dataclass
+@dataclass(frozen=True)
 class ActiveRatesPerStep:
     candidate: float = 0.7
     news_account: float = 1.0
     voter: float = 0.8
 
 
-@dataclass
+@dataclass(frozen=True)
 class InitialFollowProb:
     candidate: dict[str, float] = field(
         default_factory=lambda: {"candidate": 0.4, "news_account": 1.0, "voter": 0.4}
@@ -92,25 +93,25 @@ class InitialFollowProb:
     )
 
 
-@dataclass
+@dataclass(frozen=True)
 class SimRoleParameters:
     active_rates_per_episode: ActiveRatesPerStep = field(default_factory=ActiveRatesPerStep)
     initial_follow_prob: InitialFollowProb = field(default_factory=InitialFollowProb)
 
 
-@dataclass
+@dataclass(frozen=True)
 class UserData:
     sim_role_parameters: SimRoleParameters
     sim_roles: dict[str, str] = field(default_factory=dict)
 
 
-@dataclass
+@dataclass(frozen=True)
 class SettingDetails(AbstractSettingDetails):
     candidate_info: CandidatesInfo
     sim_role_parameters: SimRoleParameters
 
 
-@dataclass
+@dataclass(frozen=True)
 class SocialMediaParams(AbstractGameMasterParams):
     name: str
     calls_to_action: dict[str, str]
@@ -127,7 +128,7 @@ class SocialMediaParams(AbstractGameMasterParams):
 # ============================================================================
 
 
-@dataclass
+@dataclass(frozen=True)
 class InteractionPremiseTemplate(AbstractInteractionPremiseTemplate):
     candidate: str | None = None
     candidate1: str | None = None
@@ -139,14 +140,14 @@ class InteractionPremiseTemplate(AbstractInteractionPremiseTemplate):
 # ============================================================================
 
 
-@dataclass
+@dataclass()
 class AgentsConfig:
     inputs: AgentInputs = field(default_factory=AgentInputs)
     directory: list[prefab_lib.InstanceConfig] = field(default_factory=list)
     initial_observations: list[str] = field(default_factory=list)
 
 
-@dataclass
+@dataclass()
 class SocSysConfig:
     exp_name: str = "election_experiment"
     game_masters: list[Any] = field(default_factory=list)  # Variable-length list
@@ -156,7 +157,7 @@ class SocSysConfig:
     social_media_usage_instructions: str = ""
 
 
-@dataclass
+@dataclass()
 class ProbesConfig:
     queries_data: dict[int, Any] = field(default_factory=dict)
     query_lib_module: str = "scenarios.election.config_utils.probe_lib"

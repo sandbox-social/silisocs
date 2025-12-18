@@ -16,11 +16,11 @@ RUN_NAME = "run1"
 SEED = 1
 SENTENCE_ENCODER = "sentence-transformers/all-mpnet-base-v2"
 ROLEPLAYING_INSTRUCTIONS = (
-    "<s>"
-    "You are simulating {name}, a character in a social science experiment. "
-    "Always use third-person limited perspective when describing {name}'s thoughts and actions. "
-    "Your goal is to determine the single most appropriate action {name} would take next."
-    "</s>"
+    "<general_instructions> \n"
+    "You are simulating {agent_name}, a character in a social science experiment. \n"
+    "Always use third-person limited perspective when describing {agent_name}'s thoughts and actions. \n"
+    "Your goal is to determine the single most appropriate action {agent_name} would take next. \n"
+    "</general_instructions> \n"
 )
 SCENARIO_NAME = ""  # set in scenario class
 # scenario_specific
@@ -54,13 +54,13 @@ class SimConfig:
 # Abstract base classes for type checking only - NOT for Hydra registration
 
 
-@dataclass
+@dataclass(frozen=True)
 class SimRole:
     name: str
     module_path: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class AgentParams:
     name: str
     context: (
@@ -71,23 +71,23 @@ class AgentParams:
     goal: str | None
 
 
-@dataclass
+@dataclass(frozen=True)
 class AbstractAgentInputs:
     pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class AbstractSettingDetails:
     pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class SettingInfo:
     description: str
     details: Any
 
 
-@dataclass
+@dataclass(frozen=True)
 class InitializerParams:
     next_game_master_name: str
     shared_memories: list[str]
@@ -103,7 +103,7 @@ class InitializerConfig(prefab_lib.InstanceConfig):
     role: prefab_lib.Role = field(default=prefab_lib.Role.INITIALIZER)
 
 
-@dataclass
+@dataclass(frozen=True)
 class AbstractGameMasterParams:
     name: str
     calls_to_action: dict[str, str]
@@ -120,12 +120,12 @@ class GameMasterConfig(prefab_lib.InstanceConfig):
 # ===================================================
 
 
-@dataclass
+@dataclass(frozen=True)
 class AbstractInteractionPremiseTemplate:
     pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class QueryData:
     """Non-generic query data to avoid OmegaConf serialization issues."""
 

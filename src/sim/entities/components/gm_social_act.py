@@ -145,7 +145,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
                 #     )
                 #     media_desc = "Impression of attached image: \n" + media_desc
                 #     print(media_desc)
-                result += f"User: {post['account']['display_name']} (@{post['account']['username']})\nContent: {_clean_html(post['content'])}\n{media_desc}\nToot ID: {post['id']}\n\n"
+                result += f" \n\nUser: {post['account']['display_name']} (@{post['account']['username']})\n\nContent: {_clean_html(post['content'])}\n\n{media_desc}\n\nToot ID: {post['id']}\n\n"
         self._log(result, "", action_spec)
         return result
 

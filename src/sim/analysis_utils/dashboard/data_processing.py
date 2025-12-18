@@ -38,8 +38,9 @@ def get_target_user(row, toot_owner_dict):
     if row.label == "post":
         target_user = row.source_user
     elif row.label in ["like_toot", "boost_toot"]:
-        target_toot_id = row.data["target_toot_id"]
+        target_toot_id = row.data["toot_id"]
         target_user = toot_owner_dict.get(target_toot_id)
+
     elif row.label == "reply":
         target_toot_id = row.data["reply_to"]["toot_id"]
         target_user = toot_owner_dict.get(target_toot_id)

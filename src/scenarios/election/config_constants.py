@@ -15,6 +15,7 @@ Determine what ONE action {name} would take next based on:
 If text-based, the text must reflect their posting style descriptions.
 
 ## OUTPUT FORMAT
+Answer: {name}
 STEP 1: [Analyze {name}'s motivation based on their character]
 STEP 2: [Consider which posts/actions align with {name}'s values]
 STEP 3: [Determine the single most authentic action]
@@ -27,7 +28,7 @@ REASONING: [Brief explanation of why this action fits {name}'s character]
 
 ## EXAMPLE OUTPUT
 STEP 1: {name} is motivated by her interest in educational initiatives and community engagement around the election.
-STEP 2: Chris's post about community priorities resonates with {name}'s values. She hasn't interacted with this post yet.
+STEP 2: Chris's post about community priorities resonates with {name}'s values. They hasn't interacted with this post yet.
 STEP 3: Responding to Chris would allow {name} to engage meaningfully about community values.
 
 FINAL DECISION:
@@ -37,7 +38,7 @@ CONTENT: "I appreciate your focus on community priorities, Chris! As an educator
 REASONING: This reply allows Emily to acknowledge community values while highlighting her educational perspective, which is authentic to her character.
 """
 
-SOCIAL_MEDIA_USAGE_INSTRUCTIONS = " ".join(
+SOCIAL_MEDIA_USAGE_INSTRUCTIONS = " \n".join(
     [
         "MastodonSocialNetworkApp is a social media application.",
         "To share content on Mastodon, users write a 'toot' (equivalent to a tweet or post).",
@@ -107,6 +108,10 @@ SHARED_MEMORIES_TEMPLATE = (
         )
     ]
 )
+
+CANDIDATE_ACTIVE_RATE = 1
+
+VOTER_ACTIVE_RATE = 1
 
 USE_SERVER = True
 
