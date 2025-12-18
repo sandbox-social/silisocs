@@ -22,7 +22,6 @@ from .config_constants import (
     SHARED_MEMORIES_TEMPLATE,
     SOCIAL_MEDIA_GAMEMASTER_FILENAME,
     SOCIAL_MEDIA_USAGE_INSTRUCTIONS,
-    USE_SERVER,
 )
 from .config_dataclasses import (
     ActiveRatesPerStep,
@@ -337,7 +336,6 @@ def get_soc_sys_config(
             sim_role=sim_role,
             app_module_path=sim.app_module_path,
             sm_user_data=sm_user_data,
-            use_server=USE_SERVER,
             app_description=SOCIAL_MEDIA_USAGE_INSTRUCTIONS,
         ),
     )

@@ -1,6 +1,5 @@
 import concurrent.futures
 import dataclasses
-import importlib
 import os
 import random
 from collections.abc import Mapping, Sequence
@@ -12,6 +11,8 @@ from concordia.components import game_master as gm_components
 from concordia.language_model import language_model
 from concordia.typing import prefab as prefab_lib
 
+# import importlib
+from mastodon_sim import apps
 from sim.entities.components import gm_social_act, social_make_observation
 from sim.sim_utils.agent_speech_utils import (
     write_seed_toot,
@@ -65,10 +66,10 @@ class GameMaster(prefab_lib.Prefab):
             os.path.join(cfg.sc.sim.output_rootname, f"{name.split('_')[0]}_action_events.jsonl"),
         )
         action_logger.episode_idx = 0
-        apps = importlib.import_module(self.params["app_module_path"] + ".apps")
+        # apps = importlib.import_module(self.params["app_module_path"] + ".apps")
         sm_app = apps.SocialNetworkApp(
             action_logger=action_logger,
-            perform_operations=self.params.get("use_server", False),
+            perform_operations=cfg.sc.sim.use_server,  # self.params.get("use_server", False),
             app_description=self.params.get("app_description", ""),
         )
 

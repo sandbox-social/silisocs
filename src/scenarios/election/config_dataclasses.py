@@ -119,7 +119,6 @@ class SocialMediaParams(AbstractGameMasterParams):
     sm_user_data: UserData = field(
         default_factory=lambda: UserData(sim_role_parameters=SimRoleParameters(), sim_roles={})
     )
-    use_server: bool = False
     app_description: str = "Social media platform simulation"
 
 

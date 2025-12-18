@@ -7,34 +7,50 @@ from typing import Any, TypeVar
 from concordia.typing import prefab as prefab_lib
 from omegaconf import MISSING
 
+# ========= SimConfig constants =====================
+APP_MODULE_PATH = "mastodon_sim"
+LLM_NAME = "gpt-4o-mini"
+NUM_AGENTS = 20
+NUM_STEPS = 1
+RUN_NAME = "run1"
+SEED = 1
+SENTENCE_ENCODER = "sentence-transformers/all-mpnet-base-v2"
+ROLEPLAYING_INSTRUCTIONS = (
+    "<s>"
+    "You are simulating {name}, a character in a social science experiment. "
+    "Always use third-person limited perspective when describing {name}'s thoughts and actions. "
+    "Your goal is to determine the single most appropriate action {name} would take next."
+    "</s>"
+)
+SCENARIO_NAME = ""  # set in scenario class
+# scenario_specific
+PERSONA_TYPE = "Reddit.Big5"
+USE_NEWS_AGENT = "with_images"
+USE_SERVER = False
+
 
 # ==================================================
 @dataclass
 class SimConfig:
-    app_module_path: str = "mastodon_sim"
-    load_path: str = ""
-    llm_name: str = "gpt-4o-mini"
-    num_agents: int = 20
-    num_steps: int = 1
-    run_name: str = "run1"
-    seed: int = 1
-    sentence_encoder: str = "sentence-transformers/all-mpnet-base-v2"
-    output_rootname: str = ""
-    roleplaying_instructions: str = (
-        "<s>"
-        "You are simulating {name}, a character in a social science experiment. "
-        "Always use third-person limited perspective when describing {name}'s thoughts and actions. "
-        "Your goal is to determine the single most appropriate action {name} would take next."
-        "</s>"
-    )
-    scenario_name: str = "election"  # Default value, can be overridden
+    app_module_path: str = APP_MODULE_PATH
+    llm_name: str = LLM_NAME
+    num_agents: int = NUM_AGENTS
+    num_steps: int = NUM_STEPS
+    run_name: str = RUN_NAME
+    seed: int = SEED
+    sentence_encoder: str = SENTENCE_ENCODER
+    output_rootname: str = ""  # set from hydra fields at runtime
+    roleplaying_instructions: str = ROLEPLAYING_INSTRUCTIONS
+    scenario_name: str = SCENARIO_NAME
     # scenario_specific
-    persona_type: str = "Reddit.Big5"
-    use_news_agent: str = "with_images"
-    use_server: bool = False
+    persona_type: str = PERSONA_TYPE
+    use_news_agent: str = USE_NEWS_AGENT
+    use_server: bool = USE_SERVER
 
 
 # ==================================================
+
+
 # Abstract base classes for type checking only - NOT for Hydra registration
 
 
@@ -177,8 +193,12 @@ class AbstractScenario(ABC):
 
     name: str = field(init=True)
 
+    def generate_sim_config(self):
+        sim_cfg = SimConfig()
+        return sim_cfg
+
     @abstractmethod
-    def generate_config(self, name: str):
+    def generate_config(self):
         pass
 
     @abstractmethod

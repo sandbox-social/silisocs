@@ -123,7 +123,7 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                 probe_event_logger.episode_idx = steps
                 print(f"Episode: {steps}. Deploying survey...", end="")
                 deploy_probes(
-                    entities,  # [agent for agent in entities if roles[agent._agent_name] != "exogenous"], # python src/sim/main_new.py "use_news_agent=None"
+                    entities,  # [agent for agent in entities if cfg.sc.socsys.game_masters[1].params.sm_user_data.sim_roles[agent._agent_name] != "news_account"],
                     probes_config,
                     probe_event_logger,
                 )

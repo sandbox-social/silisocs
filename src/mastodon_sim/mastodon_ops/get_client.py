@@ -23,6 +23,7 @@ def get_client() -> Mastodon:
         mastodon = Mastodon(
             client_id=client_id, client_secret=client_secret, api_base_url=api_base_url
         )
+
         logger.debug("Successfully created Mastodon client.")
         return mastodon
     except MastodonError as e:

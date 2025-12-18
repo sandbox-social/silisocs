@@ -53,7 +53,7 @@ def register_configs(scenario_name: str | None):
     # 2. Generate Config Instance
     # ----------------------------------------------------------------------
     scenario_instance = ScenarioClass()
-    sc_cfg = scenario_instance.generate_config(scenario_instance.name)
+    sc_cfg = scenario_instance.generate_config()
 
     print(f"Generated config type: {type(sc_cfg)}")
     print(f"  sim type: {type(sc_cfg.sim)}")

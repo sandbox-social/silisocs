@@ -115,43 +115,38 @@ def main(cfg: ExperimentConfig):
     SEED = sc.sim.seed
     random.seed(SEED)
 
-    # load language models
-    model = select_large_language_model(
-        sc.sim.llm_name,
-        os.path.join(sc.sim.output_rootname, "prompts_and_responses.jsonl"),
-        True,
-    )
-    embedder = get_sentence_encoder(sc.sim.sentence_encoder)
-
-    # load entity instances and build entity map
+    # load entity instances and build entity map to generate simulation config, then lock cfg
+    instances = sc.agents.directory + sc.soc_sys.game_masters
     concordia_entity_map = {
         **helper_functions.get_package_classes(entity_prefabs),
         **helper_functions.get_package_classes(game_master_prefabs),
     }
-
-    instances = sc.agents.directory + sc.soc_sys.game_masters
-
     custom_entity_map = {
         instance.prefab: get_prefab_instance(instance.prefab, instance.params.sim_role.module_path)
         for instance in instances
         if instance.prefab not in concordia_entity_map
     }
-
     entity_map = concordia_entity_map | custom_entity_map
-
-    # Instantiate simulation object config
     config = prefab_lib.Config(
         default_premise="",
         default_max_steps=120,
         prefabs=entity_map,
         instances=instances,
     )
-
     # Lock the entire config
     OmegaConf.set_readonly(cast(DictConfig, cfg), True)
-
     # Store config globally
     ConfigStore.set_config(cfg)
+
+    # load language models
+    model = select_large_language_model(
+        sc.sim.llm_name,
+        os.path.join(sc.sim.output_rootname, "prompts_and_responses.jsonl"),
+        True,
+    )
+
+    # load embedder
+    embedder = get_sentence_encoder(sc.sim.sentence_encoder)
 
     # Instantiate the simulation engine
     sim_engine = SocialMediaEngine()

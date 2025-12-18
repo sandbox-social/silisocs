@@ -35,7 +35,6 @@ def get_prefab_instance(entity_prefab, module_path):
         build_entity_module = importlib.import_module(module_path)
         # e.g., getattr(module, "Entity")
         build_entity_class = getattr(build_entity_module, entity_type)
-        print(type(build_entity_class))
     except ImportError:
         print(f"Error: Could not import module: {entity_name}")
     except AttributeError:

@@ -142,6 +142,7 @@ def get_user_timeline(
         mastodon.access_token = access_token
         session = mastodon.session
 
+        print(mastodon.account_verify_credentials())
         # Search for the user and get their ID
         account = mastodon.account_search(target_user, limit=1)
         if account:

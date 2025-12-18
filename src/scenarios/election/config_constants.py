@@ -108,7 +108,7 @@ SHARED_MEMORIES_TEMPLATE = (
     ]
 )
 
-USE_SERVER = False
+USE_SERVER = True
 
 QUERY_LIB_MODULE = "config_utils.agent_query_lib"
 

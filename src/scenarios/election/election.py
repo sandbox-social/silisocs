@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 # Import the contract from the core
 from sim.config_utils.abstract_scenario import AbstractScenario, BaseScenarioConfig, SimConfig
 
+from .config_constants import SCENARIO_NAME
 from .config_dataclasses import AgentsConfig, ProbesConfig, SocSysConfig
 
 # Import derived agent classes from THIS scenario package
@@ -17,7 +18,7 @@ class Scenario(AbstractScenario):
     This acts as the single source of truth for the entire run.
     """
 
-    name = "election"
+    name = SCENARIO_NAME
 
     def generate_scenario_configs(self, sim: SimConfig):
         """
@@ -40,11 +41,13 @@ class Scenario(AbstractScenario):
 
         return soc_sys, probes, agents
 
-    def generate_config(self, name: str):
+    def generate_config(self):
         """
         Delegates the config generation to the existing config_schemas.py logic.
         """
-        sim_cfg = SimConfig(scenario_name=name)
+        sim_cfg = self.generate_sim_config()
+
+        sim_cfg.scenario_name = self.name
 
         # Call the function from your original file
         soc_sys_cfg, probes_cfg, agents_cfg = self.generate_scenario_configs(sim_cfg)
@@ -67,7 +70,7 @@ class Scenario(AbstractScenario):
 class ScenarioConfig(BaseScenarioConfig):
     """Concrete scenario config for election scenario."""
 
-    sim: SimConfig = field(default_factory=SimConfig)
+    sim: SimConfig = field(default_factory=lambda: SimConfig())
     agents: AgentsConfig = field(default_factory=AgentsConfig)
     soc_sys: SocSysConfig = field(default_factory=SocSysConfig)
     probes: ProbesConfig = field(default_factory=ProbesConfig)
