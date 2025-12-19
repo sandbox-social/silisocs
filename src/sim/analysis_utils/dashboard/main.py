@@ -19,7 +19,6 @@ from data_processing import (
     deserialize_data,
     load_data_from_folder,
     serialize_data,
-    stream_filtered_jsonl,
 )
 from graph_utils import (
     compute_positions,
@@ -29,8 +28,6 @@ from graph_utils import (
 from layout import create_app_layout, get_index_string
 from styles import build_cytoscape_elements, build_stylesheet
 from ui_components import (
-    create_display,
-    create_display_plan,
     create_interaction_display,
 )
 
@@ -56,10 +53,9 @@ def load_from_directory(directory_path):
         return None
 
     folder_contents = {}
-    required_files = ["mastodon_action_events.jsonl", "probe_events.jsonl"]
-    optional_files = ["prompts_and_responses.jsonl"]
+    required_files = ["action_events.jsonl", "probe_events.jsonl"]
 
-    for file_pattern in required_files + optional_files:
+    for file_pattern in required_files:
         file_path = directory_path / file_pattern
         if file_path.exists():
             with open(file_path, encoding="utf-8") as f:
@@ -91,17 +87,11 @@ def load_from_directory(directory_path):
         # Add raw data for heatmap
         raw_data_combined = []
         for filename, content in folder_contents.items():
-            if filename.endswith("mastodon_action_events.jsonl") or filename.endswith(
-                "probe_events.jsonl"
-            ):
+            if filename.endswith("action_events.jsonl") or filename.endswith("probe_events.jsonl"):
                 df = pd.read_json(StringIO(content), lines=True)
                 raw_data_combined.extend(df.to_dict(orient="records"))
 
         serialized_data["raw_data"] = raw_data_combined
-
-        # Store prompts content if available
-        if "prompts_and_responses.jsonl" in folder_contents:
-            serialized_data["prompts_content"] = folder_contents["prompts_and_responses.jsonl"]
 
         print(f"Successfully loaded data from directory: {directory_path}")
         return serialized_data
@@ -111,45 +101,45 @@ def load_from_directory(directory_path):
         return None
 
 
-def process_folder_contents(contents_list, filename_list):
-    """Debug version: Prints file discovery details to the terminal."""
-    print("\n" + "=" * 50)
-    print("DEBUG: process_folder_contents started")
+# def process_folder_contents(contents_list, filename_list):
+#     """Debug version: Prints file discovery details to the terminal."""
+#     print("\n" + "=" * 50)
+#     print("DEBUG: process_folder_contents started")
 
-    if not contents_list:
-        print("DEBUG ERROR: contents_list is None or Empty")
-        return None
-    if not filename_list:
-        print("DEBUG ERROR: filename_list is None or Empty")
-        return None
+#     if not contents_list:
+#         print("DEBUG ERROR: contents_list is None or Empty")
+#         return None
+#     if not filename_list:
+#         print("DEBUG ERROR: filename_list is None or Empty")
+#         return None
 
-    print(f"DEBUG: Browser sent {len(contents_list)} total items from the folder.")
+#     print(f"DEBUG: Browser sent {len(contents_list)} total items from the folder.")
 
-    folder_contents = {}
-    for i, (content, filename) in enumerate(zip(contents_list, filename_list, strict=False)):
-        # Normalize paths for Windows/Mac/Linux
-        filename_only = filename.replace("\\", "/").split("/")[-1]
+#     folder_contents = {}
+#     for i, (content, filename) in enumerate(zip(contents_list, filename_list, strict=False)):
+#         # Normalize paths for Windows/Mac/Linux
+#         filename_only = filename.replace("\\", "/").split("/")[-1]
 
-        print(f"  [{i}] Checking file: {filename} -> (Parsed as: {filename_only})")
+#         print(f"  [{i}] Checking file: {filename} -> (Parsed as: {filename_only})")
 
-        if filename_only.endswith(".jsonl"):
-            try:
-                content_type, content_string = content.split(",")
-                decoded = base64.b64decode(content_string)
-                content_str = decoded.decode("utf-8")
+#         if filename_only.endswith(".jsonl"):
+#             try:
+#                 content_type, content_string = content.split(",")
+#                 decoded = base64.b64decode(content_string)
+#                 content_str = decoded.decode("utf-8")
 
-                folder_contents[filename_only] = content_str
-                print(f"      ✅ SUCCESS: {filename_only} (Size: {len(content_str)} chars)")
-            except Exception as e:
-                print(f"      ❌ DECODE ERROR on {filename_only}: {e}")
-        else:
-            print(f"      ⏩ SKIPPING: {filename_only} (Not a .jsonl file)")
+#                 folder_contents[filename_only] = content_str
+#                 print(f"      ✅ SUCCESS: {filename_only} (Size: {len(content_str)} chars)")
+#             except Exception as e:
+#                 print(f"      ❌ DECODE ERROR on {filename_only}: {e}")
+#         else:
+#             print(f"      ⏩ SKIPPING: {filename_only} (Not a .jsonl file)")
 
-    print(f"DEBUG: Total valid .jsonl files collected: {len(folder_contents)}")
-    print("DEBUG: Files keys found: " + ", ".join(folder_contents.keys()))
-    print("=" * 50 + "\n")
+#     print(f"DEBUG: Total valid .jsonl files collected: {len(folder_contents)}")
+#     print("DEBUG: Files keys found: " + ", ".join(folder_contents.keys()))
+#     print("=" * 50 + "\n")
 
-    return folder_contents if folder_contents else None
+#     return folder_contents if folder_contents else None
 
 
 def create_app(serialized_initial_data=None):
@@ -166,71 +156,71 @@ def create_app(serialized_initial_data=None):
 
 def register_callbacks(app):
     """Register all callbacks for the dashboard."""
+    # @app.callback(
+    #     Output("jsonl-output", "children"),
+    #     [
+    #         Input("data-store", "data"),
+    #         Input("name-selector", "value"),
+    #         Input("episode-slider", "value"),
+    #     ],
+    #     prevent_initial_call=True,
+    # )
+    # def process_jsonl_data(data_store, selected_name, selected_episode):
+    #     """Process JSONL data with streaming and filtering."""
+    #     if not data_store or "prompts_content" not in data_store:
+    #         return html.Div(
+    #             [
+    #                 html.P("No prompts_and_responses.jsonl file found."),
+    #                 html.P("This file is needed to display agent thoughts."),
+    #             ]
+    #         )
 
-    @app.callback(
-        Output("jsonl-output", "children"),
-        [
-            Input("data-store", "data"),
-            Input("name-selector", "value"),
-            Input("episode-slider", "value"),
-        ],
-        prevent_initial_call=True,
-    )
-    def process_jsonl_data(data_store, selected_name, selected_episode):
-        """Process JSONL data with streaming and filtering."""
-        if not data_store or "prompts_content" not in data_store:
-            return html.Div(
-                [
-                    html.P("No prompts_and_responses.jsonl file found."),
-                    html.P("This file is needed to display agent thoughts."),
-                ]
-            )
+    #     prompts_content = data_store["prompts_content"]
+    #     if not prompts_content:
+    #         return html.Div([html.P("Prompts content is empty.")])
 
-        prompts_content = data_store["prompts_content"]
-        if not prompts_content:
-            return html.Div([html.P("Prompts content is empty.")])
+    #     try:
+    #         encoded_content = base64.b64encode(prompts_content.encode("utf-8")).decode("utf-8")
+    #         mock_contents = "data:text/plain;base64," + encoded_content
 
-        try:
-            encoded_content = base64.b64encode(prompts_content.encode("utf-8")).decode("utf-8")
-            mock_contents = "data:text/plain;base64," + encoded_content
+    #         return [
+    #             create_display(record)
+    #             for record in stream_filtered_jsonl(mock_contents, selected_name, selected_episode)
+    #         ]
+    #     except Exception as e:
+    #         return html.Div([html.P(f"Error processing prompts data: {e!s}")])
 
-            return [
-                create_display(record)
-                for record in stream_filtered_jsonl(mock_contents, selected_name, selected_episode)
-            ]
-        except Exception as e:
-            return html.Div([html.P(f"Error processing prompts data: {e!s}")])
+    # @app.callback(
+    #     Output("plan-output", "children"),
+    #     [Input("data-store", "data"), Input("episode-slider", "value")],
+    #     prevent_initial_call=True,
+    # )
+    # def process_action_data(data, selected_episode):
+    #     """Process action data with filtering."""
+    #     if not data:
+    #         return None
 
-    @app.callback(
-        Output("plan-output", "children"),
-        [Input("data-store", "data"), Input("episode-slider", "value")],
-        prevent_initial_call=True,
-    )
-    def process_action_data(data, selected_episode):
-        """Process action data with filtering."""
-        if not data:
-            return None
+    #     try:
+    #         print(data["act_data"].keys())
+    #         act_data = data["act_data"][selected_episode]
 
-        try:
-            act_data = data["act_data"][str(selected_episode)]
+    #         # Group by agent and create displays
+    #         agents = {}
+    #         for entry in act_data:
+    #             agent_name = entry["source_user"]
+    #             if agent_name not in agents:
+    #                 agents[agent_name] = []
+    #             agents[agent_name].append(entry["data"])
 
-            # Group by agent and create displays
-            agents = {}
-            for entry in act_data:
-                agent_name = entry["source_user"]
-                if agent_name not in agents:
-                    agents[agent_name] = []
-                agents[agent_name].append(entry["data"])
+    #         # Create display for each agent
+    #         objs = []
+    #         for agent_name in sorted(agents.keys()):
+    #             objs.append(create_display_plan(agent_name, agents[agent_name]))
 
-            # Create display for each agent
-            objs = []
-            for agent_name in sorted(agents.keys()):
-                objs.append(create_display_plan(agent_name, agents[agent_name]))
-
-            return objs
-        except Exception as e:
-            print(f"Error processing actions: {e!s}")
-            return None
+    #         return objs
+    #     except Exception as e:
+    #         print(f"Error processing actions: {e!s}")
+    #         return None
 
     @app.callback(
         [
@@ -270,9 +260,12 @@ def register_callbacks(app):
     def update_data(n_clicks, contents, filenames, current_data):
         if n_clicks == 0 or contents is None:
             raise dash.exceptions.PreventUpdate
-
+        for filename in filenames:
+            if "~" in filename:
+                # Log a warning or handle the legacy name
+                print(f"Warning: Received legacy 8.3 filename: {filename}")
         print(f"DEBUG: Processing {len(filenames)} files...")
-
+        print(filenames)
         try:
             # Map filenames to contents
             folder_contents = {
@@ -283,6 +276,7 @@ def register_callbacks(app):
             # Decode the contents
             decoded_contents = {}
             for name, content_str in folder_contents.items():
+                print(name)
                 if name.endswith(".jsonl"):
                     _, content_b64 = content_str.split(",")
                     decoded_contents[name] = base64.b64decode(content_b64).decode("utf-8")
@@ -309,14 +303,11 @@ def register_callbacks(app):
             # Add raw data for heatmap
             raw_data_combined = []
             for name, content in decoded_contents.items():
-                if "mastodon_action_events" in name or "probe_events" in name:
+                if "action_events" in name or "probe_events" in name:
                     df = pd.read_json(StringIO(content), lines=True)
                     raw_data_combined.extend(df.to_dict(orient="records"))
 
             serialized_data["raw_data"] = raw_data_combined
-
-            if "prompts_and_responses.jsonl" in decoded_contents:
-                serialized_data["prompts_content"] = decoded_contents["prompts_and_responses.jsonl"]
 
             return "Data Loaded Successfully", serialized_data, "", ""
 
@@ -334,7 +325,7 @@ def register_callbacks(app):
         df = pd.DataFrame(raw_data)
 
         # Filter for action events with suggested_action
-        dft = df[(df["event_type"] == "action") & (df["label"] != "inner_actions")]
+        dft = df[(df["event_type"] == "action")]
 
         if not df.empty and isinstance(df.iloc[0]["data"], str):
             dft["data"] = dft["data"].apply(lambda x: json.loads(x) if isinstance(x, str) else x)

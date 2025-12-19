@@ -63,7 +63,7 @@ class GameMaster(prefab_lib.Prefab):
         cfg = ConfigStore.get_config()
         action_logger = EventLogger(
             "action",
-            os.path.join(cfg.sc.sim.output_rootname, f"{name.split('_')[0]}_action_events.jsonl"),
+            os.path.join(cfg.sc.sim.output_rootname, "action_events.jsonl"),
         )
         action_logger.episode_idx = 0
         # apps = importlib.import_module(self.params["app_module_path"] + ".apps")

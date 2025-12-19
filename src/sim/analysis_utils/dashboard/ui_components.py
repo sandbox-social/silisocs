@@ -66,6 +66,7 @@ def create_display_plan(agent_name, entry_acts):
 
 def create_interaction_display(interaction, toots):
     """Create HTML display for a single interaction."""
+    print(interaction)
     action = interaction["action"]
 
     if action in ["liked", "boosted"]:

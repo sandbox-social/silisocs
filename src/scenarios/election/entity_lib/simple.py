@@ -9,9 +9,13 @@ from concordia.components import agent as agent_components
 from concordia.language_model import language_model
 from concordia.typing import prefab as prefab_lib
 
-DEFAULT_INSTRUCTIONS_COMPONENT_KEY = "Instructions"
-DEFAULT_INSTRUCTIONS_PRE_ACT_LABEL = "\nInstructions"
+from sim.sim_utils.misc_sim_utils import ConfigStore
+
 DEFAULT_GOAL_COMPONENT_KEY = "Goal"
+
+OBSERVATION_TO_MEMORY_KEY = "__observation_to_memory__"
+ELECTION_INFO_KEY = "__Election Information__"
+INSTRUCTIONS_COMPONENT_KEY = "__Roleplaying Instructions__"
 
 
 @dataclasses.dataclass
@@ -46,18 +50,18 @@ class Entity(prefab_lib.Prefab):
 
         election_info = self.params.get("election_info", "")
 
-        instructions = agent_components.instructions.Instructions(
-            agent_name=agent_name,
-            pre_act_label=DEFAULT_INSTRUCTIONS_PRE_ACT_LABEL,
-        )
+        instructions = agent_components.instructions.Instructions(agent_name=agent_name)
+        cfg = ConfigStore.get_config()
+        instructions._state = cfg.sc.sim.roleplaying_instructions
 
-        election_info_key = "Election Information"
         election_information = agent_components.constant.Constant(
             state=(election_info),
             pre_act_label="Scenario Information",
         )
 
-        observation_to_memory = agent_components.observation.ObservationToMemory()
+        observation_to_memory = agent_components.observation.ObservationToMemory(
+            memory_component_key=agent_components.memory.DEFAULT_MEMORY_COMPONENT_KEY
+        )
 
         observation_label = "Observation"
         observation = agent_components.observation.LastNObservations(
@@ -65,9 +69,9 @@ class Entity(prefab_lib.Prefab):
         )
 
         components_of_agent = {
-            DEFAULT_INSTRUCTIONS_COMPONENT_KEY: instructions,
-            election_info_key: election_information,
-            "observation_to_memory": observation_to_memory,
+            INSTRUCTIONS_COMPONENT_KEY: instructions,
+            ELECTION_INFO_KEY: election_information,
+            OBSERVATION_TO_MEMORY_KEY: observation_to_memory,
             agent_components.observation.DEFAULT_OBSERVATION_COMPONENT_KEY: (observation),
             agent_components.memory.DEFAULT_MEMORY_COMPONENT_KEY: (
                 agent_components.memory.AssociativeMemory(memory_bank=memory_bank)

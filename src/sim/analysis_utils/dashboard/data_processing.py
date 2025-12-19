@@ -18,6 +18,7 @@ def post_process_output(df):
     ].reset_index(drop=True)
     probe_df["response"] = probe_df.data.apply(lambda x: x["query_return"])
     probe_df = probe_df.drop("data", axis=1)
+    probe_df.episode = probe_df.episode
 
     edge_df = df.loc[
         df.label.isin(["follow", "unfollow"]), ["episode", "source_user", "data", "label"]
@@ -28,7 +29,7 @@ def post_process_output(df):
     interaction_types = ["post", "like_toot", "boost_toot", "reply"]
     int_df = df.loc[df.label.isin(interaction_types), :].reset_index(drop=True)
 
-    act_df = df.loc[df.label == "inner_actions", :].reset_index(drop=True)
+    act_df = df.loc[df.label == "action", :].reset_index(drop=True)
 
     return probe_df, int_df, edge_df, act_df
 
@@ -133,13 +134,13 @@ def load_data_from_folder(folder_contents):
     probe_content = None
 
     for filename, content in folder_contents.items():
-        if filename.endswith("mastodon_action_events.jsonl"):
+        if filename.endswith("action_events.jsonl"):
             action_content = content
         elif filename.endswith("probe_events.jsonl"):
             probe_content = content
 
     if not action_content:
-        raise ValueError("mastodon action_events.jsonl file not found in folder")
+        raise ValueError("action_events.jsonl file not found in folder")
     if not probe_content:
         raise ValueError("probe_events.jsonl file not found in folder")
 
@@ -148,14 +149,14 @@ def load_data_from_folder(folder_contents):
     probe_df = pd.read_json(StringIO(probe_content), lines=True)
     df = pd.concat([action_df, probe_df], ignore_index=True)
 
-    # Ensure all toot_ids are strings
+    # Ensure all toot_ids are strings and episodes are ints
     def get_toot_id(data):
         if "toot_id" in data:
             data["toot_id"] = str(data["toot_id"])
         return data
 
     df["data"] = df.data.apply(get_toot_id)
-
+    df["episode"] = df.episode.apply(int)
     # Process dataframes
     probe_df_processed, int_df, edge_df, act_df = post_process_output(df)
 
@@ -186,6 +187,7 @@ def load_data_from_folder(folder_contents):
 
     # Get action data
     act_dict = get_act_dict(act_df.copy())
+    print(act_df)
 
     return (
         follow_graph,
@@ -228,7 +230,7 @@ def deserialize_data(serialized):
         int(k): set(v) for k, v in serialized["active_users_by_episode"].items()
     }
     toots = serialized["toots"]
-    probe_data = {k: v for k, v in serialized["probe_data"].items()}
+    probe_data = {int(k): v for k, v in serialized["probe_data"].items()}
     act_data = serialized["act_data"]
 
     return (

@@ -2,7 +2,7 @@
 
 import networkx as nx
 import plotly.graph_objs as go
-from config import CUSTOM_NAMES, INTERACTION_TYPES, LINE_COLORS
+from config import CUSTOM_NAMES, INTERACTION_TYPES, LINE_COLORS, PAST_TENSE_MAP
 from plotly.subplots import make_subplots
 
 
@@ -85,11 +85,11 @@ def create_probe_data_figure(probe_data):
             )
         )
 
-    max_episode = max(probe_data.keys()) if probe_data else 0
+    max_episode = max(int(key) for key in probe_data.keys()) if probe_data else 0
     fig.update_layout(
         xaxis={
             "title": {"text": "Episode"},
-            "range": [-1, max_episode + 1],
+            "range": [1, max_episode + 1],
             "dtick": 1,
             "showgrid": False,
         },
@@ -114,13 +114,14 @@ def create_probe_data_figure(probe_data):
 
 def create_interactions_figure(interactions_by_episode, active_users_by_episode, total_users):
     """Create Plotly figure for interactions over time."""
-    interactions_over_time = {interaction: [] for interaction in INTERACTION_TYPES}
+    int_types = [PAST_TENSE_MAP[ty] for ty in INTERACTION_TYPES]
+    interactions_over_time = {interaction: [] for interaction in int_types}
     active_user_fractions = []
     int_episodes = sorted(interactions_by_episode.keys())
 
     for ep in int_episodes:
         num_active_users = len(active_users_by_episode[ep]) - 1  # Don't count news agent
-        counts = dict.fromkeys(INTERACTION_TYPES, 0)
+        counts = dict.fromkeys(int_types, 0)
 
         # Count interactions
         for interaction in interactions_by_episode.get(ep, []):
@@ -129,15 +130,16 @@ def create_interactions_figure(interactions_by_episode, active_users_by_episode,
                 counts[action] += 1
 
         # Append normalized counts
-        for interaction in INTERACTION_TYPES:
-            if interaction == "posted":
-                interactions_over_time[interaction].append(
-                    (counts[interaction] - 1) / num_active_users if num_active_users > 0 else 0
-                )
-            else:
-                interactions_over_time[interaction].append(
-                    (counts[interaction]) / num_active_users if num_active_users > 0 else 0
-                )
+        for interaction in int_types:
+            if interaction in counts:
+                if interaction == "posted":
+                    interactions_over_time[interaction].append(
+                        (counts[interaction] - 1) / num_active_users if num_active_users > 0 else 0
+                    )
+                else:
+                    interactions_over_time[interaction].append(
+                        (counts[interaction]) / num_active_users if num_active_users > 0 else 0
+                    )
 
         # Calculate active user fraction
         active_user_fraction = num_active_users / total_users if total_users > 0 else 0
@@ -155,14 +157,14 @@ def create_interactions_figure(interactions_by_episode, active_users_by_episode,
         "posted": "triangle-up",
     }
 
-    for interaction_type in INTERACTION_TYPES:
+    for interaction_type in int_types:
         fig.add_trace(
             go.Scatter(
                 x=int_episodes,
                 y=interactions_over_time[interaction_type],
                 mode="lines+markers",
                 name=interaction_type.replace("_", " ").title(),
-                line=dict(color=colors[interaction_type.replace("_toot", "")]),
+                line=dict(color=colors[interaction_type]),
                 marker=dict(symbol=markers[interaction_type.replace("_toot", "")], size=6),
                 cliponaxis=False,
             ),

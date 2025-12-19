@@ -28,10 +28,10 @@ def get_index_string():
                     box-sizing: border-box;
                 }
                 .dashboard-container {
-                    max-width: none;
-                    margin: 0 auto;
+                    max-width: 100%;
+                    margin: 0;
                     padding: 10px;
-                    width: 100vw;
+                    width: 100%;
                     background-color: #f9f9f9;
                 }
                 .dashboard-header {
@@ -80,27 +80,31 @@ def get_index_string():
                 }
                 .cyto-div-row {
                     display: flex;
+                    width: 100%;
                     gap: 20px;
                     margin-bottom: 20px;
-                    transition: all 0.3s ease;
+                    align-items: stretch;
                 }
+
                 .cyto-container {
-                    flex: 1;
-                    min-height: 400px;
+                    /* Use calc to account for the gap so the total doesn't exceed 100% */
+                    flex: 0 0 calc(80% - 20px);
+                    min-height: 500px;
                     background-color: white;
                     border: 1px solid #e0e0e0;
                     border-radius: 5px;
-                    padding: 0px;
-                    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.05);
+                    position: relative; /* Anchors the dropdown and episode text */
+                    overflow: hidden;
                 }
+
                 .detail-container {
-                    flex: 0 0 30%;
+                    flex: 0 0 20%;
                     background-color: white;
                     border: 1px solid #e0e0e0;
                     border-radius: 5px;
                     padding: 15px;
-                    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.05);
-                    overflow: auto;
+                    height: 500px; /* Match the graph height exactly */
+                    overflow-y: auto;
                 }
                 .detail-container.hidden {
                     display: none;
@@ -211,30 +215,30 @@ def create_dashboard_section(show=False):
                 tooltip={"placement": "bottom", "always_visible": True},
             ),
             html.Hr(style={"margin": "20px 0"}),
-            # Plan viewer
-            html.Div(
-                id="plan-viewer-section",
-                style={"padding": "20px"},
-                children=[
-                    html.H2("Agent Plans For This Episode", style={"textAlign": "center"}),
-                    html.Div(id="plan-output"),
-                ],
-            ),
-            html.Hr(style={"margin": "20px 0"}),
-            # Thoughts viewer
-            html.Div(
-                id="jsonl-viewer-section",
-                style={"padding": "20px"},
-                children=[
-                    html.H2("Within-agent processing", style={"textAlign": "center"}),
-                    html.P(
-                        "Data loaded from prompts_and_responses.jsonl in the uploaded folder.",
-                        style={"textAlign": "center", "fontStyle": "italic", "color": "#666"},
-                    ),
-                    html.Div(id="jsonl-output"),
-                    dcc.Store(id="jsonl-store"),
-                ],
-            ),
+            # # Plan viewer
+            # html.Div(
+            #     id="plan-viewer-section",
+            #     style={"padding": "20px"},
+            #     children=[
+            #         html.H2("Agent Plans For This Episode", style={"textAlign": "center"}),
+            #         html.Div(id="plan-output"),
+            #     ],
+            # ),
+            # html.Hr(style={"margin": "20px 0"}),
+            # # Thoughts viewer
+            # html.Div(
+            #     id="jsonl-viewer-section",
+            #     style={"padding": "20px"},
+            #     children=[
+            #         html.H2("Within-agent processing", style={"textAlign": "center"}),
+            #         html.P(
+            #             "Data loaded from prompts_and_responses.jsonl in the uploaded folder.",
+            #             style={"textAlign": "center", "fontStyle": "italic", "color": "#666"},
+            #         ),
+            #         html.Div(id="jsonl-output"),
+            #         dcc.Store(id="jsonl-store"),
+            #     ],
+            # ),
         ],
     )
 
