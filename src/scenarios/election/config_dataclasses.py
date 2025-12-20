@@ -5,8 +5,6 @@ from typing import Any
 
 from concordia.typing import prefab as prefab_lib
 
-# CRITICAL: Only import from abstract_scenario, NOT from config_schema
-# Importing from config_schema creates a circular import
 from sim.config_utils.abstract_scenario import (
     AbstractAgentInputs,
     AbstractGameMasterParams,
@@ -108,7 +106,6 @@ class UserData:
 @dataclass(frozen=True)
 class SettingDetails(AbstractSettingDetails):
     candidate_info: CandidatesInfo
-    sim_role_parameters: SimRoleParameters
 
 
 @dataclass(frozen=True)

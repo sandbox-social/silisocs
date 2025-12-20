@@ -299,9 +299,7 @@ def get_soc_sys_config(
     )
 
     sm_user_data = UserData(sim_role_parameters=simrole_params, sim_roles=simroles)
-    setting_details = SettingDetails(
-        candidate_info=candidates_info, sim_role_parameters=simrole_params
-    )
+    setting_details = SettingDetails(candidate_info=candidates_info)
 
     description = " \n".join([candidate_info_dict[p].policy_proposals for p in PARTISAN_TYPES])
 
