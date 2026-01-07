@@ -23,7 +23,7 @@ from omegaconf import DictConfig, OmegaConf
 #           cfg.sc = cast(CurrentScenarioConfig, cfg.sc)
 if TYPE_CHECKING:
     # TODO: Update this when working on a different scenario
-    from scenarios.election.election import ScenarioConfig as CurrentScenarioConfig
+    from sim.config_utils.election import ScenarioConfig as CurrentScenarioConfig
 # @title Imports
 from concordia import __file__ as concordia_location
 from concordia.prefabs.simulation import generic as simulation
@@ -31,7 +31,7 @@ from concordia.typing import prefab as prefab_lib
 from concordia.utils import helper_functions
 from dotenv import find_dotenv, load_dotenv
 
-from scenarios.election.config_constants import SCENARIO_NAME
+from scenarios.election.scenario_constants import SCENARIO_NAME
 
 print(r"""
    _____ ____   __  ______  ____  ____ __  __   _____ ____  _____ ____ ___   __

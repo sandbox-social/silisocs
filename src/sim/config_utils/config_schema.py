@@ -6,7 +6,8 @@ from omegaconf import MISSING, OmegaConf
 # ============================================================================
 # Structured Configuration Loading
 # ============================================================================
-from sim.config_utils.abstract_scenario import BaseScenarioConfig
+from sim.config_utils.simulation_dataclasses import SimulationConfig
+from sim.config_utils.simulation_functions import Simulation
 
 
 @dataclass
@@ -18,7 +19,7 @@ class ExperimentConfig:
     """
 
     hydra_overrides: dict[str, Any] = field(default_factory=dict)
-    sc: BaseScenarioConfig = MISSING
+    sc: SimulationConfig = MISSING
 
 
 # ============================================================================
@@ -42,18 +43,16 @@ def register_configs(scenario_name: str | None):
     # 1. Import Scenario Classes
     # ----------------------------------------------------------------------
     try:
-        module_path = f"scenarios.{scenario_name}.{scenario_name}"
+        module_path = f"scenarios.{scenario_name}.scenario_functions"
         scenario_module = importlib.import_module(module_path)
-        ScenarioClass = scenario_module.Scenario
-        ScenarioConfigClass = scenario_module.ScenarioConfig
     except (ImportError, AttributeError) as e:
         raise ImportError(f"Could not import scenario from {module_path}. Error: {e}")
 
     # ----------------------------------------------------------------------
     # 2. Generate Config Instance
     # ----------------------------------------------------------------------
-    scenario_instance = ScenarioClass()
-    sc_cfg = scenario_instance.generate_config()
+    simulation_instance = Simulation(scenario_module, scenario_name)
+    sc_cfg = simulation_instance.generate_config()
 
     print(f"Generated config type: {type(sc_cfg)}")
     print(f"  sim type: {type(sc_cfg.sim)}")
@@ -64,17 +63,8 @@ def register_configs(scenario_name: str | None):
     # ----------------------------------------------------------------------
     # 3. Build Hydra Overrides
     # ----------------------------------------------------------------------
-    job_label = "_".join(
-        [
-            "N${sc.sim.num_agents}",
-            "T${sc.sim.num_steps}",
-            "${sc.sim.persona_type}",
-            "${sc.soc_sys.exp_name}",
-            "${sc.agents.inputs.news_file}",
-            "${sc.sim.use_news_agent}",
-            "${sc.sim.run_name}",
-        ]
-    )
+    root_cfgname = "sc"
+    job_label = simulation_instance.get_jobname_format(root_cfgname)
 
     job_label_with_time = job_label + "_${now:%Y-%m-%d_%H-%M-%S}"
 
@@ -92,7 +82,9 @@ def register_configs(scenario_name: str | None):
 
     # Register using OmegaConf.structured to create proper DictConfig
     # This maintains type information while being OmegaConf-compatible
-    cs.store(group="sc", name=f"{scenario_name}_scenario", node=OmegaConf.structured(sc_cfg))
+    cs.store(
+        group=root_cfgname, name=f"{scenario_name}_scenario", node=OmegaConf.structured(sc_cfg)
+    )
 
     # ----------------------------------------------------------------------
     # 5. Create Root Config
@@ -108,10 +100,10 @@ def register_configs(scenario_name: str | None):
             ]
         )
         hydra_overrides: dict[str, Any] = field(default_factory=dict)
-        sc: BaseScenarioConfig = MISSING
+        sc: SimulationConfig = MISSING
 
     # Attach the concrete type as metadata for runtime introspection
-    ConcreteExperimentConfig.__annotations__["sc"] = ScenarioConfigClass
+    ConcreteExperimentConfig.__annotations__["sc"] = SimulationConfig
 
     cs.store(name="config_schema", node=ConcreteExperimentConfig)
 
