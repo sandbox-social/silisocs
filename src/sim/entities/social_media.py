@@ -63,13 +63,13 @@ class GameMaster(prefab_lib.Prefab):
         cfg = ConfigStore.get_config()
         action_logger = EventLogger(
             "action",
-            os.path.join(cfg.sc.sim.output_rootname, "action_events.jsonl"),
+            os.path.join(cfg.sim.output_rootname, "action_events.jsonl"),
         )
         action_logger.episode_idx = 0
         # apps = importlib.import_module(self.params["app_module_path"] + ".apps")
         sm_app = apps.SocialNetworkApp(
             action_logger=action_logger,
-            perform_operations=cfg.sc.sim.use_server,  # self.params.get("use_server", False),
+            perform_operations=cfg.social_media.use_server,  # self.params.get("use_server", False),
             app_description=self.params.get("app_description", ""),
         )
 

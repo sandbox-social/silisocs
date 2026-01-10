@@ -102,13 +102,13 @@ def deploy_probes_to_agent(agent, queries, probe_event_logger):
 
 def deploy_probes(agents, probes, probe_event_logger):
     query_lib_module = probes["query_lib_module"]
-    queries_data = probes["queries_data"].values()
+    queries_config = probes["queries"].values()
     queries = []
-    for query_data in queries_data:
+    for query_config in queries_config:
         QueryClass = getattr(
-            importlib.import_module(query_lib_module), query_data["query_type"]
+            importlib.import_module(query_lib_module), query_config["query_type"]
         )  # "module.submodule"
-        queries.append(QueryClass(query_data))
+        queries.append(QueryClass(query_config["query_data"]))
 
     with ThreadPoolExecutor() as executor:
         # Parallel probing

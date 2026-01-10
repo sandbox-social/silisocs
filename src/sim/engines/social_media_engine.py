@@ -89,9 +89,9 @@ class SocialMediaEngine(simultaneous.Simultaneous):
         # logging setup
         cfg = ConfigStore.get_config()
         probe_event_logger = EventLogger(
-            "probe", os.path.join(cfg.sc.sim.output_rootname, "probe_events.jsonl")
+            "probe", os.path.join(cfg.sim.output_rootname, "probe_events.jsonl")
         )
-        probes_config = OmegaConf.to_container(cfg.sc.probes, resolve=True)
+        probes_config = OmegaConf.to_container(cfg.scenario.probes, resolve=True)
 
         # while not self.terminate(game_master, verbose) and steps < max_steps:
         while steps < max_steps:
@@ -123,7 +123,7 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                 probe_event_logger.episode_idx = steps
                 print(f"Episode: {steps}. Deploying survey...", end="")
                 deploy_probes(
-                    entities,  # [agent for agent in entities if cfg.sc.socsys.game_masters[1].params.sm_user_data.sim_roles[agent._agent_name] != "news_account"],
+                    entities,  # [agent for agent in entities if cfg.social_media.game_masters[1].params.sm_user_data.sim_roles[agent._agent_name] != "news_account"],
                     probes_config,
                     probe_event_logger,
                 )

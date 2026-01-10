@@ -52,7 +52,7 @@ class Entity(prefab_lib.Prefab):
 
         instructions = agent_components.instructions.Instructions(agent_name=agent_name)
         cfg = ConfigStore.get_config()
-        instructions._state = cfg.sc.sim.roleplaying_instructions
+        instructions._state = cfg.sim.roleplaying_instructions
 
         election_information = agent_components.constant.Constant(
             state=(election_info),

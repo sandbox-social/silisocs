@@ -1,0 +1,25 @@
+# src/scenarios/election/probes.yaml
+# @package scenario
+
+# Query/probe definitions for election scenario
+probes:
+  # Module containing query implementation
+  query_lib_module: scenarios.election.config_utils.probe_lib
+
+  # Query definitions
+  queries:
+    - name: VotePref
+      premise:
+        candidate1: Bill Fredrickson
+        candidate2: Bradley Carter
+
+    - name: Favorability
+      premise:
+        candidate: Bill Fredrickson
+
+    - name: Favorability
+      premise:
+        candidate: Bradley Carter
+
+    - name: VoteIntent
+      premise: {}

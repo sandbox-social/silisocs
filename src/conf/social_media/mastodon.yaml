@@ -1,0 +1,74 @@
+# src/conf/social_media/mastodon.yaml
+# Mastodon social media platform configuration
+
+# Server configuration
+use_server: true
+
+# Game master configuration
+gamemaster:
+  filename: social_media
+  name: mastodon_gm
+  sim_role:
+    name: social media game master
+    module_path: sim.entities.social_media
+
+# Platform instructions
+usage_instructions: |
+  Mastodon is a social media application.
+  To share content on Mastodon, users write a 'toot' (equivalent to a tweet or post).
+  Toots can be up to 500 characters long.
+  A user's home timeline shows toots from people they follow and boosted (reblogged) content.
+  Users can reply to toots, creating threaded conversations.
+  Users can like (favorite) toots to show appreciation or save them for later.
+  Users can boost (reblog) toots to share them with their followers.
+  Users can mention other users in their toots using their @username.
+  Follow other users to see their public and unlisted toots in their home timeline.
+  Users can unfollow users if they no longer wish to see their content.
+  A user's profile can be customized with a display name and bio.
+  A user can block other users to prevent them from seeing the user's content or interacting with them.
+  Unblocking a user reverses the effects of blocking.
+  Critically important: Operations such as liking, boosting, replying, etc. require a `toot_id`. To obtain a `toot_id`, you must have memory/knowledge of a real `toot_id`. If you don't know a `toot_id`, you can't perform actions that require it. `toot_id`'s can be retrieved using the `get_timeline` action.
+
+# Action call to action template
+action_call_to_action: |
+  ## AVAILABLE ACTIONS
+  1. POST - Share new content by creating a new toot
+  2. REPLY - Engage existing content (positively or negatively) by responding to it (needs toot ID)
+  3. BOOST - Extend the reach of content by sharing someone's toot (needs ID)
+  4. LIKE - Show the world you appreciate content by liking a toot (needs ID)
+
+  ## INSTRUCTIONS
+  Determine what ONE action {name} would take next based on:
+  - Their character and values via self-perception and goal descriptions
+  - The current context and timeline
+  - Not repeating recent actions
+  If text-based, the text must reflect their posting style description.
+
+  ## OUTPUT FORMAT
+  Answer: {name}
+  STEP 1: [Analyze {name}'s motivation based on their character]
+  STEP 2: [Consider which posts/actions align with {name}'s values]
+  STEP 3: [Determine the single most authentic action]
+
+  FINAL DECISION:
+  ACTION TYPE: [POST/REPLY/BOOST/LIKE]
+  TARGET ID: [Include toot ID if applicable]
+  CONTENT: [For posts/replies, exact text {name} would write]
+  REASONING: [Brief explanation of why this action fits {name}'s character]
+
+  ## EXAMPLE OUTPUT
+  STEP 1: {name} is motivated by her interest in educational initiatives and community engagement around the election.
+  STEP 2: Chris's post about community priorities resonates with {name}'s values. They hasn't interacted with this post yet.
+  STEP 3: Responding to Chris would allow {name} to engage meaningfully about community values.
+
+  FINAL DECISION:
+  ACTION TYPE: REPLY
+  TARGET ID: 114204813429886778
+  CONTENT: "I appreciate your focus on community priorities, Chris! As an educator, I believe our growth depends on strong educational foundations alongside economic development."
+  REASONING: This reply allows Emily to acknowledge community values while highlighting her educational perspective, which is authentic to her character.
+
+# Social network configuration (defaults - can be overridden by scenario)
+social_network:
+  active_rates: {}  # To be filled by scenario
+  fully_connected_targets: []  # To be filled by scenario
+  base_followership_probability: 0.4

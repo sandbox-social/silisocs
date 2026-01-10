@@ -7,33 +7,32 @@ from concordia.typing import prefab as prefab_lib
 from omegaconf import MISSING
 
 # from .social_media_constants import USE_SERVER
-from sim.config_utils.simulation_constants import (
-    APP_MODULE_PATH,
-    LLM_NAME,
-    NUM_AGENTS,
-    NUM_STEPS,
-    ROLEPLAYING_INSTRUCTIONS,
-    RUN_NAME,
-    SCENARIO_NAME,
-    SEED,
-    SENTENCE_ENCODER,
-)
+# from sim.config_utils.simulation_constants import (
+#     APP_MODULE_PATH,
+#     LLM_NAME,
+#     NUM_AGENTS,
+#     NUM_STEPS,
+#     ROLEPLAYING_INSTRUCTIONS,
+#     RUN_NAME,
+#     SCENARIO_NAME,
+#     SEED,
+#     SENTENCE_ENCODER,
+# )
 
 
 # ==================================================
-@dataclass
-class SimConfig:
-    app_module_path: str = APP_MODULE_PATH
-    llm_name: str = LLM_NAME
-    num_agents: int = NUM_AGENTS
-    num_steps: int = NUM_STEPS
-    run_name: str = RUN_NAME
-    seed: int = SEED
-    sentence_encoder: str = SENTENCE_ENCODER
-    output_rootname: str = ""  # set from hydra fields at runtime
-    roleplaying_instructions: str = ROLEPLAYING_INSTRUCTIONS
-    scenario_name: str = SCENARIO_NAME
-    use_server: bool = False
+# @dataclass
+# class SimConfig:
+#     app_module_path: str = APP_MODULE_PATH
+#     llm_name: str = LLM_NAME
+#     num_agents: int = NUM_AGENTS
+#     num_steps: int = NUM_STEPS
+#     run_name: str = RUN_NAME
+#     seed: int = SEED
+#     sentence_encoder: str = SENTENCE_ENCODER
+#     output_rootname: str = ""  # set from hydra fields at runtime
+#     roleplaying_instructions: str = ROLEPLAYING_INSTRUCTIONS
+#     scenario_name: str = SCENARIO_NAME
 
 
 # ==================================================
@@ -66,7 +65,7 @@ class AgentParams:
 
 @dataclass(kw_only=True)
 class AgentConfig(prefab_lib.InstanceConfig):
-    params: AgentParams = field()
+    params: dict[str, Any] = field()  # AgentParams = field()
     prefab: str = ""
     role: prefab_lib.Role = field(default=prefab_lib.Role.ENTITY)
 
@@ -89,7 +88,7 @@ class InitializerParams:
 @dataclass(kw_only=True)
 class InitializerConfig(prefab_lib.InstanceConfig):
     prefab: str
-    params: InitializerParams
+    params: dict[str, Any]  # InitializerParams
     role: prefab_lib.Role = field(default=prefab_lib.Role.INITIALIZER)
 
 
@@ -123,27 +122,27 @@ class AgentsConfig:
     initial_observations: list[str] = field(default_factory=list)
 
 
-@dataclass()
-class SocSysConfig:
-    exp_name: str = "election_experiment"
-    game_masters: list[Any] = field(default_factory=list)  # Variable-length list
-    setting_info: Any = None
-    shared_agent_memories_template: list[str] = field(default_factory=list)
-    scenario_name: str = "election"
-    social_media_usage_instructions: str = ""
+# @dataclass()
+# class SocSysConfig:
+#     exp_name: str = "election_experiment"
+#     game_masters: list[Any] = field(default_factory=list)  # Variable-length list
+#     setting_info: Any = None
+#     shared_agent_memories_template: list[str] = field(default_factory=list)
+#     scenario_name: str = "election"
+#     social_media_usage_instructions: str = ""
 
 
-@dataclass()
-class ProbesConfig:
-    queries_data: dict[int, Any] = field(default_factory=dict)
-    query_lib_module: str = "scenarios.election.config_utils.probe_lib"
+# @dataclass()
+# class ProbesConfig:
+#     queries_data: dict[int, Any] = field(default_factory=dict)
+#     query_lib_module: str = "scenarios.election.config_utils.probe_lib"
 
 
-@dataclass
-class SimulationConfig:
-    """Concrete scenario config."""
+# @dataclass
+# class SimulationConfig:
+#     """Concrete scenario config."""
 
-    sim: SimConfig = field(default_factory=lambda: SimConfig())
-    agents: AgentsConfig = field(default_factory=AgentsConfig)
-    soc_sys: SocSysConfig = field(default_factory=SocSysConfig)
-    probes: ProbesConfig = field(default_factory=ProbesConfig)
+#     sim: SimConfig = field(default_factory=lambda: SimConfig())
+#     agents: AgentsConfig = field(default_factory=AgentsConfig)
+#     soc_sys: SocSysConfig = field(default_factory=SocSysConfig)
+#     probes: ProbesConfig = field(default_factory=ProbesConfig)
