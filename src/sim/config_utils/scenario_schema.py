@@ -29,8 +29,15 @@ class BaseScenarioSchema:
     setting: dict[str, Any] = field(
         default_factory=lambda: {
             "name": "",
-            "description": "",
             "background": [],
+        }
+    )
+
+    # Setting information
+    event: dict[str, Any] = field(
+        default_factory=lambda: {
+            "name": "",
+            "context": "",
         }
     )
 
@@ -106,10 +113,17 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
 
     # Validate nested required fields
     if OmegaConf.select(cfg, "setting"):
-        setting_required = ["name", "description"]
+        setting_required = ["name", "background"]
         for field_name in setting_required:
             if not OmegaConf.select(cfg, f"setting.{field_name}"):
                 missing_fields.append(f"setting.{field_name}")
+
+        # Validate nested required fields
+    if OmegaConf.select(cfg, "event"):
+        event_required = ["name", "context"]
+        for field_name in event_required:
+            if not OmegaConf.select(cfg, f"event.{field_name}"):
+                missing_fields.append(f"event.{field_name}")
 
     if OmegaConf.select(cfg, "data"):
         data_required = ["persona_file", "persona_type"]

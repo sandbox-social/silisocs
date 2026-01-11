@@ -100,11 +100,7 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
         List of game master instance configs
     """
     # Build shared memories
-    shared_memories = (
-        list(cfg.scenario.shared_memories)
-        + [cfg.scenario.setting.description]
-        + [cfg.social_media.usage_instructions]
-    )
+    shared_memories = list(cfg.scenario.shared_memories) + [cfg.social_media.usage_instructions]
 
     # Build player-specific context and memories from agents
     # (These will be populated after agents are created)
