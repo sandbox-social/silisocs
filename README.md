@@ -25,12 +25,10 @@ There are 4 yaml files listed in `config.yaml` that configure the simulation. He
 
 | config file | description | election scenario |
 | ----------- | ----------- | ---------------- |
-| `sim.yaml` | This contains simulator attributes like the language model and how long to run the simulation for. | N/A |
+| `sim.yaml` | This contains multi-LLM agent simulator attributes like the language model and how long to run the simulation for and. It has no scenario or environment information. | N/A |
 
-| `social_media.yaml` | all detailed structured information about the social system: the shared knowledge and social context of the agents. | We detail the fictitious town in which the election occurs as well as the social context that the agents should adhere. |
+| `social_media.yaml` | all detailed structured information about the environment. | N/A |
 | `scenario.yaml` | All the configuration associated with the specific scenario (agents and setting). This includes detailed structured information about the social system: the shared knowledge and social context of the agents. We even have custom query types (with formatting from dynamic values). We currently use this function to deploy longitudinal surveys on the agent population. | We made 3 custom agents: `voter.py`, `candidate.py`, and `malicious.py`. We made 3 query types: `Favorability`, `VotePreference`, `IntentToVote`. We formed two versions of the first two types, one for each candidate. |
-
-`sim.yaml` has simulation parameters unrelated to any scenario attributes and is specified directly in `mastodon-sim/src/sim/config_utils/abstract_scenario.py`. That file also contains the abstract class definition for scenarios to facilitate writing the 3 other, scenario-specific config files. You can see an example derived class in the election example at `mastodon-sim/scenarios/election/election.py`.
 
 All config generation is orchestrated in `mastodon-sim/src/sim/config_utils/config_schema.py`.
 We use the Hydra package to manage config files, run simulations, and log output. See the [hydra documentation](https://hydra.cc/docs/intro/) for more details. One simple use of hydra is to override default parameter values by including them in the command line. More structured experiments can be made with customized yaml subconfig files.
@@ -96,7 +94,7 @@ mastodon-sim/
     ├── sim/
     |   ├── main.py
     |   ├── config_utils/
-    |   |   ├── agent_buidlers.py
+    |   |   ├── agent_builders.py
     |   |   ├── scenario_schema.py
     |   |   ├── simulation_dataclasses.py
     |   |   ├── social_media_dataclasses.py
@@ -122,7 +120,7 @@ mastodon-sim/
             ├── scenario_dataclasses.py
             ├── config_utils/
             |    └── probe_lib.py
-            ├── entities_lib/
+            ├── entity_lib/
             |    └── role_1.py
             ├── input/
             |    └── source_1.py
@@ -209,8 +207,3 @@ mastodon-sim --help
 ```
 
 -->
-
-### Running Experiments
-
-- See `mastodon-sim/infrastructure/mastodon-on-aws/README.md` for Mastodon server deployment instructions.
-- See `mastodon-sim/notebooks` to run experiments after deploying the server.
