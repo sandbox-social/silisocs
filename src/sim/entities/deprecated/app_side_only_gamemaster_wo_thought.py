@@ -8,7 +8,7 @@ from concordia.associative_memory import (
 )
 from concordia.clocks import game_clock
 
-from mastodon_sim.concordia import triggering
+from mastodon_sim.concordia_deprecated.components import triggering
 
 
 class GameMaster:

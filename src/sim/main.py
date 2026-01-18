@@ -302,7 +302,30 @@ def main(cfg: DictConfig):
     ConfigStore.set_config(cfg)
 
     prompts_file = os.path.join(output_dir, "prompts_and_responses.jsonl")
-    model = select_large_language_model(cfg.sim.llm_name, prompts_file, True)
+    # Build models map and entity->model mapping for all instances.
+    # If an instance doesn't specify a model name, default to `cfg.sim.llm_name`.
+    models: dict[str, object] = {}
+    entity_to_model: dict[str, str] = {}
+    for instance in instances:
+        try:
+            model_name = instance.params["model"]["name"]
+        except Exception:
+            model_name = None
+
+        if not model_name:
+            model_name = cfg.sim.llm_name
+
+        # map entity name to the model name
+        entity_to_model[instance.params["name"]] = model_name
+
+        # load the model once per unique name
+        if model_name not in models:
+            models[model_name] = select_large_language_model(model_name, prompts_file, True)
+
+    # Use the configured default model for compatibility (should be present in `models`).
+    model = models.get(cfg.sim.llm_name)
+    if model is None:
+        model = select_large_language_model(cfg.sim.llm_name, prompts_file, True)
 
     embedder = get_sentence_encoder(cfg.sim.sentence_encoder)
 
@@ -310,7 +333,8 @@ def main(cfg: DictConfig):
 
     runnable_simulation = simulation.Simulation(
         config=concordia_config,
-        model=model,
+        models=models,
+        entity_to_model=entity_to_model,
         embedder=embedder,
         engine=sim_engine,
     )

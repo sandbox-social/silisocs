@@ -23,7 +23,7 @@ from concordia.clocks import game_clock
 from concordia.language_model import language_model
 from concordia.typing.deprecated import component
 
-from mastodon_sim.concordia.components import apps, logging, scene
+from mastodon_sim.concordia_deprecated.components import apps, logging, scene
 from sim.sim_utils.misc_sim_utils import ConfigStore
 
 

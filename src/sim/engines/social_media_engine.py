@@ -63,6 +63,7 @@ class SocialMediaEngine(simultaneous.Simultaneous):
         )
         if verbose:
             print(termcolor.colored(f"The resolved event was: {result}", _PRINT_COLOR))
+        return result
 
     @override
     def run_loop(  # type: ignore[misc]
@@ -189,7 +190,8 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                         )
                     )
 
-                self.agent_resolve(game_master, action, verbose=verbose)
+                result = self.agent_resolve(game_master, action, verbose=verbose)
+                entity.observe(result)
 
                 return action
 

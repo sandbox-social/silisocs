@@ -11,6 +11,10 @@ from .mastodon_action_suggester import (
     MastodonActionSuggester,
 )
 
+OBSERVATION_TO_MEMORY_KEY = "__observation_to_memory__"
+ELECTION_INFO_KEY = "__Election Information__"
+INSTRUCTIONS_COMPONENT_KEY = "__Roleplaying Instructions__"
+
 
 def _get_component_name(object_: object) -> str:
     if hasattr(object_, "name"):
@@ -89,9 +93,6 @@ def build(
     goal = self.params.get("goal", "")
     election_info = self.params.get("election_info", "")
 
-    memory_key = agent_components.memory.DEFAULT_MEMORY_COMPONENT_KEY
-    memory = agent_components.memory.AssociativeMemory(memory_bank=memory_bank)
-
     instructions_key = "Instructions"
     instructions = agent_components.instructions.Instructions(
         agent_name=agent_name,
@@ -123,21 +124,12 @@ def build(
         goal_label = None
         overarching_goal = None
 
-    # identity_label = "\nIdentity characteristics"
-    # identity_characteristics = (
-    #     agent_components.question_of_query_associated_memories.IdentityWithoutPreAct(
-    #         model=model,
-    #         logging_channel=measurements.get_channel("IdentityWithoutPreAct").on_next,
-    #         pre_act_key=identity_label,
-    #     )
-    # )
-    # self_perception_label = f"\nQuestion: What kind of person is {agent_name}?\nAnswer"
-    # self_perception = agent_components.question_of_recent_memories.SelfPerception(
-    #     model=model,
-    #     components={_get_class_name(identity_characteristics): identity_label},
-    #     pre_act_key=self_perception_label,
-    #     logging_channel=measurements.get_channel("SelfPerception").on_next,
-    # )
+    self_perception_key = f"\nQuestion: What kind of person is {agent_name}?\nAnswer"
+    self_perception = agent_components.question_of_recent_memories.SelfPerception(
+        model=model,
+        add_to_memory=False,
+        pre_act_key=self_perception_key,
+    )
 
     public_opinion_supported_candidate_key = "Public Opinion of Supported Candidate"
     public_opinion_supported_candidate = PublicOpinionCandidate(
@@ -202,18 +194,16 @@ def build(
         # Components that provide pre_act context.
         instructions_key: instructions,
         election_info_key: election_information,
-        observation_to_memory_key: observation_to_memory,
-        observation_key: observation,
-        # observation_summary,
-        # relevant_memories,
-        # self_perception,
+        OBSERVATION_TO_MEMORY_KEY: observation_to_memory,
+        agent_components.observation.DEFAULT_OBSERVATION_COMPONENT_KEY: (observation),
+        agent_components.memory.DEFAULT_MEMORY_COMPONENT_KEY: (
+            agent_components.memory.AssociativeMemory(memory_bank=memory_bank)
+        ),
+        self_perception_key: self_perception,
         public_opinion_supported_candidate_key: public_opinion_supported_candidate,
         public_opinion_opposed_candidate_key: public_opinion_opposed_candidate,
         plan_key: plan,
         action_suggester_key: action_suggester,
-        # Components that do not provide pre_act context.
-        # identity_characteristics,
-        memory_key: memory,
     }
 
     component_order = list(components_of_agent.keys())

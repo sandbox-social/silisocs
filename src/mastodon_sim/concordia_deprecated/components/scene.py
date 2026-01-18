@@ -31,8 +31,8 @@ from concordia.typing.deprecated import agent, component
 from concordia.typing.entity import OutputType
 
 from mastodon_sim import mastodon_ops
-from mastodon_sim.concordia.components import apps, logging
-from mastodon_sim.concordia.components.apps import COLOR_TYPE
+from mastodon_sim._deprecated.components.apps import COLOR_TYPE
+from mastodon_sim.concordia_deprecated.components import apps, logging
 from sim.sim_utils.misc_sim_utils import ConfigStore
 
 file_lock = threading.Lock()

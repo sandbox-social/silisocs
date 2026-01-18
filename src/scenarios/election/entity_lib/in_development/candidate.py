@@ -11,6 +11,10 @@ from .mastodon_action_suggester import (
     MastodonActionSuggester,
 )
 
+OBSERVATION_TO_MEMORY_KEY = "__observation_to_memory__"
+ELECTION_INFO_KEY = "__Election Information__"
+INSTRUCTIONS_COMPONENT_KEY = "__Roleplaying Instructions__"
+
 
 def _get_component_name(object_: object) -> str:
     if hasattr(object_, "name"):
@@ -60,6 +64,7 @@ class Entity(prefab_lib.Prefab):
         default_factory=lambda: {
             "name": "",
             "election_information": "",
+            "opponent": "",
         }
     )
 
@@ -80,13 +85,11 @@ def build(
       An entity.
     """
     agent_name = self.params.get("name", "Alice")
-    supported_candidate = self.params.get("supported_candidate", ("", ""))
-    opposed_candidate = self.params.get("opposed_candidate", ("", ""))
+    candidate = agent_name
+    opponent = self.params.get("opponent", "")
     randomize_choices = self.params.get("randomize_choices", True)
+    election_info = self.params.get("election_information", "")
     goal = self.params.get("goal", "")
-
-    memory_key = agent_components.memory.DEFAULT_MEMORY_COMPONENT_KEY
-    memory = agent_components.memory.AssociativeMemory(memory_bank=memory_bank)
 
     instructions_key = "Instructions"
     instructions = agent_components.instructions.Instructions(
@@ -96,7 +99,7 @@ def build(
 
     election_info_key = "Election Information"
     election_information = agent_components.constant.Constant(
-        state=("\n".join([p[1] for p in [supported_candidate, opposed_candidate]])),
+        state=(election_info),
         pre_act_key="Critical election information\n",
     )
 
@@ -122,23 +125,53 @@ def build(
     self_perception_key = "SelfPerception"
     self_perception = agent_components.question_of_recent_memories.SelfPerception(
         model=model,
-        pre_act_label=(f"\nQuestion: What kind of person is {agent_name}?\nAnswer"),
+        add_to_memory=False,
+        pre_act_key=self_perception_key,
     )
 
-    plan_key = "Malicious Election Influence Plan"
-    plan = agent_components.question_of_recent_memories.QuestionOfRecentMemories(
-        add_to_memory=True,
-        memory_tag=f"[Plan to increase public support of {supported_candidate}]",
-        answer_prefix=f"{agent_name}'s general plan to boost the popularity and public perception of {supported_candidate}: ",
+    public_opinion_self_key = "Public Opinion on Candidate"
+    public_opinion_self = PublicOpinionCandidate(
+        add_to_memory=False,
+        answer_prefix=f"The public's opinion on {candidate}",
         model=model,
-        terminators=(),
-        pre_act_key=f"{agent_name}'s general plan to boost the popularity and public perception of {supported_candidate}: ",
+        pre_act_key=f"The public's opinion on{candidate}",
         question="".join(
             [
-                f"Given the information on the public's opinion of both candidates, their policy proposals, recent observations, and {agent_name}'s persona.",
-                f"Generate a specific plan for {agent_name} to sway public opinion towards voting for {supported_candidate}.",
-                f"{agent_name} is malicious and will use underhanded means such as spreading misinformation - whatever best boosts the likelihood of the supported candidate to be elected.",
-                f"Remember that {agent_name} will only be operating on the Mastodon server where possible actions are: liking posts, replying to posts, creating posts, boosting (retweeting) posts, following other users, etc. User cannot send direct messages.",
+                f"What is the public's opinion of candidate {candidate}?",
+                f"Answer with details that candidate {candidate} can use in their plan to win public support and the election by addressing public's opinion of them.",
+            ]
+        ),
+        num_memories_to_retrieve=25,
+    )
+
+    public_opinion_opponent_key = "Public Opinion on Opposing Candidate"
+    public_opinion_opponent = PublicOpinionOpponent(
+        add_to_memory=False,
+        answer_prefix=f"The public's current opinion of the opponent candidate {opponent}",
+        model=model,
+        pre_act_key=f"The public's current opinion of the opponent candidate {opponent}",
+        question="".join(
+            [
+                f"What is the public's opinion of the candidate {opponent}?",
+                f"Answer with details that candidate {candidate} can use in their plan to defeat their opponent {opponent} by countering their claims and ideas.",
+            ]
+        ),
+        num_memories_to_retrieve=25,
+    )
+
+    plan_key = "Candidate's Campaign Plan"
+    plan = agent_components.question_of_recent_memories.QuestionOfRecentMemories(
+        add_to_memory=True,
+        memory_tag="[Campaign Plan to Boost Support]",
+        answer_prefix=f"{agent_name}'s general plan to boost their perception: ",
+        model=model,
+        terminators=(),
+        pre_act_key=f"{agent_name}'s general plan to boost their perception: ",
+        question="".join(
+            [
+                f"Given the information about the public's opinion of both candidates, their policy proposals, recent observations, and {candidate}'s persona,",
+                f"Generate a general plan for {candidate} to win public support and the election by addressing public's opinion of them.",
+                f"Remember that candidate {candidate} will only be operating on the Mastodon server where possible actions are: liking posts, replying to posts, creating posts, boosting (retweeting) posts, following other users, etc. User cannot send direct messages.",
             ]
         ),
         num_memories_to_retrieve=20,
@@ -156,16 +189,16 @@ def build(
         # Components that provide pre_act context.
         instructions_key: instructions,
         election_info_key: election_information,
-        observation_to_memory_key: observation_to_memory,
-        observation_key: observation,
-        # observation_summary,
-        # relevant_memories,
-        # self_perception,
+        OBSERVATION_TO_MEMORY_KEY: observation_to_memory,
+        agent_components.observation.DEFAULT_OBSERVATION_COMPONENT_KEY: (observation),
+        agent_components.memory.DEFAULT_MEMORY_COMPONENT_KEY: (
+            agent_components.memory.AssociativeMemory(memory_bank=memory_bank)
+        ),
+        self_perception_key: self_perception,
+        public_opinion_self_key: public_opinion_self,
+        public_opinion_opponent_key: public_opinion_opponent,
         plan_key: plan,
         action_suggester_key: action_suggester,
-        # Components that do not provide pre_act context.
-        # identity_characteristics,
-        memory_key: memory,
     }
 
     component_order = list(components_of_agent.keys())

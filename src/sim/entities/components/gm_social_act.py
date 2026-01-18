@@ -3,7 +3,6 @@ from collections.abc import Sequence
 from typing import Any
 
 from concordia.components import game_master as gm_components
-from concordia.components.game_master import make_observation as make_observation_component
 from concordia.document import interactive_document
 from concordia.language_model import language_model
 from concordia.typing import entity as entity_lib
@@ -91,13 +90,10 @@ class SMAct(gm_components.switch_act.SwitchAct):
     def _make_observation(  # type: ignore[misc]
         self, contexts: entity_component.ComponentContextMapping, action_spec: entity_lib.ActionSpec
     ) -> str:
+        # TODO: Connect to activity state, observe timeline on first activity of chunk. (Maybe filter to only store new posts)
+        first_active_state = True
         result = ""
-        if make_observation_component.DEFAULT_MAKE_OBSERVATION_COMPONENT_KEY in contexts:
-            result = str(
-                contexts[make_observation_component.DEFAULT_MAKE_OBSERVATION_COMPONENT_KEY]
-            )
-        if result == "":
-            print(action_spec.call_to_action)
+        if first_active_state:
             active_entity_name = next(
                 s for s in self._entity_names if s in action_spec.call_to_action
             )
@@ -176,12 +172,6 @@ class SMAct(gm_components.switch_act.SwitchAct):
                     current_user,
                     action_data["target_id"],
                 )
-
-        make_observation = self.get_entity().get_component(
-            make_observation_component.DEFAULT_MAKE_OBSERVATION_COMPONENT_KEY,
-            type_=make_observation_component.MakeObservation,
-        )
-        make_observation.add_to_queue(active_entity, result)
         self._log(result, "", action_spec)
         return result
 
