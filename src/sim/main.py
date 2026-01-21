@@ -18,7 +18,8 @@ import hydra
 
 # Concordia imports
 from concordia import __file__ as concordia_location
-from concordia.prefabs.simulation import generic as simulation
+
+# from concordia.prefabs.simulation import generic as simulation
 from concordia.typing import prefab as prefab_lib
 from concordia.utils import helper_functions
 
@@ -26,7 +27,6 @@ from concordia.utils import helper_functions
 from dotenv import find_dotenv, load_dotenv
 from omegaconf import DictConfig
 
-# Local imports
 from sim.config_utils.scenario_schema import validate_scenario_config
 from sim.config_utils.simulation_dataclasses import (
     GameMasterConfig,
@@ -37,6 +37,9 @@ from sim.config_utils.simulation_dataclasses import (
 from sim.config_utils.social_media_dataclasses import SocialMediaParams, UserData
 from sim.config_utils.social_media_functions import get_simrole_parameters
 from sim.engines.social_media_engine import SocialMediaEngine
+
+# Local imports
+from sim.entities.simulation import Simulation
 from sim.sim_utils.media_utils import select_large_language_model
 from sim.sim_utils.misc_sim_utils import (
     ConfigStore,
@@ -331,7 +334,7 @@ def main(cfg: DictConfig):
 
     sim_engine = SocialMediaEngine()
 
-    runnable_simulation = simulation.Simulation(
+    runnable_simulation = Simulation(
         config=concordia_config,
         models=models,
         entity_to_model=entity_to_model,

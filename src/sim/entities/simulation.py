@@ -142,7 +142,7 @@ class Simulation(simulation_lib.Simulation):
         game_master_prefab.params = instance_config.params
         game_master_prefab.entities = self.entities
         game_master = game_master_prefab.build(
-            model=self._models[self._entity_to_model[game_master_prefab.params.name]],
+            model=self._models[self._entity_to_model[game_master_prefab.params["name"]]],
             memory_bank=self.game_master_memory_bank,
         )
 
@@ -173,7 +173,7 @@ class Simulation(simulation_lib.Simulation):
             sentence_embedder=self._embedder,
         )
         entity = entity_prefab.build(
-            model=self._models[self._entity_to_model[entity_prefab.params.name]],
+            model=self._models[self._entity_to_model[entity_prefab.params["name"]]],
             memory_bank=memory_bank,
         )
 
