@@ -132,8 +132,8 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
 
     # Get social media role parameters
     simrole_params = get_simrole_parameters(
-        active_rates=dict(cfg.scenario.social_network.active_rates),
-        roles=list(cfg.scenario.social_network.active_rates.keys()),
+        activity_transition_rates=dict(cfg.scenario.social_network.activity_transition_rates),
+        roles=list(cfg.scenario.social_network.activity_transition_rates.keys()),
         fully_connected_targets=list(cfg.scenario.social_network.fully_connected_targets),
         base_probability=cfg.scenario.social_network.base_followership_probability,
     )

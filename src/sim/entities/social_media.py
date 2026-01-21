@@ -80,7 +80,7 @@ class GameMaster(prefab_lib.Prefab):
         print(user_mapping)
         sm_app.set_user_mapping(user_mapping)
 
-        active_rates = self.set_app_state(sm_app, user_data)
+        activity_transition_rates = self.set_app_state(sm_app, user_data)
 
         player_names = [entity.name for entity in self.entities]
         make_observation_key = social_make_observation.DEFAULT_MAKE_OBSERVATION_COMPONENT_KEY
@@ -105,7 +105,7 @@ class GameMaster(prefab_lib.Prefab):
             component_order=component_order,
             call_to_action_str=call_to_sm_action,
             sm_app=sm_app,
-            active_rates=active_rates,
+            activity_transition_rates=activity_transition_rates,
         )
 
         game_master = entity_agent_with_logging.EntityAgentWithLogging(
@@ -145,13 +145,13 @@ class GameMaster(prefab_lib.Prefab):
         # initiailize initial followership network randomly based on pair role follow probabilities
         role_prob_matrix = user_data["sim_role_parameters"]["initial_follow_prob"]
 
-        active_rates: dict[str, float] = {}
+        activity_transition_rates: dict[str, Any] = {}
         following_lists: dict[str, list] = {}
         for agent_i, role_i in user_data["sim_roles"].items():
             # per-step rate at which user is active
-            active_rates[agent_i] = user_data["sim_role_parameters"]["active_rates_per_episode"][
-                role_i
-            ]
+            activity_transition_rates[agent_i] = user_data["sim_role_parameters"][
+                "activity_transition_rates"
+            ][role_i]
 
             following_lists[agent_i] = []
             for agent_j, role_j in user_data["sim_roles"].items():
@@ -178,4 +178,4 @@ class GameMaster(prefab_lib.Prefab):
             except Exception as e:
                 print(f"Ignoring error during sm user data setting: {e}")
 
-        return active_rates
+        return activity_transition_rates

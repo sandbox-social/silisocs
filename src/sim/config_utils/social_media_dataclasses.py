@@ -14,7 +14,7 @@ class SocialMediaUserParams(AgentParams):
 
 @dataclass(frozen=True)
 class SimRoleParameters:
-    active_rates_per_episode: dict[str, float] = MISSING
+    activity_transition_rates: dict[str, dict[str, int]] = MISSING
     initial_follow_prob: dict[str, dict[str, float]] = MISSING
 
 

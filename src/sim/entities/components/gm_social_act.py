@@ -74,7 +74,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
         sm_app,
         component_order: Sequence[str] | None = None,
         call_to_action_str: str = "",
-        active_rates: dict[str, Any] = {},
+        activity_transition_rates: dict[str, Any] = {},
     ):
         super().__init__(
             model=model,
@@ -84,7 +84,11 @@ class SMAct(gm_components.switch_act.SwitchAct):
         self.call_to_action_str = call_to_action_str
         self.session = dict.fromkeys(entity_names, 0)
         self.sm_app = sm_app
-        self.active_rates = active_rates
+        self.activity_transition_rates = activity_transition_rates
+        # all users start active (1) and transition to inactive (0) and back according to the rates
+        self.users_activity_state: dict[str, int] = dict(
+            zip(entity_names, [1] * len(entity_names), strict=False)
+        )
 
     @override
     def _make_observation(  # type: ignore[misc]
@@ -216,11 +220,13 @@ class SMAct(gm_components.switch_act.SwitchAct):
         if DEFAULT_NEXT_ACTING_COMPONENT_KEY in contexts:
             entity_names = str(contexts[DEFAULT_NEXT_ACTING_COMPONENT_KEY]).split(",")
 
+            self.update_user_activity_state(entity_names)
+
             # random activation case specified by active_rates
             result = ",".join(
                 entity_name
                 for entity_name in entity_names
-                if self.active_rates[entity_name] > random.random()
+                if self.users_activity_state[entity_name]
             )
             self._log(result, context, action_spec)
         else:
@@ -234,3 +240,14 @@ class SMAct(gm_components.switch_act.SwitchAct):
             self._log(result, chain_of_thought, action_spec)
 
         return result
+
+    def update_user_activity_state(self, entity_names):
+        for entity_name in entity_names:
+            last_state = self.users_activity_state[entity_name]
+            inactive_to_active = self.activity_transition_rates[entity_name]["inactive_to_active"]
+            active_to_inactive = self.activity_transition_rates[entity_name]["active_to_inactive"]
+            if last_state == 0:
+                current_state = 1 if random.random() < inactive_to_active else 0
+            else:
+                current_state = 0 if random.random() < active_to_inactive else 1
+            self.users_activity_state[entity_name] = current_state

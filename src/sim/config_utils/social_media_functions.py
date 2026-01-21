@@ -38,7 +38,7 @@ def get_followership_connection_stats(
 
 
 def get_simrole_parameters(
-    active_rates: dict[str, float],
+    activity_transition_rates: dict[str, dict[str, int]],
     roles: list[str],
     fully_connected_targets: list[str],
     base_probability: float,
@@ -57,7 +57,7 @@ def get_simrole_parameters(
         SimRoleParameters instance
     """
     simrole_parameters = SimRoleParameters(
-        active_rates_per_episode=active_rates,
+        activity_transition_rates=activity_transition_rates,
         initial_follow_prob=get_followership_connection_stats(
             roles, fully_connected_targets, base_probability
         ),

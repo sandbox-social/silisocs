@@ -61,10 +61,16 @@ role_configs:
 
 # Social network configuration
 social_network:
-  active_rates:
-    voter: 1.0
-    candidate: 1.0
-    news_account: 1.0
+  activity_transition_rates:
+    voter:
+      inactive_to_active: 0.1
+      active_to_inactive: 0.1
+    candidate:
+      inactive_to_active: 0.8
+      active_to_inactive: 0.1
+    news_account:
+      inactive_to_active: 1
+      active_to_inactive: 0
 
   fully_connected_targets:
     - candidate
