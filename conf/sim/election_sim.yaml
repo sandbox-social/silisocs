@@ -1,6 +1,6 @@
 app_module: mastodon_sim
 load_path: ''
-model: gpt-4o-mini
+model: gpt-4.1-mini
 num_agents: 20
 num_episodes: 1
 run_name: run1
