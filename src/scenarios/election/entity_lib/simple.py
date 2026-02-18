@@ -26,6 +26,7 @@ class Entity(prefab_lib.Prefab):
     params: Mapping[str, str] = dataclasses.field(
         default_factory=lambda: {
             "name": "Alice",
+            "role": "",
             "goal": "",
             "election_info": "",
         }
@@ -52,7 +53,7 @@ class Entity(prefab_lib.Prefab):
 
         instructions = agent_components.instructions.Instructions(agent_name=agent_name)
         cfg = ConfigStore.get_config()
-        instructions._state = cfg.sim.roleplaying_instructions
+        instructions._state = cfg.sim.roleplaying_instructions.format(name=agent_name)
 
         election_information = agent_components.constant.Constant(
             state=(election_info),

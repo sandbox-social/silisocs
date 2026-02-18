@@ -208,7 +208,7 @@ def select_large_language_model(model_name, log_file, debug_mode, disable_langua
         model = GptLanguageModel(
             api_key=GPT_API_KEY, model_name=model_name, log_file=log_file, debug=debug_mode
         )
-    elif "Qwen" in model_name:
+    elif "qwen" in model_name:
         model = model = GptLanguageModel(
             api_key="abcd",
             model_name=model_name,

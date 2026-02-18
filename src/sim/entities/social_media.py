@@ -1,7 +1,6 @@
 import concurrent.futures
 import dataclasses
 import os
-import random
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -74,10 +73,9 @@ class GameMaster(prefab_lib.Prefab):
         )
 
         user_mapping = {
-            agent_name.split()[0]: f"user{i + 1:04d}"
+            f"{agent_name.split()[0]}{agent_name.split()[1]}": f"user{i + 1:04d}"
             for i, agent_name in enumerate(user_data["sim_roles"])
         }  # first name keys
-        print(user_mapping)
         sm_app.set_user_mapping(user_mapping)
 
         activity_transition_rates = self.set_app_state(sm_app, user_data)
@@ -142,24 +140,52 @@ class GameMaster(prefab_lib.Prefab):
         sm_app,
         user_data: dict[str, Any],
     ) -> dict[str, Any]:
-        # initiailize initial followership network randomly based on pair role follow probabilities
-        role_prob_matrix = user_data["sim_role_parameters"]["initial_follow_prob"]
+        from sim.config_utils.social_media_functions import (
+            generate_graph_from_networkx,
+            generate_random_network,
+        )
 
         activity_transition_rates: dict[str, Any] = {}
-        following_lists: dict[str, list] = {}
+        # Determine network type from users config or default to 'random'
+        network_type = user_data.get("network_type", "random")
+
+        # Identify agents and candidates
+        all_agents = list(user_data["sim_roles"].keys())
+        candidates = [
+            agent for agent, role in user_data["sim_roles"].items() if role == "candidate"
+        ]
+
+        if network_type == "random":
+            following_lists = generate_random_network(
+                all_agents, user_data, ensure_candidate_following=True
+            )
+        elif network_type == "barabasi_albert":
+            # Default m=2
+            following_lists = generate_graph_from_networkx(
+                all_agents, candidates, graph_type="barabasi_albert", m=10
+            )
+        elif network_type == "lfr_benchmark":
+            following_lists = generate_graph_from_networkx(
+                all_agents, candidates, graph_type="lfr_benchmark"
+            )
+        elif network_type == "predefined":
+            # Load from predefined list if available in user_data
+            following_lists = user_data.get("predefined_graph", {})
+            # Ensure defaults for agents not in predefined graph
+            for agent in all_agents:
+                if agent not in following_lists:
+                    following_lists[agent] = []
+        else:
+            print(f"Unknown or generic network type '{network_type}', using random as fallback.")
+            following_lists = generate_random_network(
+                all_agents, user_data, ensure_candidate_following=True
+            )
+
         for agent_i, role_i in user_data["sim_roles"].items():
             # per-step rate at which user is active
             activity_transition_rates[agent_i] = user_data["sim_role_parameters"][
                 "activity_transition_rates"
             ][role_i]
-
-            following_lists[agent_i] = []
-            for agent_j, role_j in user_data["sim_roles"].items():
-                if agent_i == agent_j:  # Agents cannot follow themselves
-                    continue
-                prob = role_prob_matrix[role_i][role_j]
-                if random.random() < prob:
-                    following_lists[agent_i].append(agent_j)
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = []

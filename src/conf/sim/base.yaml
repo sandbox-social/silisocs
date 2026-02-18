@@ -3,9 +3,9 @@
 # These are general simulation parameters that apply to all scenarios
 
 app_module_path: mastodon_sim
-llm_name: gpt-4o-mini
+llm_name: gpt-4.1-mini
 num_agents: 20
-num_steps: 1
+num_steps: 50
 run_name: run1
 seed: 1
 sentence_encoder: sentence-transformers/all-mpnet-base-v2

@@ -1,6 +1,7 @@
 # Make sure to import the original engine and any other tools you need
 import functools
 import os
+import time
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -96,6 +97,7 @@ class SocialMediaEngine(simultaneous.Simultaneous):
 
         # while not self.terminate(game_master, verbose) and steps < max_steps:
         while steps < max_steps:
+            start_time = time.time()
             if log is not None and hasattr(game_master, "get_last_log"):
                 assert hasattr(game_master, "get_last_log")  # Assertion for pytype
                 if (
@@ -115,7 +117,7 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                 ):
                     log_entry["next_acting"] = game_master.get_last_log()
             print(game_master.name)
-            if steps > 0:
+            if steps >= 0:
                 game_master._act_component.sm_app.action_logger.episode_idx = steps
                 game_master._act_component._model.agent_names = [
                     agent._agent_name for agent in entities
@@ -214,6 +216,10 @@ class SocialMediaEngine(simultaneous.Simultaneous):
 
             if skip_actions:
                 steps += 1
+                duration = time.time() - start_time
+                print(f"Episode {steps - 1} finished in {duration:.2f}s")
+                with open(os.path.join(cfg.sim.output_rootname, "run_stats.log"), "a") as f:
+                    f.write(f"Episode {steps - 1} duration: {duration:.2f}s\n")
                 continue
 
             entity_logs = {}
@@ -236,6 +242,10 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                 log_entry = _get_empty_log_entry()
             if checkpoint_callback is not None:
                 checkpoint_callback(steps)
+            duration = time.time() - start_time
+            print(f"Episode {steps - 1} finished in {duration:.2f}s")
+            with open(os.path.join(cfg.sim.output_rootname, "run_stats.log"), "a") as f:
+                f.write(f"Episode {steps - 1} duration: {duration:.2f}s\n")
 
     @override
     def next_game_master(  # type: ignore[misc]

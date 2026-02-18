@@ -32,12 +32,15 @@ class ElectionAgentBuilder(BaseAgentBuilder):
         -------
             List of AgentConfig objects
         """
+        if count == 0:
+            return []
+
         if role == "voter":
             return self._build_voters(count)
         if role == "candidate":
-            return self._build_candidates()
+            return self._build_candidates(count)
         if role == "news_account":
-            return self._build_news_account()
+            return self._build_news_account(count)
         raise ValueError(f"Unknown role: {role}")
 
     def _build_voters(self, count: int) -> list[AgentConfig]:
@@ -84,7 +87,7 @@ class ElectionAgentBuilder(BaseAgentBuilder):
 
         return configs
 
-    def _build_candidates(self) -> list[AgentConfig]:
+    def _build_candidates(self, count: int) -> list[AgentConfig]:
         """Build candidate agents."""
         configs = []
 
@@ -98,7 +101,13 @@ class ElectionAgentBuilder(BaseAgentBuilder):
         sim_role = SimRole(name="candidate", module_path=role_cfg.module_path)
 
         # Build each candidate
-        for partisan_type, candidate_info in self.config.candidates.items():
+        # We need to respect the count, but candidates are named individuals.
+        # We'll take the first `count` candidates defined in config.
+        candidate_items = list(self.config.candidates.items())
+        if count < len(candidate_items):
+            candidate_items = candidate_items[:count]
+
+        for partisan_type, candidate_info in candidate_items:
             agent_config = AgentConfig(
                 prefab=sim_role.module_path.split(".")[-1] + "__Entity",
                 params=asdict(
@@ -118,8 +127,11 @@ class ElectionAgentBuilder(BaseAgentBuilder):
 
         return configs
 
-    def _build_news_account(self) -> list[AgentConfig]:
+    def _build_news_account(self, count: int) -> list[AgentConfig]:
         """Build news account agent."""
+        if count == 0:
+            return []
+
         # Get news configuration
         news_cfg = self.config.news_account
 
@@ -159,7 +171,6 @@ class ElectionAgentBuilder(BaseAgentBuilder):
                 )
             ),
         )
-
         return [agent_config]
 
     def _get_policy_text(self) -> str:

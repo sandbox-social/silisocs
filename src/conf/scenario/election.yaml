@@ -36,14 +36,14 @@ event:
 
 # Data sources
 data:
-  persona_file: reddit_agents.json
+  persona_file: reddit_agents_nostyle.json
   persona_type: Reddit.Big5
   news_file: v1_news_bill_bias
   use_news_agent: with_images
 
 # Role counts
 roles:
-  voter: 18  # Will be total - candidates - news (20 - 2 = 17)
+  voter: 17  # Will be total - candidates - news (20 - 2 = 17)
   candidate: 2
   news_account: 1
 

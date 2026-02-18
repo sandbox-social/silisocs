@@ -1,8 +1,11 @@
 import importlib
+import logging
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 
 from concordia.typing import entity
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_CALL_TO_SPEECH = (
     "Given the above, what is {name} likely to say next? Respond in"
@@ -69,11 +72,18 @@ class AgentQuery(ABC):
 
     def ask(self, agent):
         agent_question = self.form_query_for_agent(agent)
-        agent_says = agent.act(
-            action_spec=entity.ActionSpec(
-                call_to_action=agent_question, output_type=entity.OutputType.FREE, tag="query"
-            ),
-        )
+        try:
+            action_spec = entity.ActionSpec(
+                call_to_action=agent_question,
+                output_type=entity.OutputType.FREE,
+                tag="query",
+            )
+        except TypeError:
+            action_spec = entity.ActionSpec(
+                call_to_action=agent_question,
+                output_type=entity.OutputType.FREE,
+            )
+        agent_says = agent.act(action_spec=action_spec)
         return agent_says
 
     @abstractmethod
@@ -82,21 +92,40 @@ class AgentQuery(ABC):
 
     def submit(self, agent):
         agent_says = self.ask(agent)
-        query_return = self.query_data.copy()
+        query_return = self.query_data.copy() if self.query_data else {}
+        query_return.setdefault("query_type", self.name)
+        query_return["raw_response"] = agent_says
         query_return["query_return"] = self.parse_answer(agent_says)
         return query_return
 
 
 def deploy_probes_to_agent(agent, queries, probe_event_logger):
-    agent_query_returns = [query.submit(agent) for query in queries]
-    agent_results = [
-        {
-            "source_user": agent._agent_name,
-            "label": agent_query_return["query_type"],
-            "data": agent_query_return,
-        }
-        for agent_query_return in agent_query_returns
-    ]
+    agent_results = []
+    for query in queries:
+        try:
+            agent_query_return = query.submit(agent)
+        except Exception as exc:
+            query_name = getattr(query, "name", type(query).__name__)
+            logger.exception(
+                "Probe query failed for agent=%s query=%s",
+                getattr(agent, "_agent_name", getattr(agent, "name", "unknown")),
+                query_name,
+            )
+            agent_query_return = {
+                "query_type": query_name,
+                "query_return": None,
+                "raw_response": None,
+                "query_error": str(exc),
+            }
+
+        agent_results.append(
+            {
+                "source_user": agent._agent_name,
+                "label": agent_query_return["query_type"],
+                "data": agent_query_return,
+            }
+        )
+
     probe_event_logger.log(agent_results)
 
 
@@ -112,7 +141,15 @@ def deploy_probes(agents, probes, probe_event_logger):
 
     with ThreadPoolExecutor() as executor:
         # Parallel probing
-        query_returns_over_agents = {
+        futures = {
             executor.submit(deploy_probes_to_agent, agent, queries, probe_event_logger): agent
             for agent in agents
         }
+        for future, agent in futures.items():
+            try:
+                future.result()
+            except Exception:
+                logger.exception(
+                    "Probe deployment failed for agent=%s",
+                    getattr(agent, "_agent_name", getattr(agent, "name", "unknown")),
+                )

@@ -7,6 +7,8 @@ from concordia.components import agent as agent_components
 from concordia.language_model import language_model
 from concordia.typing import prefab as prefab_lib
 
+from sim.sim_utils.misc_sim_utils import ConfigStore
+
 from .mastodon_action_suggester import (
     MastodonActionSuggester,
 )
@@ -33,15 +35,15 @@ ACTION_PROBABILITIES = {
     "toot": 0.20,  # Regular posting
     "reply": 0.15,
     # Medium frequency actions
-    "follow": 0.15,  # Following new accounts
-    "unfollow": 0.00,  # 25,  # Unfollowing accounts
+    "follow": 0.10,  # Following new accounts
+    "unfollow": 0.025,  # Unfollowing accounts
     "print_timeline": 0.0,  # Reading timeline
     # Low frequency actions
     "block_user": 0.0,  # Blocking problematic users
     "unblock_user": 0.0,  # Unblocking users
     "delete_posts": 0.0,  # Deleting own posts
     "update_bio": 0.0,  # Updating profile
-    "print_notifications": 0.00,  # 25,  # Checking notifications
+    "print_notifications": 0.025,  # Checking notifications
 }
 
 
@@ -63,8 +65,8 @@ class Entity(prefab_lib.Prefab):
     params: Mapping[str, str] = dataclasses.field(
         default_factory=lambda: {
             "name": "",
-            "election_information": "",
-            "opponent": "",
+            "goal": "",
+            "election_info": "",
         }
     )
 
@@ -85,16 +87,19 @@ def build(
       An entity.
     """
     agent_name = self.params.get("name", "Alice")
-    candidate = agent_name
-    opponent = self.params.get("opponent", "")
+    election_info = self.params.get("election_info", "")
     randomize_choices = self.params.get("randomize_choices", True)
-    election_info = self.params.get("election_information", "")
     goal = self.params.get("goal", "")
+    cfg = ConfigStore.get_config()
+
+    memory_key = agent_components.memory.DEFAULT_MEMORY_COMPONENT_KEY
+    memory = agent_components.memory.AssociativeMemory(memory_bank=memory_bank)
 
     instructions_key = "Instructions"
     instructions = agent_components.instructions.Instructions(
         agent_name=agent_name,
         pre_act_label="\nInstructions",
+        state=cfg.sim.roleplaying_instructions.format(name=agent_name),
     )
 
     election_info_key = "Election Information"
@@ -103,7 +108,6 @@ def build(
         pre_act_key="Critical election information\n",
     )
 
-    observation_to_memory_key = "Observation"
     observation_to_memory = agent_components.observation.ObservationToMemory()
 
     observation_key = agent_components.observation.DEFAULT_OBSERVATION_COMPONENT_KEY
@@ -129,57 +133,6 @@ def build(
         pre_act_key=self_perception_key,
     )
 
-    public_opinion_self_key = "Public Opinion on Candidate"
-    public_opinion_self = PublicOpinionCandidate(
-        add_to_memory=False,
-        answer_prefix=f"The public's opinion on {candidate}",
-        model=model,
-        pre_act_key=f"The public's opinion on{candidate}",
-        question="".join(
-            [
-                f"What is the public's opinion of candidate {candidate}?",
-                f"Answer with details that candidate {candidate} can use in their plan to win public support and the election by addressing public's opinion of them.",
-            ]
-        ),
-        num_memories_to_retrieve=25,
-    )
-
-    public_opinion_opponent_key = "Public Opinion on Opposing Candidate"
-    public_opinion_opponent = PublicOpinionOpponent(
-        add_to_memory=False,
-        answer_prefix=f"The public's current opinion of the opponent candidate {opponent}",
-        model=model,
-        pre_act_key=f"The public's current opinion of the opponent candidate {opponent}",
-        question="".join(
-            [
-                f"What is the public's opinion of the candidate {opponent}?",
-                f"Answer with details that candidate {candidate} can use in their plan to defeat their opponent {opponent} by countering their claims and ideas.",
-            ]
-        ),
-        num_memories_to_retrieve=25,
-    )
-
-    plan_key = "Candidate's Campaign Plan"
-    plan = agent_components.question_of_recent_memories.QuestionOfRecentMemories(
-        add_to_memory=True,
-        memory_tag="[Campaign Plan to Boost Support]",
-        answer_prefix=f"{agent_name}'s general plan to boost their perception: ",
-        model=model,
-        terminators=(),
-        pre_act_key=f"{agent_name}'s general plan to boost their perception: ",
-        question="".join(
-            [
-                f"Given the information about the public's opinion of both candidates, their policy proposals, recent observations, and {candidate}'s persona,",
-                f"Generate a general plan for {candidate} to win public support and the election by addressing public's opinion of them.",
-                f"Remember that candidate {candidate} will only be operating on the Mastodon server where possible actions are: liking posts, replying to posts, creating posts, boosting (retweeting) posts, following other users, etc. User cannot send direct messages.",
-            ]
-        ),
-        num_memories_to_retrieve=20,
-        components={
-            election_info_key,
-        },
-    )
-
     action_suggester_key = "Mastodon Action Suggestion"
     action_suggester = MastodonActionSuggester(
         model=model,
@@ -195,9 +148,6 @@ def build(
             agent_components.memory.AssociativeMemory(memory_bank=memory_bank)
         ),
         self_perception_key: self_perception,
-        public_opinion_self_key: public_opinion_self,
-        public_opinion_opponent_key: public_opinion_opponent,
-        plan_key: plan,
         action_suggester_key: action_suggester,
     }
 

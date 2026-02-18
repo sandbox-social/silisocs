@@ -395,9 +395,6 @@ class SocialNetworkApp(PhoneApp):
 
             self._mastodon_ops = mastodon_ops
 
-            # server state
-            check_env()
-            clear_mastodon_server(len(self._user_mapping) + 1)
         else:
             input(
                 "Sim will not use the deployed Mastodon server. Confirm by pressing any key to continue."
@@ -415,6 +412,9 @@ class SocialNetworkApp(PhoneApp):
         """Set the mapping of display names to usernames."""
         self._user_mapping = mapping
         self._print(f"Updated user mapping with {len(mapping)} entries", emoji="🔄")
+        # server state
+        check_env()
+        clear_mastodon_server(len(self._user_mapping) + 1)
 
     def get_user_mapping(self) -> dict[str, str]:
         """Get the mapping of display names to usernames."""
@@ -437,7 +437,7 @@ class SocialNetworkApp(PhoneApp):
     def update_profile(self, current_user: str, bio: str) -> str:
         """Update the user's bio."""
         current_user_full = str(current_user)
-        current_user = current_user.split()[0]
+        current_user = f"{current_user.split()[0]}{current_user.split()[1]}"
 
         username = self._get_username(current_user)
         self._print(f"Updating profile for @{username}: {current_user}", emoji="✏️")
@@ -460,15 +460,19 @@ class SocialNetworkApp(PhoneApp):
     def read_profile(self, current_user: str, target_user: str) -> tuple[str, str]:
         """Read a user's profile on Mastodon social network."""
         current_user_full = str(current_user)
-        current_user = current_user.split()[0]
+        current_user = f"{current_user.split()[0]}{current_user.split()[1]}"
         target_user_full = str(target_user)
-        target_user = target_user.split()[0]
+        target_user = f"{target_user.split()[0]}{target_user.split()[1]}"
 
         current_username = self._get_username(current_user)
         target_username = self._get_username(target_user)
         self._print(f"@{current_username} reading profile of @{target_username}", emoji="👀")
         if self.perform_operations:
-            display_name, bio = self._mastodon_ops.read_bio(current_username, target_username)
+            try:
+                display_name, bio = self._mastodon_ops.read_bio(current_username, target_username)
+            except Exception as e:
+                self._print(f"Error reading profile of @{target_username}: {e}", color="red")
+                display_name, bio = "Error", "Error fetching profile"
         else:
             display_name, bio = "Mock Name", "Mock Bio"
             self._print(
@@ -490,9 +494,9 @@ class SocialNetworkApp(PhoneApp):
     def follow_user(self, current_user: str, target_user: str) -> str:
         """Follow a user on Mastodon social network."""
         current_user_full = str(current_user)
-        current_user = current_user.split()[0]
+        current_user = f"{current_user.split()[0]}{current_user.split()[1]}"
         target_user_full = str(target_user)
-        target_user = target_user.split()[0]
+        target_user = f"{target_user.split()[0]}{target_user.split()[1]}"
         current_username = self._get_username(current_user)
         target_username = self._get_username(target_user)
         if self.perform_operations:
@@ -519,9 +523,9 @@ class SocialNetworkApp(PhoneApp):
     def unfollow_user(self, current_user: str, target_user: str) -> str:
         """Unfollow a user."""
         current_user_full = str(current_user)
-        current_user = current_user.split()[0]
+        current_user = f"{current_user.split()[0]}{current_user.split()[1]}"
         target_user_full = str(target_user)
-        target_user = target_user.split()[0]
+        target_user = f"{target_user.split()[0]}{target_user.split()[1]}"
         current_username = self._get_username(current_user)
         target_username = self._get_username(target_user)
         self._print(
@@ -670,7 +674,7 @@ class SocialNetworkApp(PhoneApp):
         return_val = None
         current_user_full = str(current_user)
         try:
-            current_user = current_user.split()[0]
+            current_user = f"{current_user.split()[0]}{current_user.split()[1]}"
             username = self._get_username(current_user)
             if self.perform_operations:
                 return_val = self._mastodon_ops.post_status(
@@ -735,7 +739,7 @@ class SocialNetworkApp(PhoneApp):
     #     return_val = None
     #     current_user_full = str(current_user)
     #     try:
-    #         current_user = current_user.split()[0]
+    #         current_user = f"{current_user.split()[0]}{current_user.split()[1]}"
     #         username = self._get_username(current_user)
     #         if self.perform_operations:
     #             return_val = self._mastodon_ops.post_status(
@@ -800,7 +804,7 @@ class SocialNetworkApp(PhoneApp):
         return_val = None
         try:
             current_user_full = str(current_user)
-            current_user = current_user.split()[0]
+            current_user = f"{current_user.split()[0]}{current_user.split()[1]}"
             username = self._get_username(current_user)
             if self.perform_operations:
                 return_val = self._mastodon_ops.post_status(
@@ -808,7 +812,11 @@ class SocialNetworkApp(PhoneApp):
                     status=status,
                     in_reply_to_id=in_reply_to_id,
                 )
-                toot_id = return_val["id"]
+                if return_val:
+                    toot_id = return_val["id"]
+                else:
+                    toot_id = ""
+                    self._print("Failed to post reply.", color="red")
             else:
                 self._print(
                     "Skipping real Mastodon API call since perform_operations is set to False",
@@ -837,11 +845,20 @@ class SocialNetworkApp(PhoneApp):
         except ValueError as e:
             self._print(f"Invalid input, regular toot posted: {e!s}", emoji="❌")
             return_msg = f'''There was an error in posting {current_user}'s reply, response was posted as a new toot!: "{status}"'''
+            if "username" in locals():
+                self._mastodon_ops.post_status(
+                    login_user=username,
+                    status=status,
+                )
 
         except Exception as e:
             self._print(f"An unexpected error occurred, regular toot posted: {e!s}", emoji="❌")
             return_msg = f'''There was an error in posting {current_user}'s reply, response was posted as a new toot!: "{status}"'''
-        # issue: where is new toot
+            if "username" in locals():
+                self._mastodon_ops.post_status(
+                    login_user=username,
+                    status=status,
+                )
         return return_msg
 
     # @app_action
@@ -906,7 +923,7 @@ class SocialNetworkApp(PhoneApp):
     def get_own_timeline(self, current_user: str, limit: int, return_str: bool = False) -> str:
         """Read the Mastodon social network feed for the current user."""
         current_user_full = str(current_user)
-        current_user = current_user.split()[0]
+        current_user = f"{current_user.split()[0]}{current_user.split()[1]}"
         username = self._get_username(current_user)
         self._print(
             f"Fetching @{username}'s timeline (limit: {limit})",
@@ -914,7 +931,11 @@ class SocialNetworkApp(PhoneApp):
         )
 
         if self.perform_operations:
-            timeline = self._mastodon_ops.get_own_timeline(username, limit=limit)
+            try:
+                timeline = self._mastodon_ops.get_own_timeline(username, limit=limit)
+            except Exception as e:
+                self._print(f"Error fetching timeline for @{username}: {e}", color="red")
+                timeline = []
         else:
             timeline = []
             self._print(
@@ -997,7 +1018,7 @@ class SocialNetworkApp(PhoneApp):
     def read_notifications(self, current_user: str, clear: bool, limit: int) -> str:
         """Read Mastodon social network notifications."""
         current_user_full = str(current_user)
-        current_user = current_user.split()[0]
+        current_user = f"{current_user.split()[0]}{current_user.split()[1]}"
 
         username = self._get_username(current_user)
         self._print(
@@ -1037,32 +1058,41 @@ class SocialNetworkApp(PhoneApp):
     def like_toot(self, current_user: str, toot_id: str) -> str:
         """Like (favorite) a toot."""
         current_user_full = str(current_user)
-        current_user = current_user.split()[0]
+        current_user = f"{current_user.split()[0]}{current_user.split()[1]}"
         current_username = self._get_username(current_user)
         # self._print(
         #     f"@{current_username} liking post {toot_id}",
         #     emoji="❤️",
         # )
-        like_message = f"{current_user} (@{current_username}) liked post {toot_id}"
-        if self.perform_operations:
-            check = self._mastodon_ops.like_check(current_username, toot_id)
-            if not check:
-                self._mastodon_ops.like_toot(current_username, toot_id)
+        try:
+            like_message = f"{current_user} (@{current_username}) liked post {toot_id}"
+            if self.perform_operations:
+                check = self._mastodon_ops.like_check(current_username, toot_id)
+                if not check:
+                    self._mastodon_ops.like_toot(current_username, toot_id)
+                else:
+                    like_message = f"{current_user} (@{current_username}) has previously liked post {toot_id}. Please conduct a different action!!"
             else:
-                like_message = f"{current_user} (@{current_username}) has previously liked post {toot_id}. Please conduct a different action!!"
-        else:
-            self._print(
-                "Skipping real Mastodon API call since perform_operations is set to False",
-                color="light_grey",
+                self._print(
+                    "Skipping real Mastodon API call since perform_operations is set to False",
+                    color="light_grey",
+                )
+            self._print(like_message, emoji="✅")
+            self.action_logger.log(
+                {
+                    "source_user": current_user_full,
+                    "label": "like_toot",
+                    "data": {"toot_id": str(toot_id)},
+                }
             )
-        self._print(like_message, emoji="✅")
-        self.action_logger.log(
-            {
-                "source_user": current_user_full,
-                "label": "like_toot",
-                "data": {"toot_id": str(toot_id)},
-            }
-        )
+
+        except ValueError as e:
+            self._print(f"Invalid input: {e!s}", emoji="❌")
+            like_message = '''There was an error in liking due to invalid toot id"'''
+
+        except Exception as e:
+            self._print(f"An unexpected error occurred{e!s}", emoji="❌")
+            like_message = '''There was an error in liking due to invalid toot id"'''
         return like_message
 
     # region[additional methods]
@@ -1071,30 +1101,38 @@ class SocialNetworkApp(PhoneApp):
     def boost_toot(self, current_user: str, toot_id: str) -> str:
         """Boost (reblog) a toot."""
         current_user_full = str(current_user)
-        current_user = current_user.split()[0]
+        current_user = f"{current_user.split()[0]}{current_user.split()[1]}"
         current_username = self._get_username(current_user)
         self._print(
             f"@{current_username} boosting post {toot_id}",
             emoji="🔁",
         )
-        boost_message = f"{current_user} (@{current_username}) boosted post {toot_id}"
-        if self.perform_operations:
-            check = self._mastodon_ops.boost_check(current_username, toot_id)
-            if not check:
-                self._mastodon_ops.boost_toot(current_username, toot_id)
-            else:
-                boost_message = f"{current_user} (@{current_username}) has previously boosted post {toot_id}. Please conduct a different action!!"
-        self._print(
-            f"@{current_username} boosted post {toot_id}",
-            emoji="✅",
-        )
-        self.action_logger.log(
-            {
-                "source_user": current_user_full,
-                "label": "boost_toot",
-                "data": {"toot_id": str(toot_id)},
-            }
-        )
+        try:
+            boost_message = f"{current_user} (@{current_username}) boosted post {toot_id}"
+            if self.perform_operations:
+                check = self._mastodon_ops.boost_check(current_username, toot_id)
+                if not check:
+                    self._mastodon_ops.boost_toot(current_username, toot_id)
+                else:
+                    boost_message = f"{current_user} (@{current_username}) has previously boosted post {toot_id}. Please conduct a different action!!"
+            self._print(
+                f"@{current_username} boosted post {toot_id}",
+                emoji="✅",
+            )
+            self.action_logger.log(
+                {
+                    "source_user": current_user_full,
+                    "label": "boost_toot",
+                    "data": {"toot_id": str(toot_id)},
+                }
+            )
+        except ValueError as e:
+            self._print(f"Invalid input: {e!s}", emoji="❌")
+            boost_message = '''There was an error in boosting due to invalid toot id"'''
+
+        except Exception as e:
+            self._print(f"An unexpected error occurred{e!s}", emoji="❌")
+            boost_message = '''There was an error in boosting due to invalid toot id"'''
         return boost_message
 
     # @app_action

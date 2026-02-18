@@ -16,7 +16,7 @@ reports/
 *.xls*
 *.zip*
 data/
-examples/election/outputs/
+outputs/
 
 # direnv
 .envrc
@@ -58,6 +58,9 @@ __pycache__/
 
 # VS Code
 .vscode/
+
+# Developing Code
+.developing/
 
 # ====== Mastodon-on-AWS Project Ignores ======
 

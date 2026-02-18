@@ -166,12 +166,12 @@ class SMAct(gm_components.switch_act.SwitchAct):
                     status=action_data["content"],
                     in_reply_to_id=action_data["target_id"],
                 )
-            elif action_data["action_type"].lower().strip() == "boost":
+            elif action_data["action_type"].lower().strip() == "like":
                 result = self.sm_app.like_toot(
                     current_user,
                     action_data["target_id"],
                 )
-            elif action_data["action_type"].lower().strip() == "reply":
+            elif action_data["action_type"].lower().strip() == "boost":
                 result = self.sm_app.boost_toot(
                     current_user,
                     action_data["target_id"],

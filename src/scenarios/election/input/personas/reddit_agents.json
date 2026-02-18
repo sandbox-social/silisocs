@@ -105,7 +105,7 @@
         "Style": "Emily communicates thoughtfully, often with introspection and consideration for broader societal implications."
     },
     {
-        "Name": "Michael Thompson",
+        "Name": "Mishael Thompson",
         "User_Reference": "yjdt5nkf5",
         "Sex": "Male",
         "Political_Identity": "Conservative",
@@ -116,11 +116,11 @@
             "Agreeableness": 5,
             "Neuroticism": 5
         },
-        "Context": "Michael frequently discusses regional political issues, current events, and cultural shifts within the context of Michigan. His interests also span media trends, particularly within animation and entertainment.",
-        "Style": "Michael communicates with directness and a focus on factual reporting, often reflecting a critical perspective on societal changes."
+        "Context": "Mishael frequently discusses regional political issues, current events, and cultural shifts within the context of Michigan. His interests also span media trends, particularly within animation and entertainment.",
+        "Style": "Mishael communicates with directness and a focus on factual reporting, often reflecting a critical perspective on societal changes."
     },
     {
-        "Name": "David Nguyen",
+        "Name": "Davidy Nguyen",
         "User_Reference": "3wpzptch",
         "Sex": "Male",
         "Political_Identity": "Moderate",
@@ -131,8 +131,8 @@
             "Agreeableness": 6,
             "Neuroticism": 4
         },
-        "Context": "David's interactions center on sports, particular baseball, mixed with updates related to business transactions and entertainment. He is interested in the financial and contractual aspects of sports industries.",
-        "Style": "David communicates with a focus on detail and precision, often sharing factual updates and industry news."
+        "Context": "Davidy's interactions center on sports, particular baseball, mixed with updates related to business transactions and entertainment. He is interested in the financial and contractual aspects of sports industries.",
+        "Style": "Davidy communicates with a focus on detail and precision, often sharing factual updates and industry news."
     },
     {
         "Name": "Lisa Martinez",
@@ -300,7 +300,7 @@
         "Style": "Emma communicates with a straightforward and factual style, often blending political commentary with casual discussion."
     },
     {
-        "Name": "David Klein",
+        "Name": "Davi Klein",
         "User_Reference": "hqc8ppgb",
         "Sex": "Male",
         "Political_Identity": "Moderate",
@@ -311,8 +311,8 @@
             "Agreeableness": 5,
             "Neuroticism": 6
         },
-        "Context": "David appears to have strong opinions about social issues and is somewhat contentious in discussions related to political figures. He also faces career transitions due to personal circumstances.",
-        "Style": "David has an assertive and occasionally confrontational communication style that blends personal struggles with political discourse."
+        "Context": "Davi appears to have strong opinions about social issues and is somewhat contentious in discussions related to political figures. He also faces career transitions due to personal circumstances.",
+        "Style": "Davi has an assertive and occasionally confrontational communication style that blends personal struggles with political discourse."
     },
     {
         "Name": "Sophia Bennett",
@@ -720,7 +720,7 @@
         "Style": "Laura's communication is assertive and often involves critical analysis of current political situations, delivered with a confident tone."
     },
     {
-        "Name": "David Clarkson",
+        "Name": "Ajax Clarkson",
         "User_Reference": "3qt7wtgz",
         "Sex": "Male",
         "Political_Identity": "Moderate",
@@ -731,8 +731,8 @@
             "Agreeableness": 5,
             "Neuroticism": 4
         },
-        "Context": "David shows a passion for pop culture, horror movies, and nostalgia, often seeking shared experiences within online communities.",
-        "Style": "David communicates with a mix of enthusiasm and nostalgia, often referencing shared cultural touchpoints in an inclusive manner."
+        "Context": "Ajax shows a passion for pop culture, horror movies, and nostalgia, often seeking shared experiences within online communities.",
+        "Style": "Ajax communicates with a mix of enthusiasm and nostalgia, often referencing shared cultural touchpoints in an inclusive manner."
     },
     {
         "Name": "Alex Thompson",
@@ -1080,7 +1080,7 @@
         "Style": "Rachel uses a straightforward style, engaging in critical analysis of socio-political issues with frequent references to current events."
     },
     {
-        "Name": "Michael Brown",
+        "Name": "Mich Brown",
         "User_Reference": "62fcg72j",
         "Sex": "Male",
         "Political_Identity": "Conservative",
@@ -1091,8 +1091,8 @@
             "Agreeableness": 4,
             "Neuroticism": 6
         },
-        "Context": "Michael focuses on political strategies, electoral outcomes, and historical political narratives.",
-        "Style": "Michael's style is analytical, often blending historical references with contemporary political discourse."
+        "Context": "Mich focuses on political strategies, electoral outcomes, and historical political narratives.",
+        "Style": "Mich's style is analytical, often blending historical references with contemporary political discourse."
     },
     {
         "Name": "Sarah Patel",
