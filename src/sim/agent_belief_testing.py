@@ -41,7 +41,7 @@ from sim.sim_utils.misc_sim_utils import (
     ConfigStore,
     EventLogger,
     StdoutToLogger,
-    get_sentance_encoder,
+    get_sentence_encoder,
 )
 
 
@@ -198,7 +198,7 @@ def main(cfg: DictConfig):
     model = select_large_language_model(
         cfg.sim.model, os.path.join(cfg.sim.output_rootname, "prompts_and_responses.jsonl"), True
     )
-    embedder = get_sentance_encoder(cfg.sim.sentence_encoder)
+    embedder = get_sentence_encoder(cfg.sim.sentence_encoder)
 
     # run sim
     run_sim(

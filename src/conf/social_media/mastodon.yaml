@@ -1,6 +1,9 @@
 # src/conf/social_media/mastodon.yaml
 # Mastodon social media platform configuration
 
+# Platform type for the app factory
+platform_type: mastodon
+
 # Server configuration
 use_server: true
 

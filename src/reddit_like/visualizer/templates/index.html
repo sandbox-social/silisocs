@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit-like Simulation Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .post-card {
+            border: 1px solid #e0e0e0;
+            transition: border-color 0.2s;
+        }
+
+        .post-card:hover {
+            border-color: #878a8c;
+        }
+
+        .vote-column {
+            width: 40px;
+            background-color: #f8f9fa;
+        }
+
+        .arrow-up,
+        .arrow-down {
+            color: #878a8c;
+            font-size: 1.25rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .arrow-up:hover {
+            color: #ff4500;
+        }
+
+        .arrow-down:hover {
+            color: #7193ff;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 min-h-screen font-sans">
+
+    <div class="max-w-4xl mx-auto flex">
+        <!-- Sidebar -->
+        <div class="w-64 fixed h-screen bg-white border-r border-gray-200 p-4">
+            <h1 class="text-2xl font-bold text-orange-600 mb-8 cursor-pointer" onclick="loadFeed('popular')">sim/Reddit
+            </h1>
+
+            <nav class="space-y-4">
+                <button onclick="loadFeed('popular')"
+                    class="w-full text-left flex items-center p-2 rounded hover:bg-gray-100 font-semibold text-gray-700">
+                    Popular
+                </button>
+
+                <div class="pt-4 mt-4 border-t border-gray-200">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Simulated Views</p>
+                    <button onclick="simulateUser('alice')"
+                        class="w-full text-left p-2 rounded hover:bg-gray-100 text-gray-700 text-sm">
+                        View as Alice
+                    </button>
+                    <button onclick="simulateUser('bob')"
+                        class="w-full text-left p-2 rounded hover:bg-gray-100 text-gray-700 text-sm">
+                        View as Bob
+                    </button>
+                </div>
+
+                <div class="pt-4 mt-4 border-t border-gray-200" id="user-profile" style="display:none;">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Current Context</p>
+                    <div class="p-2 bg-gray-50 rounded">
+                        <p class="font-bold text-gray-800" id="current-username">@loading</p>
+                        <p class="text-sm text-gray-500" id="current-karma">Karma: 0</p>
+                        <p class="text-sm text-gray-600 mt-1 italic" id="current-bio"></p>
+                    </div>
+                </div>
+            </nav>
+        </div>
+
+        <!-- Main Feed -->
+        <div class="flex-1 ml-64 p-6">
+            <div class="flex justify-between items-center mb-6">
+                <h2 id="feed-title" class="text-xl font-bold text-gray-800">Popular Posts</h2>
+                <button onclick="refreshFeed()"
+                    class="px-4 py-2 border border-gray-300 rounded-full hover:bg-gray-100 text-sm font-semibold">
+                    Refresh
+                </button>
+            </div>
+
+            <div id="feed-container" class="space-y-4">
+                <div class="text-center text-gray-500 py-10">Loading posts...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentFeedEndpoint = '/api/feed/popular';
+        let currentFeedTitle = 'Popular Posts';
+        let currentUser = null;
+
+        async function loadFeed(type, identifier = null) {
+            if (type === 'popular') {
+                currentFeedEndpoint = '/api/feed/popular';
+                currentFeedTitle = 'Popular Posts';
+                currentUser = null;
+                document.getElementById('user-profile').style.display = 'none';
+            } else if (type === 'home' && identifier) {
+                currentFeedEndpoint = `/api/feed/home/${identifier}`;
+                currentFeedTitle = `Home Feed - u/${identifier}`;
+            } else if (type === 'subreddit' && identifier) {
+                currentFeedEndpoint = `/api/feed/subreddit/${identifier}`;
+                currentFeedTitle = `r/${identifier}`;
+            } else if (type === 'user' && identifier) {
+                currentFeedEndpoint = `/api/feed/user/${identifier}`;
+                currentFeedTitle = `Posts by u/${identifier}`;
+            }
+
+            document.getElementById('feed-title').innerText = currentFeedTitle;
+            await refreshFeed();
+        }
+
+        async function simulateUser(username) {
+            currentUser = username;
+            // Fetch profile
+            try {
+                const res = await fetch(`/api/user/${username}`);
+                if (res.ok) {
+                    const profile = await res.json();
+                    document.getElementById('current-username').innerText = `u/${profile.username}`;
+                    document.getElementById('current-karma').innerText = `Karma: ${profile.karma}`;
+                    document.getElementById('current-bio').innerText = profile.bio || '';
+                    document.getElementById('user-profile').style.display = 'block';
+
+                    await loadFeed('home', username);
+                } else {
+                    alert("User not found");
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function toggleComments(postId) {
+            let commentsDiv = document.getElementById(`comments-${postId}`);
+            if (commentsDiv.style.display === 'block') {
+                commentsDiv.style.display = 'none';
+                return;
+            }
+
+            commentsDiv.innerHTML = '<div class="text-xs text-gray-500 p-2">Loading comments...</div>';
+            commentsDiv.style.display = 'block';
+
+            try {
+                const res = await fetch(`/api/post/${postId}/comments`);
+                const data = await res.json();
+
+                if (!data.comments || data.comments.length === 0) {
+                    commentsDiv.innerHTML = '<div class="text-xs text-gray-500 p-2">No comments yet.</div>';
+                    return;
+                }
+
+                function renderCommentTree(comments, depth = 0) {
+                    let html = '';
+                    comments.forEach(c => {
+                        // Cap depth for visual padding
+                        const ml = depth === 0 ? 'ml-0' : 'ml-4';
+                        html += `
+                        <div class="border-l-2 border-gray-200 pl-3 ${ml} mt-2 mb-2 text-sm">
+                            <div class="flex items-center text-xs text-gray-500 mb-1">
+                                <span class="font-bold text-gray-700 hover:underline cursor-pointer" onclick="loadFeed('user', '${c.username}')">u/${c.username}</span>
+                                <span class="mx-1">•</span>
+                                <span>${c.score} points</span>
+                                <span class="mx-1">•</span>
+                                <span>${c.formatted_date}</span>
+                            </div>
+                            <div class="text-gray-800 mb-1">${c.content}</div>
+                            
+                            <div class="text-xs text-gray-400 cursor-pointer hover:underline mb-2 flex items-center space-x-2">
+                                <span>⇧ Upvote</span>
+                                <span>⇩ Downvote</span>
+                                <span>➦ Reply</span>
+                            </div>
+                    `;
+
+                        if (c.replies && c.replies.length > 0) {
+                            html += renderCommentTree(c.replies, depth + 1);
+                        }
+
+                        html += `</div>`; // Close comment wrapper
+                    });
+                    return html;
+                }
+
+                commentsDiv.innerHTML = renderCommentTree(data.comments);
+            } catch (err) {
+                commentsDiv.innerHTML = '<div class="text-xs text-red-500 p-2">Error loading comments.</div>';
+            }
+        }
+
+        async function refreshFeed() {
+            const container = document.getElementById('feed-container');
+            container.innerHTML = '<div class="text-center text-gray-500 py-10">Fetching matrix data...</div>';
+
+            try {
+                const response = await fetch(`${currentFeedEndpoint}?limit=50`);
+                const data = await response.json();
+
+                if (data.error) {
+                    container.innerHTML = `<div class="text-center text-red-500 py-10">${data.error}</div>`;
+                    return;
+                }
+
+                if (!data.posts || data.posts.length === 0) {
+                    container.innerHTML = '<div class="text-center text-gray-500 py-10">Wow, such empty.</div>';
+                    return;
+                }
+
+                let html = '';
+                data.posts.forEach(post => {
+                    html += `
+                    <div class="bg-white rounded post-card flex overflow-hidden">
+                        <!-- Vote Column -->
+                        <div class="vote-column flex flex-col items-center pt-2 pb-2">
+                            <div class="arrow-up">⇧</div>
+                            <div class="font-bold text-gray-800 text-sm py-1">${post.score}</div>
+                            <div class="arrow-down">⇩</div>
+                        </div>
+                        
+                        <!-- Content Column -->
+                        <div class="p-2 flex-1">
+                            <div class="text-xs text-gray-500 flex items-center space-x-1 mb-1 relative">
+                                <span class="font-bold text-gray-800 hover:underline cursor-pointer" onclick="loadFeed('subreddit', '${post.subreddit_name}')">r/${post.subreddit_name}</span>
+                                <span>•</span>
+                                <span>Posted by</span>
+                                <span class="hover:underline cursor-pointer" onclick="loadFeed('user', '${post.username}')">u/${post.username}</span>
+                                <span>•</span>
+                                <span>${post.formatted_date}</span>
+                            </div>
+                            
+                            <h3 class="text-lg font-bold text-gray-900 mb-2">${post.title}</h3>
+                            <div class="text-sm text-gray-800 mb-3">${post.content}</div>
+                            
+                            <div class="flex space-x-4 text-xs font-bold text-gray-500">
+                                <div class="flex items-center hover:bg-gray-100 p-1 rounded cursor-pointer" onclick="toggleComments(${post.id})">
+                                    <span class="mr-1">💬</span> ${post.comment_count} Comments
+                                </div>
+                                <div class="flex items-center hover:bg-gray-100 p-1 rounded cursor-pointer">
+                                    <span class="mr-1">➦</span> Share
+                                </div>
+                            </div>
+                            
+                            <!-- Hidden Comment Drawer -->
+                            <div id="comments-${post.id}" class="mt-2 bg-gray-50 rounded hidden pb-2">
+                            </div>
+                        </div>
+                    </div>
+                `;
+                });
+                container.innerHTML = html;
+            } catch (error) {
+                container.innerHTML = '<div class="text-center text-red-500 py-10">Error loading feed.</div>';
+            }
+        }
+
+        // Initial load
+        loadFeed('popular');
+    </script>
+
+</body>
+
+</html>

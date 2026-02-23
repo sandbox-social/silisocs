@@ -14,7 +14,6 @@ DEFAULT_SESSION_TERMINATE_STR = "The Social-Media session has been completed."
 DEFAULT_NEXT_ACTING_COMPONENT_KEY = "__next_acting__"
 
 import re
-from html import unescape
 
 
 def find_and_parse_action_data(data_string):
@@ -94,58 +93,20 @@ class SMAct(gm_components.switch_act.SwitchAct):
     def _make_observation(  # type: ignore[misc]
         self, contexts: entity_component.ComponentContextMapping, action_spec: entity_lib.ActionSpec
     ) -> str:
-        # TODO: Connect to activity state, observe timeline on first activity of chunk. (Maybe filter to only store new posts)
-        first_active_state = True
+        """Build an observation for the acting entity by fetching their timeline.
+
+        Delegates to the platform-specific ``sm_app.get_timeline()`` and
+        ``sm_app.format_timeline_for_observation()`` methods so this logic
+        works identically regardless of which social media backend is active.
+        """
         result = ""
-        if first_active_state:
-            active_entity_name = next(
-                s for s in self._entity_names if s in action_spec.call_to_action
-            )
-            num_timeline_posts_in_observation = 10
-            timeline = self.sm_app.get_own_timeline(
-                active_entity_name, num_timeline_posts_in_observation
-            )
+        active_entity_name = next(s for s in self._entity_names if s in action_spec.call_to_action)
+        num_timeline_posts_in_observation = 10
 
-            def _clean_html(html_string):
-                clean_text = re.sub("<[^<]+?>", "", unescape(html_string))
-                return re.sub(r"\s+", " ", clean_text).strip()
+        # Platform-agnostic timeline fetch and formatting
+        timeline = self.sm_app.get_timeline(active_entity_name, num_timeline_posts_in_observation)
+        result = self.sm_app.format_timeline_for_observation(timeline)
 
-            for post in timeline:
-                # TODO: Rework/simplify media processing
-                media_desc = ""
-                # if post["media_attachments"]:
-                #     media_contents = []
-                #     for attachment in post["media_attachments"]:
-                #         media_contents.append(attachment["url"])
-                #     toot_headline = _clean_html(post["content"])
-                #     call_to_speech = DEFAULT_CALL_TO_SPEECH.format(
-                #         name=self._player.name,
-                #     )
-                #     call_to_action = (
-                #         f"{media_contents!s} Context: Succinctly describe this image in the form of an impression that it made on {self._player.name.split()[0]} when they viewed it alongside the following text of the toot they just read on the Social Media app: "
-                #         + "'"
-                #         + toot_headline
-                #         + "'"
-                #     )
-                #     media_desc = self._player.act(
-                #         action_spec=agent.ActionSpec(
-                #             call_to_action=call_to_action,
-                #             output_type=OutputType.FREE,
-                #             tag="media",
-                #         )
-                #     )
-                #     media_desc = (
-                #         media_desc.strip(self._player.name.split()[0])
-                #         .strip()
-                #         .strip(self._player.name.split()[1])
-                #         .strip()
-                #         .strip("--")
-                #         .strip()
-                #         .strip('"')
-                #     )
-                #     media_desc = "Impression of attached image: \n" + media_desc
-                #     print(media_desc)
-                result += f" \n\nUser: {post['account']['display_name']} (@{post['account']['username']})\n\nContent: {_clean_html(post['content'])}\n\n{media_desc}\n\nToot ID: {post['id']}\n\n"
         self._log(result, "", action_spec)
         return result
 
@@ -153,29 +114,17 @@ class SMAct(gm_components.switch_act.SwitchAct):
     def _resolve(  # type: ignore[misc]
         self, contexts: entity_component.ComponentContextMapping, action_spec: entity_lib.ActionSpec
     ) -> str:
+        """Parse the LLM's action output and dispatch it to the social media app.
+
+        Uses ``find_and_parse_action_data()`` to extract structured action fields,
+        then delegates to ``sm_app.parse_and_resolve_action()`` which handles
+        the platform-specific dispatch.
+        """
         result = ""
         active_entity, action = action_spec.call_to_action.split(":", 1)
         action_data = find_and_parse_action_data(action)
         if action_data is not None:
-            current_user = active_entity  # .split()[0]
-            if action_data["action_type"].lower().strip() == "post":
-                result = self.sm_app.post_toot(current_user, action_data["content"])
-            elif action_data["action_type"].lower().strip() == "reply":
-                result = self.sm_app.reply_to_toot(
-                    current_user,
-                    status=action_data["content"],
-                    in_reply_to_id=action_data["target_id"],
-                )
-            elif action_data["action_type"].lower().strip() == "like":
-                result = self.sm_app.like_toot(
-                    current_user,
-                    action_data["target_id"],
-                )
-            elif action_data["action_type"].lower().strip() == "boost":
-                result = self.sm_app.boost_toot(
-                    current_user,
-                    action_data["target_id"],
-                )
+            result = self.sm_app.parse_and_resolve_action(active_entity, action_data)
         self._log(result, "", action_spec)
         return result
 
@@ -206,9 +155,18 @@ class SMAct(gm_components.switch_act.SwitchAct):
     def _next_entity_action_spec(  # type: ignore[misc]
         self, contexts: entity_component.ComponentContextMapping, action_spec: entity_lib.ActionSpec
     ) -> str:
+        """Return the action spec prompt for the next entity.
+
+        Uses the configured ``call_to_action_str`` from the platform YAML
+        config.  Falls back to a generic prompt if not set.
+        """
         if self.call_to_action_str:
             return f"prompt: {self.call_to_action_str} ;;type: free"
-        return "prompt: Conduct a social-media action. You can choose from like, reply, boost, and post. Format it correctly as: ACTION_TYPE: (action)\n TARGET_ID: (target_id)\n CONTENT: (content)\n REASONING: (reasoning)\n ;;type: free"
+        return (
+            "prompt: Conduct a social-media action. Format it correctly as: "
+            "ACTION TYPE: (action)\n TARGET ID: (target_id)\n "
+            "CONTENT: (content)\n REASONING: (reasoning)\n ;;type: free"
+        )
 
     # cycle through active users
     @override

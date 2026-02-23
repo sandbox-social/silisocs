@@ -1,0 +1,75 @@
+# src/conf/social_media/twitter_like.yaml
+# Twitter-like social media platform configuration
+
+# Platform type for the app factory
+platform_type: twitter_like
+
+# Server configuration (not applicable for local SQLite-based platforms)
+use_server: false
+
+# Game master configuration
+gamemaster:
+  filename: social_media
+  name: twitter_like_gm
+  sim_role:
+    name: social media game master
+    module_path: sim.entities.social_media
+
+# Platform instructions
+usage_instructions: |
+  Twitter is a social media application for microblogging.
+  To share content on Twitter, users write a 'tweet' (a short post).
+  Tweets can be up to 280 characters long.
+  A user's home timeline shows tweets from people they follow and reposted content.
+  Users can reply to tweets, creating threaded conversations.
+  Users can like (favorite) tweets to show appreciation or save them for later.
+  Users can repost (retweet) tweets to share them with their followers.
+  Users can mention other users in their tweets using their @username.
+  Follow other users to see their tweets in your home timeline.
+  Users can unfollow users if they no longer wish to see their content.
+  A user's profile includes a display name and bio.
+  Critically important: Operations such as liking, reposting, replying, etc. require a `post_id`. To obtain a `post_id`, you must have memory/knowledge of a real `post_id`. If you don't know a `post_id`, you can't perform actions that require it. `post_id`'s can be retrieved using the `get_own_timeline` action.
+
+# Action call to action template
+action_call_to_action: |
+  ## AVAILABLE ACTIONS
+  1. POST - Share new content by creating a new tweet
+  2. REPLY - Engage existing content by responding to a tweet (needs post ID)
+  3. REPOST - Extend the reach of content by reposting someone's tweet (needs post ID)
+  4. LIKE - Show the world you appreciate content by liking a tweet (needs post ID)
+
+  ## INSTRUCTIONS
+  Determine what ONE action {name} would take next based on:
+  - Their character and values via self-perception and goal descriptions
+  - The current context and timeline
+  - Not repeating recent actions
+  If text-based, the text must reflect their posting style description.
+
+  ## OUTPUT FORMAT
+  Answer: {name}
+  STEP 1: [Analyze {name}'s motivation based on their character]
+  STEP 2: [Consider which posts/actions align with {name}'s values]
+  STEP 3: [Determine the single most authentic action]
+
+  FINAL DECISION:
+  ACTION TYPE: [POST/REPLY/REPOST/LIKE]
+  TARGET ID: [Include post ID if applicable]
+  CONTENT: [For posts/replies, exact text {name} would write]
+  REASONING: [Brief explanation of why this action fits {name}'s character]
+
+  ## EXAMPLE OUTPUT
+  STEP 1: {name} is motivated by her interest in educational initiatives and community engagement.
+  STEP 2: Chris's tweet about community priorities resonates with {name}'s values.
+  STEP 3: Responding to Chris would allow {name} to engage meaningfully about community values.
+
+  FINAL DECISION:
+  ACTION TYPE: REPLY
+  TARGET ID: 42
+  CONTENT: "I appreciate your focus on community priorities, Chris! As an educator, I believe our growth depends on strong educational foundations alongside economic development."
+  REASONING: This reply allows Emily to acknowledge community values while highlighting her educational perspective.
+
+# Social network configuration (defaults - can be overridden by scenario)
+social_network:
+  active_rates: {}
+  fully_connected_targets: []
+  base_followership_probability: 0.4

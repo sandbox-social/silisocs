@@ -1,371 +1,39 @@
-"""Classes for implementing virtual apps simulation."""
+"""Mastodon social network app for simulation.
 
-import abc
+This module provides ``SocialNetworkApp``, the Mastodon implementation of
+the ``SocialMediaApp`` interface.  It wraps the Mastodon API via
+``mastodon_ops`` and exposes ``@app_action`` decorated methods for the
+simulation game master.
+
+The generic ``PhoneApp`` base class, ``SocialMediaApp`` ABC, and supporting
+utilities (``app_action``, ``Parameter``, ``ActionDescriptor``, etc.) are
+imported from ``sim.core``.
+"""
+
 import dataclasses
-import datetime
-import inspect
 import re
-import textwrap
-import types
-import typing
-from collections.abc import Callable, Sequence
 from html import unescape
-from typing import Any, Literal, get_type_hints
-
-import docstring_parser  # pytype: disable=import-error  # Fails on GitHub.
-import termcolor
+from typing import Any
 
 from mastodon_sim.mastodon_ops import check_env, clear_mastodon_server
 
-_DATE_FORMAT = "%Y-%m-%d %H:%M"
-
-_ARGUMENT_REGEX = re.compile(r"(?P<param>\w+):\s*(?P<value>[^\n]+)")
-
-ParserFunc = Callable[[str], Any]
-
-_ACTION_PROPERTY = "__app_action__"
-
-COLOR_TYPE = (
-    Literal[
-        "black",
-        "grey",
-        "red",
-        "green",
-        "yellow",
-        "blue",
-        "magenta",
-        "cyan",
-        "light_grey",
-        "dark_grey",
-        "light_red",
-        "light_green",
-        "light_yellow",
-        "light_blue",
-        "light_magenta",
-        "light_cyan",
-        "white",
-    ]
-    | None
+# All shared base-class machinery is now in sim.core
+# Re-export COLOR_TYPE for any downstream code that imported it from here
+from sim.core.phone_app import (  # noqa: F401 – re-exported for backward compat
+    COLOR_TYPE,
+    ActionArgumentError,
+    ActionDescriptor,
+    Parameter,
+    PhoneApp,
+    app_action,
 )
-
-
-def parse_literal(literal_type: type) -> ParserFunc:
-    """Parse a literal type."""
-
-    def _parse(value: str) -> Any:
-        literal_values = typing.get_args(literal_type)
-        if value in literal_values:
-            return value
-        raise ValueError(f"'{value}' is not a valid literal value for {literal_type}")
-
-    return _parse
-
-
-_ARGUMENT_PARSERS: dict[str, ParserFunc | type] = {
-    "datetime.datetime": lambda date: datetime.datetime.strptime(date, _DATE_FORMAT),  # noqa: DTZ007
-    "str": str,
-    "int": int,
-}
-
-
-def app_action(method):
-    """Mark PhoneApp methods as callable actions."""
-    signature = inspect.signature(method)
-    required_params = [
-        name
-        for name, param in signature.parameters.items()
-        if param.default == inspect.Parameter.empty and name != "self"
-    ]
-    method.__app_action__ = True
-    method.__required_params__ = required_params
-    return method
-
-
-class ActionArgumentError(Exception):
-    """An error that is raised when argument parsing fails."""
-
-
-# endregion
-
-
-# region[PhoneApp]
-@dataclasses.dataclass(frozen=True)
-class Parameter:
-    """A parameter for an action."""
-
-    name: str
-    kind: Any
-    description: str | None
-    required: bool
-
-    def value_from_text(self, text: str):
-        """Parse a value from a string."""
-        if text == "" and not self.required:
-            return None
-        origin = typing.get_origin(self.kind)
-        if origin is None:
-            return self._parse_single_argument(text)
-        if origin in (typing.Union, types.UnionType):
-            args = typing.get_args(self.kind)
-            if set(args) == {str, type(None)}:
-                return text if text != "" else None
-            return self.parse_union_type(text, args)
-        if origin is list:
-            return self._parse_list_argument(text)
-        raise ValueError(f"Unsupported type {self.kind}")
-
-    def parse_union_type(self, value: str, types: tuple[type, ...]) -> Any:
-        """Parse a value from a string, trying each type in the union."""
-        for t in types:
-            if t is type(None) and value == "":
-                return None
-            try:
-                if typing.get_origin(t) is Literal:
-                    return parse_literal(t)(value)
-                parser = _ARGUMENT_PARSERS.get(t.__name__, t)
-                return parser(value)
-            except ValueError:
-                continue
-        raise ValueError(f"Cannot parse '{value}' as any of {types}")
-
-    def full_description(self):
-        """Return a full description of the parameter."""
-        return f"{self.name}: {self.description or ''}, type: {self.kind}"
-
-    def _parse_single_argument(self, text: str, kind: Any = None):
-        kind = kind or self.kind
-        if kind is type(None):
-            return None
-        parser = _ARGUMENT_PARSERS.get(kind, kind)  # type: ignore
-        return parser(text)
-
-    def _parse_list_argument(self, text: str):
-        arg = typing.get_args(self.kind)
-        parser = _ARGUMENT_PARSERS.get(arg, arg)  # type: ignore
-        return [parser(e) for e in text.split(",")]
-
-    @classmethod
-    def create(cls, parameter: inspect.Parameter, docstring: docstring_parser.Docstring):
-        """Create a Parameter from a method docstring and inspect.Parameter."""
-        description = next(
-            (p.description for p in docstring.params if p.arg_name == parameter.name),
-            None,
-        )
-        return cls(parameter.name, parameter.annotation, description)  # type: ignore
-
-
-# endregion
-
-
-# region[ActionDescriptor]
-@dataclasses.dataclass(frozen=True)
-class ActionDescriptor:
-    """Represents an action that can be invoked on a PhoneApp."""
-
-    name: str
-    description: str
-    parameters: Sequence[Parameter]
-    docstring: dataclasses.InitVar[docstring_parser.Docstring]
-
-    def __post_init__(self, docstring: docstring_parser.Docstring):  # noqa: D105
-        pass
-
-    def instructions(self):
-        """Return a string containing instructions for using the action."""
-        required_params = [p for p in self.parameters if p.required]
-        optional_params = [p for p in self.parameters if not p.required]
-
-        instructions = f"The {self.name} action expects the following parameters:\n"
-
-        if required_params:
-            instructions += "\nRequired parameters:\n"
-            instructions += "\n".join(p.full_description() for p in required_params)
-            instructions += "\n"
-
-        if optional_params:
-            instructions += "\nOptional parameters:\n"
-            instructions += "\n".join(p.full_description() for p in optional_params)
-            instructions += "\n"
-
-        instructions += textwrap.dedent("""
-        Provide values for the required parameters and any optional parameters you want to use.
-        Each parameter should be on its own line, for example:
-        param1: value1
-        param2: value2
-
-        For optional parameters you don't want to use, you should omit them rather than provide an empty value.
-
-        Critically important: If an argument is message or a post (e.g. `status`), make sure it is
-        from first person perspective and makes sense as a realistic user post based on their information.
-        Do not post any statuses from 3rd person perspective.
-
-        Note: current_user, target_user or the username field is ALWAYS the full name of the agents in the format: "Firstname Lastname".
-
-        Bad examples:
-            `bio`: Updated my bio and checking notifications!
-            `status`: I'm updating my status and posting a message
-            `status`: Wrote about goals for today
-
-        Good examples:
-            `bio`: I'm a software engineer with a passion for building great apps. Let's connect!
-            `status`: Just finished writing a chapter of my book. Feeling productive!
-            `status`: My goals for today are to get to the gym and submit my grant proposal.
-
-        Also, several string/int args require real knowledge, such as a real `target_user` or `toot_id`, so don't
-        fabricate these values and only fill them in with values you've been provided.
-        You can read posts by using the `get_public_timeline` action. These are operations like:
-        liking, boosting, replying, reading profile, following user, etc.
-        """)
-
-        return instructions
-
-    @classmethod
-    def from_method(cls, method):
-        """Create an ActionDescriptor from a method."""
-        doc = docstring_parser.parse(method.__doc__)
-        description = f"{doc.short_description}\n{doc.long_description or ''}"
-        signature = inspect.signature(method)
-        type_hints = get_type_hints(method)
-
-        method_parameters = []
-        for name, param in signature.parameters.items():
-            if name == "self":
-                continue
-            param_type = type_hints.get(name, Any)
-            required = param.default == inspect.Parameter.empty
-            description = next((p.description for p in doc.params if p.arg_name == name), None)
-            method_parameters.append(Parameter(name, param_type, description, required))
-
-        return cls(
-            name=method.__name__,
-            description=description,
-            parameters=method_parameters,
-            docstring=doc,
-        )
-
-
-# endregion
-
-# region[PhoneApp]
-
-
-class PhoneApp(metaclass=abc.ABCMeta):
-    """Base class for apps that concordia can interact with using plain English.
-
-    Extend this class and decorated any method that should be callable from the
-    simulation with @app_action.
-    """
-
-    action_logger: Any = None
-    _log_color: COLOR_TYPE = "blue"
-
-    @abc.abstractmethod
-    def name(self) -> str:
-        """Return the name of the app."""
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def description(self) -> str:
-        """Return a description of the app."""
-        raise NotImplementedError
-
-    def _print(
-        self,
-        entry: str,
-        emoji: str = "",
-        color: COLOR_TYPE = None,
-    ) -> None:
-        formatted_entry = f"{emoji} {entry}" if emoji else entry
-        print(termcolor.colored(formatted_entry, color or self._log_color))
-
-    def actions(self) -> Sequence[ActionDescriptor]:
-        """Return this app's callable actions."""
-        methods = inspect.getmembers(self, predicate=inspect.ismethod)
-        return [ActionDescriptor.from_method(m) for _, m in methods if hasattr(m, _ACTION_PROPERTY)]
-
-    def full_description(self):
-        """Return a description of the app and all the actions it supports."""
-        return textwrap.dedent(f"""\
-    {self.name()}: {self.description()}
-    The app supports the following actions:
-    """) + "\n".join(f"{a.name}: {a.description}" for a in self.actions())
-
-    def invoke_action(self, action: ActionDescriptor, args_text: str) -> str | None:
-        """Invoke the given action with the given arguments."""
-        args = _parse_argument_text(args_text)
-        self._print(f"Invoking action {action.name} with arguments {args}", color="yellow")
-        expected_params = {p.name: p for p in action.parameters}
-
-        # Check for missing required arguments
-        missing_args = [
-            name for name, param in expected_params.items() if param.required and name not in args
-        ]
-        if missing_args:
-            raise ActionArgumentError(f"Missing required argument(s): {', '.join(missing_args)}")
-
-        # Check for unexpected arguments
-        unexpected_args = set(args) - set(expected_params)
-        if unexpected_args:
-            raise ActionArgumentError(f"Unexpected argument(s): {', '.join(unexpected_args)}")
-
-        # Process values
-        processed_args: dict[str, str | None] = {}
-        for name, param in expected_params.items():
-            if name in args:
-                value = args[name]
-                if value == "" and not param.required:
-                    processed_args[name] = None
-                else:
-                    processed_args[name] = param.value_from_text(value)
-            elif not param.required:
-                processed_args[name] = None
-
-        try:
-            return getattr(self, action.name)(**processed_args)
-        except Exception as e:
-            self._print(f"Error invoking action {action.name}: {e}", color="red")
-            return f"Error invoking action {action.name}: {e}"
-
-
-# # endregion
-
-# # region[Phone]
-
-
-# @dataclasses.dataclass(frozen=True)
-# class Phone:
-#     """Represent a player's phone."""
-
-#     player_name: str
-#     apps: Sequence[PhoneApp]
-
-#     def description(self):
-#         """Return a description of the phone and its apps."""
-#         return textwrap.dedent(f"""\
-#     {self.player_name} has a smartphone.
-#     {self.player_name} uses their phone frequently to achieve their daily goals.
-#     {self.player_name}'s phone has only the following apps available:
-#     {", ".join(self.app_names())}."
-#     """)
-
-#     def app_names(self):
-#         """Return the names of the apps installed on the phone."""
-#         return [a.name() for a in self.apps]
-
-
-# Parse multiline argument text to a text dictionary:
-# 'param1: value1\n param2: value2' is parsed to:
-# {'param1': 'value1', 'param2': 'value2'}
-def _parse_argument_text(args_text: str) -> dict[str, str]:
-    matches = _ARGUMENT_REGEX.finditer(args_text)
-    return {m.group("param"): m.group("value").strip() for m in matches if m.group("value").strip()}
-
+from sim.core.social_media_app import SocialMediaApp
 
 # region[Mastodon Social Network App]
 
 
 @dataclasses.dataclass
-class SocialNetworkApp(PhoneApp):
+class SocialNetworkApp(SocialMediaApp):
     """Mastodon social network app.
         description = (
             "MastodonSocialNetworkApp is a social media application similar to"
@@ -407,6 +75,141 @@ class SocialNetworkApp(PhoneApp):
     def description(self) -> str:
         """Define the description of the app."""
         return self.app_description
+
+    # ------------------------------------------------------------------ #
+    # SocialMediaApp interface
+    # ------------------------------------------------------------------ #
+
+    def initialize(self, agent_names: list[str], **kwargs: Any) -> None:
+        """Set up Mastodon users, follows, bios, and seed posts.
+
+        Args:
+            agent_names: List of agent display names.
+            **kwargs: Supported keys:
+                - ``following_network`` (dict[str, list[str]]): Who follows whom.
+                - ``agent_bios`` (dict[str, str]): Display name -> bio text.
+                - ``seed_posts`` (dict[str, str]): Display name -> initial post text.
+                - ``sim_roles`` (dict[str, str]): Display name -> role name.
+        """
+        following_network = kwargs.get("following_network", {})
+        agent_bios = kwargs.get("agent_bios", {})
+        seed_posts = kwargs.get("seed_posts", {})
+
+        # Build user mapping and set it
+        user_mapping = {}
+        for i, display_name in enumerate(agent_names):
+            parts = display_name.strip().split()
+            short_name = parts[0] if parts else display_name
+            concat_name = f"{parts[0]}{parts[1]}" if len(parts) >= 2 else parts[0]
+            username = f"user{i + 1:04d}"
+            user_mapping[short_name] = username
+            user_mapping[concat_name] = username
+        self.set_user_mapping(user_mapping)
+
+        # Set bios/profiles
+        for display_name, bio in agent_bios.items():
+            if bio:
+                try:
+                    self.update_profile(display_name, bio)
+                except Exception as e:
+                    self._print(f"Error setting bio for {display_name}: {e}", color="red")
+
+        # Establish follow network
+        for display_name, followees in following_network.items():
+            for followee in followees:
+                try:
+                    self.follow_user(display_name, followee)
+                except Exception as e:
+                    self._print(f"Follow error ({display_name}->{followee}): {e}", color="red")
+
+        # Seed posts
+        for display_name, post_text in seed_posts.items():
+            if post_text:
+                try:
+                    self.post_toot(display_name, post_text)
+                except Exception as e:
+                    self._print(f"Seed post error for {display_name}: {e}", color="red")
+
+        self._print(
+            f"Initialized {len(agent_names)} users on Mastodon",
+            emoji="✅",
+        )
+
+    def get_timeline(self, user_name: str, limit: int = 10) -> list[dict]:
+        """Fetch the home timeline for a user from the Mastodon API.
+
+        Args:
+            user_name: Display name of the user.
+            limit: Maximum number of posts.
+
+        Returns
+        -------
+            List of Mastodon status dicts.
+        """
+        try:
+            # Re-use the existing get_own_timeline logic
+            current_user = f"{user_name.split()[0]}{user_name.split()[1]}"
+            username = self._get_username(current_user)
+            if self.perform_operations:
+                timeline = self._mastodon_ops.get_own_timeline(username, limit=limit)
+            else:
+                timeline = []
+            return timeline if timeline else []
+        except Exception as e:
+            self._print(f"Error fetching timeline for {user_name}: {e}", color="red")
+            return []
+
+    def format_timeline_for_observation(self, timeline: list[dict]) -> str:
+        """Format Mastodon timeline posts for LLM observation.
+
+        Cleans HTML tags and formats each post as a readable text block.
+
+        Args:
+            timeline: List of Mastodon status dicts.
+
+        Returns
+        -------
+            Formatted string suitable for inclusion in a prompt.
+        """
+        return self.print_and_return_timeline(timeline)
+
+    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
+        """Dispatch a parsed action to the correct Mastodon app_action method.
+
+        Args:
+            user_name: Display name of the acting agent.
+            action_data: Dict with ``action_type``, ``target_id``, ``content``,
+                ``reasoning``.
+
+        Returns
+        -------
+            Result string describing the action outcome.
+        """
+        action_type = action_data.get("action_type", "").lower().strip()
+        target_id = action_data.get("target_id", "")
+        content = action_data.get("content", "")
+
+        try:
+            if action_type == "post":
+                return self.post_toot(user_name, content)
+            if action_type == "reply":
+                return self.reply_to_toot(
+                    user_name,
+                    status=content,
+                    in_reply_to_id=int(target_id),
+                )
+            if action_type == "like":
+                return self.like_toot(user_name, str(target_id))
+            if action_type in ("boost", "repost"):
+                return self.boost_toot(user_name, str(target_id))
+            return f"Unknown action type: {action_type}"
+        except Exception as e:
+            self._print(f"Error resolving action {action_type}: {e}", color="red")
+            return f"Error performing {action_type}: {e}"
+
+    # ------------------------------------------------------------------ #
+    # User mapping management
+    # ------------------------------------------------------------------ #
 
     def set_user_mapping(self, mapping: dict[str, str]) -> None:
         """Set the mapping of display names to usernames."""
