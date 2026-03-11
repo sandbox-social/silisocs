@@ -1,0 +1,15 @@
+# config.yaml — top-level Hydra composition
+defaults:
+  - sim: base
+  - social_media: twitter_like
+  - scenario: election
+  - _self_
+
+hydra:
+  job:
+    name: ${scenario.jobname_format}_${now:%Y-%m-%d_%H-%M-%S}
+  run:
+    dir: scenarios/${scenario.scenario_name}/outputs/${scenario.jobname_format}
+  output_subdir: configs/${scenario.jobname_format}
+
+experiment_name: independent

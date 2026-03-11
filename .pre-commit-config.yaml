@@ -66,9 +66,9 @@ repos:
         require_serial: true
         language: system
         types_or: [python, pyi]
-      - id: poetry-check
-        name: poetry check
-        entry: poetry check
+      - id: uv-lock
+        name: uv lock --check
+        entry: uv lock --check
         language: system
         pass_filenames: false
       - id: mypy

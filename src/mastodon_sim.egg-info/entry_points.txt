@@ -1,0 +1,2 @@
+[console_scripts]
+mastodon-sim = mastodon_sim.runtime.runner:main

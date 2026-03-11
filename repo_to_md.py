@@ -1,7 +1,7 @@
 """Stuffs all the human-readable files in a single markdown file. Maybe use it with an LLM 🤭.
 
 Example:
-    poetry run python repo_to_md.py --tree -v --include .ipynb .py
+    uv run python repo_to_md.py --tree -v --include .ipynb .py
 
     Will create a markdown file named mastodon_sim.md with all the .ipynb and .py files
     in the repo, and print the tree of processed files.

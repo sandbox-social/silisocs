@@ -1,6 +1,6 @@
 import os
 
-from twitter_like.engine import TwitterLikePlatform
+from mastodon_sim.environments.backends.twitter_like.engine import TwitterLikePlatform
 
 DB_PATH = "test_twitter_like.db"
 

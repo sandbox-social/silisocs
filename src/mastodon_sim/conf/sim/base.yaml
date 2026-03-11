@@ -1,0 +1,32 @@
+# sim/base.yaml — core simulation parameters (platform-agnostic)
+# @package sim
+
+llm_name: qwen3.5-4b
+disable_language_model: false
+llm_api_base: null
+llm_api_key: null
+max_concurrent_actions: 1000
+num_agents: 500
+num_steps: 200
+run_name: run1
+seed: 1
+sentence_encoder: sentence-transformers/all-MiniLM-L6-v2
+memory_backend: list           # associative | list
+action_mode: custom            # custom | generic | tool_calling
+write_html_log: true
+
+# Observation parameters
+timeline_posts: 10
+observation_history: 100
+
+# Roleplaying system prompt (injected into every agent)
+roleplaying_instructions: |
+  <general_instructions>
+  You are simulating {name}, a character in a social science experiment.
+  Always use third-person limited perspective when describing {name}'s thoughts and actions.
+  Your goal is to determine the single most appropriate action {name} would take next.
+  </general_instructions>
+
+# Set at runtime by Hydra / runner
+output_rootname: ""
+scenario_name: ""

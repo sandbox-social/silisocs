@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-ARG PYTHON_VERSION=3.11
+ARG PYTHON_VERSION=3.10
 FROM python:$PYTHON_VERSION-slim AS base
 
 # Remove docker-clean so we can keep the apt cache in Docker build cache.
@@ -17,6 +17,7 @@ USER user
 # Create and activate a virtual environment.
 ENV VIRTUAL_ENV /opt/mastodon-sim-env
 ENV PATH $VIRTUAL_ENV/bin:$PATH
+ENV UV_PROJECT_ENVIRONMENT $VIRTUAL_ENV
 RUN python -m venv $VIRTUAL_ENV
 
 # Set the working directory.
@@ -24,17 +25,13 @@ WORKDIR /workspaces/mastodon-sim/
 
 
 
-FROM base as poetry
+FROM base as uv
 
 USER root
 
-# Install Poetry in separate venv so it doesn't pollute the main venv.
-ENV POETRY_VERSION 1.8.0
-ENV POETRY_VIRTUAL_ENV /opt/poetry-env
+# Install uv globally so all later stages use the same workflow as local development.
 RUN --mount=type=cache,target=/root/.cache/pip/ \
-    python -m venv $POETRY_VIRTUAL_ENV && \
-    $POETRY_VIRTUAL_ENV/bin/pip install poetry~=$POETRY_VERSION && \
-    ln -s $POETRY_VIRTUAL_ENV/bin/poetry /usr/local/bin/poetry
+    pip install uv
 
 # Install compilers that may be required for certain packages or platforms.
 RUN --mount=type=cache,target=/var/cache/apt/ \
@@ -45,15 +42,15 @@ RUN --mount=type=cache,target=/var/cache/apt/ \
 USER user
 
 # Install the run time Python dependencies in the virtual environment.
-COPY --chown=user:user poetry.lock* pyproject.toml /workspaces/mastodon-sim/
-RUN mkdir -p /home/user/.cache/pypoetry/ && mkdir -p /home/user/.config/pypoetry/ && \
+COPY --chown=user:user uv.lock pyproject.toml /workspaces/mastodon-sim/
+RUN mkdir -p /home/user/.cache/uv/ && \
     mkdir -p src/mastodon_sim/ && touch src/mastodon_sim/__init__.py && touch README.md
-RUN --mount=type=cache,uid=$UID,gid=$GID,target=/home/user/.cache/pypoetry/ \
-    poetry install --only main --all-extras --no-interaction
+RUN --mount=type=cache,uid=$UID,gid=$GID,target=/home/user/.cache/uv/ \
+    uv sync --frozen --no-default-groups
 
 
 
-FROM poetry as dev
+FROM uv as dev
 
 # Install development tools: curl, git, gpg, ssh, starship, sudo, vim, and zsh.
 USER root
@@ -68,12 +65,12 @@ RUN git config --system --add safe.directory '*'
 USER user
 
 # Install the development Python dependencies in the virtual environment.
-RUN --mount=type=cache,uid=$UID,gid=$GID,target=/home/user/.cache/pypoetry/ \
-    poetry install --all-extras --no-interaction
+RUN --mount=type=cache,uid=$UID,gid=$GID,target=/home/user/.cache/uv/ \
+    uv sync --frozen --group dev --group docs
 
 # Persist output generated during docker build so that we can restore it in the dev container.
 COPY --chown=user:user .pre-commit-config.yaml /workspaces/mastodon-sim/
-RUN mkdir -p /opt/build/poetry/ && cp poetry.lock /opt/build/poetry/ && \
+RUN mkdir -p /opt/build/uv/ && cp uv.lock /opt/build/uv/ && \
     git init && pre-commit install --install-hooks && \
     mkdir -p /opt/build/git/ && cp .git/hooks/commit-msg .git/hooks/pre-commit /opt/build/git/
 
@@ -98,8 +95,8 @@ RUN git clone --branch v$ANTIDOTE_VERSION --depth=1 https://github.com/mattmc3/a
 
 FROM base AS app
 
-# Copy the virtual environment from the poetry stage.
-COPY --from=poetry $VIRTUAL_ENV $VIRTUAL_ENV
+# Copy the virtual environment from the uv stage.
+COPY --from=uv $VIRTUAL_ENV $VIRTUAL_ENV
 
 # Copy the app source code to the working directory.
 COPY --chown=user:user . .

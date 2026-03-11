@@ -1,7 +1,7 @@
 import os
 import time
 
-from reddit_like.engine import RedditLikePlatform
+from mastodon_sim.environments.backends.reddit_like.engine import RedditLikePlatform
 
 DB_PATH = "test_reddit_like.db"
 

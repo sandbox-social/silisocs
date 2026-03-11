@@ -151,24 +151,39 @@ pip install mastodon-sim
     cd mastodon-sim
     ```
 
-2. Install Poetry (for managing dependencies):
+2. Install `uv`:
 
     ```sh
-    curl -sSL https://install.python-poetry.org | python3 -
+    curl -LsSf https://astral.sh/uv/install.sh | sh
     ```
 
-    Note that poetry offers several [alternative installation methods](<https://python-poetry.org/docs/#installation}>).
+    See the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/) for alternative installation methods.
 
-3. Configure Poetry to create virtual environments within the project directory:
+3. Sync the default project environment:
 
     ```sh
-    poetry config virtualenvs.in-project true
+    uv sync
     ```
 
-4. Install the dependencies:
+    This installs the project together with the default `test` group used by CI.
+
+4. Install the full contributor environment:
 
     ```sh
-    poetry install
+    uv sync --group dev
+    ```
+
+5. If you need the Sphinx docs toolchain too:
+
+    ```sh
+    uv sync --group dev --group docs
+    ```
+
+6. Run project commands inside the uv-managed environment:
+
+    ```sh
+    uv run poe lint
+    uv run poe test
     ```
 
 ## Environment Variables

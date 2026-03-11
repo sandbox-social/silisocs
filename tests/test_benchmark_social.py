@@ -2,7 +2,7 @@ import os
 import random
 import time
 
-from twitter_like.engine import TwitterLikePlatform
+from mastodon_sim.environments.backends.twitter_like.engine import TwitterLikePlatform
 
 DB_PATH = "benchmark_twitter_like.db"
 NUM_USERS = 1000

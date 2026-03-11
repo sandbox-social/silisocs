@@ -206,7 +206,7 @@ On local machine, register a new app and create a `.env` file:
 ```bash
 cd mastodon-sim
 # See create_env_file.py -h for usage
-poetry run python src/mastodon_sim/mastodon_ops/create_env_file.py
+uv run python src/mastodon_sim/environments/backends/mastodon/mastodon_ops/create_env_file.py
 ```
 
 This should output the following:
