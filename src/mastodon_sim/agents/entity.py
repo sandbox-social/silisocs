@@ -54,9 +54,9 @@ class Entity(prefab_lib.Prefab):
         agent_name = self.params.get("name", "Alice")
 
         # Accept both new key and legacy alias.
-        scenario_context = self.params.get(
-            "scenario_context", ""
-        ) or self.params.get("election_info", "")
+        scenario_context = self.params.get("scenario_context", "") or self.params.get(
+            "election_info", ""
+        )
         persona_context = self.params.get("context", "")
 
         instructions = agent_components.instructions.Instructions(agent_name=agent_name)

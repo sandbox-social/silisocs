@@ -17,13 +17,15 @@ class VotePref(ChoiceProbe):
         premise = cfg.get("interaction_premise_template", {})
         c1 = premise.get("candidate1", "Candidate A")
         c2 = premise.get("candidate2", "Candidate B")
-        super().__init__({
-            "name": "VotePref",
-            "question": "In one word, name the candidate you want to vote for.",
-            "context": f"{{agentname}} is going to cast a vote for either {c1} or {c2}.",
-            "choices": [c1, c2],
-            "labels": {"candidate1": c1, "candidate2": c2},
-        })
+        super().__init__(
+            {
+                "name": "VotePref",
+                "question": "In one word, name the candidate you want to vote for.",
+                "context": f"{{agentname}} is going to cast a vote for either {c1} or {c2}.",
+                "choices": [c1, c2],
+                "labels": {"candidate1": c1, "candidate2": c2},
+            }
+        )
 
 
 class Favorability(NumericRatingProbe):
@@ -33,25 +35,29 @@ class Favorability(NumericRatingProbe):
         cfg = query_data or {}
         premise = cfg.get("interaction_premise_template", {})
         candidate = premise.get("candidate", "the candidate")
-        super().__init__({
-            "name": "Favorability",
-            "question": f"Return a single numeric value ranging from {{lo}} to {{hi}} for {candidate}.",
-            "context": (
-                f"{{agentname}} has to rate their opinion on the election candidate: "
-                f"{candidate} on a scale of {{lo}} to {{hi}} - with {{lo}} representing "
-                f"intensive dislike and {{hi}} representing strong favourability."
-            ),
-            "lo": 1,
-            "hi": 10,
-            "labels": {"candidate": candidate},
-        })
+        super().__init__(
+            {
+                "name": "Favorability",
+                "question": f"Return a single numeric value ranging from {{lo}} to {{hi}} for {candidate}.",
+                "context": (
+                    f"{{agentname}} has to rate their opinion on the election candidate: "
+                    f"{candidate} on a scale of {{lo}} to {{hi}} - with {{lo}} representing "
+                    f"intensive dislike and {{hi}} representing strong favourability."
+                ),
+                "lo": 1,
+                "hi": 10,
+                "labels": {"candidate": candidate},
+            }
+        )
 
 
 class VoteIntent(BinaryProbe):
     """Will the agent cast a vote?"""
 
     def __init__(self, query_data=None):
-        super().__init__({
-            "name": "VoteIntent",
-            "question": "In one word, will you cast a vote? (reply yes, or no.)",
-        })
+        super().__init__(
+            {
+                "name": "VoteIntent",
+                "question": "In one word, will you cast a vote? (reply yes, or no.)",
+            }
+        )

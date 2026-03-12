@@ -26,7 +26,6 @@ from concordia.typing import entity as entity_lib
 from concordia.typing import entity_component, logging
 from concordia.utils import helper_functions
 from concordia.utils import measurements as measurements_lib
-
 from sim.sim_utils.misc_sim_utils import ConfigStore
 
 DEFAULT_PRE_ACT_KEY = "Action"

@@ -40,6 +40,7 @@ class ConfigStore:
         except ValueError:
             raise RuntimeError("Configuration not initialized. Run main script first.")
 
+
 # ============================================================================
 # Base Scenario Schema
 # ============================================================================
@@ -238,9 +239,7 @@ def validate_cross_references(cfg: DictConfig) -> None:
         if active_rates:
             for role in active_rates.keys():
                 if role not in roles:
-                    errors.append(
-                        f"Social network activity rates reference unknown role: {role}"
-                    )
+                    errors.append(f"Social network activity rates reference unknown role: {role}")
 
         # Check fully_connected_targets references
         if hasattr(social_network_cfg, "fully_connected_targets"):

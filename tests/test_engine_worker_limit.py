@@ -87,8 +87,9 @@ def test_update_adaptive_worker_cap_severe_pressure_triggers_aggressive_cut() ->
 
 def test_update_adaptive_worker_cap_massive_scale_throttles_to_absolute_floor() -> None:
     """Ensure 1M-agent runs can throttle down to a small absolute floor."""
-    cap = 1_000_000
+    cap: int | None = 1_000_000
     for _ in range(20):
+        assert cap is not None
         cap = update_adaptive_worker_cap(
             previous_cap=cap,
             requested_workers=1_000_000,

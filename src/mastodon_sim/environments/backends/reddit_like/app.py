@@ -96,9 +96,14 @@ class RedditLikeApp(SocialMediaApp):
             sub_name = sub_cfg.get("name", "general") if isinstance(sub_cfg, dict) else str(sub_cfg)
             sub_desc = sub_cfg.get("description", "") if isinstance(sub_cfg, dict) else ""
             self._platform.create_subreddit(sub_name, sub_desc)
-            self._log_action_event("system", "init_create_subreddit", {
-                "subreddit": sub_name, "description": sub_desc,
-            })
+            self._log_action_event(
+                "system",
+                "init_create_subreddit",
+                {
+                    "subreddit": sub_name,
+                    "description": sub_desc,
+                },
+            )
 
         # Create users.
         for display_name in agent_names:
@@ -131,19 +136,25 @@ class RedditLikeApp(SocialMediaApp):
                 username = self._get_username(display_name)
                 try:
                     self._platform.create_post(
-                        username, default_subreddit,
-                        title=post_text[:100], content=post_text,
+                        username,
+                        default_subreddit,
+                        title=post_text[:100],
+                        content=post_text,
                     )
                 except Exception as e:
                     self._print(f"Seed post error for {username}: {e}", color="red")
 
-        self._log_action_event("system", "initialize", {
-            "platform": "reddit_like",
-            "num_users": len(agent_names),
-            "num_subreddits": len(subreddit_configs),
-            "num_subscriptions": sub_count,
-            "num_seed_posts": sum(1 for t in seed_posts.values() if t),
-        })
+        self._log_action_event(
+            "system",
+            "initialize",
+            {
+                "platform": "reddit_like",
+                "num_users": len(agent_names),
+                "num_subreddits": len(subreddit_configs),
+                "num_subscriptions": sub_count,
+                "num_seed_posts": sum(1 for t in seed_posts.values() if t),
+            },
+        )
         self._print(
             f"Initialized {len(agent_names)} users, "
             f"{len(subreddit_configs)} subreddits, {sub_count} subscriptions",

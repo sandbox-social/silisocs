@@ -6,7 +6,6 @@ Run with:
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -191,66 +190,103 @@ with tab_sim:
     col1, col2 = st.columns(2)
     with col1:
         st.number_input(
-            "Number of agents", min_value=1, max_value=1_000_000,
-            value=int(_sim_defaults.get("num_agents", 20)), step=10,
+            "Number of agents",
+            min_value=1,
+            max_value=1_000_000,
+            value=int(_sim_defaults.get("num_agents", 20)),
+            step=10,
             key="num_agents",
             help="Total number of agents (voters + candidates + special roles).",
         )
         st.number_input(
-            "Number of episodes (steps)", min_value=1, max_value=500,
+            "Number of episodes (steps)",
+            min_value=1,
+            max_value=500,
             value=int(_sim_defaults.get("num_steps", 50)),
             key="num_steps",
             help="Each episode gives every active agent one turn to act.",
         )
-        st.number_input("Random seed", min_value=0,
-                         value=int(_sim_defaults.get("seed", 1)), key="seed")
-        st.text_input("Run name", value=str(_sim_defaults.get("run_name", "run1")),
-                       key="run_name")
+        st.number_input(
+            "Random seed", min_value=0, value=int(_sim_defaults.get("seed", 1)), key="seed"
+        )
+        st.text_input("Run name", value=str(_sim_defaults.get("run_name", "run1")), key="run_name")
 
     with col2:
-        st.text_input("LLM model name",
-                       value=str(_sim_defaults.get("llm_name", "qwen3-4b")),
-                       key="llm_name",
-                       help="OpenAI-compatible model name.")
-        st.text_input("LLM API base URL",
-                       value=str(_sim_defaults.get("llm_api_base") or ""),
-                       key="llm_api_base",
-                       help="Leave blank for auto-detection.")
-        st.text_input("LLM API key",
-                       value=str(_sim_defaults.get("llm_api_key") or ""),
-                       type="password", key="llm_api_key",
-                       help="Uses OPENAI_API_KEY env var if blank.")
-        st.number_input("Max concurrent actions", min_value=1, max_value=10_000,
-                         value=int(_sim_defaults.get("max_concurrent_actions", 1000)),
-                         key="max_concurrent_actions",
-                         help="Hard cap for parallel LLM calls. Adaptive controller starts at min(this, 256).")
+        st.text_input(
+            "LLM model name",
+            value=str(_sim_defaults.get("llm_name", "qwen3-4b")),
+            key="llm_name",
+            help="OpenAI-compatible model name.",
+        )
+        st.text_input(
+            "LLM API base URL",
+            value=str(_sim_defaults.get("llm_api_base") or ""),
+            key="llm_api_base",
+            help="Leave blank for auto-detection.",
+        )
+        st.text_input(
+            "LLM API key",
+            value=str(_sim_defaults.get("llm_api_key") or ""),
+            type="password",
+            key="llm_api_key",
+            help="Uses OPENAI_API_KEY env var if blank.",
+        )
+        st.number_input(
+            "Max concurrent actions",
+            min_value=1,
+            max_value=10_000,
+            value=int(_sim_defaults.get("max_concurrent_actions", 1000)),
+            key="max_concurrent_actions",
+            help="Hard cap for parallel LLM calls. Adaptive controller starts at min(this, 256).",
+        )
 
     with st.expander("Advanced settings", expanded=False):
         ac1, ac2 = st.columns(2)
         with ac1:
-            st.selectbox("Memory backend", _MEMORY_BACKENDS,
-                          index=_MEMORY_BACKENDS.index(_sim_defaults.get("memory_backend", "list")),
-                          key="memory_backend")
-            st.selectbox("Action mode", _ACTION_MODES,
-                          index=_ACTION_MODES.index(_sim_defaults.get("action_mode", "custom")),
-                          key="action_mode")
-            st.text_input("Sentence encoder",
-                           value=str(_sim_defaults.get("sentence_encoder",
-                                                        "sentence-transformers/all-MiniLM-L6-v2")),
-                           key="sentence_encoder")
+            st.selectbox(
+                "Memory backend",
+                _MEMORY_BACKENDS,
+                index=_MEMORY_BACKENDS.index(_sim_defaults.get("memory_backend", "list")),
+                key="memory_backend",
+            )
+            st.selectbox(
+                "Action mode",
+                _ACTION_MODES,
+                index=_ACTION_MODES.index(_sim_defaults.get("action_mode", "custom")),
+                key="action_mode",
+            )
+            st.text_input(
+                "Sentence encoder",
+                value=str(
+                    _sim_defaults.get("sentence_encoder", "sentence-transformers/all-MiniLM-L6-v2")
+                ),
+                key="sentence_encoder",
+            )
         with ac2:
-            st.number_input("Timeline posts shown", min_value=1, max_value=100,
-                             value=int(_sim_defaults.get("timeline_posts", 10)),
-                             key="timeline_posts")
-            st.number_input("Observation history", min_value=10, max_value=1000,
-                             value=int(_sim_defaults.get("observation_history", 100)),
-                             key="observation_history")
-            st.checkbox("Disable language model (dry run)",
-                         value=bool(_sim_defaults.get("disable_language_model", False)),
-                         key="disable_language_model")
-            st.checkbox("Write HTML log",
-                         value=bool(_sim_defaults.get("write_html_log", True)),
-                         key="write_html_log")
+            st.number_input(
+                "Timeline posts shown",
+                min_value=1,
+                max_value=100,
+                value=int(_sim_defaults.get("timeline_posts", 10)),
+                key="timeline_posts",
+            )
+            st.number_input(
+                "Observation history",
+                min_value=10,
+                max_value=1000,
+                value=int(_sim_defaults.get("observation_history", 100)),
+                key="observation_history",
+            )
+            st.checkbox(
+                "Disable language model (dry run)",
+                value=bool(_sim_defaults.get("disable_language_model", False)),
+                key="disable_language_model",
+            )
+            st.checkbox(
+                "Write HTML log",
+                value=bool(_sim_defaults.get("write_html_log", True)),
+                key="write_html_log",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -258,9 +294,13 @@ with tab_sim:
 # ---------------------------------------------------------------------------
 with tab_platform:
     st.subheader("Social Media Platform")
-    platform_type = st.selectbox("Platform backend", _PLATFORM_OPTIONS, index=0,
-                                  key="platform_type",
-                                  help="twitter_like/reddit_like are local. mastodon needs a server.")
+    platform_type = st.selectbox(
+        "Platform backend",
+        _PLATFORM_OPTIONS,
+        index=0,
+        key="platform_type",
+        help="twitter_like/reddit_like are local. mastodon needs a server.",
+    )
     if platform_type == "mastodon":
         st.info("Mastodon requires a running server and .env credentials.")
     else:
@@ -283,9 +323,12 @@ with tab_scenario:
         st.markdown("**Setting**")
         setting = _scenario_cfg.get("setting", {})
         st.text_input("Town name", value=setting.get("name", "Storhampton"), key="setting_name")
-        st.text_area("Event context",
-                      value=_scenario_cfg.get("event", {}).get("context", ""),
-                      key="event_context", height=100)
+        st.text_area(
+            "Event context",
+            value=_scenario_cfg.get("event", {}).get("context", ""),
+            key="event_context",
+            height=100,
+        )
 
     with col2:
         st.markdown("**Candidates**")
@@ -294,10 +337,15 @@ with tab_scenario:
             if not isinstance(cand_data, dict):
                 continue
             with st.expander(cand_data.get("name", cand_key), expanded=False):
-                st.text_input("Name", cand_data.get("name", ""),
-                               key=f"cand_name_{cand_key}", disabled=True)
-                st.text_area("Persona", cand_data.get("persona", ""),
-                              key=f"cand_persona_{cand_key}", height=100)
+                st.text_input(
+                    "Name", cand_data.get("name", ""), key=f"cand_name_{cand_key}", disabled=True
+                )
+                st.text_area(
+                    "Persona",
+                    cand_data.get("persona", ""),
+                    key=f"cand_persona_{cand_key}",
+                    height=100,
+                )
                 st.text_input("Goal", cand_data.get("goal", ""), key=f"cand_goal_{cand_key}")
 
     st.divider()
@@ -307,31 +355,38 @@ with tab_scenario:
     with pc1:
         pm_default = pipeline_cfg.get("processing_mode", "raw")
         pm_idx = _PROCESSING_MODES.index(pm_default) if pm_default in _PROCESSING_MODES else 0
-        st.selectbox("Processing mode", _PROCESSING_MODES, index=pm_idx,
-                      key="processing_mode",
-                      help="'raw' = direct persona text. 'llm_formative' = LLM-generated memories.")
+        st.selectbox(
+            "Processing mode",
+            _PROCESSING_MODES,
+            index=pm_idx,
+            key="processing_mode",
+            help="'raw' = direct persona text. 'llm_formative' = LLM-generated memories.",
+        )
     with pc2:
         voter_cls = pipeline_cfg.get("classes", {}).get("voter", {})
         voter_data = voter_cls.get("data", {}) if isinstance(voter_cls, dict) else {}
         ps_default = voter_data.get("source", "hf_dataset")
         ps_idx = _PERSONA_SOURCES.index(ps_default) if ps_default in _PERSONA_SOURCES else 0
-        st.selectbox("Persona data source", _PERSONA_SOURCES, index=ps_idx,
-                      key="persona_source")
+        st.selectbox("Persona data source", _PERSONA_SOURCES, index=ps_idx, key="persona_source")
 
     persona_source = st.session_state.get("persona_source", "hf_dataset")
     if persona_source == "hf_dataset":
         dc1, dc2 = st.columns(2)
         with dc1:
-            st.text_input("HuggingFace dataset",
-                           value=voter_data.get("dataset", "nvidia/Nemotron-Personas-USA"),
-                           key="hf_dataset")
+            st.text_input(
+                "HuggingFace dataset",
+                value=voter_data.get("dataset", "nvidia/Nemotron-Personas-USA"),
+                key="hf_dataset",
+            )
         with dc2:
-            st.text_input("Dataset split", value=voter_data.get("split", "train"),
-                           key="hf_split")
+            st.text_input("Dataset split", value=voter_data.get("split", "train"), key="hf_split")
     elif persona_source == "local_json":
-        st.text_input("Local JSON path", key="persona_json_path",
-                       value="input/personas/reddit_agents.json",
-                       help="Relative to the scenario directory.")
+        st.text_input(
+            "Local JSON path",
+            key="persona_json_path",
+            value="input/personas/reddit_agents.json",
+            help="Relative to the scenario directory.",
+        )
 
     with st.expander("News Account", expanded=False):
         news_cfg = _scenario_cfg.get("news_account", {})
@@ -343,11 +398,18 @@ with tab_scenario:
     with st.expander("Data Files", expanded=False):
         data_cfg = _scenario_cfg.get("data", {})
         if isinstance(data_cfg, dict):
-            st.text_input("News file",
-                           value=data_cfg.get("news_file", "v1_news_bill_bias"),
-                           key="news_file", help="Name (without .json) from input/news_data/.")
-            st.selectbox("News agent mode", ["with_images", "without_images", "none"],
-                          index=0, key="use_news_agent")
+            st.text_input(
+                "News file",
+                value=data_cfg.get("news_file", "v1_news_bill_bias"),
+                key="news_file",
+                help="Name (without .json) from input/news_data/.",
+            )
+            st.selectbox(
+                "News agent mode",
+                ["with_images", "without_images", "none"],
+                index=0,
+                key="use_news_agent",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -361,13 +423,28 @@ with tab_network:
     with nc1:
         nt_default = net_cfg.get("network_type", "barabasi_albert")
         nt_idx = _NETWORK_TYPES.index(nt_default) if nt_default in _NETWORK_TYPES else 0
-        st.selectbox("Network topology", _NETWORK_TYPES, index=nt_idx, key="network_type",
-                      help="barabasi_albert = scale-free, random = Erdos-Renyi.")
-        st.number_input("BA model edges per node (m)", min_value=1, max_value=200,
-                         value=int(net_cfg.get("barabasi_albert_m", 30)), key="ba_m")
-        st.slider("Base follow probability", 0.0, 1.0,
-                   float(net_cfg.get("base_followership_probability", 0.4)),
-                   0.05, key="follow_prob")
+        st.selectbox(
+            "Network topology",
+            _NETWORK_TYPES,
+            index=nt_idx,
+            key="network_type",
+            help="barabasi_albert = scale-free, random = Erdos-Renyi.",
+        )
+        st.number_input(
+            "BA model edges per node (m)",
+            min_value=1,
+            max_value=200,
+            value=int(net_cfg.get("barabasi_albert_m", 30)),
+            key="ba_m",
+        )
+        st.slider(
+            "Base follow probability",
+            0.0,
+            1.0,
+            float(net_cfg.get("base_followership_probability", 0.4)),
+            0.05,
+            key="follow_prob",
+        )
 
     with nc2:
         st.markdown("**Activity transition rates**")
@@ -377,12 +454,22 @@ with tab_network:
             if not isinstance(rates, dict):
                 continue
             with st.expander(role, expanded=(role == "voter")):
-                st.slider(f"{role}: inactive -> active", 0.0, 1.0,
-                           float(rates.get("inactive_to_active", 0.1)), 0.05,
-                           key=f"act_{role}_i2a")
-                st.slider(f"{role}: active -> inactive", 0.0, 1.0,
-                           float(rates.get("active_to_inactive", 0.1)), 0.05,
-                           key=f"act_{role}_a2i")
+                st.slider(
+                    f"{role}: inactive -> active",
+                    0.0,
+                    1.0,
+                    float(rates.get("inactive_to_active", 0.1)),
+                    0.05,
+                    key=f"act_{role}_i2a",
+                )
+                st.slider(
+                    f"{role}: active -> inactive",
+                    0.0,
+                    1.0,
+                    float(rates.get("active_to_inactive", 0.1)),
+                    0.05,
+                    key=f"act_{role}_a2i",
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -395,12 +482,21 @@ with tab_probes:
 
     pc1, pc2 = st.columns(2)
     with pc1:
-        st.checkbox("Enable probes", value=bool(deploy_cfg.get("enabled", True)),
-                     key="probes_enabled")
-        st.number_input("Start at episode", min_value=0,
-                         value=int(deploy_cfg.get("start_step", 1)), key="probe_start")
-        st.number_input("Deploy every N episodes", min_value=1,
-                         value=int(deploy_cfg.get("every_n_steps", 1)), key="probe_interval")
+        st.checkbox(
+            "Enable probes", value=bool(deploy_cfg.get("enabled", True)), key="probes_enabled"
+        )
+        st.number_input(
+            "Start at episode",
+            min_value=0,
+            value=int(deploy_cfg.get("start_step", 1)),
+            key="probe_start",
+        )
+        st.number_input(
+            "Deploy every N episodes",
+            min_value=1,
+            value=int(deploy_cfg.get("every_n_steps", 1)),
+            key="probe_interval",
+        )
     with pc2:
         st.markdown("**Active probe queries**")
         queries = probes_cfg.get("queries", {}) if isinstance(probes_cfg, dict) else {}
@@ -410,8 +506,14 @@ with tab_probes:
                     continue
                 qtype = qcfg.get("query_type", "Unknown")
                 qdata = qcfg.get("query_data", {})
-                premise = qdata.get("interaction_premise_template", {}) if isinstance(qdata, dict) else {}
-                labels = [str(v) for v in premise.values() if v is not None] if isinstance(premise, dict) else []
+                premise = (
+                    qdata.get("interaction_premise_template", {}) if isinstance(qdata, dict) else {}
+                )
+                labels = (
+                    [str(v) for v in premise.values() if v is not None]
+                    if isinstance(premise, dict)
+                    else []
+                )
                 st.markdown(f"**Q{qid}**: `{qtype}` — {', '.join(labels) or 'default'}")
 
 
@@ -432,8 +534,9 @@ with tab_launch:
         "max_concurrent_actions": st.session_state.get("max_concurrent_actions", 1000),
         "memory_backend": st.session_state.get("memory_backend", "list"),
         "action_mode": st.session_state.get("action_mode", "custom"),
-        "sentence_encoder": st.session_state.get("sentence_encoder",
-                                                   "sentence-transformers/all-MiniLM-L6-v2"),
+        "sentence_encoder": st.session_state.get(
+            "sentence_encoder", "sentence-transformers/all-MiniLM-L6-v2"
+        ),
         "timeline_posts": st.session_state.get("timeline_posts", 10),
         "observation_history": st.session_state.get("observation_history", 100),
         "disable_language_model": st.session_state.get("disable_language_model", False),
@@ -487,17 +590,18 @@ with tab_launch:
                 "scenario": scenario_overrides,
             }
             yaml_str = yaml.dump(combined, default_flow_style=False, sort_keys=False)
-            st.download_button("Download YAML", data=yaml_str,
-                                file_name="sim_config.yaml", mime="text/yaml")
+            st.download_button(
+                "Download YAML", data=yaml_str, file_name="sim_config.yaml", mime="text/yaml"
+            )
 
     with save_col2:
-        save_clicked = st.button("Save Scenario", key="save_scenario",
-                                  use_container_width=True)
+        save_clicked = st.button("Save Scenario", key="save_scenario", use_container_width=True)
 
     with save_col3:
         runner_path = _PACKAGE_ROOT / "runtime" / "runner.py"
-        run_clicked = st.button("\U0001f680  Run Simulation", key="run_sim",
-                                 type="primary", use_container_width=True)
+        run_clicked = st.button(
+            "\U0001f680  Run Simulation", key="run_sim", type="primary", use_container_width=True
+        )
 
     # Save dialog
     if save_clicked:
@@ -519,8 +623,9 @@ with tab_launch:
         )
 
         if "sub-scenario" in save_mode:
-            sub_name = st.text_input("Sub-scenario name (e.g. 'high_turnout')",
-                                      key="sub_scenario_name")
+            sub_name = st.text_input(
+                "Sub-scenario name (e.g. 'high_turnout')", key="sub_scenario_name"
+            )
             final_name = f"{current_name}_{sub_name}" if sub_name else ""
             base_scenario = current_name
         elif "new scenario" in save_mode:
@@ -556,13 +661,19 @@ with tab_launch:
 
         try:
             process = subprocess.Popen(
-                full_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, bufsize=1,
+                full_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
                 cwd=str(_PACKAGE_ROOT.parents[2]),
             )
             with status_placeholder.container():
                 st.markdown("### Status")
                 st.warning("Running...")
+
+            if process.stdout is None:
+                raise RuntimeError("Subprocess started without a readable stdout pipe")
 
             for line in iter(process.stdout.readline, ""):
                 log_lines.append(line)

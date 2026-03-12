@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Analyze prompt/response token usage by episode and phase.
 
 Input: prompts_and_responses.jsonl
@@ -37,11 +36,7 @@ def _classify_phase(prompt: str, episode_idx: int) -> str:
     lower = (prompt or "").lower()
     if "you are completing a survey in character." in lower and "questions:" in lower:
         return "probe"
-    if (
-        "final decision:" in lower
-        and "action type:" in lower
-        and "target id:" in lower
-    ):
+    if "final decision:" in lower and "action type:" in lower and "target id:" in lower:
         return "action"
     if "has to make their first post on social media" in lower:
         return "startup_seed"
@@ -144,7 +139,7 @@ def analyze(input_path: Path, output_dir: Path, encoding: str, make_plot: bool) 
         agg[key]["calls"] += 1.0
         agg[key]["sum_prompt_tokens"] += p_tokens
         agg[key]["sum_output_tokens"] += o_tokens
-        agg[key]["sum_total_tokens"] += (p_tokens + o_tokens)
+        agg[key]["sum_total_tokens"] += p_tokens + o_tokens
 
     rows: list[dict] = []
     for (episode, phase), stats in sorted(agg.items(), key=lambda x: (x[0][0], x[0][1])):
@@ -216,9 +211,7 @@ def main() -> None:
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
     output_dir = (
-        Path(args.output_dir).expanduser().resolve()
-        if args.output_dir
-        else input_path.parent
+        Path(args.output_dir).expanduser().resolve() if args.output_dir else input_path.parent
     )
     analyze(
         input_path=input_path,

@@ -5,7 +5,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from concordia.typing import entity, entity_component
 
-from mastodon_sim.evaluations.probes.types import PROBE_TYPES, AgentQuery, ProbeBase
+from mastodon_sim.evaluations.probes.types import PROBE_TYPES
+from mastodon_sim.evaluations.probes.types import AgentQuery as _AgentQuery
+
+AgentQuery = _AgentQuery
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +77,7 @@ def _parse_questionnaire_answers(raw_response: str, expected_count: int) -> dict
     if expected_count > 0 and "q0" not in parsed:
         one_based_keys = [f"q{i}" for i in range(1, expected_count + 1)]
         if all(k in parsed for k in one_based_keys):
-            parsed = {f"q{i-1}": parsed[f"q{i}"] for i in range(1, expected_count + 1)}
+            parsed = {f"q{i - 1}": parsed[f"q{i}"] for i in range(1, expected_count + 1)}
 
     if parsed:
         return parsed
@@ -286,8 +289,9 @@ def _resolve_query_class(query_type: str, query_lib_module: str | None) -> type:
         cls = getattr(module, query_type, None)
         if cls is not None:
             return cls
-    raise ImportError(f"Unknown probe type '{query_type}'. "
-                      f"Built-in types: {list(PROBE_TYPES.keys())}")
+    raise ImportError(
+        f"Unknown probe type '{query_type}'. Built-in types: {list(PROBE_TYPES.keys())}"
+    )
 
 
 def deploy_probes(

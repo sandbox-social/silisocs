@@ -282,43 +282,35 @@ def append_episode_run_stats(
     with open(stats_path, "a", encoding="utf-8") as f:
         f.write(f"Episode {episode} duration: {duration_s:.2f}s\n")
         f.write(
-
-                f"Episode {episode} workers: requested={requested_workers}, "
-                f"dynamic_cap={dynamic_worker_cap}, configured_cap={configured_worker_cap}, "
-                f"effective={worker_limit}\n"
-
+            f"Episode {episode} workers: requested={requested_workers}, "
+            f"dynamic_cap={dynamic_worker_cap}, configured_cap={configured_worker_cap}, "
+            f"effective={worker_limit}\n"
         )
         f.write(
-
-                f"Episode {episode} probe_phase: deployed={probe_phase.get('deployed')}, "
-                f"selected_agents={probe_phase.get('selected_agents')}, "
-                f"dynamic_cap={probe_dynamic_worker_cap}, "
-                f"effective_workers={probe_worker_limit}, "
-                f"duration_s={probe_phase.get('duration_s')}, "
-                f"calls={probe_phase.get('retry', {}).get('calls')}, "
-                f"retries={probe_phase.get('retry', {}).get('retries')}, "
-                f"retry_per_call={probe_phase.get('retry', {}).get('retry_per_call')}, "
-                f"failures={probe_phase.get('retry', {}).get('failed_calls')}\n"
-
+            f"Episode {episode} probe_phase: deployed={probe_phase.get('deployed')}, "
+            f"selected_agents={probe_phase.get('selected_agents')}, "
+            f"dynamic_cap={probe_dynamic_worker_cap}, "
+            f"effective_workers={probe_worker_limit}, "
+            f"duration_s={probe_phase.get('duration_s')}, "
+            f"calls={probe_phase.get('retry', {}).get('calls')}, "
+            f"retries={probe_phase.get('retry', {}).get('retries')}, "
+            f"retry_per_call={probe_phase.get('retry', {}).get('retry_per_call')}, "
+            f"failures={probe_phase.get('retry', {}).get('failed_calls')}\n"
         )
         f.write(
-
-                f"Episode {episode} action_phase: active_agents={action_phase.get('active_agents')}, "
-                f"duration_s={action_phase.get('duration_s')}, "
-                f"calls={action_phase.get('retry', {}).get('calls')}, "
-                f"retries={action_phase.get('retry', {}).get('retries')}, "
-                f"retry_per_call={action_phase.get('retry', {}).get('retry_per_call')}, "
-                f"failures={action_phase.get('retry', {}).get('failed_calls')}\n"
-
+            f"Episode {episode} action_phase: active_agents={action_phase.get('active_agents')}, "
+            f"duration_s={action_phase.get('duration_s')}, "
+            f"calls={action_phase.get('retry', {}).get('calls')}, "
+            f"retries={action_phase.get('retry', {}).get('retries')}, "
+            f"retry_per_call={action_phase.get('retry', {}).get('retry_per_call')}, "
+            f"failures={action_phase.get('retry', {}).get('failed_calls')}\n"
         )
         f.write(
-
-                f"Episode {episode} retry: models={retry_telemetry.get('model_count')}, "
-                f"retry_samples={retry_telemetry.get('retry_samples')}, "
-                f"retry_avg={retry_telemetry.get('retry_avg')}, "
-                f"failure_ratio={retry_telemetry.get('failure_ratio')}, "
-                f"retry_per_call={retry_telemetry.get('retry_per_call')}\n"
-
+            f"Episode {episode} retry: models={retry_telemetry.get('model_count')}, "
+            f"retry_samples={retry_telemetry.get('retry_samples')}, "
+            f"retry_avg={retry_telemetry.get('retry_avg')}, "
+            f"failure_ratio={retry_telemetry.get('failure_ratio')}, "
+            f"retry_per_call={retry_telemetry.get('retry_per_call')}\n"
         )
         phase_summary = ", ".join(
             f"{phase}={elapsed:.3f}s" for phase, elapsed in sorted(phase_timings.items())

@@ -5,7 +5,7 @@ import logging
 import os
 import time
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import termcolor
 from concordia.components.game_master import event_resolution as event_resolution_components
@@ -13,7 +13,6 @@ from concordia.components.game_master import next_acting as next_acting_componen
 from concordia.components.game_master import switch_act as switch_act_component
 from concordia.environment.engines import simultaneous
 from concordia.typing import entity as entity_lib
-from concordia.utils import concurrency
 from omegaconf import OmegaConf
 from typing_extensions import override
 
@@ -119,8 +118,7 @@ class SocialMediaEngine(simultaneous.Simultaneous):
             results: dict[str, str] = {}
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)) as executor:
                 future_to_name = {
-                    executor.submit(task_fn): task_name
-                    for task_name, task_fn in tasks.items()
+                    executor.submit(task_fn): task_name for task_name, task_fn in tasks.items()
                 }
                 for future in concurrent.futures.as_completed(future_to_name):
                     task_name = future_to_name[future]
@@ -128,7 +126,8 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                         results[task_name] = future.result()
                     except Exception:
                         _LOGGER.exception(
-                            "Agent task failed (isolated): agent=%s", task_name,
+                            "Agent task failed (isolated): agent=%s",
+                            task_name,
                         )
                         results[task_name] = ""
             return results
@@ -144,7 +143,8 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                     results[task_name] = future.result()
                 except Exception:
                     _LOGGER.exception(
-                        "Agent task failed (isolated): agent=%s", task_name,
+                        "Agent task failed (isolated): agent=%s",
+                        task_name,
                     )
                     results[task_name] = ""
 
@@ -178,7 +178,10 @@ class SocialMediaEngine(simultaneous.Simultaneous):
         probe_event_logger = EventLogger(
             "probe", os.path.join(cfg.sim.output_rootname, "probe_events.jsonl")
         )
-        probes_config = OmegaConf.to_container(cfg.scenario.probes, resolve=True)
+        probes_config = cast(
+            Mapping[str, Any] | None,
+            OmegaConf.to_container(cfg.scenario.probes, resolve=True),
+        )
         probe_orchestrator = ProbeDeploymentOrchestrator(probes_config, probe_event_logger)
         _LOGGER.info(
             "Engine run initialized: max_steps=%d total_agents=%d configured_worker_cap=%s",
@@ -483,9 +486,7 @@ class SocialMediaEngine(simultaneous.Simultaneous):
             )
 
             if worker_limit != requested_workers:
-                print(
-                    f"Dynamic worker throttle active: {worker_limit}/{requested_workers} workers"
-                )
+                print(f"Dynamic worker throttle active: {worker_limit}/{requested_workers} workers")
                 _LOGGER.info(
                     "Episode %d worker throttle active: %d/%d",
                     steps,
@@ -505,8 +506,10 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                     dynamic_worker_cap=dynamic_worker_limit,
                     configured_worker_cap=configured_worker_cap,
                     worker_limit=worker_limit,
-                    probe_dynamic_worker_cap=probe_phase.get("dynamic_worker_cap", 0),
-                    probe_worker_limit=probe_phase.get("worker_limit", 0),
+                    probe_dynamic_worker_cap=int(
+                        cast(Any, probe_phase.get("dynamic_worker_cap", 0))
+                    ),
+                    probe_worker_limit=int(cast(Any, probe_phase.get("worker_limit", 0))),
                     retry_telemetry=retry_telemetry,
                     phase_timings=ep_timings,
                     probe_phase=probe_phase,
@@ -578,8 +581,8 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                 dynamic_worker_cap=dynamic_worker_limit,
                 configured_worker_cap=configured_worker_cap,
                 worker_limit=worker_limit,
-                probe_dynamic_worker_cap=probe_phase.get("dynamic_worker_cap", 0),
-                probe_worker_limit=probe_phase.get("worker_limit", 0),
+                probe_dynamic_worker_cap=int(cast(Any, probe_phase.get("dynamic_worker_cap", 0))),
+                probe_worker_limit=int(cast(Any, probe_phase.get("worker_limit", 0))),
                 retry_telemetry=retry_telemetry,
                 phase_timings=ep_timings,
                 probe_phase=probe_phase,

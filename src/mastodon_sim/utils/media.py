@@ -341,7 +341,7 @@ class GptLanguageModel(language_model.LanguageModel):
 
         for attempt in range(self._max_retries + 1):
             try:
-                response = self._client.chat.completions.create(
+                response = self._client.chat.completions.create(  # type: ignore[call-overload]
                     model=self._model_name,
                     messages=messages,
                     tools=tools,

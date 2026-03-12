@@ -66,16 +66,15 @@ class FormativeMemoriesInitializer(
 
     def _component_display(self, key: str) -> str:
         comp = self.get_entity().get_component(
-            key, type_=action_spec_ignored.ActionSpecIgnored,
+            key,
+            type_=action_spec_ignored.ActionSpecIgnored,
         )
         return f"{comp.get_pre_act_label()}:\n{comp.get_pre_act_value()}"
 
     def _generate_backstory(self, player_name: str) -> list[str]:
         prompt = interactive_document.InteractiveDocument(self._model)
         if self._components:
-            prompt.statement(
-                "\n".join(self._component_display(k) for k in self._components) + "\n"
-            )
+            prompt.statement("\n".join(self._component_display(k) for k in self._components) + "\n")
         prompt.statement("----- Role Playing Master Class -----\n")
         prompt.statement(f"Question: What is the protagonist's name?\nAnswer: {player_name}\n")
         prompt.statement(
@@ -113,12 +112,14 @@ class FormativeMemoriesInitializer(
             terminators=[],
         )
         episodes = [e.strip() for e in result.split(self._delimiter) if e.strip()]
-        self._logging_channel({
-            "Key": "formative_backstory",
-            "Episodes": episodes,
-            "Inner Prompt": inner.view().text(),
-            "Prompt": prompt.view().text(),
-        })
+        self._logging_channel(
+            {
+                "Key": "formative_backstory",
+                "Episodes": episodes,
+                "Inner Prompt": inner.view().text(),
+                "Prompt": prompt.view().text(),
+            }
+        )
         return episodes
 
     def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
@@ -129,7 +130,8 @@ class FormativeMemoriesInitializer(
 
         memory = self.get_entity().get_component(self._memory_key, type_=memory_comp.Memory)
         observe = self.get_entity().get_component(
-            self._observation_key, type_=make_observation_component.MakeObservation,
+            self._observation_key,
+            type_=make_observation_component.MakeObservation,
         )
         for m in self._shared_memories:
             memory.add(m)

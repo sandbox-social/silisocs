@@ -36,9 +36,7 @@ from mastodon_sim.environments.gm_components.observe import SimpleMakeObservatio
 # --------------------------------------------------------------------------- #
 
 
-class RawMemoryInjector(
-    entity_component.ContextComponent, entity_component.ComponentWithLogging
-):
+class RawMemoryInjector(entity_component.ContextComponent, entity_component.ComponentWithLogging):
     """Inject shared and player-specific memories without LLM generation.
 
     This is the default memory initialization component used by
@@ -86,7 +84,8 @@ class RawMemoryInjector(
 
         memory = self.get_entity().get_component(self._memory_key, type_=memory_comp.Memory)
         observe = self.get_entity().get_component(
-            self._observation_key, type_=make_observation_component.MakeObservation,
+            self._observation_key,
+            type_=make_observation_component.MakeObservation,
         )
 
         for m in self._shared_memories:
@@ -99,11 +98,13 @@ class RawMemoryInjector(
                 memory.add(f'{name} remembers: "{m}"')
 
         self._initialized = True
-        self._logging_channel({
-            "Key": "memory_init",
-            "Summary": "Raw memories initialized",
-            "Value": f"{len(self._shared_memories)} shared, {len(self._player_names)} players",
-        })
+        self._logging_channel(
+            {
+                "Key": "memory_init",
+                "Summary": "Raw memories initialized",
+                "Value": f"{len(self._shared_memories)} shared, {len(self._player_names)} players",
+            }
+        )
         return self.get_entity().name
 
     def get_state(self) -> entity_component.ComponentState:

@@ -104,12 +104,16 @@ class TwitterLikeApp(SocialMediaApp):
                     self._print(f"Seed post error for {username}: {e}", color="red")
 
         follow_edges = sum(len(v) for v in following.values())
-        self._log_action_event("system", "initialize", {
-            "platform": "twitter_like",
-            "num_users": len(agent_names),
-            "num_follow_edges": follow_edges,
-            "num_seed_posts": sum(1 for t in seed_posts.values() if t),
-        })
+        self._log_action_event(
+            "system",
+            "initialize",
+            {
+                "platform": "twitter_like",
+                "num_users": len(agent_names),
+                "num_follow_edges": follow_edges,
+                "num_seed_posts": sum(1 for t in seed_posts.values() if t),
+            },
+        )
         self._print(f"Initialized {len(agent_names)} users ({follow_edges} follow edges)")
 
     def get_timeline(self, user_name: str, limit: int = 10) -> list[dict]:

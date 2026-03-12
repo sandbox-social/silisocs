@@ -12,7 +12,9 @@ DB_PATH = os.getenv("TWITTER_LIKE_DB", "twitter_like.db")
 platform = TwitterLikePlatform(DB_PATH, use_queue=True)
 
 # Setup Templates
-templates = Jinja2Templates(directory="src/mastodon_sim/environments/backends/twitter_like/visualizer/templates")
+templates = Jinja2Templates(
+    directory="src/mastodon_sim/environments/backends/twitter_like/visualizer/templates"
+)
 
 
 @app.on_event("shutdown")

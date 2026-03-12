@@ -20,7 +20,9 @@ class _DummyAgent:
 def test_probe_orchestrator_default_schedule(monkeypatch) -> None:
     calls = []
 
-    def _fake_deploy_probes(agents, probes, probe_event_logger, worker_limit=None, prebuilt_queries=None):
+    def _fake_deploy_probes(
+        agents, probes, probe_event_logger, worker_limit=None, prebuilt_queries=None
+    ):
         calls.append(
             {
                 "agents": [agent._agent_name for agent in agents],
@@ -64,7 +66,9 @@ def test_probe_orchestrator_default_schedule(monkeypatch) -> None:
 def test_probe_orchestrator_filters_and_cadence(monkeypatch) -> None:
     calls = []
 
-    def _fake_deploy_probes(agents, probes, probe_event_logger, worker_limit=None, prebuilt_queries=None):
+    def _fake_deploy_probes(
+        agents, probes, probe_event_logger, worker_limit=None, prebuilt_queries=None
+    ):
         calls.append([agent._agent_name for agent in agents])
 
     monkeypatch.setattr(

@@ -34,6 +34,7 @@ from concordia.utils import helper_functions
 
 # Environment
 from dotenv import find_dotenv, load_dotenv
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 
 from mastodon_sim.environments.engine import SocialMediaEngine
@@ -88,6 +89,7 @@ def _initialize_runtime_environment() -> Path:
 
     print(f"Config directory: {CONF_DIR}")
     return project_root
+
 
 # ============================================================================
 # Helper Functions
@@ -198,6 +200,7 @@ def populate_agent_data(
         agent_configs: List of agent configurations
         game_masters: List of game master configurations (will be modified)
     """
+
     def _normalize_memories(memories: Any) -> list[str]:
         if memories is None:
             return []
@@ -228,17 +231,23 @@ def populate_agent_data(
             if memory not in extra_shared_memories:
                 extra_shared_memories.append(memory)
 
-    initializer_gm = next((gm for gm in game_masters if gm.role == prefab_lib.Role.INITIALIZER), None)
+    initializer_gm = next(
+        (gm for gm in game_masters if gm.role == prefab_lib.Role.INITIALIZER), None
+    )
     if initializer_gm:
         initializer_gm.params["player_specific_memories"].update(player_specific_memories)
         initializer_gm.params["player_specific_context"].update(player_specific_context)
-        existing_shared_memories = _normalize_memories(initializer_gm.params.get("shared_memories", []))
+        existing_shared_memories = _normalize_memories(
+            initializer_gm.params.get("shared_memories", [])
+        )
         for memory in extra_shared_memories:
             if memory not in existing_shared_memories:
                 existing_shared_memories.append(memory)
         initializer_gm.params["shared_memories"] = existing_shared_memories
 
-    social_media_gm = next((gm for gm in game_masters if gm.role == prefab_lib.Role.GAME_MASTER), None)
+    social_media_gm = next(
+        (gm for gm in game_masters if gm.role == prefab_lib.Role.GAME_MASTER), None
+    )
     if social_media_gm is None:
         raise ValueError("No social media game master found.")
     social_media_gm.params["sm_user_data"]["sim_roles"].update(sim_roles)
@@ -294,8 +303,8 @@ def main(cfg: DictConfig):
 
     # Add hydra-generated output path
     output_dir = os.path.join(
-        hydra.core.hydra_config.HydraConfig.get().runtime.output_dir,
-        hydra.core.hydra_config.HydraConfig.get().job.name,
+        HydraConfig.get().runtime.output_dir,
+        HydraConfig.get().job.name,
     )
 
     # Update config with output directory
@@ -437,7 +446,7 @@ def main(cfg: DictConfig):
                 disable_language_model=getattr(cfg.sim, "disable_language_model", False),
                 api_base=llm_api_base,
                 api_key=llm_api_key,
-                )
+            )
     _log_startup_phase("model_creation", time.time() - t0, f"unique_models={len(models)}")
 
     memory_backend = str(getattr(cfg.sim, "memory_backend", "associative")).strip().lower()
@@ -448,7 +457,9 @@ def main(cfg: DictConfig):
     else:
         with metrics.phase("embedder_creation"):
             embedder = get_sentence_encoder(cfg.sim.sentence_encoder)
-        _log_startup_phase("embedder_creation", time.time() - t0, f"encoder={cfg.sim.sentence_encoder}")
+        _log_startup_phase(
+            "embedder_creation", time.time() - t0, f"encoder={cfg.sim.sentence_encoder}"
+        )
 
     sim_engine = SocialMediaEngine()
 

@@ -113,7 +113,9 @@ class ProbeDeploymentOrchestrator:
 
         selected_agents = self._select_agents(agents)
         if not selected_agents:
-            logger.info("Probe deployment skipped at step=%s because no agents matched filters.", step)
+            logger.info(
+                "Probe deployment skipped at step=%s because no agents matched filters.", step
+            )
             return False, 0
 
         self._probe_event_logger.episode_idx = step

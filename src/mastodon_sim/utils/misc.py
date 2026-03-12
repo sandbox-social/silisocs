@@ -10,11 +10,9 @@ import threading
 import time
 from collections.abc import Mapping
 from itertools import count
-from typing import Any, cast
+from typing import Any
 
 import psutil
-from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig
 
 
 def write_concordia_logs(results_log, output_rootname):
@@ -180,7 +178,6 @@ class EventLogger:
             write_jsonl_item(prepared, self.output_filename)
 
 
-
 def configure_logging(logger):
     # supress verbose printing of hydra's api logging so only warnings (or greater issues) are printed
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -192,6 +189,7 @@ def configure_logging(logger):
 # SimMetricsCollector — lightweight singleton that accumulates timing, resource
 # usage, and sim metadata throughout a run, then writes a single JSON summary.
 # ---------------------------------------------------------------------------
+
 
 def _snapshot_resources() -> dict[str, Any]:
     """Grab a point-in-time snapshot of CPU, memory, and (optional) GPU usage."""
@@ -209,6 +207,7 @@ def _snapshot_resources() -> dict[str, Any]:
     # GPU metrics (best-effort via pynvml)
     try:
         import pynvml
+
         pynvml.nvmlInit()
         device_count = pynvml.nvmlDeviceGetCount()
         gpus: list[dict[str, Any]] = []
@@ -216,14 +215,16 @@ def _snapshot_resources() -> dict[str, Any]:
             handle = pynvml.nvmlDeviceGetHandleByIndex(i)
             mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
             util = pynvml.nvmlDeviceGetUtilizationRates(handle)
-            gpus.append({
-                "id": i,
-                "name": pynvml.nvmlDeviceGetName(handle),
-                "gpu_util_percent": util.gpu,
-                "memory_util_percent": util.memory,
-                "memory_used_mb": mem.used / (1024 * 1024),
-                "memory_total_mb": mem.total / (1024 * 1024),
-            })
+            gpus.append(
+                {
+                    "id": i,
+                    "name": pynvml.nvmlDeviceGetName(handle),
+                    "gpu_util_percent": util.gpu,
+                    "memory_util_percent": util.memory,
+                    "memory_used_mb": mem.used / (1024 * 1024),
+                    "memory_total_mb": mem.total / (1024 * 1024),
+                }
+            )
         snap["gpus"] = gpus
     except Exception:
         snap["gpus"] = []
@@ -268,16 +269,20 @@ class SimMetricsCollector:
             self._collector = collector
             self._name = name
             self._start = 0.0
+
         def __enter__(self):
             self._start = time.time()
             return self
+
         def __exit__(self, *_exc):
             elapsed = time.time() - self._start
             with self._collector._lock_data:
-                self._collector._phase_timings.append({
-                    "phase": self._name,
-                    "duration_s": round(elapsed, 4),
-                })
+                self._collector._phase_timings.append(
+                    {
+                        "phase": self._name,
+                        "duration_s": round(elapsed, 4),
+                    }
+                )
 
     def phase(self, name: str) -> _PhaseTimer:
         """Return a context-manager that times a named phase."""

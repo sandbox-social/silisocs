@@ -7,7 +7,6 @@ from concordia.associative_memory import (
     blank_memories,
 )
 from concordia.clocks import game_clock
-
 from mastodon_sim.concordia_deprecated.components import triggering
 
 

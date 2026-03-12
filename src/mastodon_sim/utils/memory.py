@@ -56,6 +56,11 @@ class ListMemoryBank:
                 # Backward compatibility with serialized JSON payloads.
                 memory_bank = pd.read_json(StringIO(memory_bank))["text"].tolist()
 
+            if not isinstance(stored_hashes, Sequence) or isinstance(stored_hashes, (str, bytes)):
+                stored_hashes = []
+            if not isinstance(memory_bank, Sequence) or isinstance(memory_bank, (str, bytes)):
+                memory_bank = []
+
             self._stored_hashes = {int(x) for x in stored_hashes}
             self._memory_bank = [str(x) for x in memory_bank]
 
@@ -151,6 +156,4 @@ def create_memory_bank(
         return associative_memory.AssociativeMemoryBank(sentence_embedder=sentence_embedder)
     if normalized == "list":
         return ListMemoryBank(sentence_embedder=sentence_embedder)
-    raise ValueError(
-        f"Unsupported memory backend '{backend}'. Expected 'associative' or 'list'."
-    )
+    raise ValueError(f"Unsupported memory backend '{backend}'. Expected 'associative' or 'list'.")

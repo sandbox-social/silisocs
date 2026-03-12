@@ -40,4 +40,3 @@ REASONING: Replying to a specific tweet.
     assert parsed["action_type"] == "REPLY"
     assert parsed["target_id"] == "4650"
     assert parsed["content"] == "Reply text"
-

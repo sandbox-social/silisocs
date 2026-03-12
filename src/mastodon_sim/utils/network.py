@@ -262,18 +262,20 @@ def generate_follow_network(
     base_prob = float(social_network_cfg.get("base_followership_probability", 0.4))
 
     # Identify hub agents (agents whose role is in fully_connected_targets).
-    hub_agents = [
-        name for name in agent_names
-        if sim_roles.get(name, "") in fully_connected
-    ]
+    hub_agents = [name for name in agent_names if sim_roles.get(name, "") in fully_connected]
 
     if network_type == "barabasi_albert":
         return generate_graph_from_networkx(
-            agent_names, hub_agents, graph_type="barabasi_albert", m=ba_m,
+            agent_names,
+            hub_agents,
+            graph_type="barabasi_albert",
+            m=ba_m,
         )
     if network_type == "lfr_benchmark":
         return generate_graph_from_networkx(
-            agent_names, hub_agents, graph_type="lfr_benchmark",
+            agent_names,
+            hub_agents,
+            graph_type="lfr_benchmark",
         )
     if network_type == "random":
         # Build a simple role-probability matrix for random network.
@@ -283,12 +285,17 @@ def generate_follow_network(
             "sim_roles": sim_roles,
             "sim_role_parameters": {"initial_follow_prob": follow_prob},
         }
-        return generate_random_network(agent_names, user_data, ensure_candidate_following=bool(hub_agents))
+        return generate_random_network(
+            agent_names, user_data, ensure_candidate_following=bool(hub_agents)
+        )
     if network_type == "predefined":
         predefined = social_network_cfg.get("predefined_graph", {})
         return {name: list(predefined.get(name, [])) for name in agent_names}
 
     print(f"Unknown network type '{network_type}', falling back to barabasi_albert.")
     return generate_graph_from_networkx(
-        agent_names, hub_agents, graph_type="barabasi_albert", m=ba_m,
+        agent_names,
+        hub_agents,
+        graph_type="barabasi_albert",
+        m=ba_m,
     )

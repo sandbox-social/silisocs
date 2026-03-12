@@ -1,6 +1,6 @@
 # https://pre-commit.com
 default_install_hook_types: [commit-msg, pre-commit]
-default_stages: [commit, manual]
+default_stages: [pre-commit, manual]
 fail_fast: true
 exclude: ^infrastructure/mastodon-on-aws/mastodon.yaml$
 repos:
@@ -75,4 +75,5 @@ repos:
         name: mypy
         entry: mypy
         language: system
-        types: [python]
+        pass_filenames: false
+        args: [src/mastodon_sim, tests]

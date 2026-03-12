@@ -1360,7 +1360,7 @@ def print_per_agent_analysis(analysis_results: dict) -> None:
         """Extract first name from full name for sorting."""
         if not full_name:
             return ""
-        return full_name.split()[0].lower()
+        return full_name.split(maxsplit=1)[0].lower()
 
     # Build a sorted list of agents (keep original 'all_agents' as a set)
     sorted_agents: list[str] = sorted([agent for agent in all_agents if agent], key=get_first_name)

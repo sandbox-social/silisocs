@@ -15,7 +15,7 @@ from typing import Any
 
 from concordia.agents import entity_agent_with_logging
 from concordia.associative_memory import basic_associative_memory
-from concordia.components import game_master as gm_components
+from concordia.components import game_master as gm_components  # type: ignore[attr-defined]
 from concordia.language_model import language_model
 from concordia.typing import prefab as prefab_lib
 
@@ -128,7 +128,9 @@ class GameMaster(prefab_lib.Prefab):
         activity_rates = _compute_activity_rates(user_data)
 
         # Read social_network config and pass to the app.
-        social_network_cfg = dict(cfg.scenario.social_network) if hasattr(cfg.scenario, "social_network") else {}
+        social_network_cfg = (
+            dict(cfg.scenario.social_network) if hasattr(cfg.scenario, "social_network") else {}
+        )
 
         init_t0 = time.time()
         sm_app.initialize(

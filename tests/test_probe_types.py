@@ -38,10 +38,12 @@ def test_binary_probe_parses_yes_no() -> None:
 
 
 def test_choice_probe_matches_full_name_and_tokens() -> None:
-    probe = ChoiceProbe({
-        "name": "Vote",
-        "choices": ["Bill Fredrickson", "Bradley Carter"],
-    })
+    probe = ChoiceProbe(
+        {
+            "name": "Vote",
+            "choices": ["Bill Fredrickson", "Bradley Carter"],
+        }
+    )
     assert probe.parse_answer("I vote for Bill") == "Bill Fredrickson"
     assert probe.parse_answer("Bradley Carter is my pick") == "Bradley Carter"
     assert probe.parse_answer("Fredrickson all the way") == "Bill Fredrickson"
@@ -50,19 +52,24 @@ def test_choice_probe_matches_full_name_and_tokens() -> None:
 
 def test_free_text_probe_returns_stripped_text() -> None:
     probe = FreeTextProbe({"name": "Thoughts"})
-    assert probe.parse_answer("  I think the election is interesting.  ") == "I think the election is interesting."
+    assert (
+        probe.parse_answer("  I think the election is interesting.  ")
+        == "I think the election is interesting."
+    )
     assert probe.parse_answer("") is None
     assert probe.parse_answer("   ") is None
 
 
 def test_probe_form_question_substitutes_agent_name() -> None:
-    probe = NumericRatingProbe({
-        "name": "Fav",
-        "question": "Rate candidate from {lo} to {hi}.",
-        "context": "{agentname} is rating the candidate.",
-        "lo": 1,
-        "hi": 10,
-    })
+    probe = NumericRatingProbe(
+        {
+            "name": "Fav",
+            "question": "Rate candidate from {lo} to {hi}.",
+            "context": "{agentname} is rating the candidate.",
+            "lo": 1,
+            "hi": 10,
+        }
+    )
     agent = _FakeAgent("Alice Smith")
     question = probe.form_question_for_agent(agent)
     assert "Alice Smith" in question
@@ -86,23 +93,27 @@ def test_election_probes_backward_compat() -> None:
         VotePref,
     )
 
-    vp = VotePref({
-        "interaction_premise_template": {
-            "candidate": None,
-            "candidate1": "Bill Fredrickson",
-            "candidate2": "Bradley Carter",
+    vp = VotePref(
+        {
+            "interaction_premise_template": {
+                "candidate": None,
+                "candidate1": "Bill Fredrickson",
+                "candidate2": "Bradley Carter",
+            }
         }
-    })
+    )
     assert vp.parse_answer("I vote for Bill") == "Bill Fredrickson"
     assert vp.parse_answer("Bradley Carter") == "Bradley Carter"
 
-    fav = Favorability({
-        "interaction_premise_template": {
-            "candidate": "Bill Fredrickson",
-            "candidate1": None,
-            "candidate2": None,
+    fav = Favorability(
+        {
+            "interaction_premise_template": {
+                "candidate": "Bill Fredrickson",
+                "candidate1": None,
+                "candidate2": None,
+            }
         }
-    })
+    )
     assert fav.parse_answer("I'd give him a 7") == "7"
 
     vi = VoteIntent({})

@@ -124,7 +124,7 @@ def test_structured_missing_answer_falls_back_only_for_failed_query() -> None:
     agent = _DummyAgent(
         "Alice",
         [
-            "Q1: no",      # structured call missing q0
+            "Q1: no",  # structured call missing q0
             "legacy-yes",  # fallback only for q0
         ],
     )

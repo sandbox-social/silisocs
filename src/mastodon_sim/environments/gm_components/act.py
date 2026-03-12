@@ -3,7 +3,7 @@ import re
 from collections.abc import Sequence
 from typing import Any
 
-from concordia.components import game_master as gm_components
+from concordia.components import game_master as gm_components  # type: ignore[attr-defined]
 from concordia.document import interactive_document
 from concordia.language_model import language_model
 from concordia.typing import entity as entity_lib
@@ -33,7 +33,16 @@ _POST_TARGET_PLACEHOLDERS = {
     "[n/a - new post]",
     "[n/a – new post]",
 }
-_TARGET_REQUIRED_ACTIONS = {"reply", "comment", "like", "upvote", "downvote", "repost", "retweet", "boost"}
+_TARGET_REQUIRED_ACTIONS = {
+    "reply",
+    "comment",
+    "like",
+    "upvote",
+    "downvote",
+    "repost",
+    "retweet",
+    "boost",
+}
 
 
 def _normalize_target_id(action_type: str, target_id: str) -> str:
@@ -190,7 +199,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
             print("--- GENERIC PARSE FAILED: no 'ACTION:' line found ---")
             return ""
         action_name = action_match.group(1).strip()
-        args_text = action_text[action_match.end():].strip()
+        args_text = action_text[action_match.end() :].strip()
         return self.sm_app.invoke_action_by_name(action_name, args_text) or ""
 
     def _resolve_tool_calling(self, active_entity: str, action_text: str) -> str:

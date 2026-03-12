@@ -188,8 +188,7 @@ def test_field_map_template_combines_multiple_fields() -> None:
 
     assert len(agents) == 1
     assert (
-        agents[0].params["context"]
-        == "Enjoys civic discussions.\n\nLives in Storhampton, age 34."
+        agents[0].params["context"] == "Enjoys civic discussions.\n\nLives in Storhampton, age 34."
     )
 
 
@@ -400,7 +399,9 @@ def test_field_map_case_mismatch_still_resolves_context() -> None:
                         "prefab_module": "scenarios.election.entity_lib.simple",
                         "data": {
                             "source": "inline",
-                            "records": [{"persona": "Local resident who follows city council updates."}],
+                            "records": [
+                                {"persona": "Local resident who follows city council updates."}
+                            ],
                         },
                         "field_map": {
                             "context": "Persona",
@@ -433,7 +434,10 @@ def test_class_pipeline_duplicate_names_are_skipped() -> None:
                             "source": "inline",
                             "records": [
                                 {"name": "Alex Kim", "persona": "First record."},
-                                {"name": "Alex Kim", "persona": "Duplicate name should be skipped."},
+                                {
+                                    "name": "Alex Kim",
+                                    "persona": "Duplicate name should be skipped.",
+                                },
                                 {"name": "Jordan Lee", "persona": "Unique record."},
                             ],
                         },

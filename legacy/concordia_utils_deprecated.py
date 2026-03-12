@@ -8,7 +8,6 @@ from concordia.associative_memory import (
     formative_memories,
     importance_function,
 )
-
 from mastodon_sim.concordia_deprecated import apps
 from mastodon_sim.mastodon_ops import update_bio
 

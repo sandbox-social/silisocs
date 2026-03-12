@@ -15,7 +15,6 @@ import hydra
 from concordia import __file__ as concordia_location
 from dotenv import load_dotenv
 from omegaconf import DictConfig, OmegaConf, open_dict
-
 from sim.agent_utils.base_agent import save_agent_to_json
 
 print(f"importing Concordia from: {concordia_location}")

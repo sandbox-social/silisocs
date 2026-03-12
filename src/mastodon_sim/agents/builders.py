@@ -94,8 +94,12 @@ class BaseAgentBuilder:
         for class_name, class_cfg in classes.items():
             class_cfg = class_cfg or {}
             agents = self._build_class(
-                class_name, class_cfg, default_params, default_field_map,
-                default_mem_field, default_shared,
+                class_name,
+                class_cfg,
+                default_params,
+                default_field_map,
+                default_mem_field,
+                default_shared,
             )
             all_agents.extend(agents)
         return all_agents
@@ -113,10 +117,11 @@ class BaseAgentBuilder:
         count = class_cfg.get("count")
         records = (
             self._load_records(data_cfg, max_records=int(count) if count is not None else None)
-            if data_cfg else [{}]
+            if data_cfg
+            else [{}]
         )
         if count is not None:
-            records = records[:int(count)]
+            records = records[: int(count)]
 
         prefab_module = class_cfg.get("prefab_module")
         if not prefab_module:
@@ -146,7 +151,9 @@ class BaseAgentBuilder:
         if bool(class_cfg.get("use_news_file_posts", False)):
             news_file = getattr(self.config.data, "news_file", None)
             if not news_file:
-                raise ValueError(f"Class `{class_name}` requested news posts but data.news_file is unset.")
+                raise ValueError(
+                    f"Class `{class_name}` requested news posts but data.news_file is unset."
+                )
             include_images = bool(class_cfg.get("include_news_images", False))
             raw_news = self.load_news_data(str(news_file))
             news_posts = {
@@ -157,10 +164,19 @@ class BaseAgentBuilder:
         agents: list[AgentConfig] = []
         for idx, record in enumerate(records, start=1):
             params = self._build_agent_params(
-                record, idx, class_name, field_map,
-                default_params, class_params, mem_field,
-                sim_role, prefab_module, shared,
-                derive_name, name_words, news_posts,
+                record,
+                idx,
+                class_name,
+                field_map,
+                default_params,
+                class_params,
+                mem_field,
+                sim_role,
+                prefab_module,
+                shared,
+                derive_name,
+                name_words,
+                news_posts,
             )
             agents.append(AgentConfig(prefab=prefab_name, params=params))
         return agents
@@ -198,7 +214,8 @@ class BaseAgentBuilder:
         if not context:
             fields = (
                 ", ".join(sorted(str(k) for k in record))
-                if isinstance(record, Mapping) else type(record).__name__
+                if isinstance(record, Mapping)
+                else type(record).__name__
             )
             raise ValueError(
                 f"Class `{class_name}` record {idx} missing `context` "
@@ -252,8 +269,12 @@ class BaseAgentBuilder:
         if skipped:
             unique = sorted(set(skipped))
             preview = ", ".join(unique[:10]) + (", ..." if len(unique) > 10 else "")
-            logger.warning("Skipped %d duplicate agent names (%d unique): %s",
-                           len(skipped), len(unique), preview)
+            logger.warning(
+                "Skipped %d duplicate agent names (%d unique): %s",
+                len(skipped),
+                len(unique),
+                preview,
+            )
         return result
 
     # ------------------------------------------------------------------ #
@@ -261,7 +282,10 @@ class BaseAgentBuilder:
     # ------------------------------------------------------------------ #
 
     def _load_records(
-        self, data_cfg: dict[str, Any], *, max_records: int | None = None,
+        self,
+        data_cfg: dict[str, Any],
+        *,
+        max_records: int | None = None,
     ) -> list[dict[str, Any]]:
         source = data_cfg.get("source", "local_json")
         if source == "inline":
@@ -288,7 +312,10 @@ class BaseAgentBuilder:
         return [r if isinstance(r, dict) else {"value": r} for r in records]
 
     def _load_hf_dataset(
-        self, data_cfg: dict[str, Any], *, max_records: int | None = None,
+        self,
+        data_cfg: dict[str, Any],
+        *,
+        max_records: int | None = None,
     ) -> list[dict[str, Any]]:
         dataset_name = data_cfg.get("dataset")
         split = data_cfg.get("split", "train")
@@ -311,7 +338,7 @@ class BaseAgentBuilder:
 
         try:
             from datasets import load_dataset
-        except ImportError as exc:
+        except ImportError:
             try:
                 return _load_cache()
             except (FileNotFoundError, ValueError) as cache_exc:
@@ -330,7 +357,9 @@ class BaseAgentBuilder:
             self._persist_hf_cache(dataset_name, split, subset, records)
             return records[:max_records] if max_records else records
         except Exception as exc:
-            logger.warning("Falling back to HF cache for %s due to dataset load error: %s", dataset_name, exc)
+            logger.warning(
+                "Falling back to HF cache for %s due to dataset load error: %s", dataset_name, exc
+            )
             return _load_cache()
 
     # ------------------------------------------------------------------ #
@@ -339,14 +368,34 @@ class BaseAgentBuilder:
 
     def _hf_cache_path(self, dataset_name: str, split: str, subset: str | None) -> Path:
         slug = f"{self._slugify(dataset_name)}__{self._slugify(subset) if subset else 'default'}__{self._slugify(split)}.json"
-        pkg = _PACKAGE_ROOT / "scenarios" / str(self.config.scenario_name) / "input" / "personas" / ".hf_cache" / slug
+        pkg = (
+            _PACKAGE_ROOT
+            / "scenarios"
+            / str(self.config.scenario_name)
+            / "input"
+            / "personas"
+            / ".hf_cache"
+            / slug
+        )
         if self._safe_path_exists(pkg):
             return pkg
-        top = _PROJECT_ROOT / "scenarios" / str(self.config.scenario_name) / "input" / "personas" / ".hf_cache" / slug
+        top = (
+            _PROJECT_ROOT
+            / "scenarios"
+            / str(self.config.scenario_name)
+            / "input"
+            / "personas"
+            / ".hf_cache"
+            / slug
+        )
         return top if self._safe_path_exists(top) else pkg
 
     def _persist_hf_cache(
-        self, dataset_name: str, split: str, subset: str | None, records: list[dict],
+        self,
+        dataset_name: str,
+        split: str,
+        subset: str | None,
+        records: list[dict],
     ) -> None:
         pkg = _PACKAGE_ROOT / "scenarios" / str(self.config.scenario_name)
         top = _PROJECT_ROOT / "scenarios" / str(self.config.scenario_name)
@@ -448,7 +497,7 @@ class BaseAgentBuilder:
         return str(value).strip()
 
     @staticmethod
-    def _extract_path(record: Any, dotted_path: str) -> Any:
+    def _extract_path(record: Any, dotted_path: Any) -> Any:
         if dotted_path is None:
             return None
         if not isinstance(dotted_path, str):
@@ -475,11 +524,13 @@ class BaseAgentBuilder:
         """Resolve a field_map source — dot-path or ``"{field1}\n{field2}"`` template."""
         if not isinstance(spec, str) or "{" not in spec:
             return self._extract_path(record, spec)
+
         def _sub(m: re.Match) -> str:
             v = self._extract_path(record, m.group(1).strip())
             if v is None:
                 return ""
             return "\n".join(str(x).strip() for x in v) if isinstance(v, list) else str(v)
+
         return re.sub(r"\{([^{}]+)\}", _sub, spec)
 
     @staticmethod
@@ -489,7 +540,7 @@ class BaseAgentBuilder:
     @staticmethod
     def _derive_name(context: str, words: int = 2) -> str:
         tokens = re.findall(r"[A-Za-z0-9']+", context or "")
-        return " ".join(tokens[:max(1, words)]) if tokens else ""
+        return " ".join(tokens[: max(1, words)]) if tokens else ""
 
     @staticmethod
     def _safe_path_exists(candidate: Any) -> bool:

@@ -47,7 +47,9 @@ def test_reddit_like_initialize_emits_action_events(tmp_path) -> None:
             sim_roles={"Alice Smith": "voter", "Bob Jones": "voter"},
             seed_posts={"Alice Smith": "First post from Alice"},
             social_network={
-                "subreddits": [{"name": "general", "description": "General discussion", "roles": "all"}],
+                "subreddits": [
+                    {"name": "general", "description": "General discussion", "roles": "all"}
+                ],
                 "default_subreddit": "general",
             },
         )

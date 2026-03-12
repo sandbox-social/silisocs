@@ -12,7 +12,9 @@ DB_PATH = os.getenv("REDDIT_LIKE_DB", "reddit_like.db")
 platform = RedditLikePlatform(DB_PATH, use_queue=True)
 
 # Setup Templates
-templates = Jinja2Templates(directory="src/mastodon_sim/environments/backends/reddit_like/visualizer/templates")
+templates = Jinja2Templates(
+    directory="src/mastodon_sim/environments/backends/reddit_like/visualizer/templates"
+)
 
 
 @app.on_event("shutdown")

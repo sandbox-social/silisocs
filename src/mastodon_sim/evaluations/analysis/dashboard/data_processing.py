@@ -78,9 +78,11 @@ def get_toot_dict(int_df):
         axis=1,
     )
     text_df.text_data = text_df.apply(
-        lambda x: x.text_data | {"parent_toot_id": x.data["reply_to"]["toot_id"]}
-        if x.label == "reply"
-        else x.text_data,
+        lambda x: (
+            x.text_data | {"parent_toot_id": x.data["reply_to"]["toot_id"]}
+            if x.label == "reply"
+            else x.text_data
+        ),
         axis=1,
     )
 
@@ -103,9 +105,11 @@ def get_int_dict(int_df, toot_owner_dict):
         axis=1,
     )
     int_df.int_data = int_df.apply(
-        lambda x: x.int_data | {"parent_toot_id": str(x.data["reply_to"]["toot_id"])}
-        if x.label == "reply"
-        else x.int_data,
+        lambda x: (
+            x.int_data | {"parent_toot_id": str(x.data["reply_to"]["toot_id"])}
+            if x.label == "reply"
+            else x.int_data
+        ),
         axis=1,
     )
     return int_df.groupby("episode")["int_data"].apply(list).to_dict()

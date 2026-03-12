@@ -97,6 +97,7 @@ class ProbeBase(ABC):
 # Concrete probe types
 # ======================================================================
 
+
 class NumericRatingProbe(ProbeBase):
     """Probe that asks for an integer in ``[lo, hi]``.
 
@@ -296,9 +297,9 @@ class TemplateProbe(ProbeBase):
         agent_name = _get_agent_name(agent)
         return self.question_template.format(agentname=agent_name)
 
-    @abstractmethod
     def parse_answer(self, raw: str) -> str | None:
-        """Subclasses must extract the structured answer."""
+        text = raw.strip() if raw else None
+        return text or None
 
     def submit_with_raw_response(self, raw: str) -> dict[str, Any]:
         query_return = dict(self.query_data) if self.query_data else {}
