@@ -109,15 +109,20 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
     """
     # Build shared memories
     shared_memories = list(cfg.scenario.shared_memories) + [cfg.social_media.usage_instructions]
-    processing_mode = (
+    processing_mode_raw = (
         cfg.scenario.persona_pipeline.processing_mode
         if hasattr(cfg.scenario, "persona_pipeline")
         and hasattr(cfg.scenario.persona_pipeline, "processing_mode")
         else "llm_formative"
     )
+    processing_mode = str(processing_mode_raw).strip().lower()
+    if processing_mode == "formative":
+        processing_mode = "llm_formative"
+
     if processing_mode not in {"llm_formative", "raw"}:
         raise ValueError(
-            f"Unsupported persona processing mode: {processing_mode}. Expected `llm_formative` or `raw`."
+            "Unsupported persona processing mode: "
+            f"{processing_mode_raw}. Expected one of: `raw`, `formative`, `llm_formative`."
         )
 
     # Build player-specific context and memories from agents
@@ -328,21 +333,50 @@ def main(cfg: DictConfig):
         game_masters = build_game_masters(cfg)
     _log_startup_phase("build_game_masters", time.time() - t0, f"count={len(game_masters)}")
 
-    # Import scenario-specific agent builder and build agents
+    # Import scenario-specific agent builder and build agents.
+    # Lookup order:
+    #   1. In-package: mastodon_sim.scenarios.<name>.builders.<Name>AgentBuilder
+    #   2. External:   scenarios/<name>/builders.py → <Name>AgentBuilder
+    #   3. Fallback:   BaseAgentBuilder (YAML pipeline only)
     t0 = time.time()
     with metrics.phase("build_agents"):
-        builder_module_path = f"mastodon_sim.scenarios.{cfg.scenario.scenario_name}.builders"
-        try:
-            import importlib
+        import importlib
+        import importlib.util
 
-            builder_module = importlib.import_module(builder_module_path)
-            builder_class_name = f"{cfg.scenario.scenario_name.title()}AgentBuilder"
-            BuilderClass = getattr(builder_module, builder_class_name)
-        except (ImportError, AttributeError) as e:
-            raise ImportError(
-                f"Could not import builder from {builder_module_path}. "
-                f"Expected class name: {builder_class_name}. Error: {e}"
-            )
+        from mastodon_sim.agents.builders import BaseAgentBuilder
+
+        scenario_name = cfg.scenario.scenario_name
+        builder_class_name = f"{scenario_name.title()}AgentBuilder"
+        BuilderClass = None
+
+        # 1. Try in-package builder.
+        try:
+            mod = importlib.import_module(f"mastodon_sim.scenarios.{scenario_name}.builders")
+            BuilderClass = getattr(mod, builder_class_name, None)
+        except (ImportError, ModuleNotFoundError):
+            pass
+
+        # 2. Try external scenarios/<name>/builders.py.
+        if BuilderClass is None:
+            from pathlib import Path
+
+            pkg_root = Path(__file__).resolve().parents[1]
+            project_root = pkg_root.parents[2]
+            external_builder = project_root / "scenarios" / scenario_name / "builders.py"
+            if external_builder.is_file():
+                spec = importlib.util.spec_from_file_location(
+                    f"scenarios.{scenario_name}.builders",
+                    external_builder,
+                )
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    BuilderClass = getattr(mod, builder_class_name, None)
+
+        # 3. Fallback to generic base builder.
+        if BuilderClass is None:
+            BuilderClass = BaseAgentBuilder
+
         builder = BuilderClass(cfg.scenario)
         roles = dict(cfg.scenario.roles) if hasattr(cfg.scenario, "roles") else {}
         agent_configs = builder.build_agents(roles)
@@ -530,6 +564,10 @@ def _inject_external_config_path() -> None:
     while the package ``conf/`` provides fallback defaults.  So we consume
     the flag, resolve the path, and inject it as a ``hydra.searchpath``
     override instead.
+
+    **Auto-detection**: If the external dir contains a ``scenario/*.yaml``
+    file, the scenario override (e.g. ``scenario=election``) is injected
+    automatically — no need to pass it on the command line.
     """
     flag = "--config-path"
     if flag not in sys.argv:
@@ -552,6 +590,29 @@ def _inject_external_config_path() -> None:
     override = f"+hydra.searchpath=[file://{external_dir}]"
     sys.argv.append(override)
     print(f"External config path: {external_dir}")
+
+    # Auto-detect scenario name from scenario/*.yaml in the external dir,
+    # unless the user already provided an explicit scenario= override.
+    has_explicit_scenario = any(arg.startswith("scenario=") for arg in sys.argv[1:])
+    if not has_explicit_scenario:
+        scenario_dir = external_dir / "scenario"
+        if scenario_dir.is_dir():
+            yamls = [f.stem for f in scenario_dir.glob("*.yaml")]
+            if len(yamls) == 1:
+                sys.argv.append(f"scenario={yamls[0]}")
+                print(f"Auto-detected scenario: {yamls[0]}")
+            elif len(yamls) > 1:
+                # Convention: use the one matching the parent directory name.
+                parent_name = external_dir.parent.name
+                if parent_name in yamls:
+                    sys.argv.append(f"scenario={parent_name}")
+                    print(f"Auto-detected scenario: {parent_name}")
+                else:
+                    print(
+                        f"WARNING: Multiple scenario configs found ({yamls}) "
+                        f"but none matches directory name '{parent_name}'. "
+                        f"Pass scenario=<name> explicitly."
+                    )
 
 
 if __name__ == "__main__":

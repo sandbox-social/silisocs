@@ -50,136 +50,91 @@ Requires-Dist: datasets<5.0.0,>=4.5.0
 Dynamic: license-file
 
 [![CI](https://github.com/social-sandbox/mastodon-sim/actions/workflows/test.yml/badge.svg)](https://github.com/social-sandbox/mastodon-sim/actions/workflows/test.yml)
+[![Docs](https://github.com/social-sandbox/mastodon-sim/actions/workflows/docs.yml/badge.svg)](https://social-sandbox.github.io/mastodon-sim)
 [![Open in Dev Containers](https://img.shields.io/static/v1?label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/social-sandbox/mastodon-sim)
 
 # Social Simulation Sandbox for Social Media Scenarios
 
 Configurable generative agent simulation of social media using the [Concordia framework](https://github.com/google-deepmind/concordia).
 - 2024 NeurIPS Workshop Paper: [http://arxiv.org/abs/2410.13915](http://arxiv.org/abs/2410.13915).
-- 2025 Version 1 demo paper: [https://www.ijcai.org/proceedings/2025/1271][https://www.ijcai.org/proceedings/2025/1271].
+- 2025 Version 1 demo paper: [https://www.ijcai.org/proceedings/2025/1271](https://www.ijcai.org/proceedings/2025/1271).
 - Version 2 complete (structured scenario configuration compatible with Concordia v.2)
+
+**[Read the full documentation](https://social-sandbox.github.io/mastodon-sim)**
 
 ## Code Overview
 
-### Files
-simulation code is in  `mastodon-sim/src/` within which
-- `conf/` holds all the yaml configuration files
-- `sim/` is the multi-LLM-agent+environment simulation library (contains a social media environment as an example)
-- `scenarios/` has scenario-specific configuration logic (e.g. scenario data classes and agent factories)
-- `mastodon_sim/` is the library of tools for running and deploying the (in this case Mastodon) social media server.
+### Runtime Entry Point
 
-`mastodon-sim/src/sim/main.py` runs the simulation orchestrated in `conf/config.yaml`
+The canonical runtime entry point is:
 
-### Configuration
-We provide an example that simulates an election simulation as a specific scenario.
-There are 4 yaml files listed in `config.yaml` that configure the simulation. Here they are, along with what they consist of in the case of the election scenario:
+- `src/mastodon_sim/runtime/runner.py`
 
-| config file | description | election scenario |
-| ----------- | ----------- | ---------------- |
-| `sim.yaml` | This contains multi-LLM agent simulator attributes like the language model and how long to run the simulation for and. It has no scenario or environment information. | N/A |
+It composes Hydra config, builds agents + game masters, initializes memory,
+runs the simulation engine, and writes outputs.
 
-| `social_media.yaml` | all detailed structured information about the environment. | N/A |
-| `scenario.yaml` | All the configuration associated with the specific scenario (agents and setting). This includes detailed structured information about the social system: the shared knowledge and social context of the agents. We even have custom query types (with formatting from dynamic values). We currently use this function to deploy longitudinal surveys on the agent population. | We made 3 custom agents: `voter.py`, `candidate.py`, and `malicious.py`. We made 3 query types: `Favorability`, `VotePreference`, `IntentToVote`. We formed two versions of the first two types, one for each candidate. |
+### Config Layout
 
-All config generation is orchestrated in `mastodon-sim/src/sim/config_utils/config_schema.py`.
-We use the Hydra package to manage config files, run simulations, and log output. See the [hydra documentation](https://hydra.cc/docs/intro/) for more details. One simple use of hydra is to override default parameter values by including them in the command line. More structured experiments can be made with customized yaml subconfig files.
+Hydra composes these config groups:
 
-### Output
-Simulation output is a set of files located in the respective scenarios folder, here `mastodon-sim/scenarios/election/outputs/run_name/` where `run_name` is a parameter in `sim.yaml`.
+- `src/mastodon_sim/conf/sim/base.yaml`
+- `src/mastodon_sim/conf/social_media/{twitter_like|reddit_like|mastodon}.yaml`
+- `src/mastodon_sim/conf/scenario/{name}.yaml`
+
+External scenarios can be placed at:
+
+- `scenarios/<name>/conf/scenario/<name>.yaml`
+
+and launched with `--config-path`.
+
+### Output Artifacts
+
+Simulation output is written under:
+
+- `scenarios/<scenario_name>/outputs/<jobname>/...`
+
+Key files:
 
 | Output file | Description |
 | ----------- | ----------- |
-| `events.json` | stores agent actions|
-| `probes.json` | stores probe results |
-| `prompts_and_responses.jsonl` | stores language model prompts and responses |
-| `.hydra/config.yaml` | stores all config information into a single yaml file |
+| `action_events.jsonl` | Social-media actions with episode, source user, label, and data |
+| `probe_events.jsonl` | Probe responses by episode and source user |
+| `prompts_and_responses.jsonl` | LLM prompts and responses |
+| `run_stats.log` | Startup and per-episode runtime statistics |
+| `sim_metrics.json` | Structured metrics summary |
+| `logs.html` | Concordia HTML logs |
+| `<platform>.db` | SQLite platform state for local backends |
+| `.hydra/config.yaml` | Resolved config snapshot |
 
-`mastodon-sim/src/sim/analysis_utils/dashboard/` holds a set of scripts whose main element `main.py` loads a browser-based dashboard from which output data files are loaded in and automated analytics including dynamic social networks are presented for the user to analyze the results. Here is a snapshot:
+### Dashboards
+
+The project currently has two dashboard apps:
+
+- Streamlit launcher: `src/mastodon_sim/dashboard/launch_app.py`
+- Dash analytics app: `src/mastodon_sim/evaluations/analysis/dashboard/main.py`
+
+The Streamlit app is for scenario authoring and run launch. The Dash app is
+for post-run analysis of `action_events.jsonl` and `probe_events.jsonl`.
+
+Here is a snapshot:
 
 ![alt text](https://github.com/social-sandbox/mastodon-sim/blob/main/docs/img/dashboard_screenshot.png?raw=true)
 
-## Detailed file structure:
-<pre>
+## High-Level Structure
+
+```text
 mastodon-sim/
-└── src/
-    ├── conf/
-    │   ├── config.yaml
-    │   ├── sim/
-    |   |   └── base.yaml
-    │   ├── social_media/
-    |   |   └── mastodon.yaml
-    │   └── scenario/
-    |       └── election.yaml
-    ├── mastodon_sim/
-    │   ├── apps.py
-    │   ├── logging.py
-    │   ├── mastodon_ops/
-    │   │   ├── block.py
-    │   │   ├── boost.py
-    │   │   ├── create_app.py
-    │   │   ├── create_env_file.py
-    │   │   ├── delete_posts.py
-    │   │   ├── env_utils.py
-    │   │   ├── follow.py
-    │   │   ├── get_account_id.py
-    │   │   ├── get_client.py
-    │   │   ├── like.py
-    │   │   ├── login.py
-    │   │   ├── mute.py
-    │   │   ├── new_app.py
-    │   │   ├── notifications.py
-    │   │   ├── post_status.py
-    │   │   ├── read_bio.py
-    │   │   ├── reset_users.py
-    │   │   ├── timeline.py
-    │   │   ├── toot.py
-    │   │   ├── unblock.py
-    │   │   ├── unfollow.py
-    │   │   ├── unmute.py
-    │   │   └── update_bio.py
-    │   └── mastodon_utils/
-    │       ├── account_ids.py
-    │       ├── create_app.py
-    │       ├── get_users_from_env.py
-    │       └── graphs.py
-    ├── sim/
-    |   ├── main.py
-    |   ├── config_utils/
-    |   |   ├── agent_builders.py
-    |   |   ├── scenario_schema.py
-    |   |   ├── simulation_dataclasses.py
-    |   |   ├── social_media_dataclasses.py
-    |   |   └── social_media_functions.py
-    |   ├── sim_utils/
-    |   |   ├── agent_speech_utils.py
-    |   |   ├── media_utils.py
-    |   |   └── misc_sim_utils.py
-    |   ├── analysis_utils/
-    |   |   └── dashboard/
-    |   |       └──main.py
-    |   ├── entities/
-    |   |   ├──social_media.py
-    |   |   ├──simple.py
-    |   |   └── components/
-    |   |       └── gm_social_act.py
-    |   |       └── social_make_observations.py
-    |   └── engines/
-    |       └── social_media_engine.py
-    └── scenarios/
-        └── election/
-            ├── builders.py
-            ├── scenario_dataclasses.py
-            ├── config_utils/
-            |    └── probe_lib.py
-            ├── entity_lib/
-            |    └── role_1.py
-            ├── input/
-            |    └── source_1.py
-            └── output/
-                └── run_type_1/
-                    └── run_type_1_time/
-                        └── run_type_1_time_outputtype_A.json
-</pre>
+├── src/mastodon_sim/
+│   ├── runtime/            # runner, simulation composition, config validation
+│   ├── environments/       # engine, game master, backend implementations
+│   ├── agents/             # entities, builders, initialization
+│   ├── evaluations/        # probes, plotting, analytics dashboard
+│   └── dashboard/          # streamlit launcher
+├── src/mastodon_sim/conf/  # Hydra config groups (sim/social_media/scenario)
+├── scenarios/              # external scenarios and outputs
+├── docs/                   # mkdocs user/developer documentation
+└── tests/                  # unit and integration tests
+```
 <!--
 ## Hidden Section
 

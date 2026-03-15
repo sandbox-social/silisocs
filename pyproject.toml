@@ -82,10 +82,10 @@ dev = [
   "types-requests>=2.32.0.20241016",
 ]
 docs = [
-  "sphinx>=7.0.1,<8.0.0",
-  "sphinx-rtd-theme>=1.2.0,<2.0.0",
-  "myst-parser>=2.0.0,<3.0.0",
-  "sphinx-material>=0.0.36,<0.1.0",
+  "mkdocs-material>=9.5.0,<10.0.0",
+  "mkdocstrings[python]>=0.24.0,<1.0.0",
+  "mkdocs-gen-files>=0.5.0,<1.0.0",
+  "mkdocs-literate-nav>=0.6.0,<1.0.0",
 ]
 
 [tool.setuptools]

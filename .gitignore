@@ -196,3 +196,6 @@ src/scenarios/election/input/personas/.hf_cache/
 
 # Local oversized HF cache artifact
 scenarios/election/input/personas/.hf_cache/nvidia_Nemotron-Personas-USA__default__train.json
+
+# MkDocs build output
+site/

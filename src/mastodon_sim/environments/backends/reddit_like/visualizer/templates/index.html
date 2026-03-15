@@ -1,270 +1,499 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reddit-like Simulation Visualizer</title>
+    <title>SimReddit</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config={theme:{extend:{colors:{brand:'#ff4500',upvote:'#ff4500',downvote:'#7193ff',border:'#343536',bg:'#1a1a1b',canvas:'#030303',surface:'#272729',hover:'#2a2a2b',dim:'#818384',link:'#4fbcff'}}}}</script>
     <style>
-        .post-card {
-            border: 1px solid #e0e0e0;
-            transition: border-color 0.2s;
-        }
-
-        .post-card:hover {
-            border-color: #878a8c;
-        }
-
-        .vote-column {
-            width: 40px;
-            background-color: #f8f9fa;
-        }
-
-        .arrow-up,
-        .arrow-down {
-            color: #878a8c;
-            font-size: 1.25rem;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .arrow-up:hover {
-            color: #ff4500;
-        }
-
-        .arrow-down:hover {
-            color: #7193ff;
-        }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #030303; color: #d7dadc; }
+        ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #343536; border-radius: 4px; }
+        .post-card { background: #1a1a1b; border: 1px solid #343536; border-radius: 4px; transition: border-color 0.15s; cursor: pointer; }
+        .post-card:hover { border-color: #818384; }
+        .vote-col { width: 40px; background: #161617; border-radius: 4px 0 0 4px; display: flex; flex-direction: column; align-items: center; padding: 8px 4px; gap: 2px; }
+        .vote-btn { font-size: 20px; color: #818384; cursor: pointer; line-height: 1; user-select: none; }
+        .vote-btn.up:hover { color: #ff4500; } .vote-btn.down:hover { color: #7193ff; }
+        .comment-thread { border-left: 2px solid #343536; margin-left: 4px; padding-left: 12px; }
+        .avatar-sm { width: 24px; height: 24px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; color: #fff; flex-shrink: 0; }
+        .pill { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 9999px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .pill:hover { background: #343536; }
+        .nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .nav-item:hover { background: #272729; }
+        .nav-item.active { background: #272729; font-weight: 700; }
+        #view-stack > div { display: none; } #view-stack > div.active { display: block; }
     </style>
 </head>
+<body>
+<div class="flex max-w-[1200px] mx-auto min-h-screen gap-4 p-4">
 
-<body class="bg-gray-100 min-h-screen font-sans">
-
-    <div class="max-w-4xl mx-auto flex">
-        <!-- Sidebar -->
-        <div class="w-64 fixed h-screen bg-white border-r border-gray-200 p-4">
-            <h1 class="text-2xl font-bold text-orange-600 mb-8 cursor-pointer" onclick="loadFeed('popular')">sim/Reddit
-            </h1>
-
-            <nav class="space-y-4">
-                <button onclick="loadFeed('popular')"
-                    class="w-full text-left flex items-center p-2 rounded hover:bg-gray-100 font-semibold text-gray-700">
-                    Popular
-                </button>
-
-                <div class="pt-4 mt-4 border-t border-gray-200">
-                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Simulated Views</p>
-                    <button onclick="simulateUser('alice')"
-                        class="w-full text-left p-2 rounded hover:bg-gray-100 text-gray-700 text-sm">
-                        View as Alice
-                    </button>
-                    <button onclick="simulateUser('bob')"
-                        class="w-full text-left p-2 rounded hover:bg-gray-100 text-gray-700 text-sm">
-                        View as Bob
-                    </button>
-                </div>
-
-                <div class="pt-4 mt-4 border-t border-gray-200" id="user-profile" style="display:none;">
-                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Current Context</p>
-                    <div class="p-2 bg-gray-50 rounded">
-                        <p class="font-bold text-gray-800" id="current-username">@loading</p>
-                        <p class="text-sm text-gray-500" id="current-karma">Karma: 0</p>
-                        <p class="text-sm text-gray-600 mt-1 italic" id="current-bio"></p>
-                    </div>
-                </div>
-            </nav>
-        </div>
-
-        <!-- Main Feed -->
-        <div class="flex-1 ml-64 p-6">
-            <div class="flex justify-between items-center mb-6">
-                <h2 id="feed-title" class="text-xl font-bold text-gray-800">Popular Posts</h2>
-                <button onclick="refreshFeed()"
-                    class="px-4 py-2 border border-gray-300 rounded-full hover:bg-gray-100 text-sm font-semibold">
-                    Refresh
-                </button>
-            </div>
-
-            <div id="feed-container" class="space-y-4">
-                <div class="text-center text-gray-500 py-10">Loading posts...</div>
+    <!-- Left sidebar -->
+    <nav class="w-[240px] flex-shrink-0 hidden lg:block sticky top-4 h-[calc(100vh-2rem)]">
+        <div class="bg-bg border border-border rounded-lg p-3 mb-3">
+            <div class="text-xl font-bold text-brand mb-4 cursor-pointer" onclick="showView('home');loadNewFeed(true)">sim/Reddit</div>
+            <div class="space-y-1">
+                <div class="nav-item active" id="nav-home" onclick="activateNav(this);showView('home');loadNewFeed(true)">&#127968; Home</div>
+                <div class="nav-item" id="nav-popular" onclick="activateNav(this);showView('popular');loadPopularFeed(true)">&#128293; Popular</div>
+                <div class="nav-item" id="nav-users" onclick="activateNav(this);loadAllUsers()">&#128101; Users</div>
+                <div class="nav-item" id="nav-admin" onclick="activateNav(this);loadAdmin()">&#128202; Admin</div>
             </div>
         </div>
-    </div>
+        <div class="bg-bg border border-border rounded-lg p-3">
+            <div class="text-xs font-bold text-dim uppercase tracking-wider mb-2">Communities</div>
+            <div id="sidebar-subs" class="space-y-1 text-sm"></div>
+        </div>
+        <div class="mt-3">
+            <input type="text" placeholder="Search users..."
+                   class="w-full bg-bg border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-brand"
+                   onkeydown="if(event.key==='Enter')searchUsers(this.value)">
+        </div>
+    </nav>
 
-    <script>
-        let currentFeedEndpoint = '/api/feed/popular';
-        let currentFeedTitle = 'Popular Posts';
-        let currentUser = null;
+    <!-- Main column -->
+    <main class="flex-1 min-w-0">
+        <div id="view-stack">
 
-        async function loadFeed(type, identifier = null) {
-            if (type === 'popular') {
-                currentFeedEndpoint = '/api/feed/popular';
-                currentFeedTitle = 'Popular Posts';
-                currentUser = null;
-                document.getElementById('user-profile').style.display = 'none';
-            } else if (type === 'home' && identifier) {
-                currentFeedEndpoint = `/api/feed/home/${identifier}`;
-                currentFeedTitle = `Home Feed - u/${identifier}`;
-            } else if (type === 'subreddit' && identifier) {
-                currentFeedEndpoint = `/api/feed/subreddit/${identifier}`;
-                currentFeedTitle = `r/${identifier}`;
-            } else if (type === 'user' && identifier) {
-                currentFeedEndpoint = `/api/feed/user/${identifier}`;
-                currentFeedTitle = `Posts by u/${identifier}`;
-            }
+            <!-- HOME (New feed) -->
+            <div id="view-home" class="active">
+                <div class="bg-bg border border-border rounded-lg p-3 mb-3 flex items-center gap-2">
+                    <span class="text-lg font-bold">New Posts</span>
+                    <span class="text-dim text-sm">(Global Timeline)</span>
+                </div>
+                <div id="home-content" class="space-y-3"></div>
+                <div id="home-loading" class="p-6 text-center text-dim">Loading...</div>
+            </div>
 
-            document.getElementById('feed-title').innerText = currentFeedTitle;
-            await refreshFeed();
-        }
+            <!-- POPULAR -->
+            <div id="view-popular">
+                <div class="bg-bg border border-border rounded-lg p-3 mb-3">
+                    <span class="text-lg font-bold">&#128293; Popular</span>
+                </div>
+                <div id="popular-content" class="space-y-3"></div>
+                <div id="popular-loading" class="p-6 text-center text-dim hidden">Loading...</div>
+            </div>
 
-        async function simulateUser(username) {
-            currentUser = username;
-            // Fetch profile
-            try {
-                const res = await fetch(`/api/user/${username}`);
-                if (res.ok) {
-                    const profile = await res.json();
-                    document.getElementById('current-username').innerText = `u/${profile.username}`;
-                    document.getElementById('current-karma').innerText = `Karma: ${profile.karma}`;
-                    document.getElementById('current-bio').innerText = profile.bio || '';
-                    document.getElementById('user-profile').style.display = 'block';
-
-                    await loadFeed('home', username);
-                } else {
-                    alert("User not found");
-                }
-            } catch (e) {
-                console.error(e);
-            }
-        }
-
-        async function toggleComments(postId) {
-            let commentsDiv = document.getElementById(`comments-${postId}`);
-            if (commentsDiv.style.display === 'block') {
-                commentsDiv.style.display = 'none';
-                return;
-            }
-
-            commentsDiv.innerHTML = '<div class="text-xs text-gray-500 p-2">Loading comments...</div>';
-            commentsDiv.style.display = 'block';
-
-            try {
-                const res = await fetch(`/api/post/${postId}/comments`);
-                const data = await res.json();
-
-                if (!data.comments || data.comments.length === 0) {
-                    commentsDiv.innerHTML = '<div class="text-xs text-gray-500 p-2">No comments yet.</div>';
-                    return;
-                }
-
-                function renderCommentTree(comments, depth = 0) {
-                    let html = '';
-                    comments.forEach(c => {
-                        // Cap depth for visual padding
-                        const ml = depth === 0 ? 'ml-0' : 'ml-4';
-                        html += `
-                        <div class="border-l-2 border-gray-200 pl-3 ${ml} mt-2 mb-2 text-sm">
-                            <div class="flex items-center text-xs text-gray-500 mb-1">
-                                <span class="font-bold text-gray-700 hover:underline cursor-pointer" onclick="loadFeed('user', '${c.username}')">u/${c.username}</span>
-                                <span class="mx-1">•</span>
-                                <span>${c.score} points</span>
-                                <span class="mx-1">•</span>
-                                <span>${c.formatted_date}</span>
-                            </div>
-                            <div class="text-gray-800 mb-1">${c.content}</div>
-                            
-                            <div class="text-xs text-gray-400 cursor-pointer hover:underline mb-2 flex items-center space-x-2">
-                                <span>⇧ Upvote</span>
-                                <span>⇩ Downvote</span>
-                                <span>➦ Reply</span>
-                            </div>
-                    `;
-
-                        if (c.replies && c.replies.length > 0) {
-                            html += renderCommentTree(c.replies, depth + 1);
-                        }
-
-                        html += `</div>`; // Close comment wrapper
-                    });
-                    return html;
-                }
-
-                commentsDiv.innerHTML = renderCommentTree(data.comments);
-            } catch (err) {
-                commentsDiv.innerHTML = '<div class="text-xs text-red-500 p-2">Error loading comments.</div>';
-            }
-        }
-
-        async function refreshFeed() {
-            const container = document.getElementById('feed-container');
-            container.innerHTML = '<div class="text-center text-gray-500 py-10">Fetching matrix data...</div>';
-
-            try {
-                const response = await fetch(`${currentFeedEndpoint}?limit=50`);
-                const data = await response.json();
-
-                if (data.error) {
-                    container.innerHTML = `<div class="text-center text-red-500 py-10">${data.error}</div>`;
-                    return;
-                }
-
-                if (!data.posts || data.posts.length === 0) {
-                    container.innerHTML = '<div class="text-center text-gray-500 py-10">Wow, such empty.</div>';
-                    return;
-                }
-
-                let html = '';
-                data.posts.forEach(post => {
-                    html += `
-                    <div class="bg-white rounded post-card flex overflow-hidden">
-                        <!-- Vote Column -->
-                        <div class="vote-column flex flex-col items-center pt-2 pb-2">
-                            <div class="arrow-up">⇧</div>
-                            <div class="font-bold text-gray-800 text-sm py-1">${post.score}</div>
-                            <div class="arrow-down">⇩</div>
-                        </div>
-                        
-                        <!-- Content Column -->
-                        <div class="p-2 flex-1">
-                            <div class="text-xs text-gray-500 flex items-center space-x-1 mb-1 relative">
-                                <span class="font-bold text-gray-800 hover:underline cursor-pointer" onclick="loadFeed('subreddit', '${post.subreddit_name}')">r/${post.subreddit_name}</span>
-                                <span>•</span>
-                                <span>Posted by</span>
-                                <span class="hover:underline cursor-pointer" onclick="loadFeed('user', '${post.username}')">u/${post.username}</span>
-                                <span>•</span>
-                                <span>${post.formatted_date}</span>
-                            </div>
-                            
-                            <h3 class="text-lg font-bold text-gray-900 mb-2">${post.title}</h3>
-                            <div class="text-sm text-gray-800 mb-3">${post.content}</div>
-                            
-                            <div class="flex space-x-4 text-xs font-bold text-gray-500">
-                                <div class="flex items-center hover:bg-gray-100 p-1 rounded cursor-pointer" onclick="toggleComments(${post.id})">
-                                    <span class="mr-1">💬</span> ${post.comment_count} Comments
-                                </div>
-                                <div class="flex items-center hover:bg-gray-100 p-1 rounded cursor-pointer">
-                                    <span class="mr-1">➦</span> Share
-                                </div>
-                            </div>
-                            
-                            <!-- Hidden Comment Drawer -->
-                            <div id="comments-${post.id}" class="mt-2 bg-gray-50 rounded hidden pb-2">
-                            </div>
+            <!-- SUBREDDIT -->
+            <div id="view-subreddit">
+                <div class="bg-bg border border-border rounded-lg p-4 mb-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-12 h-12 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xl" id="sub-icon">r</div>
+                        <div>
+                            <div class="text-xl font-bold" id="sub-name">r/subreddit</div>
+                            <div class="text-dim text-sm" id="sub-desc"></div>
+                            <div class="text-dim text-xs mt-1" id="sub-members"></div>
                         </div>
                     </div>
-                `;
-                });
-                container.innerHTML = html;
-            } catch (error) {
-                container.innerHTML = '<div class="text-center text-red-500 py-10">Error loading feed.</div>';
-            }
+                </div>
+                <div id="subreddit-content" class="space-y-3"></div>
+            </div>
+
+            <!-- POST DETAIL -->
+            <div id="view-post">
+                <div class="mb-3">
+                    <button onclick="goBack()" class="pill text-dim mb-2">&#8592; Back</button>
+                </div>
+                <div id="post-detail" class="bg-bg border border-border rounded-lg mb-3"></div>
+                <div class="bg-bg border border-border rounded-lg p-4">
+                    <div class="text-sm font-bold mb-3" id="comments-header">Comments</div>
+                    <div id="comments-content"></div>
+                </div>
+            </div>
+
+            <!-- USER PROFILE -->
+            <div id="view-profile">
+                <div class="mb-3"><button onclick="goBack()" class="pill text-dim">&#8592; Back</button></div>
+                <div class="bg-bg border border-border rounded-lg p-4 mb-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-16 h-16 rounded-full flex items-center justify-center font-bold text-2xl text-white" id="profile-avatar">u</div>
+                        <div>
+                            <div class="text-xl font-bold" id="profile-name"></div>
+                            <div class="text-dim text-sm" id="profile-karma"></div>
+                            <div class="text-sm mt-1" id="profile-bio"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-sm font-bold mb-2 text-dim">Posts by this user</div>
+                <div id="profile-posts" class="space-y-3"></div>
+            </div>
+
+            <!-- USERS LIST -->
+            <div id="view-users">
+                <div class="bg-bg border border-border rounded-lg p-3 mb-3">
+                    <span class="text-lg font-bold">All Users</span>
+                </div>
+                <div id="users-content" class="bg-bg border border-border rounded-lg divide-y divide-border"></div>
+            </div>
+
+            <!-- SEARCH -->
+            <div id="view-search">
+                <div class="bg-bg border border-border rounded-lg p-3 mb-3 flex items-center gap-2">
+                    <span class="text-lg font-bold">Search Results</span>
+                    <span class="text-dim text-sm" id="search-query"></span>
+                </div>
+                <div id="search-content" class="bg-bg border border-border rounded-lg divide-y divide-border"></div>
+            </div>
+
+            <!-- ADMIN -->
+            <div id="view-admin">
+                <div class="bg-bg border border-border rounded-lg p-3 mb-3">
+                    <span class="text-lg font-bold">Admin Overview</span>
+                </div>
+                <div id="admin-content"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Right sidebar -->
+    <aside class="w-[300px] flex-shrink-0 hidden xl:block sticky top-4 h-[calc(100vh-2rem)]">
+        <div class="bg-bg border border-border rounded-lg p-4 mb-3">
+            <div class="font-bold mb-2">Platform Stats</div>
+            <div id="sidebar-stats" class="text-sm text-dim">Loading...</div>
+        </div>
+        <div class="bg-bg border border-border rounded-lg p-4">
+            <div class="font-bold mb-2">Top Users</div>
+            <div id="sidebar-users" class="space-y-2"></div>
+        </div>
+    </aside>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+let homeCursor = null, homeLoading = false;
+let popularCursor = null, popularLoading = false;
+const viewHistory = [];
+const colors = ['#ff4500','#0079d3','#00a6a5','#ff585b','#7856ff','#ff7a00','#00d4aa','#794bc4','#46d160','#ff66ac'];
+function getColor(s) { let h=0; for(let i=0;i<s.length;i++) h=s.charCodeAt(i)+((h<<5)-h); return colors[Math.abs(h)%colors.length]; }
+function esc(s) { if(!s) return ''; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function timeSince(ts) {
+    const s=Math.floor((Date.now()/1000)-ts);
+    if(s<0) return 'now'; if(s<60) return s+'s'; if(s<3600) return Math.floor(s/60)+'m';
+    if(s<86400) return Math.floor(s/3600)+'h'; if(s<2592000) return Math.floor(s/86400)+'d';
+    return Math.floor(s/2592000)+'mo';
+}
+
+// ---------------------------------------------------------------------------
+// View management
+// ---------------------------------------------------------------------------
+function showView(id, push=true) {
+    if(push) { const prev=document.querySelector('#view-stack > div.active'); if(prev) viewHistory.push(prev.id); }
+    document.querySelectorAll('#view-stack > div').forEach(v=>v.classList.remove('active'));
+    document.getElementById('view-'+id)?.classList.add('active');
+}
+function goBack() {
+    const prev=viewHistory.pop();
+    if(prev) { document.querySelectorAll('#view-stack > div').forEach(v=>v.classList.remove('active')); document.getElementById(prev)?.classList.add('active'); }
+    else { showView('home', false); loadNewFeed(true); }
+}
+function activateNav(el) { document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
+
+// ---------------------------------------------------------------------------
+// Post card
+// ---------------------------------------------------------------------------
+function renderPostCard(post) {
+    return `
+    <div class="post-card flex" onclick="openPost(${post.id})">
+        <div class="vote-col">
+            <span class="vote-btn up">&#9650;</span>
+            <span class="text-xs font-bold">${post.score ?? (post.upvotes-post.downvotes)}</span>
+            <span class="vote-btn down">&#9660;</span>
+        </div>
+        <div class="flex-1 p-2 min-w-0">
+            <div class="flex items-center gap-1 text-xs text-dim flex-wrap">
+                <span class="font-bold text-[#d7dadc] hover:underline" onclick="event.stopPropagation();openSubreddit('${esc(post.subreddit_name)}')">r/${esc(post.subreddit_name)}</span>
+                <span>&middot;</span>
+                <span>Posted by</span>
+                <span class="hover:underline" onclick="event.stopPropagation();openProfile('${esc(post.username)}')">u/${esc(post.username)}</span>
+                <span>&middot; ${timeSince(post.created_at)}</span>
+            </div>
+            <h3 class="text-base font-semibold mt-1 mb-1 break-words">${esc(post.title)}</h3>
+            ${post.content ? `<div class="text-sm text-[#b5b5b5] mb-2 break-words line-clamp-4">${esc(post.content)}</div>` : ''}
+            <div class="flex items-center gap-3 text-xs text-dim">
+                <span class="pill" onclick="event.stopPropagation();openPost(${post.id})">&#128172; ${post.comment_count} Comments</span>
+                <span class="pill">&#8593; Share</span>
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderUserRow(u) {
+    return `<div class="flex items-center gap-3 p-3 cursor-pointer hover:bg-hover" onclick="openProfile('${esc(u.username)}')">
+        <div class="avatar-sm" style="background:${getColor(u.username)}">${u.username[0].toUpperCase()}</div>
+        <div class="flex-1 min-w-0"><span class="font-bold text-sm">u/${esc(u.username)}</span></div>
+        <div class="text-xs text-dim">${u.karma??0} karma</div>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Home feed (new posts)
+// ---------------------------------------------------------------------------
+async function loadNewFeed(reset=false) {
+    if(homeLoading) return;
+    if(reset) { homeCursor=null; document.getElementById('home-content').innerHTML=''; }
+    homeLoading=true;
+    document.getElementById('home-loading').style.display='block';
+    try {
+        let url='/api/feed/new?limit=25'; if(homeCursor) url+=`&cursor=${homeCursor}`;
+        const data=await(await fetch(url)).json();
+        const c=document.getElementById('home-content');
+        (data.posts||[]).forEach(p=>c.insertAdjacentHTML('beforeend', renderPostCard(p)));
+        homeCursor=data.next_cursor||null;
+        document.getElementById('home-loading').style.display=homeCursor?'block':'none';
+    } catch(e) { console.error(e); }
+    homeLoading=false;
+}
+
+// ---------------------------------------------------------------------------
+// Popular feed
+// ---------------------------------------------------------------------------
+async function loadPopularFeed(reset=false) {
+    if(popularLoading) return;
+    if(reset) { popularCursor=null; document.getElementById('popular-content').innerHTML=''; }
+    popularLoading=true;
+    document.getElementById('popular-loading').style.display='block';
+    try {
+        let url='/api/feed/popular?limit=25'; if(popularCursor) url+=`&cursor=${popularCursor}`;
+        const data=await(await fetch(url)).json();
+        const c=document.getElementById('popular-content');
+        (data.posts||[]).forEach(p=>c.insertAdjacentHTML('beforeend', renderPostCard(p)));
+        popularCursor=data.next_cursor||null;
+        document.getElementById('popular-loading').style.display=popularCursor?'block':'none';
+    } catch(e) { console.error(e); }
+    popularLoading=false;
+}
+
+// ---------------------------------------------------------------------------
+// Subreddit view
+// ---------------------------------------------------------------------------
+async function openSubreddit(name) {
+    showView('subreddit');
+    document.getElementById('sub-name').textContent='r/'+name;
+    document.getElementById('sub-icon').textContent=name[0].toUpperCase();
+    document.getElementById('sub-icon').style.background=getColor(name);
+    document.getElementById('sub-desc').textContent='Loading...';
+    document.getElementById('sub-members').textContent='';
+    document.getElementById('subreddit-content').innerHTML='<div class="p-6 text-center text-dim">Loading...</div>';
+    try {
+        const info=await(await fetch(`/api/subreddit/${name}`)).json();
+        document.getElementById('sub-desc').textContent=info.description||'';
+        document.getElementById('sub-members').textContent=(info.members_count||0)+' members';
+        const data=await(await fetch(`/api/feed/subreddit/${name}?limit=50`)).json();
+        const c=document.getElementById('subreddit-content');
+        if(data.posts&&data.posts.length) { c.innerHTML=''; data.posts.forEach(p=>c.insertAdjacentHTML('beforeend', renderPostCard(p))); }
+        else c.innerHTML='<div class="p-8 text-center text-dim">No posts in this community yet.</div>';
+    } catch(e) { document.getElementById('subreddit-content').innerHTML='<div class="p-6 text-center text-red-400">Error loading.</div>'; }
+}
+
+// ---------------------------------------------------------------------------
+// Post detail + comments
+// ---------------------------------------------------------------------------
+async function openPost(postId) {
+    showView('post');
+    document.getElementById('post-detail').innerHTML='<div class="p-6 text-center text-dim">Loading...</div>';
+    document.getElementById('comments-content').innerHTML='';
+    try {
+        const post=await(await fetch(`/api/post/${postId}`)).json();
+        document.getElementById('post-detail').innerHTML=`
+            <div class="flex">
+                <div class="vote-col rounded-l-lg">
+                    <span class="vote-btn up">&#9650;</span>
+                    <span class="text-xs font-bold">${post.score}</span>
+                    <span class="vote-btn down">&#9660;</span>
+                </div>
+                <div class="flex-1 p-4">
+                    <div class="flex items-center gap-1 text-xs text-dim flex-wrap mb-2">
+                        <span class="font-bold text-[#d7dadc] hover:underline cursor-pointer" onclick="openSubreddit('${esc(post.subreddit_name)}')">r/${esc(post.subreddit_name)}</span>
+                        <span>&middot; Posted by</span>
+                        <span class="hover:underline cursor-pointer" onclick="openProfile('${esc(post.username)}')">u/${esc(post.username)}</span>
+                        <span>&middot; ${timeSince(post.created_at)}</span>
+                    </div>
+                    <h2 class="text-xl font-bold mb-3">${esc(post.title)}</h2>
+                    ${post.content ? `<div class="text-sm leading-relaxed mb-3 whitespace-pre-wrap">${esc(post.content)}</div>` : ''}
+                    <div class="flex items-center gap-3 text-xs font-bold text-dim">
+                        <span class="pill">&#128172; ${post.comment_count} Comments</span>
+                        <span class="pill">&#9650; ${post.upvotes} upvotes</span>
+                        <span class="pill">&#9660; ${post.downvotes} downvotes</span>
+                    </div>
+                </div>
+            </div>`;
+        // Load comments
+        const cdata=await(await fetch(`/api/post/${postId}/comments`)).json();
+        document.getElementById('comments-header').textContent=(cdata.comments||[]).length+' Comments';
+        if(!cdata.comments||!cdata.comments.length) {
+            document.getElementById('comments-content').innerHTML='<div class="text-sm text-dim">No comments yet.</div>';
+            return;
         }
+        document.getElementById('comments-content').innerHTML=renderCommentTree(cdata.comments);
+    } catch(e) { document.getElementById('post-detail').innerHTML='<div class="p-6 text-center text-red-400">Error loading post.</div>'; }
+}
 
-        // Initial load
-        loadFeed('popular');
-    </script>
+function renderCommentTree(comments, depth=0) {
+    let html='';
+    comments.forEach(c => {
+        const score = (c.upvotes||0)-(c.downvotes||0);
+        html+=`<div class="${depth>0?'comment-thread':''} mt-2 mb-1">
+            <div class="flex items-center gap-2 text-xs text-dim mb-1">
+                <div class="avatar-sm" style="background:${getColor(c.username)}">${c.username[0].toUpperCase()}</div>
+                <span class="font-bold text-[#d7dadc] hover:underline cursor-pointer" onclick="openProfile('${esc(c.username)}')">u/${esc(c.username)}</span>
+                <span>&middot; ${score} points</span>
+                <span>&middot; ${c.formatted_date||timeSince(c.created_at)}</span>
+            </div>
+            <div class="text-sm ml-8 mb-1">${esc(c.content)}</div>
+            <div class="flex gap-2 ml-8 text-xs text-dim">
+                <span class="pill"><span class="vote-btn up text-xs">&#9650;</span> Upvote</span>
+                <span class="pill"><span class="vote-btn down text-xs">&#9660;</span> Downvote</span>
+                <span class="pill">Reply</span>
+            </div>`;
+        if(c.replies&&c.replies.length>0) html+=renderCommentTree(c.replies, depth+1);
+        html+='</div>';
+    });
+    return html;
+}
 
+// ---------------------------------------------------------------------------
+// User profile
+// ---------------------------------------------------------------------------
+async function openProfile(username) {
+    showView('profile');
+    document.getElementById('profile-name').textContent='u/'+username;
+    document.getElementById('profile-avatar').textContent=username[0].toUpperCase();
+    document.getElementById('profile-avatar').style.background=getColor(username);
+    document.getElementById('profile-karma').textContent='Loading...';
+    document.getElementById('profile-bio').textContent='';
+    document.getElementById('profile-posts').innerHTML='<div class="p-6 text-center text-dim">Loading...</div>';
+    try {
+        const p=await(await fetch(`/api/user/${username}`)).json();
+        document.getElementById('profile-karma').textContent=(p.karma||0)+' karma';
+        document.getElementById('profile-bio').textContent=p.bio||'No bio.';
+        const feed=await(await fetch(`/api/feed/user/${username}?limit=50`)).json();
+        const c=document.getElementById('profile-posts');
+        if(feed.posts&&feed.posts.length) { c.innerHTML=''; feed.posts.forEach(p=>c.insertAdjacentHTML('beforeend', renderPostCard(p))); }
+        else c.innerHTML='<div class="p-8 text-center text-dim">No posts yet.</div>';
+    } catch(e) { document.getElementById('profile-posts').innerHTML='<div class="p-6 text-center text-red-400">Error.</div>'; }
+}
+
+// ---------------------------------------------------------------------------
+// User search
+// ---------------------------------------------------------------------------
+async function searchUsers(query) {
+    if(!query.trim()) return;
+    showView('search');
+    document.getElementById('search-query').textContent='"'+query+'"';
+    document.getElementById('search-content').innerHTML='<div class="p-6 text-center text-dim">Searching...</div>';
+    try {
+        const data=await(await fetch(`/api/users/search?q=${encodeURIComponent(query)}&limit=30`)).json();
+        document.getElementById('search-content').innerHTML=(data.users||[]).map(u=>renderUserRow(u)).join('')
+            ||'<div class="p-6 text-center text-dim">No users found.</div>';
+    } catch(e) { document.getElementById('search-content').innerHTML='<div class="p-6 text-center text-red-400">Error.</div>'; }
+}
+
+// ---------------------------------------------------------------------------
+// All users
+// ---------------------------------------------------------------------------
+async function loadAllUsers() {
+    showView('users');
+    document.getElementById('users-content').innerHTML='<div class="p-6 text-center text-dim">Loading...</div>';
+    try {
+        const data=await(await fetch('/api/users?limit=200')).json();
+        document.getElementById('users-content').innerHTML=(data.users||[]).map(u=>renderUserRow(u)).join('')
+            ||'<div class="p-8 text-center text-dim">No users yet.</div>';
+    } catch(e) { document.getElementById('users-content').innerHTML='<div class="p-6 text-center text-red-400">Error.</div>'; }
+}
+
+// ---------------------------------------------------------------------------
+// Admin
+// ---------------------------------------------------------------------------
+async function loadAdmin() {
+    showView('admin');
+    document.getElementById('admin-content').innerHTML='<div class="p-6 text-center text-dim">Loading...</div>';
+    try {
+        const s=await(await fetch('/api/stats')).json();
+        document.getElementById('admin-content').innerHTML=`
+            <div class="grid grid-cols-3 gap-3 mb-4">
+                <div class="bg-bg border border-border rounded-lg p-4 text-center"><div class="text-2xl font-bold">${s.user_count}</div><div class="text-dim text-xs">Users</div></div>
+                <div class="bg-bg border border-border rounded-lg p-4 text-center"><div class="text-2xl font-bold">${s.post_count}</div><div class="text-dim text-xs">Posts</div></div>
+                <div class="bg-bg border border-border rounded-lg p-4 text-center"><div class="text-2xl font-bold">${s.comment_count}</div><div class="text-dim text-xs">Comments</div></div>
+                <div class="bg-bg border border-border rounded-lg p-4 text-center"><div class="text-2xl font-bold">${s.subreddit_count}</div><div class="text-dim text-xs">Communities</div></div>
+                <div class="bg-bg border border-border rounded-lg p-4 text-center"><div class="text-2xl font-bold">${s.vote_count}</div><div class="text-dim text-xs">Votes</div></div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div class="bg-bg border border-border rounded-lg p-4">
+                    <h3 class="font-bold mb-2">Top Users</h3>
+                    ${(s.top_users||[]).map((u,i)=>`<div class="flex items-center gap-2 py-1 cursor-pointer hover:bg-hover rounded px-1" onclick="openProfile('${esc(u.username)}')">
+                        <span class="text-dim text-xs w-4">${i+1}.</span>
+                        <div class="avatar-sm" style="background:${getColor(u.username)}">${u.username[0].toUpperCase()}</div>
+                        <span class="text-sm font-bold flex-1">u/${esc(u.username)}</span>
+                        <span class="text-xs text-dim">${u.karma} karma</span>
+                    </div>`).join('')}
+                </div>
+                <div class="bg-bg border border-border rounded-lg p-4">
+                    <h3 class="font-bold mb-2">Top Subreddits</h3>
+                    ${(s.top_subreddits||[]).map((sub,i)=>`<div class="flex items-center gap-2 py-1 cursor-pointer hover:bg-hover rounded px-1" onclick="openSubreddit('${esc(sub.name)}')">
+                        <span class="text-dim text-xs w-4">${i+1}.</span>
+                        <div class="avatar-sm" style="background:${getColor(sub.name)}">${sub.name[0].toUpperCase()}</div>
+                        <span class="text-sm font-bold flex-1">r/${esc(sub.name)}</span>
+                        <span class="text-xs text-dim">${sub.members_count} members</span>
+                    </div>`).join('')}
+                </div>
+            </div>
+            <div class="bg-bg border border-border rounded-lg p-4 mt-3">
+                <h3 class="font-bold mb-2">Top Posts</h3>
+                ${(s.top_posts||[]).map(p=>`<div class="flex items-center gap-2 py-2 border-b border-border last:border-0 cursor-pointer hover:bg-hover rounded px-1" onclick="openPost(${p.id})">
+                    <span class="text-brand font-bold text-sm w-8 text-right">${p.score}</span>
+                    <div class="flex-1 min-w-0"><div class="text-sm font-bold truncate">${esc(p.title)}</div><div class="text-xs text-dim">r/${esc(p.subreddit)} &middot; u/${esc(p.username)} &middot; ${p.comment_count} comments</div></div>
+                </div>`).join('')}
+            </div>`;
+    } catch(e) { document.getElementById('admin-content').innerHTML='<div class="p-6 text-center text-red-400">Error.</div>'; }
+}
+
+// ---------------------------------------------------------------------------
+// Sidebar
+// ---------------------------------------------------------------------------
+async function loadSidebar() {
+    try {
+        const [stats, subs] = await Promise.all([
+            fetch('/api/stats').then(r=>r.json()),
+            fetch('/api/subreddits').then(r=>r.json()),
+        ]);
+        document.getElementById('sidebar-stats').innerHTML=`
+            <div class="space-y-1">
+                <div class="flex justify-between"><span>Users</span><span class="font-bold text-[#d7dadc]">${stats.user_count}</span></div>
+                <div class="flex justify-between"><span>Posts</span><span class="font-bold text-[#d7dadc]">${stats.post_count}</span></div>
+                <div class="flex justify-between"><span>Comments</span><span class="font-bold text-[#d7dadc]">${stats.comment_count}</span></div>
+                <div class="flex justify-between"><span>Communities</span><span class="font-bold text-[#d7dadc]">${stats.subreddit_count}</span></div>
+            </div>`;
+        document.getElementById('sidebar-users').innerHTML=(stats.top_users||[]).slice(0,5).map(u=>`
+            <div class="flex items-center gap-2 cursor-pointer hover:bg-hover rounded p-1 -mx-1" onclick="openProfile('${esc(u.username)}')">
+                <div class="avatar-sm" style="background:${getColor(u.username)}">${u.username[0].toUpperCase()}</div>
+                <span class="text-sm font-bold flex-1 truncate">u/${esc(u.username)}</span>
+                <span class="text-xs text-dim">${u.karma}</span>
+            </div>`).join('');
+        document.getElementById('sidebar-subs').innerHTML=(subs.subreddits||[]).map(s=>`
+            <div class="nav-item text-sm" onclick="openSubreddit('${esc(s.name)}')">
+                <div class="avatar-sm" style="background:${getColor(s.name)}">${s.name[0].toUpperCase()}</div>
+                <span class="flex-1">r/${esc(s.name)}</span>
+                <span class="text-xs text-dim">${s.members_count}</span>
+            </div>`).join('');
+    } catch(e) { console.error(e); }
+}
+
+// ---------------------------------------------------------------------------
+// Infinite scroll
+// ---------------------------------------------------------------------------
+window.addEventListener('scroll', ()=>{
+    if(window.innerHeight+window.scrollY >= document.body.offsetHeight-300) {
+        if(document.getElementById('view-home').classList.contains('active') && homeCursor && !homeLoading) loadNewFeed();
+        if(document.getElementById('view-popular').classList.contains('active') && popularCursor && !popularLoading) loadPopularFeed();
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+loadNewFeed(true);
+loadSidebar();
+</script>
 </body>
-
 </html>

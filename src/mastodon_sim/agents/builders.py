@@ -161,6 +161,9 @@ class BaseAgentBuilder:
                 for h, c in raw_news.items()
             }
 
+        # Per-class model override (applies to all agents in this class).
+        class_model = class_cfg.get("model") or default_params.get("model")
+
         agents: list[AgentConfig] = []
         for idx, record in enumerate(records, start=1):
             params = self._build_agent_params(
@@ -177,6 +180,7 @@ class BaseAgentBuilder:
                 derive_name,
                 name_words,
                 news_posts,
+                class_model,
             )
             agents.append(AgentConfig(prefab=prefab_name, params=params))
         return agents
@@ -196,6 +200,7 @@ class BaseAgentBuilder:
         derive_name: bool,
         name_words: int,
         news_posts: dict[str, str] | None,
+        class_model: Any = None,
     ) -> dict[str, Any]:
         # Map fields from record.
         mapped: dict[str, Any] = {}
@@ -245,6 +250,15 @@ class BaseAgentBuilder:
         params["goal"] = self._coerce_text(goal) if goal is not None else None
         if shared:
             params["shared_memories"] = shared
+
+        # Model assignment: per-agent field_map > per-class > default.
+        # The runner expects params["model"]["name"] for per-agent models.
+        model_name = mapped.get("model") or class_model
+        if isinstance(model_name, dict):
+            params["model"] = model_name
+        elif model_name:
+            params["model"] = {"name": str(model_name)}
+
         return params
 
     # ------------------------------------------------------------------ #

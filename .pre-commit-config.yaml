@@ -32,6 +32,7 @@ repos:
       - id: check-vcs-permalinks
       - id: check-xml
       - id: check-yaml
+        args: [--unsafe]
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key

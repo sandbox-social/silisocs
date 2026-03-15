@@ -16,7 +16,7 @@ src/mastodon_sim/agents/initialization/base.py
 src/mastodon_sim/agents/initialization/formative.py
 src/mastodon_sim/agents/initialization/raw.py
 src/mastodon_sim/conf/config.yaml
-src/mastodon_sim/conf/scenario/election.yaml
+src/mastodon_sim/conf/scenario/default.yaml
 src/mastodon_sim/conf/sim/base.yaml
 src/mastodon_sim/conf/social_media/mastodon.yaml
 src/mastodon_sim/conf/social_media/reddit_like.yaml
@@ -140,6 +140,7 @@ tests/test_persona_pipeline_hf_dataset.py
 tests/test_probe_deployment.py
 tests/test_probe_questionnaire.py
 tests/test_probe_types.py
+tests/test_runner_processing_mode.py
 tests/test_social_app_init_logging.py
 tests/test_verify_local_reddit.py
 tests/test_verify_local_social.py

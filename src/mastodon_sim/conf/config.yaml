@@ -2,7 +2,7 @@
 defaults:
   - sim: base
   - social_media: twitter_like
-  - scenario: election
+  - scenario: default
   - _self_
 
 hydra:

@@ -1,185 +1,448 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Social Media Sim</title>
+    <title>SimTwitter</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config={theme:{extend:{colors:{brand:'#1d9bf0',dim:'#71767b',border:'#2f3336',bg:'#000000',surface:'#16181c',elevated:'#1d1f23',hover:'#080808'}}}}</script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        .feed-container { max-width: 600px; margin: 0 auto; }
-        .post-card { border-bottom: 1px solid #e5e7eb; padding: 1rem; }
-        .post-card:hover { background-color: #f9fafb; cursor: pointer; }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #000; color: #e7e9ea; }
+        ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #333639; border-radius: 4px; }
+        .post-card { border-bottom: 1px solid #2f3336; padding: 12px 16px; cursor: pointer; transition: background 0.15s; }
+        .post-card:hover { background: #080808; }
+        .stat-btn { display: flex; align-items: center; gap: 4px; font-size: 13px; color: #71767b; transition: color 0.15s; cursor: pointer; padding: 2px 8px; border-radius: 999px; }
+        .stat-btn:hover { background: rgba(29,155,240,0.1); }
+        .reply-btn:hover { color: #1d9bf0; } .repost-btn:hover { color: #00ba7c; } .like-btn:hover { color: #f91880; }
+        .avatar { width: 40px; height: 40px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; flex-shrink: 0; }
+        .back-btn { padding: 8px; border-radius: 9999px; cursor: pointer; } .back-btn:hover { background: rgba(239,243,244,0.1); }
+        .tab { padding: 16px 0; text-align: center; font-weight: 700; font-size: 15px; cursor: pointer; border-bottom: 2px solid transparent; color: #71767b; transition: all 0.2s; flex: 1; }
+        .tab:hover { background: rgba(239,243,244,0.05); } .tab.active { color: #e7e9ea; border-bottom-color: #1d9bf0; }
+        .nav-item { display: flex; align-items: center; gap: 16px; padding: 12px; border-radius: 9999px; font-size: 20px; cursor: pointer; transition: background 0.15s; }
+        .nav-item:hover { background: rgba(239,243,244,0.1); }
+        .badge { background: #1d9bf0; color: #fff; font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 4px; margin-left: 4px; }
+        #view-stack > div { display: none; } #view-stack > div.active { display: block; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-900">
+<body>
+<div class="flex max-w-[1280px] mx-auto min-h-screen">
 
-    <div class="flex h-screen overflow-hidden">
-        <!-- Sidebar -->
-        <div class="w-64 bg-white border-r border-gray-200 hidden md:flex flex-col p-4">
-            <h1 class="text-2xl font-bold text-blue-600 mb-6">SkyConnect</h1>
-            <nav class="space-y-4">
-                <a href="#" onclick="loadGlobalFeed()" class="flex items-center space-x-2 text-xl font-semibold hover:text-blue-500">
-                    <span>🏠 Home</span>
-                </a>
-                <a href="#" onclick="loadGlobalFeed()" class="flex items-center space-x-2 text-xl font-semibold hover:text-blue-500">
-                    <span>🌐 Global Feed</span>
-                </a>
-            </nav>
-            <div class="mt-auto">
-                <input type="text" id="usernameInput" placeholder="View as user..." class="w-full p-2 border rounded">
-            </div>
+    <!-- Left sidebar -->
+    <nav class="w-[275px] flex-shrink-0 hidden lg:flex flex-col justify-between border-r border-border p-3 sticky top-0 h-screen">
+        <div>
+            <div class="text-2xl font-bold text-brand p-3 mb-2 cursor-pointer" onclick="showView('home');loadGlobalFeed(true)">SimTwitter</div>
+            <div class="nav-item" onclick="showView('home');loadGlobalFeed(true)"><span>&#127968;</span><span class="font-bold">Home</span></div>
+            <div class="nav-item" onclick="showView('explore')"><span>&#128269;</span><span>Explore</span></div>
+            <div class="nav-item" onclick="loadAllUsers()"><span>&#128101;</span><span>Users</span></div>
+            <div class="nav-item" onclick="loadAdmin()"><span>&#128202;</span><span>Admin</span></div>
         </div>
-
-        <!-- Main Feed -->
-        <div class="flex-1 overflow-y-auto no-scrollbar" id="mainScroll">
-            <div class="feed-container bg-white min-h-full border-x border-gray-200">
-                <header class="sticky top-0 bg-white/80 backdrop-blur-md border-b border-gray-200 p-4 z-10 flex justifying-between items-center">
-                    <h2 class="text-xl font-bold" id="feedTitle">Global Feed</h2>
-                    <button onclick="refreshFeed()" class="text-blue-500 hover:text-blue-700">Refresh</button>
-                </header>
-                
-                <div id="feedContent" class="divide-y divide-gray-200">
-                    <!-- Posts go here -->
-                </div>
-                
-                <div class="p-4 text-center text-gray-500" id="loading">Loading...</div>
-            </div>
+        <div class="p-3 border-t border-border">
+            <input id="searchInput" type="text" placeholder="Search users..."
+                   class="w-full bg-surface border border-border rounded-full px-4 py-2 text-sm focus:outline-none focus:border-brand"
+                   onkeydown="if(event.key==='Enter')searchUsers(this.value)">
         </div>
+    </nav>
 
-        <!-- Right Sidebar (Stats/Trending) -->
-        <div class="w-80 bg-white border-l border-gray-200 hidden lg:block p-4">
-            <h3 class="font-bold text-gray-500 mb-4">Trending Users</h3>
-            <div id="trendingContent">
-                <div class="text-sm text-gray-400">Not implemented yet</div>
-            </div>
-        </div>
-    </div>
+    <!-- Main column -->
+    <main class="flex-1 min-w-0 border-r border-border max-w-[600px] overflow-y-auto h-screen">
+        <div id="view-stack">
 
-    <script>
-        let currentCursor = null;
-        let currentMode = 'global'; // 'global', 'home', 'user'
-        let currentUser = null; // viewing as
-        let targetUser = null; // viewing profile of
-
-        const feedContent = document.getElementById('feedContent');
-        const feedTitle = document.getElementById('feedTitle');
-
-        async function fetchFeed(reset = false) {
-            if (reset) {
-                currentCursor = null;
-                feedContent.innerHTML = '';
-            }
-
-            let url = `/api/feed/global?limit=20`;
-            if (currentMode === 'home' && currentUser) {
-                url = `/api/feed/home/${currentUser}?limit=20`;
-            } else if (currentMode === 'user' && targetUser) {
-                url = `/api/feed/user/${targetUser}?limit=20`;
-            }
-
-            if (currentCursor) {
-                url += `&cursor=${currentCursor}`;
-            }
-
-            try {
-                const response = await fetch(url);
-                const data = await response.json();
-                
-                if (data.posts) {
-                    renderPosts(data.posts);
-                    currentCursor = data.next_cursor;
-                }
-                document.getElementById('loading').style.display = data.next_cursor ? 'block' : 'none';
-            } catch (error) {
-                console.error("Error fetching feed:", error);
-            }
-        }
-
-        function renderPosts(posts) {
-            posts.forEach(post => {
-                const div = document.createElement('div');
-                div.className = 'post-card';
-                div.innerHTML = `
-                    <div class="flex space-x-3">
-                        <div class="flex-shrink-0">
-                            <div class="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center font-bold text-white">
-                                ${post.username[0].toUpperCase()}
-                            </div>
-                        </div>
-                        <div class="flex-1">
-                            <div class="flex items-center space-x-2">
-                                <span class="font-bold hover:underline cursor-pointer" onclick="loadUserProfile('${post.username}')">${post.username}</span>
-                                <span class="text-gray-500 text-sm">· ${timeSince(post.created_at * 1000)}</span>
-                            </div>
-                            <div class="mt-1 text-gray-900 text-lg leading-snug">
-                                ${post.content}
-                            </div>
-                            <div class="mt-3 flex space-x-8 text-gray-500 text-sm">
-                                <button class="hover:text-blue-500 flex items-center space-x-1">
-                                    <span>💬</span> <span>${post.reply_count}</span>
-                                </button>
-                                <button class="hover:text-green-500 flex items-center space-x-1">
-                                    <span>Fail-safe icon 🔄</span> <span>${post.reposts_count}</span>
-                                </button>
-                                <button class="hover:text-red-500 flex items-center space-x-1">
-                                    <span>❤️</span> <span>${post.likes_count}</span>
-                                </button>
-                            </div>
-                        </div>
+            <!-- HOME / GLOBAL FEED VIEW -->
+            <div id="view-home" class="active">
+                <header class="sticky top-0 z-20 backdrop-blur-md bg-black/70 border-b border-border">
+                    <div class="flex">
+                        <div class="tab active" id="tab-global">Global Timeline</div>
                     </div>
-                `;
-                feedContent.appendChild(div);
-            });
-        }
+                </header>
+                <div id="feed-content"></div>
+                <div id="feed-loading" class="p-6 text-center text-dim">Loading...</div>
+            </div>
 
-        function loadGlobalFeed() {
-            currentMode = 'global';
-            feedTitle.innerText = 'Global Feed';
-            fetchFeed(true);
-        }
+            <!-- PROFILE VIEW -->
+            <div id="view-profile">
+                <header class="sticky top-0 z-20 backdrop-blur-md bg-black/70 border-b border-border px-4 py-2 flex items-center gap-3">
+                    <div class="back-btn" onclick="goBack()">&#8592;</div>
+                    <div>
+                        <div class="font-bold text-lg" id="profile-displayname"></div>
+                        <div class="text-dim text-xs" id="profile-postcount"></div>
+                    </div>
+                </header>
+                <div class="px-4 pt-12 pb-4 border-b border-border">
+                    <div class="flex items-end gap-4 -mt-8">
+                        <div class="avatar text-3xl" id="profile-avatar" style="width:80px;height:80px;font-size:32px;border:3px solid #000;"></div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="font-bold text-xl" id="profile-name2"></div>
+                        <div class="text-dim" id="profile-username2"></div>
+                    </div>
+                    <div class="mt-2 text-sm" id="profile-bio"></div>
+                    <div class="flex gap-4 mt-3 text-sm">
+                        <span class="cursor-pointer hover:underline" onclick="switchProfileTab('following')"><strong id="profile-following">0</strong> <span class="text-dim">Following</span></span>
+                        <span class="cursor-pointer hover:underline" onclick="switchProfileTab('followers')"><strong id="profile-followers">0</strong> <span class="text-dim">Followers</span></span>
+                    </div>
+                </div>
+                <div class="flex border-b border-border">
+                    <div class="tab active" id="ptab-posts" onclick="switchProfileTab('posts')">Posts</div>
+                    <div class="tab" id="ptab-followers" onclick="switchProfileTab('followers')">Followers</div>
+                    <div class="tab" id="ptab-following" onclick="switchProfileTab('following')">Following</div>
+                </div>
+                <div id="profile-tab-content"></div>
+            </div>
 
-        function loadUserProfile(username) {
-            currentMode = 'user';
-            targetUser = username;
-            feedTitle.innerText = `${username}'s Posts`;
-            fetchFeed(true);
-        }
+            <!-- POST DETAIL / THREAD VIEW -->
+            <div id="view-thread">
+                <header class="sticky top-0 z-20 backdrop-blur-md bg-black/70 border-b border-border px-4 py-3 flex items-center gap-3">
+                    <div class="back-btn" onclick="goBack()">&#8592;</div>
+                    <span class="font-bold text-lg">Post</span>
+                </header>
+                <div id="thread-content"></div>
+            </div>
 
-        function refreshFeed() {
-            fetchFeed(true);
-        }
+            <!-- EXPLORE VIEW -->
+            <div id="view-explore">
+                <header class="sticky top-0 z-20 backdrop-blur-md bg-black/70 border-b border-border px-4 py-3">
+                    <input type="text" placeholder="Search users..."
+                           class="w-full bg-surface border border-border rounded-full px-4 py-2 text-sm focus:outline-none focus:border-brand"
+                           onkeydown="if(event.key==='Enter')searchUsers(this.value)">
+                </header>
+                <div id="explore-content" class="p-4"></div>
+            </div>
 
-        // Utils
-        function timeSince(date) {
-            const seconds = Math.floor((new Date() - date) / 1000);
-            let interval = seconds / 31536000;
-            if (interval > 1) return Math.floor(interval) + "y";
-            interval = seconds / 2592000;
-            if (interval > 1) return Math.floor(interval) + "mo";
-            interval = seconds / 86400;
-            if (interval > 1) return Math.floor(interval) + "d";
-            interval = seconds / 3600;
-            if (interval > 1) return Math.floor(interval) + "h";
-            interval = seconds / 60;
-            if (interval > 1) return Math.floor(interval) + "m";
-            return Math.floor(seconds) + "s";
-        }
+            <!-- USERS LIST VIEW -->
+            <div id="view-users">
+                <header class="sticky top-0 z-20 backdrop-blur-md bg-black/70 border-b border-border px-4 py-3">
+                    <span class="font-bold text-lg">All Users</span>
+                </header>
+                <div id="users-content"></div>
+            </div>
 
-        // Infinite Scroll
-        const mainScroll = document.getElementById('mainScroll');
-        mainScroll.addEventListener('scroll', () => {
-            if (mainScroll.scrollTop + mainScroll.clientHeight >= mainScroll.scrollHeight - 100) {
-                if (currentCursor) {
-                    fetchFeed();
-                }
-            }
+            <!-- ADMIN VIEW -->
+            <div id="view-admin">
+                <header class="sticky top-0 z-20 backdrop-blur-md bg-black/70 border-b border-border px-4 py-3">
+                    <span class="font-bold text-lg">Admin Overview</span>
+                </header>
+                <div id="admin-content" class="p-4"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Right sidebar -->
+    <aside class="w-[350px] flex-shrink-0 hidden xl:block p-4 sticky top-0 h-screen overflow-y-auto">
+        <div class="bg-surface rounded-2xl p-4 mb-4">
+            <h3 class="font-bold text-xl mb-3">Platform Stats</h3>
+            <div id="sidebar-stats" class="text-sm text-dim">Loading...</div>
+        </div>
+        <div class="bg-surface rounded-2xl p-4">
+            <h3 class="font-bold text-xl mb-3">Top Users</h3>
+            <div id="sidebar-top-users" class="space-y-3"></div>
+        </div>
+    </aside>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+let feedCursor = null;
+let feedLoading = false;
+const viewHistory = [];
+const avatarColors = ['#1d9bf0','#00ba7c','#f91880','#ffd400','#7856ff','#ff7a00','#00d4aa','#794bc4','#f4212e','#17bf63'];
+function getColor(s) { let h=0; for(let i=0;i<s.length;i++) h=s.charCodeAt(i)+((h<<5)-h); return avatarColors[Math.abs(h)%avatarColors.length]; }
+function esc(s) { if(!s) return ''; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function timeSince(ts) {
+    const s=Math.floor((Date.now()/1000)-ts);
+    if(s<0) return 'now';
+    if(s<60) return s+'s'; if(s<3600) return Math.floor(s/60)+'m'; if(s<86400) return Math.floor(s/3600)+'h';
+    if(s<2592000) return Math.floor(s/86400)+'d'; return Math.floor(s/2592000)+'mo';
+}
+
+// ---------------------------------------------------------------------------
+// View management
+// ---------------------------------------------------------------------------
+function showView(id, pushHistory=true) {
+    if(pushHistory) { const prev=document.querySelector('#view-stack > div.active'); if(prev) viewHistory.push(prev.id); }
+    document.querySelectorAll('#view-stack > div').forEach(v => v.classList.remove('active'));
+    const el = document.getElementById('view-'+id);
+    if(el) el.classList.add('active');
+}
+function goBack() {
+    const prev = viewHistory.pop();
+    if(prev) { document.querySelectorAll('#view-stack > div').forEach(v=>v.classList.remove('active')); document.getElementById(prev).classList.add('active'); }
+    else { showView('home',false); loadGlobalFeed(true); }
+}
+
+// ---------------------------------------------------------------------------
+// Post card renderer
+// ---------------------------------------------------------------------------
+function renderPostCard(post, opts={}) {
+    const isRepost = post.type==='repost';
+    const isQuote = post.type==='quote';
+    const highlight = opts.highlight ? 'bg-[#080808] border-l-2 border-l-brand' : '';
+    return `
+    <div class="post-card ${highlight}" onclick="openThread(${post.id})">
+        ${isRepost ? '<div class="text-dim text-xs ml-12 mb-1">&#128257; Reposted</div>' : ''}
+        <div class="flex gap-3">
+            <div class="avatar" style="background:${getColor(post.username)}" onclick="event.stopPropagation();openProfile('${esc(post.username)}')">${esc(post.username[0].toUpperCase())}</div>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1 flex-wrap">
+                    <span class="font-bold text-[15px] hover:underline cursor-pointer" onclick="event.stopPropagation();openProfile('${esc(post.username)}')">${esc(post.username)}</span>
+                    <span class="text-dim text-[13px]">@${esc(post.username)}</span>
+                    <span class="text-dim text-[13px]">&middot; ${timeSince(post.created_at)}</span>
+                    ${post.reply_to_id ? '<span class="text-dim text-[12px]">&#8618; reply</span>' : ''}
+                </div>
+                <div class="mt-1 text-[15px] leading-snug whitespace-pre-wrap break-words">${esc(post.content)}</div>
+                ${isQuote && post.quote_of_id ? `<div class="mt-2 border border-border rounded-xl p-3 text-sm text-dim cursor-pointer" onclick="event.stopPropagation();openThread(${post.quote_of_id})">&#128172; Quoted post #${post.quote_of_id}</div>` : ''}
+                <div class="flex gap-6 mt-3 -ml-2">
+                    <div class="stat-btn reply-btn" onclick="event.stopPropagation();openThread(${post.id})">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                        <span>${post.reply_count||0}</span>
+                    </div>
+                    <div class="stat-btn repost-btn">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+                        <span>${post.reposts_count||0}</span>
+                    </div>
+                    <div class="stat-btn like-btn">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+                        <span>${post.likes_count||0}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderUserCard(u) {
+    return `<div class="post-card flex items-center gap-3 cursor-pointer" onclick="openProfile('${esc(u.username)}')">
+        <div class="avatar" style="background:${getColor(u.username)}">${u.username[0].toUpperCase()}</div>
+        <div class="flex-1 min-w-0"><div class="font-bold">${esc(u.username)}</div><div class="text-dim text-sm truncate">${esc(u.bio||'')}</div></div>
+        <div class="text-right text-xs text-dim flex-shrink-0"><div>${u.posts_count||0} posts</div><div>${u.followers_count||0} followers</div></div>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Global feed
+// ---------------------------------------------------------------------------
+async function loadGlobalFeed(reset=false) {
+    if(feedLoading) return;
+    if(reset) { feedCursor=null; document.getElementById('feed-content').innerHTML=''; }
+    feedLoading=true;
+    document.getElementById('feed-loading').style.display='block';
+    try {
+        let url=`/api/feed/global?limit=30`;
+        if(feedCursor) url+=`&cursor=${feedCursor}`;
+        const res=await fetch(url);
+        const data=await res.json();
+        if(data.posts) {
+            const container=document.getElementById('feed-content');
+            data.posts.forEach(p=>container.insertAdjacentHTML('beforeend',renderPostCard(p)));
+            feedCursor=data.next_cursor||null;
+        }
+        document.getElementById('feed-loading').style.display=feedCursor?'block':'none';
+    } catch(e) { console.error(e); }
+    feedLoading=false;
+}
+
+// ---------------------------------------------------------------------------
+// Profile
+// ---------------------------------------------------------------------------
+async function openProfile(username) {
+    showView('profile');
+    document.getElementById('profile-displayname').textContent=username;
+    document.getElementById('profile-postcount').textContent='Loading...';
+    document.getElementById('profile-tab-content').innerHTML='<div class="p-6 text-center text-dim">Loading...</div>';
+    try {
+        const res=await fetch(`/api/user/${username}`);
+        if(!res.ok) { document.getElementById('profile-tab-content').innerHTML='<div class="p-6 text-center text-red-400">User not found</div>'; return; }
+        const p=await res.json();
+        document.getElementById('profile-avatar').textContent=username[0].toUpperCase();
+        document.getElementById('profile-avatar').style.background=getColor(username);
+        document.getElementById('profile-displayname').textContent=username;
+        document.getElementById('profile-name2').textContent=username;
+        document.getElementById('profile-username2').textContent='@'+username;
+        document.getElementById('profile-postcount').textContent=(p.posts_count||0)+' posts';
+        document.getElementById('profile-bio').textContent=p.bio||'No bio.';
+        document.getElementById('profile-following').textContent=p.following_count||0;
+        document.getElementById('profile-followers').textContent=p.followers_count||0;
+        switchProfileTab('posts');
+    } catch(e) { console.error(e); }
+}
+
+async function switchProfileTab(tab) {
+    document.querySelectorAll('[id^="ptab-"]').forEach(t=>{t.classList.remove('active');});
+    const el=document.getElementById('ptab-'+tab); if(el) el.classList.add('active');
+    const username=document.getElementById('profile-username2').textContent.replace('@','');
+    const container=document.getElementById('profile-tab-content');
+    container.innerHTML='<div class="p-6 text-center text-dim">Loading...</div>';
+    try {
+        if(tab==='posts') {
+            const res=await fetch(`/api/feed/user/${username}?limit=50`);
+            const data=await res.json();
+            if(data.posts&&data.posts.length) { container.innerHTML=''; data.posts.forEach(p=>container.insertAdjacentHTML('beforeend',renderPostCard(p))); }
+            else container.innerHTML='<div class="p-8 text-center text-dim">No posts yet.</div>';
+        } else if(tab==='followers') {
+            const res=await fetch(`/api/user/${username}/followers`);
+            const data=await res.json();
+            container.innerHTML=(data.followers||[]).map(u=>renderUserCard(u)).join('')||'<div class="p-8 text-center text-dim">No followers.</div>';
+        } else if(tab==='following') {
+            const res=await fetch(`/api/user/${username}/following`);
+            const data=await res.json();
+            container.innerHTML=(data.following||[]).map(u=>renderUserCard(u)).join('')||'<div class="p-8 text-center text-dim">Not following anyone.</div>';
+        }
+    } catch(e) { container.innerHTML='<div class="p-6 text-center text-red-400">Error loading.</div>'; }
+}
+
+// ---------------------------------------------------------------------------
+// Thread view
+// ---------------------------------------------------------------------------
+async function openThread(postId) {
+    showView('thread');
+    const container=document.getElementById('thread-content');
+    container.innerHTML='<div class="p-6 text-center text-dim">Loading thread...</div>';
+    try {
+        const res=await fetch(`/api/post/${postId}/thread`);
+        const data=await res.json();
+        if(!data.thread||!data.thread.length) { container.innerHTML='<div class="p-6 text-center text-dim">Post not found.</div>'; return; }
+        // Build tree
+        const byId={}; const roots=[];
+        data.thread.forEach(p=>{byId[p.id]={...p,children:[]};});
+        data.thread.forEach(p=>{
+            if(p.reply_to_id && byId[p.reply_to_id]) byId[p.reply_to_id].children.push(byId[p.id]);
+            else roots.push(byId[p.id]);
         });
+        let html='';
+        function renderThread(node, depth=0) {
+            const isFocus = node.id===data.focus_id;
+            html += renderPostCard(node, {highlight: isFocus});
+            if(node.children.length > 0) {
+                html += '<div style="margin-left:'+(Math.min(depth+1,4)*16)+'px; border-left: 2px solid #2f3336;">';
+                node.children.forEach(c => renderThread(c, depth+1));
+                html += '</div>';
+            }
+        }
+        roots.forEach(r=>renderThread(r));
+        container.innerHTML=html;
+        // Scroll to focus post
+        setTimeout(()=>{
+            const focusEl=container.querySelector('.border-l-brand');
+            if(focusEl) focusEl.scrollIntoView({behavior:'smooth', block:'center'});
+        }, 100);
+    } catch(e) { container.innerHTML='<div class="p-6 text-center text-red-400">Error loading thread.</div>'; }
+}
 
-        // Initial Load
-        loadGlobalFeed();
+// ---------------------------------------------------------------------------
+// User search
+// ---------------------------------------------------------------------------
+async function searchUsers(query) {
+    if(!query.trim()) return;
+    showView('explore');
+    const container=document.getElementById('explore-content');
+    container.innerHTML='<div class="text-center text-dim py-6">Searching...</div>';
+    try {
+        const res=await fetch(`/api/users/search?q=${encodeURIComponent(query)}&limit=30`);
+        const data=await res.json();
+        if(!data.users||!data.users.length) { container.innerHTML='<div class="text-center text-dim py-6">No users found for "'+esc(query)+'".</div>'; return; }
+        container.innerHTML='<div class="text-dim text-sm mb-3">'+data.users.length+' results for "'+esc(query)+'"</div>' +
+            data.users.map(u=>renderUserCard(u)).join('');
+    } catch(e) { container.innerHTML='<div class="text-center text-red-400 py-6">Search error.</div>'; }
+}
 
-    </script>
+// ---------------------------------------------------------------------------
+// Users list
+// ---------------------------------------------------------------------------
+async function loadAllUsers() {
+    showView('users');
+    const container=document.getElementById('users-content');
+    container.innerHTML='<div class="p-6 text-center text-dim">Loading users...</div>';
+    try {
+        const res=await fetch('/api/users?limit=200');
+        const data=await res.json();
+        container.innerHTML=(data.users||[]).map(u=>renderUserCard(u)).join('')||'<div class="p-8 text-center text-dim">No users yet.</div>';
+    } catch(e) { container.innerHTML='<div class="p-6 text-center text-red-400">Error.</div>'; }
+}
+
+// ---------------------------------------------------------------------------
+// Admin view
+// ---------------------------------------------------------------------------
+async function loadAdmin() {
+    showView('admin');
+    const container=document.getElementById('admin-content');
+    container.innerHTML='<div class="text-center text-dim py-6">Loading stats...</div>';
+    try {
+        const res=await fetch('/api/stats');
+        const s=await res.json();
+        container.innerHTML=`
+            <div class="grid grid-cols-3 gap-4 mb-6">
+                <div class="bg-surface rounded-xl p-4 text-center"><div class="text-2xl font-bold">${s.user_count}</div><div class="text-dim text-sm">Users</div></div>
+                <div class="bg-surface rounded-xl p-4 text-center"><div class="text-2xl font-bold">${s.post_count}</div><div class="text-dim text-sm">Posts</div></div>
+                <div class="bg-surface rounded-xl p-4 text-center"><div class="text-2xl font-bold">${s.reply_count}</div><div class="text-dim text-sm">Replies</div></div>
+                <div class="bg-surface rounded-xl p-4 text-center"><div class="text-2xl font-bold">${s.like_count}</div><div class="text-dim text-sm">Likes</div></div>
+                <div class="bg-surface rounded-xl p-4 text-center"><div class="text-2xl font-bold">${s.repost_count}</div><div class="text-dim text-sm">Reposts</div></div>
+                <div class="bg-surface rounded-xl p-4 text-center"><div class="text-2xl font-bold">${s.follow_count}</div><div class="text-dim text-sm">Follows</div></div>
+            </div>
+            <h3 class="font-bold text-lg mb-3">Most Active Users</h3>
+            <div class="bg-surface rounded-xl divide-y divide-border mb-6">
+                ${(s.top_users||[]).map((u,i)=>`
+                    <div class="flex items-center gap-3 p-3 cursor-pointer hover:bg-hover" onclick="openProfile('${esc(u.username)}')">
+                        <span class="text-dim text-sm w-6 text-right">${i+1}.</span>
+                        <div class="avatar" style="background:${getColor(u.username)};width:32px;height:32px;font-size:14px;">${u.username[0].toUpperCase()}</div>
+                        <div class="flex-1 font-bold text-sm">${esc(u.username)}</div>
+                        <div class="text-dim text-xs">${u.posts_count} posts &middot; ${u.followers_count} followers</div>
+                    </div>`).join('')}
+            </div>
+            <h3 class="font-bold text-lg mb-3">Most Liked Posts</h3>
+            <div class="bg-surface rounded-xl divide-y divide-border">
+                ${(s.top_posts||[]).map(p=>`
+                    <div class="p-3 cursor-pointer hover:bg-hover" onclick="openThread(${p.id})">
+                        <div class="flex items-center gap-2 text-sm text-dim mb-1">
+                            <span class="font-bold text-[#e7e9ea]">${esc(p.username)}</span>
+                            <span>&middot; ${p.likes_count} likes &middot; ${p.reposts_count} reposts &middot; ${p.reply_count} replies</span>
+                        </div>
+                        <div class="text-sm">${esc(p.content)}</div>
+                    </div>`).join('')}
+            </div>`;
+    } catch(e) { container.innerHTML='<div class="text-center text-red-400 py-6">Error loading stats.</div>'; }
+}
+
+// ---------------------------------------------------------------------------
+// Sidebar stats
+// ---------------------------------------------------------------------------
+async function loadSidebarStats() {
+    try {
+        const res=await fetch('/api/stats');
+        const s=await res.json();
+        document.getElementById('sidebar-stats').innerHTML=`
+            <div class="space-y-1">
+                <div class="flex justify-between"><span>Users</span><span class="font-bold text-[#e7e9ea]">${s.user_count}</span></div>
+                <div class="flex justify-between"><span>Posts</span><span class="font-bold text-[#e7e9ea]">${s.post_count}</span></div>
+                <div class="flex justify-between"><span>Replies</span><span class="font-bold text-[#e7e9ea]">${s.reply_count}</span></div>
+                <div class="flex justify-between"><span>Likes</span><span class="font-bold text-[#e7e9ea]">${s.like_count}</span></div>
+                <div class="flex justify-between"><span>Follows</span><span class="font-bold text-[#e7e9ea]">${s.follow_count}</span></div>
+            </div>`;
+        document.getElementById('sidebar-top-users').innerHTML=(s.top_users||[]).slice(0,5).map(u=>`
+            <div class="flex items-center gap-2 cursor-pointer hover:bg-hover rounded-lg p-1 -mx-1" onclick="openProfile('${esc(u.username)}')">
+                <div class="avatar" style="background:${getColor(u.username)};width:32px;height:32px;font-size:14px;">${u.username[0].toUpperCase()}</div>
+                <div class="flex-1 min-w-0"><div class="font-bold text-sm truncate">${esc(u.username)}</div><div class="text-dim text-xs">${u.posts_count} posts</div></div>
+            </div>`).join('');
+    } catch(e) { console.error(e); }
+}
+
+// ---------------------------------------------------------------------------
+// Infinite scroll
+// ---------------------------------------------------------------------------
+document.querySelector('main').addEventListener('scroll', ()=>{
+    const main=document.querySelector('main');
+    if(main.scrollTop+main.clientHeight >= main.scrollHeight-200) {
+        const homeActive=document.getElementById('view-home').classList.contains('active');
+        if(homeActive && feedCursor && !feedLoading) loadGlobalFeed();
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+loadGlobalFeed(true);
+loadSidebarStats();
+</script>
 </body>
 </html>

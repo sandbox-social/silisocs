@@ -16,7 +16,7 @@ Thank you for considering contributing to this project! We appreciate your effor
 
 - `test` is the default uv group for this repository. A plain `uv sync` installs the project plus the test, lint, and type-checking tools used in CI.
 - `dev` adds local contributor tooling on top of the default environment, including `poethepoet`, `commitizen`, notebooks, and documentation generation helpers.
-- `docs` is optional and only needed when building the Sphinx documentation.
+- `docs` is optional and only needed when building the documentation site (MkDocs).
 
 ## Common Commands
 
@@ -54,7 +54,7 @@ Thank you for considering contributing to this project! We appreciate your effor
     uv sync --group dev
     ```
 
-    If you need to build the Sphinx docs too, use:
+    If you need to build the docs site too, use:
 
     ```sh
     uv sync --group dev --group docs

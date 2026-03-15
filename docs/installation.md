@@ -32,7 +32,7 @@ If `uv` is not installed yet, use one of the installation methods from the
    uv sync --group dev
    ```
 
-4. If you need the Sphinx docs toolchain as well, include the docs group:
+4. If you need the documentation toolchain (MkDocs) as well, include the docs group:
 
    ```sh
    uv sync --group dev --group docs
@@ -75,3 +75,7 @@ EMAIL_PREFIX=<email_prefix>
 USER001_PASSWORD=***************************5
 USER002_PASSWORD=***************************8
 ```
+
+## Next Steps
+
+Once installed, head to the [Quick Start](quickstart.md) to run your first simulation.
