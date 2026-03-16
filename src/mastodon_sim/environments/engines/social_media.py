@@ -16,6 +16,10 @@ from concordia.typing import entity as entity_lib
 from omegaconf import OmegaConf
 from typing_extensions import override
 
+from mastodon_sim.environments.engines.policies.factory import (
+    build_action_loop_policy,
+    build_probe_schedule_policy,
+)
 from mastodon_sim.evaluations.probes.deployment import ProbeDeploymentOrchestrator
 from mastodon_sim.runtime.config import ConfigStore
 from mastodon_sim.runtime.telemetry import (
@@ -75,6 +79,54 @@ class SocialMediaEngine(simultaneous.Simultaneous):
         if verbose:
             print(termcolor.colored(f"The resolved event was: {result}", _PRINT_COLOR))
         return result
+
+    def _run_single_entity_action(
+        self,
+        *,
+        game_master: entity_lib.Entity,
+        entity: entity_lib.Entity,
+        action_spec: entity_lib.ActionSpec,
+        skip_actions: bool,
+        verbose: bool,
+        observe_before_action: bool = True,
+        return_raw_action: bool = False,
+    ) -> str | dict[str, str]:
+        """Execute one observe/act/resolve cycle for a single entity."""
+        if observe_before_action:
+            observation = self.make_observation(game_master, entity)
+            if observation and observation.strip():
+                if verbose:
+                    print(
+                        termcolor.colored(
+                            f"Entity {entity.name} observed: {observation}",
+                            _PRINT_COLOR,
+                        )
+                    )
+                entity.observe(observation)
+
+        if skip_actions:
+            return {"raw": "", "rendered": ""} if return_raw_action else ""
+
+        if verbose:
+            print(
+                termcolor.colored(
+                    f"Entity {entity.name} is next to act. They must respond"
+                    f' in the format: "{action_spec}".',
+                    _PRINT_COLOR,
+                )
+            )
+
+        raw_action = entity.act(action_spec)
+        raw_text = str(raw_action)
+        action = f"{entity.name}: {raw_text}"
+        if verbose:
+            print(termcolor.colored(f"Entity {entity.name} chose action: {action}", _PRINT_COLOR))
+
+        result = self.agent_resolve(game_master, action, verbose=verbose)
+        entity.observe(result)
+        if return_raw_action:
+            return {"raw": raw_text, "rendered": action}
+        return action
 
     @staticmethod
     def _is_social_media_game_master(game_master: entity_lib.Entity) -> bool:
@@ -174,6 +226,11 @@ class SocialMediaEngine(simultaneous.Simultaneous):
 
         # logging setup
         cfg = ConfigStore.get_config()
+        engine_cfg = {}
+        if hasattr(cfg.sim, "engine") and getattr(cfg.sim, "engine") is not None:
+            engine_cfg = cast(dict[str, Any], OmegaConf.to_container(cfg.sim.engine, resolve=True))
+        action_loop_policy = build_action_loop_policy(engine_cfg.get("action_loop"))
+        probe_schedule_policy = build_probe_schedule_policy(engine_cfg.get("probe_schedule"))
         configured_worker_cap = resolve_configured_worker_cap(cfg)
         probe_event_logger = EventLogger(
             "probe", os.path.join(cfg.sim.output_rootname, "probe_events.jsonl")
@@ -240,66 +297,75 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                     log_entry["next_acting"] = game_master.get_last_log()
             if self._is_social_media_game_master(game_master):
                 self._sync_social_game_master_runtime_state(game_master, entities, steps)
-
-                probe_models = collect_unique_models(game_master, entities)
-                probe_requested_workers = len(entities)
-                probe_dynamic_cap, probe_worker_limit = compute_dynamic_worker_limit(
-                    requested_workers=probe_requested_workers,
-                    phase_cap=phase_worker_caps["probe"],
-                    configured_worker_cap=configured_worker_cap,
+                run_probe_phase = probe_schedule_policy.should_run_probe_phase(
+                    step=steps,
+                    orchestrator=probe_orchestrator,
                 )
-                probe_before = capture_retry_counters(probe_models)
-                set_model_retry_phase(probe_models, "probe")
-                _LOGGER.info("Episode %d probe phase start", steps)
-                t0 = time.time()
-                try:
-                    deployed, selected_probe_agents = probe_orchestrator.maybe_deploy(
-                        step=steps,
-                        agents=entities,
-                        worker_limit=probe_worker_limit,
+                if run_probe_phase:
+                    probe_models = collect_unique_models(game_master, entities)
+                    probe_requested_workers = len(entities)
+                    probe_dynamic_cap, probe_worker_limit = compute_dynamic_worker_limit(
+                        requested_workers=probe_requested_workers,
+                        phase_cap=phase_worker_caps["probe"],
+                        configured_worker_cap=configured_worker_cap,
                     )
-                finally:
-                    set_model_retry_phase(probe_models, "other")
-                probe_duration = time.time() - t0
-                ep_timings["probe_deployment"] = probe_duration
-                probe_after = capture_retry_counters(probe_models)
-                probe_retry = summarize_retry_delta(probe_before, probe_after)
-                probe_phase = {
-                    "deployed": deployed,
-                    "total_agents": len(entities),
-                    "selected_agents": selected_probe_agents,
-                    "requested_workers": probe_requested_workers,
-                    "dynamic_worker_cap": probe_dynamic_cap,
-                    "worker_limit": probe_worker_limit,
-                    "duration_s": round(probe_duration, 4),
-                    "retry": probe_retry,
-                }
-                _LOGGER.info(
-                    (
-                        "Episode %d probe phase: deployed=%s selected_agents=%d dynamic_cap=%d effective_workers=%d duration=%.2fs "
-                        "calls=%d retries=%d retry_per_call=%.3f failures=%d"
-                    ),
-                    steps,
-                    deployed,
-                    selected_probe_agents,
-                    probe_dynamic_cap,
-                    probe_worker_limit,
-                    probe_duration,
-                    probe_retry["calls"],
-                    probe_retry["retries"],
-                    probe_retry["retry_per_call"],
-                    probe_retry["failed_calls"],
-                )
-                phase_worker_caps["probe"] = update_adaptive_worker_cap(
-                    previous_cap=phase_worker_caps["probe"],
-                    requested_workers=max(1, selected_probe_agents),
-                    calls=probe_retry["calls"],
-                    retry_per_call=probe_retry["retry_per_call"],
-                    failure_ratio=probe_retry["failure_ratio"],
-                )
-                if deployed:
-                    print(f"Episode: {steps}. Probe deployment complete")
-                    _LOGGER.info("Episode %d probe deployment complete", steps)
+                    probe_before = capture_retry_counters(probe_models)
+                    set_model_retry_phase(probe_models, "probe")
+                    _LOGGER.info("Episode %d probe phase start", steps)
+                    t0 = time.time()
+                    try:
+                        deployed, selected_probe_agents = probe_orchestrator.maybe_deploy(
+                            step=steps,
+                            agents=entities,
+                            worker_limit=probe_worker_limit,
+                        )
+                    finally:
+                        set_model_retry_phase(probe_models, "other")
+                    probe_duration = time.time() - t0
+                    ep_timings["probe_deployment"] = probe_duration
+                    probe_after = capture_retry_counters(probe_models)
+                    probe_retry = summarize_retry_delta(probe_before, probe_after)
+                    probe_phase = {
+                        "deployed": deployed,
+                        "total_agents": len(entities),
+                        "selected_agents": selected_probe_agents,
+                        "requested_workers": probe_requested_workers,
+                        "dynamic_worker_cap": probe_dynamic_cap,
+                        "worker_limit": probe_worker_limit,
+                        "duration_s": round(probe_duration, 4),
+                        "retry": probe_retry,
+                    }
+                    _LOGGER.info(
+                        (
+                            "Episode %d probe phase: deployed=%s selected_agents=%d dynamic_cap=%d effective_workers=%d duration=%.2fs "
+                            "calls=%d retries=%d retry_per_call=%.3f failures=%d"
+                        ),
+                        steps,
+                        deployed,
+                        selected_probe_agents,
+                        probe_dynamic_cap,
+                        probe_worker_limit,
+                        probe_duration,
+                        probe_retry["calls"],
+                        probe_retry["retries"],
+                        probe_retry["retry_per_call"],
+                        probe_retry["failed_calls"],
+                    )
+                    phase_worker_caps["probe"] = update_adaptive_worker_cap(
+                        previous_cap=phase_worker_caps["probe"],
+                        requested_workers=max(1, selected_probe_agents),
+                        calls=probe_retry["calls"],
+                        retry_per_call=probe_retry["retry_per_call"],
+                        failure_ratio=probe_retry["failure_ratio"],
+                    )
+                    if deployed:
+                        print(f"Episode: {steps}. Probe deployment complete")
+                        _LOGGER.info("Episode %d probe deployment complete", steps)
+                else:
+                    ep_timings["probe_deployment"] = 0.0
+                    probe_phase["deployed"] = False
+                    probe_phase["selected_agents"] = 0
+                    probe_phase["duration_s"] = 0.0
 
             t0 = time.time()
             next_entities, next_action_specs = self.next_acting(
@@ -332,47 +398,22 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                 action_spec: entity_lib.ActionSpec,
                 skip_actions: bool = False,
             ) -> str:
-                """Make initial observation, then conduct social-media actions till agent decides to terminate step or max_actions is reached"""
-                observation = self.make_observation(game_master, entity)
+                """Execute entity action chunk via configured action-loop policy."""
                 if log is not None and hasattr(game_master, "get_last_log"):
                     assert hasattr(game_master, "get_last_log")  # Assertion for pytype
                     log_entry["make_observation"][entity.name] = game_master.get_last_log()
-                # Only observe if the observation is not an empty or whitespace string
-                if observation and observation.strip():
-                    if verbose:
-                        print(
-                            termcolor.colored(
-                                f"Entity {entity.name} observed: {observation}",
-                                _PRINT_COLOR,
-                            )
-                        )
-                    entity.observe(observation)
 
-                if skip_actions:
-                    return ""
-
-                if verbose:
-                    print(
-                        termcolor.colored(
-                            f"Entity {entity.name} is next to act. They must respond "
-                            f' in the format: "{action_spec}".',
-                            _PRINT_COLOR,
-                        )
-                    )
-
-                raw_action = entity.act(action_spec)
-                action = f"{entity.name}: {raw_action}"
-                if verbose:
-                    print(
-                        termcolor.colored(
-                            f"Entity {entity.name} chose action: {action}", _PRINT_COLOR
-                        )
-                    )
-
-                result = self.agent_resolve(game_master, action, verbose=verbose)
-                entity.observe(result)
-
-                return action
+                return cast(
+                    str,
+                    action_loop_policy.run(
+                        engine=self,
+                        game_master=game_master,
+                        entity=entity,
+                        action_spec=action_spec,
+                        skip_actions=skip_actions,
+                        verbose=verbose,
+                    ),
+                )
 
             tasks = {}
             entities_to_process = entities if skip_actions else next_entities

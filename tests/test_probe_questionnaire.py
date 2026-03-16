@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from concordia.typing import entity
 
 from mastodon_sim.evaluations.probes.agent_speech import AgentQuery, deploy_probes_to_agent
@@ -147,3 +149,16 @@ def test_structured_missing_answer_falls_back_only_for_failed_query() -> None:
     assert logger.records[1]["label"] == "Q1"
     assert logger.records[1]["data"]["query_mode"] == "single_structured_lines"
     assert logger.records[1]["data"]["query_return"] == "NO"
+
+
+def test_structured_uses_probe_name_as_log_label() -> None:
+    agent = _DummyAgent("Alice", ["Q0: yes"])
+    logger = _DummyProbeLogger()
+    query = _EchoQuery("VoteIntent", "Will you vote?")
+    cast(Any, query).probe_name = "vote_intent"
+
+    deploy_probes_to_agent(agent, [query], logger)
+
+    assert len(logger.records) == 1
+    assert logger.records[0]["label"] == "vote_intent"
+    assert logger.records[0]["data"]["query_type"] == "VoteIntent"

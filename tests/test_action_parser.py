@@ -1,4 +1,4 @@
-from mastodon_sim.environments.gm_components.act import find_and_parse_action_data
+from mastodon_sim.environments.gm.components.resolve import find_and_parse_action_data
 
 
 def test_parse_post_with_empty_target_id() -> None:

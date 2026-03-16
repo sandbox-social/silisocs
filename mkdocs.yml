@@ -72,6 +72,7 @@ nav:
   - User Guide:
     - Usage Overview: usage.md
     - Configuration: configuration.md
+    - Environment Layer: environment_layer.md
     - Building Agents: building_agents.md
     - Memory Initialization: memory_initialization.md
     - Social Media Backends: backends.md

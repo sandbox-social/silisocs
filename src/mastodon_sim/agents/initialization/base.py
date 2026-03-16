@@ -34,7 +34,7 @@ from concordia.typing import entity_component
 from concordia.typing import prefab as prefab_lib
 from concordia.utils import concurrency
 
-from mastodon_sim.environments.gm_components.observe import SimpleMakeObservation
+from mastodon_sim.environments.gm.components.initializer_observe import SimpleMakeObservation
 
 # --------------------------------------------------------------------------- #
 # Prefab: InitializerGM

@@ -31,7 +31,7 @@ def _base_cfg(processing_mode: str):
                     "filename": "social_media_game_master",
                     "sim_role": {
                         "name": "social_media_gm",
-                        "module_path": "mastodon_sim.environments.game_master",
+                        "module_path": "mastodon_sim.environments.gm.game_master",
                     },
                 },
             },

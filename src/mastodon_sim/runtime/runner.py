@@ -37,7 +37,7 @@ from dotenv import find_dotenv, load_dotenv
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 
-from mastodon_sim.environments.engine import SocialMediaEngine
+from mastodon_sim.environments.engines.social_media import SocialMediaEngine
 
 # Local imports
 from mastodon_sim.runtime.config import ConfigStore, validate_scenario_config

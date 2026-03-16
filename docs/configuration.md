@@ -40,10 +40,64 @@ uv run mastodon-sim social_media=reddit_like scenario=my_scenario
 | `sentence_encoder` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model for associative memory |
 | `memory_backend` | `list` | Memory type: `list` (fast) or `associative` (embedding-based) |
 | `action_mode` | `custom` | Action parsing: `custom`, `generic`, or `tool_calling` |
+| `gm.preset` | `social_media_default` | Prebuilt GM component preset |
+| `gm.components.*` | *(slots)* | YAML-selectable GM components (`next_acting`, `observe`, `resolve`, `initializer`) |
 | `timeline_posts` | `10` | Number of posts shown in agent timeline |
 | `observation_history` | `100` | Max observations kept in agent memory |
 | `write_html_log` | `true` | Generate Concordia HTML logs |
 | `roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |
+
+### GM Components (SwitchAct-style Configurability)
+
+Game master behavior is configurable through component slots:
+
+```yaml
+sim:
+  gm:
+    preset: social_media_default
+    components:
+      next_acting:
+        built_in: activity_markov
+        class_path: null
+        params: {}
+      observe:
+        built_in: timeline_every_turn
+        class_path: null
+        params: {}
+      resolve:
+        built_in: parsed_action
+        class_path: null
+        params: {}
+      initializer:
+        built_in: backend_default
+        class_path: null
+        params: {}
+```
+
+Built-in aliases:
+
+- `next_acting`: `activity_markov`, `all_entities`, `fixed_order`
+- `observe`: `timeline_every_turn`, `chunk_start_only`
+- `resolve`: `parsed_action`, `generic_action`, `tool_calling`
+- `initializer`: `backend_default`
+
+For advanced use, provide `class_path` and optional `params` to load a custom
+component implementation.
+
+See [Environment Layer](environment_layer.md) for extension patterns and examples.
+
+### Replacing the Entire GM Prefab
+
+For full orchestration customization, point the GM module path to your own prefab module:
+
+```yaml
+social_media:
+  gamemaster:
+    sim_role:
+      module_path: my_scenario.custom_game_master
+```
+
+This bypasses slot-level customization and lets you own the complete GM build flow.
 
 ---
 
@@ -164,7 +218,7 @@ social_network:
 
 ```yaml
 probes:
-  query_lib_module: null          # Custom probe type module (optional)
+  query_lib_module: null          # Optional custom probe type module
 
   deployment:
     enabled: true
@@ -174,11 +228,15 @@ probes:
     exclude_entities: []
 
   queries:
-    0:
+    favorability:
+      probe_name: favorability
       query_type: NumericRatingProbe   # Built-in or custom type
       query_data:
-        interaction_premise_template:
-          question: "Rate your satisfaction 1-10"
+        name: Favorability
+        question: "Return a single rating from {lo} to {hi}."
+        context: "{agentname} rates favorability toward the current event."
+        lo: 1
+        hi: 10
 ```
 
 ### Other Scenario Fields
@@ -195,6 +253,9 @@ probes:
 - `llm_formative` is also accepted for backward compatibility.
 - Custom mode names require runtime registration in
   `src/mastodon_sim/runtime/runner.py` (not YAML-only today).
+
+When `sim.gm.components.resolve` is left at baseline defaults, `sim.action_mode`
+still maps to the corresponding resolve component for backward compatibility.
 
 ---
 

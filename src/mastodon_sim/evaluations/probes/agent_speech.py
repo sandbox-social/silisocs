@@ -1,6 +1,7 @@
 import importlib
 import logging
 import re
+from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from concordia.typing import entity, entity_component
@@ -141,7 +142,7 @@ def _run_legacy_queries(agent, queries, structured_error: Exception | None = Non
     """Fallback to the original one-query-per-call behavior."""
     agent_results = []
     for query in queries:
-        query_name = getattr(query, "name", type(query).__name__)
+        query_name = getattr(query, "probe_name", getattr(query, "name", type(query).__name__))
         try:
             _recover_agent_phase(agent)
             agent_query_return = query.submit(agent)
@@ -168,7 +169,7 @@ def _run_legacy_queries(agent, queries, structured_error: Exception | None = Non
         agent_results.append(
             {
                 "source_user": agent._agent_name,
-                "label": agent_query_return["query_type"],
+                "label": query_name,
                 "data": agent_query_return,
             }
         )
@@ -183,7 +184,7 @@ def _run_single_legacy_query(
     fallback_reason: str | None = None,
 ) -> dict:
     """Fallback one failed structured question to legacy mode."""
-    query_name = getattr(query, "name", type(query).__name__)
+    query_name = getattr(query, "probe_name", getattr(query, "name", type(query).__name__))
     try:
         _recover_agent_phase(agent)
         agent_query_return = query.submit(agent)
@@ -213,7 +214,7 @@ def _run_single_legacy_query(
 
     return {
         "source_user": agent._agent_name,
-        "label": agent_query_return["query_type"],
+        "label": query_name,
         "data": agent_query_return,
     }
 
@@ -236,7 +237,7 @@ def deploy_probes_to_agent(agent, queries, probe_event_logger):
         return
 
     for idx, query in enumerate(queries):
-        query_name = getattr(query, "name", type(query).__name__)
+        query_name = getattr(query, "probe_name", getattr(query, "name", type(query).__name__))
         key = f"q{idx}"
         raw_answer = answers_by_id.get(key, "")
 
@@ -272,7 +273,7 @@ def deploy_probes_to_agent(agent, queries, probe_event_logger):
         agent_results.append(
             {
                 "source_user": agent._agent_name,
-                "label": agent_query_return["query_type"],
+                "label": query_name,
                 "data": agent_query_return,
             }
         )
@@ -305,11 +306,26 @@ def deploy_probes(
         queries = prebuilt_queries
     else:
         query_lib_module = probes.get("query_lib_module") if probes else None
-        queries_config = probes["queries"].values()
+        raw_queries = probes.get("queries", {}) if probes else {}
+        if isinstance(raw_queries, Mapping):
+            queries_config = list(raw_queries.values())
+        elif isinstance(raw_queries, Sequence) and not isinstance(raw_queries, (str, bytes)):
+            queries_config = list(raw_queries)
+        else:
+            queries_config = []
         queries = []
         for query_config in queries_config:
+            if not isinstance(query_config, dict):
+                continue
             QueryClass = _resolve_query_class(query_config["query_type"], query_lib_module)
-            queries.append(QueryClass(query_config["query_data"]))
+            query_data = query_config.get("query_data", {})
+            if not isinstance(query_data, dict):
+                query_data = {}
+            query_obj = QueryClass(query_data)
+            probe_name = query_config.get("probe_name") or query_data.get("name")
+            if probe_name:
+                query_obj.probe_name = str(probe_name)
+            queries.append(query_obj)
 
     max_workers = None if worker_limit is None or worker_limit <= 0 else worker_limit
     with ThreadPoolExecutor(max_workers=max_workers) as executor:

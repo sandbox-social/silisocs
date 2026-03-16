@@ -14,7 +14,7 @@ gamemaster:
   name: twitter_like_gm
   sim_role:
     name: social media game master
-    module_path: mastodon_sim.environments.game_master
+    module_path: mastodon_sim.environments.gm.game_master
 
 # Platform instructions
 usage_instructions: |

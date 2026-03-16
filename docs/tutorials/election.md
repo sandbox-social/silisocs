@@ -105,30 +105,45 @@ social_network:
 
 ### Probes
 
-Three custom probe types track voter attitudes every step:
+Named built-in probes track voter attitudes every step:
 
 ```yaml
 probes:
-  query_lib_module: mastodon_sim.scenarios.election.config_utils.probe_lib
   queries:
-    0:
-      query_type: VotePref          # "Who do you prefer?"
+    vote_pref:
+      probe_name: vote_pref
+      query_type: ChoiceProbe
       query_data:
-        interaction_premise_template:
-          candidate1: Bill Fredrickson
-          candidate2: Bradley Carter
-    1:
-      query_type: Favorability      # "Rate Bill Fredrickson 1-10"
+        name: VotePref
+        question: "In one word, name the candidate you want to vote for."
+        context: "{agentname} is going to cast a vote for either Bill Fredrickson or Bradley Carter."
+        choices:
+          - Bill Fredrickson
+          - Bradley Carter
+    favorability_bill:
+      probe_name: favorability_bill
+      query_type: NumericRatingProbe
       query_data:
-        interaction_premise_template:
-          candidate: Bill Fredrickson
-    2:
-      query_type: Favorability      # "Rate Bradley Carter 1-10"
+        name: FavorabilityBill
+        question: "Return a single numeric value ranging from {lo} to {hi} for Bill Fredrickson."
+        context: "{agentname} rates their opinion of Bill Fredrickson from {lo} to {hi}."
+        lo: 1
+        hi: 10
+    favorability_bradley:
+      probe_name: favorability_bradley
+      query_type: NumericRatingProbe
       query_data:
-        interaction_premise_template:
-          candidate: Bradley Carter
-    3:
-      query_type: VoteIntent        # "Will you vote?"
+        name: FavorabilityBradley
+        question: "Return a single numeric value ranging from {lo} to {hi} for Bradley Carter."
+        context: "{agentname} rates their opinion of Bradley Carter from {lo} to {hi}."
+        lo: 1
+        hi: 10
+    vote_intent:
+      probe_name: vote_intent
+      query_type: BinaryProbe
+      query_data:
+        name: VoteIntent
+        question: "In one word, will you cast a vote? Reply yes or no."
 ```
 
 ---

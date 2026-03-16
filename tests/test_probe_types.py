@@ -83,38 +83,3 @@ def test_probe_submit_with_raw_response() -> None:
     assert result["query_type"] == "VoteIntent"
     assert result["query_return"] == "Yes"
     assert result["raw_response"] == "Yes I will definitely vote"
-
-
-def test_election_probes_backward_compat() -> None:
-    """The election scenario's legacy wrappers should work."""
-    from mastodon_sim.scenarios.election.config_utils.probe_lib import (
-        Favorability,
-        VoteIntent,
-        VotePref,
-    )
-
-    vp = VotePref(
-        {
-            "interaction_premise_template": {
-                "candidate": None,
-                "candidate1": "Bill Fredrickson",
-                "candidate2": "Bradley Carter",
-            }
-        }
-    )
-    assert vp.parse_answer("I vote for Bill") == "Bill Fredrickson"
-    assert vp.parse_answer("Bradley Carter") == "Bradley Carter"
-
-    fav = Favorability(
-        {
-            "interaction_premise_template": {
-                "candidate": "Bill Fredrickson",
-                "candidate1": None,
-                "candidate2": None,
-            }
-        }
-    )
-    assert fav.parse_answer("I'd give him a 7") == "7"
-
-    vi = VoteIntent({})
-    assert vi.parse_answer("Yes") == "Yes"

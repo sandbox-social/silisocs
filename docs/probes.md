@@ -22,34 +22,38 @@ execution across large agent populations.
 | `BinaryProbe` | Yes/No | "Would you vote for candidate X?" |
 | `ChoiceProbe` | One of N options | "Which candidate do you prefer: A, B, or C?" |
 | `FreeTextProbe` | Open-ended string | "What are your concerns about the election?" |
-| `TemplateProbe` | Variable-substituted template | Dynamic questions with `{candidate}` placeholders |
 
 ### Probe Configuration
 
 ```yaml
 probes:
   queries:
-    0:
+    satisfaction:
+      probe_name: satisfaction
       query_type: NumericRatingProbe
       query_data:
-        interaction_premise_template:
-          question: "On a scale of 1 to 10, how satisfied are you with community discussions?"
+        name: Satisfaction
+        question: "Return one number from {lo} to {hi}: how satisfied are you with community discussions?"
+        context: "{agentname} rates current discussion quality."
+        lo: 1
+        hi: 10
 
-    1:
+    turnout_intent:
+      probe_name: turnout_intent
       query_type: BinaryProbe
       query_data:
-        interaction_premise_template:
-          question: "Do you plan to participate in the upcoming vote?"
+        name: VoteIntent
+        question: "Will you participate in the upcoming vote? Reply yes or no."
+        context: "{agentname} decides whether they intend to vote."
 
-    2:
+    topic_preference:
+      probe_name: topic_preference
       query_type: ChoiceProbe
       query_data:
-        interaction_premise_template:
-          question: "Which topic interests you most?"
-          choices:
-            - Technology
-            - Politics
-            - Entertainment
+        name: TopicPreference
+        question: "Which topic interests you most?"
+        context: "{agentname} picks a single preferred topic."
+        choices: [Technology, Politics, Entertainment]
 ```
 
 ---
@@ -101,8 +105,8 @@ class Favorability(ProbeBase):
         ...
 ```
 
-Custom types are resolved via `importlib` at runtime — just provide the
-module path in `query_lib_module`.
+Custom types are resolved via `importlib` at runtime. This is optional and most
+scenarios can use the built-in generalist probe types directly.
 
 ---
 
@@ -127,17 +131,17 @@ Probe results are saved to `probe_events.jsonl` in the simulation output directo
   "episode": 5,
   "event_type": "probe",
   "source_user": "Alice Smith",
-  "label": "probe",
+  "label": "turnout_intent",
   "data": {
-    "query_type": "NumericRating",
+    "query_type": "BinaryProbe",
     "raw_response": "I'd say about a 7",
-    "query_return": "7"
+    "query_return": "yes"
   }
 }
 ```
 
-The election scenario demonstrates probes in action with `VotePref`,
-`Favorability`, and `VoteIntent` types — see the
+The election scenario demonstrates probes in action with named built-in
+queries (vote preference, favorability, intent) — see the
 [Election Walkthrough](tutorials/election.md).
 
 ---

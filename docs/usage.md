@@ -77,6 +77,12 @@ uv run mastodon-sim \
   sim.seed=42 \
   sim.memory_backend=associative \
   scenario.social_network.network_type=random
+
+# Switch GM resolve mode to tool-calling
+uv run mastodon-sim sim.gm.components.resolve.built_in=tool_calling
+
+# Override only who can act next
+uv run mastodon-sim sim.gm.components.next_acting.built_in=all_entities
 ```
 
 ### Dashboard
@@ -86,6 +92,9 @@ For a visual interface:
 ```sh
 uv run streamlit run src/mastodon_sim/dashboard/launch_app.py
 ```
+
+The launcher sidebar loads configs in two steps: choose a scenario first, then
+choose whether to start from the scenario definition or a prior run snapshot.
 
 See [Dashboard](dashboard.md) for details.
 
@@ -120,6 +129,9 @@ src/mastodon_sim/conf/
 ```
 
 See [Configuration Reference](configuration.md) for all options.
+
+For environment-level customization (Engine + GM components + backends), see
+[Environment Layer](environment_layer.md).
 
 ### External Scenarios
 
@@ -494,7 +506,8 @@ class MyScenarioAgentBuilder(BaseAgentBuilder):
 uv run streamlit run src/mastodon_sim/dashboard/launch_app.py
 ```
 
-Create the scenario visually, configure agents, and launch.
+Create the scenario visually, configure agents, and launch. Use the sidebar
+`Start from` selector to resume from previous run snapshots when needed.
 
 ---
 
@@ -513,17 +526,17 @@ The engine (`SocialMediaEngine`) is responsible for:
 - Running entity actions concurrently and resolving them through the GM
 - Worker throttling based on retry telemetry
 
-Key implementation: `src/mastodon_sim/environments/engine.py`.
+Key implementation: `src/mastodon_sim/environments/engines/social_media.py`.
 
 #### Current Action Semantics
 
-The current default is one resolved action per acting entity per episode.
-Inside `_entity_act`, each acting entity performs one `entity.act(...)` call,
-then one resolve call through the GM.
+Action semantics are policy-driven through `sim.engine.action_loop`.
 
-If you want multi-action behavior (for example, keep acting until stop), treat
-that as an engine customization task by extending `_entity_act` and adding an
-explicit per-episode action budget and stop condition.
+- `single_action`: one resolved action per acting entity per episode.
+- `fixed_count`: a fixed number of resolved actions per acting entity.
+- `open_ended`: continue until stop token or max action budget.
+
+Probe timing is also policy-driven through `sim.engine.probe_schedule`.
 
 ### Game Master Responsibilities
 
@@ -537,16 +550,17 @@ The social media GM (`GameMaster` + `SMAct`) is responsible for:
 
 Key implementations:
 
-- `src/mastodon_sim/environments/game_master.py`
-- `src/mastodon_sim/environments/gm_components/act.py`
+- `src/mastodon_sim/environments/gm/game_master.py`
+- `src/mastodon_sim/environments/gm/act.py`
+- `src/mastodon_sim/environments/gm/components/`
 
 ### What Developers Commonly Customize
 
 #### Engine-side tasks
 
-- Multi-action-per-episode loop policy
+- Multi-action-per-episode loop policy (`sim.engine.action_loop`)
 - Alternative actor scheduling policies
-- Probe timing policy (before/after action phases)
+- Probe timing policy (`sim.engine.probe_schedule`)
 - Concurrency and retry throttling strategy
 
 #### GM-side tasks

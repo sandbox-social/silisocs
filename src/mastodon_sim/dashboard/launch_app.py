@@ -27,6 +27,13 @@ _ACTION_MODES = ["custom", "generic", "tool_calling"]
 _NETWORK_TYPES = ["barabasi_albert", "random", "lfr_benchmark"]
 _PROCESSING_MODES = ["raw", "formative"]
 _PERSONA_SOURCES = ["hf_dataset", "local_json", "inline", "config_path"]
+_GM_NEXT_ACTING_OPTIONS = ["activity_markov", "all_entities", "fixed_order"]
+_GM_OBSERVE_OPTIONS = ["timeline_every_turn", "chunk_start_only"]
+_GM_RESOLVE_OPTIONS = ["parsed_action", "generic_action", "tool_calling"]
+_GM_INITIALIZER_OPTIONS = ["backend_default"]
+_ENGINE_ACTION_LOOP_OPTIONS = ["single_action", "fixed_count", "open_ended"]
+_ENGINE_PROBE_SCHEDULE_OPTIONS = ["step_schedule", "fixed_interval", "disabled"]
+_PROBE_TYPE_OPTIONS = ["NumericRatingProbe", "BinaryProbe", "ChoiceProbe", "FreeTextProbe"]
 
 # ---------------------------------------------------------------------------
 # Theme & page config
@@ -65,15 +72,93 @@ def _load_yaml(path: Path) -> dict:
         return {}
 
 
-def _discover_scenarios() -> dict[str, Path]:
-    """Discover scenario YAML files from package conf and top-level scenarios/."""
+def _as_int(value: object, default: int) -> int:
+    """Best-effort int coercion that tolerates Hydra interpolations like ${...}."""
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text.startswith("${"):
+            return default
+        try:
+            return int(text)
+        except ValueError:
+            try:
+                return int(float(text))
+            except ValueError:
+                return default
+    return default
+
+
+def _as_float(value: object, default: float) -> float:
+    """Best-effort float coercion that tolerates Hydra interpolations like ${...}."""
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text.startswith("${"):
+            return default
+        try:
+            return float(text)
+        except ValueError:
+            return default
+    return default
+
+
+def _normalize_probe_items(probes_cfg: dict) -> list[dict]:
+    """Normalize probes.queries to editable dashboard rows.
+
+    Supports dict- and list-based query configs.
+    """
+    queries = probes_cfg.get("queries", {}) if isinstance(probes_cfg, dict) else {}
+    rows: list[dict] = []
+
+    if isinstance(queries, dict):
+        iterator = list(queries.items())
+    elif isinstance(queries, list):
+        iterator = [(str(i), q) for i, q in enumerate(queries)]
+    else:
+        iterator = []
+
+    for idx, query_cfg in iterator:
+        if not isinstance(query_cfg, dict):
+            continue
+        query_data = query_cfg.get("query_data", {})
+        if not isinstance(query_data, dict):
+            query_data = {}
+        probe_name = str(query_cfg.get("probe_name") or query_data.get("name") or idx)
+        query_type = str(query_cfg.get("query_type", "FreeTextProbe"))
+        rows.append(
+            {
+                "probe_name": probe_name,
+                "query_type": query_type,
+                "query_data": dict(query_data),
+            }
+        )
+
+    return rows
+
+
+def _deep_merge_dict(base: dict, overrides: dict) -> dict:
+    """Recursively merge two dictionaries."""
+    merged = dict(base)
+    for key, value in overrides.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = _deep_merge_dict(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _discover_external_scenarios() -> dict[str, Path]:
+    """Discover external scenario YAML files from top-level scenarios/."""
     found: dict[str, Path] = {}
-    # Package-bundled scenario configs.
-    pkg_dir = _CONF_DIR / "scenario"
-    if pkg_dir.is_dir():
-        for f in sorted(pkg_dir.glob("*.yaml")):
-            found[f.stem] = f
-    # External scenarios/ directory.
     if _SCENARIOS_DIR.is_dir():
         for d in sorted(_SCENARIOS_DIR.iterdir()):
             if not d.is_dir():
@@ -90,7 +175,49 @@ def _discover_scenarios() -> dict[str, Path]:
                 for f in sorted(flat_conf.glob("*.yaml")):
                     if f.stem == d.name and d.name not in found:
                         found[d.name] = f
+
     return found
+
+
+def _discover_run_configs_for_scenario(scenario_key: str) -> dict[str, Path]:
+    """Discover output-run config snapshots for a given scenario key."""
+    base = scenario_key.split("/", maxsplit=1)[0]
+    outputs_dir = _SCENARIOS_DIR / base / "outputs"
+    found: dict[str, Path] = {}
+    if not outputs_dir.is_dir():
+        return found
+
+    for run_dir in sorted(outputs_dir.iterdir(), reverse=True):
+        if not run_dir.is_dir():
+            continue
+        for cfg in sorted(run_dir.glob("configs/*/config.yaml")):
+            label = run_dir.name
+            # Disambiguate rare duplicates.
+            if label in found:
+                label = f"{run_dir.name} :: {cfg.parent.name}"
+            found[label] = cfg
+            break
+    return found
+
+
+def _split_loaded_config(loaded_cfg: dict) -> tuple[dict, dict, dict]:
+    """Split loaded YAML into (scenario, sim, social_media) sections."""
+    if isinstance(loaded_cfg.get("scenario"), dict):
+        loaded_scenario = loaded_cfg.get("scenario", {})
+        loaded_sim = loaded_cfg.get("sim", {})
+        loaded_social = loaded_cfg.get("social_media", {})
+    else:
+        loaded_scenario = loaded_cfg
+        loaded_sim = {}
+        loaded_social = {}
+
+    if not isinstance(loaded_scenario, dict):
+        loaded_scenario = {}
+    if not isinstance(loaded_sim, dict):
+        loaded_sim = {}
+    if not isinstance(loaded_social, dict):
+        loaded_social = {}
+    return loaded_scenario, loaded_sim, loaded_social
 
 
 def _discover_entity_modules() -> list[str]:
@@ -221,9 +348,35 @@ def _build_scenario_config() -> dict:
         ],
     }
 
-    # Copy probes from loaded scenario if present.
-    if _sc_cfg.get("probes"):
-        config["probes"] = _sc_cfg["probes"]
+    # Build probes from dashboard state (generalist structure).
+    probe_items = st.session_state.get("_probe_items", [])
+    probe_queries: dict[str, dict] = {}
+    for idx, item in enumerate(probe_items):
+        if not isinstance(item, dict):
+            continue
+        probe_name = str(item.get("probe_name") or f"probe_{idx}")
+        query_type = str(item.get("query_type") or "FreeTextProbe")
+        query_data = item.get("query_data", {})
+        if not isinstance(query_data, dict):
+            query_data = {}
+        if "name" not in query_data or not query_data.get("name"):
+            query_data["name"] = probe_name
+        probe_queries[probe_name] = {
+            "probe_name": probe_name,
+            "query_type": query_type,
+            "query_data": query_data,
+        }
+
+    config["probes"] = {
+        "deployment": {
+            "enabled": bool(st.session_state.get("probes_enabled", True)),
+            "start_step": _as_int(st.session_state.get("probe_start", 1), 1),
+            "every_n_steps": max(1, _as_int(st.session_state.get("probe_interval", 1), 1)),
+            "include_entities": st.session_state.get("probes_include_entities", []),
+            "exclude_entities": st.session_state.get("probes_exclude_entities", []),
+        },
+        "queries": probe_queries,
+    }
 
     # Copy any extra sections from loaded config (candidates, news_account, etc.)
     for key in ("candidates", "news_account", "data", "partisan_types"):
@@ -286,8 +439,12 @@ with st.sidebar:
     st.divider()
 
     st.markdown("**Scenario**")
-    available_scenarios = _discover_scenarios()
-    scenario_names = list(available_scenarios.keys()) or ["default"]
+    available_scenarios = _discover_external_scenarios()
+    if not available_scenarios:
+        # Fallback to package default only when no external scenarios are present.
+        pkg_default = _CONF_DIR / "scenario" / "default.yaml"
+        available_scenarios = {"default": pkg_default}
+    scenario_names = list(available_scenarios.keys())
 
     selected_scenario = st.selectbox(
         "Load scenario",
@@ -297,10 +454,37 @@ with st.sidebar:
         help="Select a scenario to load.",
     )
 
+    run_configs = _discover_run_configs_for_scenario(selected_scenario)
+    run_options = ["Scenario definition"] + list(run_configs.keys())
+    selected_run_source = st.selectbox(
+        "Start from",
+        run_options,
+        index=0,
+        key="sidebar_run_source_select",
+        help="Choose base scenario config or start from a prior run snapshot.",
+    )
+
     if selected_scenario in available_scenarios:
-        loaded_scenario = _load_yaml(available_scenarios[selected_scenario])
+        if selected_run_source == "Scenario definition":
+            selected_path = available_scenarios[selected_scenario]
+            source_kind = "scenario"
+            source_label = f"{selected_scenario} :: definition"
+        else:
+            selected_path = run_configs[selected_run_source]
+            source_kind = "output_run"
+            source_label = f"{selected_scenario} :: run/{selected_run_source}"
+
+        loaded_cfg = _load_yaml(selected_path)
+        loaded_scenario, loaded_sim, loaded_social = _split_loaded_config(loaded_cfg)
+
+        scenario_name = str(loaded_scenario.get("scenario_name") or selected_scenario)
         st.session_state["_loaded_scenario"] = loaded_scenario
-        st.session_state["_loaded_scenario_name"] = selected_scenario
+        st.session_state["_loaded_scenario_name"] = scenario_name
+        st.session_state["_loaded_sim_defaults"] = loaded_sim
+        st.session_state["_loaded_social_defaults"] = loaded_social
+        st.session_state["_loaded_source_label"] = source_label
+        st.session_state["_loaded_source_kind"] = source_kind
+        st.session_state["_loaded_source_scenario_key"] = selected_scenario.split("/")[0]
     else:
         loaded_scenario = {}
 
@@ -333,8 +517,34 @@ with st.sidebar:
 # Load defaults
 # ---------------------------------------------------------------------------
 _scenario_cfg = st.session_state.get("_loaded_scenario", {})
-_sim_defaults = _load_yaml(_CONF_DIR / "sim" / "base.yaml")
+_sim_base_defaults = _load_yaml(_CONF_DIR / "sim" / "base.yaml")
+_sim_loaded_defaults = st.session_state.get("_loaded_sim_defaults", {})
+if not isinstance(_sim_loaded_defaults, dict):
+    _sim_loaded_defaults = {}
+_sim_defaults = _deep_merge_dict(_sim_base_defaults, _sim_loaded_defaults)
+_social_defaults = st.session_state.get("_loaded_social_defaults", {})
+if not isinstance(_social_defaults, dict):
+    _social_defaults = {}
 _entity_modules = _discover_entity_modules()
+_gm_defaults = _sim_defaults.get("gm", {}) if isinstance(_sim_defaults.get("gm", {}), dict) else {}
+_gm_components_defaults = (
+    _gm_defaults.get("components", {})
+    if isinstance(_gm_defaults.get("components", {}), dict)
+    else {}
+)
+_engine_defaults = (
+    _sim_defaults.get("engine", {}) if isinstance(_sim_defaults.get("engine", {}), dict) else {}
+)
+_engine_action_defaults = (
+    _engine_defaults.get("action_loop", {})
+    if isinstance(_engine_defaults.get("action_loop", {}), dict)
+    else {}
+)
+_engine_probe_defaults = (
+    _engine_defaults.get("probe_schedule", {})
+    if isinstance(_engine_defaults.get("probe_schedule", {}), dict)
+    else {}
+)
 
 # ---------------------------------------------------------------------------
 # MAIN
@@ -342,9 +552,11 @@ _entity_modules = _discover_entity_modules()
 st.title("Simulation Configuration")
 scenario_display = st.session_state.get("_loaded_scenario_name", "default")
 st.markdown(f"Editing scenario: **{scenario_display}**")
+source_label = st.session_state.get("_loaded_source_label", scenario_display)
+st.caption(f"Loaded from: {source_label}")
 
-tab_sim, tab_scenario, tab_classes, tab_network, tab_probes, tab_launch = st.tabs(
-    ["Simulation", "Scenario", "Agent Classes", "Network", "Probes", "Launch"],
+tab_sim, tab_scenario, tab_classes, tab_env, tab_probes, tab_launch = st.tabs(
+    ["Simulation", "Scenario", "Agent Classes", "Environment", "Probes", "Launch"],
 )
 
 
@@ -359,7 +571,7 @@ with tab_sim:
             "Number of agents",
             min_value=1,
             max_value=1_000_000,
-            value=int(_sim_defaults.get("num_agents", 20)),
+            value=max(1, _as_int(_sim_defaults.get("num_agents", 20), 20)),
             step=10,
             key="num_agents",
         )
@@ -367,11 +579,14 @@ with tab_sim:
             "Number of episodes (steps)",
             min_value=1,
             max_value=500,
-            value=int(_sim_defaults.get("num_steps", 50)),
+            value=max(1, _as_int(_sim_defaults.get("num_steps", 50), 50)),
             key="num_steps",
         )
         st.number_input(
-            "Random seed", min_value=0, value=int(_sim_defaults.get("seed", 1)), key="seed"
+            "Random seed",
+            min_value=0,
+            value=max(0, _as_int(_sim_defaults.get("seed", 1), 1)),
+            key="seed",
         )
         st.text_input("Run name", value=str(_sim_defaults.get("run_name", "run1")), key="run_name")
 
@@ -399,20 +614,13 @@ with tab_sim:
             "Max concurrent actions",
             min_value=1,
             max_value=10_000,
-            value=int(_sim_defaults.get("max_concurrent_actions", 1000)),
+            value=max(1, _as_int(_sim_defaults.get("max_concurrent_actions", 1000), 1000)),
             key="max_concurrent_actions",
         )
 
     with st.expander("Advanced settings", expanded=False):
         ac1, ac2 = st.columns(2)
         with ac1:
-            st.selectbox(
-                "Platform backend",
-                _PLATFORM_OPTIONS,
-                index=0,
-                key="platform_type",
-                help="twitter_like/reddit_like are local. mastodon requires a server.",
-            )
             st.selectbox(
                 "Memory backend",
                 _MEMORY_BACKENDS,
@@ -430,14 +638,14 @@ with tab_sim:
                 "Timeline posts",
                 min_value=1,
                 max_value=100,
-                value=int(_sim_defaults.get("timeline_posts", 10)),
+                value=max(1, _as_int(_sim_defaults.get("timeline_posts", 10), 10)),
                 key="timeline_posts",
             )
             st.number_input(
                 "Observation history",
                 min_value=10,
                 max_value=1000,
-                value=int(_sim_defaults.get("observation_history", 100)),
+                value=max(10, _as_int(_sim_defaults.get("observation_history", 100), 100)),
                 key="observation_history",
             )
             st.checkbox(
@@ -575,7 +783,7 @@ with tab_classes:
                     "Count",
                     min_value=1,
                     max_value=100_000,
-                    value=int(cls.get("count", 10)),
+                    value=max(1, _as_int(cls.get("count", 10), 10)),
                     key=f"cls_count_{i}",
                 )
             with c2:
@@ -685,10 +893,205 @@ with tab_classes:
 
 
 # ---------------------------------------------------------------------------
-# TAB: Network
+# TAB: Environment
 # ---------------------------------------------------------------------------
-with tab_network:
-    st.subheader("Social Network Configuration")
+with tab_env:
+    st.subheader("Environment Configuration")
+
+    st.markdown("**Runtime Environment**")
+    ec1, ec2 = st.columns(2)
+    with ec1:
+        platform_default = str(_social_defaults.get("platform_type", "twitter_like"))
+        st.selectbox(
+            "Platform backend",
+            _PLATFORM_OPTIONS,
+            index=_PLATFORM_OPTIONS.index(platform_default)
+            if platform_default in _PLATFORM_OPTIONS
+            else 0,
+            key="platform_type",
+            help="twitter_like/reddit_like are local. mastodon requires a server.",
+        )
+    with ec2:
+        st.caption("GM and engine policy controls are below.")
+
+    with st.expander("GM Components", expanded=False):
+        gc1, gc2 = st.columns(2)
+
+        next_acting_defaults = _gm_components_defaults.get("next_acting", {})
+        next_acting_default = (
+            next_acting_defaults.get("built_in", "activity_markov")
+            if isinstance(next_acting_defaults, dict)
+            else "activity_markov"
+        )
+        observe_defaults = _gm_components_defaults.get("observe", {})
+        observe_default = (
+            observe_defaults.get("built_in", "timeline_every_turn")
+            if isinstance(observe_defaults, dict)
+            else "timeline_every_turn"
+        )
+        resolve_defaults = _gm_components_defaults.get("resolve", {})
+        resolve_default = (
+            resolve_defaults.get("built_in", "parsed_action")
+            if isinstance(resolve_defaults, dict)
+            else "parsed_action"
+        )
+        initializer_defaults = _gm_components_defaults.get("initializer", {})
+        initializer_default = (
+            initializer_defaults.get("built_in", "backend_default")
+            if isinstance(initializer_defaults, dict)
+            else "backend_default"
+        )
+
+        with gc1:
+            st.selectbox(
+                "Next-acting policy",
+                _GM_NEXT_ACTING_OPTIONS,
+                index=_GM_NEXT_ACTING_OPTIONS.index(next_acting_default)
+                if next_acting_default in _GM_NEXT_ACTING_OPTIONS
+                else 0,
+                key="gm_next_acting_built_in",
+            )
+            st.selectbox(
+                "Observation component",
+                _GM_OBSERVE_OPTIONS,
+                index=_GM_OBSERVE_OPTIONS.index(observe_default)
+                if observe_default in _GM_OBSERVE_OPTIONS
+                else 0,
+                key="gm_observe_built_in",
+            )
+            st.selectbox(
+                "Resolve component",
+                _GM_RESOLVE_OPTIONS,
+                index=_GM_RESOLVE_OPTIONS.index(resolve_default)
+                if resolve_default in _GM_RESOLVE_OPTIONS
+                else 0,
+                key="gm_resolve_built_in",
+            )
+            st.selectbox(
+                "Initializer component",
+                _GM_INITIALIZER_OPTIONS,
+                index=_GM_INITIALIZER_OPTIONS.index(initializer_default)
+                if initializer_default in _GM_INITIALIZER_OPTIONS
+                else 0,
+                key="gm_initializer_built_in",
+            )
+
+        with gc2:
+            st.text_input(
+                "Custom next-acting class path",
+                value=str(next_acting_defaults.get("class_path") or "")
+                if isinstance(next_acting_defaults, dict)
+                else "",
+                key="gm_next_acting_class_path",
+                help="Optional fully-qualified class path to override built-in choice.",
+            )
+            st.text_input(
+                "Custom observe class path",
+                value=str(observe_defaults.get("class_path") or "")
+                if isinstance(observe_defaults, dict)
+                else "",
+                key="gm_observe_class_path",
+                help="Optional fully-qualified class path to override built-in choice.",
+            )
+            st.text_input(
+                "Custom resolve class path",
+                value=str(resolve_defaults.get("class_path") or "")
+                if isinstance(resolve_defaults, dict)
+                else "",
+                key="gm_resolve_class_path",
+                help="Optional fully-qualified class path to override built-in choice.",
+            )
+            st.text_input(
+                "Custom initializer class path",
+                value=str(initializer_defaults.get("class_path") or "")
+                if isinstance(initializer_defaults, dict)
+                else "",
+                key="gm_initializer_class_path",
+                help="Optional fully-qualified class path to override built-in choice.",
+            )
+
+    with st.expander("Engine Policies", expanded=False):
+        ep1, ep2 = st.columns(2)
+
+        action_loop_default = str(_engine_action_defaults.get("built_in", "single_action"))
+        probe_schedule_default = str(_engine_probe_defaults.get("built_in", "step_schedule"))
+        action_loop_params = (
+            _engine_action_defaults.get("params", {})
+            if isinstance(_engine_action_defaults.get("params", {}), dict)
+            else {}
+        )
+        probe_schedule_params = (
+            _engine_probe_defaults.get("params", {})
+            if isinstance(_engine_probe_defaults.get("params", {}), dict)
+            else {}
+        )
+
+        with ep1:
+            st.selectbox(
+                "Action loop policy",
+                _ENGINE_ACTION_LOOP_OPTIONS,
+                index=_ENGINE_ACTION_LOOP_OPTIONS.index(action_loop_default)
+                if action_loop_default in _ENGINE_ACTION_LOOP_OPTIONS
+                else 0,
+                key="engine_action_loop_built_in",
+            )
+            st.number_input(
+                "Fixed-count actions per entity",
+                min_value=1,
+                max_value=20,
+                value=max(1, _as_int(action_loop_params.get("count", 2), 2)),
+                key="engine_action_loop_count",
+            )
+            st.number_input(
+                "Open-ended max actions per entity",
+                min_value=1,
+                max_value=50,
+                value=max(1, _as_int(action_loop_params.get("max_actions", 3), 3)),
+                key="engine_action_loop_max_actions",
+            )
+            st.text_input(
+                "Open-ended done token",
+                value=str(action_loop_params.get("done_token", "DONE")),
+                key="engine_action_loop_done_token",
+            )
+            st.text_input(
+                "Custom action-loop class path",
+                value=str(_engine_action_defaults.get("class_path") or ""),
+                key="engine_action_loop_class_path",
+                help="Optional fully-qualified class path to override built-in choice.",
+            )
+
+        with ep2:
+            st.selectbox(
+                "Probe schedule policy",
+                _ENGINE_PROBE_SCHEDULE_OPTIONS,
+                index=_ENGINE_PROBE_SCHEDULE_OPTIONS.index(probe_schedule_default)
+                if probe_schedule_default in _ENGINE_PROBE_SCHEDULE_OPTIONS
+                else 0,
+                key="engine_probe_schedule_built_in",
+            )
+            st.number_input(
+                "Probe schedule start step",
+                min_value=0,
+                max_value=1_000_000,
+                value=max(0, _as_int(probe_schedule_params.get("start_step", 0), 0)),
+                key="engine_probe_schedule_start_step",
+            )
+            st.number_input(
+                "Probe schedule interval",
+                min_value=1,
+                max_value=1_000_000,
+                value=max(1, _as_int(probe_schedule_params.get("every_n_steps", 1), 1)),
+                key="engine_probe_schedule_every_n_steps",
+            )
+            st.text_input(
+                "Custom probe-schedule class path",
+                value=str(_engine_probe_defaults.get("class_path") or ""),
+                key="engine_probe_schedule_class_path",
+                help="Optional fully-qualified class path to override built-in choice.",
+            )
+
+    st.markdown("**Social Network Configuration**")
     net_cfg = _scenario_cfg.get("social_network", {})
 
     nc1, nc2 = st.columns(2)
@@ -706,14 +1109,14 @@ with tab_network:
             "BA model edges per node (m)",
             min_value=1,
             max_value=200,
-            value=int(net_cfg.get("barabasi_albert_m", 10)),
+            value=max(1, _as_int(net_cfg.get("barabasi_albert_m", 10), 10)),
             key="ba_m",
         )
         st.slider(
             "Base follow probability",
             0.0,
             1.0,
-            float(net_cfg.get("base_followership_probability", 0.3)),
+            _as_float(net_cfg.get("base_followership_probability", 0.3), 0.3),
             0.05,
             key="follow_prob",
         )
@@ -737,7 +1140,7 @@ with tab_network:
                     f"{role}: inactive -> active",
                     0.0,
                     1.0,
-                    float(rates.get("inactive_to_active", 0.3)),
+                    _as_float(rates.get("inactive_to_active", 0.3), 0.3),
                     0.05,
                     key=f"act_{role}_i2a",
                 )
@@ -745,7 +1148,7 @@ with tab_network:
                     f"{role}: active -> inactive",
                     0.0,
                     1.0,
-                    float(rates.get("active_to_inactive", 0.3)),
+                    _as_float(rates.get("active_to_inactive", 0.3), 0.3),
                     0.05,
                     key=f"act_{role}_a2i",
                 )
@@ -759,6 +1162,14 @@ with tab_probes:
     probes_cfg = _scenario_cfg.get("probes", {})
     deploy_cfg = probes_cfg.get("deployment", {}) if isinstance(probes_cfg, dict) else {}
 
+    active_probe_scenario = st.session_state.get("_loaded_scenario_name", "default")
+    if (
+        "_probe_items" not in st.session_state
+        or st.session_state.get("_probe_items_scenario") != active_probe_scenario
+    ):
+        st.session_state["_probe_items"] = _normalize_probe_items(probes_cfg)
+        st.session_state["_probe_items_scenario"] = active_probe_scenario
+
     pc1, pc2 = st.columns(2)
     with pc1:
         st.checkbox(
@@ -767,26 +1178,145 @@ with tab_probes:
         st.number_input(
             "Start at episode",
             min_value=0,
-            value=int(deploy_cfg.get("start_step", 1)),
+            value=max(0, _as_int(deploy_cfg.get("start_step", 1), 1)),
             key="probe_start",
         )
         st.number_input(
             "Deploy every N episodes",
             min_value=1,
-            value=int(deploy_cfg.get("every_n_steps", 1)),
+            value=max(1, _as_int(deploy_cfg.get("every_n_steps", 1), 1)),
             key="probe_interval",
         )
+        probe_role_options = sorted(
+            {
+                (cls.get("sim_role_name") or cls.get("name", ""))
+                for cls in st.session_state.get("_agent_classes", [])
+                if (cls.get("sim_role_name") or cls.get("name", ""))
+            }
+        )
+        default_include = (
+            deploy_cfg.get("include_entities", []) if isinstance(deploy_cfg, dict) else []
+        )
+        default_exclude = (
+            deploy_cfg.get("exclude_entities", []) if isinstance(deploy_cfg, dict) else []
+        )
+        st.multiselect(
+            "Include roles/entities (optional)",
+            options=probe_role_options,
+            default=[x for x in default_include if x in probe_role_options],
+            key="probes_include_entities",
+        )
+        st.multiselect(
+            "Exclude roles/entities (optional)",
+            options=probe_role_options,
+            default=[x for x in default_exclude if x in probe_role_options],
+            key="probes_exclude_entities",
+        )
     with pc2:
-        st.markdown("**Active probe queries**")
-        queries = probes_cfg.get("queries", {}) if isinstance(probes_cfg, dict) else {}
-        if isinstance(queries, dict) and queries:
-            for qid, qcfg in queries.items():
-                if not isinstance(qcfg, dict):
-                    continue
-                qtype = qcfg.get("query_type", "Unknown")
-                st.markdown(f"**Q{qid}**: `{qtype}`")
-        else:
-            st.info("No probes configured for this scenario.")
+        st.markdown("**Probe list**")
+        if st.button("+ Add Probe", key="probe_add"):
+            st.session_state["_probe_items"].append(
+                {
+                    "probe_name": f"probe_{len(st.session_state['_probe_items']) + 1}",
+                    "query_type": "FreeTextProbe",
+                    "query_data": {
+                        "name": f"probe_{len(st.session_state['_probe_items']) + 1}",
+                        "question": "What do you think right now?",
+                        "context": "{agentname} reflects on the current situation.",
+                    },
+                }
+            )
+            st.rerun()
+
+    items_to_remove: list[int] = []
+    for i, item in enumerate(st.session_state.get("_probe_items", [])):
+        probe_name = str(item.get("probe_name") or f"probe_{i}")
+        with st.expander(f"Probe: {probe_name}", expanded=False):
+            c1, c2, c3 = st.columns([2, 2, 1])
+            with c1:
+                item["probe_name"] = st.text_input(
+                    "Probe name",
+                    value=probe_name,
+                    key=f"probe_name_{i}",
+                    help="Used as stable identifier and log label.",
+                )
+                current_type = str(item.get("query_type", "FreeTextProbe"))
+                type_options = list(_PROBE_TYPE_OPTIONS)
+                if current_type not in type_options:
+                    type_options.append(current_type)
+                item["query_type"] = st.selectbox(
+                    "Probe type",
+                    options=type_options,
+                    index=type_options.index(current_type),
+                    key=f"probe_type_{i}",
+                )
+            with c2:
+                qd = item.get("query_data", {})
+                if not isinstance(qd, dict):
+                    qd = {}
+                qd["name"] = st.text_input(
+                    "Display name",
+                    value=str(qd.get("name") or item["probe_name"]),
+                    key=f"probe_display_name_{i}",
+                )
+                qd["context"] = st.text_area(
+                    "Context",
+                    value=str(qd.get("context", "")),
+                    key=f"probe_context_{i}",
+                    height=80,
+                )
+                qd["question"] = st.text_area(
+                    "Question",
+                    value=str(qd.get("question", "")),
+                    key=f"probe_question_{i}",
+                    height=80,
+                )
+
+                if item["query_type"] == "NumericRatingProbe":
+                    qd["lo"] = st.number_input(
+                        "Min rating",
+                        min_value=0,
+                        value=max(0, _as_int(qd.get("lo", 1), 1)),
+                        key=f"probe_lo_{i}",
+                    )
+                    qd["hi"] = st.number_input(
+                        "Max rating",
+                        min_value=int(qd["lo"]),
+                        value=max(int(qd["lo"]), _as_int(qd.get("hi", 10), 10)),
+                        key=f"probe_hi_{i}",
+                    )
+                if item["query_type"] == "ChoiceProbe":
+                    choices_text = "\n".join(str(x) for x in qd.get("choices", []))
+                    new_choices_text = st.text_area(
+                        "Choices (one per line)",
+                        value=choices_text,
+                        key=f"probe_choices_{i}",
+                        height=90,
+                    )
+                    qd["choices"] = [x.strip() for x in new_choices_text.splitlines() if x.strip()]
+
+                labels_text = yaml.dump(qd.get("labels", {}), default_flow_style=False)
+                new_labels_text = st.text_area(
+                    "Labels (YAML, optional)",
+                    value=labels_text,
+                    key=f"probe_labels_{i}",
+                    height=70,
+                )
+                try:
+                    qd["labels"] = yaml.safe_load(new_labels_text) or {}
+                except yaml.YAMLError:
+                    st.error("Invalid YAML in labels")
+
+                item["query_data"] = qd
+            with c3:
+                st.markdown("\n")
+                if st.button("Remove", key=f"probe_remove_{i}", use_container_width=True):
+                    items_to_remove.append(i)
+
+    if items_to_remove:
+        for idx in reversed(items_to_remove):
+            st.session_state["_probe_items"].pop(idx)
+        st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -810,6 +1340,51 @@ with tab_launch:
         "timeline_posts": st.session_state.get("timeline_posts", 10),
         "observation_history": st.session_state.get("observation_history", 100),
         "disable_language_model": st.session_state.get("disable_language_model", False),
+        "gm.components.next_acting.built_in": st.session_state.get(
+            "gm_next_acting_built_in", "activity_markov"
+        ),
+        "gm.components.next_acting.class_path": (
+            st.session_state.get("gm_next_acting_class_path") or None
+        ),
+        "gm.components.observe.built_in": st.session_state.get(
+            "gm_observe_built_in", "timeline_every_turn"
+        ),
+        "gm.components.observe.class_path": (st.session_state.get("gm_observe_class_path") or None),
+        "gm.components.resolve.built_in": st.session_state.get(
+            "gm_resolve_built_in", "parsed_action"
+        ),
+        "gm.components.resolve.class_path": (st.session_state.get("gm_resolve_class_path") or None),
+        "gm.components.initializer.built_in": st.session_state.get(
+            "gm_initializer_built_in", "backend_default"
+        ),
+        "gm.components.initializer.class_path": (
+            st.session_state.get("gm_initializer_class_path") or None
+        ),
+        "engine.action_loop.built_in": st.session_state.get(
+            "engine_action_loop_built_in", "single_action"
+        ),
+        "engine.action_loop.class_path": (
+            st.session_state.get("engine_action_loop_class_path") or None
+        ),
+        "engine.action_loop.params.count": st.session_state.get("engine_action_loop_count", 2),
+        "engine.action_loop.params.max_actions": st.session_state.get(
+            "engine_action_loop_max_actions", 3
+        ),
+        "engine.action_loop.params.done_token": st.session_state.get(
+            "engine_action_loop_done_token", "DONE"
+        ),
+        "engine.probe_schedule.built_in": st.session_state.get(
+            "engine_probe_schedule_built_in", "step_schedule"
+        ),
+        "engine.probe_schedule.class_path": (
+            st.session_state.get("engine_probe_schedule_class_path") or None
+        ),
+        "engine.probe_schedule.params.start_step": st.session_state.get(
+            "engine_probe_schedule_start_step", 0
+        ),
+        "engine.probe_schedule.params.every_n_steps": st.session_state.get(
+            "engine_probe_schedule_every_n_steps", 1
+        ),
     }
     selected_platform = st.session_state.get("platform_type", "twitter_like")
 
@@ -853,7 +1428,8 @@ with tab_launch:
     )
 
     # Determine config path for external scenarios.
-    config_path = _get_config_path_for_scenario(scenario_display)
+    scenario_key_for_paths = st.session_state.get("_loaded_source_scenario_key", scenario_display)
+    config_path = _get_config_path_for_scenario(str(scenario_key_for_paths))
 
     with st.expander("Hydra CLI command", expanded=False):
         runner_path = _PACKAGE_ROOT / "runtime" / "runner.py"

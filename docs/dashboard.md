@@ -35,15 +35,21 @@ Core simulation parameters:
 - **Random seed**: Reproducibility
 - **Memory backend**: `list` (fast) or `associative` (embedding-based)
 - **Action mode**: `custom`, `generic`, or `tool_calling`
-- **Platform**: Twitter-like, Reddit-like, or Mastodon
+
+Simulation tab scope:
+
+- Run-level controls (agents, steps, seed, model, concurrency)
+- Advanced runtime toggles (memory backend, action mode, timeline/observation limits)
 
 ### 2. Scenario
 
 Setting and event configuration:
 
-- **Setting name**: Name of the simulated community
-- **Background**: Description lines (one per text area row)
-- **Event context**: What is happening in the simulation
+- **Scenario name**: Used for output directory/config naming
+- **Setting name / background**: Social world framing
+- **Event name / context**: Current event shaping agent behavior
+- **Memory processing mode**: `raw` or `formative`
+- **Shared memories**: Injected into all agents at initialization
 
 ### 3. Agent Classes
 
@@ -56,15 +62,34 @@ Configure the persona pipeline:
 - **Field map**: YAML editor for mapping data fields to agent parameters
 - **Per-class LLM model**: Optional model override per agent class
 - **Count**: Number of agents in each class
-- **Processing mode**: Raw or formative memory initialization
+- **Sim role name**: Role key used by social network/activity config
 
-### 4. Network
+### 4. Environment
 
-Social network topology:
+Runtime environment controls:
+
+- **Platform backend**: Twitter-like, Reddit-like, or Mastodon
+
+Environment levers in expanders:
+
+- **GM Components**
+- Next-acting choice: `activity_markov`, `all_entities`, `fixed_order`
+- Observe choice: `timeline_every_turn`, `chunk_start_only`
+- Resolve choice: `parsed_action`, `generic_action`, `tool_calling`
+- Initializer choice: `backend_default`
+- Optional custom class path override field for each GM slot
+
+- **Engine Policies**
+- Action loop choice: `single_action`, `fixed_count`, `open_ended`
+- Probe schedule choice: `step_schedule`, `fixed_interval`, `disabled`
+- Action-loop params: `count`, `max_actions`, `done_token`
+- Probe-schedule params: `start_step`, `every_n_steps`
+- Optional custom class path override for each policy slot
+
+Social network controls (in the same Environment tab):
 
 - **Graph type**: Barabasi-Albert, random, LFR benchmark
 - **Parameters**: Edges per node, followership probability
-- **Fully connected targets**: Roles that everyone follows
 - **Activity rates**: Per-role transition probabilities
 
 ### 5. Probes
@@ -79,17 +104,17 @@ Evaluation probe configuration:
 - **Validation warnings**: Missing modules, data sources, or misconfigured settings
 - **Auto-save**: Config is saved before launch
 - **CLI preview**: Shows the exact command that will be run
-- **Run button**: Launches the simulation as a subprocess
+- **Run Simulation button**: Launches the simulation as a subprocess
 
 ---
 
 ### Creating A New Scenario
 
-1. Click **"New Scenario"** in the sidebar
+1. In the sidebar, go to **Create New Scenario**
 2. Enter a scenario name
 3. The dashboard creates `scenarios/<name>/conf/scenario/<name>.yaml`
 4. Configure the scenario across all tabs
-5. Click **Launch** — the dashboard auto-saves and runs with `--config-path`
+5. Click **Run Simulation** in Launch tab — the dashboard auto-saves and runs with `--config-path`
 
 Scenarios created via the dashboard are immediately available for CLI use:
 
@@ -101,12 +126,19 @@ uv run mastodon-sim --config-path scenarios/my_scenario/conf
 
 ### Loading Existing Scenarios
 
-The sidebar shows all discovered scenarios from:
+The sidebar uses a two-step loader:
 
-- Built-in: `src/mastodon_sim/conf/scenario/*.yaml`
-- External: `scenarios/*/conf/scenario/*.yaml`
+1. **Load scenario**: scenario names discovered from `scenarios/*/conf/scenario/*.yaml`
+2. **Start from**: choose one of:
+	- **Scenario definition** (the base scenario YAML)
+	- A prior run snapshot from `scenarios/<scenario>/outputs/<run>/configs/*/config.yaml`
 
-Click a scenario name to load its configuration into the dashboard.
+This allows you to start from the latest saved run config while keeping scenario-level selection clean.
+
+Notes:
+
+- If no external scenarios are found, the launcher falls back to package `default`.
+- The top banner shows **Loaded from** so you can see whether you are editing a base scenario or a run snapshot.
 
 ---
 

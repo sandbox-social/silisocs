@@ -53,9 +53,10 @@ If you want to **extend the framework** (new backends, entities, probes, initial
 1. Read the [Usage Overview](usage.md) to understand the pipeline
 2. See [Building Agents](building_agents.md) for custom builder classes
 3. See [Memory Initialization](memory_initialization.md) for custom initializers
-4. See [Social Media Backends](backends.md#adding-a-new-backend-developer-guide) for new platform backends
-5. See [Evaluation Probes](probes.md#custom-probe-types) for custom probe types
-6. Check [Contributing](contributing.md) for code standards and workflows
+4. See [Environment Layer](environment_layer.md) for Engine/GM/component configurability
+5. See [Social Media Backends](backends.md#adding-a-new-backend-developer-guide) for new platform backends
+6. See [Evaluation Probes](probes.md#custom-probe-types) for custom probe types
+7. Check [Contributing](contributing.md) for code standards and workflows
 
 ## Quick Links
 
@@ -63,6 +64,7 @@ If you want to **extend the framework** (new backends, entities, probes, initial
 - [Quick Start](quickstart.md) — Run your first simulation in 5 minutes
 - [Usage Overview](usage.md) — End-to-end guide to the system
 - [Configuration Reference](configuration.md) — All config options explained
+- [Environment Layer](environment_layer.md) — Engine/GM/backend extensibility and component slots
 - [Building Agents](building_agents.md) — YAML pipeline and custom builders
 - [Election Walkthrough](tutorials/election.md) — Step-by-step complex scenario tutorial
 

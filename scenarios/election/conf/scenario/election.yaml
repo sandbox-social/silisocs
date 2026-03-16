@@ -166,8 +166,6 @@ partisan_types:
 
 # --- Probes ---
 probes:
-  query_lib_module: mastodon_sim.scenarios.election.config_utils.probe_lib
-
   deployment:
     enabled: true
     start_step: 1
@@ -176,31 +174,37 @@ probes:
     exclude_entities: []
 
   queries:
-    0:
-      query_type: VotePref
+    vote_pref:
+      probe_name: vote_pref
+      query_type: ChoiceProbe
       query_data:
-        interaction_premise_template:
-          candidate: null
-          candidate1: Bill Fredrickson
-          candidate2: Bradley Carter
-    1:
-      query_type: Favorability
+        name: VotePref
+        question: In one word, name the candidate you want to vote for.
+        context: '{agentname} is going to cast a vote for either Bill Fredrickson or Bradley Carter.'
+        choices:
+        - Bill Fredrickson
+        - Bradley Carter
+    favorability_bill:
+      probe_name: favorability_bill
+      query_type: NumericRatingProbe
       query_data:
-        interaction_premise_template:
-          candidate: Bill Fredrickson
-          candidate1: null
-          candidate2: null
-    2:
-      query_type: Favorability
+        name: FavorabilityBill
+        question: Return a single numeric value ranging from {lo} to {hi} for Bill Fredrickson.
+        context: '{agentname} has to rate their opinion on the election candidate: Bill Fredrickson on a scale of {lo} to {hi} - with {lo} representing intensive dislike and {hi} representing strong favourability.'
+        lo: 1
+        hi: 10
+    favorability_bradley:
+      probe_name: favorability_bradley
+      query_type: NumericRatingProbe
       query_data:
-        interaction_premise_template:
-          candidate: Bradley Carter
-          candidate1: null
-          candidate2: null
-    3:
-      query_type: VoteIntent
+        name: FavorabilityBradley
+        question: Return a single numeric value ranging from {lo} to {hi} for Bradley Carter.
+        context: '{agentname} has to rate their opinion on the election candidate: Bradley Carter on a scale of {lo} to {hi} - with {lo} representing intensive dislike and {hi} representing strong favourability.'
+        lo: 1
+        hi: 10
+    vote_intent:
+      probe_name: vote_intent
+      query_type: BinaryProbe
       query_data:
-        interaction_premise_template:
-          candidate: null
-          candidate1: null
-          candidate2: null
+        name: VoteIntent
+        question: In one word, will you cast a vote? (reply yes, or no.)

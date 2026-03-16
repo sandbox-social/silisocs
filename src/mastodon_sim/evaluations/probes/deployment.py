@@ -63,11 +63,26 @@ class ProbeDeploymentOrchestrator:
         if self._cached_queries is not None:
             return self._cached_queries
         query_lib_module = self._probes_config.get("query_lib_module")
-        queries_config = self._probes_config.get("queries", {}).values()
+        raw_queries = self._probes_config.get("queries", {})
+        if isinstance(raw_queries, Mapping):
+            queries_config = list(raw_queries.values())
+        elif isinstance(raw_queries, Sequence) and not isinstance(raw_queries, (str, bytes)):
+            queries_config = list(raw_queries)
+        else:
+            queries_config = []
         queries = []
         for query_config in queries_config:
+            if not isinstance(query_config, Mapping):
+                continue
             QueryClass = _resolve_query_class(query_config["query_type"], query_lib_module)
-            queries.append(QueryClass(query_config["query_data"]))
+            query_data = query_config.get("query_data", {})
+            if not isinstance(query_data, Mapping):
+                query_data = {}
+            query_obj = QueryClass(dict(query_data))
+            probe_name = query_config.get("probe_name") or query_data.get("name")
+            if probe_name:
+                query_obj.probe_name = str(probe_name)
+            queries.append(query_obj)
         self._cached_queries = queries
         return queries
 

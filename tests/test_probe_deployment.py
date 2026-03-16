@@ -104,3 +104,41 @@ def test_probe_orchestrator_filters_and_cadence(monkeypatch) -> None:
     assert orchestrator.maybe_deploy(step=3, agents=agents) == (False, 0)
     assert orchestrator.maybe_deploy(step=4, agents=agents) == (True, 1)
     assert calls == [["Alice"], ["Alice"]]
+
+
+def test_probe_orchestrator_supports_list_query_configs(monkeypatch) -> None:
+    calls = []
+
+    def _fake_deploy_probes(
+        agents, probes, probe_event_logger, worker_limit=None, prebuilt_queries=None
+    ):
+        calls.append(
+            {
+                "agents": [agent._agent_name for agent in agents],
+                "prebuilt_queries": prebuilt_queries,
+            }
+        )
+
+    monkeypatch.setattr(
+        "mastodon_sim.evaluations.probes.deployment.deploy_probes", _fake_deploy_probes
+    )
+
+    probes_cfg = OmegaConf.create(
+        {
+            "queries": [
+                {
+                    "probe_name": "vote_intent",
+                    "query_type": "BinaryProbe",
+                    "query_data": {"name": "VoteIntent", "question": "Will you vote?"},
+                }
+            ],
+        }
+    )
+    logger = _DummyLogger()
+    orchestrator = ProbeDeploymentOrchestrator(probes_cfg, logger)
+    agents = [_DummyAgent("Alice")]
+
+    assert orchestrator.maybe_deploy(step=1, agents=agents) == (True, 1)
+    assert len(calls) == 1
+    assert calls[0]["prebuilt_queries"] is not None
+    assert getattr(calls[0]["prebuilt_queries"][0], "probe_name", "") == "vote_intent"
