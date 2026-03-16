@@ -156,11 +156,50 @@ def _deep_merge_dict(base: dict, overrides: dict) -> dict:
     return merged
 
 
-def _discover_external_scenarios() -> dict[str, Path]:
-    """Discover external scenario YAML files from top-level scenarios/."""
+def _scenario_root_candidates() -> list[Path]:
+    """Return likely scenario-root candidates in priority order."""
+    candidates = [
+        _PROJECT_ROOT / "scenarios",
+        Path.cwd() / "scenarios",
+        _SCENARIOS_DIR,
+    ]
+    unique: list[Path] = []
+    for candidate in candidates:
+        resolved = candidate.expanduser().resolve()
+        if resolved not in unique:
+            unique.append(resolved)
+    return unique
+
+
+def _resolve_scenarios_root(path_text: str | None) -> Path:
+    """Resolve user-provided scenarios root.
+
+    If the provided path is a project root that contains a nested
+    `scenarios/` directory, use that nested directory.
+    """
+    text = (path_text or "").strip()
+    if text:
+        candidate = Path(text).expanduser()
+        candidate = (
+            (Path.cwd() / candidate).resolve()
+            if not candidate.is_absolute()
+            else candidate.resolve()
+        )
+    else:
+        candidates = _scenario_root_candidates()
+        candidate = next((p for p in candidates if p.is_dir()), candidates[0])
+
+    nested = candidate / "scenarios"
+    if nested.is_dir():
+        return nested
+    return candidate
+
+
+def _discover_external_scenarios(scenarios_root: Path) -> dict[str, Path]:
+    """Discover external scenario YAML files from a scenarios root directory."""
     found: dict[str, Path] = {}
-    if _SCENARIOS_DIR.is_dir():
-        for d in sorted(_SCENARIOS_DIR.iterdir()):
+    if scenarios_root.is_dir():
+        for d in sorted(scenarios_root.iterdir()):
             if not d.is_dir():
                 continue
             # Check scenarios/<name>/conf/scenario/<name>.yaml (Hydra-compatible)
@@ -179,10 +218,10 @@ def _discover_external_scenarios() -> dict[str, Path]:
     return found
 
 
-def _discover_run_configs_for_scenario(scenario_key: str) -> dict[str, Path]:
+def _discover_run_configs_for_scenario(scenarios_root: Path, scenario_key: str) -> dict[str, Path]:
     """Discover output-run config snapshots for a given scenario key."""
     base = scenario_key.split("/", maxsplit=1)[0]
-    outputs_dir = _SCENARIOS_DIR / base / "outputs"
+    outputs_dir = scenarios_root / base / "outputs"
     found: dict[str, Path] = {}
     if not outputs_dir.is_dir():
         return found
@@ -238,10 +277,10 @@ def _discover_entity_modules() -> list[str]:
     return modules
 
 
-def _save_scenario(name: str, data: dict) -> Path:
+def _save_scenario(name: str, data: dict, scenarios_root: Path) -> Path:
     """Save scenario config YAML to scenarios/<name>/conf/scenario/<name>.yaml."""
     # Ensure proper Hydra-compatible directory structure.
-    target_dir = _SCENARIOS_DIR / name / "conf" / "scenario"
+    target_dir = scenarios_root / name / "conf" / "scenario"
     target_dir.mkdir(parents=True, exist_ok=True)
     target_file = target_dir / f"{name}.yaml"
     # Add @package header for Hydra.
@@ -251,15 +290,15 @@ def _save_scenario(name: str, data: dict) -> Path:
     return target_file
 
 
-def _get_config_path_for_scenario(scenario_key: str) -> str | None:
+def _get_config_path_for_scenario(scenarios_root: Path, scenario_key: str) -> str | None:
     """Return the --config-path dir for an external scenario, or None for package-bundled."""
-    candidate = _SCENARIOS_DIR / scenario_key / "conf"
+    candidate = scenarios_root / scenario_key / "conf"
     if candidate.is_dir():
         return str(candidate)
     # Handle compound keys like "election/variant"
     parts = scenario_key.split("/")
     if len(parts) > 1:
-        candidate = _SCENARIOS_DIR / parts[0] / "conf"
+        candidate = scenarios_root / parts[0] / "conf"
         if candidate.is_dir():
             return str(candidate)
     return None
@@ -438,8 +477,25 @@ with st.sidebar:
     st.caption("Social Simulation Sandbox")
     st.divider()
 
+    st.markdown("**Scenario Source**")
+    default_scenarios_root = _resolve_scenarios_root(
+        str(st.session_state.get("_loaded_scenarios_root") or "")
+    )
+    scenarios_root_text = st.text_input(
+        "Scenarios directory",
+        value=str(default_scenarios_root),
+        key="scenarios_root_path",
+        help=(
+            "Directory containing scenario folders (e.g. election). "
+            "You can also provide a project root; if it has a nested scenarios/ folder, it will be used."
+        ),
+    )
+    selected_scenarios_root = _resolve_scenarios_root(scenarios_root_text)
+    if not selected_scenarios_root.is_dir():
+        st.warning(f"Scenarios directory not found: {selected_scenarios_root}")
+
     st.markdown("**Scenario**")
-    available_scenarios = _discover_external_scenarios()
+    available_scenarios = _discover_external_scenarios(selected_scenarios_root)
     if not available_scenarios:
         # Fallback to package default only when no external scenarios are present.
         pkg_default = _CONF_DIR / "scenario" / "default.yaml"
@@ -454,7 +510,7 @@ with st.sidebar:
         help="Select a scenario to load.",
     )
 
-    run_configs = _discover_run_configs_for_scenario(selected_scenario)
+    run_configs = _discover_run_configs_for_scenario(selected_scenarios_root, selected_scenario)
     run_options = ["Scenario definition"] + list(run_configs.keys())
     selected_run_source = st.selectbox(
         "Start from",
@@ -485,6 +541,7 @@ with st.sidebar:
         st.session_state["_loaded_source_label"] = source_label
         st.session_state["_loaded_source_kind"] = source_kind
         st.session_state["_loaded_source_scenario_key"] = selected_scenario.split("/")[0]
+        st.session_state["_loaded_scenarios_root"] = str(selected_scenarios_root)
     else:
         loaded_scenario = {}
 
@@ -501,7 +558,7 @@ with st.sidebar:
             # Create from default.
             default_cfg = _load_yaml(_CONF_DIR / "scenario" / "default.yaml")
             default_cfg["scenario_name"] = clean_name
-            save_path = _save_scenario(clean_name, default_cfg)
+            save_path = _save_scenario(clean_name, default_cfg, selected_scenarios_root)
             st.success(f"Created: `{save_path}`")
             st.rerun()
         else:
@@ -1429,7 +1486,13 @@ with tab_launch:
 
     # Determine config path for external scenarios.
     scenario_key_for_paths = st.session_state.get("_loaded_source_scenario_key", scenario_display)
-    config_path = _get_config_path_for_scenario(str(scenario_key_for_paths))
+    loaded_scenarios_root = _resolve_scenarios_root(
+        str(st.session_state.get("_loaded_scenarios_root") or "")
+    )
+    config_path = _get_config_path_for_scenario(
+        loaded_scenarios_root,
+        str(scenario_key_for_paths),
+    )
 
     with st.expander("Hydra CLI command", expanded=False):
         runner_path = _PACKAGE_ROOT / "runtime" / "runner.py"
@@ -1448,7 +1511,7 @@ with tab_launch:
     with btn1:
         if st.button("Save Scenario", key="save_scenario", use_container_width=True):
             name = st.session_state.get("scenario_name_edit", scenario_display)
-            save_path = _save_scenario(name, scenario_data)
+            save_path = _save_scenario(name, scenario_data, loaded_scenarios_root)
             st.success(f"Saved: `{save_path}`")
             st.rerun()
 
@@ -1471,7 +1534,7 @@ with tab_launch:
     if run_clicked:
         # Auto-save before running.
         name = st.session_state.get("scenario_name_edit", scenario_display)
-        _save_scenario(name, scenario_data)
+        _save_scenario(name, scenario_data, loaded_scenarios_root)
 
         with status_placeholder.container():
             st.info("Launching simulation...")
