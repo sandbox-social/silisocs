@@ -199,3 +199,7 @@ scenarios/election/input/personas/.hf_cache/nvidia_Nemotron-Personas-USA__defaul
 
 # MkDocs build output
 site/
+
+# SQLite transient files from local backend tests
+*.db-shm
+*.db-wal
