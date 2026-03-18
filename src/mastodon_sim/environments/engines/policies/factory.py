@@ -45,8 +45,7 @@ def _instantiate_with_supported_kwargs(cls: type[Any], kwargs: Mapping[str, Any]
         name
         for name, param in params.items()
         if name != "self"
-        and param.kind
-        in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+        and param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
     }
     filtered = {k: v for k, v in kwargs.items() if k in supported}
     return cls(**filtered)

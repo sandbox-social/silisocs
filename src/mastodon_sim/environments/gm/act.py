@@ -20,8 +20,6 @@ from concordia.typing import entity as entity_lib
 from concordia.typing import entity_component
 from typing_extensions import override
 
-from mastodon_sim.environments.gm.components.resolve import find_and_parse_action_data
-
 DEFAULT_SESSION_TERMINATE_STR = "The Social-Media session has been completed."
 
 
@@ -34,6 +32,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
         model: language_model.LanguageModel,
         entity_names: Sequence[str],
         sm_app: Any,
+        entity_action_flows: dict[str, str] | None = None,
         component_order: Sequence[str] | None = None,
         call_to_action_str: str = "",
         activity_transition_rates: dict[str, Any] | None = None,
@@ -46,6 +45,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
         )
         self.call_to_action_str = call_to_action_str
         self.sm_app = sm_app
+        self.entity_action_flows = dict(entity_action_flows or {})
         self.activity_transition_rates = activity_transition_rates or {}
         self.action_mode = action_mode
 

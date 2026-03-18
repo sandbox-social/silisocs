@@ -26,7 +26,7 @@ class SingleActionChunkPolicy:
         verbose: bool,
     ) -> str:
         """Execute a single observe -> act -> resolve cycle."""
-        return engine._run_single_entity_action(  # noqa: SLF001
+        return engine._run_single_entity_action(
             game_master=game_master,
             entity=entity,
             action_spec=action_spec,
@@ -58,7 +58,7 @@ class FixedCountActionChunkPolicy:
 
         last_action = ""
         for _ in range(max(1, self.count)):
-            action = engine._run_single_entity_action(  # noqa: SLF001
+            action = engine._run_single_entity_action(
                 game_master=game_master,
                 entity=entity,
                 action_spec=action_spec,
@@ -98,7 +98,7 @@ class OpenEndedActionChunkPolicy:
         done_token = self.done_token.strip().lower()
 
         for _ in range(max_actions):
-            action = engine._run_single_entity_action(  # noqa: SLF001
+            action = engine._run_single_entity_action(
                 game_master=game_master,
                 entity=entity,
                 action_spec=action_spec,

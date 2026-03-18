@@ -13,7 +13,14 @@ seed: 1
 sentence_encoder: sentence-transformers/all-MiniLM-L6-v2
 memory_backend: list           # associative | list
 action_mode: custom            # custom | generic | tool_calling
+enabled_actions: null          # null => expose all backend actions; otherwise list of action names
 write_html_log: true
+
+checkpoint:
+  every_n_steps: null          # int | null
+  explicit_steps: []           # list[int]
+  resume_file: null            # optional checkpoint json path to resume from
+  resume_step: null            # optional explicit start step override
 
 # Game-master component configurability (Concordia SwitchAct style)
 gm:
@@ -62,6 +69,10 @@ engine:
     params:
       start_step: 0                 # used by fixed_interval
       every_n_steps: 1              # used by fixed_interval
+
+  flow_routing:
+    flow_order: [fixed_pre, default]   # execution buckets; groups run sequentially, agents within each group run in parallel
+    entity_to_flow: {}                  # optional explicit per-entity override map
 
 # Observation parameters
 timeline_posts: 10

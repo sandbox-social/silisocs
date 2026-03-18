@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from concordia.typing import entity as entity_lib
 from concordia.typing import entity_component
+
+from mastodon_sim.runtime.config import ConfigStore
 
 _ACTION_BLOCK_PATTERN = re.compile(
     r"(?ims)^\s*(?P<label>ACTION TYPE|TARGET ID|CONTENT|REASONING)\s*:\s*"
@@ -75,13 +77,14 @@ def find_and_parse_action_data(data_string: str) -> dict[str, str] | None:
 
 
 @dataclass
-class _BaseResolveComponent(entity_component.ContextComponent, entity_component.ComponentWithLogging):
+class _BaseResolveComponent(
+    entity_component.ContextComponent, entity_component.ComponentWithLogging
+):
     """Base class for resolve components consumed by SwitchAct."""
 
     sm_app: Any
     call_to_action_str: str = ""
     model: Any = None
-    observation_cache: dict[str, str] = field(default_factory=dict)
 
     def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
         """Execute resolve logic when the game master asks for RESOLVE output."""
@@ -154,7 +157,10 @@ class ToolCallingResolveComponent(_BaseResolveComponent):
             )
             return msg
 
-        observation = self.observation_cache.get(active_entity, "")
+        cfg = ConfigStore.get_config()
+        timeline_posts = getattr(cfg.sim, "timeline_posts", 10)
+        timeline = self.sm_app.get_timeline(active_entity, timeline_posts)
+        observation = self.sm_app.format_timeline_for_observation(timeline)
 
         prompt_parts = [
             f"Active user: {active_entity}",
@@ -170,8 +176,7 @@ class ToolCallingResolveComponent(_BaseResolveComponent):
 
         if self.include_generic_catalog:
             prompt_parts.append(
-                "Available backend action API:\n"
-                f"{self.sm_app.generate_generic_action_prompt()}"
+                f"Available backend action API:\n{self.sm_app.generate_generic_action_prompt()}"
             )
 
         prompt_parts.append(
@@ -188,7 +193,4 @@ class ToolCallingResolveComponent(_BaseResolveComponent):
         if "current_user" not in payload:
             payload["current_user"] = active_entity
 
-        try:
-            return getattr(self.sm_app, tool_name)(**payload) or ""
-        except Exception as exc:
-            return f"Tool call error ({tool_name}): {exc}"
+        return self.sm_app.invoke_action_with_kwargs(tool_name, payload)

@@ -123,6 +123,14 @@ class GameMaster(prefab_lib.Prefab):
             db_path=db_path,
         )
 
+        enabled_actions_cfg = getattr(cfg.sim, "enabled_actions", None)
+        if enabled_actions_cfg is not None:
+            if isinstance(enabled_actions_cfg, (list, tuple)):
+                enabled_actions = [str(name).strip() for name in enabled_actions_cfg]
+            else:
+                enabled_actions = [str(enabled_actions_cfg).strip()]
+            sm_app.set_enabled_actions(enabled_actions)
+
         agent_names = [e.name for e in self.entities]
 
         seed_t0 = time.time()
@@ -130,6 +138,22 @@ class GameMaster(prefab_lib.Prefab):
         seed_elapsed = time.time() - seed_t0
 
         activity_rates = _compute_activity_rates(user_data)
+        entity_action_flows = dict(user_data.get("entity_action_flows", {}) or {})
+
+        # Optional one-time initialization hook for specialized entities.
+        catalog = sm_app.action_catalog()
+        allowed_action_types = sorted(
+            {
+                str(item.get("selectable_name", "")).strip().upper()
+                for item in catalog
+                if str(item.get("selectable_name", "")).strip()
+            }
+        )
+        for entity in self.entities:
+            setter = getattr(entity, "set_allowed_action_types", None)
+            existing = getattr(entity, "_allowed_action_types", None)
+            if callable(setter) and not existing:
+                setter(allowed_action_types)
 
         social_network_cfg = (
             dict(cfg.scenario.social_network) if hasattr(cfg.scenario, "social_network") else {}
@@ -171,7 +195,6 @@ class GameMaster(prefab_lib.Prefab):
             f.write(startup_line + "\n")
 
         player_names = agent_names
-        observation_cache: dict[str, str] = {}
         resolve_mode_map = {
             "custom": "parsed_action",
             "generic": "generic_action",
@@ -200,19 +223,27 @@ class GameMaster(prefab_lib.Prefab):
             player_names=player_names,
             activity_transition_rates=activity_rates,
         )
+        observe_slot = dict(gm_components_cfg.get("observe", {}))
+        observe_params = dict(observe_slot.get("params") or {})
+        episode_observation_flows = observe_params.get("episode_observation_flows")
+        if episode_observation_flows is None:
+            episode_observation_flows = ["fixed_pre"]
+        elif isinstance(episode_observation_flows, str):
+            episode_observation_flows = [episode_observation_flows]
+
         make_observation = build_observe_component(
-            gm_components_cfg.get("observe"),
+            observe_slot,
             model=model,
             player_names=player_names,
             sm_app=sm_app,
-            observation_cache=observation_cache,
+            entity_action_flows=entity_action_flows,
+            episode_observation_flows=list(episode_observation_flows),
         )
         resolve_component = build_resolve_component(
             resolve_slot,
             sm_app=sm_app,
             model=model,
             call_to_action_str=call_to_sm_action,
-            observation_cache=observation_cache,
         )
 
         components = {
@@ -227,6 +258,7 @@ class GameMaster(prefab_lib.Prefab):
             component_order=list(components.keys()),
             call_to_action_str=call_to_sm_action,
             sm_app=sm_app,
+            entity_action_flows=entity_action_flows,
             activity_transition_rates=activity_rates,
             action_mode=getattr(cfg.sim, "action_mode", "custom"),
         )

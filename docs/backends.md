@@ -201,7 +201,7 @@ To implement a new social media platform:
             """Create a new post."""
             ...
 
-        @app_action
+        @app_action(selectable_name="reply_post", description="Reply to an existing post")
         def reply(self, username: str, post_id: int, content: str) -> str:
             """Reply to an existing post."""
             ...
@@ -231,6 +231,15 @@ To implement a new social media platform:
 The `@app_action` decorator auto-registers methods as available actions. The
 `generic` and `tool_calling` action modes will automatically discover and use
 your decorated methods.
+
+Action metadata notes:
+
+- By default, the selectable action name is the Python function name.
+- Backend authors can optionally provide `selectable_name` and `description`
+    via `@app_action(...)` to expose more LLM-friendly names/descriptions.
+- Simulation-level action filtering (`sim.enabled_actions`) accepts either the
+    canonical function name or the selectable alias.
+- Fixed-action entity sets can also reference either canonical names or aliases.
 
 ### High-Value Customization Tasks
 

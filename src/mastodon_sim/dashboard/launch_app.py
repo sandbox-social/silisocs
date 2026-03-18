@@ -6,12 +6,15 @@ Run with:
 
 from __future__ import annotations
 
+import inspect
 import subprocess
 import sys
 from pathlib import Path
 
 import streamlit as st
 import yaml
+
+from mastodon_sim.environments.backends.base import ActionDescriptor
 
 # ---------------------------------------------------------------------------
 # Constants & paths
@@ -259,6 +262,40 @@ def _split_loaded_config(loaded_cfg: dict) -> tuple[dict, dict, dict]:
     return loaded_scenario, loaded_sim, loaded_social
 
 
+def _backend_app_class(platform_type: str):
+    if platform_type == "twitter_like":
+        from mastodon_sim.environments.backends.twitter_like.app import TwitterLikeApp
+
+        return TwitterLikeApp
+    if platform_type == "reddit_like":
+        from mastodon_sim.environments.backends.reddit_like.app import RedditLikeApp
+
+        return RedditLikeApp
+    if platform_type == "mastodon":
+        from mastodon_sim.environments.backends.mastodon.apps import SocialNetworkApp
+
+        return SocialNetworkApp
+    raise ValueError(f"Unknown platform_type: {platform_type}")
+
+
+def _backend_action_catalog(platform_type: str) -> list[dict]:
+    """Build backend action catalog without creating live backend instances."""
+    cls = _backend_app_class(platform_type)
+    actions = []
+    for _, fn in inspect.getmembers(cls, predicate=inspect.isfunction):
+        if getattr(fn, "__app_action__", False):
+            descriptor = ActionDescriptor.from_method(fn)
+            actions.append(
+                {
+                    "name": descriptor.name,
+                    "selectable_name": descriptor.selectable_name,
+                    "description": descriptor.description.strip(),
+                }
+            )
+    actions.sort(key=lambda item: item["selectable_name"])
+    return actions
+
+
 def _discover_entity_modules() -> list[str]:
     """Discover available entity prefab modules by scanning the package."""
     modules: list[str] = []
@@ -266,6 +303,9 @@ def _discover_entity_modules() -> list[str]:
     entity_file = _PACKAGE_ROOT / "agents" / "entity.py"
     if entity_file.exists():
         modules.append("mastodon_sim.agents.entity")
+    fixed_entity_file = _PACKAGE_ROOT / "agents" / "fixed_entity.py"
+    if fixed_entity_file.exists():
+        modules.append("mastodon_sim.agents.fixed_entity")
     # Scenario-specific entity_lib/ directories.
     for scenario_dir in sorted((_PACKAGE_ROOT / "scenarios").glob("*/entity_lib")):
         for py_file in sorted(scenario_dir.glob("*.py")):
@@ -327,7 +367,25 @@ def _build_scenario_config() -> dict:
             cls_cfg["field_map"] = cls["field_map"]
         if cls.get("model"):
             cls_cfg["model"] = cls["model"]
+        if isinstance(cls.get("fixed_action"), dict):
+            fixed_cfg = dict(cls["fixed_action"])
+            if fixed_cfg.get("enabled"):
+                cls_cfg["fixed_action"] = fixed_cfg
         classes_dict[cls.get("name", f"class_{len(classes_dict)}")] = cls_cfg
+
+    fixed_action_sets: dict = {}
+    fixed_action_file = str(st.session_state.get("fixed_action_sets_file", "") or "").strip()
+    if fixed_action_file:
+        fixed_action_sets["file"] = fixed_action_file
+
+    inline_text = str(st.session_state.get("fixed_action_sets_inline_yaml", "") or "").strip()
+    if inline_text:
+        try:
+            inline_sets = yaml.safe_load(inline_text) or {}
+            if isinstance(inline_sets, dict):
+                fixed_action_sets["inline"] = inline_sets
+        except yaml.YAMLError:
+            pass
 
     # Parse shared memories.
     shared_text = st.session_state.get("shared_memories_edit", "")
@@ -422,6 +480,9 @@ def _build_scenario_config() -> dict:
         if key in _sc_cfg:
             config[key] = _sc_cfg[key]
 
+    if fixed_action_sets:
+        config["fixed_action_sets"] = fixed_action_sets
+
     return config
 
 
@@ -432,6 +493,12 @@ def _build_hydra_overrides(sim: dict, platform: str, scenario: dict) -> list[str
             overrides.append(f"sim.{key}=null")
         elif isinstance(val, bool):
             overrides.append(f"sim.{key}={'true' if val else 'false'}")
+        elif isinstance(val, list):
+            if not val:
+                overrides.append(f"sim.{key}=[]")
+            else:
+                inner = ",".join(str(item) for item in val)
+                overrides.append(f"sim.{key}=[{inner}]")
         elif isinstance(val, str) and " " in val:
             overrides.append(f'sim.{key}="{val}"')
         else:
@@ -495,11 +562,9 @@ with st.sidebar:
         st.warning(f"Scenarios directory not found: {selected_scenarios_root}")
 
     st.markdown("**Scenario**")
-    available_scenarios = _discover_external_scenarios(selected_scenarios_root)
-    if not available_scenarios:
-        # Fallback to package default only when no external scenarios are present.
-        pkg_default = _CONF_DIR / "scenario" / "default.yaml"
-        available_scenarios = {"default": pkg_default}
+    external_scenarios = _discover_external_scenarios(selected_scenarios_root)
+    pkg_default = _CONF_DIR / "scenario" / "default.yaml"
+    available_scenarios = {"default": pkg_default, **external_scenarios}
     scenario_names = list(available_scenarios.keys())
 
     selected_scenario = st.selectbox(
@@ -785,6 +850,15 @@ with tab_classes:
 
     pipeline_cfg = _scenario_cfg.get("persona_pipeline", {})
     classes_cfg = pipeline_cfg.get("classes", {})
+    fixed_sets_cfg = _scenario_cfg.get("fixed_action_sets", {})
+
+    if "fixed_action_sets_file" not in st.session_state:
+        st.session_state["fixed_action_sets_file"] = str(fixed_sets_cfg.get("file", "") or "")
+    if "fixed_action_sets_inline_yaml" not in st.session_state:
+        inline_sets = fixed_sets_cfg.get("inline", {}) if isinstance(fixed_sets_cfg, dict) else {}
+        st.session_state["fixed_action_sets_inline_yaml"] = (
+            yaml.dump(inline_sets, default_flow_style=False) if inline_sets else ""
+        )
 
     # Initialize session state for classes if not already set.
     if "_agent_classes" not in st.session_state:
@@ -942,11 +1016,101 @@ with tab_classes:
                 help="Role name for activity rates and social network config.",
             )
 
+            st.markdown("**Fixed Action Entity (optional)**")
+            fixed_cfg = (
+                cls.get("fixed_action", {}) if isinstance(cls.get("fixed_action"), dict) else {}
+            )
+            enabled = st.checkbox(
+                "Enable fixed action execution for this class",
+                value=bool(fixed_cfg.get("enabled", False)),
+                key=f"cls_fixed_enabled_{i}",
+            )
+            if enabled:
+                available_sets = []
+                inline_yaml_text = st.session_state.get("fixed_action_sets_inline_yaml", "")
+                try:
+                    inline_parsed = yaml.safe_load(inline_yaml_text) or {}
+                    if isinstance(inline_parsed, dict):
+                        available_sets = sorted(inline_parsed.keys())
+                except yaml.YAMLError:
+                    available_sets = []
+
+                set_default = str(fixed_cfg.get("action_set_ref", "") or "")
+                if set_default and set_default not in available_sets:
+                    available_sets = [*available_sets, set_default]
+
+                if available_sets:
+                    set_ref = st.selectbox(
+                        "Action set reference",
+                        available_sets,
+                        index=available_sets.index(set_default)
+                        if set_default in available_sets
+                        else 0,
+                        key=f"cls_fixed_set_ref_{i}",
+                    )
+                else:
+                    set_ref = st.text_input(
+                        "Action set reference",
+                        value=set_default,
+                        key=f"cls_fixed_set_ref_{i}",
+                        help="Define action sets below or in a file and reference the set id here.",
+                    )
+
+                policy = st.selectbox(
+                    "Selection policy",
+                    ["round_robin", "weighted_random", "scripted_sequence"],
+                    index=["round_robin", "weighted_random", "scripted_sequence"].index(
+                        str(fixed_cfg.get("selection_policy", "round_robin"))
+                    )
+                    if str(fixed_cfg.get("selection_policy", "round_robin"))
+                    in ["round_robin", "weighted_random", "scripted_sequence"]
+                    else 0,
+                    key=f"cls_fixed_policy_{i}",
+                )
+                on_exhaustion = st.selectbox(
+                    "When action set is exhausted",
+                    ["loop", "stop", "fallback_to_llm"],
+                    index=["loop", "stop", "fallback_to_llm"].index(
+                        str(fixed_cfg.get("on_exhaustion", "loop"))
+                    )
+                    if str(fixed_cfg.get("on_exhaustion", "loop"))
+                    in ["loop", "stop", "fallback_to_llm"]
+                    else 0,
+                    key=f"cls_fixed_exhaustion_{i}",
+                )
+                cls["fixed_action"] = {
+                    "enabled": True,
+                    "action_set_ref": set_ref,
+                    "selection_policy": policy,
+                    "on_exhaustion": on_exhaustion,
+                }
+            else:
+                cls.pop("fixed_action", None)
+
     # Process removals.
     if classes_to_remove:
         for idx in reversed(classes_to_remove):
             st.session_state["_agent_classes"].pop(idx)
         st.rerun()
+
+    st.divider()
+    st.markdown("**Fixed Action Set Registry**")
+    st.caption(
+        "Define reusable action sets inline or provide a file path. Class fixed-action settings can reference these set ids."
+    )
+    st.text_input(
+        "Action sets file path (optional)",
+        key="fixed_action_sets_file",
+        help="Path relative to scenario directory, e.g. input/fixed_actions/sets.yaml",
+    )
+    st.text_area(
+        "Inline action sets (YAML)",
+        key="fixed_action_sets_inline_yaml",
+        height=180,
+        help=(
+            'Example:\nnews_cycle:\n  actions:\n    - action: create_tweet\n      args:\n        status: "Breaking: {name} update"'
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -970,6 +1134,19 @@ with tab_env:
         )
     with ec2:
         st.caption("GM and engine policy controls are below.")
+
+    selected_platform_for_actions = st.session_state.get("platform_type", platform_default)
+    action_catalog = _backend_action_catalog(selected_platform_for_actions)
+    action_labels = [item["selectable_name"] for item in action_catalog]
+    configured_enabled = _sim_defaults.get("enabled_actions")
+    default_enabled = configured_enabled if isinstance(configured_enabled, list) else []
+    st.multiselect(
+        "Enabled backend actions (leave empty to allow all)",
+        action_labels,
+        default=[name for name in default_enabled if name in action_labels],
+        key="enabled_actions",
+        help="Constrains action prompts, parser/tool choices, and fixed-action entity execution.",
+    )
 
     with st.expander("GM Components", expanded=False):
         gc1, gc2 = st.columns(2)
@@ -1394,6 +1571,11 @@ with tab_launch:
         "max_concurrent_actions": st.session_state.get("max_concurrent_actions", 1000),
         "memory_backend": st.session_state.get("memory_backend", "list"),
         "action_mode": st.session_state.get("action_mode", "custom"),
+        "enabled_actions": (
+            st.session_state.get("enabled_actions")
+            if st.session_state.get("enabled_actions")
+            else None
+        ),
         "timeline_posts": st.session_state.get("timeline_posts", 10),
         "observation_history": st.session_state.get("observation_history", 100),
         "disable_language_model": st.session_state.get("disable_language_model", False),

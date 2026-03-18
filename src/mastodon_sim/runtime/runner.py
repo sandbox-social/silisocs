@@ -13,6 +13,7 @@ path so that any YAML files it contains override the corresponding package
 defaults.  Missing files fall back to the package ``conf/`` directory.
 """
 
+import json
 import logging
 import os
 import random
@@ -222,6 +223,7 @@ def populate_agent_data(
     sim_roles: dict[str, str] = {}
     player_specific_memories: dict[str, list[str]] = {}
     player_specific_context: dict[str, str] = {}
+    entity_action_flows: dict[str, str] = {}
     extra_shared_memories: list[str] = []
 
     for agent in agent_configs:
@@ -231,6 +233,8 @@ def populate_agent_data(
             agent.params.get("specific_memories", [])
         )
         player_specific_context[agent_name] = str(agent.params.get("context", ""))
+        action_flow = str(agent.params.get("action_flow", "default") or "default").strip()
+        entity_action_flows[agent_name] = action_flow
 
         for memory in _normalize_memories(agent.params.get("shared_memories", [])):
             if memory not in extra_shared_memories:
@@ -256,6 +260,7 @@ def populate_agent_data(
     if social_media_gm is None:
         raise ValueError("No social media game master found.")
     social_media_gm.params["sm_user_data"]["sim_roles"].update(sim_roles)
+    social_media_gm.params["sm_user_data"]["entity_action_flows"] = entity_action_flows
 
 
 # ============================================================================
@@ -509,7 +514,42 @@ def main(cfg: DictConfig):
         )
     _log_startup_phase("simulation_construction", time.time() - t0)
 
+    checkpoint_cfg = getattr(cfg.sim, "checkpoint", None)
+    resume_file = None
+    resume_step_override = None
+    if checkpoint_cfg is not None:
+        resume_file = getattr(checkpoint_cfg, "resume_file", None)
+        resume_step_override = getattr(checkpoint_cfg, "resume_step", None)
+
+    start_step = 0
+    if resume_file:
+        resume_path = Path(str(resume_file)).expanduser()
+        if not resume_path.is_absolute():
+            resume_path = (Path.cwd() / resume_path).resolve()
+        if not resume_path.is_file():
+            raise FileNotFoundError(f"Checkpoint file not found: {resume_path}")
+
+        with metrics.phase("checkpoint_load"):
+            with open(resume_path, encoding="utf-8") as f:
+                checkpoint_data = json.load(f)
+            runnable_simulation.load_from_checkpoint(checkpoint_data)
+
+        default_step = checkpoint_data.get("step")
+        if default_step is None:
+            default_step = len(checkpoint_data.get("raw_log", []))
+        start_step = int(default_step)
+
+        if resume_step_override is not None:
+            start_step = int(resume_step_override)
+
+        logger.info(
+            "Resumed from checkpoint %s at step %d",
+            resume_path,
+            start_step,
+        )
+
     write_html_log = bool(getattr(cfg.sim, "write_html_log", True))
+    checkpoint_output_dir = os.path.join(output_dir, "checkpoints")
     completion_status = "success"
     completion_error = ""
     try:
@@ -517,6 +557,8 @@ def main(cfg: DictConfig):
         with metrics.phase("simulation_play"):
             results_log = runnable_simulation.play(
                 max_steps=cfg.sim.num_steps,
+                start_step=start_step,
+                checkpoint_path=checkpoint_output_dir,
                 return_html_log=write_html_log,
             )
         _log_startup_phase(

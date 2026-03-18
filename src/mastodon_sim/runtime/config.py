@@ -249,6 +249,33 @@ def validate_cross_references(cfg: DictConfig) -> None:
                         f"Social network fully_connected_targets references unknown role: {role}"
                     )
 
+    # Validate fixed-action set references in class pipeline.
+    class_pipeline = OmegaConf.select(scenario_cfg, "persona_pipeline.classes")
+    if class_pipeline:
+        inline_sets = OmegaConf.select(scenario_cfg, "fixed_action_sets.inline") or {}
+        file_sets = OmegaConf.select(scenario_cfg, "fixed_action_sets.file")
+        available_set_names = set(inline_sets.keys()) if isinstance(inline_sets, dict) else set()
+
+        # File-based set names are validated at build-time once file is loaded.
+        # Here we only assert that refs are not empty and that inline refs exist.
+        for class_name, class_cfg in class_pipeline.items():
+            class_cfg = class_cfg or {}
+            fixed_cfg = class_cfg.get("fixed_action") if isinstance(class_cfg, dict) else None
+            if not isinstance(fixed_cfg, dict):
+                continue
+            if not bool(fixed_cfg.get("enabled", False)):
+                continue
+            set_ref = str(fixed_cfg.get("action_set_ref", "")).strip()
+            if not set_ref:
+                errors.append(
+                    f"Class `{class_name}` has fixed_action.enabled=true but no action_set_ref"
+                )
+                continue
+            if set_ref not in available_set_names and not file_sets:
+                errors.append(
+                    f"Class `{class_name}` references unknown fixed_action set `{set_ref}`"
+                )
+
     if errors:
         raise ValueError(
             "Cross-reference validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
@@ -319,6 +346,12 @@ def validate_data_files(cfg: DictConfig, scenario_path: Path) -> None:
                     missing_files.append(
                         f"class `{class_name}` shared memories path not found: {shared_path}"
                     )
+
+    fixed_action_file = OmegaConf.select(cfg, "fixed_action_sets.file")
+    if fixed_action_file:
+        resolved = _resolve_local_path(str(fixed_action_file))
+        if resolved is None:
+            missing_files.append(f"fixed_action_sets.file path not found: {fixed_action_file}")
 
     if missing_files:
         raise FileNotFoundError(

@@ -15,7 +15,6 @@
 """An adaptable simulation prefab that can be configured to run any simulation."""
 
 import copy
-import functools
 import json
 import os
 import time
@@ -33,6 +32,7 @@ from concordia.typing import simulation as simulation_lib
 from concordia.utils import helper_functions as helper_functions_lib
 from concordia.utils import html as html_lib
 
+from mastodon_sim.runtime.config import ConfigStore
 from mastodon_sim.utils.memory import create_memory_bank
 from mastodon_sim.utils.misc import SimMetricsCollector
 
@@ -224,6 +224,7 @@ class Simulation(simulation_lib.Simulation):
         self,
         premise: str | None = None,
         max_steps: int | None = None,
+        start_step: int = 0,
         raw_log: list[Mapping[str, Any]] | None = None,
         get_state_callback: Callable[[dict[str, Any]], None] | None = None,
         checkpoint_path: str | None = None,
@@ -234,6 +235,7 @@ class Simulation(simulation_lib.Simulation):
         Args:
           premise: A string to use as the initial premise of the simulation.
           max_steps: The maximum number of steps to run the simulation for.
+                    start_step: The initial episode index to continue from.
           raw_log: A list to store the raw log of the simulation. This is used to
             generate the HTML log. Data in the supplied raw_log will be appended
             with the log from the simulation. If None, a new list is created.
@@ -261,9 +263,9 @@ class Simulation(simulation_lib.Simulation):
 
         self._get_state_callback = get_state_callback
 
-        checkpoint_callback = functools.partial(
-            self.save_checkpoint, checkpoint_path=checkpoint_path
-        )
+        def checkpoint_callback(step: int) -> None:
+            if self._should_save_checkpoint(step):
+                self.save_checkpoint(step, checkpoint_path=checkpoint_path)
 
         # Ensure game masters are ordered Initializers first
         initializers = [
@@ -285,6 +287,7 @@ class Simulation(simulation_lib.Simulation):
                 entities=self.entities,
                 premise=premise,
                 max_steps=max_steps,
+                start_step=max(0, int(start_step)),
                 verbose=True,
                 log=raw_log,
                 checkpoint_callback=checkpoint_callback,
@@ -329,11 +332,49 @@ class Simulation(simulation_lib.Simulation):
             html_results_log = html_lib.finalise_html(tabbed_html)
         return html_results_log
 
+    def _should_save_checkpoint(self, step: int) -> bool:
+        """Return whether a checkpoint should be saved at this step."""
+        try:
+            cfg = ConfigStore.get_config()
+        except Exception:
+            return True
+
+        checkpoint_cfg = getattr(getattr(cfg, "sim", object()), "checkpoint", None)
+        if checkpoint_cfg is None:
+            return False
+
+        explicit_raw = getattr(checkpoint_cfg, "explicit_steps", []) or []
+        explicit_steps: set[int] = set()
+        for value in explicit_raw:
+            try:
+                explicit_steps.add(int(value))
+            except (TypeError, ValueError):
+                continue
+
+        every_n_raw = getattr(checkpoint_cfg, "every_n_steps", None)
+        every_n: int | None = None
+        if every_n_raw is not None:
+            try:
+                parsed = int(every_n_raw)
+                if parsed > 0:
+                    every_n = parsed
+            except (TypeError, ValueError):
+                every_n = None
+
+        if every_n is None and not explicit_steps:
+            return False
+        if step in explicit_steps:
+            return True
+        if every_n is not None and step % every_n == 0:
+            return True
+        return False
+
     def make_checkpoint_data(self) -> dict[str, Any]:
         """Helper to create a checkpoint data dict."""
         entities_data: dict[str, Any] = {}
         game_masters_data: dict[str, Any] = {}
         checkpoint_data: dict[str, Any] = {
+            "step": self._checkpoint_counter,
             "entities": entities_data,
             "game_masters": game_masters_data,
             "raw_log": copy.deepcopy(self._raw_log),
@@ -380,6 +421,7 @@ class Simulation(simulation_lib.Simulation):
     def save_checkpoint(self, step: int, checkpoint_path: str | None):
         """Saves the state of all entities at the current step."""
         checkpoint_data = self.make_checkpoint_data()
+        checkpoint_data["step"] = int(step)
 
         if self._get_state_callback:
             self._get_state_callback(checkpoint_data)

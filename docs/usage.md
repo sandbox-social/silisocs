@@ -257,6 +257,67 @@ transitions between active and inactive states. Only active agents take actions.
 
 ---
 
+## Fixed-Action Entities
+
+Use a dedicated fixed entity prefab when you want deterministic,
+episode-aware behavior without LLM action generation.
+
+Minimal pattern:
+
+```yaml
+persona_pipeline:
+  classes:
+    broadcaster:
+      count: 1
+      prefab_module: mastodon_sim.agents.fixed_entity
+      sim_role_name: broadcaster
+      data:
+        source: inline
+        records:
+          - context: Official broadcaster account
+            name: Town Bulletin
+      field_map:
+        name: name
+        context: context
+      params:
+        action_flow: fixed_pre
+        fixed_action_plan:
+          - episode: 0
+            action_type: POST
+            target_id: ""
+            content: "Daily bulletin from {name}: please stay informed."
+            reasoning: "Scheduled bulletin at simulation start."
+          - episode: 5
+            action_type: POST
+            target_id: ""
+            content: "Emergency update from {name}: check local advisories."
+            reasoning: "Scheduled follow-up bulletin."
+
+sim:
+  engine:
+    flow_routing:
+      flow_order: [fixed_pre, default]
+  gm:
+    components:
+      observe:
+        built_in: timeline_every_turn
+        params:
+          episode_observation_flows: [fixed_pre]
+```
+
+Behavior notes:
+
+- Fixed entities parse episode index from observation text (for example `EPISODE: 12`).
+- If no episode number is parseable, the fixed entity increments its internal counter by 1.
+- The action text emitted by fixed entities is compatible with existing resolve components.
+
+Compatibility notes:
+
+- Fixed-action items use backend action names (or selectable aliases).
+- `sim.enabled_actions` applies globally and can restrict fixed-action items.
+
+---
+
 ## Memory Initialization
 
 Before the simulation loop starts, the initializer game master populates each
@@ -507,7 +568,40 @@ uv run streamlit run src/mastodon_sim/dashboard/launch_app.py
 ```
 
 Create the scenario visually, configure agents, and launch. Use the sidebar
-`Start from` selector to resume from previous run snapshots when needed.
+`Start from` selector to load previous run configuration snapshots when needed.
+
+To replay simulation state from a checkpoint, use `sim.checkpoint.resume_file`
+in the launch overrides (CLI-based resume).
+
+### 7. Replay from a Checkpoint
+
+Enable checkpointing during a run:
+
+```sh
+uv run mastodon-sim \
+  --config-path scenarios/my_scenario/conf \
+  sim.num_steps=200 \
+  sim.checkpoint.every_n_steps=10
+```
+
+Then resume from a snapshot file:
+
+```sh
+uv run mastodon-sim \
+  --config-path scenarios/my_scenario/conf \
+  sim.num_steps=200 \
+  sim.checkpoint.resume_file=scenarios/my_scenario/outputs/run1/.../checkpoints/step_100_checkpoint.json
+```
+
+Optional override for the resume step:
+
+```sh
+uv run mastodon-sim \
+  --config-path scenarios/my_scenario/conf \
+  sim.num_steps=200 \
+  sim.checkpoint.resume_file=/abs/path/to/step_100_checkpoint.json \
+  sim.checkpoint.resume_step=120
+```
 
 ---
 
@@ -537,6 +631,19 @@ Action semantics are policy-driven through `sim.engine.action_loop`.
 - `open_ended`: continue until stop token or max action budget.
 
 Probe timing is also policy-driven through `sim.engine.probe_schedule`.
+
+#### Defining New Agent Behavior Flows
+
+To introduce new class-level behavior phases without engine/resolve bloat:
+
+1. Set `params.action_flow` per class in `persona_pipeline.classes`.
+2. Define phase order in `sim.engine.flow_routing.flow_order`.
+3. Optionally add per-entity overrides with `sim.engine.flow_routing.entity_to_flow`.
+4. Add any flow names that require episode-style observations to
+  `sim.gm.components.observe.params.episode_observation_flows`.
+
+This pattern is how fixed entities run before default LLM-driven agents today,
+and it generalizes to any future specialized class.
 
 ### Game Master Responsibilities
 

@@ -83,21 +83,35 @@ _ARGUMENT_PARSERS: dict[str, ParserFunc | type] = {
 # --------------------------------------------------------------------------- #
 
 
-def app_action(method):
+def app_action(
+    method: Callable[..., Any] | None = None,
+    *,
+    selectable_name: str | None = None,
+    description: str | None = None,
+):
     """Mark PhoneApp methods as callable actions.
 
     Decorated methods become discoverable via PhoneApp.actions() and can be
     invoked through PhoneApp.invoke_action().
     """
-    signature = inspect.signature(method)
-    required_params = [
-        name
-        for name, param in signature.parameters.items()
-        if param.default == inspect.Parameter.empty and name != "self"
-    ]
-    method.__app_action__ = True
-    method.__required_params__ = required_params
-    return method
+
+    def _decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
+        signature = inspect.signature(fn)
+        required_params = [
+            name
+            for name, param in signature.parameters.items()
+            if param.default == inspect.Parameter.empty and name != "self"
+        ]
+        fn_any = typing.cast(Any, fn)
+        fn_any.__app_action__ = True
+        fn_any.__required_params__ = required_params
+        fn_any.__action_selectable_name__ = selectable_name
+        fn_any.__action_description_override__ = description
+        return fn
+
+    if method is not None:
+        return _decorate(method)
+    return _decorate
 
 
 class ActionArgumentError(Exception):
@@ -184,6 +198,7 @@ class ActionDescriptor:
     """Represents an action that can be invoked on a PhoneApp."""
 
     name: str
+    selectable_name: str
     description: str
     parameters: Sequence[Parameter]
     docstring: dataclasses.InitVar[docstring_parser.Docstring]
@@ -245,6 +260,9 @@ class ActionDescriptor:
         """Create an ActionDescriptor from a method."""
         doc = docstring_parser.parse(method.__doc__)
         description = f"{doc.short_description}\n{doc.long_description or ''}"
+        description_override = getattr(method, "__action_description_override__", None)
+        if description_override:
+            description = str(description_override)
         signature = inspect.signature(method)
         type_hints = get_type_hints(method)
 
@@ -254,11 +272,16 @@ class ActionDescriptor:
                 continue
             param_type = type_hints.get(name, Any)
             required = param.default == inspect.Parameter.empty
-            description = next((p.description for p in doc.params if p.arg_name == name), None)
-            method_parameters.append(Parameter(name, param_type, description, required))
+            param_description = next(
+                (p.description for p in doc.params if p.arg_name == name), None
+            )
+            method_parameters.append(Parameter(name, param_type, param_description, required))
 
         return cls(
             name=method.__name__,
+            selectable_name=str(
+                getattr(method, "__action_selectable_name__", None) or method.__name__
+            ),
             description=description,
             parameters=method_parameters,
             docstring=doc,
@@ -279,6 +302,9 @@ class PhoneApp(metaclass=abc.ABCMeta):
 
     action_logger: Any = None
     _log_color: COLOR_TYPE = "blue"
+
+    def __init__(self) -> None:
+        self._enabled_actions: set[str] | None = None
 
     @abc.abstractmethod
     def name(self) -> str:
@@ -302,7 +328,62 @@ class PhoneApp(metaclass=abc.ABCMeta):
     def actions(self) -> Sequence[ActionDescriptor]:
         """Return this app's callable actions."""
         methods = inspect.getmembers(self, predicate=inspect.ismethod)
-        return [ActionDescriptor.from_method(m) for _, m in methods if hasattr(m, _ACTION_PROPERTY)]
+        actions = [
+            ActionDescriptor.from_method(m) for _, m in methods if hasattr(m, _ACTION_PROPERTY)
+        ]
+        enabled_actions = getattr(self, "_enabled_actions", None)
+        if enabled_actions is None:
+            return actions
+        return [
+            action
+            for action in actions
+            if action.name in enabled_actions or action.selectable_name in enabled_actions
+        ]
+
+    def action_catalog(self) -> list[dict[str, Any]]:
+        """Return a normalized action catalog for prompting/UI/config validation."""
+        catalog: list[dict[str, Any]] = []
+        for action in self.actions():
+            catalog.append(
+                {
+                    "name": action.name,
+                    "selectable_name": action.selectable_name,
+                    "description": action.description.strip(),
+                    "parameters": [
+                        {
+                            "name": p.name,
+                            "required": p.required,
+                            "kind": str(p.kind),
+                            "description": p.description,
+                        }
+                        for p in action.parameters
+                    ],
+                }
+            )
+        return catalog
+
+    def set_enabled_actions(self, enabled_actions: Sequence[str] | None) -> None:
+        """Restrict actions exposed to prompts/parsers/tool-calling.
+
+        If ``enabled_actions`` is None, all actions are exposed.
+        """
+        if enabled_actions is None:
+            self._enabled_actions = None
+            return
+
+        normalized = {str(name).strip() for name in enabled_actions if str(name).strip()}
+        all_action_names = {action.name for action in self.actions()} | {
+            action.selectable_name for action in self.actions()
+        }
+        unknown = sorted(name for name in normalized if name not in all_action_names)
+        if unknown:
+            available = ", ".join(sorted(all_action_names))
+            raise ValueError(
+                "Unknown enabled action(s): "
+                + ", ".join(unknown)
+                + f". Available actions: {available}"
+            )
+        self._enabled_actions = normalized
 
     def full_description(self):
         """Return a description of the app and all the actions it supports."""
@@ -347,16 +428,70 @@ class PhoneApp(metaclass=abc.ABCMeta):
             self._print(f"Error invoking action {action.name}: {e}", color="red")
             return f"Error invoking action {action.name}: {e}"
 
+    def _action_lookup(self) -> dict[str, ActionDescriptor]:
+        lookup: dict[str, ActionDescriptor] = {}
+        for action in self.actions():
+            lookup[action.name] = action
+            lookup[action.selectable_name] = action
+        return lookup
+
     def invoke_action_by_name(self, action_name: str, args_text: str) -> str:
         """Find an action by name and invoke it with the given argument text.
 
         Used by the 'generic' action_mode to dispatch LLM output directly.
         """
-        action_map = {a.name: a for a in self.actions()}
+        action_map = self._action_lookup()
         if action_name not in action_map:
-            available = ", ".join(action_map.keys())
+            available = ", ".join(sorted(action_map.keys()))
             return f"Unknown action '{action_name}'. Available actions: {available}"
         return self.invoke_action(action_map[action_name], args_text) or ""
+
+    def invoke_action_with_kwargs(self, action_name: str, args: dict[str, Any]) -> str:
+        """Invoke action by name using structured kwargs payload."""
+        action_map = self._action_lookup()
+        if action_name not in action_map:
+            available = ", ".join(sorted(action_map.keys()))
+            return f"Unknown action '{action_name}'. Available actions: {available}"
+
+        action = action_map[action_name]
+        expected = {param.name: param for param in action.parameters}
+        payload = dict(args or {})
+
+        missing_required = [
+            name for name, param in expected.items() if param.required and name not in payload
+        ]
+        if missing_required:
+            return f"Missing required argument(s): {', '.join(missing_required)}"
+
+        unexpected = sorted(set(payload.keys()) - set(expected.keys()))
+        if unexpected:
+            return f"Unexpected argument(s): {', '.join(unexpected)}"
+
+        processed: dict[str, Any] = {}
+        for name, param in expected.items():
+            if name not in payload:
+                if not param.required:
+                    processed[name] = None
+                continue
+
+            value = payload[name]
+            if value is None and not param.required:
+                processed[name] = None
+                continue
+
+            if isinstance(value, str):
+                try:
+                    processed[name] = param.value_from_text(value)
+                except Exception:
+                    processed[name] = value
+            else:
+                processed[name] = value
+
+        try:
+            return getattr(self, action.name)(**processed) or ""
+        except Exception as exc:
+            self._print(f"Error invoking action {action.name}: {exc}", color="red")
+            return f"Error invoking action {action.name}: {exc}"
 
     def generate_generic_action_prompt(self) -> str:
         """Build a call-to-action prompt auto-generated from @app_action methods.
@@ -377,7 +512,7 @@ class PhoneApp(metaclass=abc.ABCMeta):
                 f"{p.name} ({'required' if p.required else 'optional'}, {p.kind})"
                 for p in action.parameters
             )
-            lines.append(f"  {action.name}({params_desc})")
+            lines.append(f"  {action.selectable_name}({params_desc})")
             lines.append(f"    {action.description.strip()}")
 
         lines += [
@@ -415,7 +550,7 @@ class PhoneApp(metaclass=abc.ABCMeta):
                 {
                     "type": "function",
                     "function": {
-                        "name": action.name,
+                        "name": action.selectable_name,
                         "description": action.description.strip(),
                         "parameters": {
                             "type": "object",

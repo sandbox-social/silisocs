@@ -40,6 +40,11 @@ uv run mastodon-sim social_media=reddit_like scenario=my_scenario
 | `sentence_encoder` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model for associative memory |
 | `memory_backend` | `list` | Memory type: `list` (fast) or `associative` (embedding-based) |
 | `action_mode` | `custom` | Action parsing: `custom`, `generic`, or `tool_calling` |
+| `enabled_actions` | `null` | Optional whitelist of backend action names (or selectable aliases). `null` means all actions enabled. |
+| `checkpoint.every_n_steps` | `null` | Save checkpoints every N steps when set. |
+| `checkpoint.explicit_steps` | `[]` | Additional explicit checkpoint steps. |
+| `checkpoint.resume_file` | `null` | Optional path to checkpoint JSON used to resume a prior run. |
+| `checkpoint.resume_step` | `null` | Optional step override when resuming (defaults to checkpoint step). |
 | `gm.preset` | `social_media_default` | Prebuilt GM component preset |
 | `gm.components.*` | *(slots)* | YAML-selectable GM components (`next_acting`, `observe`, `resolve`, `initializer`) |
 | `timeline_posts` | `10` | Number of posts shown in agent timeline |
@@ -188,6 +193,21 @@ persona_pipeline:
         goal: "Have a productive discussion."
       shared_memories:          # Appended to defaults
         - "Class-specific memory."
+      fixed_action:             # Optional helper for fixed_entity classes
+        enabled: false
+        action_set_ref: null
+        selection_policy: round_robin
+        on_exhaustion: loop
+
+fixed_action_sets:
+  file: null                    # Optional external YAML/JSON file with action sets
+  inline:
+    set_id:
+      actions:
+        - action: create_tweet
+          args:
+            status: "Breaking update from {name}"
+          weight: 1.0
 ```
 
 ### Data Sources
@@ -198,6 +218,83 @@ persona_pipeline:
 | `local_json` | `path` | JSON file (array of objects) |
 | `inline` | `records` | Records defined directly in YAML |
 | `config_path` | `path` | Dot-path reference into another config section |
+
+### Fixed-Entity Class Notes
+
+- Use `prefab_module: mastodon_sim.agents.fixed_entity` for deterministic fixed-action agents.
+- Fixed entities support `params.fixed_action_plan` entries with episode-indexed actions.
+- Set `params.action_flow` to control which engine flow bucket executes the entity.
+- To provide episode-based observations, set:
+
+```yaml
+sim:
+  gm:
+    components:
+      observe:
+        params:
+          episode_observation_flows: [fixed_pre]
+
+  engine:
+    flow_routing:
+      flow_order: [fixed_pre, default]
+      entity_to_flow: {}
+```
+
+### Defining New Behavior Flows (Easy Recipe)
+
+Use this whenever you add a new behavior-oriented agent class (fixed agents are one example).
+
+1. Assign each class to a flow via `params.action_flow`.
+2. Define execution order in `sim.engine.flow_routing.flow_order`.
+3. Optionally route specific entities by name with `sim.engine.flow_routing.entity_to_flow`.
+4. If a flow needs a special observation format, list it in `sim.gm.components.observe.params.episode_observation_flows`.
+
+Example:
+
+```yaml
+persona_pipeline:
+  classes:
+    broadcasters:
+      prefab_module: mastodon_sim.agents.fixed_entity
+      params:
+        action_flow: fixed_pre
+    users:
+      prefab_module: mastodon_sim.agents.entity
+      params:
+        action_flow: default
+
+sim:
+  engine:
+    flow_routing:
+      flow_order: [fixed_pre, default, moderation_post]
+      entity_to_flow:
+        "moderator_1": moderation_post
+  gm:
+    components:
+      observe:
+        params:
+          episode_observation_flows: [fixed_pre, moderation_post]
+```
+
+This keeps the system extensible without changing resolve logic or adding new manager layers.
+
+### Checkpoint Resume / Replay
+
+- Checkpoints are written to `.../outputs/.../checkpoints/step_<N>_checkpoint.json`.
+- Checkpoint saving is disabled by default unless `checkpoint.every_n_steps` or `checkpoint.explicit_steps` is configured.
+- Resume by setting `sim.checkpoint.resume_file` to a checkpoint JSON path.
+- By default, replay resumes from the `step` value saved in the checkpoint.
+- Set `sim.checkpoint.resume_step` to force a different starting step.
+
+CLI example:
+
+```sh
+uv run mastodon-sim \
+  --config-path scenarios/my_scenario/conf \
+  sim.num_steps=200 \
+  sim.checkpoint.every_n_steps=10 \
+  sim.checkpoint.resume_file=scenarios/my_scenario/outputs/run1/.../checkpoints/step_100_checkpoint.json
+```
 
 ### Social Network
 

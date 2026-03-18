@@ -4,6 +4,7 @@ import functools
 import logging
 import os
 import time
+from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal, cast
 
@@ -155,6 +156,60 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                 model.meta_data["episode_idx"] = step
 
     @staticmethod
+    def _entity_flow_type(game_master: entity_lib.Entity, entity_name: str, cfg: Any) -> str:
+        act_component = getattr(game_master, "_act_component", None)
+        flow_map = dict(getattr(act_component, "entity_action_flows", {}) or {})
+
+        configured_map = getattr(
+            getattr(getattr(cfg.sim, "engine", object()), "flow_routing", object()),
+            "entity_to_flow",
+            None,
+        )
+        if isinstance(configured_map, Mapping):
+            for key, value in configured_map.items():
+                if str(key).strip():
+                    flow_map[str(key).strip()] = str(value).strip() or "default"
+
+        return str(flow_map.get(entity_name, "default")).strip() or "default"
+
+    @classmethod
+    def _group_entities_by_flow(
+        cls,
+        *,
+        cfg: Any,
+        game_master: entity_lib.Entity,
+        entities: Sequence[entity_lib.Entity],
+        action_specs: Sequence[entity_lib.ActionSpec],
+    ) -> list[tuple[str, list[tuple[entity_lib.Entity, entity_lib.ActionSpec]]]]:
+        flow_groups: OrderedDict[str, list[tuple[entity_lib.Entity, entity_lib.ActionSpec]]] = (
+            OrderedDict()
+        )
+        for entity, spec in zip(entities, action_specs, strict=False):
+            flow = cls._entity_flow_type(game_master, entity.name, cfg)
+            flow_groups.setdefault(flow, []).append((entity, spec))
+
+        configured_order = getattr(
+            getattr(getattr(cfg.sim, "engine", object()), "flow_routing", object()),
+            "flow_order",
+            [],
+        )
+        if not configured_order:
+            return list(flow_groups.items())
+
+        ordered: list[tuple[str, list[tuple[entity_lib.Entity, entity_lib.ActionSpec]]]] = []
+        used: set[str] = set()
+        for flow in configured_order:
+            name = str(flow).strip()
+            if name and name in flow_groups and name not in used:
+                ordered.append((name, flow_groups[name]))
+                used.add(name)
+
+        for name, members in flow_groups.items():
+            if name not in used:
+                ordered.append((name, members))
+        return ordered
+
+    @staticmethod
     def _run_tasks_with_limit(
         tasks: Mapping[str, Callable[[], str]],
         worker_limit: int,
@@ -209,6 +264,7 @@ class SocialMediaEngine(simultaneous.Simultaneous):
         entities: Sequence[entity_lib.Entity],
         premise: str = "",
         max_steps: int = 100,
+        start_step: int = 0,
         verbose: bool = False,
         log: list[Mapping[str, Any]] | None = None,
         checkpoint_callback: Callable[[int], None] | None = None,
@@ -219,7 +275,7 @@ class SocialMediaEngine(simultaneous.Simultaneous):
 
         log_entry = _get_empty_log_entry()
         game_master = game_masters[0]
-        steps = 0
+        steps = max(0, int(start_step))
         if premise:
             premise = f"{EVENT_TAG} {premise}"
             game_master.observe(premise)
@@ -227,7 +283,7 @@ class SocialMediaEngine(simultaneous.Simultaneous):
         # logging setup
         cfg = ConfigStore.get_config()
         engine_cfg = {}
-        if hasattr(cfg.sim, "engine") and getattr(cfg.sim, "engine") is not None:
+        if hasattr(cfg.sim, "engine") and cfg.sim.engine is not None:
             engine_cfg = cast(dict[str, Any], OmegaConf.to_container(cfg.sim.engine, resolve=True))
         action_loop_policy = build_action_loop_policy(engine_cfg.get("action_loop"))
         probe_schedule_policy = build_probe_schedule_policy(engine_cfg.get("probe_schedule"))
@@ -415,22 +471,37 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                     ),
                 )
 
-            tasks = {}
+            flow_task_groups: list[tuple[str, dict[str, Callable[[], str]]]] = []
             entities_to_process = entities if skip_actions else next_entities
-            for i, entity in enumerate(entities_to_process):
-                if skip_actions:
+            if skip_actions:
+                tasks: dict[str, Callable[[], str]] = {}
+                for entity in entities_to_process:
                     action_spec = entity_lib.ActionSpec(
                         call_to_action="",
                         output_type=entity_lib.OutputType.SKIP_THIS_STEP,
                     )
-                else:
-                    action_spec = next_action_specs[i]
-                tasks[entity.name] = functools.partial(
-                    _entity_act, entity, action_spec, skip_actions
+                    tasks[entity.name] = functools.partial(_entity_act, entity, action_spec, True)
+                flow_task_groups.append(("default", tasks))
+            else:
+                grouped_entities = self._group_entities_by_flow(
+                    cfg=cfg,
+                    game_master=game_master,
+                    entities=entities_to_process,
+                    action_specs=next_action_specs,
                 )
+                for flow_name, members in grouped_entities:
+                    flow_tasks: dict[str, Callable[[], str]] = {}
+                    for entity, action_spec in members:
+                        flow_tasks[entity.name] = functools.partial(
+                            _entity_act,
+                            entity,
+                            action_spec,
+                            False,
+                        )
+                    flow_task_groups.append((flow_name, flow_tasks))
 
             # Run entity actions concurrently with adaptive worker throttling.
-            requested_workers = len(tasks)
+            requested_workers = sum(len(tasks) for _, tasks in flow_task_groups)
             models = collect_unique_models(game_master, entities_to_process)
             dynamic_worker_limit, worker_limit = compute_dynamic_worker_limit(
                 requested_workers=requested_workers,
@@ -483,7 +554,17 @@ class SocialMediaEngine(simultaneous.Simultaneous):
             _LOGGER.info("Episode %d action phase start", steps)
             t0 = time.time()
             try:
-                actions = self._run_tasks_with_limit(tasks, worker_limit)
+                actions: dict[str, str] = {}
+                for flow_name, tasks in flow_task_groups:
+                    if not tasks:
+                        continue
+                    _LOGGER.info(
+                        "Episode %d flow '%s': executing %d entities",
+                        steps,
+                        flow_name,
+                        len(tasks),
+                    )
+                    actions.update(self._run_tasks_with_limit(tasks, worker_limit))
             finally:
                 set_model_retry_phase(models, "other")
             action_duration = time.time() - t0

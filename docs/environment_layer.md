@@ -20,6 +20,8 @@ This page focuses on end-user and developer configurability for Engine/GM/backen
 - Engine remains policy-oriented (loop and scheduling concerns).
 - GM follows a **Concordia-native component-routing** style around SwitchAct.
 - Backend actions are exposed as callable tools through `@app_action` methods.
+- Specialized entity classes can define distinct runtime behavior (for example,
+  fixed-action entities) while still using the same GM resolve components.
 
 ## Canonical Structure
 
@@ -78,6 +80,14 @@ sim:
 - `parsed_action`: parse `ACTION TYPE / TARGET ID / CONTENT / REASONING` output.
 - `generic_action`: parse `ACTION: <name>` and `param: value` lines.
 - `tool_calling`: use model tool-calling directly over backend action schemas.
+
+Fixed-action directive handling:
+
+- Fixed-action entities should emit standard action text directly (for example,
+  the existing `ACTION TYPE / TARGET ID / CONTENT / REASONING` format), so
+  no resolve-component modification is required.
+- GM observe components can branch by entity flow type and return specialized
+  observations (for example `EPISODE: <n>`).
 
 ### Built-in Initializer Components
 
@@ -194,6 +204,10 @@ sim:
       built_in: step_schedule   # step_schedule | fixed_interval | disabled
       class_path: null
       params: {}
+
+    flow_routing:
+      flow_order: [fixed_pre, default]
+      entity_to_flow: {}
 ```
 
 Built-in action loop policies:
@@ -209,6 +223,18 @@ Built-in probe schedule policies:
 - `disabled`: never run probe phase.
 
 Engine remains separate from GM component routing by design.
+
+Flow routing notes:
+
+- `flow_order` defines execution buckets per episode.
+- Agents in each flow bucket still execute in parallel.
+- Flow buckets execute sequentially, enabling deterministic pre/post phases
+  for specialized entity classes without sacrificing per-bucket parallelism.
+- Assign classes to buckets using `persona_pipeline.classes.<name>.params.action_flow`.
+- Add one-off overrides with `sim.engine.flow_routing.entity_to_flow` when a
+  specific entity should move to a different phase.
+- Use `sim.gm.components.observe.params.episode_observation_flows` for flows
+  that should receive episode-index observations instead of timeline content.
 
 ## Recommended Boundary
 

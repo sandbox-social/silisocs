@@ -63,12 +63,21 @@ Configure the persona pipeline:
 - **Per-class LLM model**: Optional model override per agent class
 - **Count**: Number of agents in each class
 - **Sim role name**: Role key used by social network/activity config
+- **Fixed-action entity mode** (optional):
+- Enable fixed actions for a class
+- Select referenced action set id
+- Choose policy (`round_robin`, `weighted_random`, `scripted_sequence`)
+- Choose exhaustion behavior (`loop`, `stop`, `fallback_to_llm`)
+- **Fixed Action Set Registry**:
+- Optional file path for action sets
+- Inline YAML editor for reusable action sets (`set_id -> actions[]`)
 
 ### 4. Environment
 
 Runtime environment controls:
 
 - **Platform backend**: Twitter-like, Reddit-like, or Mastodon
+- **Enabled backend actions**: Optional multi-select whitelist. Empty means all backend actions are available.
 
 Environment levers in expanders:
 
@@ -91,6 +100,12 @@ Social network controls (in the same Environment tab):
 - **Graph type**: Barabasi-Albert, random, LFR benchmark
 - **Parameters**: Edges per node, followership probability
 - **Activity rates**: Per-role transition probabilities
+
+Action filtering behavior:
+
+- The enabled-action whitelist constrains LLM action selection prompts.
+- Tool-calling schemas are generated only for enabled actions.
+- Fixed-action entities are also constrained by this whitelist.
 
 ### 5. Probes
 
@@ -134,6 +149,11 @@ The sidebar uses a two-step loader:
 	- A prior run snapshot from `scenarios/<scenario>/outputs/<run>/configs/*/config.yaml`
 
 This allows you to start from the latest saved run config while keeping scenario-level selection clean.
+
+Checkpoint replay note:
+
+- `Start from` loads configuration snapshots, not runtime state checkpoints.
+- To resume runtime state, launch with `sim.checkpoint.resume_file=<path_to_checkpoint.json>`.
 
 Notes:
 

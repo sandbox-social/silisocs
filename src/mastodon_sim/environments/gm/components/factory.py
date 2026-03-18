@@ -91,8 +91,7 @@ def _instantiate_with_supported_kwargs(cls: type[Any], kwargs: Mapping[str, Any]
         name
         for name, param in params.items()
         if name != "self"
-        and param.kind
-        in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+        and param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
     }
     filtered = {k: v for k, v in kwargs.items() if k in supported}
     return cls(**filtered)
@@ -104,7 +103,8 @@ def build_observe_component(
     model: Any,
     player_names: list[str],
     sm_app: Any,
-    observation_cache: dict[str, str],
+    entity_action_flows: dict[str, str] | None = None,
+    episode_observation_flows: list[str] | None = None,
 ) -> entity_component.ContextComponent:
     """Build make-observation component from slot config."""
     return _build_from_slot(
@@ -115,7 +115,8 @@ def build_observe_component(
             "model": model,
             "player_names": player_names,
             "sm_app": sm_app,
-            "observation_cache": observation_cache,
+            "entity_action_flows": entity_action_flows,
+            "episode_observation_flows": episode_observation_flows,
         },
     )
 
@@ -126,7 +127,6 @@ def build_resolve_component(
     sm_app: Any,
     model: Any,
     call_to_action_str: str,
-    observation_cache: dict[str, str],
 ) -> entity_component.ContextComponent:
     """Build resolve component from slot config."""
     return _build_from_slot(
@@ -137,7 +137,6 @@ def build_resolve_component(
             "sm_app": sm_app,
             "model": model,
             "call_to_action_str": call_to_action_str,
-            "observation_cache": observation_cache,
         },
     )
 

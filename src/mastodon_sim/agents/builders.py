@@ -21,6 +21,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+import yaml
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from mastodon_sim.runtime.dataclasses import AgentConfig
@@ -84,6 +85,7 @@ class BaseAgentBuilder:
         pipeline_cfg = self._to_plain(self.config.persona_pipeline)
         defaults = pipeline_cfg.get("defaults", {})
         classes = pipeline_cfg.get("classes", {})
+        fixed_action_sets = self._load_fixed_action_sets()
 
         default_params = defaults.get("params", {}) or {}
         default_field_map = defaults.get("field_map", {}) or {}
@@ -100,6 +102,7 @@ class BaseAgentBuilder:
                 default_field_map,
                 default_mem_field,
                 default_shared,
+                fixed_action_sets,
             )
             all_agents.extend(agents)
         return all_agents
@@ -112,6 +115,7 @@ class BaseAgentBuilder:
         default_field_map: dict,
         default_mem_field: str | None,
         default_shared: list[str],
+        fixed_action_sets: dict[str, list[dict[str, Any]]],
     ) -> list[AgentConfig]:
         data_cfg = class_cfg.get("data", {})
         count = class_cfg.get("count")
@@ -163,6 +167,9 @@ class BaseAgentBuilder:
 
         # Per-class model override (applies to all agents in this class).
         class_model = class_cfg.get("model") or default_params.get("model")
+        class_fixed_action_cfg = (
+            class_cfg.get("fixed_action") if isinstance(class_cfg, Mapping) else None
+        )
 
         agents: list[AgentConfig] = []
         for idx, record in enumerate(records, start=1):
@@ -182,8 +189,146 @@ class BaseAgentBuilder:
                 news_posts,
                 class_model,
             )
+
+            resolved_fixed_action = self._build_fixed_action_config(
+                class_cfg=class_fixed_action_cfg,
+                fixed_action_sets=fixed_action_sets,
+                render_context={
+                    **record,
+                    "name": params.get("name", ""),
+                    "context": params.get("context", ""),
+                    "sim_role": sim_role,
+                },
+            )
+            if resolved_fixed_action is not None:
+                if str(prefab_module).strip().endswith("fixed_entity"):
+                    params["fixed_action_plan"] = list(resolved_fixed_action.get("actions", []))
+                    if str(resolved_fixed_action.get("selection_policy", "")).strip():
+                        params["selection_policy"] = str(
+                            resolved_fixed_action.get("selection_policy")
+                        ).strip()
+                    if str(resolved_fixed_action.get("on_exhaustion", "")).strip():
+                        params["on_exhaustion"] = str(
+                            resolved_fixed_action.get("on_exhaustion")
+                        ).strip()
+                    params.setdefault("action_flow", "fixed_pre")
+                else:
+                    params["fixed_action"] = resolved_fixed_action
+
             agents.append(AgentConfig(prefab=prefab_name, params=params))
         return agents
+
+    def _load_fixed_action_sets(self) -> dict[str, list[dict[str, Any]]]:
+        """Load fixed action set registry from scenario config.
+
+        Supported schema:
+            fixed_action_sets:
+              inline:
+                set_id:
+                  actions:
+                    - action: create_tweet
+                      args: {...}
+              file: input/fixed_actions/sets.yaml
+        """
+        cfg = self._to_plain(getattr(self.config, "fixed_action_sets", {})) or {}
+        inline_sets = cfg.get("inline", {}) if isinstance(cfg, Mapping) else {}
+        file_path = cfg.get("file") if isinstance(cfg, Mapping) else None
+
+        merged: dict[str, list[dict[str, Any]]] = {}
+
+        if file_path:
+            path = self._resolve_file_path(str(file_path))
+            if path.suffix.lower() == ".json":
+                with open(path) as f:
+                    from_file = json.load(f) or {}
+            else:
+                with open(path) as f:
+                    from_file = yaml.safe_load(f) or {}
+            parsed = self._parse_fixed_action_sets(from_file)
+            merged.update(parsed)
+
+        merged.update(self._parse_fixed_action_sets(inline_sets))
+        return merged
+
+    def _parse_fixed_action_sets(self, data: Any) -> dict[str, list[dict[str, Any]]]:
+        raw = self._to_plain(data) or {}
+        if not isinstance(raw, Mapping):
+            return {}
+
+        parsed: dict[str, list[dict[str, Any]]] = {}
+        for set_name, payload in raw.items():
+            if not isinstance(payload, Mapping):
+                continue
+            items = payload.get("actions", payload)
+            if isinstance(items, Mapping):
+                items = [items]
+            if not isinstance(items, list):
+                continue
+            action_items = [dict(item) for item in items if isinstance(item, Mapping)]
+            if action_items:
+                parsed[str(set_name)] = action_items
+        return parsed
+
+    def _build_fixed_action_config(
+        self,
+        *,
+        class_cfg: Any,
+        fixed_action_sets: dict[str, list[dict[str, Any]]],
+        render_context: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        cfg = self._to_plain(class_cfg) or {}
+        if not isinstance(cfg, Mapping):
+            return None
+        if not bool(cfg.get("enabled", False)):
+            return None
+
+        set_ref = str(cfg.get("action_set_ref", "")).strip()
+        if not set_ref:
+            raise ValueError("fixed_action.enabled=true requires fixed_action.action_set_ref")
+        if set_ref not in fixed_action_sets:
+            available = ", ".join(sorted(fixed_action_sets.keys())) or "<none>"
+            raise ValueError(
+                f"fixed_action.action_set_ref '{set_ref}' not found. Available sets: {available}"
+            )
+
+        rendered_actions: list[dict[str, Any]] = []
+        for raw_action in fixed_action_sets[set_ref]:
+            action_name = str(raw_action.get("action", "")).strip()
+            if not action_name:
+                continue
+            args = raw_action.get("args") or {}
+            if not isinstance(args, Mapping):
+                args = {}
+            rendered_args = {
+                str(k): self._render_template(v, render_context) for k, v in args.items()
+            }
+            item: dict[str, Any] = {
+                "action": action_name,
+                "args": rendered_args,
+            }
+            if "weight" in raw_action:
+                item["weight"] = raw_action.get("weight")
+            rendered_actions.append(item)
+
+        return {
+            "enabled": True,
+            "action_set_ref": set_ref,
+            "selection_policy": str(cfg.get("selection_policy", "round_robin")),
+            "on_exhaustion": str(cfg.get("on_exhaustion", "loop")),
+            "actions": rendered_actions,
+        }
+
+    def _render_template(self, value: Any, context: Mapping[str, Any]) -> Any:
+        """Render simple ``{field}`` templates recursively for fixed-action args."""
+        if isinstance(value, str):
+            if "{" in value and "}" in value:
+                return self._resolve_source(context, value)
+            return value
+        if isinstance(value, list):
+            return [self._render_template(item, context) for item in value]
+        if isinstance(value, Mapping):
+            return {str(k): self._render_template(v, context) for k, v in value.items()}
+        return value
 
     def _build_agent_params(
         self,
@@ -236,6 +381,9 @@ class BaseAgentBuilder:
         if "specific_memories" not in params and mem_field:
             params["specific_memories"] = self._extract_path(record, mem_field)
         params["specific_memories"] = self._normalize_memories(params.get("specific_memories", []))
+
+        if str(prefab_module).strip().endswith("fixed_entity") and "action_flow" not in params:
+            params["action_flow"] = "fixed_pre"
 
         if news_posts is not None:
             params["posts"] = news_posts
