@@ -218,6 +218,11 @@ class GameMaster(prefab_lib.Prefab):
             ):
                 resolve_slot["built_in"] = resolve_mode_map[action_mode]
 
+        enable_tool_calling = (
+            resolve_slot.get("built_in") == "tool_calling"
+            or getattr(cfg.sim, "action_mode", "custom") == "tool_calling"
+        )
+
         next_actor = build_next_acting_component(
             gm_components_cfg.get("next_acting"),
             player_names=player_names,
@@ -261,6 +266,7 @@ class GameMaster(prefab_lib.Prefab):
             entity_action_flows=entity_action_flows,
             activity_transition_rates=activity_rates,
             action_mode=getattr(cfg.sim, "action_mode", "custom"),
+            enable_tool_calling=enable_tool_calling,
         )
 
         return entity_agent_with_logging.EntityAgentWithLogging(

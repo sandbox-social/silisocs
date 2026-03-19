@@ -11,6 +11,7 @@ components configured via YAML and routed by SwitchAct.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from typing import Any
 
@@ -37,6 +38,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
         call_to_action_str: str = "",
         activity_transition_rates: dict[str, Any] | None = None,
         action_mode: str = "custom",
+        enable_tool_calling: bool = False,
     ):
         super().__init__(
             model=model,
@@ -48,6 +50,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
         self.entity_action_flows = dict(entity_action_flows or {})
         self.activity_transition_rates = activity_transition_rates or {}
         self.action_mode = action_mode
+        self.enable_tool_calling = enable_tool_calling
 
     @override
     def _terminate(  # type: ignore[misc]
@@ -74,22 +77,41 @@ class SMAct(gm_components.switch_act.SwitchAct):
     def _next_entity_action_spec(  # type: ignore[misc]
         self, contexts: entity_component.ComponentContextMapping, action_spec: entity_lib.ActionSpec
     ) -> str:
-        """Return per-entity action prompt based on configured action mode."""
-        del contexts, action_spec
-        if self.action_mode == "generic":
-            return f"prompt: {self.sm_app.generate_generic_action_prompt()} ;;type: free"
+        """Return per-entity action prompt based on configured action mode.
 
-        if self.action_mode == "tool_calling":
-            return (
-                "prompt: Briefly describe (1-2 sentences) the social-media action you "
-                "want to take and why, based on your character and the timeline shown. ;;type: free"
+        For tool-calling mode, includes markers that the entity's
+        SocialConcatActComponent will detect to enable tool-calling logic.
+
+        For open-ended action chunk policies, agents can output a special
+        "Finished action episode" action to signal they have completed all
+        desired actions for this cycle.
+        """
+        del contexts, action_spec
+        if self.action_mode == "generic" and not self.enable_tool_calling:
+            base_prompt = self.sm_app.generate_generic_action_prompt()
+        elif self.action_mode in {"generic", "tool_calling"} and self.enable_tool_calling:
+            base_prompt = (
+                "Choose one action using the provided tools based on your goals and recent context. "
+                "Only choose tools and arguments that are valid for the available schemas."
+            )
+        elif self.call_to_action_str:
+            base_prompt = self.call_to_action_str
+        else:
+            base_prompt = (
+                "Conduct a social-media action. Format it correctly as: "
+                "ACTION TYPE: (action)\n TARGET ID: (target_id)\n "
+                "CONTENT: (content)\n REASONING: (reasoning)"
             )
 
-        if self.call_to_action_str:
-            return f"prompt: {self.call_to_action_str} ;;type: free"
+        if not self.enable_tool_calling:
+            return f"prompt: {base_prompt} ;;type: free"
 
-        return (
-            "prompt: Conduct a social-media action. Format it correctly as: "
-            "ACTION TYPE: (action)\n TARGET ID: (target_id)\n "
-            "CONTENT: (content)\n REASONING: (reasoning)\n ;;type: free"
+        tool_schemas = json.dumps(self.sm_app.generate_tool_schemas())
+        call_to_action = (
+            "### TOOL_CALLING_MODE ###\n"
+            f"{base_prompt}\n"
+            "### TOOL_SCHEMAS_JSON ###\n"
+            f"{tool_schemas}\n"
+            "### END_TOOL_SCHEMAS_JSON ###"
         )
+        return f"prompt: {call_to_action} ;;type: free"

@@ -73,10 +73,19 @@ class FixedCountActionChunkPolicy:
 
 @dataclass
 class OpenEndedActionChunkPolicy:
-    """Execute actions until agent emits stop token or max cap is reached."""
+    """Execute actions until agent emits a 'Finished' action or max cap is reached.
+
+    In open-ended mode, the agent can take multiple sequential actions within a single
+    engine step. To support this, a special "Finished action episode" action is injected
+    into the LLM's action prompts, allowing the agent to signal when it has concluded
+    all desired actions for this cycle.
+
+    When the agent outputs a Finished action, the policy stops iteration and returns
+    to the engine loop. Otherwise, it continues up to max_actions iterations.
+    """
 
     max_actions: int = 3
-    done_token: str = "DONE"
+    finished_action_signal: str = "FINISHED"
     name: str = "open_ended"
 
     def run(
@@ -89,13 +98,21 @@ class OpenEndedActionChunkPolicy:
         skip_actions: bool,
         verbose: bool,
     ) -> str:
-        """Execute repeated actions with explicit agent-controlled stop support."""
+        """Execute repeated actions with explicit agent-controlled stop support.
+
+        The agent can output any valid action or the special instruction to finish
+        the action chunk. When "Finished action episode" is detected, iteration stops.
+
+        Returns
+        -------
+            str: The last executed action before termination (or empty string if skipped).
+        """
         if skip_actions:
             return ""
 
         last_action = ""
         max_actions = max(1, self.max_actions)
-        done_token = self.done_token.strip().lower()
+        finished_signal = self.finished_action_signal.strip().upper()
 
         for _ in range(max_actions):
             action = engine._run_single_entity_action(
@@ -105,18 +122,16 @@ class OpenEndedActionChunkPolicy:
                 skip_actions=False,
                 verbose=verbose,
                 observe_before_action=not bool(last_action),
-                return_raw_action=True,
             )
 
             if not action:
                 break
 
-            rendered_action = str(action.get("rendered", ""))
-            raw_action = str(action.get("raw", ""))
-            if rendered_action:
-                last_action = rendered_action
-
-            if done_token and raw_action.strip().lower() == done_token:
+            # Check if the entity indicated they are finished with the action episode
+            action_upper = str(action).strip().upper()
+            if action_upper == finished_signal or "FINISHED" in action_upper:
                 break
+
+            last_action = action
 
         return last_action

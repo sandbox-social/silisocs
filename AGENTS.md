@@ -91,30 +91,188 @@ Use behavior flows instead of adding custom manager branches:
 
 Fixed agents (`mastodon_sim.agents.fixed_entity`) are the reference example.
 
-## 5) Enabling New Agent Runtime Code
+## 5) Agent Interface: Concordia vs Custom
 
-Today, runtime entities are expected to be Concordia-compatible.
+All agents in mastodon-sim implement a common interface defined by `mastodon_sim.agents.base_agent.Agent` (ABC).
 
-Minimum practical runtime interface:
+### Minimum Required Interface
 
-- `name` attribute
-- `observe(observation: str) -> None`
-- `act(action_spec) -> str`
+Every agent (whether Concordia-based or custom) must implement:
 
-Recommended extras for observability and compatibility:
+```python
+from mastodon_sim.agents.base_agent import Agent
 
-- `get_last_log() -> dict` (if you want per-agent structured logs)
-- `set_state(...)` / `get_state(...)` via Concordia components for checkpoint resume
-- `set_allowed_action_types(...)` if action vocabulary constraints are needed
+class MyAgent(Agent):
+    @property
+    def name(self) -> str:
+        """Return agent's display name."""
+        return "Alice"
+    
+    def observe(self, observation: str) -> None:
+        """Receive environment observation from the social app."""
+        self._last_observation = observation
+    
+    def act(self, action_spec) -> str:
+        """Generate an action response given the action specification."""
+        # action_spec provides context and constraints
+        # Return format is determined by the resolve component (via YAML config)
+        return "some action response"
+```
 
-Prefab-level requirement:
+The resolve component and agent's configuration determine the output format expected.
+Agents should not be concerned with prescribing action format—that is a platform concern.
 
-- Expose `Entity(prefab_lib.Prefab)` with `build(model, memory_bank)` returning the runtime object.
+### Reference Implementation: FixedActionEntity
 
-How custom code is loaded:
+The `mastodon_sim.agents.fixed_entity.FixedActionEntityRuntime` is a concrete example of a non-LLM agent:
 
-- Via prefab module path in scenario class config (`prefab_module`)
-- Resolved in runner via `get_prefab_instance(...)` for non-core prefabs
+```python
+# src/mastodon_sim/agents/fixed_entity.py
+class FixedActionEntityRuntime(Agent):
+    """Deterministic agent executing pre-defined actions by episode."""
+    
+    def observe(self, observation: str) -> None:
+        # Extract episode number from observation
+        self._current_episode = extract_episode(observation)
+    
+    def act(self, action_spec) -> str:
+        # Look up action for current episode and return as string
+        action = self._next_action_item()
+        return format_action(action)
+```
+
+### How Custom Agents Are Loaded
+
+1. Create a module with an `Entity` class (Prefab wrapper):
+   ```python
+   # my_agents.py
+   import dataclasses
+   from concordia.typing import prefab as prefab_lib
+   
+   @dataclasses.dataclass
+   class Entity(prefab_lib.Prefab):
+       description: str = "My custom agent"
+       params: dict = dataclasses.field(default_factory=dict)
+       
+       def build(self, model, memory_bank):
+           return MyCustomAgentRuntime(params=self.params)
+   ```
+
+2. Reference in scenario config:
+   ```yaml
+   persona_pipeline:
+     prefab_module: my_agents
+     classes:
+       Alice:
+         role: influencer
+         prefab: Entity  # Uses my_agents.Entity
+   ```
+
+3. Runner loads it via `get_prefab_instance(prefab_module, class_name)`.
+
+### Concordia Integration Points
+
+If building a **Concordia-compatible** agent (using EntityAgentWithLogging):
+
+- Agents are context components (observe/act participate in component orchestration)
+- Extend `EntityAgentWithLogging` to get logging + checkpoint support automatically
+- Return from prefab's `build()` method
+
+If building a **custom (non-Concordia)** agent:
+
+- Implement only the `Agent` interface
+- Concordia integration still works (engine calls `agent.observe()` and `agent.act()`)
+- Checkpoint support optional (implement `get_state()`/`set_state()` if needed)
+
+No special ABC requirement for Concordia agents—they naturally implement the interface via activity slots.
+
+### Tool-Calling Implementation for Entities
+
+In **tool-calling mode** (`action_mode: tool_calling`), the platform uses backend actions as tools
+and the language model selects which action to invoke.
+
+**Architecture for tool-calling:**
+
+1. **Detect tool-calling mode**: Game master sets the action_spec with a `### TOOL_CALLING_MODE ###` marker
+2. **Entity act layer**: Uses `SocialConcatActComponent` to detect this marker
+3. **Tool selection**: Calls model's `sample_tool_call()` with available backend action schemas
+4. **Format result**: Returns structured tool-call result as JSON
+5. **Resolve execution**: ToolCallingResolveComponent parses result and executes the selected tool
+
+### Enabling Tool-Calling
+
+The base `Entity` prefab now uses `SocialConcatActComponent` by default, so tool-calling
+is enabled automatically when the game-master action spec includes tool markers.
+
+To enable tool-calling at the game-master layer, configure resolve as `tool_calling`.
+This keeps prompt generation mode (`custom` or `generic`) independent from parsing mode.
+
+Example custom-cta + tool-calling:
+
+```python
+sim:
+    action_mode: custom      # custom prompt text still used
+    components:
+        game_master:
+            resolve:
+                built_in: tool_calling
+```
+
+When tool-calling is active AND the action_spec contains the marker,
+`SocialConcatActComponent.get_action_attempt()` handles tool selection.
+Otherwise, normal Concordia act proceeds.
+
+### Validation & Error Handling
+
+Game master initialization (`src/mastodon_sim/environments/gm/game_master.py`) validates agents:
+
+```python
+# Checks at GM build time:
+for entity in self.entities:
+    assert hasattr(entity, 'name'), f"{entity} missing 'name' attribute"
+    assert hasattr(entity, 'observe'), f"{entity} missing 'observe' method"
+    assert hasattr(entity, 'act'), f"{entity} missing 'act' method"
+```
+
+Runner also validates during prefab construction, so **missing methods will fail fast**.
+
+### Multi-Action Support (Open-Ended Policy)
+
+When using `engine.action_chunk_policy: open_ended`:
+
+- Agent's `act()` method is called repeatedly within one step
+- Agent should output valid actions OR the special "Finished action episode" signal
+- Resolve components recognize "FINISHED" and stop iteration
+- Allows agents to decide how many actions to take per step
+
+Example:
+```python
+def act(self, action_spec) -> str:
+    if self._done_for_this_step():
+        return "Finished action episode"
+    return self._next_action()
+```
+
+This mode works with any agent (Concordia or custom) that implements the basic interface.
+
+## 5.5) Action Modes and Platform Configuration
+
+The platform supports different action modes configured via `sim.action_mode`:
+
+```yaml
+sim:
+  action_mode: custom  # custom | generic | tool_calling
+```
+
+Each mode corresponds to how the agent's responses are interpreted and executed:
+
+- **custom**: Custom parsing format determined by the scenario
+- **generic**: Generic action name + parameters format
+- **tool_calling**: Direct tool invocation via language model
+
+The specific action format and response interpretation is determined by the resolve component and scenario configuration, not by the agent. Agents simply return strings; the platform interprets them according to the active mode.
+
+For **tool-calling mode** specifically: The entity layer is responsible for calling `sample_tool_call()` when the action_spec indicates tool-calling is needed. The resolve component then processes the result. This architecture keeps tool-calling logic in the entity/act layer, not in resolve.
 
 ## 6) Checkpoints and Replay
 
@@ -125,6 +283,21 @@ How custom code is loaded:
 - Resume restores game-master and entity component state plus raw log.
 
 Important: checkpoint saving is disabled unless `every_n_steps` or `explicit_steps` is configured.
+
+**For custom agents**: By default, only Concordia `EntityWithComponents` entities are checkpointed.
+If your custom agent has episodic state that needs saving, implement `get_state()` and `set_state()`
+methods. The simulation will call these after checking `isinstance(entity, EntityWithComponents)`.
+
+Example:
+```python
+class MyAgent(Agent):
+    def get_state(self) -> dict[str, Any]:
+        return {"episode": self._current_episode, ...}
+    
+    def set_state(self, state: dict[str, Any]) -> None:
+        if state:
+            self._current_episode = state.get("episode", 0)
+```
 
 ## 7) Key Development Commands
 

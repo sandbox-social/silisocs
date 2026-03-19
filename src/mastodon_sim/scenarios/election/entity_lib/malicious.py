@@ -7,6 +7,7 @@ from concordia.components import agent as agent_components
 from concordia.language_model import language_model
 from concordia.typing import prefab as prefab_lib
 
+from mastodon_sim.agents.components.concat_act import SocialConcatActComponent
 from mastodon_sim.runtime.config import ConfigStore
 
 from .mastodon_action_suggester import (
@@ -216,7 +217,7 @@ def build(
             components_of_agent[goal_label] = overarching_goal
             component_order.insert(1, goal_label)
 
-    act_component = agent_components.concat_act_component.ConcatActComponent(
+    act_component = SocialConcatActComponent(
         model=model,
         component_order=component_order,
         randomize_choices=randomize_choices,
