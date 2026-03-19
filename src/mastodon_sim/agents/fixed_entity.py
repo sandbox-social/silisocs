@@ -16,6 +16,8 @@ from concordia.associative_memory import basic_associative_memory
 from concordia.language_model import language_model
 from concordia.typing import prefab as prefab_lib
 
+from mastodon_sim.agents.base_agent import Agent
+
 
 def _parse_episode_number(observation: str) -> int | None:
     match = re.search(r"(\d+)", observation or "")
@@ -27,13 +29,12 @@ def _parse_episode_number(observation: str) -> int | None:
         return None
 
 
-class FixedActionEntityRuntime:
+class FixedActionEntityRuntime(Agent):
     """Runtime entity implementing observe/act without LLM calls."""
 
     def __init__(self, *, params: Mapping[str, Any]) -> None:
         self._params = dict(params)
         self._agent_name = str(params.get("name", "FixedEntity"))
-        self.name = self._agent_name
         self.seed_post = str(params.get("seed_post", ""))
         self._current_episode = int(params.get("initial_episode", 0) or 0)
         self._default_cursor = 0
@@ -64,6 +65,11 @@ class FixedActionEntityRuntime:
                     self._default_actions.append(action)
                     continue
                 self._actions_by_episode.setdefault(episode_int, []).append(action)
+
+    @property
+    def name(self) -> str:
+        """Return the agent's display name."""
+        return self._agent_name
 
     def set_allowed_action_types(self, action_types: list[str]) -> None:
         self._allowed_action_types = [
@@ -124,6 +130,21 @@ class FixedActionEntityRuntime:
 
     def get_last_log(self) -> dict[str, Any]:
         return dict(self._last_log)
+
+    def get_state(self) -> dict[str, Any]:
+        """Return serializable state for checkpointing."""
+        return {
+            "current_episode": self._current_episode,
+            "default_cursor": self._default_cursor,
+            "episode_cursors": dict(self._episode_cursors),
+        }
+
+    def set_state(self, state: dict[str, Any]) -> None:
+        """Restore state from checkpoint."""
+        if state:
+            self._current_episode = state.get("current_episode", self._current_episode)
+            self._default_cursor = state.get("default_cursor", self._default_cursor)
+            self._episode_cursors = dict(state.get("episode_cursors", {}))
 
 
 @dataclasses.dataclass

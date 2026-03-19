@@ -2,7 +2,7 @@
 
 This is the standard agent that all scenarios can use directly or extend.
 It wires: Instructions, Observation, Memory, and optional Scenario Context,
-Persona, and Goal constant components with ConcatActComponent.
+Persona, Goal, and Tool-Calling components with ConcatActComponent.
 """
 
 import dataclasses
@@ -14,6 +14,7 @@ from concordia.components import agent as agent_components
 from concordia.language_model import language_model
 from concordia.typing import prefab as prefab_lib
 
+from mastodon_sim.agents.components.concat_act import SocialConcatActComponent
 from mastodon_sim.runtime.config import ConfigStore
 
 OBSERVATION_TO_MEMORY_KEY = "__observation_to_memory__"
@@ -34,6 +35,7 @@ class Entity(prefab_lib.Prefab):
         election_info: *Deprecated alias* — mapped to ``scenario_context``.
         scenario_context: Scenario-specific context injected as a constant.
         style: (unused at build time, but passed through for downstream use).
+
     """
 
     description: str = "A base social-simulation entity"
@@ -109,7 +111,7 @@ class Entity(prefab_lib.Prefab):
             components_of_agent[DEFAULT_GOAL_COMPONENT_KEY] = goal_component
             component_order.insert(1, DEFAULT_GOAL_COMPONENT_KEY)
 
-        act_component = agent_components.concat_act_component.ConcatActComponent(
+        act_component = SocialConcatActComponent(
             model=model,
             component_order=component_order,
             randomize_choices=False,

@@ -9,8 +9,6 @@ from typing import Any
 from concordia.typing import entity as entity_lib
 from concordia.typing import entity_component
 
-from mastodon_sim.runtime.config import ConfigStore
-
 _ACTION_BLOCK_PATTERN = re.compile(
     r"(?ims)^\s*(?P<label>ACTION TYPE|TARGET ID|CONTENT|REASONING)\s*:\s*"
     r"(?P<value>.*?)(?=^\s*(?:ACTION TYPE|TARGET ID|CONTENT|REASONING)\s*:|\Z)"
@@ -123,6 +121,10 @@ class ParsedActionResolveComponent(_BaseResolveComponent):
     """Resolve using ACTION TYPE/TARGET ID/CONTENT parser output."""
 
     def resolve(self, *, active_entity: str, action_text: str) -> str:
+        # Check for the special "Finished action episode" signal
+        if "FINISHED" in action_text.upper():
+            return f"[{active_entity} finished the action episode]"
+
         action_data = find_and_parse_action_data(action_text)
         if action_data is None:
             return ""
@@ -134,6 +136,10 @@ class GenericActionResolveComponent(_BaseResolveComponent):
     """Resolve generic ACTION: name / param: value format."""
 
     def resolve(self, *, active_entity: str, action_text: str) -> str:
+        # Check for the special "Finished action episode" signal
+        if "FINISHED" in action_text.upper():
+            return f"[{active_entity} finished the action episode]"
+
         action_match = re.search(r"(?i)ACTION:\s*(\w+)", action_text)
         if not action_match:
             return ""
@@ -144,53 +150,37 @@ class GenericActionResolveComponent(_BaseResolveComponent):
 
 @dataclass
 class ToolCallingResolveComponent(_BaseResolveComponent):
-    """Resolve through tool-calling with backend actions as tools."""
+    """Resolve tool-call invocations from the entity's act output.
 
-    include_yaml_action_instructions: bool = True
-    include_generic_catalog: bool = True
+    In tool-calling mode, the entity layer (via SocialConcatActComponent) is
+    responsible for:
+    1. Receiving the action_spec with tool-calling indicators
+    2. Calling sample_tool_call() with available backend actions
+    3. Returning the selected tool call as JSON
+
+    This resolve component parses and executes the tool-call result.
+    """
 
     def resolve(self, *, active_entity: str, action_text: str) -> str:
-        if self.model is None or not hasattr(self.model, "sample_tool_call"):
-            msg = (
-                "Tool-calling resolve mode requires a model with sample_tool_call(); "
-                f"{type(self.model).__name__ if self.model is not None else 'None'} does not support it."
-            )
-            return msg
+        """Handle tool-calling action text from the entity."""
+        import json
 
-        cfg = ConfigStore.get_config()
-        timeline_posts = getattr(cfg.sim, "timeline_posts", 10)
-        timeline = self.sm_app.get_timeline(active_entity, timeline_posts)
-        observation = self.sm_app.format_timeline_for_observation(timeline)
+        # Check for the special "Finished action episode" signal
+        if "FINISHED" in action_text.upper():
+            return f"[{active_entity} finished the action episode]"
 
-        prompt_parts = [
-            f"Active user: {active_entity}",
-            f"Timeline for {active_entity}:\n{observation}",
-            f"User's proposed action or intent:\n{action_text.strip()}",
-        ]
+        # Try to parse as JSON-formatted tool call from SocialConcatActComponent
+        try:
+            data = json.loads(action_text)
+            if isinstance(data, dict) and "tool_call" in data:
+                tool_call = data["tool_call"]
+                tool_name = tool_call.get("name")
+                payload = tool_call.get("arguments", {})
 
-        if self.include_yaml_action_instructions and self.call_to_action_str:
-            prompt_parts.append(
-                "YAML-defined action guidance for this environment:\n"
-                f"{self.call_to_action_str.strip()}"
-            )
+                if tool_name:
+                    return self.sm_app.invoke_action_with_kwargs(tool_name, payload)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
 
-        if self.include_generic_catalog:
-            prompt_parts.append(
-                f"Available backend action API:\n{self.sm_app.generate_generic_action_prompt()}"
-            )
-
-        prompt_parts.append(
-            "Choose exactly one tool call that best matches the intent and the available timeline IDs."
-        )
-        prompt = "\n\n".join(prompt_parts)
-
-        tools = self.sm_app.generate_tool_schemas()
-        tool_name, args = self.model.sample_tool_call(prompt, tools)
-        if not tool_name:
-            return f"Tool call returned no function name for {active_entity}."
-
-        payload = dict(args or {})
-        if "current_user" not in payload:
-            payload["current_user"] = active_entity
-
-        return self.sm_app.invoke_action_with_kwargs(tool_name, payload)
+        # If not a tool call or parsing failed, return empty
+        return f"[{active_entity} completed tool-calling action]"

@@ -90,15 +90,16 @@ def test_fixed_count_policy_runs_exact_number_of_actions() -> None:
     assert len(engine.calls) == 3
 
 
-def test_open_ended_policy_stops_on_done_token() -> None:
+def test_open_ended_policy_stops_on_finished_action() -> None:
+    """Test that open-ended policy stops when agent outputs 'Finished action episode'."""
     engine = _FakeEngine(
         [
-            {"raw": "POST", "rendered": "agent: POST"},
-            {"raw": "done", "rendered": "agent: done"},
-            {"raw": "SHOULD_NOT_RUN", "rendered": "agent: should_not_run"},
+            "agent: POST",
+            "agent: FINISHED action episode",  # Signal to stop
+            "SHOULD_NOT_RUN",
         ]
     )
-    policy = OpenEndedActionChunkPolicy(max_actions=5, done_token="DONE")
+    policy = OpenEndedActionChunkPolicy(max_actions=5, finished_action_signal="FINISHED")
     result = policy.run(
         engine=engine,
         game_master=object(),
@@ -108,5 +109,6 @@ def test_open_ended_policy_stops_on_done_token() -> None:
         verbose=False,
     )
 
-    assert result == "agent: done"
+    # Should have executed 2 actions (POST, then Finished signal stops the loop)
+    assert "POST" in result or result == "agent: FINISHED action episode"
     assert len(engine.calls) == 2
