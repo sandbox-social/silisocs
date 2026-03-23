@@ -1,571 +1,503 @@
-# Mastodon-Sim Architecture: Multi-Flow & Multi-GM Support
+# Mastodon-Sim Architecture: Multi-Flow & Component Routing
 
 ## Overview
 
-The mastodon-sim architecture has been redesigned to support flexible, composable game master orchestration with explicit component field routing. This document describes the core abstractions and how they work together.
+The mastodon-sim simulator is designed as a highly configurable system with distinct abstraction layers:
 
-**Key Concepts:**
-1. **FlowComponent**: Base class for components that route fields per-entity
-2. **Multi-Field Routing**: Decorator-based field declarations for per-entity configuration
-3. **Agent Flow Sequencing**: Order in which agents act within a GM (existing feature, unchanged)
-4. **GM Sequencing**: Order in which multiple GMs execute (new, optional, advanced)
-5. **Many-to-Many Routing**: Flexible agent → classes → GMs mapping
+1. **Agent Layer**: Configurable agent designs with multiple initialization methods
+2. **Environment Layer**: Pluggable engines and game masters coordinating agent-environment interaction
+3. **Backend Layer**: Pluggable social media platform implementations (Mastodon, Twitter-like, Reddit-like)
+4. **Component Layer**: Fine-grained observation, resolution, and scheduling components with optional multi-flow routing
 
----
-
-## 1. Component Layer: FlowComponent & Multi-Fields
-
-### FlowComponent Mixin
-
-`FlowComponent` is a mixin base class that adds optional per-entity field routing to any component.
-
-```python
-from mastodon_sim.environments.gm.components.base import FlowComponent
-from mastodon_sim.environments.gm.components.decorators import multi_field
-
-class MyObserveComponent(FlowComponent, MakeObservation):
-    def __init__(self, model, player_names, sm_app, **kwargs):
-        super().__init__()
-        self._sm_app = sm_app
-
-    @property
-    @multi_field(str)
-    def timeline_filter(self) -> str:
-        """Get timeline filter - can vary per entity."""
-        return self.get_field_for_entity('timeline_filter', default='all')
-```
-
-### Key Methods
-
-- `set_multi_field_values(entity_field_map)`: Initialize entity-specific field values
-  - Called at GM initialization time
-  - Maps entity_name → {field_name: field_value}
-
-- `get_field_for_entity(field_name, entity_name, default=None)`: Retrieve field value
-  - Used within component methods
-  - Returns per-entity value or default
-
-- `has_multi_fields()`: Check if component has declared multi-fields
-- `get_multi_fields()`: Retrieve metadata about multi-fields
-
-### Multi-Field Declaration
-
-Fields are declared with the `@multi_field(type)` decorator:
-
-```python
-@property
-@multi_field(str)  # Applied AFTER @property
-def my_field(self) -> str:
-    """This field can vary per entity."""
-    return self.get_field_for_entity('my_field', default='default_value')
-```
-
-**Key Points:**
-- Decorator is purely declarative
-- Zero overhead for non-multi-field components
-- Backward compatible: existing components unchanged
-- Decorator order: `@property` then `@multi_field`
-
-### Backward Compatibility
-
-- Existing components **do not inherit from FlowComponent** - no changes needed
-- Multi-field system is **opt-in** via explicit `@multi_field` decorator
-- If `set_multi_field_values()` not called, components work normally
-- Default GM behavior unchanged when `gm.gm_configs` not specified
+This document describes how these layers work together, with special focus on the multi-flow architecture for component routing.
 
 ---
 
-## 2. GM Initialization Layer: Multi-Field Setup
+## Part 1: Core Execution Model
 
-### Configuration Format
+### Simple Mode (enable_multi_flow: false)
 
-Entity-specific component fields are configured in YAML under `entities`:
+By default, the simulator uses **BaseGM** with a single component instance per role:
+
+```
+Engine schedules agents
+  ↓
+BaseGM.SMAct selects active entity
+  ↓
+Context components execute in order:
+  - NextActing: Who acts next?
+  - Observe: What does active entity see? (single TimelineObservation)
+  - Resolve: How is action executed?
+  - Recommendation: Update recommendations
+  ↓
+Agent receives observation and acts
+```
+
+**Characteristics:**
+- All agents see same type of observation (timeline)
+- All agents use same action resolution logic
+- All agents get same recommendation algorithm
+- No per-flow customization
+- Simplest, most efficient path
+
+**Configuration:**
+```yaml
+sim:
+  enable_multi_flow: false  # ← or simply omit (default)
+  gm:
+    preset: base
+```
+
+### Multi-Flow Mode (enable_multi_flow: true)
+
+When multi-flow is enabled, the simulator uses **MultiFlowGM** with multiple component instances and explicit routing:
+
+```
+Engine schedules agents
+  ↓
+MultiFlowGM.MultiFlowSMAct selects active entity
+  ↓
+1. Determine entity's flow (from entity_action_flows map)
+2. Look up flow → {role → component_key} mapping
+3. Execute only those components for this entity:
+  - NextActing: (shared)
+  - Observe: [timeline_make_observation | episode_observation] ← flow-specific
+  - Resolve: [parsed_action | generic_action] ← flow-specific
+  - Recommendation: (shared, but multi-algorithm)
+  ↓
+Agent receives flow-specific observation and acts
+```
+
+**Characteristics:**
+- Different agents can receive different observation types
+- Fixed agents see episode summaries; active agents see timelines
+- Per-flow customization of component behavior via multi-fields
+- Different recommendation algorithms for different flows
+- More flexible, slight overhead
+
+**Configuration:**
+```yaml
+sim:
+  enable_multi_flow: true  # ← Enable multi-flow mode
+  gm:
+    preset: shared_flow  # ← Use MultiFlowGM
+    components:
+      observe:
+        # Multi-instance config: each nested dict is a component instance
+        timeline:
+          built_in: timeline_every_turn
+          params: {}
+        episode:
+          built_in: episode_only
+          params: {}
+       # Now agents can be routed to timeline OR episode based on flow
+```
+
+---
+
+## Part 2: Agent Flows & Component Routing
+
+### Entity Action Flows
+
+Agents are assigned to flows, which determine their component routing:
+
+```yaml
+scenario:
+  entities:
+    - agent_name: alice
+      action_flow: active       # ← Flow assignment
+    - agent_name: bob
+      action_flow: active
+    - agent_name: sentinel_1
+      action_flow: fixed_pre    # ← Different flow
+```
+
+Multiple agents can share the same flow. All agents in a flow use the same components.
+
+### Flow-to-Component Mapping
+
+MultiFlowGM builds an explicit mapping from flows to component instances:
+
+```python
+flow_to_component_map = {
+    "active": {
+        "observe": "observe__timeline_make_observation",   # Active agents see timelines
+        "resolve": "resolve__parsed_action"               # Active agents use standard parser
+    },
+    "fixed_pre": {
+        "observe": "observe__episode_observation",        # Fixed agents see episodes
+        "resolve": "resolve__generic_action"              # Fixed agents use generic parser
+    }
+}
+```
+
+**How it's built:**
+1. Detect multi-instance component config (nested dicts in YAML)
+2. Build each component instance
+3. Auto-key by class name (TimelineObservation → observe__timeline_make_observation)
+4. Extract unique flows from entity_action_flows
+5. Map each flow to component instances
+
+**How it's used:**
+1. Concordia calls MultiFlowSMAct.pre_act() for active entity
+2. MultiFlowSMAct looks up entity's flow
+3. MultiFlowSMAct gets component keys for that flow
+4. Only those components execute for this entity
+5. Next entity is processed, potentially with different components
+
+---
+
+## Part 3: Multi-Field Component Configuration
+
+### What are Multi-Fields?
+
+Multi-fields allow a **single component instance** to behave differently per entity, based on flow-to-field mapping.
+
+**Example:** RecommendationComponent with different algorithms per flow:
+
+```yaml
+gm:
+  components:
+    recommend:
+      entities:           # ← Flow-to-field mapping
+        active:
+          recsys_type: "twitter"      # Active agents get embedding-based recommendations
+        lurker:
+          recsys_type: "reddit"       # Lurkers get hot-score recommendations
+```
+
+At runtime:
+1. RecommendationComponent extracts unique recsys_types: {"twitter", "reddit"}
+2. Initializes backend with all types: backend.init_recsys("twitter"); backend.init_recsys("reddit")
+3. Updates backend once per episode, backend generates recommendations for all types
+4. Each agent sees recommendations computed with their flow's algorithm
+
+### How Multi-Fields Work
+
+**Component-side (declare fields):**
+```python
+class TimelineObservation(FlowComponent):
+    def get_timeline(self, entity_name):
+        # Get timeline strategy for this entity's flow
+        strategy = self.get_field_for_entity("timeline_strategy", entity_name, default="follower_chronological")
+        # Use strategy to fetch timeline
+        return backend.get_timeline_strategy(strategy, ...)
+```
+
+**GM-side (initialize values):**
+```python
+# In MultiFlowGM.build():
+observe_component = build_observe_component(...)
+initialize_component_multi_fields(observe_component, {
+    "active": {"timeline_strategy": "pure_recsys"},
+    "lurker": {"timeline_strategy": "follower_chronological"}
+})
+```
+
+**Data structure passed:**
+```python
+entity_field_map = {
+    "active": {       # flow name (not entity name!)
+        "timeline_strategy": "pure_recsys",
+        "recsys_type": "twitter"
+    },
+    "lurker": {
+        "timeline_strategy": "follower_chronological",
+        "recsys_type": "reddit"
+    }
+}
+```
+
+### Which Components Support Multi-Fields?
+
+- ✅ **Observe components** (TimelineObservation): timeline_strategy, recsys_type
+- ✅ **RecommendationComponent**: recsys_type (extracts unique types, initializes all)
+- ⏳ **Resolve components**: Can add if needed (e.g., action_parser_style)
+- ⏳ **Next-acting components**: Can add if needed
+
+---
+
+## Part 4: Recommendation System (Multi-Algorithm Support)
+
+### Architecture
+
+Recommendations now work with multiple algorithms simultaneously:
+
+**Step 1: Initialization (MultiFlowGM.build())**
+```python
+recommend_component = build_recommendation_component(...)
+initialize_component_multi_fields(recommend_component, {
+    "active": {"recsys_type": "twitter"},
+    "lurker": {"recsys_type": "reddit"}
+})
+```
+
+**Step 2: First pre_act() call (RecommendationComponent)**
+- Extracts unique recsys_types from multi-field mapping
+- Calls backend.init_recsys("twitter") and backend.init_recsys("reddit")
+- Each call adds to backend's _recsys_types dict (cumulative, not overwriting)
+
+**Step 3: Every N steps (RecommendationComponent)**
+- Calls backend.update_recommendations() once
+- Backend iterates all initialized types, generates recommendations for each
+- Stores recommendations with recsys_type column in database
+
+**Step 4: Agent sees recommendation**
+- When TimelineObservation fetches timeline, it includes recommendations
+- Recommendations are for agent's configured algorithm type
+
+### Backend Multi-Algorithm State
+
+**Old (single type):**
+```python
+self.recsys_type = "reddit"  # One type at a time
+```
+
+**New (multi-type):**
+```python
+self._recsys_types = {
+    "twitter": {"type": "twitter", "model": SentenceTransformer(...), "embeddings_cache": {}},
+    "reddit": {"type": "reddit", "model": None, "embeddings_cache": {}}
+}
+```
+
+All algorithms are initialized and updated in every call, maximizing recommendation freshness.
+
+---
+
+## Part 5: Timeline Observations
+
+### Timeline Strategy Configuration
+
+Agents can receive timelines computed with different strategies:
+
+```yaml
+sim:
+  timeline_strategy: follower_chronological  # Default for all agents
+  timeline_config:
+    recsys_ratio: 0.6  # (for hybrid_recsys_follower strategy)
+```
+
+**Available strategies:**
+- `follower_chronological`: Posts from followed users, chronologically ordered
+- `pure_recsys`: Only recommendations from configured algorithm
+- `hybrid_recsys_follower`: Mix of recommendations and follower posts
+- `curated_global`: Trending/curated posts (if implemented in backend)
+
+### Per-Flow Timeline Configuration
+
+With multi-fields, different flows can see different timelines:
 
 ```yaml
 gm:
   components:
     observe:
-      built_in: timeline_every_turn
+      timeline:
+        built_in: timeline_every_turn
+        entities:
+          active:
+            timeline_strategy: "pure_recsys"        # Recommendations only
+          lurker:
+            timeline_strategy: "follower_chronological"  # Followers only
+```
+
+---
+
+## Part 6: Component Architecture
+
+### Component Types
+
+**1. NextActing Component** (role: next_acting)
+- Determines random order or policy
+- Decides which agent acts next
+- Built-in: activity_markov, activity_probability, all_entities, fixed_order
+
+**2. Observe Component** (role: observe)
+- Generates observation text for active entity
+- Built-in: TimelineObservation, EpisodeObservation, ChunkStartMakeObservation
+- Multi-instance support: Can have both Timeline and Episode simultaneously
+- Multi-field support: timeline_strategy, recsys_type
+
+**3. Resolve Component** (role: resolve)
+- Parses LLM output into backend-executable actions
+- Built-in: ParsedActionResolve, GenericActionResolve, ToolCallingResolve
+- Single instance per GM (could extend with multi-instance if needed)
+
+**4. Recommendation Component** (role: recommendation)
+- Updates backend recommendations on schedule
+- Responsible for initializing multiple algorithms
+- Multi-field support: Extracts unique recsys_type, initializes all, updates all
+
+**5. Backend Initializer** (role: initializer)
+- Calls backend.initialize() with seed posts, social network, etc.
+- Built-in: DefaultBackendInitializer
+- Usually single for a GM
+
+---
+
+## Part 7: Configuration Examples
+
+### Simple Configuration (No Multi-Flow)
+
+```yaml
+sim:
+  enable_multi_flow: false
+  gm:
+    preset: base
+    components:
+      observe:
+        built_in: timeline_every_turn
+      resolve:
+        built_in: parsed_action
+
+  # All agents see same timeline, use same resolution
+  # Simplest, most efficient path
+```
+
+### Multi-Flow Configuration
+
+```yaml
+sim:
+  enable_multi_flow: true
+  gm:
+    preset: shared_flow
+    components:
+      observe:
+        timeline:
+          built_in: timeline_every_turn
+          params: {}
+        episode:
+          built_in: episode_only
+          params: {}
+        entities:
+          active:
+            timeline_strategy: "pure_recsys"
+            recsys_type: "twitter"
+          fixed_pre:
+            timeline_strategy: "follower_chronological"
+            recsys_type: "reddit"
+
+      resolve:
+        built_in: parsed_action
+        entities:
+          active:
+            action_parser: "strict"
+          fixed_pre:
+            action_parser: "lenient"
+
+      recommend:
+        entities:
+          active:
+            recsys_type: "twitter"
+          fixed_pre:
+            recsys_type: "reddit"
+
+scenario:
+  entities:
+    - agent_name: alice
+      action_flow: active      # Uses active flow components
+    - agent_name: sentinel_1
+      action_flow: fixed_pre   # Uses fixed_pre flow components
+```
+
+### Advanced: Multiple Component Instances
+
+```yaml
+gm:
+  components:
+    observe:
+      timeline_active:
+        built_in: timeline_every_turn
+        params:
+          history_size: 50
+      timeline_passive:
+        built_in: timeline_every_turn
+        params:
+          history_size: 10
+      episode:
+        built_in: episode_only
       entities:
-        alice:
-          timeline_filter: "trusted"
-        bob:
-          timeline_filter: "all"
-    resolve:
-      built_in: parsed_action
-      entities:
-        alice:
-          action_parser: "strict"
-```
-
-### Initialization Flow
-
-1. **Factory parses config** from `gm.components[component_type].entities`
-2. **Builds entity→field mapping** as dict[entity_name][field_name] = field_value
-3. **Calls component.set_multi_field_values(mapping)**
-4. **Component stores mapping** for runtime retrieval
-
-### No Workflow Change
-
-The existing component calling convention is **unchanged**:
-- Components still receive entity_name via action_spec
-- Existing code flow remains identical
-- Multi-field values accessed via `get_field_for_entity()` when needed
-
----
-
-## 3. Agent Flow Sequencing (Existing Feature)
-
-### Purpose
-
-Controls the order in which agents act **within a single GM** during an episode.
-
-### Configuration
-
-```yaml
-engine:
-  flow_routing:
-    flow_order: [fixed_pre, default, analysis]  # Sequence of flows
-    entity_to_flow:
-      alice: "fixed_pre"          # Per-entity override
-      bob: "default"
-```
-
-### Execution Model
-
-1. **Next acting component** selects which agents act this step
-2. **Engine groups actors** by their assigned flow (via entity_to_flow or entity_action_flows)
-3. **Flows execute sequentially**:
-   - All agents in flow_order[0] act in parallel
-   - Then all agents in flow_order[1] act in parallel
-   - And so on...
-4. **Within each flow**, agents act in parallel (thread pool)
-
-### Properties
-
-- **Per-entity assignment**: Each agent has `entity_to_flow: agent_class → flow_name`
-- **Flow groups**: All agents in same flow act together in parallel
-- **Sequential flows**: Different flow groups never run simultaneously
-- **Scope**: This is **within a single GM**
-
----
-
-## 4. GM Sequencing (New, Optional, Advanced)
-
-### Purpose
-
-Controls the order in which **multiple GMs execute** when using advanced multi-GM mode.
-
-### When Enabled
-
-Advanced multi-GM mode is activated by specifying both:
-1. `gm.gm_configs: {...}` - Per-GM configurations
-2. `gm.gm_sequence: [...]` - Order of GM execution
-
-### Configuration
-
-```yaml
-gm:
-  agent_classes:  # Maps agents to class(es)
-    alice: ["human", "verified"]
-    bob: ["bot"]
-
-  class_to_gms:   # Maps classes to GM(s) - many-to-many
-    human: ["gm_human"]
-    verified: ["gm_analysis"]
-    bot: ["gm_bot"]
-
-  gm_sequence: ["gm_human", "gm_bot", "gm_analysis"]  # Execution order
-
-  gm_configs:     # Per-GM configuration
-    gm_human:
-      name: "human_gm"
-      components:
-        observe: {...}
-        resolve: {...}
-    gm_bot:
-      name: "bot_gm"
-      components: {...}
-    gm_analysis:
-      name: "analysis_gm"
-      components: {...}
-```
-
-### Execution Model
-
-1. **Engine reads gm_sequence** (e.g., [gm_human, gm_bot, gm_analysis])
-2. **For each GM in sequence**:
-   a. Determine agents assigned to this GM (via agent_classes → class_to_gms)
-   b. Call `gm.get_active_agents()` to find which agents act this step
-   c. Within this GM, execute normal agent flow sequencing (flow_order)
-   d. Wait for all agents to complete
-3. **Move to next GM** and repeat
-
-### Properties
-
-- **Sequential execution**: GMs never run in parallel
-- **Per-GM agent isolation**: Each GM works only with its assigned agents
-- **Composite routing**: Agent → Classes → GMs (many-to-many)
-- **Flow within GMs**: Each GM still uses its own flow_order
-- **Conflict avoidance**: If agents belong to multiple GMs, GMs serialize
-
-### Advanced Flexibility
-
-```yaml
-# Example: Same agent class goes to multiple GMs
-class_to_gms:
-  human:
-    - "gm_main"       # Main decision-making
-    - "gm_analysis"   # Parallel analysis
-
-gm_sequence:
-  - "gm_main"         # Humans make decisions first
-  - "gm_analysis"     # Then evaluation GMs run
+        active:
+          timeline_strategy: "pure_recsys"
+        lurker:
+          timeline_strategy: "follower_chronological"
+        fixed_observer:
+          # fixed_observer gets episode observation instead
+          # (handled by explicit mapping in MultiFlowSMAct)
 ```
 
 ---
 
-## 5. Orchestration: How It All Works Together
+## Part 8: Data Flow
 
-### Simple Mode (Default)
+### Pre_act Execution Sequence
 
-```
-Config: No gm.gm_configs or gm.gm_sequence
-Result: One GM handles all agents
+1. **Engine schedules entity**
+   - Calls flow_engine or base_engine step()
 
-flow:
-  Engine step loop:
-    → Call next_acting component (selects agents)
-    → Group agents by flow (entity_to_flow)
-    → Execute flow_pre agents (parallel)
-    → Execute default agents (parallel)
-    → Execute analysis agents (parallel)
-    → Repeat
-```
+2. **Engine calls GM.pre_act(action_spec)**
+   - action_spec.output_type = MAKE_OBSERVATION
 
-### Advanced Mode
+3. **SMAct (or MultiFlowSMAct) routes to components**
+   - Simple: Call all components in order
+   - Multi-flow: Determine entity's flow, call only flow-specific components
 
-```
-Config: Has gm.gm_configs AND gm.gm_sequence
-Result: Multiple GMs execute in sequence, each with flow groups
+4. **Components execute in order:**
+   - NextActing.pre_act(action_spec)
+   - Observe.pre_act(action_spec) ← Returns observation text
+   - Resolve.pre_act(action_spec) ← Prepared for next action parsing
+   - Recommend.pre_act(action_spec) ← Updates backend
 
-flow:
-  Engine step loop:
-    → For gm in gm_sequence:
-      → Get agents for this GM (via agent_classes → class_to_gms)
-      → Call gm.next_acting (select agents within this GM)
-      → Group by flow (entity_to_flow)
-      → Execute flow_pre agents (parallel within GM)
-      → Execute default agents (parallel within GM)
-      → Execute analysis agents (parallel within GM)
-    → Repeat for next GM
-```
-
-### Configuration Layers
-
-```
-┌─────────────────────────────────────────────────┐
-│ gm_sequence                                      │ ← GM execution order
-│ (controls which GMs run, in what order)         │
-├─────────────────────────────────────────────────┤
-│ gm [...] → agents                               │ ← Agent assignment
-│ (agent_classes + class_to_gms)                  │
-├─────────────────────────────────────────────────┤
-│ flow_order                                      │ ← Flow sequencing within GM
-│ entity_to_flow                                  │ ← Agent to flow assignment
-├─────────────────────────────────────────────────┤
-│ Multi-field values                              │ ← Component field values
-│ (entities[name].components[type].field_name)   │
-└─────────────────────────────────────────────────┘
-```
+5. **Observation returned to agent**
+   - Agent uses observation in LLM context
 
 ---
 
-## 6. Real-World Example
+## Part 9: Backward Compatibility
 
-### Scenario: Bot Detection & Analysis System
+### Simple → Multi-Flow Migration
 
-```yaml
-gm:
-  # Step 1: Classify agents into groups
-  agent_classes:
-    alice: ["human"]
-    bob: ["human", "active"]   # Can belong to multiple classes
-    charlie: ["bot"]
-    dave: ["bot", "suspicious"]
+Existing scenarios using simple mode can be migrated:
 
-  # Step 2: Route classes to GMs
-  class_to_gms:
-    human: ["gm_social"]         # Humans use social GM
-    active: ["gm_analysis"]      # Active users also use analysis GM
-    bot: ["gm_detection"]        # Bots use detection GM
-    suspicious: ["gm_audit"]     # Suspicious bots also audited
+1. Set `enable_multi_flow: true`
+2. Change `gm.preset: base` → `gm.preset: shared_flow`
+3. No other changes needed - falls back to single-instance mode
 
-  # Step 3: Execution order
-  gm_sequence:
-    - "gm_social"        # Human agents act first
-    - "gm_detection"     # Then bot detection
-    - "gm_analysis"      # Analyze active users
-    - "gm_audit"         # Finally audit suspicious bots
+The MultiFlowGM detects if multi-instance component config exists; if not, it builds single instances and routes all agents to them.
 
-  # Step 4: Per-GM configuration
-  gm_configs:
-    gm_social:
-      name: "social_gm"
-      components:
-        observe:
-          built_in: timeline_every_turn
-          entities:
-            alice:
-              timeline_filter: "verified_only"
-            bob:
-              timeline_filter: "all"
+### API Stability
 
-    gm_detection:
-      name: "detection_gm"
-      components:
-        observe:
-          built_in: timeline_every_turn
-          entities:
-            charlie:
-              timeline_filter: "behavior_anomaly"
-
-# Within each GM: agent flow sequencing still applies
-engine:
-  flow_routing:
-    flow_order: [pre_analysis, respond, post_analysis]
-    entity_to_flow:
-      alice: "pre_analysis"
-      bob: "respond"
-      charlie: "post_analysis"
-```
-
-**Execution:**
-1. GM Social runs (alice, bob) with their flow sequencing
-2. GM Detection runs (charlie) with detection logic
-3. GM Analysis runs (bob) for deeper inspection
-4. GM Audit runs (dave) for suspicious activity
+- BaseGM.build() unchanged
+- SMAct class remains for simple mode
+- MultiFlowSMAct is new, doesn't interfere with existing code
+- All factory functions are backward compatible
 
 ---
 
-## 7. API Reference
+## Part 10: Future Extensions
 
-### FlowComponent Methods
+### Possible Enhancements
 
-```python
-class FlowComponent:
-    def set_multi_field_values(self, entity_field_map: dict[str, dict[str, Any]]) -> None:
-        """Initialize entity-specific field values from GM config."""
-
-    def get_field_for_entity(self, field_name: str, entity_name: str | None = None,
-                             default: Any = None) -> Any:
-        """Retrieve field value for entity, with routing."""
-
-    def has_multi_fields(self) -> bool:
-        """Check if component has multi-field declarations."""
-
-    def get_multi_fields(self) -> dict[str, type]:
-        """Get metadata about multi-fields."""
-```
-
-### GameMasterFactory Methods
-
-```python
-class GameMasterFactory:
-    def __init__(self, gm_config, agent_names,
-                 agent_to_classes=None, class_to_gms=None):
-        """Create factory with flexible routing configuration."""
-
-    def build(self, model, memory_bank, entities)
-             -> tuple[EntityAgentWithLogging, ...]:
-        """Build GM instance(s) based on configuration."""
-
-    def get_gm_instance(self, gm_name: str) -> EntityAgentWithLogging | None:
-        """Get specific GM instance (after build)."""
-
-    def get_all_gm_instances(self) -> dict[str, EntityAgentWithLogging]:
-        """Get all built GM instances."""
-
-    def get_default_gm(self) -> EntityAgentWithLogging | None:
-        """Get single/default GM (if in single-GM mode)."""
-```
+1. **Per-flow next-acting policies**: Different flows might use different activity dynamics
+2. **Per-flow resolve policies**: Different parsing strategies for different agent types
+3. **Explicit component routing in config**: Instead of auto-detection, allow explicit flow → component mapping
+4. **Recommendation federation**: Chain multiple recommendation components or systems
+5. **Component inheritance**: Templates for component configs shared across flows
 
 ---
 
-## 8. Configuration Reference
+## Summary
 
-### Top-Level GM Config
+The multi-flow architecture provides:
 
-```yaml
-gm:
-  # Single-GM mode (default)
-  name: "my_gm"
-  components: {...}
+| Feature | Simple Mode | Multi-Flow Mode |
+|---------|-------------|-----------------|
+| Components per role | 1 | 1+ (with routing) |
+| Per-flow customization | ❌ | ✅ (via multi-fields) |
+| Multi-algorithm recommendations | ❌ | ✅ |
+| Different observation types | ❌ | ✅ |
+| Configuration complexity | Low | Medium |
+| Execution overhead | Minimal | Low |
+| Backward compatible | ✅ | ✅ |
 
-  # Advanced multi-GM mode (optional)
-  agent_classes:                    # Maps agent_name → [class_names]
-    agent1: ["class1"]
-    agent2: ["class1", "class2"]
-
-  class_to_gms:                     # Maps class_name → [gm_names]
-    class1: ["gm1", "gm2"]
-    class2: ["gm2"]
-
-  gm_sequence:                      # Execution order
-    - "gm1"
-    - "gm2"
-
-  gm_configs:                       # Per-GM configuration
-    gm1:
-      name: "gm1"
-      components:
-        observe: {...}
-        resolve: {...}
-```
-
-### Component Config with Multi-Fields
-
-```yaml
-gm:
-  components:
-    observe:
-      built_in: timeline_every_turn
-      entities:                    # Entity-specific field values
-        alice:
-          timeline_filter: "trusted"
-          timeline_count: 10
-        bob:
-          timeline_filter: "all"
-          timeline_count: 20
-```
-
-### Agent Flow Config (Within GM)
-
-```yaml
-engine:
-  flow_routing:
-    flow_order: [fixed_pre, default, analysis]
-    entity_to_flow:
-      alice: "fixed_pre"
-      bob: "default"
-```
-
----
-
-## 9. Implementation Notes
-
-### No Breaking Changes
-
-- All existing components continue to work unchanged
-- Single-GM mode is default and identical to previous behavior
-- Multi-GM and multi-field features are opt-in
-- Backward compatible with legacy "class_mapping" config format
-
-### Performance Considerations
-
-- Multi-field value retrieval is O(1) via hash lookup
-- No overhead for components not using multi-fields
-- GM sequencing eliminates parallel bugs (trades parallelism for safety)
-- Within-GM agent flow sequencing unchanged (still parallel)
-
-### Thread Safety
-
-- GMs execute sequentially (no multi-threading between GMs)
-- Within each GM, agents in same flow run parallel (existing thread pool)
-- No locks needed due to sequential GM execution
-
----
-
-## 10. Migration Guide
-
-### From Simple to Advanced Mode
-
-**Before:**
-```yaml
-gm:
-  name: "my_gm"
-  components:
-    observe:
-      built_in: timeline_every_turn
-```
-
-**After:**
-```yaml
-gm:
-  agent_classes:
-    alice: ["human"]
-    bob: ["bot"]
-
-  class_to_gms:
-    human: ["gm_human"]
-    bot: ["gm_bot"]
-
-  gm_sequence: ["gm_human", "gm_bot"]
-
-  gm_configs:
-    gm_human:
-      name: "human_gm"
-      components:
-        observe:
-          built_in: timeline_every_turn
-    gm_bot:
-      name: "bot_gm"
-      components:
-        observe:
-          built_in: timeline_every_turn
-```
-
-### Adding Multi-Fields to Component
-
-**Before:**
-```python
-class MyObserve(MakeObservation):
-    def __init__(self, model, player_names, sm_app):
-        super().__init__(model=model, ...)
-        self._filter = "all"
-```
-
-**After:**
-```python
-from mastodon_sim.environments.gm.components.base import FlowComponent
-from mastodon_sim.environments.gm.components.decorators import multi_field
-
-class MyObserve(FlowComponent, MakeObservation):
-    def __init__(self, model, player_names, sm_app):
-        super().__init__()
-        super().__init__(model=model, ...)
-
-    @property
-    @multi_field(str)
-    def timeline_filter(self) -> str:
-        return self.get_field_for_entity('timeline_filter', default='all')
-```
-
-**In YAML:**
-```yaml
-gm:
-  components:
-    observe:
-      entities:
-        alice:
-          timeline_filter: "trusted"
-```
-
----
-
-## 11. Common Questions
-
-**Q: Can agents belong to multiple GMs?**
-A: Yes! Via `agent_classes` and `class_to_gms`. Agent can have multiple classes, each class can route to multiple GMs.
-
-**Q: Do GMs run in parallel?**
-A: No, they execute sequentially per `gm_sequence`. This avoids state conflicts.
-
-**Q: Can I use multi-fields without multi-GM?**
-A: Yes, multi-fields work in single-GM mode. Set `FlowComponent` on your component and add `entities[name]` config.
-
-**Q: What happens if an agent doesn't have an assigned class?**
-A: It defaults to "default" class, which itself defaults to "default" GM.
-
-**Q: Do I need to change existing components?**
-A: No! Existing components continue working. Multi-field system is purely opt-in.
+Choose **simple mode** for most scenarios. Use **multi-flow** when agents need substantially different behaviors (e.g., active vs passive, fixed vs variable) or when running multi-algorithm recommendation experiments.
