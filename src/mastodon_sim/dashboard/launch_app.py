@@ -317,17 +317,48 @@ def _discover_entity_modules() -> list[str]:
     return modules
 
 
-def _save_scenario(name: str, data: dict, scenarios_root: Path) -> Path:
-    """Save scenario config YAML to scenarios/<name>/conf/scenario/<name>.yaml."""
-    # Ensure proper Hydra-compatible directory structure.
-    target_dir = scenarios_root / name / "conf" / "scenario"
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target_file = target_dir / f"{name}.yaml"
-    # Add @package header for Hydra.
+def _save_scenario(name: str, scenario_data: dict, sim_data: dict, social_media_type: str, scenarios_root: Path) -> Path:
+    """Save full scenario config to scenarios/<name>/conf/.
+
+    Saves three files:
+    - scenario/{name}.yaml: Agent definitions, network, probes
+    - sim.yaml: Simulation params (if different from base defaults)
+    - social_media.yaml: Platform config (if different from default)
+    """
+    # Ensure proper directory structure
+    conf_dir = scenarios_root / name / "conf"
+    conf_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save scenario YAML
+    scenario_dir = conf_dir / "scenario"
+    scenario_dir.mkdir(parents=True, exist_ok=True)
+    scenario_file = scenario_dir / f"{name}.yaml"
     header = "# @package scenario\n\n"
-    yaml_content = yaml.dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True)
-    target_file.write_text(header + yaml_content)
-    return target_file
+    yaml_content = yaml.dump(scenario_data, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    scenario_file.write_text(header + yaml_content)
+
+    # Save sim.yaml if any params are specified (only non-default/non-null values)
+    if sim_data:
+        sim_file = conf_dir / "sim.yaml"
+        sim_header = "# @package sim\n\n"
+        # Only include non-null, non-false, non-default values
+        sim_filtered = {k: v for k, v in sim_data.items() if v is not None and v is not False}
+        if sim_filtered:
+            sim_yaml_content = yaml.dump(sim_filtered, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            sim_file.write_text(sim_header + sim_yaml_content)
+
+    # Save social_media.yaml if it's not the default
+    if social_media_type and social_media_type != "twitter_like":
+        social_dir = conf_dir / "social_media"
+        social_dir.mkdir(parents=True, exist_ok=True)
+        social_file = social_dir / f"{social_media_type}.yaml"
+        social_header = "# @package social_media\n\n"
+        # Minimal override: just platform_type
+        social_yaml_content = yaml.dump({"platform_type": social_media_type},
+                                       default_flow_style=False, sort_keys=False)
+        social_file.write_text(social_header + social_yaml_content)
+
+    return scenario_file
 
 
 def _get_config_path_for_scenario(scenarios_root: Path, scenario_key: str) -> str | None:
@@ -684,7 +715,7 @@ with st.sidebar:
             # Create from selected preset default.
             default_cfg = _load_yaml(_CONF_DIR / f"{selected_preset}" / "scenario" / "default.yaml")
             default_cfg["scenario_name"] = clean_name
-            save_path = _save_scenario(clean_name, default_cfg, selected_scenarios_root)
+            save_path = _save_scenario(clean_name, default_cfg, {}, "twitter_like", selected_scenarios_root)
             st.success(f"Created: `{save_path}`")
             st.rerun()
         else:
@@ -837,6 +868,42 @@ with tab_sim:
                 value=bool(_sim_defaults.get("disable_language_model", False)),
                 key="disable_language_model",
             )
+
+    # Multi-flow and multi-GM orchestration (advanced)
+    with st.expander("🔀 Multi-Flow & Orchestration (Advanced)", expanded=False):
+        mf1, mf2 = st.columns(2)
+        with mf1:
+            st.checkbox(
+                "Enable GM Multi-Flow",
+                value=bool(_sim_defaults.get("enable_gm_multi_flow", False)),
+                key="enable_gm_multi_flow",
+                help="Allow game master to route agents to different component instances per flow.",
+            )
+            st.checkbox(
+                "Enable Engine Multi-Flow",
+                value=bool(_sim_defaults.get("enable_engine_multi_flow", False)),
+                key="enable_engine_multi_flow",
+                help="Use flow-aware engine with per-flow policies (flow_policies, flow_routing).",
+            )
+        with mf2:
+            st.markdown("**When enabled together**: GM routes agents to flows → Engine enforces flow policies")
+
+        # Multi-GM orchestration (gm_orchestration block)
+        st.markdown("**GM Orchestration** (advanced: multiple GMs managing different aspects)")
+        gm_orch_default = _sim_defaults.get("gm_orchestration", {})
+        gm_orch_yaml = st.text_area(
+            "gm_orchestration (YAML)",
+            value=yaml.dump(gm_orch_default, default_flow_style=False) if gm_orch_default else "gms: []\nflow_bindings:\n  flow_to_gm: {}\n  flow_to_gms: {}",
+            key="gm_orchestration_yaml",
+            height=200,
+            help="Define multiple GMs and their flow assignments. Leave empty to disable.",
+        )
+        try:
+            parsed_gm_orch = yaml.safe_load(gm_orch_yaml) or {}
+            st.session_state["gm_orchestration_yaml_parsed"] = parsed_gm_orch
+        except yaml.YAMLError as e:
+            st.error(f"Invalid YAML in gm_orchestration: {e}")
+            st.session_state["gm_orchestration_yaml_parsed"] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -1850,6 +1917,8 @@ with tab_launch:
         "max_concurrent_actions": st.session_state.get("max_concurrent_actions", 1000),
         "memory_backend": st.session_state.get("memory_backend", "list"),
         "action_mode": st.session_state.get("action_mode", "custom"),
+        "enable_gm_multi_flow": st.session_state.get("enable_gm_multi_flow", False),
+        "enable_engine_multi_flow": st.session_state.get("enable_engine_multi_flow", False),
         "enabled_actions": (
             st.session_state.get("enabled_actions")
             if st.session_state.get("enabled_actions")
@@ -1867,6 +1936,7 @@ with tab_launch:
             st.session_state.get("seed_posts_file") if st.session_state.get("seed_posts_file") else None
         ),
         "disable_language_model": st.session_state.get("disable_language_model", False),
+        "gm_orchestration": st.session_state.get("gm_orchestration_yaml_parsed", {}),
         "gm.preset": (
             st.session_state.get("gm_preset", "base")
             if bool(st.session_state.get("advanced_config_enabled", False))
@@ -1986,8 +2056,25 @@ with tab_launch:
     with btn1:
         if st.button("Save Scenario", key="save_scenario", use_container_width=True):
             name = st.session_state.get("scenario_name_edit", scenario_display)
-            save_path = _save_scenario(name, scenario_data, loaded_scenarios_root)
+
+            # Build sim_data dict with only non-default overrides
+            # Extract from sim_params but filter to only include values that differ from docstring/typical defaults
+            sim_data_to_save = {}
+            for key in ["num_agents", "num_steps", "action_mode", "llm_name",
+                       "enable_gm_multi_flow", "enable_engine_multi_flow",
+                       "timeline_strategy", "seed_posts.type"]:
+                val = st.session_state.get(key.replace(".", "_"), None)
+                if val is not None:
+                    sim_data_to_save[key] = val
+
+            # Also include gm_orchestration if it has content
+            if st.session_state.get("gm_orchestration_yaml_parsed"):
+                sim_data_to_save["gm_orchestration"] = st.session_state.get("gm_orchestration_yaml_parsed")
+
+            selected_platform = st.session_state.get("platform_type", "twitter_like")
+            save_path = _save_scenario(name, scenario_data, sim_data_to_save, selected_platform, loaded_scenarios_root)
             st.success(f"Saved: `{save_path}`")
+            st.info("Scenario config files created in `scenarios/{0}/conf/`".format(name))
             st.rerun()
 
     with btn2:
@@ -2009,7 +2096,18 @@ with tab_launch:
     if run_clicked:
         # Auto-save before running.
         name = st.session_state.get("scenario_name_edit", scenario_display)
-        _save_scenario(name, scenario_data, loaded_scenarios_root)
+
+        # Build sim_data with overrides
+        sim_data_to_save = {}
+        for key in ["num_agents", "num_steps", "action_mode", "llm_name",
+                   "enable_gm_multi_flow", "enable_engine_multi_flow",
+                   "timeline_strategy"]:
+            val = st.session_state.get(key, None)
+            if val is not None:
+                sim_data_to_save[key] = val
+
+        selected_platform = st.session_state.get("platform_type", "twitter_like")
+        _save_scenario(name, scenario_data, sim_data_to_save, selected_platform, loaded_scenarios_root)
 
         with status_placeholder.container():
             st.info("Launching simulation...")
