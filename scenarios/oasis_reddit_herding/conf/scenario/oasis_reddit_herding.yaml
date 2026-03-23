@@ -1,3 +1,5 @@
+# @package scenario
+
 scenario_name: oasis_reddit_herding
 jobname_format: "RedditHerding_${sim.num_agents}_${sim.num_steps}"
 

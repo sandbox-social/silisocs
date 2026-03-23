@@ -1,3 +1,5 @@
+# @package scenario
+
 scenario_name: oasis_twitter_polarization_oasis_full
 jobname_format: "TwitterPolarizationFull_${sim.num_agents}_${sim.num_steps}"
 

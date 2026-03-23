@@ -1,7 +1,0 @@
-defaults:
-  - oasis/sim: oasis_base  # OASIS simulation base config
-  - social_media:  oasis_twitter  # Twitter platform
-  - scenario: oasis_twitter_polarization
-  - _self_
-
-experiment_name: oasis_twitter_polarization
