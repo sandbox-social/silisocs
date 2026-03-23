@@ -2058,14 +2058,35 @@ with tab_launch:
             name = st.session_state.get("scenario_name_edit", scenario_display)
 
             # Build sim_data dict with only non-default overrides
-            # Extract from sim_params but filter to only include values that differ from docstring/typical defaults
+            # Extract from sim_params but filter to only include values that differ from base defaults
             sim_data_to_save = {}
-            for key in ["num_agents", "num_steps", "action_mode", "llm_name",
-                       "enable_gm_multi_flow", "enable_engine_multi_flow",
-                       "timeline_strategy", "seed_posts.type"]:
-                val = st.session_state.get(key.replace(".", "_"), None)
+            for key in [
+                # Core sim params
+                "num_agents", "num_steps", "llm_name", "run_name", "seed",
+                "action_mode", "memory_backend", "disable_language_model",
+                # Multi-flow/orchestration flags
+                "enable_gm_multi_flow", "enable_engine_multi_flow",
+                # Timeline and recommendations
+                "timeline_posts", "timeline_strategy", "observation_history",
+                # Seed posts
+                "seed_posts.type", "seed_posts.params.file_path",
+                # Advanced: enabled actions, checkpoint config
+                "enabled_actions", "write_html_log",
+                # GM components (if customized from defaults)
+                "gm.preset", "gm.components.next_acting.built_in", "gm.components.observe.built_in",
+                "gm.components.resolve.built_in", "gm.components.initializer.built_in",
+                # Engine action loop and probe schedule
+                "engine.preset", "engine.action_loop.built_in", "engine.probe_schedule.built_in",
+            ]:
+                session_key = key.replace(".", "_")
+                val = st.session_state.get(session_key, None)
                 if val is not None:
                     sim_data_to_save[key] = val
+
+            # Also include timeline_config for hybrid strategies
+            timeline_config = st.session_state.get("timeline_config", {})
+            if timeline_config:
+                sim_data_to_save["timeline_config"] = timeline_config
 
             # Also include gm_orchestration if it has content
             if st.session_state.get("gm_orchestration_yaml_parsed"):
@@ -2097,14 +2118,39 @@ with tab_launch:
         # Auto-save before running.
         name = st.session_state.get("scenario_name_edit", scenario_display)
 
-        # Build sim_data with overrides
+        # Build sim_data with overrides (same comprehensive list as "Save Scenario" button)
         sim_data_to_save = {}
-        for key in ["num_agents", "num_steps", "action_mode", "llm_name",
-                   "enable_gm_multi_flow", "enable_engine_multi_flow",
-                   "timeline_strategy"]:
-            val = st.session_state.get(key, None)
+        for key in [
+            # Core sim params
+            "num_agents", "num_steps", "llm_name", "run_name", "seed",
+            "action_mode", "memory_backend", "disable_language_model",
+            # Multi-flow/orchestration flags
+            "enable_gm_multi_flow", "enable_engine_multi_flow",
+            # Timeline and recommendations
+            "timeline_posts", "timeline_strategy", "observation_history",
+            # Seed posts
+            "seed_posts.type", "seed_posts.params.file_path",
+            # Advanced: enabled actions, checkpoint config
+            "enabled_actions", "write_html_log",
+            # GM components (if customized from defaults)
+            "gm.preset", "gm.components.next_acting.built_in", "gm.components.observe.built_in",
+            "gm.components.resolve.built_in", "gm.components.initializer.built_in",
+            # Engine action loop and probe schedule
+            "engine.preset", "engine.action_loop.built_in", "engine.probe_schedule.built_in",
+        ]:
+            session_key = key.replace(".", "_")
+            val = st.session_state.get(session_key, None)
             if val is not None:
                 sim_data_to_save[key] = val
+
+        # Also include timeline_config for hybrid strategies
+        timeline_config = st.session_state.get("timeline_config", {})
+        if timeline_config:
+            sim_data_to_save["timeline_config"] = timeline_config
+
+        # Also include gm_orchestration if it has content
+        if st.session_state.get("gm_orchestration_yaml_parsed"):
+            sim_data_to_save["gm_orchestration"] = st.session_state.get("gm_orchestration_yaml_parsed")
 
         selected_platform = st.session_state.get("platform_type", "twitter_like")
         _save_scenario(name, scenario_data, sim_data_to_save, selected_platform, loaded_scenarios_root)
