@@ -24,7 +24,9 @@ checkpoint:
 
 # Game-master component configurability (Concordia SwitchAct style)
 gm:
-  preset: social_media_default
+  # base: default one-GM workflow for most users
+  # shared_flow: advanced preset using shared-flow GM prefab
+  preset: base
   components:
     # Choose who acts next each step.
     next_acting:
@@ -53,8 +55,25 @@ gm:
       class_path: null
       params: {}
 
+# Optional multi-GM orchestration.
+# Backward compatible: if this block is omitted, the legacy single social GM is used.
+gm_orchestration:
+  gms: []
+  flow_bindings:
+    # Single GM owner for a flow.
+    flow_to_gm: {}
+    # Ordered GM chain for a flow (serialized across sequence numbers).
+    # If present for a flow, this takes precedence over flow_to_gm.
+    flow_to_gms: {}
+    # Fallback mapping from GM to flows when flow_to_gm/flow_to_gms are absent.
+    gm_to_flows: {}
+
 # Engine policy configurability
 engine:
+  # base: simple engine (single active social GM, no flow orchestration)
+  # flow: flow-enabled engine (multi-GM phase orchestration)
+  preset: base
+
   action_loop:
     built_in: single_action         # single_action | fixed_count | open_ended
     class_path: null
@@ -74,8 +93,16 @@ engine:
     flow_order: [fixed_pre, default]   # execution buckets; groups run sequentially, agents within each group run in parallel
     entity_to_flow: {}                  # optional explicit per-entity override map
 
+  # Optional per-flow action loop policy override.
+  # Missing flow entries fall back to engine.action_loop.
+  flow_policies: {}
+
 # Observation parameters
 timeline_posts: 10
+timeline_strategy: follower_chronological  # follower_chronological | pure_recsys | hybrid_recsys_follower | curated_global
+timeline_config:
+  recsys_ratio: 0.6      # For hybrid_recsys_follower: ratio of recommendations
+  follower_ratio: 0.4    # For hybrid_recsys_follower: ratio of followed users
 observation_history: 100
 
 # Roleplaying system prompt (injected into every agent)

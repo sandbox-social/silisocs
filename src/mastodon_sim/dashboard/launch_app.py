@@ -361,6 +361,8 @@ def _build_scenario_config() -> dict:
             cls_cfg["prefab_module"] = cls["prefab_module"]
         if cls.get("sim_role_name"):
             cls_cfg["sim_role_name"] = cls["sim_role_name"]
+        if cls.get("flow_tag"):
+            cls_cfg["flow_tag"] = cls["flow_tag"]
         if cls.get("data"):
             cls_cfg["data"] = cls["data"]
         if cls.get("field_map"):
@@ -544,7 +546,54 @@ with st.sidebar:
     st.caption("Social Simulation Sandbox")
     st.divider()
 
-    st.markdown("**Scenario Source**")
+    # NEW: Preset selection
+    st.markdown("**Configuration Preset**")
+    preset_options = ["default", "oasis"]
+    selected_preset = st.selectbox(
+        "Load preset",
+        preset_options,
+        index=0,
+        key="sidebar_preset_select",
+        help=(
+            "Select a preset configuration:\n"
+            "- **default**: Standard mastodon-sim settings\n"
+            "- **oasis**: OASIS-compatible settings (tool_calling, recsys enabled)"
+        ),
+    )
+
+    # Store preset selection for later use
+    st.session_state["_selected_preset"] = selected_preset
+
+    st.divider()
+
+    # Show preset details
+    if selected_preset == "default":
+        st.success("**Default Preset Active**")
+        st.caption(
+            "Standard mastodon-sim configuration with custom action parsing and optional recommendation system."
+        )
+    else:
+        st.info("**OASIS Preset Active**")
+        st.markdown(
+            """
+            **OASIS-Compatible Features:**
+            - ✅ Tool-calling action mode (LLM native)
+            - ✅ Recommendation system enabled
+            - ✅ Central batch recsys computation
+            - ✅ All 27 OASIS actions available
+            - ✅ Full OASIS evaluations support
+
+            **Included Scenarios:**
+            - oasis_reddit_herding (500 agents)
+            - oasis_twitter_polarization (40+ agents)
+            - oasis_twitter_infoprop (100 agents)
+            """
+        )
+
+    st.markdown("**Quick Links**")
+    st.markdown("- 📖 [OASIS Integration Guide](../../../scenarios/OASIS_INTEGRATION_GUIDE.md)")
+    st.markdown("- 📁 [Scenario Folder](../../../scenarios/)")
+    st.divider()
     default_scenarios_root = _resolve_scenarios_root(
         str(st.session_state.get("_loaded_scenarios_root") or "")
     )
@@ -553,7 +602,7 @@ with st.sidebar:
         value=str(default_scenarios_root),
         key="scenarios_root_path",
         help=(
-            "Directory containing scenario folders (e.g. election). "
+            "Directory containing scenario folders (e.g. election, oasis_reddit_herding). "
             "You can also provide a project root; if it has a nested scenarios/ folder, it will be used."
         ),
     )
@@ -563,7 +612,7 @@ with st.sidebar:
 
     st.markdown("**Scenario**")
     external_scenarios = _discover_external_scenarios(selected_scenarios_root)
-    pkg_default = _CONF_DIR / "scenario" / "default.yaml"
+    pkg_default = _CONF_DIR / f"{selected_preset}" / "scenario" / "default.yaml"
     available_scenarios = {"default": pkg_default, **external_scenarios}
     scenario_names = list(available_scenarios.keys())
 
@@ -572,7 +621,7 @@ with st.sidebar:
         scenario_names,
         index=0,
         key="sidebar_scenario_select",
-        help="Select a scenario to load.",
+        help="Select a scenario to load. OASIS presets include: oasis_reddit_herding, oasis_twitter_polarization, oasis_twitter_infoprop",
     )
 
     run_configs = _discover_run_configs_for_scenario(selected_scenarios_root, selected_scenario)
@@ -620,8 +669,8 @@ with st.sidebar:
     if st.button("Create", key="create_new_scenario", use_container_width=True):
         if new_name and new_name.strip():
             clean_name = new_name.strip().lower().replace(" ", "_")
-            # Create from default.
-            default_cfg = _load_yaml(_CONF_DIR / "scenario" / "default.yaml")
+            # Create from selected preset default.
+            default_cfg = _load_yaml(_CONF_DIR / f"{selected_preset}" / "scenario" / "default.yaml")
             default_cfg["scenario_name"] = clean_name
             save_path = _save_scenario(clean_name, default_cfg, selected_scenarios_root)
             st.success(f"Created: `{save_path}`")
@@ -630,16 +679,17 @@ with st.sidebar:
             st.error("Enter a scenario name.")
 
     st.divider()
-    st.markdown("**Quick Links**")
-    st.markdown("- [Documentation](docs/index.md)")
-    st.divider()
+
+    # Status placeholder for run messages
     status_placeholder = st.empty()
+
 
 # ---------------------------------------------------------------------------
 # Load defaults
 # ---------------------------------------------------------------------------
 _scenario_cfg = st.session_state.get("_loaded_scenario", {})
-_sim_base_defaults = _load_yaml(_CONF_DIR / "sim" / "base.yaml")
+_selected_preset_for_defaults = st.session_state.get("_selected_preset", "default")
+_sim_base_defaults = _load_yaml(_CONF_DIR / _selected_preset_for_defaults / "sim" / "base.yaml")
 _sim_loaded_defaults = st.session_state.get("_loaded_sim_defaults", {})
 if not isinstance(_sim_loaded_defaults, dict):
     _sim_loaded_defaults = {}
@@ -1015,6 +1065,15 @@ with tab_classes:
                 key=f"cls_role_{i}",
                 help="Role name for activity rates and social network config.",
             )
+            if bool(st.session_state.get("advanced_config_enabled", False)):
+                cls["flow_tag"] = st.text_input(
+                    "Flow tag",
+                    value=str(cls.get("flow_tag", cls.get("params", {}).get("action_flow", ""))),
+                    key=f"cls_flow_tag_{i}",
+                    help="Class-level action flow tag used by GM/engine orchestration.",
+                )
+            else:
+                cls.pop("flow_tag", None)
 
             st.markdown("**Fixed Action Entity (optional)**")
             fixed_cfg = (
@@ -1119,6 +1178,13 @@ with tab_classes:
 with tab_env:
     st.subheader("Environment Configuration")
 
+    st.checkbox(
+        "Enable advanced configuration",
+        value=bool(st.session_state.get("advanced_config_enabled", False)),
+        key="advanced_config_enabled",
+        help="Shows advanced flow and multi-GM controls. Keep disabled for the simple workflow.",
+    )
+
     st.markdown("**Runtime Environment**")
     ec1, ec2 = st.columns(2)
     with ec1:
@@ -1147,6 +1213,50 @@ with tab_env:
         key="enabled_actions",
         help="Constrains action prompts, parser/tool choices, and fixed-action entity execution.",
     )
+
+    # Timeline strategy selection
+    st.markdown("**Timeline Configuration**")
+    timeline_strategy_default = _sim_defaults.get("timeline_strategy", "follower_chronological")
+    timeline_config_default = _sim_defaults.get("timeline_config", {})
+
+    # Define available strategies per platform
+    timeline_strategies_by_platform = {
+        "twitter_like": ["follower_chronological", "pure_recsys", "hybrid_recsys_follower", "curated_global"],
+        "reddit_like": ["follower_chronological", "pure_recsys", "hybrid_recsys_follower"],
+        "mastodon": ["follower_chronological"],  # Mastodon always uses server feed
+    }
+
+    available_strategies = timeline_strategies_by_platform.get(selected_platform_for_actions, ["follower_chronological"])
+    strategy_idx = available_strategies.index(timeline_strategy_default) if timeline_strategy_default in available_strategies else 0
+
+    selected_timeline_strategy = st.selectbox(
+        "Timeline strategy",
+        available_strategies,
+        index=strategy_idx,
+        key="timeline_strategy",
+        help=(
+            "follower_chronological: Posts from followed users (chronological)\n"
+            "pure_recsys: Pure recommendation algorithm feed\n"
+            "hybrid_recsys_follower: Mix of recommendations + followed users\n"
+            "curated_global: Global trending + network mix (Twitter only)"
+        ),
+    )
+
+    # Timeline configuration for hybrid mode
+    if selected_timeline_strategy == "hybrid_recsys_follower":
+        tc_col1, tc_col2 = st.columns(2)
+        with tc_col1:
+            recsys_ratio = st.slider(
+                "Recommendation ratio",
+                0.0, 1.0,
+                float(timeline_config_default.get("recsys_ratio", 0.6)),
+                0.1,
+                key="timeline_recsys_ratio",
+                help="Fraction of timeline to fill with recommendations",
+            )
+        with tc_col2:
+            follower_ratio = 1.0 - recsys_ratio
+            st.metric("Follower ratio", f"{follower_ratio:.1%}")
 
     with st.expander("GM Components", expanded=False):
         gc1, gc2 = st.columns(2)
@@ -1324,6 +1434,138 @@ with tab_env:
                 key="engine_probe_schedule_class_path",
                 help="Optional fully-qualified class path to override built-in choice.",
             )
+
+    if bool(st.session_state.get("advanced_config_enabled", False)):
+        with st.expander("Advanced GM Orchestration", expanded=False):
+            st.caption(
+                "Advanced: multi-GM and flow orchestration. Leave disabled for the default easy workflow."
+            )
+            st.info(
+                "Advanced orchestration is intended for expert YAML workflows. "
+                "Use this section to copy/edit settings, then apply through config files or explicit Hydra overrides."
+            )
+            gm_preset_default = str(_sim_defaults.get("gm", {}).get("preset", "base"))
+            st.selectbox(
+                "GM preset",
+                ["base", "shared_flow"],
+                index=1 if gm_preset_default == "shared_flow" else 0,
+                key="gm_preset",
+                help="base uses the standard GM. shared_flow uses the shared-flow GM base.",
+            )
+
+            default_orchestration = _sim_defaults.get("gm_orchestration", {})
+            orchestration_yaml = (
+                yaml.dump(default_orchestration, default_flow_style=False)
+                if isinstance(default_orchestration, dict)
+                else "{}\n"
+            )
+            st.text_area(
+                "gm_orchestration (YAML)",
+                value=orchestration_yaml,
+                key="gm_orchestration_yaml",
+                height=180,
+                help="Supports gms, flow_to_gm, flow_to_gms, gm_to_flows.",
+            )
+
+    # NEW: Recommendation System Configuration
+    with st.expander("Recommendation System (Recsys)", expanded=(_selected_preset_for_defaults == "oasis")):
+        st.markdown("**OASIS-Compatible Recommendation Engine**")
+        st.caption("Central batch recommendation algorithm with embedding caching and lazy evaluation.")
+
+        # Get current recsys config
+        recsys_cfg = _sim_defaults.get("engine", {}).get("recsys", {}) if isinstance(_sim_defaults.get("engine", {}), dict) else {}
+
+        rc1, rc2, rc3 = st.columns(3)
+        with rc1:
+            recsys_enabled = recsys_cfg.get("enabled", True) if isinstance(recsys_cfg, dict) else True
+            st.checkbox(
+                "Enable recommendations",
+                value=recsys_enabled,
+                key="engine_recsys_enabled",
+                help="When enabled, agents see ~60% recommended posts + 40% followed user posts",
+            )
+
+        with rc2:
+            recsys_type_default = recsys_cfg.get("type", "reddit") if isinstance(recsys_cfg, dict) else "reddit"
+            _RECSYS_TYPES = ["reddit", "twitter", "twhin"]
+            st.selectbox(
+                "Algorithm type",
+                _RECSYS_TYPES,
+                index=_RECSYS_TYPES.index(recsys_type_default) if recsys_type_default in _RECSYS_TYPES else 0,
+                key="engine_recsys_type",
+                help=(
+                    "reddit: Hot-score (engagement+recency) | "
+                    "twitter: TF-IDF (bio-to-content) | "
+                    "twhin: Deep embeddings"
+                ),
+            )
+
+        with rc3:
+            st.markdown("")
+            st.markdown("")
+            if st.checkbox("Show algorithm details", key="show_recsys_details"):
+                algo_selection = st.session_state.get("engine_recsys_type", "reddit")
+                if algo_selection == "reddit":
+                    st.info(
+                        "**Reddit Hot-Score**: `sign(score) × log(|score|) + (age_seconds / 45000)`\n\n"
+                        "Boosts posts with high engagement and recent posts. Creates feedback loops."
+                    )
+                elif algo_selection == "twitter":
+                    st.info(
+                        "**Twitter TF-IDF**: Cosine similarity between user bio and post content\n\n"
+                        "Personalizes feed to user interests. Creates filter bubbles and echo chambers."
+                    )
+                elif algo_selection == "twhin":
+                    st.info(
+                        "**TWHIN-BERT**: Deep learning embeddings via Twitter model\n\n"
+                        "Most accurate but compute-intensive. Requires transformers library."
+                    )
+
+        st.divider()
+
+        recsys_params = recsys_cfg.get("params", {}) if isinstance(recsys_cfg, dict) else {}
+        rp1, rp2, rp3 = st.columns(3)
+
+        with rp1:
+            st.number_input(
+                "Max recommended posts",
+                min_value=1,
+                max_value=50,
+                value=max(1, _as_int(recsys_params.get("max_rec_posts", 10), 10)),
+                key="engine_recsys_max_rec_posts",
+                help="Number of posts to recommend to each agent",
+            )
+
+        with rp2:
+            st.number_input(
+                "Update every N steps",
+                min_value=1,
+                max_value=100,
+                value=max(1, _as_int(recsys_params.get("update_every_n_steps", 1), 1)),
+                key="engine_recsys_update_every_n_steps",
+                help="Frequency of recomputing recommendations (1=every step)",
+            )
+
+        with rp3:
+            st.checkbox(
+                "Lazy evaluation",
+                value=True,
+                key="engine_recsys_lazy",
+                help="Only compute recs for active agents (faster for sparse activity)",
+            )
+
+        if st.checkbox("📊 Timeline Composition Details", key="show_timeline_composition"):
+            st.markdown("""
+            #### How Agents See the Timeline
+
+            The combined feed merges two sources:
+            1. **Personalized Recommendations** (~60%): Generated by the recsys algorithm, updates centrally
+            2. **Followed User Posts** (~40%): Chronological feed from users the agent follows
+
+            This combination mirrors real social media behavior:
+            - Recsys posts drive engagement and create feedback loops
+            - Followed posts maintain social identity and network influence
+            """)
 
     st.markdown("**Social Network Configuration**")
     net_cfg = _scenario_cfg.get("social_network", {})
@@ -1577,8 +1819,18 @@ with tab_launch:
             else None
         ),
         "timeline_posts": st.session_state.get("timeline_posts", 10),
+        "timeline_strategy": st.session_state.get("timeline_strategy", "follower_chronological"),
+        "timeline_config": {
+            "recsys_ratio": st.session_state.get("timeline_recsys_ratio", 0.6),
+            "follower_ratio": 1.0 - st.session_state.get("timeline_recsys_ratio", 0.6),
+        },
         "observation_history": st.session_state.get("observation_history", 100),
         "disable_language_model": st.session_state.get("disable_language_model", False),
+        "gm.preset": (
+            st.session_state.get("gm_preset", "base")
+            if bool(st.session_state.get("advanced_config_enabled", False))
+            else "base"
+        ),
         "gm.components.next_acting.built_in": st.session_state.get(
             "gm_next_acting_built_in", "activity_markov"
         ),

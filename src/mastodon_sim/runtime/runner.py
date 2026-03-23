@@ -20,6 +20,7 @@ import random
 import sys
 import time
 import warnings
+from collections.abc import Mapping
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -36,9 +37,12 @@ from concordia.utils import helper_functions
 # Environment
 from dotenv import find_dotenv, load_dotenv
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
-from mastodon_sim.environments.engines.social_media import SocialMediaEngine
+from mastodon_sim.environments.engines.social_media import (
+    BaseSocialMediaEngine,
+    FlowSocialMediaEngine,
+)
 
 # Local imports
 from mastodon_sim.runtime.config import ConfigStore, validate_scenario_config
@@ -96,6 +100,228 @@ def _initialize_runtime_environment() -> Path:
 # Helper Functions
 # ============================================================================
 
+_DEFAULT_FLOW_TAG = "default"
+
+
+def _default_gm_filename(cfg: DictConfig, mode: str) -> str:
+    """Resolve default GM prefab filename from preset/mode."""
+    gm_preset = str(getattr(getattr(cfg.sim, "gm", object()), "preset", "base") or "base")
+    if mode == "shared" and gm_preset in {"shared_flow", "advanced_shared"}:
+        return "shared_flow_game_master"
+    return str(cfg.social_media.gamemaster.filename)
+
+
+def _default_gm_module_path(cfg: DictConfig, mode: str) -> str:
+    """Resolve default GM module path from preset/mode."""
+    gm_preset = str(getattr(getattr(cfg.sim, "gm", object()), "preset", "base") or "base")
+    if mode == "shared" and gm_preset in {"shared_flow", "advanced_shared"}:
+        return "mastodon_sim.environments.gm.shared_flow_game_master"
+    return str(cfg.social_media.gamemaster.sim_role.module_path)
+
+
+def _collect_declared_flow_tags(cfg: DictConfig) -> set[str]:
+    """Collect flow tags declared at class level in the scenario config."""
+    declared: set[str] = set()
+    classes_cfg = (
+        getattr(getattr(cfg.scenario, "persona_pipeline", object()), "classes", None)
+        if hasattr(cfg, "scenario")
+        else None
+    )
+    if not isinstance(classes_cfg, Mapping):
+        return declared
+
+    for class_cfg in classes_cfg.values():
+        if not isinstance(class_cfg, Mapping):
+            continue
+        class_params = class_cfg.get("params", {})
+        if not isinstance(class_params, Mapping):
+            class_params = {}
+        flow_tag = str(class_cfg.get("flow_tag", class_params.get("action_flow", "")) or "").strip()
+        if flow_tag:
+            declared.add(flow_tag)
+    return declared
+
+
+def _build_action_call_to_action(cfg: DictConfig, action_mode: str, enable_tool_calling: bool) -> str:
+    """Build action call-to-action prompt from config components.
+
+    Args:
+        cfg: Hydra config with social_media section
+        action_mode: "custom" or "generic"
+        enable_tool_calling: Whether tool-calling mode is enabled
+
+    Returns:
+        Complete action call-to-action prompt string
+    """
+    action_prompt = getattr(cfg.social_media, "action_prompt", "")
+    output_style = getattr(cfg.social_media, "output_style", "")
+
+    # Fallback to legacy action_call_to_action if new fields don't exist
+    if not action_prompt:
+        legacy_prompt = getattr(cfg.social_media, "action_call_to_action", "")
+        if legacy_prompt:
+            return legacy_prompt
+        return ""
+
+    # When tool-calling is enabled, replace output_style with tool call instruction
+    if enable_tool_calling:
+        output_style = (
+            "Respond with ONE of the available tool calls using this JSON format:\n"
+            '{"tool_call": {"name": "<action_name>", "arguments": {...}}}'
+        )
+
+    return f"{action_prompt}\n\n{output_style}" if output_style else action_prompt
+
+
+def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
+    """Resolve GM specs from orchestration config with legacy fallback."""
+    default_gm = cfg.social_media.gamemaster
+    default_mode = "shared"
+    default_spec = {
+        "gm_name": str(default_gm.name),
+        "filename": _default_gm_filename(cfg, default_mode),
+        "sim_role_name": str(default_gm.sim_role.name),
+        "sim_role_module_path": _default_gm_module_path(cfg, default_mode),
+        "sequence": 0,
+        "mode": default_mode,
+        "backend_scope": "shared_default",
+    }
+
+    gm_specs_raw = getattr(getattr(cfg.sim, "gm_orchestration", object()), "gms", None)
+    if not isinstance(gm_specs_raw, list) or not gm_specs_raw:
+        return [default_spec]
+
+    specs: list[dict[str, Any]] = []
+    for idx, gm_raw in enumerate(gm_specs_raw):
+        if not isinstance(gm_raw, Mapping):
+            raise ValueError(f"sim.gm_orchestration.gms[{idx}] must be a mapping.")
+        sim_role_cfg = gm_raw.get("sim_role", {})
+        if not isinstance(sim_role_cfg, Mapping):
+            sim_role_cfg = {}
+        spec = {
+            "gm_name": str(
+                gm_raw.get("gm_name", gm_raw.get("name", default_spec["gm_name"])) or ""
+            ).strip(),
+            "mode": str(gm_raw.get("mode", "shared") or "shared").strip(),
+        }
+        spec["filename"] = str(
+            gm_raw.get("filename", _default_gm_filename(cfg, str(spec["mode"]))) or ""
+        ).strip()
+        spec.update(
+            {
+            "sim_role_name": str(
+                sim_role_cfg.get("name", default_spec["sim_role_name"]) or ""
+            ).strip(),
+            "sim_role_module_path": str(
+                sim_role_cfg.get("module_path", _default_gm_module_path(cfg, str(spec["mode"])))
+                or ""
+            ).strip(),
+            "sequence": int(gm_raw.get("sequence", idx)),
+            "backend_scope": str(
+                gm_raw.get("backend_scope", "shared_default") or "shared_default"
+            ).strip(),
+        }
+        )
+        if not spec["gm_name"]:
+            raise ValueError(f"sim.gm_orchestration.gms[{idx}] is missing gm_name/name.")
+        specs.append(spec)
+
+    names = [str(spec["gm_name"]) for spec in specs]
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise ValueError(f"Duplicate GM names in sim.gm_orchestration.gms: {duplicates}")
+    return specs
+
+
+def _resolve_flow_chains(
+    cfg: DictConfig,
+    gm_specs: list[dict[str, Any]],
+    declared_flows: set[str],
+) -> dict[str, list[str]]:
+    """Resolve flow->GM chains with precedence: flow_to_gms > flow_to_gm > gm_to_flows."""
+    if not gm_specs:
+        return {}
+
+    gm_names = {str(spec["gm_name"]) for spec in gm_specs}
+    gm_sequences = {str(spec["gm_name"]): int(spec["sequence"]) for spec in gm_specs}
+    default_gm = str(min(gm_specs, key=lambda item: int(item["sequence"]))["gm_name"])
+
+    chains: dict[str, list[str]] = {}
+    bindings = getattr(getattr(cfg.sim, "gm_orchestration", object()), "flow_bindings", None)
+    if isinstance(bindings, Mapping):
+        gm_to_flows = bindings.get("gm_to_flows", {})
+        if isinstance(gm_to_flows, Mapping):
+            for gm_name, flow_values in gm_to_flows.items():
+                gm_name_str = str(gm_name).strip()
+                if gm_name_str not in gm_names:
+                    raise ValueError(f"Unknown GM in gm_to_flows: {gm_name_str}")
+                if isinstance(flow_values, str):
+                    flow_iter = [flow_values]
+                elif isinstance(flow_values, list):
+                    flow_iter = flow_values
+                else:
+                    raise ValueError(
+                        f"gm_to_flows['{gm_name_str}'] must be a string or list of strings."
+                    )
+                for flow in flow_iter:
+                    flow_name = str(flow).strip()
+                    if flow_name:
+                        chains.setdefault(flow_name, [gm_name_str])
+
+        flow_to_gm = bindings.get("flow_to_gm", {})
+        if isinstance(flow_to_gm, Mapping):
+            for flow, gm_name in flow_to_gm.items():
+                flow_name = str(flow).strip()
+                gm_name_str = str(gm_name).strip()
+                if not flow_name:
+                    continue
+                if gm_name_str not in gm_names:
+                    raise ValueError(f"Unknown GM in flow_to_gm['{flow_name}']: {gm_name_str}")
+                chains[flow_name] = [gm_name_str]
+
+        flow_to_gms = bindings.get("flow_to_gms", {})
+        if isinstance(flow_to_gms, Mapping):
+            for flow, gm_chain in flow_to_gms.items():
+                flow_name = str(flow).strip()
+                if not flow_name:
+                    continue
+                if isinstance(gm_chain, str):
+                    gm_chain_list = [gm_chain]
+                elif isinstance(gm_chain, list):
+                    gm_chain_list = gm_chain
+                else:
+                    raise ValueError(
+                        f"flow_to_gms['{flow_name}'] must be a string or list of strings."
+                    )
+                resolved = [str(gm).strip() for gm in gm_chain_list if str(gm).strip()]
+                if not resolved:
+                    raise ValueError(f"flow_to_gms['{flow_name}'] cannot be empty.")
+                unknown = [gm for gm in resolved if gm not in gm_names]
+                if unknown:
+                    raise ValueError(f"Unknown GMs in flow_to_gms['{flow_name}']: {unknown}")
+                chains[flow_name] = resolved
+
+    for flow in sorted(declared_flows):
+        chains.setdefault(flow, [default_gm])
+
+    if _DEFAULT_FLOW_TAG not in chains:
+        chains[_DEFAULT_FLOW_TAG] = [default_gm]
+
+    for flow_name, gm_chain in chains.items():
+        if len(set(gm_chain)) != len(gm_chain):
+            raise ValueError(f"Flow '{flow_name}' has duplicate GMs in chain: {gm_chain}")
+        if len(gm_chain) < 2:
+            continue
+        for left, right in zip(gm_chain, gm_chain[1:], strict=False):
+            if gm_sequences[left] >= gm_sequences[right]:
+                raise ValueError(
+                    "Flow chain must be strictly serial by sequence for multi-GM flows: "
+                    f"flow='{flow_name}' chain={gm_chain}. "
+                    "Ensure each subsequent GM has a higher sequence number."
+                )
+
+    return chains
+
 
 def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
     """
@@ -108,8 +334,12 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
     -------
         List of game master instance configs
     """
-    # Build shared memories
-    shared_memories = list(cfg.scenario.shared_memories) + [cfg.social_media.usage_instructions]
+    # Build shared memories. Class-pipeline scenarios may define defaults under
+    # persona_pipeline instead of top-level shared_memories.
+    scenario_shared = OmegaConf.select(cfg, "scenario.shared_memories")
+    if scenario_shared is None:
+        scenario_shared = OmegaConf.select(cfg, "scenario.persona_pipeline.defaults.shared_memories")
+    shared_memories = list(scenario_shared or []) + [cfg.social_media.usage_instructions]
     processing_mode_raw = (
         cfg.scenario.persona_pipeline.processing_mode
         if hasattr(cfg.scenario, "persona_pipeline")
@@ -136,6 +366,15 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
         initializer_prefab = "raw_memories_initializer__GameMaster"
         initializer_module_path = "mastodon_sim.agents.initialization.raw"
 
+    gm_specs = _resolve_gm_specs(cfg)
+    declared_flows = _collect_declared_flow_tags(cfg)
+    flow_chains = _resolve_flow_chains(cfg, gm_specs, declared_flows)
+
+    sequence_entry = min(
+        gm_specs,
+        key=lambda item: (int(item["sequence"]), str(item["gm_name"])),
+    )
+
     # Create Initializer Game Master
     initializer_gm = InitializerConfig(
         prefab=initializer_prefab,
@@ -144,7 +383,7 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
                 name="initial setup rules",
                 # Concordia next_game_master resolution is by *entity name*,
                 # not by prefab id.
-                next_game_master_name=cfg.social_media.gamemaster.name,
+                next_game_master_name=str(sequence_entry["gm_name"]),
                 shared_memories=shared_memories,
                 player_specific_memories=player_specific_memories,
                 player_specific_context=player_specific_context,
@@ -153,17 +392,15 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
         ),
     )
 
-    # Create Social Media Game Master
-    sim_role = SimRole(
-        name=cfg.social_media.gamemaster.sim_role.name,
-        module_path=cfg.social_media.gamemaster.sim_role.module_path,
-    )
-
     # Get social media role parameters
+    activity_transition_rates = dict(cfg.scenario.social_network.activity_transition_rates)
+    fully_connected_targets = list(
+        OmegaConf.select(cfg, "scenario.social_network.fully_connected_targets") or []
+    )
     simrole_params = get_simrole_parameters(
-        activity_transition_rates=dict(cfg.scenario.social_network.activity_transition_rates),
-        roles=list(cfg.scenario.social_network.activity_transition_rates.keys()),
-        fully_connected_targets=list(cfg.scenario.social_network.fully_connected_targets),
+        activity_transition_rates=activity_transition_rates,
+        roles=list(activity_transition_rates.keys()),
+        fully_connected_targets=fully_connected_targets,
         base_probability=cfg.scenario.social_network.base_followership_probability,
     )
 
@@ -175,21 +412,52 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
         sim_roles=sim_roles,
     )
 
-    social_media_gm = GameMasterConfig(
-        prefab=f"{cfg.social_media.gamemaster.filename}__GameMaster",
-        params=asdict(
-            SocialMediaParams(
-                name=cfg.social_media.gamemaster.name,
-                calls_to_action={"social_media_action": cfg.social_media.action_call_to_action},
-                sim_role=sim_role,
-                app_module_path=getattr(cfg.social_media, "app_module_path", ""),
-                sm_user_data=sm_user_data,
-                app_description=cfg.social_media.usage_instructions,
+    social_media_gms: list[prefab_lib.InstanceConfig] = []
+    for spec in gm_specs:
+        gm_name = str(spec["gm_name"])
+        owned_flows = [flow for flow, chain in flow_chains.items() if gm_name in chain]
+        sim_role = SimRole(
+            name=str(spec["sim_role_name"]),
+            module_path=str(spec["sim_role_module_path"]),
+        )
+        gm_user_data = UserData(
+            sim_role_parameters=simrole_params,
+            sim_roles=dict(sim_roles),
+            gm_orchestration={
+                "gm_name": gm_name,
+                "sequence": int(spec["sequence"]),
+                "mode": str(spec["mode"]),
+                "backend_scope": str(spec["backend_scope"]),
+                "owned_flows": owned_flows,
+                "flow_chains": flow_chains,
+            },
+        )
+        social_media_gms.append(
+            GameMasterConfig(
+                prefab=f"{spec['filename']}__GameMaster",
+                params=asdict(
+                    SocialMediaParams(
+                        name=gm_name,
+                        # Determine if tool-calling is enabled
+                        calls_to_action={
+                            "social_media_action": _build_action_call_to_action(
+                                cfg,
+                                action_mode=getattr(cfg.sim, "action_mode", "custom"),
+                                enable_tool_calling=(
+                                    getattr(getattr(getattr(cfg.sim, "gm", object()), "components", object()), "resolve", {}).get("built_in") == "tool_calling"
+                                ),
+                            )
+                        },
+                        sim_role=sim_role,
+                        app_module_path=getattr(cfg.social_media, "app_module_path", ""),
+                        sm_user_data=gm_user_data,
+                        app_description=cfg.social_media.usage_instructions,
+                    )
+                ),
             )
-        ),
-    )
+        )
 
-    return [initializer_gm, social_media_gm]
+    return [initializer_gm, *social_media_gms]
 
 
 def populate_agent_data(
@@ -224,6 +492,7 @@ def populate_agent_data(
     player_specific_memories: dict[str, list[str]] = {}
     player_specific_context: dict[str, str] = {}
     entity_action_flows: dict[str, str] = {}
+    entity_flow_tags: dict[str, str] = {}
     extra_shared_memories: list[str] = []
 
     for agent in agent_configs:
@@ -233,8 +502,14 @@ def populate_agent_data(
             agent.params.get("specific_memories", [])
         )
         player_specific_context[agent_name] = str(agent.params.get("context", ""))
-        action_flow = str(agent.params.get("action_flow", "default") or "default").strip()
+        action_flow = str(
+            agent.params.get("flow_tag", agent.params.get("action_flow", _DEFAULT_FLOW_TAG))
+            or _DEFAULT_FLOW_TAG
+        ).strip()
+        if not action_flow:
+            action_flow = _DEFAULT_FLOW_TAG
         entity_action_flows[agent_name] = action_flow
+        entity_flow_tags[agent_name] = action_flow
 
         for memory in _normalize_memories(agent.params.get("shared_memories", [])):
             if memory not in extra_shared_memories:
@@ -254,13 +529,36 @@ def populate_agent_data(
                 existing_shared_memories.append(memory)
         initializer_gm.params["shared_memories"] = existing_shared_memories
 
-    social_media_gm = next(
-        (gm for gm in game_masters if gm.role == prefab_lib.Role.GAME_MASTER), None
-    )
-    if social_media_gm is None:
+    social_media_gms = [gm for gm in game_masters if gm.role == prefab_lib.Role.GAME_MASTER]
+    if not social_media_gms:
         raise ValueError("No social media game master found.")
-    social_media_gm.params["sm_user_data"]["sim_roles"].update(sim_roles)
-    social_media_gm.params["sm_user_data"]["entity_action_flows"] = entity_action_flows
+    for social_media_gm in social_media_gms:
+        user_data = social_media_gm.params.setdefault("sm_user_data", {})
+        user_data.setdefault("sim_roles", {}).update(sim_roles)
+        user_data["entity_action_flows"] = dict(entity_action_flows)
+        user_data["entity_flow_tags"] = dict(entity_flow_tags)
+
+        orchestration = user_data.setdefault("gm_orchestration", {})
+        owned_flows_raw = orchestration.get("owned_flows", []) if isinstance(orchestration, dict) else []
+        owned_flows = {str(flow).strip() for flow in owned_flows_raw if str(flow).strip()}
+        if isinstance(orchestration, dict) and owned_flows:
+            orchestration["owned_entities"] = sorted(
+                name for name, flow in entity_flow_tags.items() if flow in owned_flows
+            )
+
+
+def _build_engine(cfg: DictConfig):
+    """Build runtime engine from config preset.
+
+    `base` is the default and runs a single active social GM per episode with
+    no flow-phase orchestration. `flow` enables flow/multi-GM orchestration.
+    """
+    engine_preset = str(getattr(getattr(cfg.sim, "engine", object()), "preset", "base") or "base")
+    if engine_preset == "flow":
+        return FlowSocialMediaEngine()
+    if engine_preset == "base":
+        return BaseSocialMediaEngine()
+    raise ValueError(f"Unsupported sim.engine.preset='{engine_preset}'. Use 'base' or 'flow'.")
 
 
 # ============================================================================
@@ -318,8 +616,11 @@ def main(cfg: DictConfig):
     )
 
     # Update config with output directory
+    # Disable struct mode to allow setting new keys
+    OmegaConf.set_struct(cfg, False)
     cfg.sim.output_rootname = output_dir
     cfg.sim.scenario_name = cfg.scenario.scenario_name
+    OmegaConf.set_struct(cfg, True)
 
     print(f"\nOutput directory: {output_dir}")
     os.makedirs(output_dir, exist_ok=True)
@@ -389,7 +690,12 @@ def main(cfg: DictConfig):
 
     t0 = time.time()
     populate_agent_data(agent_configs, game_masters)
-    _log_startup_phase("populate_agent_data", time.time() - t0, "updated_game_masters=2")
+    social_gm_count = sum(1 for gm in game_masters if gm.role == prefab_lib.Role.GAME_MASTER)
+    _log_startup_phase(
+        "populate_agent_data",
+        time.time() - t0,
+        f"updated_game_masters={social_gm_count}",
+    )
 
     SEED = cfg.sim.seed
     random.seed(SEED)
@@ -500,7 +806,7 @@ def main(cfg: DictConfig):
             "embedder_creation", time.time() - t0, f"encoder={cfg.sim.sentence_encoder}"
         )
 
-    sim_engine = SocialMediaEngine()
+    sim_engine = _build_engine(cfg)
 
     t0 = time.time()
     with metrics.phase("simulation_construction"):
@@ -628,8 +934,13 @@ def _inject_external_config_path() -> None:
     # Remove the flag and its argument so Hydra doesn't see them.
     del sys.argv[idx : idx + 2]
 
-    # Prepend as a file:// searchpath override so external configs win.
-    override = f"+hydra.searchpath=[file://{external_dir}]"
+    # Inject a file:// searchpath override so external configs are discoverable
+    # while package defaults remain available as fallback.
+    # List both paths: external first (higher priority), then package defaults
+    external_search = f"file://{external_dir}"
+    package_conf = str(CONF_DIR)
+    package_search = f"file://{Path(package_conf).resolve()}"
+    override = f"hydra.searchpath=[{external_search},{package_search}]"
     sys.argv.append(override)
     print(f"External config path: {external_dir}")
 
