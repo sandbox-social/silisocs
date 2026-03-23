@@ -21,63 +21,88 @@ The runtime entrypoint is:
 
 Core runtime layers:
 
-1. Agent construction layer
+### 1. Agent Construction Layer
 - `src/mastodon_sim/agents/builders.py`
 - Builds agents from `scenario.persona_pipeline` and class data sources
 - Supports fixed-action set loading and template rendering
+- Entry point: `EntityBuilder.build_agents(cfg, model)`
 
-2. Prefab/entity layer
-- `src/mastodon_sim/agents/entity.py`
-- `src/mastodon_sim/agents/fixed_entity.py`
-- Prefabs must build runtime objects with Concordia-compatible entity behavior
+### 2. Prefab/Entity Layer
+- `src/mastodon_sim/agents/base_agent.py` — Abstract Agent interface
+- `src/mastodon_sim/agents/entity.py` — LLM-based agent (Concordia-compatible)
+- `src/mastodon_sim/agents/fixed_entity.py` — Deterministic agent (pre-scripted actions)
+- Custom agents must implement: `name`, `observe(str)`, `act(ActionSpec) → str`
+- To add custom agent: create prefab module with `Entity(Prefab)` class, reference in scenario
 
-3. Game Master layer
-- `src/mastodon_sim/environments/gm/game_master.py`
-- `src/mastodon_sim/environments/gm/base_game_master.py`
-- `src/mastodon_sim/environments/gm/shared_flow_game_master.py`
-- `src/mastodon_sim/environments/gm/act.py`
-- `src/mastodon_sim/environments/gm/components/`
-- Component-slotted architecture for next-acting, observe, resolve, initializer
-- `game_master.py` is the simple default preset; `shared_flow_game_master.py`
-    is the advanced shared-flow preset; both use `base_game_master.py`
+### 3. Game Master Layer (Component-Slotted Architecture)
+- `src/mastodon_sim/environments/gm/base_game_master.py` — Base coordinator
+- `src/mastodon_sim/environments/gm/game_master.py` — Simple preset (single components)
+- `src/mastodon_sim/environments/gm/shared_flow_game_master.py` — Multi-flow preset (multi-instance routing)
+- `src/mastodon_sim/environments/gm/act.py` — SMAct (simple) & MultiFlowSMAct (routing logic)
+- `src/mastodon_sim/environments/gm/components/` — Pluggable components:
+  - `next_acting.py` — Determine which agent acts next
+  - `observe.py` — Generate timeline/episode observations
+  - `resolve.py` — Parse agent output into backend actions
+  - `initializer.py` — Initialize agents with memories
+  - `recommend.py` — Schedule recommendation algorithm updates
+  - `seed_post_provider.py` — Generate seed posts (LLM/CSV/JSON)
+- To add custom component: implement `Component` interface, set in `sim.gm.components.{role}.class_path`
 
-4. Engine layer
-- `src/mastodon_sim/environments/engines/social_media.py`
-- Policy hooks in `src/mastodon_sim/environments/engines/policies/`
-- Executes episodes, probe scheduling, concurrency throttling, flow routing
+### 4. Engine Layer (Execution Policies)
+- `src/mastodon_sim/environments/engines/social_media.py` — BaseSocialMediaEngine
+- `src/mastodon_sim/environments/engines/social_media.py` — FlowSocialMediaEngine (multi-flow scheduling)
+- `src/mastodon_sim/environments/engines/multi_gm_social_media.py` — MultiGMSocialMediaEngine (multi-GM orchestration)
+- `src/mastodon_sim/environments/engines/policies/` — Action loop & probe schedule policies:
+  - Action loop: `single_action`, `fixed_count`, `open_ended`
+  - Probe schedule: `step_schedule`, `fixed_interval`, `disabled`
+- To add custom policy: create class inheriting from `ActionLoopPolicy` or `ProbeSchedulePolicy`, reference via `class_path`
 
-5. Backend action layer
-- `src/mastodon_sim/environments/backends/base.py`
-- Platform-specific apps under `src/mastodon_sim/environments/backends/`
-- Actions discovered via `@app_action(...)`
+### 5. Backend Action Layer
+- `src/mastodon_sim/environments/backends/base.py` — ActionCatalog, base app interface
+- `src/mastodon_sim/environments/backends/twitter_like/` — TwitterLikeApp with SQL backend
+- `src/mastodon_sim/environments/backends/reddit_like/` — RedditLikeApp
+- `src/mastodon_sim/environments/backends/mastodon/` — Real Mastodon server integration
+- Actions discovered via `@app_action(name=..., description=...)` decorator
+- To add custom backend: subclass `SocialMediaApp`, implement action methods, register in app factory
 
-6. Runtime orchestration
-- `src/mastodon_sim/runtime/runner.py`
-- `src/mastodon_sim/runtime/simulation.py`
-- Model creation, config validation, simulation construction/play, checkpoints
+### 6. Runtime Orchestration
+- `src/mastodon_sim/runtime/runner.py` — CLI entrypoint, Hydra config composition
+- `src/mastodon_sim/runtime/simulation.py` — SimulationRunner orchestrates full workflow
+- `src/mastodon_sim/runtime/config.py` — Config validation and initialization
+- Handles: model creation, agent building, memory initialization, simulation execution, checkpoint save/resume
 
 ## 3) Configuration Model
 
 Top-level config composition:
 
-- `src/mastodon_sim/conf/config.yaml`
-- Defaults: `sim`, `social_media`, `scenario`
+- `src/mastodon_sim/conf/config.yaml` — Hydra root config
+- Defaults: `sim: base`, `social_media: twitter_like`, `scenario: default`
 
-Main runtime knobs:
+Main simulation knobs (`src/mastodon_sim/conf/sim/base.yaml`):
 
-- `src/mastodon_sim/conf/sim/base.yaml`
-- Includes GM slots, engine policies, action mode, enabled action filtering
-- `gm.preset` should stay on `simple` unless advanced orchestration is needed
-- advanced orchestration is configured under `sim.gm_orchestration`
-- Checkpoint controls:
-  - `checkpoint.every_n_steps`
-  - `checkpoint.explicit_steps`
-  - `checkpoint.resume_file`
-  - `checkpoint.resume_step`
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| `llm_name` | gpt-4o-mini | Default LLM model |
+| `num_agents` | 100 | Number of agents |
+| `num_steps` | 50 | Simulation episodes |
+| `action_mode` | tool_calling | LLM function calls (robust) |
+| `enable_gm_multi_flow` | false | Multi-component-instance routing |
+| `enable_engine_multi_flow` | false | Flow-phase scheduling |
+| `gm.preset` | base | Simple (single components) or shared_flow (multi-instance) |
+| `engine.preset` | base | Simple scheduling or flow-aware |
+| `engine.action_loop.built_in` | single_action | single_action \| fixed_count \| open_ended |
+| `timeline_strategy` | follower_chronological | Timeline algorithm |
+| `seed_posts.type` | llm | llm \| csv \| json \| none \| fallback |
 
 Scenario content lives under:
 
-- `scenarios/<name>/conf/scenario/<name>.yaml`
+- `scenarios/<name>/conf/scenario/<name>.yaml` (@package scenario)
+- **Optional**: `scenarios/<name>/conf/sim.yaml` (@package sim) — scenario-specific overrides
+- **Optional**: `scenarios/<name>/conf/social_media.yaml` (@package social_media) — platform choice
+
+**For designing experiments via config (no code changes):** See [EXPERIMENTS.md](EXPERIMENTS.md)
+
+**For understanding config structure deeply:** See [docs/configuration.md](docs/configuration.md)
 
 ## 4) Defining New Agent Behaviors Cleanly
 
@@ -340,23 +365,30 @@ backend action catalogs, and checkpoint policy tests.
 
 ## 9) Documentation Map
 
-Primary docs directory:
+This guide (AGENTS.md) is for you if you're **extending the framework** — writing new components, backends, agents, or changing architecture.
 
-- `docs/index.md` (hub)
-- `docs/configuration.md`
-- `docs/usage.md`
-- `docs/environment_layer.md`
-- `docs/backends.md`
-- `docs/building_agents.md`
-- `docs/dashboard.md`
-- `docs/contributing.md`
+If instead you want to **design and run experiments via config only**:
+→ See [EXPERIMENTS.md](EXPERIMENTS.md) — Scenario design guide for config-based users
 
-When adding features, update docs in all relevant layers:
+**Detailed architecture deep dive** (multi-flow, multi-GM, component routing):
+→ See [ARCHITECTURE.md](ARCHITECTURE.md) — Reference for complex orchestration patterns
 
-- Config schema and fields
-- Runtime behavior and extension guidance
-- User-facing usage examples
-- Dashboard behavior (if applicable)
+**Public documentation** (for end users):
+- `docs/index.md` — Hub for all documentation
+- `docs/configuration.md` — Config reference (all knobs explained)
+- `docs/usage.md` — End-to-end workflow
+- `docs/environment_layer.md` — Engine/GM/component extensibility patterns
+- `docs/backends.md` — Backend plugin patterns
+- `docs/building_agents.md` — Agent builder patterns
+- `docs/dashboard.md` — GUI usage
+- `docs/contributing.md` — Code standards
+
+When adding features, update docs in:
+
+- Config schema and fields (docs/configuration.md)
+- Runtime behavior and extension guidance (this file + docs/environment_layer.md)
+- User-facing usage examples (docs/usage.md)
+- Dashboard behavior (docs/dashboard.md if applicable)
 
 ## 10) Common Pitfalls
 
@@ -365,6 +397,7 @@ When adding features, update docs in all relevant layers:
 - Forgetting to keep docs aligned with runtime defaults
 - Assuming dashboard run snapshot loading equals checkpoint state replay
 - Relying on non-uv environment when reproducing tests
+- Not understanding fallback config behavior (Hydra merges scenario overrides with base defaults)
 
 ## 11) PR Readiness Checklist
 
@@ -374,13 +407,18 @@ When adding features, update docs in all relevant layers:
 - Docs updated for config + usage + architecture
 - Commit message follows Conventional Commits (Commitizen workflow)
 
-## 12) If You Need to Explore Quickly
+## 12) Entry Points for Quick Exploration
 
-Start from these files first:
+Start from these files to understand the flow:
 
-- `src/mastodon_sim/runtime/runner.py`
-- `src/mastodon_sim/runtime/simulation.py`
-- `src/mastodon_sim/environments/engines/social_media.py`
-- `src/mastodon_sim/environments/gm/game_master.py`
+1. **Config composition**: `src/mastodon_sim/runtime/runner.py` — How Hydra merges configs
+2. **Simulation orchestration**: `src/mastodon_sim/runtime/simulation.py` — Full workflow
+3. **Engine execution**: `src/mastodon_sim/environments/engines/social_media.py` — Episode loop
+4. **Game master**: `src/mastodon_sim/environments/gm/game_master.py` — Simple preset
+5. **Multi-flow GM**: `src/mastodon_sim/environments/gm/shared_flow_game_master.py` — Advanced preset
+6. **Component slots**: `src/mastodon_sim/environments/gm/components/` — Pluggable behavior
+7. **Backend actions**: `src/mastodon_sim/environments/backends/twitter_like/app.py` — Example backend
+
+
 - `src/mastodon_sim/agents/builders.py`
 - `src/mastodon_sim/environments/backends/base.py`

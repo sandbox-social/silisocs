@@ -1,5 +1,13 @@
 # Mastodon-Sim Architecture: Multi-Flow & Component Routing
 
+**This guide is for LLM agents helping understand or extend the framework's architecture.**
+
+**For designing experiments via configuration:** See [EXPERIMENTS.md](EXPERIMENTS.md)
+
+**For understanding code extension points:** See [AGENTS.md](AGENTS.md)
+
+---
+
 ## Overview
 
 The mastodon-sim simulator is designed as a highly configurable system with distinct abstraction layers:

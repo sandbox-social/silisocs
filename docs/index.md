@@ -58,15 +58,43 @@ If you want to **extend the framework** (new backends, entities, probes, initial
 6. See [Evaluation Probes](probes.md#custom-probe-types) for custom probe types
 7. Check [Contributing](contributing.md) for code standards and workflows
 
+## For AI Coding Agents
+
+If you're an **LLM helping with code changes or architecture**:
+
+1. **Code Extension & Architecture**: Read [AGENTS.md](../AGENTS.md) — Entry points, component system, extensibility patterns
+2. **Deep Architectural Dive**: Read [ARCHITECTURE.md](../ARCHITECTURE.md) — Multi-flow routing, component instance management, flow scheduling
+3. **Configuration Reference**: Check [configuration.md](configuration.md) — All knobs and their effects
+
+If you're an **LLM helping design experiments via configuration**:
+
+1. **Scenario Design**: Read [EXPERIMENTS.md](../EXPERIMENTS.md) — How to create `scenarios/{name}/conf/` with persona pipelines, networks, probes
+2. **Config Reference**: Check [configuration.md](configuration.md) — All config values and defaults
+
 ## Quick Links
 
+**For All Users:**
 - [Installation](installation.md) — Set up the project
 - [Quick Start](quickstart.md) — Run your first simulation in 5 minutes
-- [Usage Overview](usage.md) — End-to-end guide to the system
 - [Configuration Reference](configuration.md) — All config options explained
-- [Environment Layer](environment_layer.md) — Engine/GM/backend extensibility and component slots
-- [Building Agents](building_agents.md) — YAML pipeline and custom builders
+
+**For End Users:**
+- [Usage Overview](usage.md) — End-to-end guide to the system
+- [Dashboard Guide](dashboard.md) — GUI for scenario creation
 - [Election Walkthrough](tutorials/election.md) — Step-by-step complex scenario tutorial
+
+**For Code Developers:**
+- [Environment Layer](environment_layer.md) — Engine/GM/backend extensibility
+- [Building Agents](building_agents.md) — YAML pipeline and custom builders
+- [Memory Initialization](memory_initialization.md) — Custom initializers
+- [Social Media Backends](backends.md) — Backend plugin guide
+- [Evaluation Probes](probes.md) — Custom probe types
+- [Contributing](contributing.md) — Code standards
+
+**For AI Agents:**
+- [AGENTS.md](../AGENTS.md) — Code extension points and architecture
+- [ARCHITECTURE.md](../ARCHITECTURE.md) — Multi-flow routing deep dive
+- [EXPERIMENTS.md](../EXPERIMENTS.md) — Scenario design via configuration
 
 ## Architecture at a Glance
 
