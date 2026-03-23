@@ -60,7 +60,7 @@ class RecommendationComponent(FlowComponent):
 
         Args:
             sm_app: Reference to the social media app backend (required for pre_act)
-            update_every_n_steps: Steps between recommendation updates
+            update_every_n_steps: Episodes between recommendation updates (default: 1 = every episode)
             lazy: If True, only compute for active users
             max_posts: Maximum recommended posts per user
         """
@@ -69,11 +69,15 @@ class RecommendationComponent(FlowComponent):
         self.update_every_n_steps = update_every_n_steps
         self.lazy = lazy
         self.max_posts = max_posts
-        self._step_count = 0
+        self._last_updated_episode = -1
+        self._current_episode = 0
         self._initialized_recsys_types: set[str] = set()
 
     def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
         """Called each step by Concordia's EntityAgent to update recommendations.
+
+        Tracks episode number to ensure recommendations update only once per episode,
+        regardless of how many times pre_act is called (once per entity).
 
         Args:
             action_spec: The current actionspec (unused, but required by Concordia interface)
@@ -82,11 +86,6 @@ class RecommendationComponent(FlowComponent):
             Empty string (passive component with no observation output)
         """
         del action_spec  # unused
-        self._step_count += 1
-
-        # Check if it's time to update
-        if self._step_count % self.update_every_n_steps != 0:
-            return ""
 
         try:
             if not self.sm_app:
@@ -94,6 +93,13 @@ class RecommendationComponent(FlowComponent):
                 return ""
 
             backend = self.sm_app
+
+            # Get current episode from action logger if available
+            if hasattr(backend, "action_logger") and backend.action_logger:
+                self._current_episode = getattr(backend.action_logger, "episode_idx", 0)
+            else:
+                # Fallback: assume this is episode 0 if no logger
+                self._current_episode = 0
 
             # Initialize all unique recsys types on first call
             if not self._initialized_recsys_types:
@@ -104,6 +110,11 @@ class RecommendationComponent(FlowComponent):
                         logger.info(f"Initialized recsys type: {recsys_type}")
                 self._initialized_recsys_types = recsys_types
 
+            # Check if it's time to update (only once per episode, or every N episodes)
+            episodes_since_update = self._current_episode - self._last_updated_episode
+            if episodes_since_update < self.update_every_n_steps:
+                return ""
+
             # Update recommendations via backend
             if hasattr(backend, "update_recommendations"):
                 backend.update_recommendations(
@@ -112,9 +123,10 @@ class RecommendationComponent(FlowComponent):
                 )
 
                 logger.debug(
-                    f"Updated recommendations (step {self._step_count}, "
+                    f"Updated recommendations (episode {self._current_episode}, "
                     f"algorithms: {self._initialized_recsys_types})"
                 )
+                self._last_updated_episode = self._current_episode
             else:
                 logger.warning("Backend does not support recommendations")
 

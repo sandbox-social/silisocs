@@ -19,6 +19,8 @@ sentence_encoder: sentence-transformers/all-MiniLM-L6-v2
 action_mode: tool_calling  # OASIS uses tool-calling
 memory_backend: list  # Simple list-based memory
 enabled_actions: null
+enable_gm_multi_flow: false    # Keep simple mode for OASIS
+enable_engine_multi_flow: false  # Keep simple scheduling
 write_html_log: true
 
 checkpoint:
@@ -30,14 +32,6 @@ checkpoint:
 # Recommendation system (OASIS feature)
 engine:
   preset: base
-
-  recsys:
-    enabled: true
-    type: reddit  # "reddit" | "twitter" | "twhin"
-    params:
-      max_rec_posts: 10
-      update_every_n_steps: 1
-      # GPU support is auto-detected
 
   action_loop:
     built_in: single_action
@@ -55,7 +49,7 @@ engine:
     entity_to_flow: {}
 
 gm:
-  preset: simple
+  preset: base  # Use simple base GM (no multi-flow)
   components:
     next_acting:
       built_in: activity_probability
@@ -65,10 +59,9 @@ gm:
     recommend:  # Recommendation scheduler component
       built_in: recommendation_component
       params:
-        recsys_type: ${sim.engine.recsys.type}
-        update_every_n_steps: ${sim.engine.recsys.params.update_every_n_steps}
+        update_every_n_steps: 1  # Update every episode
         lazy: true
-        max_posts: ${sim.engine.recsys.params.max_rec_posts}
+        max_posts: 10
     observe:
       built_in: timeline_every_turn
     resolve:
