@@ -1,0 +1,19 @@
+# OASIS Simulation Configuration
+# @package sim
+#
+# NOTE: As of March 2026, the default 'base' preset now includes all OASIS features
+# (tool-calling, recommendations, hybrid timeline, etc.). This file is kept for
+# backward compatibility with 'sim=oasis' usage.
+#
+# To use OASIS features, you can now simply use the default:
+#   python -m mastodon_sim.runtime.runner  # Uses sim=base with OASIS defaults
+#
+# Or explicitly:
+#   python -m mastodon_sim.runtime.runner sim=oasis  # References this file
+
+defaults:
+  - base
+  - _self_
+
+# OASIS-specific overrides go below if needed
+# Currently empty since base.yaml now includes OASIS features by default

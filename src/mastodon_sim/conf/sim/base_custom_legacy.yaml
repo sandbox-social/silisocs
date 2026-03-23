@@ -1,18 +1,18 @@
 # sim/base.yaml — core simulation parameters (platform-agnostic)
 # @package sim
 
-llm_name: gpt-4o-mini
+llm_name: qwen3.5-4b
 disable_language_model: false
 llm_api_base: null
 llm_api_key: null
 max_concurrent_actions: 1000
-num_agents: 100
-num_steps: 50
+num_agents: 500
+num_steps: 200
 run_name: run1
 seed: 1
 sentence_encoder: sentence-transformers/all-MiniLM-L6-v2
 memory_backend: list           # associative | list
-action_mode: tool_calling      # custom | generic | tool_calling
+action_mode: custom            # custom | generic | tool_calling
 enabled_actions: null          # null => expose all backend actions; otherwise list of action names
 enable_gm_multi_flow: false    # false (BaseGM) | true (MultiFlowGM with component routing)
 enable_engine_multi_flow: false  # false (BaseEngine) | true (FlowEngine with flow sequencing/policies)
@@ -32,20 +32,9 @@ gm:
   components:
     # Choose who acts next each step.
     next_acting:
-      built_in: activity_probability  # activity_markov | all_entities | fixed_order | activity_probability
+      built_in: activity_markov     # activity_markov | all_entities | fixed_order
       class_path: null
-      params:
-        active_probability: null
-        min_active_agents: 1
-
-    # Recommendation system scheduler (optional, used with hybrid/pure_recsys timeline_strategy)
-    recommend:
-      built_in: recommendation_component
-      class_path: null
-      params:
-        update_every_n_steps: 1  # Update every episode
-        lazy: true
-        max_posts: 10
+      params: {}
 
     # Choose what observation is returned to active entities.
     observe:
@@ -58,7 +47,7 @@ gm:
     # generic_action: ACTION: name + param lines
     # tool_calling: native tool-call resolution over backend action tools
     resolve:
-      built_in: tool_calling     # parsed_action | generic_action | tool_calling
+      built_in: parsed_action       # parsed_action | generic_action | tool_calling
       class_path: null
       params: {}
 
@@ -112,7 +101,7 @@ engine:
 
 # Observation parameters
 timeline_posts: 10
-timeline_strategy: hybrid_recsys_follower  # follower_chronological | pure_recsys | hybrid_recsys_follower | curated_global
+timeline_strategy: follower_chronological  # follower_chronological | pure_recsys | hybrid_recsys_follower | curated_global
 timeline_config:
   recsys_ratio: 0.6      # For hybrid_recsys_follower: ratio of recommendations
   follower_ratio: 0.4    # For hybrid_recsys_follower: ratio of followed users

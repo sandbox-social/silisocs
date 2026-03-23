@@ -1,11 +1,11 @@
 # Top-level Hydra configuration for mastodon-sim
 # Choose between preset configurations using Hydra overrides:
-#   python -m mastodon_sim.runtime.runner sim=base  (default)
-#   python -m mastodon_sim.runtime.runner sim=oasis
+#   python -m mastodon_sim.runtime.runner  # Uses sim=base, social_media=twitter_like (default)
+#   python -m mastodon_sim.runtime.runner sim=oasis  # Alternative (now same as base)
 
 defaults:
   - sim: base
-  - social_media: mastodon
+  - social_media: twitter_like
   - scenario: default
   - _self_
 
