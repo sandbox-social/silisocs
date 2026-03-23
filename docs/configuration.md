@@ -28,21 +28,21 @@ uv run mastodon-sim social_media=reddit_like scenario=my_scenario
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `llm_name` | `qwen3.5-4b` | LLM model name (passed to Concordia model factory) |
+| `llm_name` | `gpt-4o-mini` | LLM model name (passed to Concordia model factory) |
 | `llm_api_base` | `null` | Custom API base URL (for OpenAI-compatible endpoints) |
 | `llm_api_key` | `null` | API key (or set via environment variable) |
 | `disable_language_model` | `false` | Use a no-op model (for testing) |
-| `num_agents` | `500` | Number of agents to create |
-| `num_steps` | `200` | Simulation steps to run |
+| `num_agents` | `100` | Number of agents to create |
+| `num_steps` | `50` | Simulation steps to run |
 | `max_concurrent_actions` | `1000` | Max parallel LLM calls per step |
 | `run_name` | `run1` | Run identifier (used in output path) |
 | `seed` | `1` | Random seed |
 | `sentence_encoder` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model for associative memory |
 | `memory_backend` | `list` | Memory type: `list` (fast) or `associative` (embedding-based) |
-| `action_mode` | `custom` | Action parsing: `custom`, `generic`, or `tool_calling` |
-| `enabled_actions` | `null` | Optional whitelist of backend action names (or selectable aliases). `null` means all actions enabled. |
-| `enable_gm_multi_flow` | `false` | Enable multi-flow GM routing (different components per agent flow) |
-| `enable_engine_multi_flow` | `false` | Enable multi-flow engine sequencing (flow-aware scheduling) |
+| `action_mode` | `tool_calling` | Action parsing: `custom` (text parsing), `generic` (template-based), or `tool_calling` (native LLM function calls) |
+| `enabled_actions` | `null` | Optional whitelist of **exact backend action function names**. **Example**: `["create_tweet", "like_tweet", "follow_user"]`. `null` means all actions enabled. |
+| `enable_gm_multi_flow` | `false` | Enable multi-flow GM: routes different agent flows to different component instances (e.g., separate Observe components per flow) |
+| `enable_engine_multi_flow` | `false` | Enable multi-flow engine: schedules agent flows in customizable phases (can be combined with `enable_gm_multi_flow`) |
 | `checkpoint.every_n_steps` | `null` | Save checkpoints every N steps when set. |
 | `checkpoint.explicit_steps` | `[]` | Additional explicit checkpoint steps. |
 | `checkpoint.resume_file` | `null` | Optional path to checkpoint JSON used to resume a prior run. |
@@ -56,6 +56,69 @@ uv run mastodon-sim social_media=reddit_like scenario=my_scenario
 | `observation_history` | `100` | Max observations kept in agent memory |
 | `write_html_log` | `true` | Generate Concordia HTML logs |
 | `roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |
+| `seed_posts.type` | `llm` | Seed post provider: `llm` (LLM-generated), `csv` (CSV file), `json` (JSON file), `none` (disabled), `fallback` (CSV then LLM) |
+| `seed_posts.params.file_path` | `null` | Path to CSV/JSON file for seed posts (used when type is `csv`, `json`, or `fallback`) |
+
+### Seed Posts Configuration
+
+**Purpose:** Initialize agent feeds with background posts before simulation starts.
+
+**Methods:**
+
+| Method | File Format | When to Use |
+|--------|-------------|------------|
+| `llm` (default) | N/A | Generate context-aware posts via LLM (slower, more realistic) |
+| `csv` | `agent_name,post_text` | Pre-written posts, faster than LLM |
+| `json` | `{"agent_name": "post_text"}` | Pre-written posts, easier to edit than CSV |
+| `none` | N/A | Disable seed posts (organic growth only) |
+| `fallback` | CSV first, LLM if missing | Hybrid: use CSV when available, generate for missing agents |
+
+**Configuration via Command Line:**
+
+```bash
+# Generate via LLM (default)
+python -m mastodon_sim.runtime.runner
+
+# Use CSV file
+python -m mastodon_sim.runtime.runner \
+    seed_posts.type=csv \
+    seed_posts.params.file_path=agents_posts.csv
+
+# Use JSON file
+python -m mastodon_sim.runtime.runner \
+    seed_posts.type=json \
+    seed_posts.params.file_path=agents_posts.json
+
+# Disable seed posts
+python -m mastodon_sim.runtime.runner seed_posts.type=none
+```
+
+**CSV Format:**
+
+```csv
+agent_name,post_text
+Alice,"Great day for a walk!"
+Bob,"Just finished a great book."
+Charlie,"Planning to try something new."
+```
+
+**JSON Format:**
+
+```json
+{
+  "Alice": "Great day for a walk!",
+  "Bob": "Just finished a great book.",
+  "Charlie": "Planning to try something new."
+}
+```
+
+**Configuration via Dashboard:**
+
+1. In the "Seed Posts Configuration" section, select the type from the dropdown
+2. If using CSV/JSON/fallback, enter the file path
+3.  Save or run the scenario
+
+
 
 ### GM Components (SwitchAct-style Configurability)
 
@@ -111,33 +174,133 @@ This bypasses slot-level customization and lets you own the complete GM build fl
 
 ### Advanced GM Orchestration (Optional)
 
-Most users should keep this disabled and use the simple workflow.
+**Most users should keep both disabled** (`enable_gm_multi_flow: false`, `enable_engine_multi_flow: false`) and use the simple workflow.
 
+#### Understanding the Three Orthogonal Features
+
+These can be enabled independently or together:
+
+**1. Multi-Flow GM** (`enable_gm_multi_flow: true`)
+- Creates **separate component instances** per agent flow
+- Example: Agents in `timeline_flow` see `TimelineObservation`, agents in `episode_flow` see `EpisodeObservation`
+- Each component receives a `flow → field value` mapping at initialization
+- Use when different flows need fundamentally different observation/action/next-acting logic
+- **Does NOT require flows to be scheduled differently** — all flows still run each episode
+
+**2. Multi-Flow Engine** (`enable_engine_multi_flow: true`)
+- **Schedules flows in phases** rather than all-at-once
+- Example: Run `fixed_pre` flows, then `default` flows in sequence, with parallel execution within each phase
+- Allows per-flow action loop policies (e.g., `fixed_pre` uses `fixed_count`, `default` uses `single_action`)
+- Use when you need temporal separation of different agent groups per episode
+- **Can be combined with Multi-Flow GM**: one provides routing, one provides scheduling
+
+**3. Multi-GM Orchestration** (`gm_orchestration.gms`)
+- Creates **multiple separate game masters** (different prefab modules or instances)
+- Each GM manages its own component set
+- GMs can be assigned to flows via `flow_to_gm` (one per flow) or `flow_to_gms` (chain per flow)
+- Use when you need fundamentally different GM logic (e.g., one GM for social media, one for game state)
+- **Requires Multi-Flow Engine enabled** if you want orchestrated flow scheduling
+- **Different from Multi-Flow GM**: Multi-GM is about multiple independent GMs; Multi-Flow GM is about one GM routing components
+
+#### Configuration Examples
+
+**Simple (Default)**: Single GM, single component per role, all agents act each episode
 ```yaml
-sim:
-  gm:
-    preset: simple   # simple | shared_flow
-
-  gm_orchestration:
-    gms:
-      - gm_name: gm_default
-        mode: shared
-        sequence: 0
-    flow_bindings:
-      flow_to_gm: {}
-      flow_to_gms: {}
-      gm_to_flows: {}
+enable_gm_multi_flow: false
+enable_engine_multi_flow: false
+gm_orchestration:
+  gms: []  # Single default GM
+  flow_bindings: {}
 ```
 
-Rules:
+**Multi-Flow GM Only**: One GM with separate components per flow, all act each episode
+```yaml
+enable_gm_multi_flow: true
+enable_engine_multi_flow: false
+gm:
+  preset: shared_flow
+gm_orchestration:
+  gms: []  # Still single GM
+  flow_bindings: {}
+```
 
-- `flow_to_gms` takes precedence over `flow_to_gm`, which takes precedence over `gm_to_flows`.
-- A flow can have multiple GMs via `flow_to_gms`, but execution must be serialized by sequence.
-- For simple runs, leave `gm_orchestration` empty.
-- With `sim.engine.preset: base` (default), the runtime executes one social GM per episode.
-- Use `sim.engine.preset: flow` only when you intentionally need flow/multi-GM orchestration.
+**Multi-Flow Engine Only**: All agents see same components, but scheduled in phases
+```yaml
+enable_gm_multi_flow: false
+enable_engine_multi_flow: true
+engine:
+  preset: flow
+  flow_routing:
+    flow_order: [fixed_pre, default]
+    entity_to_flow: {}  # Define which agents go to which flow
+```
 
-### Timeline Configuration and Strategies
+**Multi-Flow GM + Multi-Flow Engine**: Separate components per flow + phase scheduling
+```yaml
+enable_gm_multi_flow: true
+enable_engine_multi_flow: true
+gm:
+  preset: shared_flow
+engine:
+  preset: flow
+  flow_routing:
+    flow_order: [fixed_pre, default]
+```
+
+**Multi-GM Orchestration**: Multiple GMs, each controls subset of flows
+```yaml
+enable_gm_multi_flow: false  # Or true if GMs also need internal routing
+enable_engine_multi_flow: true  # Required for orchestration
+gm_orchestration:
+  gms:
+    - gm_name: social_gm
+      module_path: my_scenario.social_game_master
+    - gm_name: game_gm
+      module_path: my_scenario.game_game_master
+  flow_bindings:
+    flow_to_gms:
+      social_flow: [social_gm]
+      game_flow: [game_gm]
+```
+
+---
+
+### Engine Action Loop Policies
+
+Configure how many actions each agent takes per episode. Available in **all engine modes** (`base` or `flow`):
+
+| Policy | Option | Behavior | Use Case |
+|--------|--------|----------|----------|
+| **Single Action** | `single_action` | Each agent acts **once per episode** | Default, turntaking |
+| **Fixed Count** | `fixed_count` | Each agent gets **N action turns per episode** | Multiple rounds per agent |
+| **Open-Ended** | `open_ended` | Agent acts until outputting a **done token** | Self-paced actions |
+
+**Configuration:**
+
+```yaml
+engine:
+  action_loop:
+    built_in: fixed_count
+    params:
+      count: 3  # Each agent acts 3 times per episode (unused for other policies)
+```
+
+**Per-Flow Override** (with `enable_engine_multi_flow: true`):
+
+```yaml
+engine:
+  flow_routing:
+    flow_order: [fixed_pre, default]
+  flow_action_loop_overrides:
+    fixed_pre:
+      built_in: fixed_count
+      params:
+        count: 2
+    default:
+      built_in: single_action
+```
+
+---
 
 Configure what posts agents see in their feed using timeline strategies:
 
@@ -239,7 +402,66 @@ Note: Currently, all agents are computed with the same `engine.recsys.type`. Per
 
 ---
 
-## Platform Backends (`social_media/`)
+## Enabled Actions (Restricting Agent Capabilities)
+
+By default, agents can use **all available backend actions**. To restrict agents to a specific subset, use `enabled_actions`:
+
+```yaml
+sim:
+  enabled_actions: null  # null = all actions enabled (default)
+  enabled_actions: ["create_tweet", "like_tweet", "follow_user"]  # Restrict to these exact functions
+```
+
+### Important: Exact Function Names Required
+
+Action names must be the **exact decorated backend function names**, not generic types:
+
+**❌ WRONG:**
+```yaml
+enabled_actions: ["POST", "LIKE", "REPOST"]  # Generic types - will not work!
+```
+
+**✅ CORRECT:**
+```yaml
+enabled_actions: ["create_tweet", "like_tweet", "repost_tweet"]  # Exact function names
+```
+
+### Backend Actions by Platform
+
+**TwitterLike:**
+- `create_tweet` - Post new tweet
+- `reply_to_tweet` - Reply to existing tweet
+- `like_tweet` - Like a tweet
+- `repost_tweet` - Repost (retweet) a tweet
+- `follow_user` - Follow a user
+- `unfollow_user` - Unfollow a user
+
+**RedditLike:**
+- `create_reddit_post` - Create new post
+- `create_comment` - Comment on post
+- `upvote_post` - Upvote a post
+- `downvote_post` - Downvote a post
+- `subscribe` - Subscribe to subreddit
+- `unsubscribe` - Unsubscribe from subreddit
+
+**Mastodon:**
+- `post_toot` - Post new toot
+- `reply_to_toot` - Reply to toot
+- `like_toot` - Like (favorite) a toot
+- `boost_toot` - Boost (reblog) a toot
+- `follow_user` - Follow a user
+- `unfollow_user` - Unfollow a user
+
+### How It Works
+
+When `enabled_actions` is set, the engine:
+1. Restricts LLM prompts to only show enabled actions
+2. Restricts LLM tool choices (for `tool_calling` mode) to enabled tools
+3. Enforces action validation at resolution time
+
+---
+
+## Timeline Configuration and Strategies
 
 ### Twitter-like (default)
 
@@ -271,6 +493,168 @@ use_server: true               # Requires a running Mastodon server
 
 Requires environment variables for server URL and API credentials. See
 [Installation](installation.md) for `.env` setup.
+
+---
+
+## Running and Creating Scenarios
+
+Scenarios are stored in `scenarios/{scenario_name}/conf/` and allow customizing agent definitions, network topology, probes, and optionally overriding simulation/platform settings.
+
+### Directory Structure
+
+```
+scenarios/
+├── election/
+│   └── conf/
+│       ├── scenario/
+│       │   └── election.yaml        # @package scenario (required)
+│       ├── sim.yaml                 # (optional) Scenario-specific sim overrides
+│       └── social_media.yaml        # (optional) Scenario-specific platform config
+│
+└── reddit_herding/
+    └── conf/
+        ├── scenario/
+        │   └── reddit_herding.yaml
+        ├── sim.yaml
+        └── social_media.yaml
+```
+
+### Running a Scenario
+
+**From the CLI:**
+
+```bash
+# Run with defaults from base.yaml + twitter_like.yaml
+python -m mastodon_sim.runtime.runner --config-path scenarios/election/conf
+
+# Override specific sim parameters
+python -m mastodon_sim.runtime.runner --config-path scenarios/election/conf \
+    sim.num_agents=500 sim.num_steps=100
+
+# View merged config before running
+python -m mastodon_sim.runtime.runner --config-path scenarios/election/conf --cfg job
+```
+
+**From the Dashboard:**
+
+1. Load scenarios by choosing a scenario from the "Scenario" dropdown
+2. Modify any settings
+3. Click "Save Scenario" to save changes to `scenarios/{name}/`
+4. Click "Run Simulation"
+
+### Creating a New Scenario
+
+**Option 1: Via Dashboard**
+
+1. Start the dashboard: `streamlit run src/mastodon_sim/dashboard/launch_app.py`
+2. Modify all settings (agents, network, probes, etc.)
+3. Enter a new scenario name in the "Scenario Name" field
+4. Click "Save Scenario"
+5. This creates: `scenarios/{name}/conf/scenario/{name}.yaml`
+
+**Option 2: Manual Directory**
+
+```bash
+mkdir -p scenarios/my_scenario/conf/scenario
+cat > scenarios/my_scenario/conf/scenario/my_scenario.yaml << 'EOF'
+# @package scenario
+
+scenario_name: my_scenario
+jobname_format: "N${sim.num_agents}_T${sim.num_steps}_run1"
+
+setting:
+  name: My Setting
+  background:
+    - Background detail 1
+    - Background detail 2
+
+event:
+  name: My Event
+  context: Event description
+
+persona_pipeline:
+  processing_mode: raw
+  defaults:
+    params: {}
+  classes:
+    user:
+      count: ${sim.num_agents}
+      prefab_module: mastodon_sim.agents.entity
+      data:
+        source: hf_dataset
+        dataset: nvidia/Nemotron-Personas-USA
+
+social_network:
+  base_followership_probability: 0.3
+  network_type: barabasi_albert
+  barabasi_albert_m: 10
+
+shared_memories: []
+probes: {}
+EOF
+```
+
+### Overriding Sim and Platform Settings per Scenario
+
+**Default behavior:** Uses `sim/base.yaml` and `social_media/twitter_like.yaml` from package defaults.
+
+**To override for a specific scenario**, create optional files:
+
+**scenarios/election/conf/sim.yaml:**
+```yaml
+# @package sim
+# Only list fields that differ from base.yaml; unspecified fields use defaults
+
+num_agents: 500
+num_steps: 200
+action_mode: tool_calling  # Override if election scenario needs different action mode
+```
+
+**scenarios/election/conf/social_media.yaml:**
+```yaml
+# @package social_media
+# Override the platform for this scenario
+
+platform_type: mastodon  # Use Mastodon instead of default twitter_like
+```
+
+**How Merging Works:**
+
+Hydra composes configs in order, with later files overriding earlier ones:
+
+1. **Package defaults** (lowest priority)
+   - `src/mastodon_sim/conf/sim/base.yaml`
+   - `src/mastodon_sim/conf/social_media/twitter_like.yaml`
+   - `src/mastodon_sim/conf/scenario/default.yaml`
+
+2. **External scenario overrides** (higher priority)
+   - `scenarios/election/conf/sim.yaml` (if present)
+   - `scenarios/election/conf/social_media.yaml` (if present)
+   - `scenarios/election/conf/scenario/election.yaml`
+
+3. **CLI overrides** (highest priority)
+   - `sim.num_agents=1000`
+   - `sim.llm_name=gpt-4o`
+   - etc.
+
+**Missing fields fallback to defaults:** If `scenarios/election/conf/sim.yaml` omits `llm_name`, the value from `base.yaml` is used.
+
+### Output Structure
+
+Simulation outputs go to: `scenarios/{scenario_name}/outputs/{job_name}/`
+
+```
+scenarios/election/outputs/
+├── N500_T200_independent_run1/
+│   ├── configs/
+│   │   ├── config.yaml            # Full merged config
+│   │   ├── overrides.yaml         # CLI overrides used
+│   │   └── hydra.yaml
+│   ├── logs/
+│   │   └── *.html                 # Concordia agent logs
+│   ├── trace_*.json               # Execution trace
+│   └── agents_*.json              # Agent data
+```
 
 ---
 
