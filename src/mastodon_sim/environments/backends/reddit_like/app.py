@@ -179,6 +179,28 @@ class RedditLikeApp(SocialMediaApp):
             self._print(f"Error fetching feed for {username}: {e}", color="red")
             return []
 
+    def get_timeline_strategy(
+        self, strategy: str, user_name: str, limit: int = 10, **timeline_config: dict
+    ) -> list[dict]:
+        """Fetch timeline using specified strategy.
+
+        Args:
+            strategy: Timeline strategy (follower_chronological, pure_recsys, hybrid_recsys_follower, etc.)
+            user_name: Display name of the user.
+            limit: Maximum number of posts.
+            **timeline_config: Strategy-specific config (e.g., recsys_ratio).
+
+        Returns:
+            List of post dicts for the timeline.
+        """
+        username = self._get_username(user_name)
+        try:
+            feed = self._platform.get_timeline(strategy, username, limit, **timeline_config)
+            return feed.get("posts", [])
+        except Exception as e:
+            self._print(f"Error fetching timeline with strategy '{strategy}' for {username}: {e}", color="red")
+            return []
+
     def format_timeline_for_observation(self, timeline: list[dict]) -> str:
         """Format timeline posts as a clean text block for the LLM.
 
@@ -222,12 +244,24 @@ class RedditLikeApp(SocialMediaApp):
             if action_type == "post":
                 # Default to "general" subreddit; content is used as both title and body
                 return self.create_reddit_post(user_name, "general", content[:100], content)
+            if action_type == "create_reddit_post":
+                # Explicit action name for post creation
+                return self.create_reddit_post(user_name, "general", content[:100], content)
             if action_type == "comment":
+                return self.create_comment(user_name, int(target_id), content)
+            if action_type == "create_comment":
+                # Explicit action name for comment creation
                 return self.create_comment(user_name, int(target_id), content)
             if action_type == "upvote":
                 return self.upvote(user_name, int(target_id), "post")
             if action_type == "downvote":
                 return self.downvote(user_name, int(target_id), "post")
+            if action_type == "upvote_comment":
+                # Upvote a comment (OASIS data-driven voting)
+                return self.upvote(user_name, int(target_id), "comment")
+            if action_type == "downvote_comment":
+                # Downvote a comment (OASIS data-driven voting)
+                return self.downvote(user_name, int(target_id), "comment")
             if action_type == "reply":
                 # Treat reply as a comment on a post
                 return self.create_comment(user_name, int(target_id), content)
@@ -498,6 +532,183 @@ class RedditLikeApp(SocialMediaApp):
         except Exception as e:
             msg = f"Error searching subreddits: {e}"
         self._print(msg, emoji="🔍")
+        return msg
+
+    # ================================================================ #
+    # OASIS-Compatible Actions
+    # ================================================================ #
+
+    @app_action
+    def unlike_post(self, current_user: str, post_id: int) -> str:
+        """Remove an upvote from a post.
+
+        Args:
+            current_user: The full display name of the user removing the upvote.
+            post_id: The ID of the post to unlike.
+        """
+        current_user_full = str(current_user)
+        username = self._get_username(current_user)
+        result = self._platform.unlike_post(username, post_id)
+        msg = f"{current_user_full} {'removed upvote from' if result else 'could not remove upvote from'} post {post_id}."
+        self._print(msg, emoji="🚫⬆️")
+        self._log_action_event(
+            source_user=current_user_full,
+            label="unlike_post",
+            data={"post_id": str(post_id)},
+        )
+        return msg
+
+    @app_action
+    def dislike_post(self, current_user: str, post_id: int) -> str:
+        """Downvote a post (negative reaction).
+
+        Args:
+            current_user: The full display name of the user downvoting.
+            post_id: The ID of the post to downvote.
+        """
+        current_user_full = str(current_user)
+        username = self._get_username(current_user)
+        result = self._platform.dislike_post(username, post_id)
+        msg = f"{current_user_full} {'downvoted' if result else 'could not downvote'} post {post_id}."
+        self._print(msg, emoji="⬇️")
+        self._log_action_event(
+            source_user=current_user_full,
+            label="dislike_post",
+            data={"post_id": str(post_id)},
+        )
+        return msg
+
+    @app_action
+    def undo_dislike_post(self, current_user: str, post_id: int) -> str:
+        """Remove a downvote from a post.
+
+        Args:
+            current_user: The full display name of the user removing the downvote.
+            post_id: The ID of the post to undo downvote for.
+        """
+        current_user_full = str(current_user)
+        username = self._get_username(current_user)
+        result = self._platform.undo_dislike_post(username, post_id)
+        msg = f"{current_user_full} {'removed downvote from' if result else 'could not remove downvote from'} post {post_id}."
+        self._print(msg, emoji="🆗")
+        self._log_action_event(
+            source_user=current_user_full,
+            label="undo_dislike_post",
+            data={"post_id": str(post_id)},
+        )
+        return msg
+
+    @app_action
+    def mute_user(self, current_user: str, target_user: str) -> str:
+        """Mute another user to hide their posts.
+
+        Args:
+            current_user: The full display name of the user doing the muting.
+            target_user: The full display name of the user to mute.
+        """
+        current_user_full = str(current_user)
+        target_user_full = str(target_user)
+        src_username = self._get_username(current_user)
+        tgt_username = self._get_username(target_user)
+        result = self._platform.mute_user(src_username, tgt_username)
+        msg = f"{current_user_full} {'muted' if result else 'could not mute'} {target_user_full}."
+        self._print(msg, emoji="🔇")
+        self._log_action_event(
+            source_user=current_user_full,
+            label="mute_user",
+            data={"target_user": target_user_full},
+        )
+        return msg
+
+    @app_action
+    def unmute_user(self, current_user: str, target_user: str) -> str:
+        """Unmute a user.
+
+        Args:
+            current_user: The full display name of the user doing the unmuting.
+            target_user: The full display name of the user to unmute.
+        """
+        current_user_full = str(current_user)
+        target_user_full = str(target_user)
+        src_username = self._get_username(current_user)
+        tgt_username = self._get_username(target_user)
+        result = self._platform.unmute_user(src_username, tgt_username)
+        msg = f"{current_user_full} {'unmuted' if result else 'could not unmute'} {target_user_full}."
+        self._print(msg, emoji="🔊")
+        self._log_action_event(
+            source_user=current_user_full,
+            label="unmute_user",
+            data={"target_user": target_user_full},
+        )
+        return msg
+
+    @app_action
+    def report_post(self, current_user: str, post_id: int, reason: str = "Inappropriate content") -> str:
+        """Report a post for moderation.
+
+        Args:
+            current_user: The full display name of the user reporting.
+            post_id: The ID of the post to report.
+            reason: The reason for reporting.
+        """
+        current_user_full = str(current_user)
+        username = self._get_username(current_user)
+        result = self._platform.report_post(username, post_id, reason)
+        msg = f"{current_user_full} {'reported' if result else 'could not report'} post {post_id} ({reason})."
+        self._print(msg, emoji="⚠️")
+        self._log_action_event(
+            source_user=current_user_full,
+            label="report_post",
+            data={"post_id": str(post_id), "reason": reason},
+        )
+        return msg
+
+    @app_action
+    def get_trending_posts(self, current_user: str, limit: int = 10, days: int = 7) -> str:
+        """Get trending posts from the last N days.
+
+        Args:
+            current_user: The full display name of the user requesting trends.
+            limit: Maximum number of posts to return.
+            days: Number of days to consider for trending.
+        """
+        current_user_full = str(current_user)
+        try:
+            results = self._platform.get_trending_posts(limit=limit, days=days)
+            if results:
+                msg = f"Trending posts (last {days} days):\n"
+                for post in results:
+                    engagement = post.get('engagement_score', 0)
+                    msg += (
+                        f"  ID:{post['id']} | r/{post.get('community', 'unknown')}: "
+                        f"{post['content'][:60]}... (engagement: {engagement:.1f})\n"
+                    )
+            else:
+                msg = f"No trending posts found."
+        except Exception as e:
+            msg = f"Error getting trending posts: {e}"
+        self._print(msg, emoji="🔥")
+        self._log_action_event(
+            source_user=current_user_full,
+            label="get_trending",
+            data={"limit": limit, "days": days},
+        )
+        return msg
+
+    @app_action
+    def do_nothing(self, current_user: str) -> str:
+        """Take no action (used as a baseline or filler action).
+
+        Args:
+            current_user: The full display name of the user.
+        """
+        current_user_full = str(current_user)
+        msg = f"{current_user_full} did nothing."
+        self._log_action_event(
+            source_user=current_user_full,
+            label="do_nothing",
+            data={},
+        )
         return msg
 
     # ------------------------------------------------------------------ #

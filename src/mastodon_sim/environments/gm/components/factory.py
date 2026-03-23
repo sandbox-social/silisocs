@@ -9,17 +9,20 @@ from typing import Any
 
 from concordia.typing import entity_component
 
-from mastodon_sim.environments.gm.components.base import BackendInitializer
+from mastodon_sim.environments.gm.components.base import BackendInitializer, FlowComponent
 from mastodon_sim.environments.gm.components.initialize import DefaultBackendInitializer
 from mastodon_sim.environments.gm.components.next_acting import (
     ActivityMarkovNextActing,
+    ActivityProbabilityNextActing,
     AllEntitiesNextActing,
     FixedOrderNextActing,
 )
 from mastodon_sim.environments.gm.components.observe import (
     ChunkStartMakeObservation,
+    EpisodeObservation,
     TimelineMakeObservation,
 )
+from mastodon_sim.environments.gm.components.recommend import RecommendationComponent
 from mastodon_sim.environments.gm.components.resolve import (
     GenericActionResolveComponent,
     ParsedActionResolveComponent,
@@ -29,6 +32,7 @@ from mastodon_sim.environments.gm.components.resolve import (
 _OBSERVE_BUILT_INS = {
     "timeline_every_turn": TimelineMakeObservation,
     "chunk_start_only": ChunkStartMakeObservation,
+    "episode_only": EpisodeObservation,
 }
 
 _RESOLVE_BUILT_INS = {
@@ -39,12 +43,17 @@ _RESOLVE_BUILT_INS = {
 
 _NEXT_ACTING_BUILT_INS = {
     "activity_markov": ActivityMarkovNextActing,
+    "activity_probability": ActivityProbabilityNextActing,
     "all_entities": AllEntitiesNextActing,
     "fixed_order": FixedOrderNextActing,
 }
 
 _INITIALIZER_BUILT_INS = {
     "backend_default": DefaultBackendInitializer,
+}
+
+_RECOMMENDATION_BUILT_INS = {
+    "recommendation_component": RecommendationComponent,
 }
 
 
@@ -104,7 +113,9 @@ def build_observe_component(
     player_names: list[str],
     sm_app: Any,
     entity_action_flows: dict[str, str] | None = None,
-    episode_observation_flows: list[str] | None = None,
+    episode_observation_flow: str = "fixed_pre",
+    timeline_strategy: str = "follower_chronological",
+    timeline_config: Mapping[str, Any] | None = None,
 ) -> entity_component.ContextComponent:
     """Build make-observation component from slot config."""
     return _build_from_slot(
@@ -116,7 +127,9 @@ def build_observe_component(
             "player_names": player_names,
             "sm_app": sm_app,
             "entity_action_flows": entity_action_flows,
-            "episode_observation_flows": episode_observation_flows,
+            "episode_observation_flows": [episode_observation_flow] if episode_observation_flow else [],
+            "timeline_strategy": timeline_strategy,
+            "timeline_config": dict(timeline_config or {}),
         },
     )
 
@@ -166,3 +179,60 @@ def build_backend_initializer(slot_cfg: Mapping[str, Any] | None = None) -> Back
         built_ins=_INITIALIZER_BUILT_INS,
         default_built_in="backend_default",
     )
+
+
+def build_recommendation_component(
+    slot_cfg: Mapping[str, Any] | None = None,
+) -> entity_component.ContextComponent:
+    """Build recommendation component from slot config."""
+    return _build_from_slot(
+        slot_cfg,
+        built_ins=_RECOMMENDATION_BUILT_INS,
+        default_built_in="recommendation_component",
+    )
+
+
+def initialize_component_multi_fields(
+    component: entity_component.ContextComponent,
+    component_config: Mapping[str, Any] | None,
+) -> None:
+    """Initialize multi-field values on FlowComponent if configured.
+
+    Args:
+        component: The component instance to initialize (may or may not be a FlowComponent)
+        component_config: Configuration dict that may contain an 'entities' key with
+                         entity-level field overrides. Expected format:
+                         {
+                           'built_in': '...',
+                           'entities': {
+                             'entity_name': {'field_name': field_value, ...},
+                             ...
+                           }
+                         }
+
+    Example config:
+        observe:
+          built_in: timeline_every_turn
+          entities:
+            alice:
+              timeline_filter: "trusted"
+            bob:
+              timeline_filter: "all"
+    """
+    # Only process if component is a FlowComponent
+    if not isinstance(component, FlowComponent):
+        return
+
+    # Extract entity configs if present
+    component_cfg = dict(component_config or {})
+    entities_cfg = component_cfg.get("entities")
+    if not entities_cfg:
+        return
+
+    # Build entity -> {field_name: field_value} mapping
+    entity_field_map: dict[str, dict[str, Any]] = {}
+    for entity_name, field_config in entities_cfg.items():
+        entity_field_map[entity_name] = dict(field_config or {})
+
+    # Initialize component with the mapping
+    component.set_multi_field_values(entity_field_map)

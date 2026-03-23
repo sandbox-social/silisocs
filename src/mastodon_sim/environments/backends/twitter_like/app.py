@@ -135,6 +135,28 @@ class TwitterLikeApp(SocialMediaApp):
             self._print(f"Error fetching timeline for {username}: {e}", color="red")
             return []
 
+    def get_timeline_strategy(
+        self, strategy: str, user_name: str, limit: int = 10, **timeline_config: dict
+    ) -> list[dict]:
+        """Fetch timeline using specified strategy.
+
+        Args:
+            strategy: Timeline strategy (follower_chronological, pure_recsys, hybrid_recsys_follower, etc.)
+            user_name: Display name of the user.
+            limit: Maximum number of posts.
+            **timeline_config: Strategy-specific config (e.g., recsys_ratio).
+
+        Returns:
+            List of post dicts for the timeline.
+        """
+        username = self._get_username(user_name)
+        try:
+            feed = self._platform.get_timeline(strategy, username, limit, **timeline_config)
+            return feed.get("posts", [])
+        except Exception as e:
+            self._print(f"Error fetching timeline with strategy '{strategy}' for {username}: {e}", color="red")
+            return []
+
     def format_timeline_for_observation(self, timeline: list[dict]) -> str:
         """Format timeline posts as a clean text block for the LLM.
 
@@ -509,4 +531,181 @@ class TwitterLikeApp(SocialMediaApp):
         except Exception as e:
             msg = f"Error searching posts: {e}"
         self._print(msg, emoji="🔍")
+        return msg
+
+    # ================================================================ #
+    # OASIS-Compatible Actions
+    # ================================================================ #
+
+    @app_action
+    def unlike_post(self, current_user: str, post_id: int) -> str:
+        """Remove a like from a previously liked post.
+
+        Args:
+            current_user: The full display name of the user removing the like.
+            post_id: The ID of the post to unlike.
+        """
+        current_user_full = str(current_user)
+        username = self._get_username(current_user)
+        result = self._platform.unlike_post(username, post_id)
+        msg = f"{current_user_full} {'unliked' if result else 'could not unlike'} post {post_id}."
+        self._print(msg, emoji="🚫❤️")
+        self._log_action_event(
+            source_user=current_user_full,
+            label="unlike_post",
+            data={"post_id": str(post_id)},
+        )
+        return msg
+
+    @app_action
+    def dislike_post(self, current_user: str, post_id: int) -> str:
+        """Dislike (downvote) a post.
+
+        Args:
+            current_user: The full display name of the user disliking the post.
+            post_id: The ID of the post to dislike.
+        """
+        current_user_full = str(current_user)
+        username = self._get_username(current_user)
+        result = self._platform.dislike_post(username, post_id)
+        msg = f"{current_user_full} {'disliked' if result else 'could not dislike'} post {post_id}."
+        self._print(msg, emoji="👎")
+        self._log_action_event(
+            source_user=current_user_full,
+            label="dislike_post",
+            data={"post_id": str(post_id)},
+        )
+        return msg
+
+    @app_action
+    def undo_dislike_post(self, current_user: str, post_id: int) -> str:
+        """Remove a dislike from a post.
+
+        Args:
+            current_user: The full display name of the user removing the dislike.
+            post_id: The ID of the post to undo dislike for.
+        """
+        current_user_full = str(current_user)
+        username = self._get_username(current_user)
+        result = self._platform.undo_dislike_post(username, post_id)
+        msg = f"{current_user_full} {'removed dislike from' if result else 'could not remove dislike from'} post {post_id}."
+        self._print(msg, emoji="🆗")
+        self._log_action_event(
+            source_user=current_user_full,
+            label="undo_dislike_post",
+            data={"post_id": str(post_id)},
+        )
+        return msg
+
+    @app_action
+    def mute_user(self, current_user: str, target_user: str) -> str:
+        """Mute another user to hide their posts from your timeline.
+
+        Args:
+            current_user: The full display name of the user doing the muting.
+            target_user: The full display name of the user to mute.
+        """
+        current_user_full = str(current_user)
+        target_user_full = str(target_user)
+        src_username = self._get_username(current_user)
+        tgt_username = self._get_username(target_user)
+        result = self._platform.mute_user(src_username, tgt_username)
+        msg = f"{current_user_full} {'muted' if result else 'could not mute'} {target_user_full}."
+        self._print(msg, emoji="🔇")
+        self._log_action_event(
+            source_user=current_user_full,
+            label="mute_user",
+            data={"target_user": target_user_full},
+        )
+        return msg
+
+    @app_action
+    def unmute_user(self, current_user: str, target_user: str) -> str:
+        """Unmute a previously muted user.
+
+        Args:
+            current_user: The full display name of the user doing the unmuting.
+            target_user: The full display name of the user to unmute.
+        """
+        current_user_full = str(current_user)
+        target_user_full = str(target_user)
+        src_username = self._get_username(current_user)
+        tgt_username = self._get_username(target_user)
+        result = self._platform.unmute_user(src_username, tgt_username)
+        msg = f"{current_user_full} {'unmuted' if result else 'could not unmute'} {target_user_full}."
+        self._print(msg, emoji="🔊")
+        self._log_action_event(
+            source_user=current_user_full,
+            label="unmute_user",
+            data={"target_user": target_user_full},
+        )
+        return msg
+
+    @app_action
+    def report_post(self, current_user: str, post_id: int, reason: str = "Inappropriate content") -> str:
+        """Report a post for violation of community guidelines.
+
+        Args:
+            current_user: The full display name of the user reporting.
+            post_id: The ID of the post to report.
+            reason: The reason for reporting (default: Inappropriate content).
+        """
+        current_user_full = str(current_user)
+        username = self._get_username(current_user)
+        result = self._platform.report_post(username, post_id, reason)
+        msg = f"{current_user_full} {'reported' if result else 'could not report'} post {post_id} ({reason})."
+        self._print(msg, emoji="⚠️")
+        self._log_action_event(
+            source_user=current_user_full,
+            label="report_post",
+            data={"post_id": str(post_id), "reason": reason},
+        )
+        return msg
+
+    @app_action
+    def get_trending_posts(self, current_user: str, limit: int = 10, days: int = 7) -> str:
+        """Get trending posts from the last N days.
+
+        Args:
+            current_user: The full display name of the user requesting trends.
+            limit: Maximum number of posts to return.
+            days: Number of days to consider for trending.
+        """
+        current_user_full = str(current_user)
+        try:
+            results = self._platform.get_trending_posts(limit=limit, days=days)
+            if results:
+                msg = f"Trending posts (last {days} days):\n"
+                for post in results:
+                    engagement = post.get('engagement_score', 0)
+                    msg += (
+                        f"  ID:{post['id']} | @{post['username']}: "
+                        f"{post['content'][:60]}... (engagement: {engagement:.1f})\n"
+                    )
+            else:
+                msg = f"No trending posts found."
+        except Exception as e:
+            msg = f"Error getting trending posts: {e}"
+        self._print(msg, emoji="🔥")
+        self._log_action_event(
+            source_user=current_user_full,
+            label="get_trending",
+            data={"limit": limit, "days": days},
+        )
+        return msg
+
+    @app_action
+    def do_nothing(self, current_user: str) -> str:
+        """Take no action (used as a baseline or filler action).
+
+        Args:
+            current_user: The full display name of the user.
+        """
+        current_user_full = str(current_user)
+        msg = f"{current_user_full} did nothing."
+        self._log_action_event(
+            source_user=current_user_full,
+            label="do_nothing",
+            data={},
+        )
         return msg

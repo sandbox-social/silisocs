@@ -331,6 +331,15 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
                 episode_observation_flow[0] if episode_observation_flow else "fixed_pre"
             )
 
+        # Get timeline strategy and config from sim settings
+        timeline_strategy = str(getattr(cfg.sim, "timeline_strategy", "follower_chronological"))
+        timeline_config = {}
+        if hasattr(cfg.sim, "timeline_config"):
+            timeline_config = cast(
+                dict[str, Any],
+                OmegaConf.to_container(cfg.sim.timeline_config, resolve=True),
+            ) if isinstance(cfg.sim.timeline_config, dict) else {}
+
         make_observation = build_observe_component(
             observe_slot,
             model=model,
@@ -338,6 +347,8 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
             sm_app=sm_app,
             entity_action_flows=entity_action_flows,
             episode_observation_flow=str(episode_observation_flow),
+            timeline_strategy=timeline_strategy,
+            timeline_config=timeline_config,
         )
         resolve_component = build_resolve_component(
             resolve_slot,

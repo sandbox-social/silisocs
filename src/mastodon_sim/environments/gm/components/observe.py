@@ -24,6 +24,8 @@ class TimelineMakeObservation(make_observation_component.MakeObservation):
         sm_app: Any,
         entity_action_flows: dict[str, str] | None = None,
         episode_observation_flows: Sequence[str] | None = None,
+        timeline_strategy: str = "follower_chronological",
+        timeline_config: dict[str, Any] | None = None,
         call_to_make_observation: str = _CALL_TO_MAKE_OBSERVATION,
     ):
         super().__init__(
@@ -37,6 +39,29 @@ class TimelineMakeObservation(make_observation_component.MakeObservation):
         self._episode_observation_flows = {
             str(flow).strip() for flow in (episode_observation_flows or ()) if str(flow).strip()
         }
+        self._timeline_strategy = timeline_strategy
+        self._timeline_config = dict(timeline_config or {})
+
+    def _get_active_entity_name_from_call_to_action(self, call_to_action: str) -> str:
+        """Extract active entity name from call_to_action.
+
+        Handles both templates:
+        1. Simple: "{name}" (our template)
+        2. Full question: "What is the current situation faced by {name}?..." (Concordia template)
+        """
+        import re
+
+        # Try to extract from full question template: "What is the current situation faced by NAME?"
+        match = re.search(r"What is the current situation faced by (.+?)\?", call_to_action)
+        if match:
+            return match.group(1).strip()
+
+        # Fallback to parent implementation for simple "{name}" template
+        try:
+            return super()._get_active_entity_name_from_call_to_action(call_to_action)
+        except Exception:
+            # Last resort: return the call_to_action as-is
+            return call_to_action.strip()
 
     def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
         """Return formatted timeline observation for the active entity."""
@@ -65,8 +90,95 @@ class TimelineMakeObservation(make_observation_component.MakeObservation):
 
         cfg = ConfigStore.get_config()
         timeline_posts = getattr(cfg.sim, "timeline_posts", 10)
-        timeline = self._sm_app.get_timeline(active_entity_name, timeline_posts)
+        timeline = self._sm_app.get_timeline_strategy(
+            self._timeline_strategy,
+            active_entity_name,
+            timeline_posts,
+            **self._timeline_config
+        )
         result = self._sm_app.format_timeline_for_observation(timeline)
+
+        # Ensure non-empty result even when timeline is empty
+        if not result or not result.strip():
+            result = "## Timeline\n\nNo posts available in your feed yet."
+
+        self._logging_channel(
+            {
+                "Key": self._pre_act_label,
+                "Summary": result[:100] + "..." if len(result) > 100 else result,
+                "Value": result,
+                "Active Entity": active_entity_name,
+            }
+        )
+        return result
+
+
+
+class EpisodeObservation(make_observation_component.MakeObservation):
+    """Return episode number instead of timeline for specific flows.
+
+    Used to differentiate agent behavior based on entity_action_flows
+    (e.g., fixed_pre agents see only episode numbers, not timelines).
+    """
+
+    def __init__(
+        self,
+        *,
+        model: Any,
+        player_names: Sequence[str],
+        sm_app: Any,
+        entity_action_flows: dict[str, str] | None = None,
+        episode_observation_flow: str = "fixed_pre",
+        call_to_make_observation: str = _CALL_TO_MAKE_OBSERVATION,
+    ):
+        super().__init__(
+            model=model,
+            player_names=player_names,
+            components=(),
+            call_to_make_observation=call_to_make_observation,
+        )
+        self._sm_app = sm_app
+        self._entity_action_flows = dict(entity_action_flows or {})
+        self._episode_observation_flow = str(episode_observation_flow).strip()
+
+    def _get_active_entity_name_from_call_to_action(self, call_to_action: str) -> str:
+        """Extract active entity name from call_to_action.
+
+        Handles both templates:
+        1. Simple: "{name}" (our template)
+        2. Full question: "What is the current situation faced by {name}?..." (Concordia template)
+        """
+        import re
+
+        # Try to extract from full question template: "What is the current situation faced by NAME?"
+        match = re.search(r"What is the current situation faced by (.+?)\?", call_to_action)
+        if match:
+            return match.group(1).strip()
+
+        # Fallback to parent implementation for simple "{name}" template
+        try:
+            return super()._get_active_entity_name_from_call_to_action(call_to_action)
+        except Exception:
+            # Last resort: return the call_to_action as-is
+            return call_to_action.strip()
+
+    def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
+        """Return episode number if entity is in episode observation flow."""
+        if action_spec.output_type != entity_lib.OutputType.MAKE_OBSERVATION:
+            return ""
+
+        active_entity_name = self._get_active_entity_name_from_call_to_action(
+            action_spec.call_to_action
+        )
+
+        flow_type = self._entity_action_flows.get(active_entity_name, "default")
+        if flow_type != self._episode_observation_flow:
+            return ""
+
+        current_episode = getattr(
+            getattr(self._sm_app, "action_logger", None), "episode_idx", 0
+        )
+        result = f"EPISODE: {current_episode}"
         self._logging_channel(
             {
                 "Key": self._pre_act_label,
@@ -76,12 +188,3 @@ class TimelineMakeObservation(make_observation_component.MakeObservation):
             }
         )
         return result
-
-
-class ChunkStartMakeObservation(TimelineMakeObservation):
-    """Chunk-aware observation component.
-
-    With current single-action-per-step engine behavior this is equivalent to
-    TimelineMakeObservation. It is kept for compatibility with planned
-    multi-action chunk policies.
-    """
