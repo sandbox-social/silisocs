@@ -1,0 +1,51 @@
+# OASIS Reddit Platform Config
+# @package social_media
+
+platform_type: reddit_like
+app_module_path: mastodon_sim.environments.backends.reddit_like.app
+use_server: false
+
+gamemaster:
+  filename: social_media
+  name: reddit_like_gm
+  sim_role:
+    name: social media game master
+    module_path: mastodon_sim.environments.gm.game_master
+
+usage_instructions: |
+  R reddit is organized around communities called subreddits.
+  Each subreddit (e.g. r/business, r/economics) focuses on a particular topic.
+  Users create posts with a title and content in a subreddit.
+  Other users can comment on posts, creating threaded discussion chains.
+  Users can upvote content they find valuable, increasing its score.
+  Users can downvote content they find unhelpful, decreasing its score.
+  Posts are ranked by score within their subreddit.
+  Your home feed shows posts from subreddits you have joined.
+  Critically important: Operations such as commenting, upvoting, or downvoting require a `post_id`. To obtain a `post_id`, you must have memory/knowledge of a real `post_id`. `post_id`'s can be retrieved using the `get_home_feed` action.
+
+# Match default reddit_like action_call_to_action exactly for consistency
+action_call_to_action: |
+  ## AVAILABLE ACTIONS
+  1. POST - Share new content by creating a post in a subreddit
+  2. COMMENT - Engage existing content by commenting on a post (needs post ID)
+  3. UPVOTE - Show support for content by upvoting a post (needs post ID)
+  4. DOWNVOTE - Flag low-quality content by downvoting a post (needs post ID)
+
+  ## INSTRUCTIONS
+  Determine what ONE action {name} would take next based on:
+  - Their character and values via self-perception and goal descriptions
+  - The current context and feed
+  - Not repeating recent actions
+  If text-based, the text must reflect their posting style description.
+
+  ## OUTPUT FORMAT
+  Answer: {name}
+  STEP 1: [Analyze {name}'s motivation based on their character]
+  STEP 2: [Consider which posts/actions align with {name}'s values]
+  STEP 3: [Determine the single most authentic action]
+
+  FINAL DECISION:
+  ACTION TYPE: [POST/COMMENT/UPVOTE/DOWNVOTE]
+  TARGET ID: [Include post ID if applicable]
+  CONTENT: [For posts/comments, exact text {name} would write]
+  REASONING: [Brief explanation of why this action fits {name}'s character]

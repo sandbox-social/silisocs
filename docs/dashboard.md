@@ -24,6 +24,12 @@ The launcher opens in your browser with six tabs.
 - Previewing Hydra CLI overrides
 - Running simulations with live stdout capture
 
+Simple-first UX:
+
+- Advanced controls are hidden by default.
+- Turn on **Enable advanced configuration** in Environment to edit flow tags,
+  shared-flow GM presets, and orchestration YAML.
+
 ### Tabs
 
 ### 1. Simulation
@@ -63,6 +69,7 @@ Configure the persona pipeline:
 - **Per-class LLM model**: Optional model override per agent class
 - **Count**: Number of agents in each class
 - **Sim role name**: Role key used by social network/activity config
+- **Flow tag** (advanced only): Class-level action flow used by multi-GM orchestration
 - **Fixed-action entity mode** (optional):
 - Enable fixed actions for a class
 - Select referenced action set id
@@ -78,6 +85,7 @@ Runtime environment controls:
 
 - **Platform backend**: Twitter-like, Reddit-like, or Mastodon
 - **Enabled backend actions**: Optional multi-select whitelist. Empty means all backend actions are available.
+- **Enable advanced configuration** (toggle): reveals orchestration controls.
 
 Environment levers in expanders:
 
@@ -94,6 +102,10 @@ Environment levers in expanders:
 - Action-loop params: `count`, `max_actions`, `done_token`
 - Probe-schedule params: `start_step`, `every_n_steps`
 - Optional custom class path override for each policy slot
+
+- **Advanced GM Orchestration** (advanced mode only)
+- GM preset: `simple` or `shared_flow`
+- YAML editor for `gm_orchestration` (multi-GM flow bindings)
 
 Social network controls (in the same Environment tab):
 

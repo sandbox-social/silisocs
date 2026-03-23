@@ -1,0 +1,115 @@
+scenario_name: oasis_twitter_polarization
+jobname_format: "TwitterPolarization_${sim.num_agents}_${sim.num_steps}"
+
+setting:
+  name: Twitter Ideological Polarization
+  background:
+    - "A network of Twitter users with distinct ideological perspectives"
+    - "Users engage in discussions forming echo chambers around political viewpoints"
+    - "Real Twitter recommendation algorithm amplifies ideologically similar content"
+
+event:
+  name: Opinion Polarization & Echo Chambers
+  context: "Measure how exposure to ideologically similar content from recommendations affects opinion extremeness and group polarization"
+
+persona_pipeline:
+  processing_mode: raw
+  defaults:
+    shared_memories: []
+    params:
+      scenario_context: "You are a Twitter user engaging in political and social discussions. Your tweets should reflect your values and position."
+  classes:
+    agent:
+      count: 40  # Small ideological groups for polarization study
+      prefab_module: mastodon_sim.agents.entity
+      data:
+        source: inline
+        records:
+          # Progressive group
+          - id: 1
+            persona: "Progressive activist focused on social justice and climate action. Values equality and systemic change."
+            name: "ProgressiveUser"
+            username: "prog_user_1"
+            gender: "female"
+            age: 28
+            mbti: "ENFP"
+          - id: 2
+            persona: "Liberal educator interested in evidence-based policy. Passionate about education and healthcare reform."
+            name: "LibUser"
+            username: "lib_user_1"
+            gender: "male"
+            age: 35
+            mbti: "INTJ"
+          # Conservative group
+          - id: 3
+            persona: "Traditional conservative valuing limited government and free markets. Believes in personal responsibility."
+            name: "ConservativeUser"
+            username: "cons_user_1"
+            gender: "male"
+            age: 42
+            mbti: "ESTJ"
+          - id: 4
+            persona: "Libertarian skeptical of government intervention. Values individual liberty and property rights."
+            name: "LibertarianUser"
+            username: "lib_user_2"
+            gender: "female"
+            age: 31
+            mbti: "INTJ"
+          # Centrist/independent group
+          - id: 5
+            persona: "Pragmatist independent voter. Values compromise and practical solutions over ideology."
+            name: "CentristUser"
+            username: "center_user_1"
+            gender: "male"
+            age: 45
+            mbti: "ISTJ"
+      field_map:
+        # Twitter uses persona + optional demographics
+        context: "{persona}\nYou are a {gender}, {age} years old, with MBTI type {mbti}"
+        name: name
+        username: username
+
+social_network:
+  activity_transition_rates:
+    agent:
+      inactive_to_active: 0.35
+  base_followership_probability: 0.3  # Lower probability creates ideological clustering
+  network_type: barabasi_albert
+  barabasi_albert_m: 20  # Preferential attachment parameter
+
+probes:
+  deployment:
+    enabled: true
+    start_step: 5
+    every_n_steps: 10
+  queries:
+    opinion_extremeness:
+      probe_name: extremeness
+      query_type: FreeTextProbe
+      prompt: "State your current position on key political economic and social issues. Be specific about what you believe and why."
+
+# Twitter: Uses TF-IDF personalization + following timeline (hybrid)
+engine:
+  recsys:
+    type: twitter  # TF-IDF embedding-based personalization
+    params:
+      max_rec_posts: 10
+      update_every_n_steps: 1
+
+# Timeline: Twitter uses hybrid (recommendations + following posts)
+timeline_posts: 15
+timeline_strategy: hybrid_recsys_follower  # Twitter: blend recommendations + followed users
+
+# Twitter OASIS action constraints
+sim:
+  enabled_actions:
+    - create_tweet
+    - reply_to_tweet
+    - like_tweet
+    - repost_tweet
+    - search_tweets
+    - get_home_timeline
+    - view_profile
+    - get_trending_posts
+    - do_nothing
+

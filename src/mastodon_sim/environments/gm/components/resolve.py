@@ -74,7 +74,7 @@ def find_and_parse_action_data(data_string: str) -> dict[str, str] | None:
     }
 
 
-@dataclass
+@dataclass(eq=False)
 class _BaseResolveComponent(
     entity_component.ContextComponent, entity_component.ComponentWithLogging
 ):
@@ -116,7 +116,7 @@ class _BaseResolveComponent(
         del state
 
 
-@dataclass
+@dataclass(eq=False)
 class ParsedActionResolveComponent(_BaseResolveComponent):
     """Resolve using ACTION TYPE/TARGET ID/CONTENT parser output."""
 
@@ -131,7 +131,7 @@ class ParsedActionResolveComponent(_BaseResolveComponent):
         return self.sm_app.parse_and_resolve_action(active_entity, action_data)
 
 
-@dataclass
+@dataclass(eq=False)
 class GenericActionResolveComponent(_BaseResolveComponent):
     """Resolve generic ACTION: name / param: value format."""
 
@@ -148,7 +148,7 @@ class GenericActionResolveComponent(_BaseResolveComponent):
         return self.sm_app.invoke_action_by_name(action_name, args_text) or ""
 
 
-@dataclass
+@dataclass(eq=False)
 class ToolCallingResolveComponent(_BaseResolveComponent):
     """Resolve tool-call invocations from the entity's act output.
 

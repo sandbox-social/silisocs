@@ -34,8 +34,8 @@ subreddits:
   - name: general
     description: General discussion for all topics
 
-# Action call to action template
-action_call_to_action: |
+# Action prompt and output style (separated for flexibility)
+action_prompt: |
   ## AVAILABLE ACTIONS
   1. POST - Share new content by creating a post in a subreddit
   2. COMMENT - Engage existing content by commenting on a post (needs post ID)
@@ -49,12 +49,14 @@ action_call_to_action: |
   - Not repeating recent actions
   If text-based, the text must reflect their posting style description.
 
-  ## OUTPUT FORMAT
+  ## DECISION PROCESS
   Answer: {name}
   STEP 1: [Analyze {name}'s motivation based on their character]
   STEP 2: [Consider which posts/actions align with {name}'s values]
   STEP 3: [Determine the single most authentic action]
 
+# Output style: how to format the response (replaced when tool_calling is enabled)
+output_style: |
   FINAL DECISION:
   ACTION TYPE: [POST/COMMENT/UPVOTE/DOWNVOTE]
   TARGET ID: [Include post ID if applicable]

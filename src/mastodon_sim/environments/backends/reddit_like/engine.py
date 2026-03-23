@@ -9,6 +9,8 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
+import json
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -144,6 +146,7 @@ class RedditLikePlatform:
                     created_at REAL,
                     upvotes INTEGER DEFAULT 0,
                     downvotes INTEGER DEFAULT 0,
+                    dislikes_count INTEGER DEFAULT 0,
                     comment_count INTEGER DEFAULT 0,
                     FOREIGN KEY(user_id) REFERENCES users(id),
                     FOREIGN KEY(subreddit_id) REFERENCES subreddits(id)
@@ -234,6 +237,17 @@ class RedditLikePlatform:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_activities_target ON activities(target_user_id, created_at DESC)"
             )
+
+            # Initialize OASIS schema tables
+            self._init_oasis_schema(conn)
+
+    def _init_oasis_schema(self, conn: sqlite3.Connection) -> None:
+        """Initialize optional OASIS extension schema.
+
+        Base Reddit-like simulations do not depend on extra OASIS-only tables,
+        so this hook is intentionally a no-op for compatibility.
+        """
+        del conn
 
     def shutdown(self):
         """Clean shutdown of the writer thread."""
@@ -865,3 +879,505 @@ class RedditLikePlatform:
                 (user_id, target_id, target_id, user_id, limit),
             ).fetchall()
             return [dict(r) for r in rows]
+
+    # ================================================================ #
+    # Timeline Selection Strategies (mirrored from Twitter)
+    # ================================================================ #
+
+    TIMELINE_STRATEGIES = {
+        "follower_chronological": {
+            "description": "Home feed from subscribed subreddits (chronological)",
+            "internal_feed": "home",
+        },
+        "pure_recsys": {
+            "description": "Pure recommendation algorithm feed",
+            "internal_feed": None,  # Uses get_recommendations()
+        },
+        "hybrid_recsys_follower": {
+            "description": "Hybrid: recommendations + home feed (configurable split)",
+            "internal_feed": None,  # Uses both
+        },
+    }
+
+    def get_timeline(
+        self,
+        strategy: str,
+        username: str,
+        limit: int = 10,
+        **timeline_config: Any,
+    ) -> list[dict]:
+        """Get timeline using specified strategy.
+
+        Args:
+            strategy: Timeline strategy name (see TIMELINE_STRATEGIES)
+            username: User to get timeline for
+            limit: Total posts to return
+            **timeline_config: Strategy-specific config (e.g., recsys_ratio, follower_ratio)
+
+        Returns:
+            List of posts ordered by strategy
+        """
+        if strategy == "follower_chronological":
+            feed = self.get_feed("home", username, limit)
+            return feed.get("posts", []) if feed else []
+
+        elif strategy == "pure_recsys":
+            # Pure recommendations only
+            return self.get_recommendations(username, limit)
+
+        elif strategy == "hybrid_recsys_follower":
+            # Blend recommendations and home feed with configurable ratio
+            recsys_ratio = timeline_config.get("recsys_ratio", 0.6)
+            follower_ratio = timeline_config.get("follower_ratio", 0.4)
+
+            rec_count = max(1, int(limit * recsys_ratio))
+            home_count = max(1, int(limit * follower_ratio))
+
+            rec_posts = self.get_recommendations(username, rec_count)
+            home_feed = self.get_feed("home", username, home_count)
+            home_posts = home_feed.get("posts", []) if home_feed else []
+
+            # Merge and deduplicate
+            seen_ids = set()
+            combined = []
+
+            # Add recsys first (higher priority)
+            for post in (rec_posts or []):
+                post_id = post.get("id", post.get("post_id"))
+                if post_id not in seen_ids:
+                    combined.append(post)
+                    seen_ids.add(post_id)
+
+            # Then add home feed posts
+            for post in home_posts:
+                post_id = post.get("id", post.get("post_id"))
+                if post_id not in seen_ids:
+                    combined.append(post)
+                    seen_ids.add(post_id)
+
+            return combined[:limit]
+
+        else:
+            # Fallback: use follower_chronological
+            logger.warning(f"Unknown timeline strategy '{strategy}', falling back to follower_chronological")
+            return self.get_timeline("follower_chronological", username, limit, **timeline_config)
+
+    # ================================================================ #
+    # OASIS-Compatible Extended Methods (mirrored from Twitter)
+    # ================================================================ #
+
+    def dislike_post(self, username: str, post_id: int) -> bool:
+        """Add a downvote to a post."""
+        try:
+            with self.get_connection() as conn:
+                user_id = self.get_user_id(username)
+                if not user_id:
+                    return False
+
+                # Check if already downvoted
+                cursor = conn.execute(
+                    "SELECT 1 FROM dislikes WHERE user_id = ? AND post_id = ?",
+                    (user_id, post_id),
+                )
+                if cursor.fetchone():
+                    return False
+
+                # Add downvote
+                now = time.time()
+                conn.execute(
+                    "INSERT INTO dislikes (user_id, post_id, created_at) VALUES (?, ?, ?)",
+                    (user_id, post_id, now),
+                )
+                conn.execute(
+                    "UPDATE posts SET downvotes = downvotes + 1 WHERE id = ?",
+                    (post_id,),
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Error downvoting post {post_id}: {e}")
+            return False
+
+    def unlike_post(self, username: str, post_id: int) -> bool:
+        """Remove an upvote from a post."""
+        try:
+            with self.get_connection() as conn:
+                user_id = self.get_user_id(username)
+                if not user_id:
+                    return False
+
+                # Check if upvote exists
+                cursor = conn.execute(
+                    "SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?",
+                    (user_id, post_id),
+                )
+                if not cursor.fetchone():
+                    return False
+
+                # Remove upvote
+                conn.execute(
+                    "DELETE FROM likes WHERE user_id = ? AND post_id = ?",
+                    (user_id, post_id),
+                )
+                conn.execute(
+                    "UPDATE posts SET upvotes = MAX(0, upvotes - 1) WHERE id = ?",
+                    (post_id,),
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Error removing upvote for post {post_id}: {e}")
+            return False
+
+    def undo_dislike_post(self, username: str, post_id: int) -> bool:
+        """Remove a downvote from a post."""
+        try:
+            with self.get_connection() as conn:
+                user_id = self.get_user_id(username)
+                if not user_id:
+                    return False
+
+                # Check if downvote exists
+                cursor = conn.execute(
+                    "SELECT 1 FROM dislikes WHERE user_id = ? AND post_id = ?",
+                    (user_id, post_id),
+                )
+                if not cursor.fetchone():
+                    return False
+
+                # Remove downvote
+                conn.execute(
+                    "DELETE FROM dislikes WHERE user_id = ? AND post_id = ?",
+                    (user_id, post_id),
+                )
+                conn.execute(
+                    "UPDATE posts SET downvotes = MAX(0, downvotes - 1) WHERE id = ?",
+                    (post_id,),
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Error removing downvote for post {post_id}: {e}")
+            return False
+
+    def mute_user(self, username: str, target_username: str) -> bool:
+        """Mute another user."""
+        try:
+            with self.get_connection() as conn:
+                user_id = self.get_user_id(username)
+                target_id = self.get_user_id(target_username)
+                if not user_id or not target_id:
+                    return False
+
+                # Check if already muted
+                cursor = conn.execute(
+                    "SELECT 1 FROM mutes WHERE muter_id = ? AND mutee_id = ?",
+                    (user_id, target_id),
+                )
+                if cursor.fetchone():
+                    return False
+
+                # Add mute
+                now = time.time()
+                conn.execute(
+                    "INSERT INTO mutes (muter_id, mutee_id, created_at) VALUES (?, ?, ?)",
+                    (user_id, target_id, now),
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Error muting user {target_username}: {e}")
+            return False
+
+    def unmute_user(self, username: str, target_username: str) -> bool:
+        """Unmute a user."""
+        try:
+            with self.get_connection() as conn:
+                user_id = self.get_user_id(username)
+                target_id = self.get_user_id(target_username)
+                if not user_id or not target_id:
+                    return False
+
+                # Check if muted
+                cursor = conn.execute(
+                    "SELECT 1 FROM mutes WHERE muter_id = ? AND mutee_id = ?",
+                    (user_id, target_id),
+                )
+                if not cursor.fetchone():
+                    return False
+
+                # Remove mute
+                conn.execute(
+                    "DELETE FROM mutes WHERE muter_id = ? AND mutee_id = ?",
+                    (user_id, target_id),
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Error unmuting user {target_username}: {e}")
+            return False
+
+    def report_post(self, username: str, post_id: int, reason: str = "") -> bool:
+        """Report a post."""
+        try:
+            with self.get_connection() as conn:
+                user_id = self.get_user_id(username)
+                if not user_id:
+                    return False
+
+                now = time.time()
+                conn.execute(
+                    "INSERT INTO reports (user_id, post_id, reason, created_at) VALUES (?, ?, ?, ?)",
+                    (user_id, post_id, reason, now),
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Error reporting post {post_id}: {e}")
+            return False
+
+    def get_trending_posts(self, limit: int = 10, days: int = 7) -> list[dict]:
+        """Get trending posts based on engagement."""
+        try:
+            with self.get_connection() as conn:
+                cutoff = time.time() - (days * 86400)
+                cursor = conn.execute("""
+                    SELECT p.*, u.username,
+                           (p.upvotes + p.comment_count) as engagement
+                    FROM posts p
+                    JOIN users u ON p.user_id = u.id
+                    WHERE p.created_at > ?
+                    ORDER BY engagement DESC, p.created_at DESC
+                    LIMIT ?
+                """, (cutoff, limit))
+
+                posts = []
+                for row in cursor.fetchall():
+                    posts.append({
+                        "id": row[0],
+                        "user_id": row[1],
+                        "title": row[3],
+                        "content": row[4],
+                        "created_at": row[5],
+                        "upvotes": row[6],
+                        "downvotes": row[7],
+                        "username": row[-2],
+                        "engagement_score": row[-1],
+                    })
+                return posts
+        except Exception as e:
+            logger.error(f"Error getting trending posts: {e}")
+            return []
+
+    # ================================================================ #
+    # Recommendation System (OASIS-compatible)
+    # ================================================================ #
+
+    def init_recsys(self, recsys_type: str = "reddit") -> None:
+        """Initialize recommendation system for a specific algorithm type.
+
+        Args:
+            recsys_type: Algorithm type ("reddit", "twitter", or "twhin")
+                        Can be called multiple times to enable multiple algorithms simultaneously.
+        """
+        # Initialize dict on first call
+        if not hasattr(self, "_recsys_types"):
+            self._recsys_types: dict[str, dict] = {}
+
+        # Add this algorithm type to the set (cumulative, not overwriting)
+        self._recsys_types[recsys_type] = {
+            "type": recsys_type,
+            "embeddings_cache": {},
+            "model": None,
+        }
+
+        # Load embedding model if needed
+        if recsys_type in ("twitter", "twhin"):
+            try:
+                from sentence_transformers import SentenceTransformer
+                model_name = "paraphrase-MiniLM-L6-v2" if recsys_type == "twitter" else "sentence-transformers/Twitter-roBERTa-base"
+                model = SentenceTransformer(model_name)
+                self._recsys_types[recsys_type]["model"] = model
+                logger.info(f"Loaded {recsys_type} recsys model")
+            except ImportError:
+                logger.warning(f"sentence-transformers not available for {recsys_type}, embeddings disabled for this type")
+                self._recsys_types[recsys_type]["model"] = None
+
+        logger.info(f"Initialized recsys type '{recsys_type}'. Active types: {list(self._recsys_types.keys())}")
+
+    def reddit_hot_score(self, upvotes: int, downvotes: int, created_at: float) -> float:
+        """Reddit hot-score algorithm."""
+        import math
+        score = upvotes - downvotes
+        now = time.time()
+        age_seconds = now - created_at
+
+        order = math.log10(max(abs(score), 1))
+        sign = 1 if score > 0 else -1 if score < 0 else 0
+
+        return sign * order + (age_seconds / 45000)
+
+    def update_recommendations(self, active_user_ids: list[int] | None = None, max_posts: int = 10) -> None:
+        """Update recommendations for all initialized algorithm types.
+
+        Args:
+            active_user_ids: Optional list of user IDs to limit updates to.
+            max_posts: Maximum recommendations per user per algorithm.
+
+        Generates recommendations for each initialized recsys type and stores them
+        in the database with the algorithm type tagged.
+        """
+        if not hasattr(self, "_recsys_types") or not self._recsys_types:
+            logger.debug("No recsys types initialized; skipping recommendations update")
+            return
+
+        try:
+            with self.get_connection() as conn:
+                # Get users
+                if active_user_ids:
+                    placeholders = ",".join("?" * len(active_user_ids))
+                    cursor = conn.execute(f"SELECT id, username, bio FROM users WHERE id IN ({placeholders})", active_user_ids)
+                else:
+                    cursor = conn.execute("SELECT id, username, bio FROM users")
+
+                users = [{"id": r[0], "username": r[1], "bio": r[2] or ""} for r in cursor.fetchall()]
+
+                # Get recent posts
+                cursor = conn.execute(
+                    "SELECT id, user_id, content, created_at, upvotes, downvotes FROM posts ORDER BY created_at DESC LIMIT 1000"
+                )
+                posts = [{"id": r[0], "user_id": r[1], "content": r[2], "created_at": r[3], "upvotes": r[4], "downvotes": r[5]} for r in cursor.fetchall()]
+
+                if not users or not posts:
+                    logger.debug("No users or posts found; skipping recommendations update")
+                    return
+
+                # Clear old recommendations (once per update)
+                conn.execute("DELETE FROM recommendations")
+
+                # Generate recommendations for each algorithm type
+                for recsys_type, state in self._recsys_types.items():
+                    logger.debug(f"Computing {recsys_type} recommendations for {len(users)} users")
+
+                    if recsys_type == "reddit":
+                        rec_matrix = self._rec_reddit(users, posts, max_posts)
+                    elif recsys_type in ("twitter", "twhin"):
+                        # Pass the model state for this algorithm type
+                        rec_matrix = self._rec_embedding(users, posts, max_posts, state)
+                    else:
+                        logger.warning(f"Unknown recsys_type '{recsys_type}'; skipping")
+                        continue
+
+                    # Store recommendations with algorithm type
+                    for user_id, post_ids in rec_matrix.items():
+                        for post_id in post_ids:
+                            conn.execute(
+                                "INSERT OR IGNORE INTO recommendations (user_id, post_id, recsys_type) VALUES (?, ?, ?)",
+                                (user_id, post_id, recsys_type),
+                            )
+
+                    logger.info(f"Updated {recsys_type} recommendations for {len(rec_matrix)} users")
+
+                conn.commit()
+                logger.info(f"Recommendations update complete for {len(self._recsys_types)} algorithm types")
+        except Exception as e:
+            logger.error(f"Error updating recommendations: {e}", exc_info=True)
+
+    def _rec_reddit(self, users: list, posts: list, max_posts: int) -> dict:
+        """Reddit hot-score recommendations."""
+        rec_matrix = {}
+        for user in users:
+            user_id = user['id']
+            scored = []
+            for post in posts:
+                if post['user_id'] != user_id:
+                    score = self.reddit_hot_score(post['upvotes'], post['downvotes'], post['created_at'])
+                    scored.append((post['id'], score))
+
+            scored.sort(key=lambda x: x[1], reverse=True)
+            rec_matrix[user_id] = [p[0] for p in scored[:max_posts]]
+
+        return rec_matrix
+
+    def _rec_embedding(self, users: list, posts: list, max_posts: int, recsys_state: dict | None = None) -> dict:
+        """Embedding-based recommendations.
+
+        Args:
+            users: List of user dicts.
+            posts: List of post dicts.
+            max_posts: Maximum recommendations per user.
+            recsys_state: State dict for this algorithm type containing 'model' and 'embeddings_cache'.
+                         If None, attempts to use legacy self.recsys_model.
+        """
+        # Handle backward compatibility (single-model mode)
+        if recsys_state is None:
+            if not hasattr(self, "recsys_model") or self.recsys_model is None:
+                return {}
+            model = self.recsys_model
+            embeddings_cache = getattr(self, "embeddings_cache", {})
+        else:
+            model = recsys_state.get("model")
+            embeddings_cache = recsys_state.get("embeddings_cache", {})
+
+        if model is None:
+            return {}
+
+        try:
+            rec_matrix = {}
+
+            # Encode posts (batch)
+            post_texts = [p["content"] for p in posts]
+            post_embeddings = model.encode(post_texts, batch_size=32, convert_to_tensor=True)
+
+            # For each user
+            for user in users:
+                user_id = user["id"]
+                bio = user["bio"] or "no bio"
+
+                # Get or compute user embedding
+                cache_key = ("user", user_id)
+                if cache_key not in embeddings_cache:
+                    user_emb = model.encode(bio, convert_to_tensor=True)
+                    embeddings_cache[cache_key] = user_emb
+                else:
+                    user_emb = embeddings_cache[cache_key]
+
+                # Compute similarities
+                import torch
+                sims = torch.nn.functional.cosine_similarity(user_emb.unsqueeze(0), post_embeddings)
+
+                # Score posts
+                scored = []
+                for i, post in enumerate(posts):
+                    if post["user_id"] != user_id:
+                        scored.append((post["id"], float(sims[i])))
+
+                scored.sort(key=lambda x: x[1], reverse=True)
+                rec_matrix[user_id] = [p[0] for p in scored[:max_posts]]
+
+            return rec_matrix
+        except Exception as e:
+            logger.error(f"Error in embedding recsys: {e}", exc_info=True)
+            return {}
+
+    def get_recommendations(self, username: str, limit: int = 10) -> list[dict]:
+        """Get recommended posts for a user."""
+        try:
+            with self.get_connection() as conn:
+                user_id = self.get_user_id(username)
+                if not user_id:
+                    return []
+
+                cursor = conn.execute("""
+                    SELECT p.*, u.username
+                    FROM recommendations r
+                    JOIN posts p ON r.post_id = p.id
+                    JOIN users u ON p.user_id = u.id
+                    WHERE r.user_id = ?
+                    LIMIT ?
+                """, (user_id, limit))
+
+                return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting recommendations: {e}")
+            return []

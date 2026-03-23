@@ -1,0 +1,422 @@
+# Generated OASIS Reddit fixed action plan
+# Auto-generated from all_topics.json
+
+post_agent_fixed_action_plan:
+  - action_type: create_reddit_post
+    target_id: ""
+    content: |
+      Affordable Care Act anniversary marks gains for insured Black Americans
+      A step forward, but not enough. The Affordable Care Act (ACA) improved healthcare access for many, but the system remains broken and in dire need of reform. #ACA #HealthcareReform #UniversalHealthcare
+    reasoning: "OASIS data pair 0: Reddit submission from align-with-human"
+    episode: 0
+
+  - action_type: create_comment
+    target_id: "1"
+    content: |
+      I wanted Universal Healthcare, got a mandated program to subsidize the poor.  
+      
+      Then the mandate was repealed and we are left with a more confusing sy
+    reasoning: "Comment from RC pair 0, voting group: down"
+    episode: 0
+
+  - action_type: create_comment
+    target_id: "1"
+    content: |
+      The ACA is a start, but healthcare costs in this country need to be controlled. We need a system like Canada. As long as Republicans are in the majori
+    reasoning: "Comment from RC pair 0, voting group: up"
+    episode: 0
+
+  - action_type: create_comment
+    target_id: "1"
+    content: |
+      I want universal healthcare for everyone too. And this helped so many people who didnt have access before
+    reasoning: "Comment from RC pair 0, voting group: control"
+    episode: 0
+
+  - action_type: create_comment
+    target_id: "1"
+    content: |
+      Yeah, I am not going to knock a step in the right direction just because it did not go far enough.
+      
+       Especially not because a crypto currency peddler 
+    reasoning: "Comment from RC pair 0, voting group: down"
+    episode: 0
+
+  - action_type: create_comment
+    target_id: "1"
+    content: |
+      If people still can't afford healthcare, do they truly have access?
+    reasoning: "Comment from RC pair 0, voting group: control"
+    episode: 0
+
+  - action_type: create_comment
+    target_id: "1"
+    content: |
+      This. Just because you have insurance doesn't mean you can now afford healthcare
+    reasoning: "Comment from RC pair 0, voting group: control"
+    episode: 0
+
+  - action_type: create_comment
+    target_id: "1"
+    content: |
+      Exactly. We have a broken system. Can anyone explain how being forced to have insurance or face tax penalties is a good thing? Nobody wants to go to t
+    reasoning: "Comment from RC pair 0, voting group: control"
+    episode: 0
+
+  - action_type: create_comment
+    target_id: "1"
+    content: |
+      I was going to post something similar. We were promised better health CARE, all we got was forced  health INSURANCE.
+    reasoning: "Comment from RC pair 0, voting group: up"
+    episode: 0
+
+  - action_type: create_comment
+    target_id: "1"
+    content: |
+      Memba when the GQP used to say "you don't want health insurance if you can't pick your own doctor!"
+    reasoning: "Comment from RC pair 0, voting group: up"
+    episode: 0
+
+  - action_type: create_comment
+    target_id: "1"
+    content: |
+      I thought the penalty was removed, was it re-instated?
+      
+      &amp;#x200B;
+      
+      As far as the penalty, the idea was that non insured people are the reason why h
+    reasoning: "Comment from RC pair 0, voting group: control"
+    episode: 0
+
+  - action_type: create_reddit_post
+    target_id: ""
+    content: |
+      How the Members of Our Discord Group Are Inspired to Grow Their Businesses
+      "Join our Discord group for entrepreneurs and business owners! Share your experiences, ask questions, and get inspired by fellow members who are passionate about growing their businesses. Let's grow t
+    reasoning: "OASIS data pair 1: Reddit submission from align-with-human"
+    episode: 0
+
+  - action_type: create_comment
+    target_id: "2"
+    content: |
+      Hey Lester, that discord sounds like something I could get behind! wanna send a link to the server?
+    reasoning: "Comment from RC pair 1, voting group: down"
+    episode: 0
+
+  - action_type: create_reddit_post
+    target_id: ""
+    content: |
+      How do I go about starting a business?
+      So as the title says I’m looking to start up an LLC. I don’t want to use an online service in case I have questions. I have no idea what I’m doing literally. So far I’ve picked out the registered agen
+    reasoning: "OASIS data pair 2: Reddit submission from align-with-human"
+    episode: 1
+
+  - action_type: create_comment
+    target_id: "3"
+    content: |
+      What kind of business. Retail? Service?
+    reasoning: "Comment from RC pair 2, voting group: control"
+    episode: 1
+
+  - action_type: create_comment
+    target_id: "3"
+    content: |
+      Services, light landscaping, household repairs and such
+    reasoning: "Comment from RC pair 2, voting group: up"
+    episode: 1
+
+  - action_type: create_comment
+    target_id: "3"
+    content: |
+      There is not one set of nationwide laws about this.  Every locale is different, from state to county down to the city level.
+      
+      Contact your area Small 
+    reasoning: "Comment from RC pair 2, voting group: control"
+    episode: 1
+
+  - action_type: create_comment
+    target_id: "3"
+    content: |
+      What you describe is setting up an LLC. An LLC is not a buiness. It's just some paperwork. Do you actually have a business?
+    reasoning: "Comment from RC pair 2, voting group: up"
+    episode: 1
+
+  - action_type: create_comment
+    target_id: "3"
+    content: |
+      fyi - you don't need to pay someone to act as your registered agent. You can, and probably should, be your own (cost savings).
+    reasoning: "Comment from RC pair 2, voting group: control"
+    episode: 1
+
+  - action_type: create_comment
+    target_id: "3"
+    content: |
+      Ok but should I though not knowing a damn thing? I think at least for the first couple tax years I’ll need some help
+    reasoning: "Comment from RC pair 2, voting group: up"
+    episode: 1
+
+  - action_type: create_comment
+    target_id: "3"
+    content: |
+      I’d like to buy a truck for my tools and more tools and equipment in general. I have a background in landscape so naturally I’d like to lean in that d
+    reasoning: "Comment from RC pair 2, voting group: up"
+    episode: 1
+
+  - action_type: create_reddit_post
+    target_id: ""
+    content: |
+      In Honor of the Late, Great Lance Reddick
+      "Just found out about the passing of the amazing Lance Reddick 🤯🎤. He was a talented actor who brought so much life to his roles, from Bosch to The Wire. Will miss him. RIP" 
+      
+      Note: The comments provi
+    reasoning: "OASIS data pair 3: Reddit submission from align-with-human"
+    episode: 1
+
+  - action_type: create_comment
+    target_id: "4"
+    content: |
+      Son of a bitch, and this is how I found out 😱😭
+    reasoning: "Comment from RC pair 3, voting group: control"
+    episode: 1
+
+  - action_type: create_comment
+    target_id: "4"
+    content: |
+      Damn, I loved him in everything he was in, he was one of those actors that I would watch a show or movie just because he was in it. Rip you badass/fun
+    reasoning: "Comment from RC pair 3, voting group: down"
+    episode: 1
+
+  - action_type: create_comment
+    target_id: "4"
+    content: |
+      A moment of Sylens for the loss a great man of many talents.
+    reasoning: "Comment from RC pair 3, voting group: up"
+    episode: 1
+
+  - action_type: create_comment
+    target_id: "4"
+    content: |
+      Wow. He was a great actor. Great in Bosch.
+    reasoning: "Comment from RC pair 3, voting group: down"
+    episode: 1
+
+  - action_type: create_reddit_post
+    target_id: ""
+    content: |
+      Explosions destroy Russian cruise missile shipment in Crimea
+      "Explosions destroy Russian cruise missile shipment in Crimea. 'Air defense is working' claims Russian authorities, despite no evidence of any real attack. Meanwhile, Lavrov says 'we destroyed it on p
+    reasoning: "OASIS data pair 4: Reddit submission from align-with-human"
+    episode: 2
+
+  - action_type: create_comment
+    target_id: "5"
+    content: |
+      &gt; Russian occupational “authorities” announced that "air defense is working " and that some "wreckage" ostensibly "damaged a household and a store.
+    reasoning: "Comment from RC pair 4, voting group: control"
+    episode: 2
+
+  - action_type: create_comment
+    target_id: "5"
+    content: |
+      Russia: Ha! And you said our missiles were duds that would fail to explode. Well, joke's on you! They exploded just fine!
+    reasoning: "Comment from RC pair 4, voting group: up"
+    episode: 2
+
+  - action_type: create_comment
+    target_id: "5"
+    content: |
+      Aurora Borealis? At this time of year? At this time of day? In this part of the country? Localized entirely within your Special Military Operation?
+    reasoning: "Comment from RC pair 4, voting group: control"
+    episode: 2
+
+  - action_type: create_comment
+    target_id: "5"
+    content: |
+      Yes. 
+      
+      In a related weather phenomenon, it rained  20cm of Vatnik tears in Moscow.
+      
+      Freak weather this time of year, I tell you.
+    reasoning: "Comment from RC pair 4, voting group: up"
+    episode: 2
+
+  - action_type: create_comment
+    target_id: "5"
+    content: |
+      Intel seems to be one of the most valuable assets in this war, someone noticed these from satellite or drone, and acted.
+    reasoning: "Comment from RC pair 4, voting group: down"
+    episode: 2
+
+  - action_type: create_comment
+    target_id: "5"
+    content: |
+      In newly annexed Russian vacation hot spot cruise ships itself on a flight to sea
+    reasoning: "Comment from RC pair 4, voting group: control"
+    episode: 2
+
+  - action_type: create_comment
+    target_id: "5"
+    content: |
+      I guess you could say that intel was always as valuable as it’s today. The only difference is the means with which you can acquire information.
+    reasoning: "Comment from RC pair 4, voting group: down"
+    episode: 2
+
+  - action_type: create_comment
+    target_id: "5"
+    content: |
+      Well, Putin, you are an odd fellow, but you know how to cook up a good lie
+    reasoning: "Comment from RC pair 4, voting group: control"
+    episode: 2
+
+  - action_type: create_comment
+    target_id: "5"
+    content: |
+      Has there been a war where intel isn’t one of the most valuable assets since war was created?
+    reasoning: "Comment from RC pair 4, voting group: control"
+    episode: 2
+
+  - action_type: create_comment
+    target_id: "5"
+    content: |
+      &gt; We destroyed it on purpose to motivate our mobiks to fight harder.
+      
+      -- Lavrov
+    reasoning: "Comment from RC pair 4, voting group: up"
+    episode: 2
+
+  - action_type: create_reddit_post
+    target_id: ""
+    content: |
+      Lately this video is coming up everywhere, any thoughts?
+      Title: Lately this video is coming up everywhere, any thoughts?
+      Selftext: "Just came across a video about business intelligence. Apparently, companies create a trust to hold their assets, protecting t
+    reasoning: "OASIS data pair 5: Reddit submission from align-with-human"
+    episode: 2
+
+  - action_type: create_comment
+    target_id: "6"
+    content: |
+      Business intelligence. How to run a company. I guess this is actually a thing and companies actually do this.
+      
+      This is not the original video though, 
+    reasoning: "Comment from RC pair 5, voting group: control"
+    episode: 2
+
+  - action_type: create_comment
+    target_id: "6"
+    content: |
+      yeah I found the original one I will edit it.
+      so basically you need a trust that owns a holding andnthe holding holds all your company assets, sounds 
+    reasoning: "Comment from RC pair 5, voting group: down"
+    episode: 2
+
+  - action_type: create_comment
+    target_id: "6"
+    content: |
+      Yep. A way to protect yourself as a business, guarantee more profit and reduce possible losses.
+    reasoning: "Comment from RC pair 5, voting group: down"
+    episode: 2
+
+
+
+rate_agent_fixed_action_plan:
+  - action_type: downvote_comment
+    target_id: "1"
+    reasoning: "OASIS voting: downvote for 'down' group"
+    episode: 0
+
+  - action_type: upvote_comment
+    target_id: "2"
+    reasoning: "OASIS voting: upvote for 'up' group"
+    episode: 0
+
+  - action_type: downvote_comment
+    target_id: "4"
+    reasoning: "OASIS voting: downvote for 'down' group"
+    episode: 0
+
+  - action_type: upvote_comment
+    target_id: "8"
+    reasoning: "OASIS voting: upvote for 'up' group"
+    episode: 0
+
+  - action_type: upvote_comment
+    target_id: "9"
+    reasoning: "OASIS voting: upvote for 'up' group"
+    episode: 0
+
+  - action_type: downvote_comment
+    target_id: "11"
+    reasoning: "OASIS voting: downvote for 'down' group"
+    episode: 0
+
+  - action_type: upvote_comment
+    target_id: "13"
+    reasoning: "OASIS voting: upvote for 'up' group"
+    episode: 1
+
+  - action_type: upvote_comment
+    target_id: "15"
+    reasoning: "OASIS voting: upvote for 'up' group"
+    episode: 1
+
+  - action_type: upvote_comment
+    target_id: "17"
+    reasoning: "OASIS voting: upvote for 'up' group"
+    episode: 1
+
+  - action_type: upvote_comment
+    target_id: "18"
+    reasoning: "OASIS voting: upvote for 'up' group"
+    episode: 1
+
+  - action_type: downvote_comment
+    target_id: "20"
+    reasoning: "OASIS voting: downvote for 'down' group"
+    episode: 1
+
+  - action_type: upvote_comment
+    target_id: "21"
+    reasoning: "OASIS voting: upvote for 'up' group"
+    episode: 1
+
+  - action_type: downvote_comment
+    target_id: "22"
+    reasoning: "OASIS voting: downvote for 'down' group"
+    episode: 1
+
+  - action_type: upvote_comment
+    target_id: "24"
+    reasoning: "OASIS voting: upvote for 'up' group"
+    episode: 2
+
+  - action_type: upvote_comment
+    target_id: "26"
+    reasoning: "OASIS voting: upvote for 'up' group"
+    episode: 2
+
+  - action_type: downvote_comment
+    target_id: "27"
+    reasoning: "OASIS voting: downvote for 'down' group"
+    episode: 2
+
+  - action_type: downvote_comment
+    target_id: "29"
+    reasoning: "OASIS voting: downvote for 'down' group"
+    episode: 2
+
+  - action_type: upvote_comment
+    target_id: "32"
+    reasoning: "OASIS voting: upvote for 'up' group"
+    episode: 2
+
+  - action_type: downvote_comment
+    target_id: "34"
+    reasoning: "OASIS voting: downvote for 'down' group"
+    episode: 2
+
+  - action_type: downvote_comment
+    target_id: "35"
+    reasoning: "OASIS voting: downvote for 'down' group"
+    episode: 2
+

@@ -23,6 +23,8 @@ class UserData:
     sim_role_parameters: SimRoleParameters
     sim_roles: dict[str, str] = field(default_factory=dict)
     entity_action_flows: dict[str, str] = field(default_factory=dict)
+    entity_flow_tags: dict[str, str] = field(default_factory=dict)
+    gm_orchestration: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

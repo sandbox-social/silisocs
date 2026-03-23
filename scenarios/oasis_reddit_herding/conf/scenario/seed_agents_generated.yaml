@@ -1,0 +1,3697 @@
+# Auto-generated OASIS Reddit Herding Seed Agents
+# Include this bajo persona_pipeline.classes in scenario config
+
+NewsSource_0_0:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_0"
+    context: "Automated news source 0 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Affordable Care Act anniversary marks gains for insured Black Americans
+          A step forward, but not enough. The Affordable Care Act (ACA) improved healthcare access for many, but the system remains broken and in dire need of r
+        reasoning: "OASIS pair 0: Affordable Care Act anniversary marks ga"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          I wanted Universal Healthcare, got a mandated program to subsidize the poor.  
+          
+          Then the mandate was repealed and we are
+        reasoning: "RC_1 (down): I wanted Universal Healthcare,"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          The ACA is a start, but healthcare costs in this country need to be controlled. We need a system like Canada. As long as
+        reasoning: "RC_2 (up): The ACA is a start, but health"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          I want universal healthcare for everyone too. And this helped so many people who didnt have access before
+        reasoning: "RC_3 (control): I want universal healthcare fo"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          Yeah, I am not going to knock a step in the right direction just because it did not go far enough.
+          
+           Especially not beca
+        reasoning: "RC_4 (down): Yeah, I am not going to knock "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          If people still can't afford healthcare, do they truly have access?
+        reasoning: "RC_5 (control): If people still can't afford h"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          This. Just because you have insurance doesn't mean you can now afford healthcare
+        reasoning: "RC_6 (control): This. Just because you have in"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          Exactly. We have a broken system. Can anyone explain how being forced to have insurance or face tax penalties is a good 
+        reasoning: "RC_7 (control): Exactly. We have a broken syst"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          I was going to post something similar. We were promised better health CARE, all we got was forced  health INSURANCE.
+        reasoning: "RC_8 (up): I was going to post something "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          Memba when the GQP used to say "you don't want health insurance if you can't pick your own doctor!"
+        reasoning: "RC_9 (up): Memba when the GQP used to say"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          I thought the penalty was removed, was it re-instated?
+          
+          &amp;#x200B;
+          
+          As far as the penalty, the idea was that non insur
+        reasoning: "RC_10 (control): I thought the penalty was remo"
+        episode: 1
+
+
+NewsSource_0_1:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_1"
+    context: "Automated news source 1 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          How the Members of Our Discord Group Are Inspired to Grow Their Businesses
+          "Join our Discord group for entrepreneurs and business owners! Share your experiences, ask questions, and get inspired by fellow members who are passi
+        reasoning: "OASIS pair 1: How the Members of Our Discord Group Are"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          Hey Lester, that discord sounds like something I could get behind! wanna send a link to the server?
+        reasoning: "RC_1 (down): Hey Lester, that discord sound"
+        episode: 1
+
+
+NewsSource_0_2:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_2"
+    context: "Automated news source 2 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          How do I go about starting a business?
+          So as the title says I’m looking to start up an LLC. I don’t want to use an online service in case I have questions. I have no idea what I’m doing lit
+        reasoning: "OASIS pair 2: How do I go about starting a business?"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          What kind of business. Retail? Service?
+        reasoning: "RC_1 (control): What kind of business. Retail?"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          Services, light landscaping, household repairs and such
+        reasoning: "RC_2 (up): Services, light landscaping, h"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          There is not one set of nationwide laws about this.  Every locale is different, from state to county down to the city le
+        reasoning: "RC_3 (control): There is not one set of nation"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          What you describe is setting up an LLC. An LLC is not a buiness. It's just some paperwork. Do you actually have a busine
+        reasoning: "RC_4 (up): What you describe is setting u"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          fyi - you don't need to pay someone to act as your registered agent. You can, and probably should, be your own (cost sav
+        reasoning: "RC_5 (control): fyi - you don't need to pay so"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          Ok but should I though not knowing a damn thing? I think at least for the first couple tax years I’ll need some help
+        reasoning: "RC_6 (up): Ok but should I though not kno"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          I’d like to buy a truck for my tools and more tools and equipment in general. I have a background in landscape so natura
+        reasoning: "RC_7 (up): I’d like to buy a truck for my"
+        episode: 1
+
+
+NewsSource_0_3:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_3"
+    context: "Automated news source 3 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          In Honor of the Late, Great Lance Reddick
+          "Just found out about the passing of the amazing Lance Reddick 🤯🎤. He was a talented actor who brought so much life to his roles, from Bosch to The Wi
+        reasoning: "OASIS pair 3: In Honor of the Late, Great Lance Reddic"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          Son of a bitch, and this is how I found out 😱😭
+        reasoning: "RC_1 (control): Son of a bitch, and this is ho"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          Damn, I loved him in everything he was in, he was one of those actors that I would watch a show or movie just because he
+        reasoning: "RC_2 (down): Damn, I loved him in everythin"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          A moment of Sylens for the loss a great man of many talents.
+        reasoning: "RC_3 (up): A moment of Sylens for the los"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          Wow. He was a great actor. Great in Bosch.
+        reasoning: "RC_4 (down): Wow. He was a great actor. Gre"
+        episode: 1
+
+
+NewsSource_0_4:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_4"
+    context: "Automated news source 4 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Explosions destroy Russian cruise missile shipment in Crimea
+          "Explosions destroy Russian cruise missile shipment in Crimea. 'Air defense is working' claims Russian authorities, despite no evidence of any real at
+        reasoning: "OASIS pair 4: Explosions destroy Russian cruise missil"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          &gt; Russian occupational “authorities” announced that "air defense is working " and that some "wreckage" ostensibly "da
+        reasoning: "RC_1 (control): &gt; Russian occupational “aut"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          Russia: Ha! And you said our missiles were duds that would fail to explode. Well, joke's on you! They exploded just fine
+        reasoning: "RC_2 (up): Russia: Ha! And you said our m"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          Aurora Borealis? At this time of year? At this time of day? In this part of the country? Localized entirely within your 
+        reasoning: "RC_3 (control): Aurora Borealis? At this time "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          Yes. 
+          
+          In a related weather phenomenon, it rained  20cm of Vatnik tears in Moscow.
+          
+          Freak weather this time of year, I t
+        reasoning: "RC_4 (up): Yes. 
+
+In a related weather ph"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          Intel seems to be one of the most valuable assets in this war, someone noticed these from satellite or drone, and acted.
+        reasoning: "RC_5 (down): Intel seems to be one of the m"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          In newly annexed Russian vacation hot spot cruise ships itself on a flight to sea
+        reasoning: "RC_6 (control): In newly annexed Russian vacat"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          I guess you could say that intel was always as valuable as it’s today. The only difference is the means with which you c
+        reasoning: "RC_7 (down): I guess you could say that int"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          Well, Putin, you are an odd fellow, but you know how to cook up a good lie
+        reasoning: "RC_8 (control): Well, Putin, you are an odd fe"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          Has there been a war where intel isn’t one of the most valuable assets since war was created?
+        reasoning: "RC_9 (control): Has there been a war where int"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          &gt; We destroyed it on purpose to motivate our mobiks to fight harder.
+          
+          -- Lavrov
+        reasoning: "RC_10 (up): &gt; We destroyed it on purpos"
+        episode: 1
+
+
+NewsSource_0_5:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_5"
+    context: "Automated news source 5 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Lately this video is coming up everywhere, any thoughts?
+          Title: Lately this video is coming up everywhere, any thoughts?
+          Selftext: "Just came across a video about business intelligence. Apparently, companies
+        reasoning: "OASIS pair 5: Lately this video is coming up everywher"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          Business intelligence. How to run a company. I guess this is actually a thing and companies actually do this.
+          
+          This is n
+        reasoning: "RC_1 (control): Business intelligence. How to "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          yeah I found the original one I will edit it.
+          so basically you need a trust that owns a holding andnthe holding holds al
+        reasoning: "RC_2 (down): yeah I found the original one "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          Yep. A way to protect yourself as a business, guarantee more profit and reduce possible losses.
+        reasoning: "RC_3 (down): Yep. A way to protect yourself"
+        episode: 1
+
+
+NewsSource_0_6:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_6"
+    context: "Automated news source 6 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Turkey approves Finland's NATO application, clearing the last hurdle, after a 10
+          "Turkey approves Finland's NATO application, clearing the last hurdle after a 10-month suspense! #NATO #Finland #Turkey approves Finland's NATO applic
+        reasoning: "OASIS pair 6: Turkey approves Finland's NATO applicati"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "7"
+        content: |
+          *Reposted because the previous link was behind a soft paywall.
+        reasoning: "RC_1 (up): *Reposted because the previous"
+        episode: 1
+
+
+NewsSource_0_7:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_7"
+    context: "Automated news source 7 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          How Rick Scott Became the Senator Washington Loves to Hate
+          "Rick Scott's transformation from Florida governor to Senator is a wild ride of controversy and public disdain. From Medicare fraud to environmental d
+        reasoning: "OASIS pair 7: How Rick Scott Became the Senator Washin"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          He is more cartoon villain than actual cartoon villains. If you presented him to a group of TV writers they would call h
+        reasoning: "RC_1 (down): He is more cartoon villain tha"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          I don't think anyone is going to take that designation away from Ted Cruz.
+        reasoning: "RC_2 (up): I don't think anyone is going "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          I can't imagine his own mother liked him.
+        reasoning: "RC_3 (up): I can't imagine his own mother"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          You think his sunset plan was bad, wait until you get a load of his scheme to erase Toon Town!
+        reasoning: "RC_4 (down): You think his sunset plan was "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          Oh it's not the defrauding of Medicare and ravaging of Florida's environment?
+        reasoning: "RC_5 (control): Oh it's not the defrauding of "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          He evolved from being the Governor that Floridians loved to hate.
+        reasoning: "RC_6 (down): He evolved from being the Gove"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          Only in Florida could someone oversee the most serious Medicare fraud in history and then get a job promotion — twice.
+        reasoning: "RC_7 (control): Only in Florida could someone "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          Now ALL of America gets to hate him as much as the citizens of Florida.
+        reasoning: "RC_8 (control): Now ALL of America gets to hat"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          Red Tide Rick was never for the common American; his successor, Ronny DeFascist, is of the same can kicking sort. All fl
+        reasoning: "RC_9 (up): Red Tide Rick was never for th"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          I prefer to call him “Slenderman.”
+        reasoning: "RC_10 (up): I prefer to call him “Slenderm"
+        episode: 1
+
+
+NewsSource_0_8:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_8"
+    context: "Automated news source 8 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          How to get algs4.jar to work on IntelliJ?
+          I started Princeton's Algorithms I course, but I have a problem that when I try to use the command
+          
+              javac-algs4 RandomWord.java
+          
+          I get the error
+          
+          
+        reasoning: "OASIS pair 8: How to get algs4.jar to work on IntelliJ"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "9"
+        content: |
+          That's a great course, I really enjoyed it.
+          
+          If you're typing that command, it's on the command line, and not actually a
+        reasoning: "RC_1 (up): That's a great course, I reall"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "9"
+        content: |
+          I'm using the terminal window provided by IntelliJ, but yes, it's still reporting errors every time I try to build the p
+        reasoning: "RC_2 (up): I'm using the terminal window "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "9"
+        content: |
+          Thank you! I think this pushed me in the right direction, I haven't figured it out but I'll keep looking.
+        reasoning: "RC_3 (up): Thank you! I think this pushed"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "9"
+        content: |
+          OK, good luck.  FWIW, I installed IntelliJ, then added the algs4j.jar file and it all seemed to work fine.  But there ar
+        reasoning: "RC_4 (control): OK, good luck.  FWIW, I instal"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "9"
+        content: |
+          I downloaded the hello.zip project from the coursera site and extracted all, then just opened the folder.
+        reasoning: "RC_5 (up): I downloaded the hello.zip pro"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "9"
+        content: |
+          What's the link to the hello.zip file?
+        reasoning: "RC_6 (up): What's the link to the hello.z"
+        episode: 1
+
+
+NewsSource_0_9:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_9"
+    context: "Automated news source 9 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Getting low-balled on insurance claim
+          Got some (OK, a lot) of hail damage on one of our vehicles in the recent Texas storms.
+          
+          I take it to our local body guy that I've gone to several time
+        reasoning: "OASIS pair 9: Getting low-balled on insurance claim"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "10"
+        content: |
+          Get quotes from a few other body shops, show it to the adjuster.
+          
+          
+          Don't cash the check
+        reasoning: "RC_1 (up): Get quotes from a few other bo"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "10"
+        content: |
+          Yeah I was not expecting the check.
+          
+          I gave the adjuster the quote from my preferred body shop while she was here doing 
+        reasoning: "RC_2 (control): Yeah I was not expecting the c"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "10"
+        content: |
+          Why'd they send you a cheque if you didn't accept? For my insurance, they need to actually do the repair itself and prov
+        reasoning: "RC_3 (down): Why'd they send you a cheque i"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "10"
+        content: |
+          No idea. The check appeared out of the blue in the mail yesterday. I didn't cash it.
+        reasoning: "RC_4 (down): No idea. The check appeared ou"
+        episode: 1
+
+
+NewsSource_0_10:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_10"
+    context: "Automated news source 10 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          North Korea confirms fired ICBM, says it was Hwasong-17
+          North Korea fires ICBM, claims it's a show of strength against US and South Korea's military drills. But internet users are more concerned about the "
+        reasoning: "OASIS pair 10: North Korea confirms fired ICBM, says it"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          Just keep sending them up Kym, We know your don't have shit for spare parts.
+        reasoning: "RC_1 (up): Just keep sending them up Kym,"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          [Hwasong](https://imgur.com/a/BkM7Zkc)
+        reasoning: "RC_2 (down): [Hwasong](https://imgur.com/a/"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          You're firin into the L'ocean, ain'cha mr kim
+        reasoning: "RC_3 (down): You're firin into the L'ocean,"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          &gt;North Korea’s state media said it was intended to demonstrate a “tough response posture” and was a response to the “
+        reasoning: "RC_4 (up): &gt;North Korea’s state media "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          Bezos rocket has much better head.
+          Large scale masterbation.
+        reasoning: "RC_5 (down): Bezos rocket has much better h"
+        episode: 1
+
+
+NewsSource_0_11:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_11"
+    context: "Automated news source 11 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Asking my Italian husband about if the meatballs are better than his Nona's (Par
+          Title: "TikToker tries to insult my Nona's meatballs"
+          
+          She thought she could take on the challenge and ask her husband about the meatballs being bette
+        reasoning: "OASIS pair 11: Asking my Italian husband about if the m"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          She should've said to the lady at the end "100 bucks"
+        reasoning: "RC_1 (control): She should've said to the lady"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          I feel somewhere along the way this is a response to a different video, because I have no clue what is going on.
+        reasoning: "RC_2 (control): I feel somewhere along the way"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          I feel the title gives that away.
+        reasoning: "RC_3 (up): I feel the title gives that aw"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          Hello, /u/ManiacMango33. Your post has been removed for violating Rule 10. 
+          
+          **No social media or electronic messaging c
+        reasoning: "RC_4 (down): Hello, /u/ManiacMango33. Your "
+        episode: 1
+
+
+NewsSource_0_12:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_12"
+    context: "Automated news source 12 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Silicon Valley Bank’s failure is an extinction-level event for startups, says Y 
+          "Silicon Valley Bank's sudden collapse is sparking concern for startups, with Y Combinator's Garry Tan calling it an "extinction-level event". What's 
+        reasoning: "OASIS pair 12: Silicon Valley Bank’s failure is an exti"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          Technology will still need to innovate, people will still dream… maybe the bullshit unicorn moonshot culture is gonna ge
+        reasoning: "RC_1 (up): Technology will still need to "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          It probably isn’t. What is going to happen is that depositors will be made 100% whole by the fed and the bank’s assets w
+        reasoning: "RC_2 (control): It probably isn’t. What is goi"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          This means corporations are gonna find ways to inflate more of their prices?
+        reasoning: "RC_3 (up): This means corporations are go"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          Bootstrappers gon' be jus' fine, y'all.
+        reasoning: "RC_4 (control): Bootstrappers gon' be jus' fin"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          It should. That's coming from someone who's profession is a software engineer. Putting the word "tech" in the descriptio
+        reasoning: "RC_5 (control): It should. That's coming from "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          I still have no idea what that bank is nor why its important. And i will continue to stay blissfully ignorant about it.
+        reasoning: "RC_6 (control): I still have no idea what that"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          As long as &gt;50% of your dream belongs to corporate
+        reasoning: "RC_7 (up): As long as &gt;50% of your dre"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          "There has been a disruption in the supply chain of money, so starting on Monday, money will be 30% more expensive. This
+        reasoning: "RC_8 (up): "There has been a disruption i"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          Oh no I hope this doesn’t deprive the world of the next juicero!
+        reasoning: "RC_9 (down): Oh no I hope this doesn’t depr"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          Anyone else feel like this was just a made up situation to sink all the start-ups created by those that were laid off fr
+        reasoning: "RC_10 (control): Anyone else feel like this was"
+        episode: 1
+
+
+NewsSource_0_13:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_13"
+    context: "Automated news source 13 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Counting the number of pairs of elements who appears in the same order across th
+          Does anyone know how to solve this? I just can't wrap my head around it. I can do two permutations in NlogN (count inversions with mergesort, then pai
+        reasoning: "OASIS pair 13: Counting the number of pairs of elements"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "14"
+        content: |
+          If I understand the problem correctly, this is like 2sum. But with an extra list.
+          
+          If that's true, there's an O(n) time/
+        reasoning: "RC_1 (up): If I understand the problem co"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "14"
+        content: |
+          u/teraflop method got me the correct answer already!
+        reasoning: "RC_2 (down): u/teraflop method got me the c"
+        episode: 1
+
+
+NewsSource_0_14:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_14"
+    context: "Automated news source 14 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          House committee advances legislation to ban TikTok over security concerns
+          TikTok ban bill advances in the US House, sparking concerns over First Amendment and separation of powers issues.
+        reasoning: "OASIS pair 14: House committee advances legislation to "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          If this is made law, I think it will be one of the greatest first amendment, sep of powers/federalism cases the Supreme 
+        reasoning: "RC_1 (up): If this is made law, I think i"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          Even though the company isn’t American? I dunno
+        reasoning: "RC_2 (up): Even though the company isn’t "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          I don't think the HQ of a given company determines whether this would be a First Amendment violation or not. 
+          
+          It would 
+        reasoning: "RC_3 (control): I don't think the HQ of a give"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          The court just heard a case about Turkish banks a few weeks ago. Location/Hq of the company doesn’t matter. The injury/i
+        reasoning: "RC_4 (control): The court just heard a case ab"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          The federal government has the right to block foreign companies from operating in the US. It's not a First Amendment cas
+        reasoning: "RC_5 (down): The federal government has the"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          Look up CFIUS and FIRRMA. It's separation of powers. Congress and the Executive have the right to restrict foreign compa
+        reasoning: "RC_6 (control): Look up CFIUS and FIRRMA. It's"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          The motivation for the bill is the agreement and its violation, whether it's stated or not. You can look into it if you 
+        reasoning: "RC_7 (control): The motivation for the bill is"
+        episode: 1
+
+
+NewsSource_0_15:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_15"
+    context: "Automated news source 15 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          I have made 3 flags, which one looks best?
+          "Poll time! I've created three flags for my world and I'd love your opinion on which one looks the best. Let me know in the comments which one is your
+        reasoning: "OASIS pair 15: I have made 3 flags, which one looks bes"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "16"
+        content: |
+          I like the second one. The horizontal bar arrangement looks better to me than the black outline and pseudo Nordic cross.
+        reasoning: "RC_1 (down): I like the second one. The hor"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "16"
+        content: |
+          The second is my favorite, but if you could utilize the other two designs as separate parts of history (like how the Ame
+        reasoning: "RC_2 (control): The second is my favorite, but"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "16"
+        content: |
+          The third is my favorite! I think it looks appropriately complex for an advanced empire.
+        reasoning: "RC_3 (control): The third is my favorite! I th"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "16"
+        content: |
+          Third. The vertical stripe does it for me.
+        reasoning: "RC_4 (up): Third. The vertical stripe doe"
+        episode: 1
+
+
+NewsSource_0_16:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_16"
+    context: "Automated news source 16 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          In Bakhmut, Russia Controls East, Ukraine Controls West
+          Russia's control of Bakhmut is a Pyrrhic victory. Ukraine still controls the west, while Russia loses thousands of troops. What's the real strategic i
+        reasoning: "OASIS pair 16: In Bakhmut, Russia Controls East, Ukrain"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          It would be weird if it were the other way around
+        reasoning: "RC_1 (up): It would be weird if it were t"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          I'm more concerned with the situation to the north and south of the city.
+        reasoning: "RC_2 (down): I'm more concerned with the si"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          More accurate headline: "Russia loses 30,000 troops in order to take 1/4 of a small insignificant Ukrainian city."
+        reasoning: "RC_3 (control): More accurate headline: "Russi"
+        episode: 1
+
+
+NewsSource_0_17:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_17"
+    context: "Automated news source 17 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Somewhere a marketing guy got paid for coming up with the idea ' lets teach peop
+          *Title: Somewhere a marketing guy got paid for coming up with the idea ' lets teach people how to cut mango on a mango packaging'* "The struggle is re
+        reasoning: "OASIS pair 17: Somewhere a marketing guy got paid for c"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "18"
+        content: |
+          I fail to see the problem. I have just learned one way to cut a mango based on that little graphic
+        reasoning: "RC_1 (down): I fail to see the problem. I h"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "18"
+        content: |
+          Op is an idiot but I also finally learned how to peel a mango so I’m not sure I’m far behind.
+        reasoning: "RC_2 (down): Op is an idiot but I also fina"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "18"
+        content: |
+          Who said there is a problem.. I wish good luck to people who learns how to cut mango from mango packaging.
+        reasoning: "RC_3 (up): Who said there is a problem.. "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "18"
+        content: |
+          It's pretty easy to follow that little graphic
+        reasoning: "RC_4 (up): It's pretty easy to follow tha"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "18"
+        content: |
+          I had a friend over who was born and raised in the US Midwest and never had mango. He had no idea what the best way to p
+        reasoning: "RC_5 (up): I had a friend over who was bo"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "18"
+        content: |
+          As someone who didn’t grow up with mangos around, but has now tried them and like them, I appreciated it. Some of my pre
+        reasoning: "RC_6 (up): As someone who didn’t grow up "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "18"
+        content: |
+          The only problem I see is the concept of plastic mango packaging.
+        reasoning: "RC_7 (up): The only problem I see is the "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "18"
+        content: |
+          The hard part isn't getting the flesh away from the skin, the hard part is getting the pit out without waste and without
+        reasoning: "RC_8 (up): The hard part isn't getting th"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "18"
+        content: |
+          I have a friend who brought a mango to work one day and he peeled it like an orange, so Instructions are great. I have n
+        reasoning: "RC_9 (control): I have a friend who brought a "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "18"
+        content: |
+          I had trouble with my first mango, as I had never had one growing up.  I knew it had a large pit, but I thought it could
+        reasoning: "RC_10 (up): I had trouble with my first ma"
+        episode: 1
+
+
+NewsSource_0_18:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_18"
+    context: "Automated news source 18 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Can the FDIC really cover all these bank failures..and what if there are more?
+          "FDIC's bank insurance fund is running low due to recent failures. What happens if it's depleted? Will more banks fail? Should I be worried about my s
+        reasoning: "OASIS pair 18: Can the FDIC really cover all these bank"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "19"
+        content: |
+          More banks will fail. Stock market will crash. Repeat of 2008.
+        reasoning: "RC_1 (control): More banks will fail. Stock ma"
+        episode: 1
+
+
+NewsSource_0_19:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_0_19"
+    context: "Automated news source 19 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Excel sheet to evaluate new business
+          A long time ago I had a spreadsheet that let me input basic data that would help me to decide if that business would be feasible or not with long term
+        reasoning: "OASIS pair 19: Excel sheet to evaluate new business"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "20"
+        content: |
+          I’d input data such as expenses and revenue and it shows forecast for months and years. Pretty basic, nothing too crazy
+        reasoning: "RC_1 (down): I’d input data such as expense"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "20"
+        content: |
+          Like a P&amp;L forecast sheet?
+          
+          https://docs.google.com/spreadsheets/d/1vY2ai2-OL0zV7siZ67c_z_djnmGwNokAoKa5icI_HII/edit
+        reasoning: "RC_2 (control): Like a P&amp;L forecast sheet?"
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "20"
+        content: |
+          You can use Co pilot which is an AI technology created by Microsoft and is much more easier than doing just the data ent
+        reasoning: "RC_3 (down): You can use Co pilot which is "
+        episode: 1
+
+      - action_type: create_comment
+        target_id: "20"
+        content: |
+          IT is called a pro-forma financial and you can make it yourself if you have EXCEL. 
+          
+          You have income and expenses. incom
+        reasoning: "RC_4 (down): IT is called a pro-forma finan"
+        episode: 1
+
+
+NewsSource_1_0:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_0"
+    context: "Automated news source 0 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Iran says deal reached to buy Russian fighter jets, as defense cooperation deepe
+          "Russia's Su-35 fighter jets, rumored to be overhyped and ineffective, are being sold to Iran, despite China already being disappointed with their pur
+        reasoning: "OASIS pair 20: Iran says deal reached to buy Russian fi"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          Russian propaganda machine at its finest - they were able to fool everyone but Poles to believe that they have the 2nd s
+        reasoning: "RC_1 (down): Russian propaganda machine at "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          Probably cuz it’s the only thing they can buy and is better than nothing.
+        reasoning: "RC_2 (down): Probably cuz it’s the only thi"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          *hmm turns out these are useless against modern western AA - who can we sell them to?"
+        reasoning: "RC_3 (down): *hmm turns out these are usele"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          I forget -- is the Su-35 the overhyped one that can barely fly? 
+          
+          Or the one that can barely fly that's overhyped?
+        reasoning: "RC_4 (control): I forget -- is the Su-35 the o"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          If NATO enemies want to use these rinky dink jets that have been proven to be shit against old NATO tech then that's gre
+        reasoning: "RC_5 (control): If NATO enemies want to use th"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          Do they have any left? If they do, why would you want any Russian military tech, it's been shown to be garbage
+        reasoning: "RC_6 (up): Do they have any left? If they"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          This was my first thought. Russia selling weapons to Iran like the con-artist from SpongeBob selling him and Patrick cho
+        reasoning: "RC_7 (down): This was my first thought. Rus"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          Perhaps not the deterrent it might have been a year ago.
+        reasoning: "RC_8 (control): Perhaps not the deterrent it m"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          That's a fair point, hadn't thought about that!
+        reasoning: "RC_9 (up): That's a fair point, hadn't th"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          I think half planes china got were unfit to fly..
+        reasoning: "RC_10 (up): I think half planes china got "
+        episode: 2
+
+
+NewsSource_1_1:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_1"
+    context: "Automated news source 1 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          I Googly-Eyed my wife’s vibrator and I think it’s happy about it.
+          I Googly-Eyed my wife's vibrator and it made me LOL. I'm not sure if it's happy about it, but it's definitely getting a lot of attention now. Has anyo
+        reasoning: "OASIS pair 21: I Googly-Eyed my wife’s vibrator and I t"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          Making the competition appear less threatening is a good strategy. Best of luck!
+        reasoning: "RC_1 (up): Making the competition appear "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          Tell us you don't know anything about what women like without telling us you don't know anything about what women like.
+        reasoning: "RC_2 (up): Tell us you don't know anythin"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          [https://youtu.be/fyuv3WXPQsM](https://youtu.be/fyuv3WXPQsM)
+          
+          The link is a knock-off Magic Wand, but a good teardown.
+        reasoning: "RC_3 (up): [https://youtu.be/fyuv3WXPQsM]"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          This is more sad than funny, considering your wife requires a vibrator.
+        reasoning: "RC_4 (down): This is more sad than funny, c"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          "Ohh yeah baby stare at me with those dumb fucking eyes "
+        reasoning: "RC_5 (control): "Ohh yeah baby stare at me wit"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          I dunno there's something fishy about this
+        reasoning: "RC_6 (up): I dunno there's something fish"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          Looks like Terence and/or Philip! 😂😂
+        reasoning: "RC_7 (control): Looks like Terence and/or Phil"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          I've never laughed harder at something
+        reasoning: "RC_8 (control): I've never laughed harder at s"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          Strange comment to be coming from someone with a sub name of DoMyBest2bPositive? 😂🤣
+        reasoning: "RC_9 (down): Strange comment to be coming f"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          That happieness only gonna last until its next time working
+        reasoning: "RC_10 (down): That happieness only gonna las"
+        episode: 2
+
+
+NewsSource_1_2:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_2"
+    context: "Automated news source 2 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Found the doppelgänger of a certain… Master Baiter
+          Title: Found the doppelgänger of a certain... Master Baiter
+          Selftext: "Just took a pic with my doppelgänger of a certain... Master Baiter in a bar. I 
+        reasoning: "OASIS pair 22: Found the doppelgänger of a certain… Mas"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          Hello, /u/TheRealSackLunch99. Your post has been removed for violating Rule 10. 
+          
+          **No social media or electronic messag
+        reasoning: "RC_1 (up): Hello, /u/TheRealSackLunch99. "
+        episode: 2
+
+
+NewsSource_1_3:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_3"
+    context: "Automated news source 3 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          NYC mayor says Lori Lightfoot’s loss in Chicago is ‘warning sign for the country
+          "NYC mayor Eric Adams thinks Lori Lightfoot's loss in Chicago is a 'warning sign for the country'. Meanwhile, most commenters disagree, citing her poo
+        reasoning: "OASIS pair 23: NYC mayor says Lori Lightfoot’s loss in "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          This dipshit will get his turn, but not soon enough.
+        reasoning: "RC_1 (up): This dipshit will get his turn"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          She also didn’t fix the roads. Almost broke my car the other night.
+        reasoning: "RC_2 (up): She also didn’t fix the roads."
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          Sure, but not for the reasons he is thinking. She lost because she wasn’t progressive enough. His time will also come, a
+        reasoning: "RC_3 (control): Sure, but not for the reasons "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          Ah, the same New York mayor [who doesn’t believe in the separation of church and state](https://www.huffpost.com/entry/n
+        reasoning: "RC_4 (down): Ah, the same New York mayor [w"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          Eric Adams would lose if DeBlasio ran against him. And they both suck.
+        reasoning: "RC_5 (control): Eric Adams would lose if DeBla"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          Lightfoot lost because she was an abysmal mayor. She made enemies on both sides of the aisle, lost the support of everyo
+        reasoning: "RC_6 (control): Lightfoot lost because she was"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          No, she lost because she pissed off everyone: progressives, the establishment, BLM, DSA, &amp; FOP. 
+          
+          She was a bad lead
+        reasoning: "RC_7 (control): No, she lost because she pisse"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          I’ll agree with that statement; mine was more of a situated perspective. She kinda did a bit of the ole bait and switch 
+        reasoning: "RC_8 (control): I’ll agree with that statement"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          How is this asshole the mayor of NY?
+        reasoning: "RC_9 (control): How is this asshole the mayor "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          Scott Stringer and Dianne Morales imploded late into primary season, leaving Maya Wiley and Kathryn Garcia with no time 
+        reasoning: "RC_10 (down): Scott Stringer and Dianne Mora"
+        episode: 2
+
+
+NewsSource_1_4:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_4"
+    context: "Automated news source 4 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Backed into neighbor's car and left a tiny crack on their bumper and a 1" scrape
+          Title: Backed into neighbor's car and left a tiny crack on their bumper and a 1" scrape. Now she wants over $1200 for a car worth about 5k.
+          
+          Selftext:
+        reasoning: "OASIS pair 24: Backed into neighbor's car and left a ti"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          Tell her you can’t afford that and go through your insurance or pay it.
+        reasoning: "RC_1 (up): Tell her you can’t afford that"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          Op cracked the bumper cover, now it needs to be replaced. They should be glad it wasn't a more expensive to repair vehic
+        reasoning: "RC_2 (down): Op cracked the bumper cover, n"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          You can pay what she wants or you can go through insurance. Those are pretty much your options.
+        reasoning: "RC_3 (up): You can pay what she wants or "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          You backed  into her car. Unless you’re a mechanic I’m not sure how you can estimate what it’s gonna actually cost. Pay 
+        reasoning: "RC_4 (up): You backed  into her car. Unle"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          Or refuse to cooperate and see if she or her insurance sues you. Not the best option in most cases, but an option.
+        reasoning: "RC_5 (up): Or refuse to cooperate and see"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          Number one, don't talk to her. Reason why i say that is because it can get argumental and it'll be "he said/she said" an
+        reasoning: "RC_6 (control): Number one, don't talk to her."
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          Body repairs are expensive. Your fault so you or your insurance have to fix.
+        reasoning: "RC_7 (control): Body repairs are expensive. Yo"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          I side swiped a pole in a parking garage, did not think the damage was horrible, body shop quoted me $3000. Repairs are 
+        reasoning: "RC_8 (up): I side swiped a pole in a park"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          2. File a claim with your insurance and have them pay to fix her car.
+          
+          3. Tell her to screw off, to which she'll probabl
+        reasoning: "RC_9 (up): 2. File a claim with your insu"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          “Bumper was already damaged on the other side” - does betterment come into play here?
+        reasoning: "RC_10 (down): “Bumper was already damaged on"
+        episode: 2
+
+
+NewsSource_1_5:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_5"
+    context: "Automated news source 5 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          $52 Billion Chipmaking Plan Is Racing Toward Failure
+          "US chipmaking plan on track to fail due to high costs and regulations. Asia's cheaper labor and streamlined processes make it difficult to compete. S
+        reasoning: "OASIS pair 25: $52 Billion Chipmaking Plan Is Racing To"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          From the editors of one of the world's most repellent rags.
+        reasoning: "RC_1 (down): From the editors of one of the"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          It's pretty simple; the US can't manufacture these chips as cheaply as Asia. So you either have to commit to tens of bil
+        reasoning: "RC_2 (down): It's pretty simple; the US can"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          &gt; the US can't manufacture these chips as cheaply as Asia
+          
+          Chip fabrication isn't heavily dependent on labor costs. C
+        reasoning: "RC_3 (down): &gt; the US can't manufacture "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          It's not just labor costs. There's also a lot of regulations in the US which increase costs.
+        reasoning: "RC_4 (up): It's not just labor costs. The"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          Regulation definitely adds to the bottom line, both in real dollars and the cost of added time. Sounds like a streamline
+        reasoning: "RC_5 (control): Regulation definitely adds to "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          do you think you’re smart for capitalizing random words like Government and Social? genuinely curious
+          
+          signed, a Snowfla
+        reasoning: "RC_6 (up): do you think you’re smart for "
+        episode: 2
+
+
+NewsSource_1_6:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_6"
+    context: "Automated news source 6 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Got weird test task when applying to backend position. I think it is unsolvable,
+          Selftext: "Just got a weird test task for a backend position. Calculating Fibonacci sequence in a specific way. I think it's unsolvable. What do you t
+        reasoning: "OASIS pair 26: Got weird test task when applying to bac"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "7"
+        content: |
+          Calculate next items by hand, then generate the right equation and calculate the sum.
+        reasoning: "RC_1 (down): Calculate next items by hand, "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "7"
+        content: |
+          Assuming you apply for programing job, finding patterns and using them to get desired results is imo a skill not only cl
+        reasoning: "RC_2 (control): Assuming you apply for program"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "7"
+        content: |
+          They didn’t ask you to find a closed form, plus finding a closed form won’t (necessarily) help you lol
+        reasoning: "RC_3 (down): They didn’t ask you to find a "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "7"
+        content: |
+          You can definitely calculate f(4) think a little harder
+        reasoning: "RC_4 (control): You can definitely calculate f"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "7"
+        content: |
+          f(4) = f(4+3)-f(4+2) 
+          F(4+3) = f(7)
+          F(7) = f(7+3)-f(7+2)
+          F(7+3) = f(10)
+          F(10) = f(10+3)-f(10+2)
+          And that will continue i
+        reasoning: "RC_5 (control): f(4) = f(4+3)-f(4+2) 
+F(4+3) ="
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "7"
+        content: |
+          You clearly didn’t even read MmmVomit’s last paragraph
+        reasoning: "RC_6 (down): You clearly didn’t even read M"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "7"
+        content: |
+          It's a great question, it told them how well you can think on the spot, and a lot about your overall knowledge, skill le
+        reasoning: "RC_7 (down): It's a great question, it told"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "7"
+        content: |
+          Probably would not solve maths while working tbh. 
+          I never was good with maths and dont think I ever will.
+          This question
+        reasoning: "RC_8 (control): Probably would not solve maths"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "7"
+        content: |
+          This is an important programming concept because it requires you to think like a programmer. Nobody on here is going to 
+        reasoning: "RC_9 (up): This is an important programmi"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "7"
+        content: |
+          It's mildly annoying since you can't derive Fibonacci the same way.
+          
+          f(n-1) + f(n-2) for f(1) would mean.. f(0)-f(-1) wh
+        reasoning: "RC_10 (up): It's mildly annoying since you"
+        episode: 2
+
+
+NewsSource_1_7:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_7"
+    context: "Automated news source 7 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Biden jokes about Christians being targeted in Nashville school shooting
+          "Biden's joke about Christians being targeted in Nashville school shooting sparks outrage"
+          Title: Biden's joke about Christians being targeted in Nash
+        reasoning: "OASIS pair 27: Biden jokes about Christians being targe"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          I'd report it for misinformation but admins like misinformation.
+        reasoning: "RC_1 (up): I'd report it for misinformati"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          One way to make sure nobody stops your witch hunts against marginalized communities is to tell everyone you're the victi
+        reasoning: "RC_2 (down): One way to make sure nobody st"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          No, he joked Hawley was full of crap.  Which he is.
+        reasoning: "RC_3 (up): No, he joked Hawley was full o"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          Hawley *is* a joke, and therefore laughable. But sure, right, Joe Biden thinks murdering children is funny. [eye roll]
+        reasoning: "RC_4 (control): Hawley *is* a joke, and theref"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          Right wing media feeding gullible conservatives fake outrage... as usual.
+        reasoning: "RC_5 (up): Right wing media feeding gulli"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          They are being targeted by their GOD. Apparently though, he is really slow to act on his intentions to rapture all the t
+        reasoning: "RC_6 (control): They are being targeted by the"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          Posted by a poster who has said you can't be a good person unless you believe in God.
+        reasoning: "RC_7 (control): Posted by a poster who has sai"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          Oh, Jesus Christ. Of course the religion that was built on *literal* persecution would take one or a handful of school s
+        reasoning: "RC_8 (up): Oh, Jesus Christ. Of course th"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          Curious, what does classifying it as a hate crime accomplish? The shooter is dead, there is nobody to prosecute.
+          
+          Mass s
+        reasoning: "RC_9 (up): Curious, what does classifying"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          What fucking pathetic clickbait. Biden was joking about not knowing what the hell Hawley is bitching about this week.
+        reasoning: "RC_10 (control): What fucking pathetic clickbai"
+        episode: 2
+
+
+NewsSource_1_8:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_8"
+    context: "Automated news source 8 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Apps/Resources to learn programming from a smartphone?
+          I’ve been trying to switch fields to programming, hoping it’s not to late since I turned 30. My current job can get very demanding, so I wanted to kno
+        reasoning: "OASIS pair 28: Apps/Resources to learn programming from"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "9"
+        content: |
+          I am going to make a statement and say this is not possible. You can only learn programming by doing projects and learn 
+        reasoning: "RC_1 (control): I am going to make a statement"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "9"
+        content: |
+          You can  start with Sololearn. This is where I started before I had a laptop. But still u need to build projects.
+        reasoning: "RC_2 (down): You can  start with Sololearn."
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "9"
+        content: |
+          Thanks! I do study from a PC, but I wanted something to keep my mind on the subjects when I’m out and doing nothing.
+        reasoning: "RC_3 (control): Thanks! I do study from a PC, "
+        episode: 2
+
+
+NewsSource_1_9:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_9"
+    context: "Automated news source 9 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Should I take this apprenticeship?
+          It's an ideal software developer apprenticeship at a small UK business and decent pay. It's not a degree apprenticeship however I am in favor of getti
+        reasoning: "OASIS pair 29: Should I take this apprenticeship?"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "10"
+        content: |
+          Mind sharing the link to the apprenticeship? what does it lead to and if they only other guy is one dev who you say can’
+        reasoning: "RC_1 (control): Mind sharing the link to the a"
+        episode: 2
+
+
+NewsSource_1_10:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_10"
+    context: "Automated news source 10 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          A fungus known for killing trees has infected a human for the first time, causin
+          "Did you hear the news? A fungus that kills trees has infected a human for the first time! The bacteria caused a pus-filled abscess in his throat. Let
+        reasoning: "OASIS pair 30: A fungus known for killing trees has inf"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          I'm curious what this person's body temp is, if it's lower than normal.  there's an (unproven?) theory that is a reason 
+        reasoning: "RC_1 (up): I'm curious what this person's"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+           ** Gustavo Santaolalla acoustic riff starts **
+        reasoning: "RC_2 (down):  ** Gustavo Santaolalla acoust"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          What are clickers? I’m out of the loop I guess.
+        reasoning: "RC_3 (up): What are clickers? I’m out of "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          AI and the trees should really team up
+        reasoning: "RC_4 (down): AI and the trees should really"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          Lol don't let a video game/tv show freak you out.
+        reasoning: "RC_5 (control): Lol don't let a video game/tv "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          I'm not, my oceanography course did a fine job.
+        reasoning: "RC_6 (control): I'm not, my oceanography cours"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          *jumps into hole to seduce me a Bill*
+        reasoning: "RC_7 (down): *jumps into hole to seduce me "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          Fungus zombies from The Last of Us.
+        reasoning: "RC_8 (down): Fungus zombies from The Last o"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          Alternative title: "Dendrophiliac Catches Tree Herpes."
+        reasoning: "RC_9 (down): Alternative title: "Dendrophil"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          Sounds like an episode of Netlifx Witcher ;P
+        reasoning: "RC_10 (control): Sounds like an episode of Netl"
+        episode: 2
+
+
+NewsSource_1_11:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_11"
+    context: "Automated news source 11 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Pandemic Treaty Will Usher in Unelected One World Government
+          Title: Pandemic Treaty Will Usher in Unelected One World Government
+          
+          Selftext: I just read an article claiming that the World Health Organization's pa
+        reasoning: "OASIS pair 31: Pandemic Treaty Will Usher in Unelected "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          What a dumb thing to believe. No one really buys this bullshit do they?
+        reasoning: "RC_1 (down): What a dumb thing to believe. "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          I've been told by sources in the know that it's actually gonna be JFK Jr.  /S
+        reasoning: "RC_2 (control): I've been told by sources in t"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          Been hearing about it for about 25 years, any day now.....any....day....day...day....
+        reasoning: "RC_3 (up): Been hearing about it for abou"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          Just looked at what other stories this domain has on Reddit, and one of them is "The Cost of Black America." 
+          
+          So yeah, 
+        reasoning: "RC_4 (up): Just looked at what other stor"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          I'm surprised that there's no ads for tin foil on that blog.
+        reasoning: "RC_5 (up): I'm surprised that there's no "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          With Biden Hunter as president I assume.
+        reasoning: "RC_6 (down): With Biden Hunter as president"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          mmmwaaahahahaaa!
+          
+           - cigar-smoking men, ostensibly
+        reasoning: "RC_7 (up): mmmwaaahahahaaa!
+
+ - cigar-smo"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          I see a headline posted on r/worldnews that reads like conspiracy theory. Looking at the source, I see theburningplatfor
+        reasoning: "RC_8 (control): I see a headline posted on r/w"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          Gotta be pretty fucking stupid to believe this crap
+        reasoning: "RC_9 (control): Gotta be pretty fucking stupid"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          OP is active in "Christians" and "Bibleconspiracy."
+          
+          Clearly a few cards short of a full deck...
+        reasoning: "RC_10 (up): OP is active in "Christians" a"
+        episode: 2
+
+
+NewsSource_1_12:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_12"
+    context: "Automated news source 12 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          What's the deal with high yield savings accounts?
+          The bank or whatever can change the APY at the drop of the hat to whatever they want. It seems like a game where they promote that they have a high AP
+        reasoning: "OASIS pair 32: What's the deal with high yield savings "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          In my experience, if you chase after the highest APYs, they're all gimmicky like you describe. Personally, I just went w
+        reasoning: "RC_1 (down): In my experience, if you chase"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          The rates they offer are semi dependent on the fed rate. Not that long ago, all HYSAs were overring around .50%.
+        reasoning: "RC_2 (control): The rates they offer are semi "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          My Amex account continues to raise its rates. Been there for years. Went down when fed rates were low, has been increasi
+        reasoning: "RC_3 (control): My Amex account continues to r"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          That's why banks like Ally, Marcus, Discover, Amex, etc get recommended a lot on here. They rarely offer the best rates,
+        reasoning: "RC_4 (up): That's why banks like Ally, Ma"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          I’ve been with Ally since august and the rates have only gone up.
+        reasoning: "RC_5 (up): I’ve been with Ally since augu"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          I used Discover saving account for more than 5 years. It has been keeping its rate up to date with the Fed fund rate and
+        reasoning: "RC_6 (down): I used Discover saving account"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          Stick with a bank that is consistent with the rates. Plenty are mentioned already.
+          
+          Also, Jerry Seinfeld. This is my inp
+        reasoning: "RC_7 (down): Stick with a bank that is cons"
+        episode: 2
+
+
+NewsSource_1_13:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_13"
+    context: "Automated news source 13 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          South Sudan thanks India for its valuable support, advice at UNSC
+          "India's commitment to global peace and stability shines through in its support to South Sudan. Thank you India for your valuable support and advice a
+        reasoning: "OASIS pair 33: South Sudan thanks India for its valuabl"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "14"
+        content: |
+          Nope it was about the UN peacekeepers that were sent by India to South Sudan.
+        reasoning: "RC_1 (down): Nope it was about the UN peace"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "14"
+        content: |
+          Lol, read UNSC peacekeeping history in Sudan and Indian peacekeeper's contribution in UN peace keeping ops in Africa.
+        reasoning: "RC_2 (down): Lol, read UNSC peacekeeping hi"
+        episode: 2
+
+
+NewsSource_1_14:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_14"
+    context: "Automated news source 14 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Nebraska Legislature advances bill banning gender-affirming care for children
+          "Nebraska Legislature advances bill banning gender-affirming care for children. Republicans continue to prioritize political ideology over the well-be
+        reasoning: "OASIS pair 34: Nebraska Legislature advances bill banni"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          The party of small government marches on.
+        reasoning: "RC_1 (up): The party of small government "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          Republicans - can you answer this question for me? Why do Republicans hate children?
+        reasoning: "RC_2 (down): Republicans - can you answer t"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          Fascist will be fascists. Why anyone who lives in this democracy should ALWAYS vote. And not EVER for any gop politician
+        reasoning: "RC_3 (up): Fascist will be fascists. Why "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          Welp, back to the filibuster; they lied to Cavenaugh.
+        reasoning: "RC_4 (up): Welp, back to the filibuster; "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          It was always going to be this way.
+        reasoning: "RC_5 (down): It was always going to be this"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          Aren’t conservatives against [this](https://youtube.com/shorts/L_1OekNhRjc?feature=share)?
+        reasoning: "RC_6 (control): Aren’t conservatives against ["
+        episode: 2
+
+
+NewsSource_1_15:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_15"
+    context: "Automated news source 15 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Three Police officers killed in Artsakh in Azerbaijani subversive attack
+          "Azerbaijani forces launch subversive attack on Artsakh, killing 3 police officers. The international community must condemn these barbaric actions an
+        reasoning: "OASIS pair 35: Three Police officers killed in Artsakh "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "16"
+        content: |
+          Just Azeris defending their territorial integrity again
+        reasoning: "RC_1 (up): Just Azeris defending their te"
+        episode: 2
+
+
+NewsSource_1_16:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_16"
+    context: "Automated news source 16 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Benefits of IRA vs. Taxable Brokerage Account
+          IRS website states there’s no tax deduction for married couples filing jointly making AGI over $136,000, which we are over. Is there any benefit to co
+        reasoning: "OASIS pair 36: Benefits of IRA vs. Taxable Brokerage Ac"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          If you have the ability to roll your pretax 401k now pretax ira into a new 401k plan the back door roth ira would still 
+        reasoning: "RC_1 (control): If you have the ability to rol"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          Agree that long term capital gains tax is better than income tax in most cases.
+        reasoning: "RC_2 (control): Agree that long term capital g"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          Can you contribute to a Roth IRA which would give you tax free growth at least? The income phase out for a Roth IRA MFJ 
+        reasoning: "RC_3 (up): Can you contribute to a Roth I"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          Some employers let you do a 401k roll in, basically take your IRA and put it into the 401k. 
+          
+          You could see if that is a
+        reasoning: "RC_4 (up): Some employers let you do a 40"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          Can’t you just contribute to traditional IRA?
+        reasoning: "RC_5 (up): Can’t you just contribute to t"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          Tax free growth still. 
+          
+          As long as you’re not withdrawing funds, you don’t have to worry about capital gains when you’r
+        reasoning: "RC_6 (up): Tax free growth still. 
+
+As lo"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          If they are over the income limit for Roth IRA contributions they are surely over the limit for tax deductible Tradition
+        reasoning: "RC_7 (control): If they are over the income li"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          They would be responsible for taxes on the full amount when withdrawing as if it were income, including the contribution
+        reasoning: "RC_8 (control): They would be responsible for "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          Oh I didn’t know that. Does that mean contributing to a traditional IRA as a high earner is the same as a taxable accoun
+        reasoning: "RC_9 (down): Oh I didn’t know that. Does th"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          Are you positive about having to pay income tax on 100% of withdrawal in this case? It seems that pro-rata will apply. P
+        reasoning: "RC_10 (up): Are you positive about having "
+        episode: 2
+
+
+NewsSource_1_17:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_17"
+    context: "Automated news source 17 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Mortgage payment increasing $500/month, No escrow shortage
+          Just got my escrow analysis and my lender is saying my monthly payment will increase by $501 going forward. It doesn't make sense and I don't know wha
+        reasoning: "OASIS pair 37: Mortgage payment increasing $500/month, "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "18"
+        content: |
+          What did you buy the house for? 
+          
+          Does your state have a homestead exemption and if so did you apply for it?
+        reasoning: "RC_1 (up): What did you buy the house for"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "18"
+        content: |
+          $450K, and no, there is no homestead exemption. I also checked my neighbors' bills as all info is public and there does 
+        reasoning: "RC_2 (control): $450K, and no, there is no hom"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "18"
+        content: |
+          Also, just to add, I did ask about taking it out of escrow and paying taxes myself, but we used a VA loan and the lender
+        reasoning: "RC_3 (down): Also, just to add, I did ask a"
+        episode: 2
+
+
+NewsSource_1_18:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_18"
+    context: "Automated news source 18 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Trump New York Grand Jury Won’t Meet on the Case This Week
+          "Grand Jury Won't Meet on Trump Case This Week: Another delay in the investigation, fueling speculation about potential interference or lack of eviden
+        reasoning: "OASIS pair 38: Trump New York Grand Jury Won’t Meet on "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "19"
+        content: |
+          I am now of the opinion that there is a higher power intervening. Not political or wealth, but some god-like being somew
+        reasoning: "RC_1 (down): I am now of the opinion that t"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "19"
+        content: |
+          Not in New York. When you're pulled, sometimes you get selected for Grand Jury Duty as opposed to a standard jury pool
+        reasoning: "RC_2 (down): Not in New York. When you're p"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "19"
+        content: |
+          The boss of the national enquirer has said Stormy Daniels wasn't the only one paid off by Trump 
+          
+          https://www.youtube.co
+        reasoning: "RC_3 (down): The boss of the national enqui"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "19"
+        content: |
+          In fairness, the only person who said Trump was going to be indicted soon was....Trump.
+          
+          Shame on us for believing him a
+        reasoning: "RC_4 (up): In fairness, the only person w"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "19"
+        content: |
+          I don't disagree, but it's delaying justice because of fear.
+        reasoning: "RC_5 (down): I don't disagree, but it's del"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "19"
+        content: |
+          How many times has trump broken a law? Nothing has happened
+        reasoning: "RC_6 (down): How many times has trump broke"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "19"
+        content: |
+          And nothing will. Fuck Bragg. People need to start protesting this garbage before it is too late.
+        reasoning: "RC_7 (up): And nothing will. Fuck Bragg. "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "19"
+        content: |
+          Actually, being in a grand jury is not the same as jury duty and most often something you sign up for. Regardless, none 
+        reasoning: "RC_8 (down): Actually, being in a grand jur"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "19"
+        content: |
+          That's not farfetched. The higher power is multi-billionaires. Trump doesn't have leverage on them, but they own all the
+        reasoning: "RC_9 (down): That's not farfetched. The hig"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "19"
+        content: |
+          Or, if you were inclined to believe in the biblical nonsense, he may have sold his soul to a higher being - you know - S
+        reasoning: "RC_10 (control): Or, if you were inclined to be"
+        episode: 2
+
+
+NewsSource_1_19:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_1_19"
+    context: "Automated news source 19 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Biden said he would go to Ohio train derailment site. No trip is currently sched
+          "I'm not sure if the POTUS should visit the Ohio train derailment site, considering the potential health risks and environmental damage. Maybe it's be
+        reasoning: "OASIS pair 39: Biden said he would go to Ohio train der"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "20"
+        content: |
+          Dunno if he should, that place is gonna be a mini-Chernobyl in ten years, abandoned ghost town or almost one. Maybe not 
+        reasoning: "RC_1 (down): Dunno if he should, that place"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "20"
+        content: |
+          That's fair. I think that makes sense.. I guess my response is that him not going shouldn't be seen as not being importa
+        reasoning: "RC_2 (down): That's fair. I think that make"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "20"
+        content: |
+          Yeah we don’t need a second term from this guy.
+        reasoning: "RC_3 (up): Yeah we don’t need a second te"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "20"
+        content: |
+          Hell i would not go to Ohio too if I was Biden. They love sucking on Trump anyways
+        reasoning: "RC_4 (up): Hell i would not go to Ohio to"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "20"
+        content: |
+          I'm sure sending the president to an area with poison air is not really high on the agenda.
+        reasoning: "RC_5 (down): I'm sure sending the president"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "20"
+        content: |
+          How about y'all keep your poison air and I'll keep my living president
+        reasoning: "RC_6 (up): How about y'all keep your pois"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "20"
+        content: |
+          Honestly, the disruption caused by the security team, staff, and media, would make staying away more helpful.
+        reasoning: "RC_7 (down): Honestly, the disruption cause"
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "20"
+        content: |
+          If it’s too dangerous for him to visit, maybe they should evacuate the town.
+        reasoning: "RC_8 (up): If it’s too dangerous for him "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "20"
+        content: |
+          Good point you should contact the GOP governor
+        reasoning: "RC_9 (down): Good point you should contact "
+        episode: 2
+
+      - action_type: create_comment
+        target_id: "20"
+        content: |
+          I agree. I just don't feel like in-person words carry any more weight than a speech from the White House or a press rele
+        reasoning: "RC_10 (down): I agree. I just don't feel lik"
+        episode: 2
+
+
+NewsSource_2_0:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_0"
+    context: "Automated news source 0 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Can someone explain to me how credit scores work?
+          I haven't yet got a credit card, and I have 2 very small bills that I have neglected to pay out of laziness and foolishness. No doubt it has brought m
+        reasoning: "OASIS pair 40: Can someone explain to me how credit sco"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+           - a credit score is for the BENEFIT of lenders NOT the person. Its a measure of the trustworthiness of those who wish t
+        reasoning: "RC_1 (down):  - a credit score is for the B"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "1"
+        content: |
+          https://www.myfico.com/credit-education/what-is-a-fico-score
+        reasoning: "RC_2 (control): https://www.myfico.com/credit-"
+        episode: 3
+
+
+NewsSource_2_1:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_1"
+    context: "Automated news source 1 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          World’s first solar panel 'carpet' on railway tracks may generate electricity
+          "World's first solar panel 'carpet' on railway tracks may generate electricity, but critics question durability and potential theft/maintenance issues
+        reasoning: "OASIS pair 41: World’s first solar panel 'carpet' on ra"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          Great idea, except that people like to steal.
+        reasoning: "RC_1 (down): Great idea, except that people"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          Why are people so dumb? Putting solar panels in high traffic, high abuse areas like train tracks and ROADS is dumb. We h
+        reasoning: "RC_2 (down): Why are people so dumb? Puttin"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          My first thought: carpet? you mean static electricity?
+        reasoning: "RC_3 (control): My first thought: carpet? you "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          One should hope solar panels generate electricity
+        reasoning: "RC_4 (down): One should hope solar panels g"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          That's a mighty title for something that only 'may' generate electricity.
+        reasoning: "RC_5 (up): That's a mighty title for some"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          This happens when you get some Engineers completely detached from the real world, who thinks their ideas will change the
+        reasoning: "RC_6 (down): This happens when you get some"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          good idea .  Compared to solar panels placed on agricultural land.Just make sure that the trains don't drop things and o
+        reasoning: "RC_7 (control): good idea .  Compared to solar"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          "May", as long as natural debris, oils and other leakages/drops from rail traffic, theft, and the inevitable deferred ma
+        reasoning: "RC_8 (control): "May", as long as natural debr"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          How much of the mechanism needs to be damping for the panels to prevent the vibration fucking them up?
+        reasoning: "RC_9 (down): How much of the mechanism need"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "2"
+        content: |
+          "In order to prevent reflections from glaring into train drivers' eyes, Sun-Ways claims that their panels are more durab
+        reasoning: "RC_10 (control): "In order to prevent reflectio"
+        episode: 3
+
+
+NewsSource_2_2:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_2"
+    context: "Automated news source 2 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Principal forced to resign after students shown picture of Michelangelo’s David.
+          "Florida's latest outrage: a principal forced to resign for showing students Michelangelo's David, deemed "pornographic" by a single parent. Meanwhile
+        reasoning: "OASIS pair 42: Principal forced to resign after student"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          So many idiots!!....or should I say "Florida Men"?!
+        reasoning: "RC_1 (down): So many idiots!!....or should "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          [Puritans from Black Adder](https://makeagif.com/i/lBiSjR) but IRL
+        reasoning: "RC_2 (down): [Puritans from Black Adder](ht"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          That's what happens when you're told all your life that violence is fine but the human body is an abomination. Twisted.
+        reasoning: "RC_3 (down): That's what happens when you'r"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          Yup. It's deep repression. Christian nationalists have denigrated shame to the naked form, calling private parts naughty
+        reasoning: "RC_4 (down): Yup. It's deep repression. Chr"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          Pornographic? Probably just surprised because they've never seen a dick that big before...
+        reasoning: "RC_5 (up): Pornographic? Probably just su"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          Just wait until they get to Shakespeare.
+        reasoning: "RC_6 (control): Just wait until they get to Sh"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          I’ve never understood why some people can’t even see an image of nudity without sexualizing it. There is nothing inheren
+        reasoning: "RC_7 (control): I’ve never understood why some"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          Idk, I guess.
+          
+          I do know this isn’t new. No way would we have been shown David in the 6 grade when I grew up. Not sure w
+        reasoning: "RC_8 (control): Idk, I guess.
+
+I do know this "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          We are so much further down the path to religious fascism than most people seem to be aware of.... This isn't the beginn
+        reasoning: "RC_9 (control): We are so much further down th"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "3"
+        content: |
+          If it’s any consolation the entire state of Florida will be underwater in a few decades.
+        reasoning: "RC_10 (control): If it’s any consolation the en"
+        episode: 3
+
+
+NewsSource_2_3:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_3"
+    context: "Automated news source 3 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Gen Z Employees - Quitting via Ghosting…
+          I run a business (retail) and in the last year have had 3 employees quit by being no-show no calls and then never showing up again. 
+          
+          Obviously retail
+        reasoning: "OASIS pair 43: Gen Z Employees - Quitting via Ghosting…"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          I am in a similar position and this seems to be the case. They find another job that does X for them and they just disap
+        reasoning: "RC_1 (control): I am in a similar position and"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          I employ felons without prejudging them. I'm used people walking away. I've never walked away like that, but I'm used to
+        reasoning: "RC_2 (control): I employ felons without prejud"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          Employment is a transactional relationship. Don't feel bad about it
+        reasoning: "RC_3 (down): Employment is a transactional "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          When I worked retail back in the 90s this would happen constantly. They'd call 2 weeks later asking if their check was c
+        reasoning: "RC_4 (up): When I worked retail back in t"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          I am in my 30's. I have "ghosted" jobs back in my late teens and early 20's. It is not something new.
+        reasoning: "RC_5 (down): I am in my 30's. I have "ghost"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          How old are they? I quit my first food service job by ghosting, but I was also 16 so I honestly didn’t care tbh
+        reasoning: "RC_6 (control): How old are they? I quit my fi"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          It’s just how people be. Very selfish mindsets
+        reasoning: "RC_7 (up): It’s just how people be. Very "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          You do don’t  know why 40 is a magic age??   At what point in life do you start to take retiring seriously?
+        reasoning: "RC_8 (control): You do don’t  know why 40 is a"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          I was a stockbroker at 23, so that was when I did. I count myself lucky though.
+        reasoning: "RC_9 (down): I was a stockbroker at 23, so "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "4"
+        content: |
+          I had a teen employee who worked a shift or two then called in sick shift after shift after shift. It’s not that she did
+        reasoning: "RC_10 (down): I had a teen employee who work"
+        episode: 3
+
+
+NewsSource_2_4:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_4"
+    context: "Automated news source 4 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Why is no .git folder being created?
+           When I use the command "npx create-react-app tectutils" no .git folder is being created in the folder in which there is a project.
+        reasoning: "OASIS pair 44: Why is no .git folder being created?"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          Git creates a .git folder when you create a new repository.
+        reasoning: "RC_1 (down): Git creates a .git folder when"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          So react will not create it automatically
+        reasoning: "RC_2 (down): So react will not create it au"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          Because `npx` isn't `git`.  If you want to create a git repo for your project, you need to `git init` in the directory.
+        reasoning: "RC_3 (down): Because `npx` isn't `git`.  If"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          Some project frameworks leave it to you to do `git init` yourself, since you may want to configure your own git reposito
+        reasoning: "RC_4 (up): Some project frameworks leave "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          No, and by the way, [create-react-app](https://github.com/facebook/create-react-app), while it is, like React, from the 
+        reasoning: "RC_5 (up): No, and by the way, [create-re"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          What if you want to use another version control system? Or none at all? It would be useless then.
+        reasoning: "RC_6 (down): What if you want to use anothe"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          This quick crash course on Git will be invaluable to you.  https://youtu.be/IHaTbJPdB-s
+        reasoning: "RC_7 (control): This quick crash course on Git"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "5"
+        content: |
+          after using npx command, type ‘cd &lt;folder name&gt;’ and enter. After that you’re in the project folder, u can type in
+        reasoning: "RC_8 (up): after using npx command, type "
+        episode: 3
+
+
+NewsSource_2_5:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_5"
+    context: "Automated news source 5 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Is there no reputable online bank for business?
+          I am looking for an online bank for my new coaching business, and all the ones I've found have terrible recent Trustpilot scores. All of them - Bluevi
+        reasoning: "OASIS pair 45: Is there no reputable online bank for bu"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          I use pnc. It's a national bank, no issues. Only a $500 minimum to avoid fees.
+        reasoning: "RC_1 (up): I use pnc. It's a national ban"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          All payments whether I am receiving funds online through my website or I have to manually take a payment over the phone.
+        reasoning: "RC_2 (control): All payments whether I am rece"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          I use Live Oak Bank to hold my business savings. They have a pretty decent savings rate. Never had a problem with them, 
+        reasoning: "RC_3 (down): I use Live Oak Bank to hold my"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          I have bluevine they're slow to process but solid
+        reasoning: "RC_4 (down): I have bluevine they're slow t"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          Thanks. What kind of payments do you usually receive in your business?
+        reasoning: "RC_5 (control): Thanks. What kind of payments "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          Were you able to apply online? How long did it take for you to get accepted?
+        reasoning: "RC_6 (up): Were you able to apply online?"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          Thanks! My needs aren’t robust at all, I just need to receive online payments for products and services, maybe an occasi
+        reasoning: "RC_7 (down): Thanks! My needs aren’t robust"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          I reccomond live oak Bank then. They're very basic with no bells and whistles. But if all you need is a business checkin
+        reasoning: "RC_8 (control): I reccomond live oak Bank then"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          Mercury is the best.  Why do you need a physical location?
+        reasoning: "RC_9 (up): Mercury is the best.  Why do y"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "6"
+        content: |
+          The whole “fintech, not a bank” thing makes me leery. I’d like a bank where I know I can talk to a human being, in perso
+        reasoning: "RC_10 (down): The whole “fintech, not a bank"
+        episode: 3
+
+
+NewsSource_2_6:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_6"
+    context: "Automated news source 6 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Question about General Liability.
+          I’ve seen that warning signs aren’t total protection for general liability such as someone injuring themselves in a way that couldn’t be warned. Cases
+        reasoning: "OASIS pair 46: Question about General Liability."
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "7"
+        content: |
+          Do you have an insurance agent?
+        reasoning: "RC_1 (up): Do you have an insurance agent"
+        episode: 3
+
+
+NewsSource_2_7:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_7"
+    context: "Automated news source 7 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Why are some colours common as surnames, whereas others [are] absolutely not?
+          Eg. Black, Brown, Green, Grey/Gray, White are all quite common surnames, but you never hear of Mr Blue, Orange, Purple, Yellow etc.
+          
+          *This is taken fr
+        reasoning: "OASIS pair 47: Why are some colours common as surnames,"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          What about Irish and Scottish names, specifically ones like Mc... and O'...?
+          
+          Surely they originated earlier than 1066CE
+        reasoning: "RC_1 (up): What about Irish and Scottish "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          A lot of Jews chopped their names after coming to America to sound less Jewish, due to widespread antisemitism.  So most
+        reasoning: "RC_2 (control): A lot of Jews chopped their na"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          Was it Thomas Cromwell who implemented the policy of baptismal records?
+        reasoning: "RC_3 (up): Was it Thomas Cromwell who imp"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          &gt; Brown, Black, and White refer to physical attributes of a person (hair colour or complexion
+          
+          Is it true that some c
+        reasoning: "RC_4 (down): &gt; Brown, Black, and White r"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          I had read that Green is a common name among many cultures because it comes from the occupation of greengrocer. I didn’t
+        reasoning: "RC_5 (control): I had read that Green is a com"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          Any idea where the surname ‘Pink’ might have come from?
+        reasoning: "RC_6 (down): Any idea where the surname ‘Pi"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          There are [*Lebleu*](https://www.filae.com/nom-de-famille/LEBLEU.html) families in Northern France. The page says that i
+        reasoning: "RC_7 (up): There are [*Lebleu*](https://w"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          Interesting answer, can you cite your source?
+        reasoning: "RC_8 (down): Interesting answer, can you ci"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          Do we know when and why surnames became "fossilized" in English and started to be passed down to descendants?
+        reasoning: "RC_9 (control): Do we know when and why surnam"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "8"
+        content: |
+          Thank you, I didn't know that name
+        reasoning: "RC_10 (control): Thank you, I didn't know that "
+        episode: 3
+
+
+NewsSource_2_8:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_8"
+    context: "Automated news source 8 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Unlawful to take portions of lease deposit on apartments upon end of lease?
+          So we’re moving out at the end of our lease term. It’ll be a total of 2 years leased. We’ve maintained the apartment extremely well. I heard from some
+        reasoning: "OASIS pair 48: Unlawful to take portions of lease depos"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "9"
+        content: |
+          I would hire a carpet cleaning service, just in case, because they will definitely try to nitpick as much as possible to
+        reasoning: "RC_1 (down): I would hire a carpet cleaning"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "9"
+        content: |
+          We have zero carpet thankfully.
+        reasoning: "RC_2 (down): We have zero carpet thankfully"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "9"
+        content: |
+          Luckily they were replaced before we moved in, new paint before we moved in
+        reasoning: "RC_3 (down): Luckily they were replaced bef"
+        episode: 3
+
+
+NewsSource_2_9:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_9"
+    context: "Automated news source 9 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          ISO: Ethnography recommendations interested in anthropology of education and ped
+          Salut à tous, 
+          Last year I started teaching at an independent grades school in Brooklyn while on pause from my undergraduate degree. I am pursuing a s
+        reasoning: "OASIS pair 49: ISO: Ethnography recommendations interes"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "10"
+        content: |
+          Thank you so much ! These are great
+        reasoning: "RC_1 (up): Thank you so much ! These are "
+        episode: 3
+
+
+NewsSource_2_10:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_10"
+    context: "Automated news source 10 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          I met a substitute teacher who said she had a hard time getting students to resp
+          Title: Substitute teacher woes
+          
+          Selftext:
+          New sub teacher came in, said she had trouble getting respect from students. I realized why. Her full name w
+        reasoning: "OASIS pair 50: I met a substitute teacher who said she "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          With her full name being Mary Jane Stoner.
+        reasoning: "RC_1 (control): With her full name being Mary "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          I literally know a Mary Jane Stoner, old boss of mine
+        reasoning: "RC_2 (up): I literally know a Mary Jane S"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          Probably like Mr. Bates in Jr. High and High School.
+        reasoning: "RC_3 (control): Probably like Mr. Bates in Jr."
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          ^ that makes more sense than the awesome name...
+        reasoning: "RC_4 (up): ^ that makes more sense than t"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          Straight-up, I once had a teacher called Mr Crapper. Weirdly, he decided to revert to his old family name at like over 5
+        reasoning: "RC_5 (down): Straight-up, I once had a teac"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          Just go with Stone. We had a new teacher hired at midterm. She introduced herself as Ms. B. Really nice looking lady! He
+        reasoning: "RC_6 (down): Just go with Stone. We had a n"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          This is where you go by just the first letter of your last name. And for a sub, it’s easier to get away with, because th
+        reasoning: "RC_7 (down): This is where you go by just t"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          Just drop the r when working
+          
+          That’d do it
+        reasoning: "RC_8 (control): Just drop the r when working
+
+"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          That's not the reason. A good sub would play that to her advantage.
+        reasoning: "RC_9 (down): That's not the reason. A good "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "11"
+        content: |
+          My 10th grade English teacher was Mrs. Bumb. On the first day she was like "I got used to it. Eventually you will too."
+        reasoning: "RC_10 (control): My 10th grade English teacher "
+        episode: 3
+
+
+NewsSource_2_11:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_11"
+    context: "Automated news source 11 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Fox displays poll showing 61% of people don't want Donald Trump back
+          "Fox News displays a poll showing 61% of people don't want Trump back, but Trump supporters will still vote for him anyway. The comments section is fi
+        reasoning: "OASIS pair 51: Fox displays poll showing 61% of people "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          No cause he should be locked up for treason.
+        reasoning: "RC_1 (control): No cause he should be locked u"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          "I mean, we will vote for him ANYWAY, but we won't like it!" ~GOP
+        reasoning: "RC_2 (up): "I mean, we will vote for him "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          Who did they poll? 39 percent approval seems way high.
+        reasoning: "RC_3 (up): Who did they poll? 39 percent "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          Well I for one am never going to watch Fox News after this.
+          
+          ^(not that this is a change…)
+        reasoning: "RC_4 (control): Well I for one am never going "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          Yeah, but Fox will never concede the Trump demographic.
+        reasoning: "RC_5 (control): Yeah, but Fox will never conce"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          He’s not gonna go independent.   He’s just gonna easily win the nomination because his voters won’t vote for anybody els
+        reasoning: "RC_6 (down): He’s not gonna go independent."
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          For the Fox News base? Doesn't seem high at all.
+        reasoning: "RC_7 (down): For the Fox News base? Doesn't"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          He peaked in 2016, did nothing to broaden his base of support during his term, to the contrary managed to offend and fri
+        reasoning: "RC_8 (up): He peaked in 2016, did nothing"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          Unfortunately we live in one of the democracies where that doesn't necessarily matter.
+        reasoning: "RC_9 (up): Unfortunately we live in one o"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "12"
+        content: |
+          I'm starting to think this trump guy might not be the brightest carrot in the soup
+        reasoning: "RC_10 (up): I'm starting to think this tru"
+        episode: 3
+
+
+NewsSource_2_12:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_12"
+    context: "Automated news source 12 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Anti-Semitism cases on the rise in Switzerland, especially online
+          "Anti-Semitism on the rise in Switzerland, with a surge in online hate speech. Similar trends seen in France, where a specific community is suspected 
+        reasoning: "OASIS pair 52: Anti-Semitism cases on the rise in Switz"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "13"
+        content: |
+          Same anti semitism is spreading in France, and everyone exactly know which community is spreading it
+        reasoning: "RC_1 (down): Same anti semitism is spreadin"
+        episode: 3
+
+
+NewsSource_2_13:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_13"
+    context: "Automated news source 13 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          If a web app hosted on Azure is accessed by multiple users throughout the world,
+          I am new to the world of programming and I am learning Azure. I was having a conversation with my senior and he brought up a point of multi threaded v
+        reasoning: "OASIS pair 53: If a web app hosted on Azure is accessed"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "14"
+        content: |
+          Multi vs single threaded is a completely different thing than multi vs single instance. One (threading) happens internal
+        reasoning: "RC_1 (control): Multi vs single threaded is a "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "14"
+        content: |
+          Thank you for that. In that case, One azure web app being used by multiple users is a single instance app.
+        reasoning: "RC_2 (up): Thank you for that. In that ca"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "14"
+        content: |
+          If you don’t add a single thread process to sync the data, no user will know anything about another user. This single th
+        reasoning: "RC_3 (control): If you don’t add a single thre"
+        episode: 3
+
+
+NewsSource_2_14:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_14"
+    context: "Automated news source 14 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          As a time traveler myself I can indeed confirm that this is true
+          Title: Time Traveler Confirms
+          
+          Selftext: As a time traveler myself, I can confirm that knowing your future actions will lead to some pretty messed up 
+        reasoning: "OASIS pair 54: As a time traveler myself I can indeed c"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          I'd rather get him into Art School and see where this gets us
+        reasoning: "RC_1 (control): I'd rather get him into Art Sc"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          But KNOWING that time travellers are there to kill you must means you’d know you probably do some fucked up shit in the 
+        reasoning: "RC_2 (down): But KNOWING that time travelle"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "15"
+        content: |
+          Hello, /u/Inferno_9753. Your post has been removed for violating Rule 2. 
+          
+          **No memes or memetic content.**
+          
+          Please read
+        reasoning: "RC_3 (down): Hello, /u/Inferno_9753. Your p"
+        episode: 3
+
+
+NewsSource_2_15:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_15"
+    context: "Automated news source 15 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          New Yorkers friendlier than expected as robots take out the trash
+          New Yorkers are friendlier than expected as robots take out the trash, encouraging social interaction. Meanwhile, Philly's got a bad rep for robotic r
+        reasoning: "OASIS pair 55: New Yorkers friendlier than expected as "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "16"
+        content: |
+          &gt;The robotic trashcans encouraged social interaction, the researchers say.
+          
+          [Trashbot](https://youtu.be/kp7PEkG62i8)
+        reasoning: "RC_1 (down): &gt;The robotic trashcans enco"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "16"
+        content: |
+          Understandable, upvoted your link
+        reasoning: "RC_2 (up): Understandable, upvoted your l"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "16"
+        content: |
+          Of course, it's not like NYC is Philly!https://www.cnn.com/2015/08/03/us/hitchbot-robot-beheaded-philadelphia-feat/index
+        reasoning: "RC_3 (down): Of course, it's not like NYC i"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "16"
+        content: |
+          https://whyy.org/articles/philly-pranksters-admit-hitchbot-video-was-hoax-but-say-they-didnt-dismember-him-video/
+        reasoning: "RC_4 (control): https://whyy.org/articles/phil"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "16"
+        content: |
+          So the bot still died in Philly
+        reasoning: "RC_5 (down): So the bot still died in Phill"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "16"
+        content: |
+          Because the robots are performing a useful and needed service, unlike the "security" snitchbots some retailers are deplo
+        reasoning: "RC_6 (control): Because the robots are perform"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "16"
+        content: |
+          If you're talking about the ones at Walmart, their not after shop lifters, they are after more way to micromanage staff.
+        reasoning: "RC_7 (down): If you're talking about the on"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "16"
+        content: |
+          The rats are gonna re-program the bots to make deliveries to the hoard.
+        reasoning: "RC_8 (control): The rats are gonna re-program "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "16"
+        content: |
+          So even less useful than I imagined.
+        reasoning: "RC_9 (down): So even less useful than I ima"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "16"
+        content: |
+          Pretty much since if you put a box in unts path then behind it it gets stuck and dies a slow death.
+        reasoning: "RC_10 (control): Pretty much since if you put a"
+        episode: 3
+
+
+NewsSource_2_16:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_16"
+    context: "Automated news source 16 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          G.O.P. Lawmakers Override Governor’s Veto on Anti-Trans Laws
+          "Republican lawmakers in Kentucky override governor's veto on anti-trans laws, prioritizing discrimination and oppression over human lives. This is a 
+        reasoning: "OASIS pair 56: G.O.P. Lawmakers Override Governor’s Vet"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          Every single parent of a trans person that commits suicide while this law is active should sue the state for blocking me
+        reasoning: "RC_1 (down): Every single parent of a trans"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          Your daily reminder that the GOP loves teen suicide
+        reasoning: "RC_2 (up): Your daily reminder that the G"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          One of their innumerable death-cult fetishes
+        reasoning: "RC_3 (down): One of their innumerable death"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          These people are CRUEL. They don’t care about anyone unless you help them raise money for their campaigns, or you help t
+        reasoning: "RC_4 (control): These people are CRUEL. They d"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          Note: this article is about Kentucky, and the NY Times has updated their headline on the site to reflect that.
+        reasoning: "RC_5 (up): Note: this article is about Ke"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          Remember that time the GOP Senate overrode one of Obama's vetoes and when shit went sideways as a result, blamed Obama f
+        reasoning: "RC_6 (control): Remember that time the GOP Sen"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          Considering they worship a war-loving death god, that is unsurprising.
+        reasoning: "RC_7 (up): Considering they worship a war"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "17"
+        content: |
+          Christian lore says Jesus was not a man but chose to identify as such with his preferred pronouns of He/Him.
+          
+          Anti trans
+        reasoning: "RC_8 (up): Christian lore says Jesus was "
+        episode: 3
+
+
+NewsSource_2_17:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_17"
+    context: "Automated news source 17 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          UNWTO pledges to put women at center of global tourism industry
+          UNWTO's pledge to put women at the center of global tourism industry is a step in the right direction, but action must be taken to address the systemi
+        reasoning: "OASIS pair 57: UNWTO pledges to put women at center of "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "18"
+        content: |
+          Need to address sexpats harassing and assaulting local female tour guides with little to no consequences.
+        reasoning: "RC_1 (control): Need to address sexpats harass"
+        episode: 3
+
+
+NewsSource_2_18:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_18"
+    context: "Automated news source 18 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          A question on capital gain taxes
+          So here’s the scenario…
+          I buy 200,000 shares of a stock at 1cent in 2017
+          I buy 50,000 shares at 5cents in 2019
+          I buy 10,000 shares at 10cents in 2022
+          
+        reasoning: "OASIS pair 58: A question on capital gain taxes"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "19"
+        content: |
+          You may find our [Taxes wiki](/r/personalfinance/wiki/taxes) helpful.
+          
+          *I am a bot, and this action was performed automa
+        reasoning: "RC_1 (up): You may find our [Taxes wiki]("
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "19"
+        content: |
+          You can sell whatever tax lot you want
+        reasoning: "RC_2 (down): You can sell whatever tax lot "
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "19"
+        content: |
+          I set mine to let me pick specific lots so I can completely control my capital gains. I mostly want to tax gain/loss har
+        reasoning: "RC_3 (down): I set mine to let me pick spec"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "19"
+        content: |
+          you may need to assign the tax lots shortly after you close out positions (not just at tax time) for your broker to gene
+        reasoning: "RC_4 (down): you may need to assign the tax"
+        episode: 3
+
+
+NewsSource_2_19:
+  count: 1
+  prefab_module: mastodon_sim.agents.fixed_entity
+  params:
+    name: "NewsSource_2_19"
+    context: "Automated news source 19 for OASIS data injection"
+    action_flow: fixed_pre
+    fixed_action_plan:
+      - action_type: create_reddit_post
+        target_id: ""
+        content: |
+          Presentation for final interview, any tips?
+          I have to do a 10-minute presentation for a final interview for a software engineering placement year (sandwich degree) at a defence company. I have d
+        reasoning: "OASIS pair 59: Presentation for final interview, any ti"
+        episode: 3
+
+      - action_type: create_comment
+        target_id: "20"
+        content: |
+          thank you so much. I got the place!
+        reasoning: "RC_1 (control): thank you so much. I got the p"
+        episode: 3
+
+

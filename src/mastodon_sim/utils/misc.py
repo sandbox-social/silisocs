@@ -27,18 +27,23 @@ def write_concordia_logs(results_log, output_rootname):
 
 def get_prefab_instance(entity_prefab, module_path):
     print(f"[Loader] Loading prefab: {entity_prefab} from {module_path}")
-    entity_name, entity_type = entity_prefab.split("__")
+    entity_name, entity_type = entity_prefab.split("__", 1)
     try:
         # e.g. importlib.import_module("scenarios.election.entity_lib.voter")
         build_entity_module = importlib.import_module(module_path)
         # e.g., getattr(module, "Entity")
         build_entity_class = getattr(build_entity_module, entity_type)
-    except ImportError:
-        print(f"Error: Could not import module: {entity_name}")
-    except AttributeError:
+    except ImportError as exc:
+        print(f"Error: Could not import module: {module_path}")
+        raise ImportError(f"Could not import module '{module_path}' for prefab '{entity_prefab}'") from exc
+    except AttributeError as exc:
         print(f"Error: Module {entity_name} does not have class: {entity_type}")
+        raise AttributeError(
+            f"Module '{module_path}' does not define '{entity_type}' for prefab '{entity_prefab}'"
+        ) from exc
     except Exception as e:
         print(f"An error occurred while loading prefab {entity_prefab}: {e}")
+        raise
     # return the *instantiated* class
     return build_entity_class()
 

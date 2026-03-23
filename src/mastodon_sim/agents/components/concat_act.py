@@ -22,48 +22,49 @@ class SocialConcatActComponent(concat_act_component.ConcatActComponent):
 
     This preserves Concordia's default behavior for CHOICE/FLOAT outputs and
     only intercepts FREE outputs when the call_to_action includes the
-    tool-calling marker and embedded tool schemas.
+    tool-calling marker.
     """
 
-    def __init__(
-        self,
-        model: language_model.LanguageModel,
-        component_order: Sequence[str] | None = None,
-        prefix_entity_name: bool = True,
-        randomize_choices: bool = True,
-    ):
-        super().__init__(
-            model=model,
-            component_order=component_order,
-            prefix_entity_name=prefix_entity_name,
-            randomize_choices=randomize_choices,
-        )
-
     def _extract_tooling(self, call_to_action: str) -> tuple[str, list[dict] | None]:
-        """Extract tool schemas from call_to_action marker payload.
+        """Check if tool-calling is enabled and extract schemas from prompt.
 
-        Returns (clean_prompt, tools) where tools is None when tool-calling is
-        not requested, [] when marker exists but payload is invalid, or a parsed
-        tool schema list otherwise.
+        When tool-calling marker is found, extract embedded schemas (if present)
+        and return a clean prompt with markers and schemas removed.
+
+        Returns (clean_prompt, tools) where:
+        - tools is None if tool-calling marker not present
+        - tools is extracted schema list if marker + schemas found
+        - tools is [] if marker present but no schemas (fallback to free text)
+        - clean_prompt has all markers and schemas removed
         """
         if _TOOL_CALLING_MARKER not in call_to_action:
             return call_to_action, None
 
-        cleaned = call_to_action.replace(_TOOL_CALLING_MARKER, "").strip()
-        if _TOOL_SCHEMAS_START not in cleaned or _TOOL_SCHEMAS_END not in cleaned:
-            return cleaned, []
+        # Extract schemas if present
+        tools = None
+        cleaned = call_to_action
 
-        before, remainder = cleaned.split(_TOOL_SCHEMAS_START, 1)
-        tools_json, after = remainder.split(_TOOL_SCHEMAS_END, 1)
-        prompt = "\n".join(part for part in (before.strip(), after.strip()) if part).strip()
+        if _TOOL_SCHEMAS_START in call_to_action and _TOOL_SCHEMAS_END in call_to_action:
+            before, remainder = call_to_action.split(_TOOL_SCHEMAS_START, 1)
+            schemas_json, after = remainder.split(_TOOL_SCHEMAS_END, 1)
 
-        try:
-            parsed = json.loads(tools_json.strip())
-            if isinstance(parsed, list):
-                return prompt, parsed
-        except (json.JSONDecodeError, TypeError, ValueError):
-            pass
-        return prompt, []
+            # Try to parse the schemas
+            try:
+                tools = json.loads(schemas_json.strip())
+                if not isinstance(tools, list):
+                    tools = None
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+
+            # Clean prompt: remove markers and schemas
+            cleaned = before.strip() + " " + after.strip()
+            cleaned = cleaned.replace(_TOOL_CALLING_MARKER, "").strip()
+        else:
+            # No schemas found, just remove marker
+            cleaned = call_to_action.replace(_TOOL_CALLING_MARKER, "").strip()
+            tools = []  # Marker present but no schemas
+
+        return cleaned, tools
 
     def _sample_tool_call(self, prompt_text: str, tools: list[dict]) -> str:
         """Run model tool-calling and format output for resolve parsing."""
@@ -96,11 +97,35 @@ class SocialConcatActComponent(concat_act_component.ConcatActComponent):
         prompt.statement(context + "\n")
 
         call_to_action, tools = self._extract_tooling(action_spec.call_to_action)
-        call_to_action = call_to_action.format(name=self.get_entity().name)
+        # Escape braces to prevent format() from interpreting JSON as placeholders
+        # e.g., {"success": bool} → {{success}}: bool
+        call_to_action = call_to_action.replace("{", "{{").replace("}", "}}")
+        call_to_action = call_to_action.replace("{{name}}", "{name}")
+        try:
+            call_to_action = call_to_action.format(name=self.get_entity().name)
+        except (KeyError, ValueError):
+            # If formatting still fails, use the escaped version as-is
+            call_to_action = call_to_action.replace("{{", "{").replace("}}", "}")
+
+        # DEBUG: Log full prompt for all agents
+        import logging
+        debug_logger = logging.getLogger("CONCAT_ACT_DEBUG")
+        debug_logger.warning(f"\n{'='*80}")
+        debug_logger.warning(f"AGENT: {self.get_entity().name}")
+        debug_logger.warning(f"ACTION_SPEC_TYPE: {action_spec.output_type}")
+        debug_logger.warning(f"HAS_TOOLS: {tools is not None}")
+        debug_logger.warning(f"CONTEXT_LENGTH: {len(context)} chars")
+        debug_logger.warning(f"CONTEXT_PREVIEW: {context[:200].strip()}...")
+        debug_logger.warning(f"CALL_TO_ACTION_LENGTH: {len(call_to_action)} chars")
+        debug_logger.warning(f"CALL_TO_ACTION: {call_to_action[:300]}")
+        debug_logger.warning(f"{'='*80}\n")
 
         if action_spec.output_type in entity_lib.FREE_ACTION_TYPES:
             if tools is not None:
-                result = self._sample_tool_call(call_to_action, tools)
+                # Include context with call_to_action for tool-calling
+                prompt_with_context = context + "\n" + call_to_action
+                debug_logger.warning(f"TOOL_CALLING_PROMPT_LENGTH: {len(prompt_with_context)} chars")
+                result = self._sample_tool_call(prompt_with_context, tools)
                 if result:
                     self._log(result, prompt)
                     return result

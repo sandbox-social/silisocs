@@ -267,7 +267,7 @@ class Simulation(simulation_lib.Simulation):
             if self._should_save_checkpoint(step):
                 self.save_checkpoint(step, checkpoint_path=checkpoint_path)
 
-        # Ensure game masters are ordered Initializers first
+        # Ensure game masters are ordered with Initializers first.
         initializers = [
             gm
             for gm in self.game_masters
@@ -278,7 +278,25 @@ class Simulation(simulation_lib.Simulation):
             for gm in self.game_masters
             if self._entity_to_prefab_config[gm.name].role == Role.GAME_MASTER
         ]
-        sorted_game_masters = initializers + other_gms
+
+        def _gm_sequence(game_master: entity_lib.Entity) -> int:
+            cfg = self._entity_to_prefab_config.get(game_master.name)
+            if not cfg or not isinstance(cfg.params, dict):
+                return 0
+            user_data = cfg.params.get("sm_user_data", {})
+            if not isinstance(user_data, dict):
+                return 0
+            orchestration = user_data.get("gm_orchestration", {})
+            if not isinstance(orchestration, dict):
+                return 0
+            try:
+                return int(orchestration.get("sequence", 0))
+            except (TypeError, ValueError):
+                return 0
+
+        sorted_initializers = sorted(initializers, key=lambda gm: gm.name)
+        sorted_other_gms = sorted(other_gms, key=lambda gm: (_gm_sequence(gm), gm.name))
+        sorted_game_masters = sorted_initializers + sorted_other_gms
 
         metrics = SimMetricsCollector.get()
         with metrics.phase("engine_run_loop"):

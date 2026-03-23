@@ -35,15 +35,12 @@ def write_seed_toot(agent):
             output_type=entity.OutputType.FREE,
         ),
     )
-    agent_says = (
-        agent_says.strip(agent._agent_name.split()[0])
-        .strip()
-        .strip(agent._agent_name.split()[1])
-        .strip()
-        .strip("--")
-        .strip()
-        .strip('"')
-    )
+    # Some agent names are single tokens; strip available name tokens safely.
+    cleaned = str(agent_says).strip()
+    for token in str(agent._agent_name).split():
+        if token:
+            cleaned = cleaned.strip(token).strip()
+    agent_says = cleaned.strip("-").strip().strip('"')
     return agent_says
 
 

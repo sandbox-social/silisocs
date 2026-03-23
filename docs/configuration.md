@@ -45,7 +45,7 @@ uv run mastodon-sim social_media=reddit_like scenario=my_scenario
 | `checkpoint.explicit_steps` | `[]` | Additional explicit checkpoint steps. |
 | `checkpoint.resume_file` | `null` | Optional path to checkpoint JSON used to resume a prior run. |
 | `checkpoint.resume_step` | `null` | Optional step override when resuming (defaults to checkpoint step). |
-| `gm.preset` | `social_media_default` | Prebuilt GM component preset |
+| `gm.preset` | `simple` | GM preset: `simple` (default easy UX) or `shared_flow` (advanced) |
 | `gm.components.*` | *(slots)* | YAML-selectable GM components (`next_acting`, `observe`, `resolve`, `initializer`) |
 | `timeline_posts` | `10` | Number of posts shown in agent timeline |
 | `observation_history` | `100` | Max observations kept in agent memory |
@@ -82,7 +82,7 @@ sim:
 Built-in aliases:
 
 - `next_acting`: `activity_markov`, `all_entities`, `fixed_order`
-- `observe`: `timeline_every_turn`, `chunk_start_only`
+- `observe`: `timeline_every_turn`, `chunk_start_only`, `episode_only`
 - `resolve`: `parsed_action`, `generic_action`, `tool_calling`
 - `initializer`: `backend_default`
 
@@ -103,6 +103,134 @@ social_media:
 ```
 
 This bypasses slot-level customization and lets you own the complete GM build flow.
+
+### Advanced GM Orchestration (Optional)
+
+Most users should keep this disabled and use the simple workflow.
+
+```yaml
+sim:
+  gm:
+    preset: simple   # simple | shared_flow
+
+  gm_orchestration:
+    gms:
+      - gm_name: gm_default
+        mode: shared
+        sequence: 0
+    flow_bindings:
+      flow_to_gm: {}
+      flow_to_gms: {}
+      gm_to_flows: {}
+```
+
+Rules:
+
+- `flow_to_gms` takes precedence over `flow_to_gm`, which takes precedence over `gm_to_flows`.
+- A flow can have multiple GMs via `flow_to_gms`, but execution must be serialized by sequence.
+- For simple runs, leave `gm_orchestration` empty.
+- With `sim.engine.preset: base` (default), the runtime executes one social GM per episode.
+- Use `sim.engine.preset: flow` only when you intentionally need flow/multi-GM orchestration.
+
+### Timeline Configuration and Strategies
+
+Configure what posts agents see in their feed using timeline strategies:
+
+```yaml
+sim:
+  timeline_posts: 10                          # Posts per timeline observation
+  timeline_strategy: follower_chronological   # Strategy type
+  timeline_config:
+    recsys_ratio: 0.6                         # For hybrid mode: 60% recommendations
+    follower_ratio: 0.4                       # For hybrid mode: 40% followed users
+```
+
+**Available Strategies:**
+
+| Strategy | Available Platforms | Description |
+|----------|-------------------|-------------|
+| `follower_chronological` | Twitter, Reddit, Mastodon | Recent posts from followed users (no algorithmic feed) |
+| `pure_recsys` | Twitter, Reddit | Algorithm-selected posts only (no human-followed content) |
+| `hybrid_recsys_follower` | Twitter, Reddit | Blend of recommendations + followed posts (default for OASIS) |
+| `curated_global` | Twitter only | Mix of trending posts + network recommendations |
+
+**Strategy Details:**
+
+- **follower_chronological**: Shows recent posts from users the agent follows, in reverse chronological order. No recommendation algorithm is used.
+
+- **pure_recsys**: Uses only algorithmic recommendations (no followed users). Useful for studying pure recommendation effects.
+
+- **hybrid_recsys_follower**: Combines recommendations and followed posts with configurable ratio (default 60% recsys, 40% followers). This blends algorithmic with social signals for realistic behavior.
+
+- **curated_global**: Twitter-specific strategy that blends trending posts (global engagement) with personalized recommendations based on the agent's bio/interests. Creates a "curated" feed that mixes broad trends with personal relevance. **Not available on Reddit/Mastodon.**
+
+### Recommendation System Configuration
+
+Configure how recommendations are computed and cached:
+
+```yaml
+# Recommendation algorithms (configured in scenario or via defaults)
+engine:
+  preset: base             # base | flow
+  recsys:
+    enabled: true
+    type: reddit              # reddit | twitter | twhin
+    params:
+      max_rec_posts: 10       # Recommendations per user
+      update_every_n_steps: 1 # Compute schedule
+
+gm:
+  components:
+    recommend:
+      built_in: recommendation_component
+      params:
+        recsys_type: ${engine.recsys.type}
+        update_every_n_steps: ${engine.recsys.params.update_every_n_steps}
+```
+
+**Recommendation Algorithms:**
+
+| Algorithm | Metric | Best For |
+|-----------|--------|----------|
+| `reddit` | Hot-score = sign(engagement) × log(\|engagement\|) + recency decay | General social media, OASIS default |
+| `twitter` | TF-IDF: Bio-to-content cosine similarity | Personalized feeds, user-content matching |
+| `twhin` | Deep embeddings (TWHIN-BERT) | Advanced semantic similarity |
+
+**Algorithm Details:**
+
+- **reddit**: Engagement-based ranking that balances post score (likes - dislikes) with age. Newer posts decay faster, older high-engagement posts remain visible. Formula: `score(post) = sign(engagement) × log(|engagement| + 1) + (age_penalty)`. Used for "hot" feeds.
+
+- **twitter**: Content-based personalization matching user bio/interests to post content using TF-IDF vectors. Computes cosine similarity between user biography and each post's text. Favors posts matching stated user interests.
+
+- **twhin**: Deep semantic embeddings using TWHIN-BERT pre-trained on Twitter data. Learns high-dimensional representations of users and content for advanced similarity calculations. Most computationally expensive.
+
+**Per-Agent-Class Configuration:**
+
+Different agent classes can use different recommendation algorithms by specifying `recsys_type` in `persona_pipeline`:
+
+```yaml
+persona_pipeline:
+  classes:
+    active_users:
+      count: 100
+      prefab_module: mastodon_sim.agents.entity
+      params:
+        recsys_type: twitter    # This class uses TF-IDF recommendations
+      data:
+        source: local_json
+        dataset: agents_active.json
+
+    casual_users:
+      count: 50
+      prefab_module: mastodon_sim.agents.entity
+      params:
+        recsys_type: reddit     # This class uses hot-score recommendations
+      data:
+        source: local_json
+        dataset: agents_casual.json
+```
+
+Note: Currently, all agents are computed with the same `engine.recsys.type`. Per-class recsys configuration is prepared for future implementation where each agent class can request their own algorithm during recommendation updates.
 
 ---
 
@@ -179,6 +307,7 @@ persona_pipeline:
       count: 100                # Number of agents in this class
       prefab_module: mastodon_sim.agents.entity  # Entity module path
       sim_role_name: user       # Role name for activity rates
+      flow_tag: default         # Optional class-level flow tag (advanced)
       model: null               # Per-class LLM override
       data:
         source: hf_dataset      # hf_dataset | local_json | inline | config_path

@@ -19,10 +19,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from concordia.typing import entity as entity_lib
 from mastodon_sim.environments.gm.components.base import FlowComponent
 
 if TYPE_CHECKING:
-    from mastodon_sim.environments import environment
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ class RecommendationComponent(FlowComponent):
 
     def __init__(
         self,
+        sm_app: Any | None = None,
         update_every_n_steps: int = 1,
         lazy: bool = True,
         max_posts: int = 10,
@@ -57,31 +59,41 @@ class RecommendationComponent(FlowComponent):
         """Initialize the recommendation component.
 
         Args:
+            sm_app: Reference to the social media app backend (required for pre_act)
             update_every_n_steps: Steps between recommendation updates
             lazy: If True, only compute for active users
             max_posts: Maximum recommended posts per user
         """
         super().__init__()
+        self.sm_app = sm_app
         self.update_every_n_steps = update_every_n_steps
         self.lazy = lazy
         self.max_posts = max_posts
         self._step_count = 0
         self._initialized_recsys_types: set[str] = set()
 
-    def __call__(
-        self,
-        game_state: Any,
-        environment_object: environment.Environment,
-    ) -> Any:
-        """Update recommendations if scheduled."""
+    def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
+        """Called each step by Concordia's EntityAgent to update recommendations.
+
+        Args:
+            action_spec: The current actionspec (unused, but required by Concordia interface)
+
+        Returns:
+            Empty string (passive component with no observation output)
+        """
+        del action_spec  # unused
         self._step_count += 1
 
         # Check if it's time to update
         if self._step_count % self.update_every_n_steps != 0:
-            return game_state
+            return ""
 
         try:
-            backend = environment_object.backend
+            if not self.sm_app:
+                logger.warning("RecommendationComponent has no sm_app; skipping update")
+                return ""
+
+            backend = self.sm_app
 
             # Initialize all unique recsys types on first call
             if not self._initialized_recsys_types:
@@ -92,30 +104,24 @@ class RecommendationComponent(FlowComponent):
                         logger.info(f"Initialized recsys type: {recsys_type}")
                 self._initialized_recsys_types = recsys_types
 
-            # Get active users if lazy evaluation enabled
-            active_user_ids = None
-            if self.lazy and hasattr(game_state, "active_entities"):
-                active_user_ids = [e.agent_id for e in game_state.active_entities]
-
             # Update recommendations via backend
             if hasattr(backend, "update_recommendations"):
                 backend.update_recommendations(
-                    active_user_ids=active_user_ids,
-                    lazy=self.lazy,
+                    active_user_ids=None,  # Not available from ActionSpec
                     max_posts=self.max_posts,
                 )
 
                 logger.debug(
                     f"Updated recommendations (step {self._step_count}, "
-                    f"algorithms: {self._initialized_recsys_types}, lazy: {self.lazy})"
+                    f"algorithms: {self._initialized_recsys_types})"
                 )
             else:
                 logger.warning("Backend does not support recommendations")
 
         except Exception as e:
-            logger.error(f"Error updating recommendations: {e}")
+            logger.error(f"Error updating recommendations: {e}", exc_info=True)
 
-        return game_state
+        return ""  # Passive component, no text output
 
     def _extract_unique_recsys_types(self) -> set[str]:
         """Extract unique recsys_type values from flow:field mapping."""

@@ -131,7 +131,7 @@ platform-specific API. Each backend handles:
 
 ### Responsibility Boundary
 
-- Engine (`SocialMediaEngine`): episode loop, actor concurrency, probe timing
+- Engine (`BaseSocialMediaEngine` / `FlowSocialMediaEngine`): episode loop, actor concurrency, probe timing
 - GM (`GameMaster` + `SMAct`): timeline observation, action parsing, dispatch
 - Backend app (`SocialMediaApp` implementation): platform state transitions,
   timeline retrieval/formatting, persistence

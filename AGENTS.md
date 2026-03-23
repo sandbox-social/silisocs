@@ -33,9 +33,13 @@ Core runtime layers:
 
 3. Game Master layer
 - `src/mastodon_sim/environments/gm/game_master.py`
+- `src/mastodon_sim/environments/gm/base_game_master.py`
+- `src/mastodon_sim/environments/gm/shared_flow_game_master.py`
 - `src/mastodon_sim/environments/gm/act.py`
 - `src/mastodon_sim/environments/gm/components/`
 - Component-slotted architecture for next-acting, observe, resolve, initializer
+- `game_master.py` is the simple default preset; `shared_flow_game_master.py`
+    is the advanced shared-flow preset; both use `base_game_master.py`
 
 4. Engine layer
 - `src/mastodon_sim/environments/engines/social_media.py`
@@ -63,6 +67,8 @@ Main runtime knobs:
 
 - `src/mastodon_sim/conf/sim/base.yaml`
 - Includes GM slots, engine policies, action mode, enabled action filtering
+- `gm.preset` should stay on `simple` unless advanced orchestration is needed
+- advanced orchestration is configured under `sim.gm_orchestration`
 - Checkpoint controls:
   - `checkpoint.every_n_steps`
   - `checkpoint.explicit_steps`
@@ -75,10 +81,11 @@ Scenario content lives under:
 
 ## 4) Defining New Agent Behaviors Cleanly
 
-Use behavior flows instead of adding custom manager branches:
+Use class-level behavior flows instead of adding custom manager branches:
 
 1. Assign class flow:
-- `persona_pipeline.classes.<class>.params.action_flow`
+- `persona_pipeline.classes.<class>.flow_tag`
+- Backward compatibility still accepts `params.action_flow`.
 
 2. Define flow order:
 - `sim.engine.flow_routing.flow_order`
@@ -87,7 +94,17 @@ Use behavior flows instead of adding custom manager branches:
 - `sim.engine.flow_routing.entity_to_flow`
 
 4. Optional observe specialization for selected flows:
-- `sim.gm.components.observe.params.episode_observation_flows`
+- `sim.gm.components.observe.params.episode_observation_flow`
+
+5. Advanced multi-GM orchestration (optional):
+- `sim.gm_orchestration.gms`
+- `sim.gm_orchestration.flow_bindings.flow_to_gm`
+- `sim.gm_orchestration.flow_bindings.flow_to_gms`
+- `sim.gm_orchestration.flow_bindings.gm_to_flows`
+
+Default UX rule:
+- Keep users on simple mode (`gm.preset=simple`, advanced dashboard toggle off).
+- Only expose flow tags and multi-GM controls behind advanced mode.
 
 Fixed agents (`mastodon_sim.agents.fixed_entity`) are the reference example.
 

@@ -1,0 +1,118 @@
+# sim/base.yaml — core simulation parameters (platform-agnostic)
+# @package sim
+
+llm_name: qwen3.5-4b
+disable_language_model: false
+llm_api_base: null
+llm_api_key: null
+max_concurrent_actions: 1000
+num_agents: 500
+num_steps: 200
+run_name: run1
+seed: 1
+sentence_encoder: sentence-transformers/all-MiniLM-L6-v2
+memory_backend: list           # associative | list
+action_mode: custom            # custom | generic | tool_calling
+enabled_actions: null          # null => expose all backend actions; otherwise list of action names
+write_html_log: true
+
+checkpoint:
+  every_n_steps: null          # int | null
+  explicit_steps: []           # list[int]
+  resume_file: null            # optional checkpoint json path to resume from
+  resume_step: null            # optional explicit start step override
+
+# Game-master component configurability (Concordia SwitchAct style)
+gm:
+  # simple: default one-GM workflow for most users
+  # shared_flow: advanced preset using shared-flow GM prefab
+  preset: simple
+  components:
+    # Choose who acts next each step.
+    next_acting:
+      built_in: activity_markov     # activity_markov | activity_probability | all_entities | fixed_order
+      class_path: null
+      params: {}
+
+    # Choose what observation is returned to active entities.
+    observe:
+      built_in: timeline_every_turn # timeline_every_turn | chunk_start_only
+      class_path: null
+      params: {}
+
+    # Choose how raw agent output is resolved into backend actions.
+    # parsed_action: ACTION TYPE/TARGET ID/CONTENT parser
+    # generic_action: ACTION: name + param lines
+    # tool_calling: native tool-call resolution over backend action tools
+    resolve:
+      built_in: parsed_action       # parsed_action | generic_action | tool_calling
+      class_path: null
+      params: {}
+
+    # Choose how backend initialize(...) is called.
+    initializer:
+      built_in: backend_default     # backend_default
+      class_path: null
+      params: {}
+
+# Optional multi-GM orchestration.
+# Backward compatible: if this block is omitted, the legacy single social GM is used.
+gm_orchestration:
+  gms: []
+  flow_bindings:
+    # Single GM owner for a flow.
+    flow_to_gm: {}
+    # Ordered GM chain for a flow (serialized across sequence numbers).
+    # If present for a flow, this takes precedence over flow_to_gm.
+    flow_to_gms: {}
+    # Fallback mapping from GM to flows when flow_to_gm/flow_to_gms are absent.
+    gm_to_flows: {}
+
+# Engine policy configurability
+engine:
+  # base: simple engine (single active social GM, no flow orchestration)
+  # flow: flow-enabled engine (multi-GM phase orchestration)
+  preset: base
+
+  action_loop:
+    built_in: single_action         # single_action | fixed_count | open_ended
+    class_path: null
+    params:
+      count: 2                      # used by fixed_count
+      max_actions: 3                # used by open_ended
+      done_token: DONE              # used by open_ended
+
+  probe_schedule:
+    built_in: step_schedule         # step_schedule | fixed_interval | disabled
+    class_path: null
+    params:
+      start_step: 0                 # used by fixed_interval
+      every_n_steps: 1              # used by fixed_interval
+
+  flow_routing:
+    flow_order: [fixed_pre, default]   # execution buckets; groups run sequentially, agents within each group run in parallel
+    entity_to_flow: {}                  # optional explicit per-entity override map
+
+  # Optional per-flow action loop policy override.
+  # Missing flow entries fall back to engine.action_loop.
+  flow_policies: {}
+
+# Observation parameters
+timeline_posts: 10
+timeline_strategy: follower_chronological  # follower_chronological | pure_recsys | hybrid_recsys_follower | curated_global
+timeline_config:
+  recsys_ratio: 0.6      # For hybrid_recsys_follower: ratio of recommendations
+  follower_ratio: 0.4    # For hybrid_recsys_follower: ratio of followed users
+observation_history: 100
+
+# Roleplaying system prompt (injected into every agent)
+roleplaying_instructions: |
+  <general_instructions>
+  You are simulating {name}, a character in a social science experiment.
+  Always use third-person limited perspective when describing {name}'s thoughts and actions.
+  Your goal is to determine the single most appropriate action {name} would take next.
+  </general_instructions>
+
+# Set at runtime by Hydra / runner
+output_rootname: ""
+scenario_name: ""

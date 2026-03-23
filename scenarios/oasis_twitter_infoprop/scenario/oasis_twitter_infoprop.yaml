@@ -1,0 +1,120 @@
+scenario_name: oasis_twitter_infoprop
+jobname_format: "TwitterInfoProp_${sim.num_agents}_${sim.num_steps}"
+
+setting:
+  name: Twitter Information Propagation Network
+  background:
+    - "A large Twitter-like network studying how information cascades through social networks"
+    - "Users discover content through recommendations and retweets from followers"
+    - "Network effects amplify reach of popular information"
+
+event:
+  name: Information Cascade & Viral Spread
+  context: "Measure how quickly, widely, and accurately information spreads through the network via recommendations and social sharing"
+
+persona_pipeline:
+  processing_mode: raw
+  defaults:
+    shared_memories: []
+    params:
+      scenario_context: "You are a Twitter user interested in staying informed and sharing interesting news with your followers."
+  classes:
+    agent:
+      count: 100  # Larger network for cascade dynamics
+      prefab_module: mastodon_sim.agents.entity
+      data:
+        source: inline
+        records:
+          # News sharers
+          - id: 1
+            persona: "News enthusiast who loves sharing interesting and trending stories with followers. High engagement tendency."
+            name: "NewsJunkie"
+            username: "news_junkie_1"
+            gender: "male"
+            age: 32
+            mbti: "ENFP"
+          - id: 2
+            persona: "Journalist interested in breaking news and verified information. Cautious about accuracy."
+            name: "ReporterUser"
+            username: "reporter_1"
+            gender: "female"
+            age: 38
+            mbti: "ISTJ"
+          # Conservative sharers
+          - id: 3
+            persona: "Prefers to engage with trusted sources only. Cautious about sharing unverified information."
+            name: "CautiousUser"
+            username: "careful_user_1"
+            gender: "female"
+            age: 45
+            mbti: "ISFJ"
+          - id: 4
+            persona: "Fact-checker and skeptic. Verifies claims before sharing. Contributes to information quality."
+            name: "FactChecker"
+            username: "fact_checker_1"
+            gender: "male"
+            age: 40
+            mbti: "INTJ"
+          # Amplifiers
+          - id: 5
+            persona: "Social butterfly with large follower network. Shares frequently to maximize reach and engagement."
+            name: "Influencer"
+            username: "influencer_1"
+            gender: "female"
+            age: 29
+            mbti: "ESFP"
+      field_map:
+        # Context combines persona + demographics
+        context: "{persona}\nYou are a {gender}, {age} years old, with MBTI type {mbti}"
+        name: name
+        username: username
+
+social_network:
+  activity_transition_rates:
+    agent:
+      inactive_to_active: 0.4
+  base_followership_probability: 0.2  # Sparse network enables cascade observation
+  network_type: barabasi_albert
+  barabasi_albert_m: 25
+
+probes:
+  deployment:
+    enabled: true
+    start_step: 10
+    every_n_steps: 5
+  queries:
+    information_awareness:
+      probe_name: awareness
+      query_type: FreeTextProbe
+      prompt: "What recent news, trends, or important information have you been seeing? What do you think about it?"
+
+    cascade_observation:
+      probe_name: cascade
+      query_type: FreeTextProbe
+      prompt: "Are there any viral trends or widely-shared information you've noticed spreading through the network?"
+
+# Twitter: Uses TF-IDF + following (hybrid timeline)
+engine:
+  recsys:
+    type: twitter  # TF-IDF embedding-based recommendations
+    params:
+      max_rec_posts: 10
+      update_every_n_steps: 1
+
+# Timeline configuration for Twitter
+timeline_posts: 15
+timeline_strategy: hybrid_recsys_follower  # Twitter: blend recommendations + followed users
+
+# Twitter OASIS action constraints
+sim:
+  enabled_actions:
+    - create_tweet
+    - reply_to_tweet
+    - like_tweet
+    - repost_tweet
+    - search_tweets
+    - get_home_timeline
+    - view_profile
+    - get_trending_posts
+    - do_nothing
+

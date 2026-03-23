@@ -14,6 +14,7 @@ only if you need legacy role-count based building::
             ...
 """
 
+import csv
 import json
 import logging
 import re
@@ -134,7 +135,14 @@ class BaseAgentBuilder:
         sim_role = class_cfg.get("sim_role_name", class_name)
 
         field_map = {**default_field_map, **(class_cfg.get("field_map", {}) or {})}
-        class_params = class_cfg.get("params", {}) or {}
+        class_params = dict(class_cfg.get("params", {}) or {})
+        class_flow_tag = str(
+            class_cfg.get("flow_tag", class_params.get("action_flow", "")) or ""
+        ).strip()
+        if class_flow_tag and "action_flow" not in class_params:
+            class_params["action_flow"] = class_flow_tag
+        if class_flow_tag:
+            class_params.setdefault("flow_tag", class_flow_tag)
 
         shared = list(default_shared)
         for m in self._load_memories(class_cfg.get("shared_memories", [])):
@@ -457,12 +465,17 @@ class BaseAgentBuilder:
             if not path:
                 raise ValueError("config_path source requires a `path` field")
             records = self._extract_path(self._to_plain(self.config), path)
+        elif source == "csv":
+            path = data_cfg.get("path")
+            if not path:
+                raise ValueError("csv source requires a `path` field")
+            records = self._load_csv(path, max_records=max_records)
         elif source == "hf_dataset":
             records = self._load_hf_dataset(data_cfg, max_records=max_records)
         else:
-            path = data_cfg.get("path")
+            path = data_cfg.get("path") or data_cfg.get("dataset")
             if not path:
-                raise ValueError(f"{source} source requires a `path` field")
+                raise ValueError(f"{source} source requires a `path` or `dataset` field")
             with open(self._resolve_file_path(str(path))) as f:
                 records = json.load(f)
 
@@ -523,6 +536,34 @@ class BaseAgentBuilder:
                 "Falling back to HF cache for %s due to dataset load error: %s", dataset_name, exc
             )
             return _load_cache()
+
+    def _load_csv(
+        self,
+        path: str,
+        *,
+        max_records: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Load records from a CSV file.
+
+        Args:
+            path: Path to CSV file (can be absolute or relative to scenario)
+            max_records: Maximum number of records to load
+
+        Returns:
+            List of record dictionaries (one per CSV row)
+        """
+        file_path = self._resolve_file_path(str(path))
+        records: list[dict[str, Any]] = []
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for i, row in enumerate(reader):
+                if max_records and i >= max_records:
+                    break
+                records.append(dict(row))
+
+        return records
+
 
     # ------------------------------------------------------------------ #
     # HuggingFace cache

@@ -116,9 +116,22 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
         ValueError: If required fields are missing
     """
     has_class_pipeline = bool(OmegaConf.select(cfg, "persona_pipeline.classes"))
-    required_fields = ["scenario_name", "setting", "shared_memories", "initial_observations"]
-    if not has_class_pipeline:
-        required_fields.extend(["roles"])
+    required_fields = ["scenario_name", "setting"]
+    if has_class_pipeline:
+        # Modern class-pipeline scenarios can define shared memories at the
+        # persona defaults level and do not need legacy initial_observations.
+        has_top_level_shared = OmegaConf.select(cfg, "shared_memories") is not None
+        has_pipeline_shared = (
+            OmegaConf.select(cfg, "persona_pipeline.defaults.shared_memories") is not None
+        )
+        if not (has_top_level_shared or has_pipeline_shared):
+            missing_fields = ["shared_memories or persona_pipeline.defaults.shared_memories"]
+            raise ValueError(
+                f"Scenario configuration missing required fields: {', '.join(missing_fields)}\n"
+                f"Please ensure your scenario.yaml includes all required fields."
+            )
+    else:
+        required_fields.extend(["roles", "shared_memories", "initial_observations"])
 
     missing_fields = []
     for field_name in required_fields:
@@ -333,7 +346,7 @@ def validate_data_files(cfg: DictConfig, scenario_path: Path) -> None:
             class_cfg = class_cfg or {}
             data_cfg = class_cfg.get("data", {})
             data_source = data_cfg.get("source")
-            data_path = data_cfg.get("path")
+            data_path = data_cfg.get("path") or data_cfg.get("dataset")
             if data_source == "local_json":
                 resolved_data_path = _resolve_local_path(str(data_path))
                 if resolved_data_path is None:

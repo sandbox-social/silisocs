@@ -1,8 +1,13 @@
-"""Fixed-action entity prefab.
+"""Fixed-action entity prefab with sequence support.
 
-A lightweight entity type that does not call the LLM. It advances an internal
-episode counter from observations and emits deterministic ACTION TYPE blocks
-compatible with existing parsed-action resolve components.
+A lightweight entity type that does not call the LLM. It executes predetermined
+actions with support for:
+- Single action per episode (legacy, default)
+- Action sequences per episode (new, for OASIS alignment)
+- Episode-based organization
+
+Actions execute sequentially, with cursor tracking to ensure proper sequencing
+across multiple act() calls within the same flow.
 """
 
 from __future__ import annotations
@@ -30,7 +35,30 @@ def _parse_episode_number(observation: str) -> int | None:
 
 
 class FixedActionEntityRuntime(Agent):
-    """Runtime entity implementing observe/act without LLM calls."""
+    """Runtime entity implementing observe/act with predetermined action sequences.
+
+    Supports two action plan formats:
+    1. List format (legacy): Cyclic action iteration
+       fixed_action_plan:
+         - action_type: create_post
+           episode: 1
+         - action_type: like_post
+           episode: 2
+
+    2. Dict format (new): Episode-based action sequences
+       fixed_action_plan:
+         1:  # Episode 1
+           - action_type: create_post
+             target_id: ""
+             content: "Post 1"
+           - action_type: create_post
+             target_id: ""
+             content: "Post 2"
+           - action_type: FINISHED
+         2:  # Episode 2
+           - action_type: like_post
+             target_id: "1"
+    """
 
     def __init__(self, *, params: Mapping[str, Any]) -> None:
         self._params = dict(params)
@@ -47,10 +75,27 @@ class FixedActionEntityRuntime(Agent):
             if str(v).strip()
         ]
 
+        # Parse fixed_action_plan - supports both list and dict formats
         plan = params.get("fixed_action_plan") or []
         self._default_actions: list[dict[str, Any]] = []
         self._actions_by_episode: dict[int, list[dict[str, Any]]] = {}
-        if isinstance(plan, list):
+        self._is_dict_format = False
+
+        if isinstance(plan, dict):
+            # Dict format: episode -> [actions]
+            self._is_dict_format = True
+            for ep, actions in plan.items():
+                try:
+                    episode_int = int(ep)
+                    if isinstance(actions, list):
+                        self._actions_by_episode[episode_int] = [
+                            dict(a) for a in actions if isinstance(a, Mapping)
+                        ]
+                except (TypeError, ValueError):
+                    pass
+
+        elif isinstance(plan, list):
+            # List format: actions with optional episode field
             for item in plan:
                 if not isinstance(item, Mapping):
                     continue
@@ -84,6 +129,11 @@ class FixedActionEntityRuntime(Agent):
             self._current_episode = parsed
 
     def _next_action_item(self) -> dict[str, Any]:
+        """Get the next action to execute.
+
+        Returns the next action from the current episode's sequence,
+        or from default actions if no episode-specific actions exist.
+        """
         episode_items = self._actions_by_episode.get(self._current_episode, [])
         if episode_items:
             idx = self._episode_cursors.get(self._current_episode, 0)
@@ -102,6 +152,10 @@ class FixedActionEntityRuntime(Agent):
             "content": str(self._params.get("seed_post", "")),
             "reasoning": "Default fixed action fallback.",
         }
+
+    def get_all_actions_for_episode(self, episode: int) -> list[dict[str, Any]]:
+        """Get all actions for a specific episode (for execute_until_done policy)."""
+        return self._actions_by_episode.get(episode, []) or self._default_actions
 
     def act(self, action_spec: Any) -> str:
         del action_spec
@@ -128,6 +182,17 @@ class FixedActionEntityRuntime(Agent):
         }
         return action_text
 
+    def _reset_phase(self):
+        """Reset phase state for Concordia compatibility after action attempt."""
+        # This method helps work around Concordia phase management issues
+        if hasattr(self, '_phase'):
+            try:
+                from concordia.typing import entity_component
+                if hasattr(self._phase, '_phase'):
+                    self._phase._phase = entity_component.Phase.INITIAL
+            except (AttributeError, ImportError):
+                pass
+
     def get_last_log(self) -> dict[str, Any]:
         return dict(self._last_log)
 
@@ -151,7 +216,7 @@ class FixedActionEntityRuntime(Agent):
 class Entity(prefab_lib.Prefab):
     """Prefab wrapper for fixed-action runtime entity."""
 
-    description: str = "A fixed-action entity with deterministic action plan"
+    description: str = "A deterministic fixed-action entity with episode-based action sequences"
     params: Mapping[str, Any] = dataclasses.field(
         default_factory=lambda: {
             "name": "Fixed Entity",

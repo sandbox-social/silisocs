@@ -1,0 +1,7 @@
+defaults:
+  - sim: oasis_base
+  - social_media: oasis_reddit
+  - scenario: oasis_reddit_herding
+  - _self_
+
+experiment_name: oasis_reddit_herding

@@ -63,3 +63,5 @@ shared_memories:
 initial_observations:
   - "{name} is at home checking their social media feed."
   - "{name} decides to browse and maybe post something."
+
+probes: {}

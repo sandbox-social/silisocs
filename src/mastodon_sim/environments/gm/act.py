@@ -11,7 +11,6 @@ components configured via YAML and routed by SwitchAct.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from typing import Any
 
@@ -87,31 +86,25 @@ class SMAct(gm_components.switch_act.SwitchAct):
         desired actions for this cycle.
         """
         del contexts, action_spec
-        if self.action_mode == "generic" and not self.enable_tool_calling:
+
+        # Step 1: Generate base prompt based on action_mode ONLY
+        if self.action_mode == "generic":
             base_prompt = self.sm_app.generate_generic_action_prompt()
-        elif self.action_mode in {"generic", "tool_calling"} and self.enable_tool_calling:
-            base_prompt = (
-                "Choose one action using the provided tools based on your goals and recent context. "
-                "Only choose tools and arguments that are valid for the available schemas."
-            )
         elif self.call_to_action_str:
             base_prompt = self.call_to_action_str
         else:
             base_prompt = (
-                "Conduct a social-media action. Format it correctly as: "
-                "ACTION TYPE: (action)\n TARGET ID: (target_id)\n "
-                "CONTENT: (content)\n REASONING: (reasoning)"
+                "Conduct a social-media action. Determine what ONE action would be most appropriate."
             )
 
+        # Step 2: If tool-calling is disabled, return prompt as-is
         if not self.enable_tool_calling:
             return f"prompt: {base_prompt} ;;type: free"
 
-        tool_schemas = json.dumps(self.sm_app.generate_tool_schemas())
+        # Step 3: If tool-calling is enabled, add tool schemas
+        # Prompt includes just the marker; schemas are generated fresh as needed
         call_to_action = (
             "### TOOL_CALLING_MODE ###\n"
-            f"{base_prompt}\n"
-            "### TOOL_SCHEMAS_JSON ###\n"
-            f"{tool_schemas}\n"
-            "### END_TOOL_SCHEMAS_JSON ###"
+            f"{base_prompt}"
         )
         return f"prompt: {call_to_action} ;;type: free"

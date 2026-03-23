@@ -612,7 +612,12 @@ users.
 
 ### Engine Responsibilities
 
-The engine (`SocialMediaEngine`) is responsible for:
+The runtime now includes two engine presets:
+
+- `sim.engine.preset: base` (default): simple execution path, one social GM active per episode.
+- `sim.engine.preset: flow`: flow-aware execution with optional multi-GM phase orchestration.
+
+The flow engine (`FlowSocialMediaEngine`, compatibility alias `SocialMediaEngine`) is responsible for:
 
 - Episode loop orchestration (`run_loop`)
 - Probe scheduling and deployment timing

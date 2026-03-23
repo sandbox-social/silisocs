@@ -1,0 +1,96 @@
+# OASIS Simulation Configuration
+# This is the base config for OASIS-compatible simulations
+
+llm_name: gpt-4o-mini
+llm_api_base: null
+llm_api_key: null
+disable_language_model: false
+max_concurrent_actions: 1000
+num_agents: 100
+num_steps: 50
+run_name: run1
+seed: 1
+sentence_encoder: sentence-transformers/all-MiniLM-L6-v2
+action_mode: generic  # Auto-generate prompts from available @app_action methods
+memory_backend: list  # Simple list-based memory
+enabled_actions: null
+write_html_log: true
+
+checkpoint:
+  every_n_steps: null
+  explicit_steps: []
+  resume_file: null
+  resume_step: null
+
+# Recommendation system (OASIS feature)
+engine:
+  preset: base
+
+  recsys:
+    enabled: true
+    type: reddit  # "reddit" | "twitter" | "twhin"
+    params:
+      max_rec_posts: 10
+      update_every_n_steps: 1
+      # GPU support is auto-detected
+
+  action_loop:
+    built_in: single_action
+    params:
+      count: 1
+
+  probe_schedule:
+    built_in: step_schedule
+    params:
+      start_step: 1
+      every_n_steps: 5
+
+  flow_routing:
+    flow_order: [fixed_pre, default]
+    entity_to_flow: {}
+    flow_policies:
+      fixed_pre: "execute_until_done"   # Fixed agents execute all actions until FINISHED
+      default: "single_action"          # Regular agents execute one action per call (default)
+
+gm:
+  preset: simple
+  components:
+    next_acting:
+      built_in: activity_probability  # OASIS-style sparse activation (probability-based)
+      params:
+        active_probability: 0.1  # Match OASIS: 10% of agents act per timestep
+        min_active_agents: 0    # Safety guard: allow all-inactive (OASIS allows this via randomness)
+    recommend:  # Recommendation scheduler component
+      built_in: recommendation_component
+      params:
+        recsys_type: ${sim.engine.recsys.type}
+        update_every_n_steps: ${sim.engine.recsys.params.update_every_n_steps}
+        lazy: true
+        max_posts: ${sim.engine.recsys.params.max_rec_posts}
+    observe:
+      built_in: timeline_every_turn
+    resolve:
+      built_in: tool_calling  # Enable structured tool-calling mode (parser expects JSON)
+    initializer:
+      built_in: backend_default
+
+# Timeline configuration
+timeline_posts: 10
+timeline_strategy: hybrid_recsys_follower  # Options: follower_chronological, pure_recsys, hybrid_recsys_follower, curated_global
+timeline_config:
+  recsys_ratio: 0.6      # 60% recommendations in hybrid mode
+  follower_ratio: 0.4    # 40% followed users in hybrid mode
+
+observation_history: 100
+
+roleplaying_instructions: |
+  <general_instructions>
+  You are simulating {name}, a character in a social science experiment.
+  Always use third-person limited perspective when describing {name}'s thoughts and actions.
+  Your goal is to determine the single most appropriate action {name} would take next.
+  </general_instructions>
+
+# Set at runtime by Hydra / runner
+output_rootname: ""
+scenario_name: ""
+

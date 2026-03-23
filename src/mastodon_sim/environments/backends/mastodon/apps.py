@@ -145,6 +145,10 @@ class SocialNetworkApp(SocialMediaApp):
     def get_timeline(self, user_name: str, limit: int = 10) -> list[dict]:
         """Fetch the home timeline for a user from the Mastodon API.
 
+        Mastodon timelines are always server-provided chronologically. For
+        consistency with Twitter/Reddit, this supports a 'strategy' parameter,
+        but Mastodon returns the same feed regardless since it's federated.
+
         Args:
             user_name: Display name of the user.
             limit: Maximum number of posts.
@@ -165,6 +169,38 @@ class SocialNetworkApp(SocialMediaApp):
         except Exception as e:
             self._print(f"Error fetching timeline for {user_name}: {e}", color="red")
             return []
+
+    # Timeline strategies for consistency with Twitter/Reddit backends
+    TIMELINE_STRATEGIES = {
+        "follower_chronological": {
+            "description": "Home feed from Mastodon server (always chronological, federated)",
+            "note": "Mastodon's federated nature means timeline is server-determined",
+        },
+    }
+
+    def get_timeline_strategy(
+        self,
+        strategy: str,
+        username: str,
+        limit: int = 10,
+        **timeline_config,
+    ) -> list[dict]:
+        """Get timeline using specified strategy.
+
+        Mastodon does not support recommendations or algorithmic feeds.
+        All strategies return the server-provided chronological feed.
+
+        Args:
+            strategy: Timeline strategy name (currently only "follower_chronological")
+            username: User to get timeline for
+            limit: Max posts to return
+            **timeline_config: Strategy parameters (unused for Mastodon)
+
+        Returns:
+            List of timeline posts from Mastodon server
+        """
+        # Mastodon always returns the server's feed, regardless of strategy requested
+        return self.get_timeline(username, limit)
 
     def format_timeline_for_observation(self, timeline: list[dict]) -> str:
         """Format Mastodon timeline posts for LLM observation.

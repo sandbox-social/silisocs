@@ -3,6 +3,7 @@ import concurrent.futures
 import functools
 import logging
 import os
+import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
@@ -12,6 +13,7 @@ import termcolor
 from concordia.components.game_master import event_resolution as event_resolution_components
 from concordia.components.game_master import next_acting as next_acting_components
 from concordia.components.game_master import switch_act as switch_act_component
+from concordia.environment import engine as engine_lib
 from concordia.environment.engines import simultaneous
 from concordia.typing import entity as entity_lib
 from omegaconf import OmegaConf
@@ -64,22 +66,95 @@ def _get_empty_log_entry():
     }
 
 
-class SocialMediaEngine(simultaneous.Simultaneous):
+class BaseSocialMediaEngine(simultaneous.Simultaneous):
     """
     A custom engine to implement parallel social media sessions, where agents can act parallely
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._gm_action_locks: dict[int, threading.Lock] = {}
+        self._gm_action_locks_guard = threading.Lock()
+
+    def _gm_lock(self, game_master: entity_lib.Entity) -> threading.Lock:
+        key = id(game_master)
+        with self._gm_action_locks_guard:
+            lock = self._gm_action_locks.get(key)
+            if lock is None:
+                lock = threading.Lock()
+                self._gm_action_locks[key] = lock
+        return lock
+
     def agent_resolve(self, game_master, action, verbose=False):
         """Resolve an entity's action."""
+        # SwitchAct formats call_to_action with `.format(name=...)`; raw braces
+        # from model text (e.g. JSON-like `{id: ...}`) must be escaped first.
+        safe_action = action.replace("{", "{{").replace("}", "}}")
         result = game_master.act(
             action_spec=entity_lib.ActionSpec(
-                call_to_action=action,
+                call_to_action=safe_action,
                 output_type=entity_lib.OutputType.RESOLVE,
             )
         )
         if verbose:
             print(termcolor.colored(f"The resolved event was: {result}", _PRINT_COLOR))
         return result
+
+    @override
+    def next_acting(
+        self,
+        game_master: entity_lib.Entity,
+        entities: Sequence[entity_lib.Entity],
+        log_entry: Mapping[str, Any] | None = None,
+        log: list[Mapping[str, Any]] | None = None,
+    ) -> tuple[Sequence[entity_lib.Entity], Sequence[entity_lib.ActionSpec]]:
+        """Return action specs for next actors while tolerating malformed name lists."""
+        entities_by_name = {entity.name: entity for entity in entities}
+        next_object_names_string = game_master.act(
+            action_spec=entity_lib.ActionSpec(
+                call_to_action=self._call_to_next_acting,
+                output_type=entity_lib.OutputType.NEXT_ACTING,
+                options=tuple(entities_by_name.keys()),
+            )
+        )
+        raw_names = [name.strip() for name in str(next_object_names_string).split(",")]
+        next_entity_names: list[str] = []
+        for name in raw_names:
+            if not name:
+                continue
+            if name not in entities_by_name:
+                _LOGGER.warning(
+                    "Ignoring unknown next_acting entity '%s' from game master '%s'.",
+                    name,
+                    game_master.name,
+                )
+                continue
+            next_entity_names.append(name)
+
+        if log is not None and hasattr(game_master, "get_last_log"):
+            assert hasattr(game_master, "get_last_log")
+            log_entry["next_acting"] = game_master.get_last_log()
+
+        action_spec_by_name: dict[str, entity_lib.ActionSpec] = {}
+        for next_entity_name in next_entity_names:
+            next_action_spec_string = game_master.act(
+                action_spec=entity_lib.ActionSpec(
+                    call_to_action=self._call_to_next_action_spec.format(name=next_entity_name),
+                    output_type=entity_lib.OutputType.NEXT_ACTION_SPEC,
+                )
+            )
+            action_spec_by_name[next_entity_name] = engine_lib.action_spec_parser(
+                next_action_spec_string
+            )
+
+            if log is not None and hasattr(game_master, "get_last_log"):
+                assert hasattr(game_master, "get_last_log")
+                log_entry["next_action_spec"] = game_master.get_last_log()
+
+        return (
+            [entities_by_name[entity_name] for entity_name in next_entity_names],
+            [action_spec_by_name[entity_name] for entity_name in next_entity_names],
+        )
 
     def _run_single_entity_action(
         self,
@@ -93,41 +168,44 @@ class SocialMediaEngine(simultaneous.Simultaneous):
         return_raw_action: bool = False,
     ) -> str | dict[str, str]:
         """Execute one observe/act/resolve cycle for a single entity."""
-        if observe_before_action:
-            observation = self.make_observation(game_master, entity)
-            if observation and observation.strip():
-                if verbose:
-                    print(
-                        termcolor.colored(
-                            f"Entity {entity.name} observed: {observation}",
-                            _PRINT_COLOR,
+        with self._gm_lock(game_master):
+            if observe_before_action:
+                observation = self.make_observation(game_master, entity)
+                if observation and observation.strip():
+                    if verbose:
+                        print(
+                            termcolor.colored(
+                                f"Entity {entity.name} observed: {observation}",
+                                _PRINT_COLOR,
+                            )
                         )
+                    entity.observe(observation)
+
+            if skip_actions:
+                return {"raw": "", "rendered": ""} if return_raw_action else ""
+
+            if verbose:
+                print(
+                    termcolor.colored(
+                        f"Entity {entity.name} is next to act. They must respond"
+                        f' in the format: "{action_spec}".',
+                        _PRINT_COLOR,
                     )
-                entity.observe(observation)
-
-        if skip_actions:
-            return {"raw": "", "rendered": ""} if return_raw_action else ""
-
-        if verbose:
-            print(
-                termcolor.colored(
-                    f"Entity {entity.name} is next to act. They must respond"
-                    f' in the format: "{action_spec}".',
-                    _PRINT_COLOR,
                 )
-            )
 
-        raw_action = entity.act(action_spec)
-        raw_text = str(raw_action)
-        action = f"{entity.name}: {raw_text}"
-        if verbose:
-            print(termcolor.colored(f"Entity {entity.name} chose action: {action}", _PRINT_COLOR))
+            raw_action = entity.act(action_spec)
+            raw_text = str(raw_action)
+            action = f"{entity.name}: {raw_text}"
+            if verbose:
+                print(
+                    termcolor.colored(f"Entity {entity.name} chose action: {action}", _PRINT_COLOR)
+                )
 
-        result = self.agent_resolve(game_master, action, verbose=verbose)
-        entity.observe(result)
-        if return_raw_action:
-            return {"raw": raw_text, "rendered": action}
-        return action
+            result = self.agent_resolve(game_master, action, verbose=verbose)
+            entity.observe(result)
+            if return_raw_action:
+                return {"raw": raw_text, "rendered": action}
+            return action
 
     @staticmethod
     def _is_social_media_game_master(game_master: entity_lib.Entity) -> bool:
@@ -208,6 +286,93 @@ class SocialMediaEngine(simultaneous.Simultaneous):
             if name not in used:
                 ordered.append((name, members))
         return ordered
+
+    @staticmethod
+    def _gm_sequence(game_master: entity_lib.Entity) -> int:
+        act_component = getattr(game_master, "_act_component", None)
+        orchestration = getattr(act_component, "gm_orchestration", {})
+        if not isinstance(orchestration, Mapping):
+            return 0
+        try:
+            return int(orchestration.get("sequence", 0))
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _gm_owned_flows(game_master: entity_lib.Entity) -> set[str]:
+        act_component = getattr(game_master, "_act_component", None)
+        orchestration = getattr(act_component, "gm_orchestration", {})
+        if not isinstance(orchestration, Mapping):
+            return set()
+        flows = orchestration.get("owned_flows", [])
+        if not isinstance(flows, Sequence):
+            return set()
+        return {str(flow).strip() for flow in flows if str(flow).strip()}
+
+    @classmethod
+    def _phase_game_masters(
+        cls,
+        *,
+        current_game_master: entity_lib.Entity,
+        game_masters: Sequence[entity_lib.Entity],
+    ) -> list[entity_lib.Entity]:
+        del game_masters
+        return [current_game_master]
+
+    def _build_flow_task_groups(
+        self,
+        *,
+        cfg: Any,
+        phase_batches: Sequence[
+            tuple[
+                entity_lib.Entity,
+                Sequence[entity_lib.Entity],
+                Sequence[entity_lib.ActionSpec],
+                bool,
+            ]
+        ],
+        entities: Sequence[entity_lib.Entity],
+        skip_actions: bool,
+        entity_act_fn: Callable[[entity_lib.Entity, entity_lib.Entity, entity_lib.ActionSpec, bool], str],
+    ) -> tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]:
+        del cfg
+        flow_task_groups: list[tuple[str, dict[str, Callable[[], str]]]] = []
+        model_pool: dict[int, Any] = {}
+        if skip_actions:
+            for phase_gm, _, _, _ in phase_batches:
+                tasks: dict[str, Callable[[], str]] = {}
+                for entity in entities:
+                    action_spec = entity_lib.ActionSpec(
+                        call_to_action="",
+                        output_type=entity_lib.OutputType.SKIP_THIS_STEP,
+                    )
+                    task_name = f"{phase_gm.name}::{entity.name}"
+                    tasks[task_name] = functools.partial(entity_act_fn, phase_gm, entity, action_spec, True)
+                flow_task_groups.append((f"{phase_gm.name}:default", tasks))
+                for model_obj in collect_unique_models(phase_gm, entities):
+                    model_pool[id(model_obj)] = model_obj
+            return flow_task_groups, model_pool
+
+        for phase_gm, gm_entities, gm_action_specs, gm_skip in phase_batches:
+            entities_to_process = entities if gm_skip else gm_entities
+            tasks: dict[str, Callable[[], str]] = {}
+            if gm_skip:
+                action_iter = [
+                    entity_lib.ActionSpec(
+                        call_to_action="",
+                        output_type=entity_lib.OutputType.SKIP_THIS_STEP,
+                    )
+                    for _ in entities_to_process
+                ]
+            else:
+                action_iter = list(gm_action_specs)
+            for entity, action_spec in zip(entities_to_process, action_iter, strict=False):
+                task_name = f"{phase_gm.name}::{entity.name}"
+                tasks[task_name] = functools.partial(entity_act_fn, phase_gm, entity, action_spec, False)
+            flow_task_groups.append((f"{phase_gm.name}:default", tasks))
+            for model_obj in collect_unique_models(phase_gm, entities_to_process):
+                model_pool[id(model_obj)] = model_obj
+        return flow_task_groups, model_pool
 
     @staticmethod
     def _run_tasks_with_limit(
@@ -291,10 +456,13 @@ class SocialMediaEngine(simultaneous.Simultaneous):
         probe_event_logger = EventLogger(
             "probe", os.path.join(cfg.sim.output_rootname, "probe_events.jsonl")
         )
-        probes_config = cast(
-            Mapping[str, Any] | None,
-            OmegaConf.to_container(cfg.scenario.probes, resolve=True),
-        )
+        probes_config: Mapping[str, Any] | None = None
+        scenario_probes = OmegaConf.select(cfg.scenario, "probes")
+        if scenario_probes is not None:
+            probes_config = cast(
+                Mapping[str, Any],
+                OmegaConf.to_container(scenario_probes, resolve=True),
+            )
         probe_orchestrator = ProbeDeploymentOrchestrator(probes_config, probe_event_logger)
         _LOGGER.info(
             "Engine run initialized: max_steps=%d total_agents=%d configured_worker_cap=%s",
@@ -423,47 +591,60 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                     probe_phase["selected_agents"] = 0
                     probe_phase["duration_s"] = 0.0
 
+            phase_game_masters = [game_master]
+            if self._is_social_media_game_master(game_master):
+                phase_game_masters = self._phase_game_masters(
+                    current_game_master=game_master,
+                    game_masters=game_masters,
+                )
+
             t0 = time.time()
-            next_entities, next_action_specs = self.next_acting(
-                game_master, entities, log_entry=log_entry, log=log
-            )
+            phase_batches: list[
+                tuple[
+                    entity_lib.Entity,
+                    Sequence[entity_lib.Entity],
+                    Sequence[entity_lib.ActionSpec],
+                    bool,
+                ]
+            ] = []
+            for phase_gm in phase_game_masters:
+                if phase_gm is not game_master and self._is_social_media_game_master(phase_gm):
+                    self._sync_social_game_master_runtime_state(phase_gm, entities, steps)
+                gm_entities, gm_action_specs = self.next_acting(
+                    phase_gm, entities, log_entry=log_entry, log=log
+                )
+                gm_skip = bool(gm_action_specs) and (
+                    gm_action_specs[0].output_type == entity_lib.OutputType.SKIP_THIS_STEP
+                )
+                phase_batches.append((phase_gm, gm_entities, gm_action_specs, gm_skip))
             ep_timings["next_acting"] = time.time() - t0
 
-            if next_action_specs[0].output_type == entity_lib.OutputType.SKIP_THIS_STEP:
-                if verbose:
-                    print(
-                        termcolor.colored(
-                            "\nSkipping the action phase for the current time step.\n"
-                        )
-                    )
-                skip_actions = True
-                if checkpoint_callback is not None:
-                    print(f"Calling checkpoint callback at step {steps}")
-                    checkpoint_callback(steps)
-            else:
-                skip_actions = False
+            skip_actions = any(batch[3] for batch in phase_batches)
+            active_agents = sum(len(batch[1]) for batch in phase_batches if not batch[3])
             _LOGGER.info(
-                "Episode %d actor selection: active_agents=%d skip_actions=%s",
+                "Episode %d actor selection: active_agents=%d skip_actions=%s phase_gms=%d",
                 steps,
-                len(next_entities),
+                active_agents,
                 skip_actions,
+                len(phase_game_masters),
             )
 
             def _entity_act(
+                target_game_master: entity_lib.Entity,
                 entity: entity_lib.Entity,
                 action_spec: entity_lib.ActionSpec,
                 skip_actions: bool = False,
             ) -> str:
                 """Execute entity action chunk via configured action-loop policy."""
-                if log is not None and hasattr(game_master, "get_last_log"):
-                    assert hasattr(game_master, "get_last_log")  # Assertion for pytype
-                    log_entry["make_observation"][entity.name] = game_master.get_last_log()
+                if log is not None and hasattr(target_game_master, "get_last_log"):
+                    assert hasattr(target_game_master, "get_last_log")  # Assertion for pytype
+                    log_entry["make_observation"][entity.name] = target_game_master.get_last_log()
 
                 return cast(
                     str,
                     action_loop_policy.run(
                         engine=self,
-                        game_master=game_master,
+                        game_master=target_game_master,
                         entity=entity,
                         action_spec=action_spec,
                         skip_actions=skip_actions,
@@ -471,38 +652,17 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                     ),
                 )
 
-            flow_task_groups: list[tuple[str, dict[str, Callable[[], str]]]] = []
-            entities_to_process = entities if skip_actions else next_entities
-            if skip_actions:
-                tasks: dict[str, Callable[[], str]] = {}
-                for entity in entities_to_process:
-                    action_spec = entity_lib.ActionSpec(
-                        call_to_action="",
-                        output_type=entity_lib.OutputType.SKIP_THIS_STEP,
-                    )
-                    tasks[entity.name] = functools.partial(_entity_act, entity, action_spec, True)
-                flow_task_groups.append(("default", tasks))
-            else:
-                grouped_entities = self._group_entities_by_flow(
-                    cfg=cfg,
-                    game_master=game_master,
-                    entities=entities_to_process,
-                    action_specs=next_action_specs,
-                )
-                for flow_name, members in grouped_entities:
-                    flow_tasks: dict[str, Callable[[], str]] = {}
-                    for entity, action_spec in members:
-                        flow_tasks[entity.name] = functools.partial(
-                            _entity_act,
-                            entity,
-                            action_spec,
-                            False,
-                        )
-                    flow_task_groups.append((flow_name, flow_tasks))
+            flow_task_groups, model_pool = self._build_flow_task_groups(
+                cfg=cfg,
+                phase_batches=phase_batches,
+                entities=entities,
+                skip_actions=skip_actions,
+                entity_act_fn=_entity_act,
+            )
 
             # Run entity actions concurrently with adaptive worker throttling.
-            requested_workers = sum(len(tasks) for _, tasks in flow_task_groups)
-            models = collect_unique_models(game_master, entities_to_process)
+            requested_workers = max(1, sum(len(tasks) for _, tasks in flow_task_groups))
+            models = list(model_pool.values())
             dynamic_worker_limit, worker_limit = compute_dynamic_worker_limit(
                 requested_workers=requested_workers,
                 phase_cap=phase_worker_caps["action"],
@@ -572,7 +732,7 @@ class SocialMediaEngine(simultaneous.Simultaneous):
             action_after = capture_retry_counters(models)
             action_retry = summarize_retry_delta(action_before, action_after)
             action_phase = {
-                "active_agents": 0 if skip_actions else len(next_entities),
+                "active_agents": 0 if skip_actions else active_agents,
                 "duration_s": round(action_duration, 4),
                 "retry": action_retry,
             }
@@ -672,13 +832,14 @@ class SocialMediaEngine(simultaneous.Simultaneous):
             entity_logs = {}
             entity_by_name = {e.name: e for e in entities}
             for entity_name in actions:
-                entity = entity_by_name.get(entity_name)
+                raw_entity_name = entity_name.split("::", 1)[-1]
+                entity = entity_by_name.get(raw_entity_name)
                 if entity is not None and hasattr(entity, "get_last_log"):
                     entity_logs[entity.name] = entity.get_last_log()
 
             steps += 1
             if log is not None:
-                game_master_key = game_master.name
+                game_master_key = "+".join(gm.name for gm in phase_game_masters)
                 self._log(
                     log=log,
                     steps=steps,
@@ -712,12 +873,18 @@ class SocialMediaEngine(simultaneous.Simultaneous):
             )
 
             # Log comprehensive per-episode metrics
-            active_names = [e.name for e in next_entities]
+            active_name_set: set[str] = set()
+            for _phase_gm, gm_entities, _gm_action_specs, gm_skip in phase_batches:
+                if gm_skip:
+                    continue
+                for entity in gm_entities:
+                    active_name_set.add(entity.name)
+            active_names = sorted(active_name_set)
             metrics.log_episode(
                 episode=steps - 1,
                 duration_s=round(duration, 4),
                 total_agents=len(entities),
-                active_agents=len(next_entities),
+                active_agents=len(active_names),
                 active_agent_names=active_names,
                 skipped=False,
                 game_master=game_master.name,
@@ -740,7 +907,87 @@ class SocialMediaEngine(simultaneous.Simultaneous):
                 steps - 1,
                 duration,
                 len(entities),
-                len(next_entities),
+                len(active_names),
                 phase_summary,
             )
             metrics.snapshot_resources(label=f"episode_{steps - 1}_end")
+
+
+class FlowSocialMediaEngine(BaseSocialMediaEngine):
+    """Flow-enabled social media engine with multi-GM phase orchestration."""
+
+    @classmethod
+    def _phase_game_masters(
+        cls,
+        *,
+        current_game_master: entity_lib.Entity,
+        game_masters: Sequence[entity_lib.Entity],
+    ) -> list[entity_lib.Entity]:
+        sequence = cls._gm_sequence(current_game_master)
+        peers = [
+            gm
+            for gm in game_masters
+            if cls._gm_sequence(gm) == sequence and cls._is_social_media_game_master(gm)
+        ]
+        if not peers:
+            return [current_game_master]
+        peers.sort(key=lambda gm: gm.name)
+        return peers
+
+    def _build_flow_task_groups(
+        self,
+        *,
+        cfg: Any,
+        phase_batches: Sequence[
+            tuple[
+                entity_lib.Entity,
+                Sequence[entity_lib.Entity],
+                Sequence[entity_lib.ActionSpec],
+                bool,
+            ]
+        ],
+        entities: Sequence[entity_lib.Entity],
+        skip_actions: bool,
+        entity_act_fn: Callable[[entity_lib.Entity, entity_lib.Entity, entity_lib.ActionSpec, bool], str],
+    ) -> tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]:
+        flow_task_groups: list[tuple[str, dict[str, Callable[[], str]]]] = []
+        model_pool: dict[int, Any] = {}
+        if skip_actions:
+            return super()._build_flow_task_groups(
+                cfg=cfg,
+                phase_batches=phase_batches,
+                entities=entities,
+                skip_actions=skip_actions,
+                entity_act_fn=entity_act_fn,
+            )
+
+        for phase_gm, gm_entities, gm_action_specs, gm_skip in phase_batches:
+            entities_to_process = entities if gm_skip else gm_entities
+            owned_flows = self._gm_owned_flows(phase_gm)
+            grouped_entities = self._group_entities_by_flow(
+                cfg=cfg,
+                game_master=phase_gm,
+                entities=entities_to_process,
+                action_specs=gm_action_specs,
+            )
+            for flow_name, members in grouped_entities:
+                if owned_flows and flow_name not in owned_flows:
+                    continue
+                flow_tasks: dict[str, Callable[[], str]] = {}
+                for entity, action_spec in members:
+                    task_name = f"{phase_gm.name}::{entity.name}"
+                    flow_tasks[task_name] = functools.partial(
+                        entity_act_fn,
+                        phase_gm,
+                        entity,
+                        action_spec,
+                        False,
+                    )
+                flow_task_groups.append((f"{phase_gm.name}:{flow_name}", flow_tasks))
+            for model_obj in collect_unique_models(phase_gm, entities_to_process):
+                model_pool[id(model_obj)] = model_obj
+        return flow_task_groups, model_pool
+
+
+# Backward-compatibility alias.
+SocialMediaEngine = FlowSocialMediaEngine

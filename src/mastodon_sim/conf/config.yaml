@@ -1,10 +1,11 @@
-# config.yaml — top-level Hydra composition
+# Top-level Hydra configuration for mastodon-sim
+# Allows switching between 'default' and 'oasis' presets
+
 defaults:
   - sim: base
-  - social_media: twitter_like
+  - social_media: oasis_reddit  # OASIS Reddit as default (most tested platform)
   - scenario: default
   - _self_
-
 hydra:
   job:
     name: ${scenario.jobname_format}_${now:%Y-%m-%d_%H-%M-%S}
@@ -13,3 +14,4 @@ hydra:
   output_subdir: configs/${scenario.jobname_format}
 
 experiment_name: independent
+
