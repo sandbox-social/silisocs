@@ -491,6 +491,18 @@ def _build_scenario_config() -> dict:
 def _build_hydra_overrides(sim: dict, platform: str, scenario: dict) -> list[str]:
     overrides: list[str] = []
     for key, val in sim.items():
+        # Handle seed_posts nested keys
+        if key.startswith("seed_posts."):
+            if val is None:
+                overrides.append(f"{key}=null")
+            elif isinstance(val, bool):
+                overrides.append(f"{key}={'true' if val else 'false'}")
+            elif isinstance(val, str) and " " in val:
+                overrides.append(f'{key}="{val}"')
+            elif isinstance(val, str):
+                overrides.append(f"{key}={val}")
+            continue
+
         if val is None:
             overrides.append(f"sim.{key}=null")
         elif isinstance(val, bool):
@@ -1258,6 +1270,31 @@ with tab_env:
             follower_ratio = 1.0 - recsys_ratio
             st.metric("Follower ratio", f"{follower_ratio:.1%}")
 
+    # Seed posts configuration
+    st.markdown("**Seed Posts Configuration**")
+    seed_posts_type = st.selectbox(
+        "Seed post provider",
+        ["llm", "csv", "json", "none", "fallback"],
+        index=0,
+        key="seed_posts_type",
+        help=(
+            "llm: Generate posts via LLM (default, context-aware)\n"
+            "csv: Load from CSV file (agent_name,post_text)\n"
+            "json: Load from JSON file ({agent_name: post_text})\n"
+            "none: No seed posts (organic growth)\n"
+            "fallback: Try CSV, fall back to LLM if file missing"
+        ),
+    )
+
+    if seed_posts_type in ("csv", "json", "fallback"):
+        seed_posts_file = st.text_input(
+            "Seed posts file path",
+            value="",
+            key="seed_posts_file",
+            help="Path to CSV or JSON file with agent posts",
+            placeholder="agents_posts.csv or agents_posts.json",
+        )
+
     with st.expander("GM Components", expanded=False):
         gc1, gc2 = st.columns(2)
 
@@ -1825,6 +1862,10 @@ with tab_launch:
             "follower_ratio": 1.0 - st.session_state.get("timeline_recsys_ratio", 0.6),
         },
         "observation_history": st.session_state.get("observation_history", 100),
+        "seed_posts.type": st.session_state.get("seed_posts_type", "llm"),
+        "seed_posts.params.file_path": (
+            st.session_state.get("seed_posts_file") if st.session_state.get("seed_posts_file") else None
+        ),
         "disable_language_model": st.session_state.get("disable_language_model", False),
         "gm.preset": (
             st.session_state.get("gm_preset", "base")
