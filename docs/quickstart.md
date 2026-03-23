@@ -16,13 +16,25 @@ dataset.
 uv run mastodon-sim
 ```
 
-This uses the built-in `default` scenario with the Twitter-like local backend.
-By default it runs 500 agents for 200 steps. For a quick test, override the
+This uses the built-in `default` preset with 500 agents for 200 steps. For a quick test, override the
 scale:
 
 ```sh
 uv run mastodon-sim sim.num_agents=10 sim.num_steps=5
 ```
+
+### Try the OASIS Preset
+
+Run an OASIS-compatible simulation (smaller scale, optimized for recommendation studies):
+
+```sh
+uv run mastodon-sim sim=oasis social_media=reddit_like sim.num_agents=10 sim.num_steps=5
+```
+
+This uses the `oasis` preset configuration with 100 agents, hybrid timeline feeds (mixing recommendations
+and follower posts), and built-in recommendation system updates.
+
+See [Preset Configurations](PRESETS.md) for detailed comparison of preset options.
 
 ## 2. Check the Output
 
