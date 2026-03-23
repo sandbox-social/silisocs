@@ -218,12 +218,17 @@ def build_backend_initializer(slot_cfg: Mapping[str, Any] | None = None) -> Back
 
 def build_recommendation_component(
     slot_cfg: Mapping[str, Any] | None = None,
+    *,
+    sm_app: Any | None = None,
 ) -> entity_component.ContextComponent:
     """Build recommendation component from slot config."""
     return _build_from_slot(
         slot_cfg,
         built_ins=_RECOMMENDATION_BUILT_INS,
         default_built_in="recommendation_component",
+        runtime_kwargs={
+            "sm_app": sm_app,
+        } if sm_app else None,
     )
 
 

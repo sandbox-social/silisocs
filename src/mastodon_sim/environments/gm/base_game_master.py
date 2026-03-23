@@ -357,7 +357,7 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
             call_to_action_str=call_to_sm_action,
         )
         recommend_slot = dict(gm_components_cfg.get("recommend", {}))
-        recommend_component = build_recommendation_component(recommend_slot)
+        recommend_component = build_recommendation_component(recommend_slot, sm_app=sm_app)
 
         # Initialize multi-field values if component supports them
         initialize_component_multi_fields(make_observation, observe_slot)
