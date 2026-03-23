@@ -106,8 +106,22 @@ def _instantiate_with_supported_kwargs(cls: type[Any], kwargs: Mapping[str, Any]
     return cls(**filtered)
 
 
-def build_observe_component(
-    slot_cfg: Mapping[str, Any] | None = None,
+def _class_to_kebab_case(class_name: str) -> str:
+    """Convert ClassName to kebab-case.
+
+    Examples:
+        TimelineMakeObservation -> timeline_make_observation
+        EpisodeObservation -> episode_observation
+        ParsedActionResolveComponent -> parsed_action_resolve_component
+    """
+    import re
+    # Insert underscore before uppercase letters (except first)
+    kebab = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name)
+    return kebab.lower()
+
+
+def build_observe_components(
+    slots_cfg: Mapping[str, Any] | None = None,
     *,
     model: Any,
     player_names: list[str],
@@ -116,22 +130,43 @@ def build_observe_component(
     episode_observation_flow: str = "fixed_pre",
     timeline_strategy: str = "follower_chronological",
     timeline_config: Mapping[str, Any] | None = None,
-) -> entity_component.ContextComponent:
-    """Build make-observation component from slot config."""
-    return _build_from_slot(
-        slot_cfg,
-        built_ins=_OBSERVE_BUILT_INS,
-        default_built_in="timeline_every_turn",
-        runtime_kwargs={
-            "model": model,
-            "player_names": player_names,
-            "sm_app": sm_app,
-            "entity_action_flows": entity_action_flows,
-            "episode_observation_flows": [episode_observation_flow] if episode_observation_flow else [],
-            "timeline_strategy": timeline_strategy,
-            "timeline_config": dict(timeline_config or {}),
-        },
-    )
+) -> dict[str, entity_component.ContextComponent]:
+    """Build multiple observe component instances from config.
+
+    Args:
+        slots_cfg: Dict of {instance_name: instance_config}.
+        Other args: Passed as runtime_kwargs to all instances.
+
+    Returns:
+        Dict of {component_key: component_instance} where keys are
+        "observe__{class_as_kebab_case}".
+    """
+    components = {}
+    slots_cfg = dict(slots_cfg or {})
+
+    if not slots_cfg:
+        return components
+
+    for instance_name, instance_config in slots_cfg.items():
+        component = build_observe_component(
+            instance_config,
+            model=model,
+            player_names=player_names,
+            sm_app=sm_app,
+            entity_action_flows=entity_action_flows,
+            episode_observation_flow=episode_observation_flow,
+            timeline_strategy=timeline_strategy,
+            timeline_config=timeline_config,
+        )
+
+        # Auto-generate key: observe__timeline_make_observation
+        class_name = component.__class__.__name__
+        kebab_key = _class_to_kebab_case(class_name)
+        full_key = f"observe__{kebab_key}"
+
+        components[full_key] = component
+
+    return components
 
 
 def build_resolve_component(
