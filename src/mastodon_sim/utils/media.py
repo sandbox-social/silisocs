@@ -51,6 +51,8 @@ class GptLanguageModel(language_model.LanguageModel):
         self._model_name = model_name
         self._measurements = measurements
         self._channel = channel
+        # Check if model is qwen3.5 to determine if extra_body should be used
+        self._use_qwen_extra_body = "qwen" in model_name.lower() and "3.5" in model_name.lower()
         if api_base:
             self._client = openai.OpenAI(
                 api_key=self._api_key,
@@ -217,19 +219,24 @@ class GptLanguageModel(language_model.LanguageModel):
         response = None
         for attempt in range(self._max_retries + 1):
             try:
-                response = self._client.chat.completions.create(  # type: ignore
-                    model=self._model_name,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    timeout=timeout,
-                    seed=seed,
-                    extra_body={
+                # Build kwargs conditionally: only add extra_body for qwen3.5
+                kwargs = {
+                    "model": self._model_name,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "timeout": timeout,
+                    "seed": seed,
+                }
+                if self._use_qwen_extra_body:
+                    kwargs["extra_body"] = {
                         "top_k": 20,
                         "chat_template_kwargs": {"enable_thinking": False},
-                    },
-                    **({"stop": stop_param} if stop_param is not None else {}),
-                )
+                    }
+                if stop_param is not None:
+                    kwargs["stop"] = stop_param
+
+                response = self._client.chat.completions.create(**kwargs)  # type: ignore
                 self._record_retry_outcome(attempt, success=True)
                 break
             except openai.APIError as e:
@@ -341,14 +348,22 @@ class GptLanguageModel(language_model.LanguageModel):
 
         for attempt in range(self._max_retries + 1):
             try:
-                response = self._client.chat.completions.create(  # type: ignore[call-overload]
-                    model=self._model_name,
-                    messages=messages,
-                    tools=tools,
-                    tool_choice="required",
-                    temperature=0.5,
-                    timeout=60,
-                )
+                # Build kwargs conditionally: only add extra_body for qwen3.5
+                kwargs = {
+                    "model": self._model_name,
+                    "messages": messages,
+                    "tools": tools,
+                    "tool_choice": "required",
+                    "temperature": 0.5,
+                    "timeout": 60,
+                }
+                if self._use_qwen_extra_body:
+                    kwargs["extra_body"] = {
+                        "top_k": 20,
+                        "chat_template_kwargs": {"enable_thinking": False},
+                    }
+
+                response = self._client.chat.completions.create(**kwargs)  # type: ignore[call-overload]
                 self._record_retry_outcome(attempt, success=True)
                 msg = response.choices[0].message
                 if msg.tool_calls:
