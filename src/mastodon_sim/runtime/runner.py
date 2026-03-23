@@ -103,9 +103,35 @@ def _initialize_runtime_environment() -> Path:
 _DEFAULT_FLOW_TAG = "default"
 
 
+def _resolve_effective_gm_preset(cfg: DictConfig) -> str:
+    """Resolve the effective GM preset based on enable_gm_multi_flow setting.
+
+    Rules:
+    1. If gm.preset is explicitly set to something other than "base", use it as-is
+    2. If enable_gm_multi_flow=true, use "shared_flow"
+    3. If enable_gm_multi_flow=false (or not set), use "base"
+
+    This allows both enable_gm_multi_flow flag and explicit preset to work together.
+    """
+    enable_gm_multi_flow = bool(getattr(cfg.sim, "enable_gm_multi_flow", False))
+
+    # Get explicitly configured preset
+    explicit_preset = str(getattr(getattr(cfg.sim, "gm", object()), "preset", None) or "").strip()
+
+    # If preset is explicitly set to something other than base, honor it
+    if explicit_preset and explicit_preset != "base":
+        return explicit_preset
+
+    # Otherwise, let enable_gm_multi_flow decide
+    if enable_gm_multi_flow:
+        return "shared_flow"
+    else:
+        return "base"
+
+
 def _default_gm_filename(cfg: DictConfig, mode: str) -> str:
     """Resolve default GM prefab filename from preset/mode."""
-    gm_preset = str(getattr(getattr(cfg.sim, "gm", object()), "preset", "base") or "base")
+    gm_preset = _resolve_effective_gm_preset(cfg)
     if mode == "shared" and gm_preset in {"shared_flow", "advanced_shared"}:
         return "shared_flow_game_master"
     return str(cfg.social_media.gamemaster.filename)
@@ -113,7 +139,7 @@ def _default_gm_filename(cfg: DictConfig, mode: str) -> str:
 
 def _default_gm_module_path(cfg: DictConfig, mode: str) -> str:
     """Resolve default GM module path from preset/mode."""
-    gm_preset = str(getattr(getattr(cfg.sim, "gm", object()), "preset", "base") or "base")
+    gm_preset = _resolve_effective_gm_preset(cfg)
     if mode == "shared" and gm_preset in {"shared_flow", "advanced_shared"}:
         return "mastodon_sim.environments.gm.shared_flow_game_master"
     return str(cfg.social_media.gamemaster.sim_role.module_path)
@@ -552,8 +578,23 @@ def _build_engine(cfg: DictConfig):
 
     `base` is the default and runs a single active social GM per episode with
     no flow-phase orchestration. `flow` enables flow/multi-GM orchestration.
+
+    Can be controlled either by explicit engine.preset or by enable_engine_multi_flow flag.
     """
-    engine_preset = str(getattr(getattr(cfg.sim, "engine", object()), "preset", "base") or "base")
+    enable_engine_multi_flow = bool(getattr(cfg.sim, "enable_engine_multi_flow", False))
+
+    # Get explicitly configured preset
+    explicit_preset = str(getattr(getattr(cfg.sim, "engine", object()), "preset", None) or "").strip()
+
+    # If preset is explicitly set to something other than base, honor it
+    if explicit_preset and explicit_preset != "base":
+        engine_preset = explicit_preset
+    # Otherwise, let enable_engine_multi_flow decide
+    elif enable_engine_multi_flow:
+        engine_preset = "flow"
+    else:
+        engine_preset = "base"
+
     if engine_preset == "flow":
         return FlowSocialMediaEngine()
     if engine_preset == "base":

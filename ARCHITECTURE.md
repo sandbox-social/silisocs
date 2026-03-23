@@ -15,7 +15,7 @@ This document describes how these layers work together, with special focus on th
 
 ## Part 1: Core Execution Model
 
-### Simple Mode (enable_multi_flow: false)
+### Simple Mode (enable_gm_multi_flow: false)
 
 By default, the simulator uses **BaseGM** with a single component instance per role:
 
@@ -43,12 +43,12 @@ Agent receives observation and acts
 **Configuration:**
 ```yaml
 sim:
-  enable_multi_flow: false  # ← or simply omit (default)
+  enable_gm_multi_flow: false  # ← or simply omit (default)
   gm:
     preset: base
 ```
 
-### Multi-Flow Mode (enable_multi_flow: true)
+### Multi-Flow Mode (enable_gm_multi_flow: true)
 
 When multi-flow is enabled, the simulator uses **MultiFlowGM** with multiple component instances and explicit routing:
 
@@ -78,7 +78,7 @@ Agent receives flow-specific observation and acts
 **Configuration:**
 ```yaml
 sim:
-  enable_multi_flow: true  # ← Enable multi-flow mode
+  enable_gm_multi_flow: true  # ← Enable multi-flow mode
   gm:
     preset: shared_flow  # ← Use MultiFlowGM
     components:
@@ -341,7 +341,7 @@ gm:
 
 ```yaml
 sim:
-  enable_multi_flow: false
+  enable_gm_multi_flow: false
   gm:
     preset: base
     components:
@@ -354,11 +354,10 @@ sim:
   # Simplest, most efficient path
 ```
 
-### Multi-Flow Configuration
-
+**Multi-flow config with multi-instance component support :**
 ```yaml
 sim:
-  enable_multi_flow: true
+  enable_gm_multi_flow: true
   gm:
     preset: shared_flow
     components:
@@ -459,7 +458,7 @@ gm:
 
 Existing scenarios using simple mode can be migrated:
 
-1. Set `enable_multi_flow: true`
+1. Set `enable_gm_multi_flow: true`
 2. Change `gm.preset: base` → `gm.preset: shared_flow`
 3. No other changes needed - falls back to single-instance mode
 

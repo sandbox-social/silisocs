@@ -25,7 +25,7 @@ DEFAULT_SESSION_TERMINATE_STR = "The Social-Media session has been completed."
 class SMAct(gm_components.switch_act.SwitchAct):
     """SwitchAct specialization for social-media prompts and GM transitions (simple mode).
 
-    Used when enable_multi_flow=false. All entities use same component instances.
+    Used when enable_gm_multi_flow=false. All entities use same component instances.
     """
 
     @override
@@ -106,7 +106,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
 class MultiFlowSMAct(SMAct):
     """SwitchAct with multi-flow component routing.
 
-    Used when enable_multi_flow=true. Routes entities to flow-specific component
+    Used when enable_gm_multi_flow=true. Routes entities to flow-specific component
     instances based on their assigned action flow.
 
     Flow-to-component mapping structure:

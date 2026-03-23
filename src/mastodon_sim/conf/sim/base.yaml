@@ -14,7 +14,8 @@ sentence_encoder: sentence-transformers/all-MiniLM-L6-v2
 memory_backend: list           # associative | list
 action_mode: custom            # custom | generic | tool_calling
 enabled_actions: null          # null => expose all backend actions; otherwise list of action names
-enable_multi_flow: false       # false (BaseGM) | true (MultiFlowGM with component routing)
+enable_gm_multi_flow: false    # false (BaseGM) | true (MultiFlowGM with component routing)
+enable_engine_multi_flow: false  # false (BaseEngine) | true (FlowEngine with flow sequencing/policies)
 write_html_log: true
 
 checkpoint:

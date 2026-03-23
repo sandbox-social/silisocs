@@ -41,13 +41,18 @@ uv run mastodon-sim social_media=reddit_like scenario=my_scenario
 | `memory_backend` | `list` | Memory type: `list` (fast) or `associative` (embedding-based) |
 | `action_mode` | `custom` | Action parsing: `custom`, `generic`, or `tool_calling` |
 | `enabled_actions` | `null` | Optional whitelist of backend action names (or selectable aliases). `null` means all actions enabled. |
+| `enable_gm_multi_flow` | `false` | Enable multi-flow GM routing (different components per agent flow) |
+| `enable_engine_multi_flow` | `false` | Enable multi-flow engine sequencing (flow-aware scheduling) |
 | `checkpoint.every_n_steps` | `null` | Save checkpoints every N steps when set. |
 | `checkpoint.explicit_steps` | `[]` | Additional explicit checkpoint steps. |
 | `checkpoint.resume_file` | `null` | Optional path to checkpoint JSON used to resume a prior run. |
 | `checkpoint.resume_step` | `null` | Optional step override when resuming (defaults to checkpoint step). |
-| `gm.preset` | `simple` | GM preset: `simple` (default easy UX) or `shared_flow` (advanced) |
-| `gm.components.*` | *(slots)* | YAML-selectable GM components (`next_acting`, `observe`, `resolve`, `initializer`) |
+| `gm.preset` | `base` | GM preset: `base` (default, single components) or `shared_flow` (multi-flow routing). Auto-selected by `enable_gm_multi_flow` if not set. |
+| `gm.components.*` | *(slots)* | YAML-selectable GM components (`next_acting`, `observe`, `resolve`, `initializer`, `recommend`) |
+| `engine.preset` | `base` | Engine preset: `base` (default, simple scheduling) or `flow` (flow-aware). Auto-selected by `enable_engine_multi_flow` if not set. |
 | `timeline_posts` | `10` | Number of posts shown in agent timeline |
+| `timeline_strategy` | `follower_chronological` | Timeline algorithm: `follower_chronological`, `pure_recsys`, `hybrid_recsys_follower`, `curated_global` |
+| `timeline_config` | `{recsys_ratio: 0.6, follower_ratio: 0.4}` | Strategy-specific config for hybrid/blended timelines |
 | `observation_history` | `100` | Max observations kept in agent memory |
 | `write_html_log` | `true` | Generate Concordia HTML logs |
 | `roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |

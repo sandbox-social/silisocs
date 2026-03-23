@@ -1,6 +1,6 @@
 """Multi-flow social-media game master with component routing.
 
-Use this GM when enable_multi_flow=true in config. Supports:
+Use this GM when enable_gm_multi_flow=true in config. Supports:
 - Multiple component instances per role (e.g., TimelineObservation + EpisodeObservation)
 - Flow-based component routing (agents use components based on their assigned flow)
 - Per-flow multi-field configuration (different algorithms/strategies per flow)
@@ -44,7 +44,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
 
     Configuration:
         sim:
-          enable_multi_flow: true
+          enable_gm_multi_flow: true
           gm:
             preset: shared_flow
 
