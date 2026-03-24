@@ -103,35 +103,10 @@ def _initialize_runtime_environment() -> Path:
 _DEFAULT_FLOW_TAG = "default"
 
 
-def _resolve_effective_gm_preset(cfg: DictConfig) -> str:
-    """Resolve the effective GM preset based on enable_gm_multi_flow setting.
-
-    Rules:
-    1. If gm.preset is explicitly set to something other than "base", use it as-is
-    2. If enable_gm_multi_flow=true, use "shared_flow"
-    3. If enable_gm_multi_flow=false (or not set), use "base"
-
-    This allows both enable_gm_multi_flow flag and explicit preset to work together.
-    """
-    enable_gm_multi_flow = bool(getattr(cfg.sim, "enable_gm_multi_flow", False))
-
-    # Get explicitly configured preset
-    explicit_preset = str(getattr(getattr(cfg.sim, "gm", object()), "preset", None) or "").strip()
-
-    # If preset is explicitly set to something other than base, honor it
-    if explicit_preset and explicit_preset != "base":
-        return explicit_preset
-
-    # Otherwise, let enable_gm_multi_flow decide
-    if enable_gm_multi_flow:
-        return "shared_flow"
-    else:
-        return "base"
-
-
 def _default_gm_filename(cfg: DictConfig, mode: str) -> str:
     """Resolve default GM prefab filename from preset/mode."""
-    gm_preset = _resolve_effective_gm_preset(cfg)
+    sim_cfg = getattr(cfg, "sim", object())
+    gm_preset = str(getattr(getattr(sim_cfg, "gm", object()), "preset", "base") or "base")
     if mode == "shared" and gm_preset in {"shared_flow", "advanced_shared"}:
         return "shared_flow_game_master"
     return str(cfg.social_media.gamemaster.filename)
@@ -139,7 +114,8 @@ def _default_gm_filename(cfg: DictConfig, mode: str) -> str:
 
 def _default_gm_module_path(cfg: DictConfig, mode: str) -> str:
     """Resolve default GM module path from preset/mode."""
-    gm_preset = _resolve_effective_gm_preset(cfg)
+    sim_cfg = getattr(cfg, "sim", object())
+    gm_preset = str(getattr(getattr(sim_cfg, "gm", object()), "preset", "base") or "base")
     if mode == "shared" and gm_preset in {"shared_flow", "advanced_shared"}:
         return "mastodon_sim.environments.gm.shared_flow_game_master"
     return str(cfg.social_media.gamemaster.sim_role.module_path)
@@ -168,7 +144,9 @@ def _collect_declared_flow_tags(cfg: DictConfig) -> set[str]:
     return declared
 
 
-def _build_action_call_to_action(cfg: DictConfig, action_mode: str, enable_tool_calling: bool) -> str:
+def _build_action_call_to_action(
+    cfg: DictConfig, action_mode: str, enable_tool_calling: bool
+) -> str:
     """Build action call-to-action prompt from config components.
 
     Args:
@@ -176,7 +154,8 @@ def _build_action_call_to_action(cfg: DictConfig, action_mode: str, enable_tool_
         action_mode: "custom" or "generic"
         enable_tool_calling: Whether tool-calling mode is enabled
 
-    Returns:
+    Returns
+    -------
         Complete action call-to-action prompt string
     """
     action_prompt = getattr(cfg.social_media, "action_prompt", "")
@@ -213,7 +192,8 @@ def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
         "backend_scope": "shared_default",
     }
 
-    gm_specs_raw = getattr(getattr(cfg.sim, "gm_orchestration", object()), "gms", None)
+    sim_cfg = getattr(cfg, "sim", object())
+    gm_specs_raw = getattr(getattr(sim_cfg, "gm_orchestration", object()), "gms", None)
     if not isinstance(gm_specs_raw, list) or not gm_specs_raw:
         return [default_spec]
 
@@ -224,7 +204,7 @@ def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
         sim_role_cfg = gm_raw.get("sim_role", {})
         if not isinstance(sim_role_cfg, Mapping):
             sim_role_cfg = {}
-        spec = {
+        spec: dict[str, Any] = {
             "gm_name": str(
                 gm_raw.get("gm_name", gm_raw.get("name", default_spec["gm_name"])) or ""
             ).strip(),
@@ -235,18 +215,18 @@ def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
         ).strip()
         spec.update(
             {
-            "sim_role_name": str(
-                sim_role_cfg.get("name", default_spec["sim_role_name"]) or ""
-            ).strip(),
-            "sim_role_module_path": str(
-                sim_role_cfg.get("module_path", _default_gm_module_path(cfg, str(spec["mode"])))
-                or ""
-            ).strip(),
-            "sequence": int(gm_raw.get("sequence", idx)),
-            "backend_scope": str(
-                gm_raw.get("backend_scope", "shared_default") or "shared_default"
-            ).strip(),
-        }
+                "sim_role_name": str(
+                    sim_role_cfg.get("name", default_spec["sim_role_name"]) or ""
+                ).strip(),
+                "sim_role_module_path": str(
+                    sim_role_cfg.get("module_path", _default_gm_module_path(cfg, str(spec["mode"])))
+                    or ""
+                ).strip(),
+                "sequence": int(gm_raw.get("sequence", idx)),
+                "backend_scope": str(
+                    gm_raw.get("backend_scope", "shared_default") or "shared_default"
+                ).strip(),
+            }
         )
         if not spec["gm_name"]:
             raise ValueError(f"sim.gm_orchestration.gms[{idx}] is missing gm_name/name.")
@@ -273,7 +253,8 @@ def _resolve_flow_chains(
     default_gm = str(min(gm_specs, key=lambda item: int(item["sequence"]))["gm_name"])
 
     chains: dict[str, list[str]] = {}
-    bindings = getattr(getattr(cfg.sim, "gm_orchestration", object()), "flow_bindings", None)
+    sim_cfg = getattr(cfg, "sim", object())
+    bindings = getattr(getattr(sim_cfg, "gm_orchestration", object()), "flow_bindings", None)
     if isinstance(bindings, Mapping):
         gm_to_flows = bindings.get("gm_to_flows", {})
         if isinstance(gm_to_flows, Mapping):
@@ -364,7 +345,9 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
     # persona_pipeline instead of top-level shared_memories.
     scenario_shared = OmegaConf.select(cfg, "scenario.shared_memories")
     if scenario_shared is None:
-        scenario_shared = OmegaConf.select(cfg, "scenario.persona_pipeline.defaults.shared_memories")
+        scenario_shared = OmegaConf.select(
+            cfg, "scenario.persona_pipeline.defaults.shared_memories"
+        )
     shared_memories = list(scenario_shared or []) + [cfg.social_media.usage_instructions]
     processing_mode_raw = (
         cfg.scenario.persona_pipeline.processing_mode
@@ -439,6 +422,7 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
     )
 
     social_media_gms: list[prefab_lib.InstanceConfig] = []
+    sim_cfg = getattr(cfg, "sim", None)
     for spec in gm_specs:
         gm_name = str(spec["gm_name"])
         owned_flows = [flow for flow, chain in flow_chains.items() if gm_name in chain]
@@ -468,9 +452,18 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
                         calls_to_action={
                             "social_media_action": _build_action_call_to_action(
                                 cfg,
-                                action_mode=getattr(cfg.sim, "action_mode", "custom"),
+                                action_mode=getattr(sim_cfg, "action_mode", "custom"),
                                 enable_tool_calling=(
-                                    getattr(getattr(getattr(cfg.sim, "gm", object()), "components", object()), "resolve", {}).get("built_in") == "tool_calling"
+                                    getattr(
+                                        getattr(
+                                            getattr(sim_cfg, "gm", object()),
+                                            "components",
+                                            object(),
+                                        ),
+                                        "resolve",
+                                        {},
+                                    ).get("built_in")
+                                    == "tool_calling"
                                 ),
                             )
                         },
@@ -565,7 +558,9 @@ def populate_agent_data(
         user_data["entity_flow_tags"] = dict(entity_flow_tags)
 
         orchestration = user_data.setdefault("gm_orchestration", {})
-        owned_flows_raw = orchestration.get("owned_flows", []) if isinstance(orchestration, dict) else []
+        owned_flows_raw = (
+            orchestration.get("owned_flows", []) if isinstance(orchestration, dict) else []
+        )
         owned_flows = {str(flow).strip() for flow in owned_flows_raw if str(flow).strip()}
         if isinstance(orchestration, dict) and owned_flows:
             orchestration["owned_entities"] = sorted(
@@ -578,23 +573,8 @@ def _build_engine(cfg: DictConfig):
 
     `base` is the default and runs a single active social GM per episode with
     no flow-phase orchestration. `flow` enables flow/multi-GM orchestration.
-
-    Can be controlled either by explicit engine.preset or by enable_engine_multi_flow flag.
     """
-    enable_engine_multi_flow = bool(getattr(cfg.sim, "enable_engine_multi_flow", False))
-
-    # Get explicitly configured preset
-    explicit_preset = str(getattr(getattr(cfg.sim, "engine", object()), "preset", None) or "").strip()
-
-    # If preset is explicitly set to something other than base, honor it
-    if explicit_preset and explicit_preset != "base":
-        engine_preset = explicit_preset
-    # Otherwise, let enable_engine_multi_flow decide
-    elif enable_engine_multi_flow:
-        engine_preset = "flow"
-    else:
-        engine_preset = "base"
-
+    engine_preset = str(getattr(getattr(cfg.sim, "engine", object()), "preset", "base") or "base")
     if engine_preset == "flow":
         return FlowSocialMediaEngine()
     if engine_preset == "base":

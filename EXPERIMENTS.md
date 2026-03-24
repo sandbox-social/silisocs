@@ -263,7 +263,8 @@ action_mode: tool_calling
 enable_gm_multi_flow: false        # Set true if different agents need different components
 enable_engine_multi_flow: false    # Set true if flows should be scheduled in phases
 
-timeline_strategy: follower_chronological
+timeline_mode: follower_chronological
+timeline_strategy: ${sim.timeline_mode}  # legacy alias (optional)
 timeline_config:
   recsys_ratio: 0.6
   follower_ratio: 0.4
@@ -477,7 +478,7 @@ This means your scenario files only need to specify what's **different** from de
 - `num_steps`: 50
 - `action_mode`: tool_calling
 - `memory_backend`: list
-- `timeline_strategy`: follower_chronological
+- `timeline_mode`: hybrid_recsys_follower
 - `seed_posts.type`: llm
 - `enable_gm_multi_flow`: false
 - `enable_engine_multi_flow`: false

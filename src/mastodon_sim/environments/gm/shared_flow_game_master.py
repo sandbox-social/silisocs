@@ -12,6 +12,9 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import os
+import re
+from collections.abc import Mapping
 from typing import Any, cast
 
 from concordia.agents import entity_agent_with_logging
@@ -23,14 +26,14 @@ from omegaconf import OmegaConf
 from mastodon_sim.environments.gm import act as gm_social_act
 from mastodon_sim.environments.gm.base_game_master import BaseSocialMediaGameMaster
 from mastodon_sim.environments.gm.components.factory import (
+    build_next_acting_component,
     build_observe_component,
     build_observe_components,
-    build_resolve_component,
-    build_next_acting_component,
     build_recommendation_component,
-    build_backend_initializer,
+    build_resolve_component,
     initialize_component_multi_fields,
 )
+from mastodon_sim.runtime.config import ConfigStore
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +70,6 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
 
         Overrides base build to handle multiple component instances per role.
         """
-        from mastodon_sim.runtime.config import ConfigStore
-
         cfg = ConfigStore.get_config()
         name = str(self.params.get("name"))
         calls_to_action = self.params.get("calls_to_action", {})
@@ -88,6 +89,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
                 dict[str, Any],
                 OmegaConf.to_container(cfg.sim.gm.components, resolve=True),
             )
+        gm_components_cfg = _expand_shared_flow_map_alias(gm_components_cfg)
 
         user_data = self.params["sm_user_data"]
         activity_rates = dict(user_data.get("activity_transition_rates", {}))
@@ -102,28 +104,58 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
         resolve_slot = dict(gm_components_cfg.get("resolve", {}))
         if not resolve_slot:
             resolve_slot = {
-                "built_in": action_mode_to_resolve_map.get(getattr(cfg.sim, "action_mode", "custom"), "parsed_action"),
+                "built_in": action_mode_to_resolve_map.get(
+                    getattr(cfg.sim, "action_mode", "custom"), "parsed_action"
+                ),
             }
         enable_tool_calling = resolve_slot.get("built_in") == "tool_calling"
 
-        # Get timeline strategy
-        timeline_strategy = str(getattr(cfg.sim, "timeline_strategy", "follower_chronological"))
+        platform_type = getattr(cfg.social_media, "platform_type", "twitter_like")
+
+        timeline_mode = str(
+            getattr(
+                cfg.sim,
+                "timeline_mode",
+                getattr(cfg.sim, "timeline_strategy", "follower_chronological"),
+            )
+        )
+        supported_timeline_modes = {
+            "twitter_like": {
+                "follower_chronological",
+                "pure_recsys",
+                "hybrid_recsys_follower",
+                "curated_global",
+            },
+            "reddit_like": {
+                "follower_chronological",
+                "pure_recsys",
+                "hybrid_recsys_follower",
+            },
+            "mastodon": {"follower_chronological"},
+        }
+        allowed_modes = supported_timeline_modes.get(platform_type, {"follower_chronological"})
+        if timeline_mode not in allowed_modes:
+            raise ValueError(
+                f"Unsupported timeline_mode='{timeline_mode}' for platform '{platform_type}'. "
+                f"Supported: {sorted(allowed_modes)}"
+            )
         timeline_config = {}
         if hasattr(cfg.sim, "timeline_config"):
-            timeline_config = cast(
-                dict[str, Any],
-                OmegaConf.to_container(cfg.sim.timeline_config, resolve=True),
-            ) if isinstance(cfg.sim.timeline_config, dict) else {}
+            timeline_config = (
+                cast(
+                    dict[str, Any],
+                    OmegaConf.to_container(cfg.sim.timeline_config, resolve=True),
+                )
+                if isinstance(cfg.sim.timeline_config, dict)
+                else {}
+            )
 
         # Build the social media app (same as base)
         from mastodon_sim.environments.backends.factory import create_social_media_app
-        from mastodon_sim.runtime.config import ConfigStore
-        import os
 
         action_logger = None  # Would need to build this from config
         db_path = os.path.join(cfg.sim.output_rootname, "multiflow.db")
 
-        platform_type = getattr(cfg.social_media, "platform_type", "twitter_like")
         sm_app = create_social_media_app(
             platform_type=platform_type,
             action_logger=action_logger,
@@ -141,7 +173,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
         )
 
         # Check if observe has nested structure (multi-instance) or flat structure (single)
-        has_multi_instances = any(
+        has_multi_instances = isinstance(observe_slots.get("instances"), dict) or any(
             isinstance(v, dict) and ("built_in" in v or "class_path" in v)
             for v in observe_slots.values()
             if v  # Skip None/empty values
@@ -157,7 +189,8 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
                 sm_app=sm_app,
                 entity_action_flows=entity_action_flows,
                 episode_observation_flow=episode_observation_flow,
-                timeline_strategy=timeline_strategy,
+                timeline_mode=timeline_mode,
+                timeline_strategy=timeline_mode,
                 timeline_config=timeline_config,
             )
         else:
@@ -170,7 +203,8 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
                 sm_app=sm_app,
                 entity_action_flows=entity_action_flows,
                 episode_observation_flow=episode_observation_flow,
-                timeline_strategy=timeline_strategy,
+                timeline_mode=timeline_mode,
+                timeline_strategy=timeline_mode,
                 timeline_config=timeline_config,
             )
             class_name = single_observe.__class__.__name__
@@ -188,7 +222,12 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
 
         # Build recommendation component
         recommend_slot = dict(gm_components_cfg.get("recommend", {}))
-        recommend_component = build_recommendation_component(recommend_slot, sm_app=sm_app)
+        recommend_component = build_recommendation_component(
+            recommend_slot,
+            sm_app=sm_app,
+            platform_type=platform_type,
+            timeline_mode=timeline_mode,
+        )
 
         # Combine all components
         components = {
@@ -204,11 +243,18 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
                 if component_key.startswith(f"{slot_key}__"):
                     initialize_component_multi_fields(component, slot_cfg)
 
+        if hasattr(recommend_component, "validate_recsys_types") and callable(
+            recommend_component.validate_recsys_types
+        ):
+            recommend_component.validate_recsys_types()
+
         # KEY CHANGE: Build flow-to-component mapping
         flow_to_component_map = _build_flow_to_component_map(
             entity_action_flows,
             observe_components,
-            resolve_component,
+            gm_components.event_resolution.DEFAULT_RESOLUTION_COMPONENT_KEY,
+            observe_slots,
+            resolve_slot,
         )
 
         logger.info(f"Built flow-to-component mapping: {flow_to_component_map}")
@@ -237,53 +283,177 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
 def _class_to_kebab_case(class_name: str) -> str:
     """Convert ClassName to kebab-case (duplicate of factory utility)."""
     import re
-    kebab = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name)
+
+    kebab = re.sub(r"(?<!^)(?=[A-Z])", "_", class_name)
     return kebab.lower()
 
 
 def _build_flow_to_component_map(
     entity_action_flows: dict[str, str],
     observe_components: dict[str, Any],
-    resolve_component: Any,
+    resolve_component_key: str,
+    observe_slot_cfg: Mapping[str, Any] | None = None,
+    resolve_slot_cfg: Mapping[str, Any] | None = None,
 ) -> dict[str, dict[str, str]]:
-    """Build flow-to-component mapping from entity flows and available components.
+    """Build flow-to-component mapping from config + available components.
 
     Args:
         entity_action_flows: Maps entity name to flow name
         observe_components: {component_key: component_instance} for observe role
-        resolve_component: The resolve component instance
+        resolve_component_key: Context key used by resolve component
+        observe_slot_cfg: Observe slot configuration (may include flow_map)
+        resolve_slot_cfg: Resolve slot configuration (may include flow_map)
 
-    Returns:
+    Returns
+    -------
         {
             flow_name: {
                 "observe": "observe__component_key",
-                "resolve": "resolve__component_key"
+                "resolve": "<resolve_context_key>"
             }
         }
-
-    Logic: For now, route all flows to first/default component of each role.
-           TODO: Support explicit flow-to-component mapping in config.
     """
     mapping: dict[str, dict[str, str]] = {}
+    observe_slot_cfg = dict(observe_slot_cfg or {})
+    resolve_slot_cfg = dict(resolve_slot_cfg or {})
+    observe_flow_map = _normalize_flow_map(observe_slot_cfg.get("flow_map"))
+    resolve_flow_map = _normalize_flow_map(resolve_slot_cfg.get("flow_map"))
 
     # Get unique flows
     unique_flows = set(entity_action_flows.values())
+    unique_flows.update(observe_flow_map.keys())
+    unique_flows.update(resolve_flow_map.keys())
     unique_flows.add("default")  # Always include default
 
     # Get the first observe component (or only one if single-instance)
     observe_components_list = list(observe_components.keys())
     default_observe_key = observe_components_list[0] if observe_components_list else ""
-
-    # Get resolve component key
-    resolve_component_key = f"resolve__{_class_to_kebab_case(resolve_component.__class__.__name__)}"
+    available_observe_keys = set(observe_components_list)
 
     # Map each flow to components
     for flow in unique_flows:
+        requested_observe_key = (
+            observe_flow_map.get(flow) or observe_flow_map.get("default") or default_observe_key
+        )
+        observe_key = _resolve_observe_component_key(
+            requested_key=requested_observe_key,
+            available_keys=available_observe_keys,
+            default_key=default_observe_key,
+            flow=flow,
+        )
+        resolve_key = (
+            resolve_flow_map.get(flow) or resolve_flow_map.get("default") or resolve_component_key
+        )
+        if resolve_key != resolve_component_key:
+            raise ValueError(
+                "Invalid resolve flow_map configuration for flow "
+                f"'{flow}': requested '{resolve_key}', but this GM supports only "
+                f"the single resolve context key '{resolve_component_key}'."
+            )
+
         mapping[flow] = {
-            "observe": default_observe_key,
-            "resolve": resolve_component_key,
+            "observe": observe_key,
+            "resolve": resolve_key,
         }
 
     logger.debug(f"Flow-to-component mapping: {mapping}")
     return mapping
 
+
+def _normalize_flow_map(raw_flow_map: Any) -> dict[str, str]:
+    """Normalize flow_map config into {flow_tag: component_key}."""
+    if not isinstance(raw_flow_map, Mapping):
+        return {}
+    normalized: dict[str, str] = {}
+    for flow_name, component_key in raw_flow_map.items():
+        flow = str(flow_name).strip()
+        key = str(component_key).strip()
+        if flow and key:
+            normalized[flow] = key
+    return normalized
+
+
+def _expand_shared_flow_map_alias(components_cfg: Mapping[str, Any]) -> dict[str, Any]:
+    """Expand optional GM-level flow_map alias into per-slot configs.
+
+    Supported alias shape:
+        gm.components.flow_map.<flow>.<role>: <component_key_or_name>
+        gm.components.flow_map.<flow>.<role>:
+          instance: <component_key_or_name>   # optional routing target
+          <field_name>: <field_value>         # optional FlowComponent fields
+    """
+    expanded = dict(components_cfg or {})
+    alias_raw = expanded.pop("flow_map", None)
+    if not isinstance(alias_raw, Mapping):
+        return expanded
+
+    for flow_name, role_map in alias_raw.items():
+        flow = str(flow_name).strip()
+        if not flow or not isinstance(role_map, Mapping):
+            continue
+
+        for role_name, role_cfg in role_map.items():
+            role = str(role_name).strip()
+            if not role:
+                continue
+
+            slot_cfg = dict(expanded.get(role) or {})
+
+            if isinstance(role_cfg, str):
+                flow_map = dict(slot_cfg.get("flow_map") or {})
+                flow_map[flow] = role_cfg
+                slot_cfg["flow_map"] = flow_map
+                expanded[role] = slot_cfg
+                continue
+
+            if not isinstance(role_cfg, Mapping):
+                continue
+
+            role_cfg_dict = dict(role_cfg)
+            instance_name = role_cfg_dict.pop("instance", None)
+            if instance_name is None:
+                instance_name = role_cfg_dict.pop("component", None)
+
+            if instance_name is not None:
+                flow_map = dict(slot_cfg.get("flow_map") or {})
+                flow_map[flow] = str(instance_name).strip()
+                slot_cfg["flow_map"] = flow_map
+
+            if role_cfg_dict:
+                flows_cfg = dict(slot_cfg.get("flows") or {})
+                existing_fields = dict(flows_cfg.get(flow) or {})
+                existing_fields.update(role_cfg_dict)
+                flows_cfg[flow] = existing_fields
+                slot_cfg["flows"] = flows_cfg
+
+            expanded[role] = slot_cfg
+
+    return expanded
+
+
+def _resolve_observe_component_key(
+    *,
+    requested_key: str,
+    available_keys: set[str],
+    default_key: str,
+    flow: str,
+) -> str:
+    """Resolve requested observe key against available observe context keys."""
+    candidate = str(requested_key or "").strip()
+    if not candidate:
+        return default_key
+
+    candidates = [candidate]
+    if not candidate.startswith("observe__"):
+        candidates.append(f"observe__{candidate}")
+        snake = re.sub(r"(?<!^)(?=[A-Z])", "_", candidate).lower()
+        candidates.append(f"observe__{snake}")
+
+    for item in candidates:
+        if item in available_keys:
+            return item
+
+    raise ValueError(
+        "Invalid observe flow_map configuration for flow "
+        f"'{flow}': requested '{candidate}', available keys are {sorted(available_keys)}."
+    )

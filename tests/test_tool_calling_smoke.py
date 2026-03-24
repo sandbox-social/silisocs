@@ -77,7 +77,9 @@ def test_smact_embeds_tool_schemas_for_custom_prompt_when_enabled() -> None:
 
     result = act._next_entity_action_spec(
         contexts={},
-        action_spec=entity_lib.ActionSpec(call_to_action="", output_type=entity_lib.OutputType.FREE),
+        action_spec=entity_lib.ActionSpec(
+            call_to_action="", output_type=entity_lib.OutputType.FREE
+        ),
     )
 
     assert "### TOOL_CALLING_MODE ###" in result

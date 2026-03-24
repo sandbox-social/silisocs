@@ -23,97 +23,123 @@ class BackendInitializer(ABC):
 
 
 class FlowComponent:
-    """Mixin for flow-aware components with multi-entity field routing support.
+    """Mixin for flow-aware components with flow-field routing support.
 
-    This class provides optional multi-field routing capabilities, allowing components
-    to receive different field values for different entities. Components that support
-    multi-fields are initialized with entity-specific field mappings via
-    set_multi_field_values().
+    Components can declare supported flow-tunable fields by defining `FLOW_FIELDS`:
 
-    Typically used with components that receive the active entity name and need
-    to dispatch to different field values per entity (e.g., observe, resolve).
-    Components that don't use entity context (e.g., next_acting) don't use this.
+        class MyComponent(FlowComponent):
+            FLOW_FIELDS = {
+                "timeline_mode": str,
+                "recsys_type": str,
+            }
 
-    Multi-fields are declared via the @multi_field decorator:
-        class MyComponent(FlowComponent, SomeContextComponent):
-            @multi_field(str)
-            def my_field(self): ...
+    At GM initialization time, flow overrides are provided as:
 
-    At GM initialization time, multi-field components are provided with a mapping:
-        component.set_multi_field_values({
-            'entity1': {'my_field': 'value1'},
-            'entity2': {'my_field': 'value2'},
-        })
+        {
+            "default": {"timeline_mode": "follower_chronological"},
+            "active": {"timeline_mode": "pure_recsys", "recsys_type": "twitter"},
+        }
 
-    When the component is called with entity context, it can retrieve values via:
-        value = self.get_field_for_entity('my_field', entity_name)
+    Values can then be retrieved with:
+
+        value = self.get_field_for_entity("timeline_mode", flow_tag, default="follower_chronological")
+
+    The legacy decorator metadata path is still recognized for backwards
+    compatibility, but explicit `FLOW_FIELDS` is the canonical API.
     """
 
-    _multi_field_metadata: dict[str, type] = {}  # field_name -> field_type
+    FLOW_FIELDS: dict[str, type] = {}
+    _multi_field_metadata: dict[str, type] = {}
 
     def __init__(self) -> None:
-        """Initialize component with empty field value mapping."""
-        self._entity_field_values: dict[str, dict[str, Any]] = {}
+        """Initialize component with empty flow field mapping."""
+        self._flow_field_values: dict[str, dict[str, Any]] = {}
+        # Backwards-compatible alias retained for existing tests/integrations.
+        self._entity_field_values = self._flow_field_values
 
     def __init_subclass__(cls, **kwargs):
-        """Auto-register multi-field metadata from decorator."""
+        """Build declared field metadata for subclasses."""
         super().__init_subclass__(**kwargs)
 
-        # Inherit parent's metadata
-        parent_meta = {}
+        parent_meta: dict[str, type] = {}
         for base in cls.__bases__:
-            if hasattr(base, '_multi_field_metadata'):
-                parent_meta.update(base._multi_field_metadata)
+            if hasattr(base, "_multi_field_metadata"):
+                parent_meta.update(dict(base._multi_field_metadata))
 
-        cls._multi_field_metadata = dict(parent_meta)
+        declared = dict(parent_meta)
 
-        # Scan class __dict__ for marked fields (not inherited)
+        explicit_fields = cls.__dict__.get("FLOW_FIELDS", {})
+        if isinstance(explicit_fields, Mapping):
+            declared.update({str(k): v for k, v in explicit_fields.items()})
+
+        # Backward compatibility for decorator-based declarations.
         for attr_name, attr_value in cls.__dict__.items():
-            # Check if it's directly marked (method)
-            if hasattr(attr_value, '_is_multi_field') and attr_value._is_multi_field:
-                field_type = getattr(attr_value, '_multi_field_type', Any)
-                cls._multi_field_metadata[attr_name] = field_type
-            # Check if it's a property wrapping a marked function
+            if hasattr(attr_value, "_is_multi_field") and attr_value._is_multi_field:
+                field_type = getattr(attr_value, "_multi_field_type", Any)
+                declared[attr_name] = field_type
             elif isinstance(attr_value, property):
                 func = attr_value.fget
-                if func and hasattr(func, '_is_multi_field') and func._is_multi_field:
-                    field_type = getattr(func, '_multi_field_type', Any)
-                    cls._multi_field_metadata[attr_name] = field_type
+                if func and hasattr(func, "_is_multi_field") and func._is_multi_field:
+                    field_type = getattr(func, "_multi_field_type", Any)
+                    declared[attr_name] = field_type
 
-    def set_multi_field_values(
-        self, entity_field_map: dict[str, dict[str, Any]]
-    ) -> None:
-        """Set multi-entity field values for routing.
+        cls._multi_field_metadata = declared
+        cls.FLOW_FIELDS = dict(declared)
+
+    def set_multi_field_values(self, entity_field_map: dict[str, dict[str, Any]]) -> None:
+        """Set flow field values for routing.
 
         Args:
-            entity_field_map: Mapping of entity_name -> {field_name: field_value}
-                Example: {'alice': {'timeline_filter': 'trusted'},
-                         'bob': {'timeline_filter': 'all'}}
+            entity_field_map: Mapping of flow_tag -> {field_name: field_value}
         """
-        self._entity_field_values = entity_field_map or {}
+        normalized: dict[str, dict[str, Any]] = {}
+        raw_map = dict(entity_field_map or {})
+        for flow_tag, field_config in raw_map.items():
+            flow_key = str(flow_tag).strip()
+            if not flow_key:
+                continue
+            normalized[flow_key] = dict(field_config or {})
+
+        declared_fields = set(self._multi_field_metadata.keys())
+        if declared_fields:
+            for flow_key, fields in normalized.items():
+                unknown = sorted(set(fields.keys()) - declared_fields)
+                if unknown:
+                    raise ValueError(
+                        f"Unsupported flow field(s) for {self.__class__.__name__} on flow "
+                        f"'{flow_key}': {unknown}. Supported: {sorted(declared_fields)}"
+                    )
+
+        self._flow_field_values = normalized
+        self._entity_field_values = self._flow_field_values
 
     def get_field_for_entity(
         self, field_name: str, entity_name: str | None = None, default: Any = None
     ) -> Any:
-        """Get field value for entity, with multi-field routing support.
-
-        If field has multi-entity values and entity_name is provided, returns
-        the entity-specific value. Otherwise returns the default.
+        """Get a flow field value for a flow tag.
 
         Args:
-            field_name: Name of the field to retrieve
-            entity_name: Name of the entity (optional)
-            default: Default value if field not found
-
-        Returns:
-            Entity-specific field value if available, else default
+            field_name: Flow field name.
+            entity_name: Flow tag (legacy parameter name retained).
+            default: Fallback value.
         """
-        if not entity_name or field_name not in self._multi_field_metadata:
+        if not entity_name:
             return default
 
-        return (
-            self._entity_field_values.get(entity_name, {}).get(field_name, default)
-        )
+        if self._multi_field_metadata and field_name not in self._multi_field_metadata:
+            return default
+
+        return self._flow_field_values.get(entity_name, {}).get(field_name, default)
+
+    def set_flow_field_values(self, flow_field_map: dict[str, dict[str, Any]]) -> None:
+        """Explicit alias for set_multi_field_values."""
+        self.set_multi_field_values(flow_field_map)
+
+    def get_flow_field(
+        self, field_name: str, flow_tag: str | None = None, default: Any = None
+    ) -> Any:
+        """Explicit alias for get_field_for_entity."""
+        return self.get_field_for_entity(field_name, flow_tag, default)
 
     def has_multi_fields(self) -> bool:
         """Check if this component has any multi-field declarations."""

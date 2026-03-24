@@ -31,11 +31,11 @@ from mastodon_sim.environments.gm.components.factory import (
     initialize_component_multi_fields,
 )
 from mastodon_sim.environments.gm.components.seed_post_provider import (
-    SeedPostProvider,
-    LLMSeedPostProvider,
     CSVSeedPostProvider,
-    FallbackSeedPostProvider,
     DisabledSeedPostProvider,
+    FallbackSeedPostProvider,
+    LLMSeedPostProvider,
+    SeedPostProvider,
 )
 from mastodon_sim.runtime.config import ConfigStore
 from mastodon_sim.utils.misc import EventLogger
@@ -53,7 +53,8 @@ def _collect_seed_posts(
         entities: List of agent entities.
         provider: SeedPostProvider instance. Defaults to LLMSeedPostProvider if None.
 
-    Returns:
+    Returns
+    -------
         Dict mapping agent name -> seed post text.
     """
     if provider is None:
@@ -86,7 +87,8 @@ def _build_seed_post_provider(seed_post_cfg: dict[str, Any] | None = None) -> Se
     Args:
         seed_post_cfg: Configuration dict for seed post provider.
 
-    Returns:
+    Returns
+    -------
         Initialized SeedPostProvider instance (defaults to LLMSeedPostProvider).
     """
     _LOGGER.info(f"Building seed post provider with config: {seed_post_cfg}")
@@ -103,24 +105,28 @@ def _build_seed_post_provider(seed_post_cfg: dict[str, Any] | None = None) -> Se
         _LOGGER.info("No seed posts configured (organic growth)")
         return DisabledSeedPostProvider()
 
-    elif provider_type in ("csv", "json"):
+    if provider_type in ("csv", "json"):
         file_path = params.get("file_path")
         if not file_path:
-            _LOGGER.warning(f"{provider_type.upper()} seed post provider requires 'file_path' parameter. Using LLM instead.")
+            _LOGGER.warning(
+                f"{provider_type.upper()} seed post provider requires 'file_path' parameter. Using LLM instead."
+            )
             return LLMSeedPostProvider()
         _LOGGER.info(f"Creating CSVSeedPostProvider with path: {file_path}")
         return CSVSeedPostProvider(file_path)
 
-    elif provider_type == "fallback":
+    if provider_type == "fallback":
         file_path = params.get("file_path")
         llm_fallback = params.get("llm_fallback", True)
-        _LOGGER.info(f"Creating FallbackSeedPostProvider with file_path: {file_path}, llm_fallback: {llm_fallback}")
+        _LOGGER.info(
+            f"Creating FallbackSeedPostProvider with file_path: {file_path}, llm_fallback: {llm_fallback}"
+        )
         return FallbackSeedPostProvider(file_path=file_path, llm_fallback=llm_fallback)
 
-    else:  # Default to "llm"
-        max_workers = params.get("max_workers", 64)
-        _LOGGER.info(f"Creating LLMSeedPostProvider with max_workers: {max_workers}")
-        return LLMSeedPostProvider(max_workers=max_workers)
+    # Default to "llm"
+    max_workers = params.get("max_workers", 64)
+    _LOGGER.info(f"Creating LLMSeedPostProvider with max_workers: {max_workers}")
+    return LLMSeedPostProvider(max_workers=max_workers)
 
 
 @dataclasses.dataclass
@@ -194,25 +200,35 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
 
         # Check if seed_posts is in cfg.scenario (may be filtered by Hydra if it's a custom field)
         if hasattr(cfg, "scenario") and hasattr(cfg.scenario, "seed_posts"):
-            print(f"[DEBUG] ✅ Found seed_posts in cfg.scenario")
+            print("[DEBUG] ✅ Found seed_posts in cfg.scenario")
             seed_post_cfg = cast(
                 dict[str, Any],
                 OmegaConf.to_container(cfg.scenario.seed_posts, resolve=True),
             )
         else:
             # Fallback: Read seed_posts directly from scenario YAML file if Hydra filtered it out
-            _LOGGER.info(f"[FALLBACK] seed_posts not in cfg, trying direct read from YAML...")
+            _LOGGER.info("[FALLBACK] seed_posts not in cfg, trying direct read from YAML...")
             try:
                 from pathlib import Path
+
                 import yaml
+
                 scenario_name = cfg.scenario.scenario_name
                 _LOGGER.info(f"[FALLBACK] scenario_name: {scenario_name}")
                 _LOGGER.info(f"[FALLBACK] output_rootname: {cfg.sim.output_rootname}")
 
                 # Try common locations
                 search_paths = [
-                    Path("/scratch/ss14247/mastodon-sim/scenarios/oasis_twitter_infoprop/conf/scenario") / f"{scenario_name}.yaml",
-                    Path(__file__).parent.parent.parent / "scenarios" / scenario_name / "conf" / "scenario" / f"{scenario_name}.yaml",
+                    Path(
+                        "/scratch/ss14247/mastodon-sim/scenarios/oasis_twitter_infoprop/conf/scenario"
+                    )
+                    / f"{scenario_name}.yaml",
+                    Path(__file__).parent.parent.parent
+                    / "scenarios"
+                    / scenario_name
+                    / "conf"
+                    / "scenario"
+                    / f"{scenario_name}.yaml",
                 ]
 
                 yaml_file = None
@@ -228,11 +244,15 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
                         yaml_data = yaml.safe_load(f)
                         if "seed_posts" in yaml_data:
                             seed_post_cfg = yaml_data["seed_posts"]
-                            _LOGGER.info(f"[FALLBACK] ✅ Loaded seed_posts from YAML: {seed_post_cfg}")
+                            _LOGGER.info(
+                                f"[FALLBACK] ✅ Loaded seed_posts from YAML: {seed_post_cfg}"
+                            )
                         else:
-                            _LOGGER.info(f"[FALLBACK] ❌ seed_posts not in YAML (keys: {list(yaml_data.keys())})")
+                            _LOGGER.info(
+                                f"[FALLBACK] ❌ seed_posts not in YAML (keys: {list(yaml_data.keys())})"
+                            )
                 else:
-                    _LOGGER.info(f"[FALLBACK] ❌ YAML file not found in search paths")
+                    _LOGGER.info("[FALLBACK] ❌ YAML file not found in search paths")
             except Exception as e:
                 _LOGGER.exception(f"[FALLBACK] Error reading YAML: {e}")
 
@@ -312,7 +332,9 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
         if not resolve_slot:
             # Use default resolver based on action_mode
             resolve_slot = {
-                "built_in": action_mode_to_resolve_map.get(getattr(cfg.sim, "action_mode", "custom"), "parsed_action"),
+                "built_in": action_mode_to_resolve_map.get(
+                    getattr(cfg.sim, "action_mode", "custom"), "parsed_action"
+                ),
             }
 
         # Determine if tool-calling is enabled (independent of action_mode)
@@ -331,14 +353,44 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
                 episode_observation_flow[0] if episode_observation_flow else "fixed_pre"
             )
 
-        # Get timeline strategy and config from sim settings
-        timeline_strategy = str(getattr(cfg.sim, "timeline_strategy", "follower_chronological"))
+        # Timeline selection: prefer timeline_mode, fallback to legacy timeline_strategy.
+        timeline_mode = str(
+            getattr(
+                cfg.sim,
+                "timeline_mode",
+                getattr(cfg.sim, "timeline_strategy", "follower_chronological"),
+            )
+        )
+        supported_timeline_modes = {
+            "twitter_like": {
+                "follower_chronological",
+                "pure_recsys",
+                "hybrid_recsys_follower",
+                "curated_global",
+            },
+            "reddit_like": {
+                "follower_chronological",
+                "pure_recsys",
+                "hybrid_recsys_follower",
+            },
+            "mastodon": {"follower_chronological"},
+        }
+        allowed_modes = supported_timeline_modes.get(platform_type, {"follower_chronological"})
+        if timeline_mode not in allowed_modes:
+            raise ValueError(
+                f"Unsupported timeline_mode='{timeline_mode}' for platform '{platform_type}'. "
+                f"Supported: {sorted(allowed_modes)}"
+            )
         timeline_config = {}
         if hasattr(cfg.sim, "timeline_config"):
-            timeline_config = cast(
-                dict[str, Any],
-                OmegaConf.to_container(cfg.sim.timeline_config, resolve=True),
-            ) if isinstance(cfg.sim.timeline_config, dict) else {}
+            timeline_config = (
+                cast(
+                    dict[str, Any],
+                    OmegaConf.to_container(cfg.sim.timeline_config, resolve=True),
+                )
+                if isinstance(cfg.sim.timeline_config, dict)
+                else {}
+            )
 
         make_observation = build_observe_component(
             observe_slot,
@@ -347,7 +399,8 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
             sm_app=sm_app,
             entity_action_flows=entity_action_flows,
             episode_observation_flow=str(episode_observation_flow),
-            timeline_strategy=timeline_strategy,
+            timeline_mode=timeline_mode,
+            timeline_strategy=timeline_mode,
             timeline_config=timeline_config,
         )
         resolve_component = build_resolve_component(
@@ -357,12 +410,21 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
             call_to_action_str=call_to_sm_action,
         )
         recommend_slot = dict(gm_components_cfg.get("recommend", {}))
-        recommend_component = build_recommendation_component(recommend_slot, sm_app=sm_app)
+        recommend_component = build_recommendation_component(
+            recommend_slot,
+            sm_app=sm_app,
+            platform_type=platform_type,
+            timeline_mode=timeline_mode,
+        )
 
         # Initialize multi-field values if component supports them
         initialize_component_multi_fields(make_observation, observe_slot)
         initialize_component_multi_fields(resolve_component, resolve_slot)
         initialize_component_multi_fields(recommend_component, recommend_slot)
+        if hasattr(recommend_component, "validate_recsys_types") and callable(
+            recommend_component.validate_recsys_types
+        ):
+            recommend_component.validate_recsys_types()
 
         components = {
             gm_components.next_acting.DEFAULT_NEXT_ACTING_COMPONENT_KEY: next_actor,
@@ -384,8 +446,8 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
         )
 
         # Stash orchestration metadata on the act component for engine-level schedulers.
-        setattr(act_component, "gm_orchestration", gm_orchestration)
-        setattr(act_component, "shared_flow_mode", self._is_shared_flow_mode())
+        act_component.gm_orchestration = gm_orchestration
+        act_component.shared_flow_mode = self._is_shared_flow_mode()
 
         return entity_agent_with_logging.EntityAgentWithLogging(
             agent_name=name,

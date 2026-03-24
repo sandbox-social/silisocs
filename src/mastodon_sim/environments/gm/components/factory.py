@@ -18,7 +18,6 @@ from mastodon_sim.environments.gm.components.next_acting import (
     FixedOrderNextActing,
 )
 from mastodon_sim.environments.gm.components.observe import (
-    ChunkStartMakeObservation,
     EpisodeObservation,
     TimelineMakeObservation,
 )
@@ -31,7 +30,6 @@ from mastodon_sim.environments.gm.components.resolve import (
 
 _OBSERVE_BUILT_INS = {
     "timeline_every_turn": TimelineMakeObservation,
-    "chunk_start_only": ChunkStartMakeObservation,
     "episode_only": EpisodeObservation,
 }
 
@@ -54,6 +52,17 @@ _INITIALIZER_BUILT_INS = {
 
 _RECOMMENDATION_BUILT_INS = {
     "recommendation_component": RecommendationComponent,
+}
+
+
+_MULTI_INSTANCE_RESERVED_KEYS = {
+    "built_in",
+    "class_path",
+    "params",
+    "instances",
+    "flow_map",
+    "flows",
+    "entities",
 }
 
 
@@ -109,14 +118,16 @@ def _instantiate_with_supported_kwargs(cls: type[Any], kwargs: Mapping[str, Any]
 def _class_to_kebab_case(class_name: str) -> str:
     """Convert ClassName to kebab-case.
 
-    Examples:
+    Examples
+    --------
         TimelineMakeObservation -> timeline_make_observation
         EpisodeObservation -> episode_observation
         ParsedActionResolveComponent -> parsed_action_resolve_component
     """
     import re
+
     # Insert underscore before uppercase letters (except first)
-    kebab = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name)
+    kebab = re.sub(r"(?<!^)(?=[A-Z])", "_", class_name)
     return kebab.lower()
 
 
@@ -128,6 +139,7 @@ def build_observe_components(
     sm_app: Any,
     entity_action_flows: dict[str, str] | None = None,
     episode_observation_flow: str = "fixed_pre",
+    timeline_mode: str | None = None,
     timeline_strategy: str = "follower_chronological",
     timeline_config: Mapping[str, Any] | None = None,
 ) -> dict[str, entity_component.ContextComponent]:
@@ -137,12 +149,21 @@ def build_observe_components(
         slots_cfg: Dict of {instance_name: instance_config}.
         Other args: Passed as runtime_kwargs to all instances.
 
-    Returns:
+    Returns
+    -------
         Dict of {component_key: component_instance} where keys are
         "observe__{class_as_kebab_case}".
     """
-    components = {}
+    components: dict[str, entity_component.ContextComponent] = {}
     slots_cfg = dict(slots_cfg or {})
+    if "instances" in slots_cfg and isinstance(slots_cfg["instances"], Mapping):
+        slots_cfg = dict(slots_cfg["instances"])
+    else:
+        slots_cfg = {
+            key: value
+            for key, value in slots_cfg.items()
+            if key not in _MULTI_INSTANCE_RESERVED_KEYS
+        }
 
     if not slots_cfg:
         return components
@@ -155,6 +176,7 @@ def build_observe_components(
             sm_app=sm_app,
             entity_action_flows=entity_action_flows,
             episode_observation_flow=episode_observation_flow,
+            timeline_mode=timeline_mode,
             timeline_strategy=timeline_strategy,
             timeline_config=timeline_config,
         )
@@ -167,6 +189,42 @@ def build_observe_components(
         components[full_key] = component
 
     return components
+
+
+def build_observe_component(
+    slot_cfg: Mapping[str, Any] | None = None,
+    *,
+    model: Any,
+    player_names: list[str],
+    sm_app: Any,
+    entity_action_flows: dict[str, str] | None = None,
+    episode_observation_flow: str = "fixed_pre",
+    timeline_mode: str | None = None,
+    timeline_strategy: str = "follower_chronological",
+    timeline_config: Mapping[str, Any] | None = None,
+) -> entity_component.ContextComponent:
+    """Build a single observe component from slot config."""
+    episode_observation_flows = (
+        [episode_observation_flow]
+        if isinstance(episode_observation_flow, str)
+        else list(episode_observation_flow or [])
+    )
+    return _build_from_slot(
+        slot_cfg,
+        built_ins=_OBSERVE_BUILT_INS,
+        default_built_in="timeline_every_turn",
+        runtime_kwargs={
+            "model": model,
+            "player_names": player_names,
+            "sm_app": sm_app,
+            "entity_action_flows": entity_action_flows,
+            "episode_observation_flow": episode_observation_flow,
+            "episode_observation_flows": episode_observation_flows,
+            "timeline_mode": timeline_mode,
+            "timeline_strategy": timeline_strategy,
+            "timeline_config": dict(timeline_config or {}),
+        },
+    )
 
 
 def build_resolve_component(
@@ -220,6 +278,8 @@ def build_recommendation_component(
     slot_cfg: Mapping[str, Any] | None = None,
     *,
     sm_app: Any | None = None,
+    platform_type: str | None = None,
+    timeline_mode: str | None = None,
 ) -> entity_component.ContextComponent:
     """Build recommendation component from slot config."""
     return _build_from_slot(
@@ -228,7 +288,14 @@ def build_recommendation_component(
         default_built_in="recommendation_component",
         runtime_kwargs={
             "sm_app": sm_app,
-        } if sm_app else None,
+            "platform_type": platform_type,
+            "timeline_mode": timeline_mode,
+        }
+        if sm_app
+        else {
+            "platform_type": platform_type,
+            "timeline_mode": timeline_mode,
+        },
     )
 
 
@@ -240,12 +307,13 @@ def initialize_component_multi_fields(
 
     Args:
         component: The component instance to initialize (may or may not be a FlowComponent)
-        component_config: Configuration dict that may contain an 'entities' key with
-                         entity-level field overrides. Expected format:
+        component_config: Configuration dict that may contain a `flows` key or the
+                         deprecated `entities` key with flow-level field overrides.
+                         Expected format:
                          {
                            'built_in': '...',
-                           'entities': {
-                             'entity_name': {'field_name': field_value, ...},
+                           'flows': {
+                             'flow_tag': {'field_name': field_value, ...},
                              ...
                            }
                          }
@@ -265,14 +333,16 @@ def initialize_component_multi_fields(
 
     # Extract entity configs if present
     component_cfg = dict(component_config or {})
+    flow_cfg = component_cfg.get("flows")
     entities_cfg = component_cfg.get("entities")
-    if not entities_cfg:
+    field_cfg = flow_cfg if isinstance(flow_cfg, Mapping) else entities_cfg
+    if not field_cfg:
         return
 
-    # Build entity -> {field_name: field_value} mapping
-    entity_field_map: dict[str, dict[str, Any]] = {}
-    for entity_name, field_config in entities_cfg.items():
-        entity_field_map[entity_name] = dict(field_config or {})
+    # Build flow_tag -> {field_name: field_value} mapping
+    flow_field_map: dict[str, dict[str, Any]] = {}
+    for flow_tag, field_config in field_cfg.items():
+        flow_field_map[str(flow_tag)] = dict(field_config or {})
 
     # Initialize component with the mapping
-    component.set_multi_field_values(entity_field_map)
+    component.set_multi_field_values(flow_field_map)

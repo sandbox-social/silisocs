@@ -49,7 +49,7 @@ gm:
 
     # Choose what observation is returned to active entities.
     observe:
-      built_in: timeline_every_turn # timeline_every_turn | chunk_start_only
+      built_in: timeline_every_turn # timeline_every_turn | episode_only
       class_path: null
       params: {}
 
@@ -112,7 +112,8 @@ engine:
 
 # Observation parameters
 timeline_posts: 10
-timeline_strategy: hybrid_recsys_follower  # follower_chronological | pure_recsys | hybrid_recsys_follower | curated_global
+timeline_mode: hybrid_recsys_follower  # follower_chronological | pure_recsys | hybrid_recsys_follower | curated_global
+timeline_strategy: ${sim.timeline_mode}  # Legacy alias; prefer timeline_mode
 timeline_config:
   recsys_ratio: 0.6      # For hybrid_recsys_follower: ratio of recommendations
   follower_ratio: 0.4    # For hybrid_recsys_follower: ratio of followed users

@@ -185,10 +185,11 @@ class FixedActionEntityRuntime(Agent):
     def _reset_phase(self):
         """Reset phase state for Concordia compatibility after action attempt."""
         # This method helps work around Concordia phase management issues
-        if hasattr(self, '_phase'):
+        if hasattr(self, "_phase"):
             try:
                 from concordia.typing import entity_component
-                if hasattr(self._phase, '_phase'):
+
+                if hasattr(self._phase, "_phase"):
                     self._phase._phase = entity_component.Phase.INITIAL
             except (AttributeError, ImportError):
                 pass

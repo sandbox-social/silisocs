@@ -23,7 +23,23 @@ This document describes how these layers work together, with special focus on th
 
 ## Part 1: Core Execution Model
 
-### Simple Mode (enable_gm_multi_flow: false)
+### Two Independent Flow Switches
+
+There are two separate flow switches:
+
+- `sim.enable_gm_multi_flow`: enables **component routing** inside a single GM (`gm.preset: shared_flow`).
+- `sim.enable_engine_multi_flow`: enables **flow-phase scheduling/policies** in the engine (`engine.preset: flow`).
+
+They are independent. You can enable either one, both, or neither.
+
+| GM switch | Engine switch | Effect |
+|-----------|---------------|--------|
+| false | false | simplest mode (single GM components + single global action loop) |
+| true | false | flow-routed GM components, but engine still uses one global scheduling/policy path |
+| false | true | no GM component routing, but engine schedules entities by flow with optional per-flow policies |
+| true | true | full flow mode: routed GM components + flow-aware engine scheduling/policies |
+
+### Simple GM Mode (`enable_gm_multi_flow: false`)
 
 By default, the simulator uses **BaseGM** with a single component instance per role:
 
@@ -56,7 +72,7 @@ sim:
     preset: base
 ```
 
-### Multi-Flow Mode (enable_gm_multi_flow: true)
+### Multi-Flow GM Mode (`enable_gm_multi_flow: true`)
 
 When multi-flow is enabled, the simulator uses **MultiFlowGM** with multiple component instances and explicit routing:
 
@@ -67,10 +83,10 @@ MultiFlowGM.MultiFlowSMAct selects active entity
   ↓
 1. Determine entity's flow (from entity_action_flows map)
 2. Look up flow → {role → component_key} mapping
-3. Execute only those components for this entity:
+3. Route output selection to flow-selected components:
   - NextActing: (shared)
   - Observe: [timeline_make_observation | episode_observation] ← flow-specific
-  - Resolve: [parsed_action | generic_action] ← flow-specific
+  - Resolve: currently single resolve component in this preset
   - Recommendation: (shared, but multi-algorithm)
   ↓
 Agent receives flow-specific observation and acts
@@ -130,11 +146,11 @@ MultiFlowGM builds an explicit mapping from flows to component instances:
 flow_to_component_map = {
     "active": {
         "observe": "observe__timeline_make_observation",   # Active agents see timelines
-        "resolve": "resolve__parsed_action"               # Active agents use standard parser
+        "resolve": "__resolution__"                        # Shared resolve component key
     },
     "fixed_pre": {
         "observe": "observe__episode_observation",        # Fixed agents see episodes
-        "resolve": "resolve__generic_action"              # Fixed agents use generic parser
+        "resolve": "__resolution__"
     }
 }
 ```
@@ -150,8 +166,47 @@ flow_to_component_map = {
 1. Concordia calls MultiFlowSMAct.pre_act() for active entity
 2. MultiFlowSMAct looks up entity's flow
 3. MultiFlowSMAct gets component keys for that flow
-4. Only those components execute for this entity
+4. MultiFlowSMAct selects flow-routed observe/resolve outputs from context
 5. Next entity is processed, potentially with different components
+
+**Routing config location (current):**
+
+```yaml
+sim:
+  gm:
+    components:
+      observe:
+        instances:
+          timeline:
+            built_in: timeline_every_turn
+          episode:
+            built_in: episode_only
+        flow_map:
+          active: observe__timeline_make_observation
+          fixed_pre: observe__episode_observation
+          default: observe__timeline_make_observation
+```
+
+Optional alias for one unified map:
+
+```yaml
+sim:
+  gm:
+    components:
+      flow_map:
+        active:
+          observe: timeline_make_observation
+          recommend:
+            recsys_type: twitter
+        fixed_pre:
+          observe:
+            instance: episode_observation
+          recommend:
+            recsys_type: reddit
+```
+
+The alias is expanded into per-slot `observe.flow_map` (routing) and per-slot
+`<role>.flows` (FlowComponent field overrides).
 
 ---
 
@@ -185,11 +240,13 @@ At runtime:
 **Component-side (declare fields):**
 ```python
 class TimelineObservation(FlowComponent):
-    def get_timeline(self, entity_name):
-        # Get timeline strategy for this entity's flow
-        strategy = self.get_field_for_entity("timeline_strategy", entity_name, default="follower_chronological")
-        # Use strategy to fetch timeline
-        return backend.get_timeline_strategy(strategy, ...)
+  FLOW_FIELDS = {"timeline_mode": str, "recsys_type": str}
+
+  def get_timeline(self, flow_tag):
+    # Get timeline mode for this flow
+    mode = self.get_flow_field("timeline_mode", flow_tag, default="follower_chronological")
+    # Use mode to fetch timeline
+    return backend.get_timeline_strategy(mode, ...)
 ```
 
 **GM-side (initialize values):**
@@ -197,8 +254,8 @@ class TimelineObservation(FlowComponent):
 # In MultiFlowGM.build():
 observe_component = build_observe_component(...)
 initialize_component_multi_fields(observe_component, {
-    "active": {"timeline_strategy": "pure_recsys"},
-    "lurker": {"timeline_strategy": "follower_chronological"}
+  "active": {"timeline_mode": "pure_recsys"},
+  "lurker": {"timeline_mode": "follower_chronological"}
 })
 ```
 
@@ -206,11 +263,11 @@ initialize_component_multi_fields(observe_component, {
 ```python
 entity_field_map = {
     "active": {       # flow name (not entity name!)
-        "timeline_strategy": "pure_recsys",
+    "timeline_mode": "pure_recsys",
         "recsys_type": "twitter"
     },
     "lurker": {
-        "timeline_strategy": "follower_chronological",
+    "timeline_mode": "follower_chronological",
         "recsys_type": "reddit"
     }
 }
@@ -218,7 +275,7 @@ entity_field_map = {
 
 ### Which Components Support Multi-Fields?
 
-- ✅ **Observe components** (TimelineObservation): timeline_strategy, recsys_type
+- ✅ **Observe components** (TimelineObservation): timeline_mode, recsys_type
 - ✅ **RecommendationComponent**: recsys_type (extracts unique types, initializes all)
 - ⏳ **Resolve components**: Can add if needed (e.g., action_parser_style)
 - ⏳ **Next-acting components**: Can add if needed
@@ -281,7 +338,8 @@ Agents can receive timelines computed with different strategies:
 
 ```yaml
 sim:
-  timeline_strategy: follower_chronological  # Default for all agents
+  timeline_mode: hybrid_recsys_follower      # Canonical selector
+  timeline_strategy: ${sim.timeline_mode}    # Legacy alias (optional)
   timeline_config:
     recsys_ratio: 0.6  # (for hybrid_recsys_follower strategy)
 ```
@@ -291,6 +349,8 @@ sim:
 - `pure_recsys`: Only recommendations from configured algorithm
 - `hybrid_recsys_follower`: Mix of recommendations and follower posts
 - `curated_global`: Trending/curated posts (if implemented in backend)
+
+Mastodon backend supports only `follower_chronological`.
 
 ### Per-Flow Timeline Configuration
 
@@ -304,9 +364,9 @@ gm:
         built_in: timeline_every_turn
         entities:
           active:
-            timeline_strategy: "pure_recsys"        # Recommendations only
+            timeline_mode: "pure_recsys"        # Recommendations only
           lurker:
-            timeline_strategy: "follower_chronological"  # Followers only
+            timeline_mode: "follower_chronological"  # Followers only
 ```
 
 ---
@@ -324,7 +384,7 @@ gm:
 - Generates observation text for active entity
 - Built-in: TimelineObservation, EpisodeObservation, ChunkStartMakeObservation
 - Multi-instance support: Can have both Timeline and Episode simultaneously
-- Multi-field support: timeline_strategy, recsys_type
+- Multi-field support: timeline_mode, recsys_type
 
 **3. Resolve Component** (role: resolve)
 - Parses LLM output into backend-executable actions
@@ -362,7 +422,8 @@ sim:
   # Simplest, most efficient path
 ```
 
-**Multi-flow config with multi-instance component support :**
+### Multi-Flow Configuration
+
 ```yaml
 sim:
   enable_gm_multi_flow: true
@@ -378,10 +439,10 @@ sim:
           params: {}
         entities:
           active:
-            timeline_strategy: "pure_recsys"
+            timeline_mode: "pure_recsys"
             recsys_type: "twitter"
           fixed_pre:
-            timeline_strategy: "follower_chronological"
+            timeline_mode: "follower_chronological"
             recsys_type: "reddit"
 
       resolve:
@@ -425,9 +486,9 @@ gm:
         built_in: episode_only
       entities:
         active:
-          timeline_strategy: "pure_recsys"
+          timeline_mode: "pure_recsys"
         lurker:
-          timeline_strategy: "follower_chronological"
+          timeline_mode: "follower_chronological"
         fixed_observer:
           # fixed_observer gets episode observation instead
           # (handled by explicit mapping in MultiFlowSMAct)

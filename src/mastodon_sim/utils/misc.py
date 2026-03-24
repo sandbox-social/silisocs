@@ -35,7 +35,9 @@ def get_prefab_instance(entity_prefab, module_path):
         build_entity_class = getattr(build_entity_module, entity_type)
     except ImportError as exc:
         print(f"Error: Could not import module: {module_path}")
-        raise ImportError(f"Could not import module '{module_path}' for prefab '{entity_prefab}'") from exc
+        raise ImportError(
+            f"Could not import module '{module_path}' for prefab '{entity_prefab}'"
+        ) from exc
     except AttributeError as exc:
         print(f"Error: Module {entity_name} does not have class: {entity_type}")
         raise AttributeError(

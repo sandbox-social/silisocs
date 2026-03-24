@@ -1,4 +1,4 @@
-"""Unit tests for FlowComponent and multi-field decorator system."""
+"""Unit tests for FlowComponent explicit flow-field contract."""
 
 import pytest
 
@@ -9,21 +9,13 @@ from mastodon_sim.environments.gm.components.decorators import multi_field
 class SimpleFlowComponent(FlowComponent):
     """Simple test component with multi-fields."""
 
+    FLOW_FIELDS = {
+        "timeline_filter": str,
+        "action_parser": str,
+    }
+
     def __init__(self):
         super().__init__()
-        self._config = {}
-
-    @property
-    @multi_field(str)
-    def timeline_filter(self) -> str:
-        """Get timeline filter."""
-        return self._config.get("timeline_filter", "all")
-
-    @property
-    @multi_field(str)
-    def action_parser(self) -> str:
-        """Get action parser."""
-        return self._config.get("action_parser", "default")
 
 
 class NonMultiComponent(FlowComponent):
@@ -36,16 +28,18 @@ class NonMultiComponent(FlowComponent):
 def test_flow_component_initialization():
     """Test FlowComponent initializes with empty field values."""
     comp = SimpleFlowComponent()
+    assert comp._flow_field_values == {}
     assert comp._entity_field_values == {}
     assert comp.has_multi_fields()
 
 
-def test_multi_field_metadata_registration():
-    """Test @multi_field decorator registers metadata."""
-    assert "timeline_filter" in SimpleFlowComponent._multi_field_metadata
-    assert "action_parser" in SimpleFlowComponent._multi_field_metadata
-    assert SimpleFlowComponent._multi_field_metadata["timeline_filter"] == str
-    assert SimpleFlowComponent._multi_field_metadata["action_parser"] == str
+def test_explicit_flow_field_registration():
+    """Test FLOW_FIELDS declaration registers metadata."""
+    comp = SimpleFlowComponent()
+    assert comp.get_multi_fields() == {
+        "timeline_filter": str,
+        "action_parser": str,
+    }
 
 
 def test_non_multi_component_has_no_fields():
@@ -80,9 +74,7 @@ def test_get_field_with_missing_entity():
     comp = SimpleFlowComponent()
     comp.set_multi_field_values({"alice": {"timeline_filter": "trusted"}})
 
-    result = comp.get_field_for_entity(
-        "timeline_filter", "unknown_entity", default="default_value"
-    )
+    result = comp.get_field_for_entity("timeline_filter", "unknown_entity", default="default_value")
     assert result == "default_value"
 
 
@@ -95,13 +87,11 @@ def test_get_field_without_entity_name():
     assert result == "fallback"
 
 
-def test_get_field_for_non_multi_field():
-    """Test get_field_for_entity for non-multi field returns default."""
+def test_setting_unknown_field_raises_value_error():
+    """Test setting undeclared flow field fails fast."""
     comp = SimpleFlowComponent()
-    comp.set_multi_field_values({"alice": {"unknown_field": "value"}})
-
-    result = comp.get_field_for_entity("unknown_field", "alice", default="fallback")
-    assert result == "fallback"
+    with pytest.raises(ValueError, match="Unsupported flow field"):
+        comp.set_multi_field_values({"alice": {"unknown_field": "value"}})
 
 
 def test_set_multi_field_values_with_none():
@@ -113,30 +103,46 @@ def test_set_multi_field_values_with_none():
 
 def test_get_multi_fields_returns_copy():
     """Test get_multi_fields returns a copy, not reference."""
-    original = SimpleFlowComponent.get_multi_fields(SimpleFlowComponent)
-    returned = SimpleFlowComponent.get_multi_fields(SimpleFlowComponent)
+    comp = SimpleFlowComponent()
+    original = comp.get_multi_fields()
+    returned = comp.get_multi_fields()
 
     # Should be equal in content
     assert original == returned
     # Modifying returned shouldn't affect class
     returned["new_field"] = int
-    assert "new_field" not in SimpleFlowComponent._multi_field_metadata
+    assert "new_field" not in comp.get_multi_fields()
 
 
 def test_inheritance_preserves_multi_field_metadata():
-    """Test that subclasses inherit parent multi-field metadata."""
+    """Test subclasses inherit and extend explicit FLOW_FIELDS."""
 
     class ChildComponent(SimpleFlowComponent):
-        @property
-        @multi_field(int)
-        def score(self) -> int:
-            return 0
+        FLOW_FIELDS = {
+            "score": int,
+        }
 
+    child = ChildComponent()
     # Should have all parent fields plus new one
-    assert "timeline_filter" in ChildComponent._multi_field_metadata
-    assert "action_parser" in ChildComponent._multi_field_metadata
-    assert "score" in ChildComponent._multi_field_metadata
-    assert ChildComponent._multi_field_metadata["score"] == int
+    assert "timeline_filter" in child.get_multi_fields()
+    assert "action_parser" in child.get_multi_fields()
+    assert "score" in child.get_multi_fields()
+    assert child.get_multi_fields()["score"] == int
+
+
+def test_decorator_registration_still_supported_for_compatibility():
+    """Test legacy @multi_field declarations still register."""
+
+    class DecoratedComponent(FlowComponent):
+        @property
+        @multi_field(str)
+        def legacy_field(self) -> str:
+            return "value"
+
+    comp = DecoratedComponent()
+    assert "legacy_field" in comp.get_multi_fields()
+    comp.set_multi_field_values({"default": {"legacy_field": "x"}})
+    assert comp.get_field_for_entity("legacy_field", "default") == "x"
 
 
 def test_multiple_instances_have_independent_field_values():

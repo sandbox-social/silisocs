@@ -23,6 +23,11 @@ This page focuses on end-user and developer configurability for Engine/GM/backen
 - Specialized entity classes can define distinct runtime behavior (for example,
   fixed-action entities) while still using the same GM resolve components.
 
+Flow controls use two independent switches:
+
+- `sim.enable_gm_multi_flow`: enables GM-side component routing (`gm.preset: shared_flow`).
+- `sim.enable_engine_multi_flow`: enables engine-side flow scheduling/policies (`engine.preset: flow`).
+
 ## Canonical Structure
 
 Canonical modules:
@@ -73,7 +78,7 @@ sim:
 ### Built-in Observe Components
 
 - `timeline_every_turn`: fetch timeline whenever observation is requested.
-- `chunk_start_only`: fetch on chunk start token only (forward-compatible with multi-action chunks).
+- `episode_only`: return episode-only observations (for fixed/pre-scripted flows).
 
 ### Built-in Resolve Components
 

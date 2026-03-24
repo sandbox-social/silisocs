@@ -131,7 +131,7 @@ class BaseSocialMediaEngine(simultaneous.Simultaneous):
                 continue
             next_entity_names.append(name)
 
-        if log is not None and hasattr(game_master, "get_last_log"):
+        if log is not None and isinstance(log_entry, dict) and hasattr(game_master, "get_last_log"):
             assert hasattr(game_master, "get_last_log")
             log_entry["next_acting"] = game_master.get_last_log()
 
@@ -147,7 +147,11 @@ class BaseSocialMediaEngine(simultaneous.Simultaneous):
                 next_action_spec_string
             )
 
-            if log is not None and hasattr(game_master, "get_last_log"):
+            if (
+                log is not None
+                and isinstance(log_entry, dict)
+                and hasattr(game_master, "get_last_log")
+            ):
                 assert hasattr(game_master, "get_last_log")
                 log_entry["next_action_spec"] = game_master.get_last_log()
 
@@ -333,22 +337,26 @@ class BaseSocialMediaEngine(simultaneous.Simultaneous):
         ],
         entities: Sequence[entity_lib.Entity],
         skip_actions: bool,
-        entity_act_fn: Callable[[entity_lib.Entity, entity_lib.Entity, entity_lib.ActionSpec, bool], str],
+        entity_act_fn: Callable[
+            [entity_lib.Entity, entity_lib.Entity, entity_lib.ActionSpec, bool], str
+        ],
     ) -> tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]:
         del cfg
         flow_task_groups: list[tuple[str, dict[str, Callable[[], str]]]] = []
         model_pool: dict[int, Any] = {}
         if skip_actions:
             for phase_gm, _, _, _ in phase_batches:
-                tasks: dict[str, Callable[[], str]] = {}
+                skip_tasks: dict[str, Callable[[], str]] = {}
                 for entity in entities:
                     action_spec = entity_lib.ActionSpec(
                         call_to_action="",
                         output_type=entity_lib.OutputType.SKIP_THIS_STEP,
                     )
                     task_name = f"{phase_gm.name}::{entity.name}"
-                    tasks[task_name] = functools.partial(entity_act_fn, phase_gm, entity, action_spec, True)
-                flow_task_groups.append((f"{phase_gm.name}:default", tasks))
+                    skip_tasks[task_name] = functools.partial(
+                        entity_act_fn, phase_gm, entity, action_spec, True
+                    )
+                flow_task_groups.append((f"{phase_gm.name}:default", skip_tasks))
                 for model_obj in collect_unique_models(phase_gm, entities):
                     model_pool[id(model_obj)] = model_obj
             return flow_task_groups, model_pool
@@ -368,11 +376,56 @@ class BaseSocialMediaEngine(simultaneous.Simultaneous):
                 action_iter = list(gm_action_specs)
             for entity, action_spec in zip(entities_to_process, action_iter, strict=False):
                 task_name = f"{phase_gm.name}::{entity.name}"
-                tasks[task_name] = functools.partial(entity_act_fn, phase_gm, entity, action_spec, False)
+                tasks[task_name] = functools.partial(
+                    entity_act_fn, phase_gm, entity, action_spec, False
+                )
             flow_task_groups.append((f"{phase_gm.name}:default", tasks))
             for model_obj in collect_unique_models(phase_gm, entities_to_process):
                 model_pool[id(model_obj)] = model_obj
         return flow_task_groups, model_pool
+
+    def _build_flow_action_loop_policies(
+        self,
+        *,
+        engine_cfg: Mapping[str, Any],
+        default_policy: Any,
+    ) -> dict[str, Any]:
+        """Build per-flow action-loop policy overrides.
+
+        Base engine intentionally ignores flow-level overrides and uses a single
+        global action_loop policy.
+        """
+        del default_policy
+        flow_policies = engine_cfg.get("flow_policies")
+        if isinstance(flow_policies, Mapping) and flow_policies:
+            _LOGGER.warning(
+                "engine.flow_policies is configured but engine preset is base; "
+                "per-flow policy overrides are ignored."
+            )
+        return {}
+
+    @staticmethod
+    def _flow_name_for_group(group_name: str) -> str:
+        """Extract flow tag from a task-group label."""
+        label = str(group_name or "").strip()
+        if not label:
+            return "default"
+        if ":" in label:
+            _, flow = label.rsplit(":", 1)
+            flow_name = flow.strip()
+            return flow_name or "default"
+        return label
+
+    def _action_loop_policy_for_group(
+        self,
+        *,
+        group_name: str,
+        default_policy: Any,
+        flow_policies: Mapping[str, Any],
+    ) -> Any:
+        """Resolve action-loop policy for a flow task-group label."""
+        flow_name = self._flow_name_for_group(group_name)
+        return flow_policies.get(flow_name, flow_policies.get("default", default_policy))
 
     @staticmethod
     def _run_tasks_with_limit(
@@ -450,7 +503,12 @@ class BaseSocialMediaEngine(simultaneous.Simultaneous):
         engine_cfg = {}
         if hasattr(cfg.sim, "engine") and cfg.sim.engine is not None:
             engine_cfg = cast(dict[str, Any], OmegaConf.to_container(cfg.sim.engine, resolve=True))
-        action_loop_policy = build_action_loop_policy(engine_cfg.get("action_loop"))
+        default_action_loop_policy = build_action_loop_policy(engine_cfg.get("action_loop"))
+        current_action_loop_policy = default_action_loop_policy
+        flow_action_loop_policies = self._build_flow_action_loop_policies(
+            engine_cfg=engine_cfg,
+            default_policy=default_action_loop_policy,
+        )
         probe_schedule_policy = build_probe_schedule_policy(engine_cfg.get("probe_schedule"))
         configured_worker_cap = resolve_configured_worker_cap(cfg)
         probe_event_logger = EventLogger(
@@ -642,7 +700,7 @@ class BaseSocialMediaEngine(simultaneous.Simultaneous):
 
                 return cast(
                     str,
-                    action_loop_policy.run(
+                    current_action_loop_policy.run(
                         engine=self,
                         game_master=target_game_master,
                         entity=entity,
@@ -718,11 +776,22 @@ class BaseSocialMediaEngine(simultaneous.Simultaneous):
                 for flow_name, tasks in flow_task_groups:
                     if not tasks:
                         continue
+                    current_action_loop_policy = self._action_loop_policy_for_group(
+                        group_name=flow_name,
+                        default_policy=default_action_loop_policy,
+                        flow_policies=flow_action_loop_policies,
+                    )
+                    policy_name = getattr(
+                        current_action_loop_policy,
+                        "name",
+                        current_action_loop_policy.__class__.__name__,
+                    )
                     _LOGGER.info(
-                        "Episode %d flow '%s': executing %d entities",
+                        "Episode %d flow '%s': executing %d entities (policy=%s)",
                         steps,
                         flow_name,
                         len(tasks),
+                        policy_name,
                     )
                     actions.update(self._run_tasks_with_limit(tasks, worker_limit))
             finally:
@@ -948,7 +1017,9 @@ class FlowSocialMediaEngine(BaseSocialMediaEngine):
         ],
         entities: Sequence[entity_lib.Entity],
         skip_actions: bool,
-        entity_act_fn: Callable[[entity_lib.Entity, entity_lib.Entity, entity_lib.ActionSpec, bool], str],
+        entity_act_fn: Callable[
+            [entity_lib.Entity, entity_lib.Entity, entity_lib.ActionSpec, bool], str
+        ],
     ) -> tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]:
         flow_task_groups: list[tuple[str, dict[str, Callable[[], str]]]] = []
         model_pool: dict[int, Any] = {}
@@ -987,6 +1058,40 @@ class FlowSocialMediaEngine(BaseSocialMediaEngine):
             for model_obj in collect_unique_models(phase_gm, entities_to_process):
                 model_pool[id(model_obj)] = model_obj
         return flow_task_groups, model_pool
+
+    @override
+    def _build_flow_action_loop_policies(
+        self,
+        *,
+        engine_cfg: Mapping[str, Any],
+        default_policy: Any,
+    ) -> dict[str, Any]:
+        """Build per-flow action-loop policies from engine.flow_policies."""
+        del default_policy
+        flow_policies_cfg = engine_cfg.get("flow_policies")
+        if not isinstance(flow_policies_cfg, Mapping) or not flow_policies_cfg:
+            return {}
+
+        policies: dict[str, Any] = {}
+        for flow_name, slot_cfg in flow_policies_cfg.items():
+            key = str(flow_name).strip()
+            if not key:
+                continue
+            if not isinstance(slot_cfg, Mapping):
+                _LOGGER.warning(
+                    "Skipping engine.flow_policies['%s']: expected mapping, got %s.",
+                    key,
+                    type(slot_cfg).__name__,
+                )
+                continue
+            try:
+                policies[key] = build_action_loop_policy(cast(Mapping[str, Any], slot_cfg))
+            except Exception:
+                _LOGGER.exception(
+                    "Failed building engine.flow_policies['%s']; default action_loop will be used.",
+                    key,
+                )
+        return policies
 
 
 # Backward-compatibility alias.

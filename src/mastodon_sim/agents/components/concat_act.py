@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
 
 from concordia.components.agent import concat_act_component
 from concordia.document import interactive_document
-from concordia.language_model import language_model
 from concordia.typing import entity as entity_lib
 from concordia.typing import entity_component
 from typing_extensions import override
@@ -109,8 +107,9 @@ class SocialConcatActComponent(concat_act_component.ConcatActComponent):
 
         # DEBUG: Log full prompt for all agents
         import logging
+
         debug_logger = logging.getLogger("CONCAT_ACT_DEBUG")
-        debug_logger.warning(f"\n{'='*80}")
+        debug_logger.warning(f"\n{'=' * 80}")
         debug_logger.warning(f"AGENT: {self.get_entity().name}")
         debug_logger.warning(f"ACTION_SPEC_TYPE: {action_spec.output_type}")
         debug_logger.warning(f"HAS_TOOLS: {tools is not None}")
@@ -118,13 +117,15 @@ class SocialConcatActComponent(concat_act_component.ConcatActComponent):
         debug_logger.warning(f"CONTEXT_PREVIEW: {context[:200].strip()}...")
         debug_logger.warning(f"CALL_TO_ACTION_LENGTH: {len(call_to_action)} chars")
         debug_logger.warning(f"CALL_TO_ACTION: {call_to_action[:300]}")
-        debug_logger.warning(f"{'='*80}\n")
+        debug_logger.warning(f"{'=' * 80}\n")
 
         if action_spec.output_type in entity_lib.FREE_ACTION_TYPES:
             if tools is not None:
                 # Include context with call_to_action for tool-calling
                 prompt_with_context = context + "\n" + call_to_action
-                debug_logger.warning(f"TOOL_CALLING_PROMPT_LENGTH: {len(prompt_with_context)} chars")
+                debug_logger.warning(
+                    f"TOOL_CALLING_PROMPT_LENGTH: {len(prompt_with_context)} chars"
+                )
                 result = self._sample_tool_call(prompt_with_context, tools)
                 if result:
                     self._log(result, prompt)

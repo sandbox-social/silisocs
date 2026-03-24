@@ -7,14 +7,14 @@ Compares against real-world cascade data (if available).
 
 import json
 import sqlite3
-from pathlib import Path
-from typing import Dict, List, Tuple
 from collections import deque
-import numpy as np
+from pathlib import Path
+
 import matplotlib.pyplot as plt
+import numpy as np
 
 
-def build_cascade_graph(db_path: str) -> Dict[int, List[int]]:
+def build_cascade_graph(db_path: str) -> dict[int, list[int]]:
     """
     Build repost cascade graph.
 
@@ -41,13 +41,13 @@ def build_cascade_graph(db_path: str) -> Dict[int, List[int]]:
     return graph
 
 
-def compute_cascade_metrics(graph: Dict[int, List[int]]) -> Dict[str, List[float]]:
+def compute_cascade_metrics(graph: dict[int, list[int]]) -> dict[str, list[float]]:
     """Compute cascade metrics for all cascades."""
     metrics = {
-        'scale': [],      # Number of reposts (cascade size)
-        'depth': [],      # Maximum depth of cascade tree
-        'max_breadth': [], # Maximum width at any level
-        'structural_virality': [],  # Average shortest path
+        "scale": [],  # Number of reposts (cascade size)
+        "depth": [],  # Maximum depth of cascade tree
+        "max_breadth": [],  # Maximum width at any level
+        "structural_virality": [],  # Average shortest path
     }
 
     for root_post_id, children in graph.items():
@@ -56,15 +56,15 @@ def compute_cascade_metrics(graph: Dict[int, List[int]]) -> Dict[str, List[float
         breadth = compute_cascade_breadth(root_post_id, graph)
         virality = compute_structural_virality(root_post_id, graph)
 
-        metrics['scale'].append(scale)
-        metrics['depth'].append(depth)
-        metrics['max_breadth'].append(breadth)
-        metrics['structural_virality'].append(virality)
+        metrics["scale"].append(scale)
+        metrics["depth"].append(depth)
+        metrics["max_breadth"].append(breadth)
+        metrics["structural_virality"].append(virality)
 
     return metrics
 
 
-def compute_cascade_size(post_id: int, graph: Dict) -> int:
+def compute_cascade_size(post_id: int, graph: dict) -> int:
     """Count total nodes in cascade tree (BFS)."""
     visited = set()
     queue = deque([post_id])
@@ -85,7 +85,7 @@ def compute_cascade_size(post_id: int, graph: Dict) -> int:
     return count
 
 
-def compute_cascade_depth(post_id: int, graph: Dict) -> int:
+def compute_cascade_depth(post_id: int, graph: dict) -> int:
     """Compute maximum depth of cascade tree (BFS)."""
     if post_id not in graph or not graph[post_id]:
         return 1
@@ -107,7 +107,7 @@ def compute_cascade_depth(post_id: int, graph: Dict) -> int:
     return max_depth
 
 
-def compute_cascade_breadth(post_id: int, graph: Dict) -> int:
+def compute_cascade_breadth(post_id: int, graph: dict) -> int:
     """Compute maximum breadth (nodes at any single level)."""
     if post_id not in graph:
         return 1
@@ -127,7 +127,7 @@ def compute_cascade_breadth(post_id: int, graph: Dict) -> int:
     return max(level_counts.values()) if level_counts else 1
 
 
-def compute_structural_virality(post_id: int, graph: Dict) -> float:
+def compute_structural_virality(post_id: int, graph: dict) -> float:
     """Approximate structural virality as 1 - (depth / scale)."""
     scale = compute_cascade_size(post_id, graph)
     depth = compute_cascade_depth(post_id, graph)
@@ -137,7 +137,7 @@ def compute_structural_virality(post_id: int, graph: Dict) -> float:
     return 1.0 - (depth / max(scale, 1))
 
 
-def plot_cascade_metrics(metrics: Dict[str, List[float]], output_dir: Path) -> None:
+def plot_cascade_metrics(metrics: dict[str, list[float]], output_dir: Path) -> None:
     """Plot cascade metrics visualization."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -145,7 +145,7 @@ def plot_cascade_metrics(metrics: Dict[str, List[float]], output_dir: Path) -> N
 
     # Scale distribution
     ax = axes[0, 0]
-    ax.hist(metrics['scale'], bins=20, edgecolor='black', alpha=0.7, color='skyblue')
+    ax.hist(metrics["scale"], bins=20, edgecolor="black", alpha=0.7, color="skyblue")
     ax.set_xlabel("Cascade Scale (# reposts)")
     ax.set_ylabel("Frequency")
     ax.set_title(f"Cascade Scale Distribution (mean: {np.mean(metrics['scale']):.1f})")
@@ -153,7 +153,7 @@ def plot_cascade_metrics(metrics: Dict[str, List[float]], output_dir: Path) -> N
 
     # Depth distribution
     ax = axes[0, 1]
-    ax.hist(metrics['depth'], bins=20, edgecolor='black', alpha=0.7, color='lightcoral')
+    ax.hist(metrics["depth"], bins=20, edgecolor="black", alpha=0.7, color="lightcoral")
     ax.set_xlabel("Cascade Depth (# levels)")
     ax.set_ylabel("Frequency")
     ax.set_title(f"Cascade Depth Distribution (mean: {np.mean(metrics['depth']):.1f})")
@@ -161,7 +161,7 @@ def plot_cascade_metrics(metrics: Dict[str, List[float]], output_dir: Path) -> N
 
     # Max breadth
     ax = axes[1, 0]
-    ax.hist(metrics['max_breadth'], bins=20, edgecolor='black', alpha=0.7, color='lightgreen')
+    ax.hist(metrics["max_breadth"], bins=20, edgecolor="black", alpha=0.7, color="lightgreen")
     ax.set_xlabel("Max Breadth (# nodes at widest level)")
     ax.set_ylabel("Frequency")
     ax.set_title(f"Max Breadth Distribution (mean: {np.mean(metrics['max_breadth']):.1f})")
@@ -169,7 +169,9 @@ def plot_cascade_metrics(metrics: Dict[str, List[float]], output_dir: Path) -> N
 
     # Structural virality
     ax = axes[1, 1]
-    ax.hist(metrics['structural_virality'], bins=20, edgecolor='black', alpha=0.7, color='lightyellow')
+    ax.hist(
+        metrics["structural_virality"], bins=20, edgecolor="black", alpha=0.7, color="lightyellow"
+    )
     ax.set_xlabel("Structural Virality")
     ax.set_ylabel("Frequency")
     ax.set_title(f"Virality Distribution (mean: {np.mean(metrics['structural_virality']):.2f})")
@@ -190,19 +192,25 @@ def evaluate_info_propagation(db_path: str, output_dir: Path) -> None:
     if not graph:
         print("No cascades found (no reposts in simulation)")
         metrics = {
-            'scale': [1],
-            'depth': [1],
-            'max_breadth': [1],
-            'structural_virality': [0.0],
+            "scale": [1],
+            "depth": [1],
+            "max_breadth": [1],
+            "structural_virality": [0.0],
         }
     else:
         metrics = compute_cascade_metrics(graph)
 
     print("\n=== Information Propagation Evaluation ===")
     print(f"Number of cascades: {len(metrics['scale'])}")
-    print(f"Cascade scale (mean ± std): {np.mean(metrics['scale']):.2f} ± {np.std(metrics['scale']):.2f}")
-    print(f"Cascade depth (mean ± std): {np.mean(metrics['depth']):.2f} ± {np.std(metrics['depth']):.2f}")
-    print(f"Max breadth (mean ± std): {np.mean(metrics['max_breadth']):.2f} ± {np.std(metrics['max_breadth']):.2f}")
+    print(
+        f"Cascade scale (mean ± std): {np.mean(metrics['scale']):.2f} ± {np.std(metrics['scale']):.2f}"
+    )
+    print(
+        f"Cascade depth (mean ± std): {np.mean(metrics['depth']):.2f} ± {np.std(metrics['depth']):.2f}"
+    )
+    print(
+        f"Max breadth (mean ± std): {np.mean(metrics['max_breadth']):.2f} ± {np.std(metrics['max_breadth']):.2f}"
+    )
     print(f"Structural virality (mean): {np.mean(metrics['structural_virality']):.3f}")
 
     # Plot metrics
@@ -210,20 +218,19 @@ def evaluate_info_propagation(db_path: str, output_dir: Path) -> None:
 
     # Save metrics
     metrics_json = {
-        'scale_mean': float(np.mean(metrics['scale'])),
-        'depth_mean': float(np.mean(metrics['depth'])),
-        'breadth_mean': float(np.mean(metrics['max_breadth'])),
-        'virality_mean': float(np.mean(metrics['structural_virality'])),
-        'num_cascades': len(metrics['scale']),
+        "scale_mean": float(np.mean(metrics["scale"])),
+        "depth_mean": float(np.mean(metrics["depth"])),
+        "breadth_mean": float(np.mean(metrics["max_breadth"])),
+        "virality_mean": float(np.mean(metrics["structural_virality"])),
+        "num_cascades": len(metrics["scale"]),
     }
 
-    with open(output_dir / "metrics.json", 'w') as f:
+    with open(output_dir / "metrics.json", "w") as f:
         json.dump(metrics_json, f, indent=2)
     print(f"Metrics saved to: {output_dir / 'metrics.json'}")
 
 
 if __name__ == "__main__":
-    import sys
     import glob
 
     # Find simulation database

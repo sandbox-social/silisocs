@@ -8,13 +8,20 @@ from typing import Any
 from concordia.components.game_master import make_observation as make_observation_component
 from concordia.typing import entity as entity_lib
 
+from mastodon_sim.environments.gm.components.base import FlowComponent
 from mastodon_sim.runtime.config import ConfigStore
 
 _CALL_TO_MAKE_OBSERVATION = "{name}"
 
 
-class TimelineMakeObservation(make_observation_component.MakeObservation):
+class TimelineMakeObservation(FlowComponent, make_observation_component.MakeObservation):
     """Always fetch timeline when MAKE_OBSERVATION is requested."""
+
+    FLOW_FIELDS = {
+        "timeline_mode": str,
+        "timeline_strategy": str,  # Backward-compatible alias.
+        "recsys_type": str,
+    }
 
     def __init__(
         self,
@@ -24,11 +31,14 @@ class TimelineMakeObservation(make_observation_component.MakeObservation):
         sm_app: Any,
         entity_action_flows: dict[str, str] | None = None,
         episode_observation_flows: Sequence[str] | None = None,
+        timeline_mode: str | None = None,
         timeline_strategy: str = "follower_chronological",
         timeline_config: dict[str, Any] | None = None,
         call_to_make_observation: str = _CALL_TO_MAKE_OBSERVATION,
     ):
-        super().__init__(
+        FlowComponent.__init__(self)
+        make_observation_component.MakeObservation.__init__(
+            self,
             model=model,
             player_names=player_names,
             components=(),
@@ -39,7 +49,10 @@ class TimelineMakeObservation(make_observation_component.MakeObservation):
         self._episode_observation_flows = {
             str(flow).strip() for flow in (episode_observation_flows or ()) if str(flow).strip()
         }
-        self._timeline_strategy = timeline_strategy
+        self._timeline_mode = str(
+            timeline_mode or timeline_strategy or "follower_chronological"
+        ).strip()
+        self._timeline_strategy = self._timeline_mode
         self._timeline_config = dict(timeline_config or {})
 
     def _get_active_entity_name_from_call_to_action(self, call_to_action: str) -> str:
@@ -90,11 +103,19 @@ class TimelineMakeObservation(make_observation_component.MakeObservation):
 
         cfg = ConfigStore.get_config()
         timeline_posts = getattr(cfg.sim, "timeline_posts", 10)
+        recsys_type = self.get_flow_field("recsys_type", flow_type)
+        flow_timeline_mode = self.get_flow_field("timeline_mode", flow_type)
+        if not flow_timeline_mode:
+            flow_timeline_mode = self.get_flow_field("timeline_strategy", flow_type)
+        if not flow_timeline_mode:
+            flow_timeline_mode = self._timeline_mode
+
         timeline = self._sm_app.get_timeline_strategy(
-            self._timeline_strategy,
+            flow_timeline_mode,
             active_entity_name,
             timeline_posts,
-            **self._timeline_config
+            recsys_type=recsys_type,
+            **self._timeline_config,
         )
         result = self._sm_app.format_timeline_for_observation(timeline)
 
@@ -111,7 +132,6 @@ class TimelineMakeObservation(make_observation_component.MakeObservation):
             }
         )
         return result
-
 
 
 class EpisodeObservation(make_observation_component.MakeObservation):
@@ -175,9 +195,7 @@ class EpisodeObservation(make_observation_component.MakeObservation):
         if flow_type != self._episode_observation_flow:
             return ""
 
-        current_episode = getattr(
-            getattr(self._sm_app, "action_logger", None), "episode_idx", 0
-        )
+        current_episode = getattr(getattr(self._sm_app, "action_logger", None), "episode_idx", 0)
         result = f"EPISODE: {current_episode}"
         self._logging_channel(
             {

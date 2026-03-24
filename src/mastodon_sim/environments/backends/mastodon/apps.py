@@ -196,11 +196,35 @@ class SocialNetworkApp(SocialMediaApp):
             limit: Max posts to return
             **timeline_config: Strategy parameters (unused for Mastodon)
 
-        Returns:
+        Returns
+        -------
             List of timeline posts from Mastodon server
         """
         # Mastodon always returns the server's feed, regardless of strategy requested
         return self.get_timeline(username, limit)
+
+    # Recommendation APIs are intentionally unsupported for Mastodon.
+    def init_recsys(self, recsys_type: str = "") -> None:
+        del recsys_type
+        raise NotImplementedError(
+            "Mastodon backend does not support recommendation algorithms. "
+            "Use timeline_strategy='follower_chronological'."
+        )
+
+    def update_recommendations(
+        self, active_user_ids: list[int] | None = None, max_posts: int = 10
+    ) -> None:
+        del active_user_ids, max_posts
+        raise NotImplementedError("Mastodon backend does not support recommendation updates.")
+
+    def get_recommendations(
+        self,
+        username: str,
+        limit: int = 10,
+        recsys_type: str | None = None,
+    ) -> list[dict]:
+        del username, limit, recsys_type
+        raise NotImplementedError("Mastodon backend does not support recommendation retrieval.")
 
     def format_timeline_for_observation(self, timeline: list[dict]) -> str:
         """Format Mastodon timeline posts for LLM observation.

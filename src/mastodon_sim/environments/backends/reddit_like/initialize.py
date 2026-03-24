@@ -4,8 +4,10 @@ Reddit uses subreddit membership instead of follow graphs.
 This initializer properly sets up subreddit subscriptions for agents.
 """
 
+from collections.abc import Mapping, Sequence
+from typing import Any
+
 from mastodon_sim.environments.gm.components.base import BackendInitializer
-from typing import Any, Mapping, Sequence
 
 
 class RedditSubredditInitializer(BackendInitializer):

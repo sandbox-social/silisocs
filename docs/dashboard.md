@@ -90,8 +90,8 @@ Runtime environment controls:
 Environment levers in expanders:
 
 - **GM Components**
-- Next-acting choice: `activity_markov`, `all_entities`, `fixed_order`
-- Observe choice: `timeline_every_turn`, `chunk_start_only`
+- Next-acting choice: `activity_markov`, `activity_probability`, `all_entities`, `fixed_order`
+- Observe choice: `timeline_every_turn`, `episode_only`
 - Resolve choice: `parsed_action`, `generic_action`, `tool_calling`
 - Initializer choice: `backend_default`
 - Optional custom class path override field for each GM slot
@@ -104,7 +104,7 @@ Environment levers in expanders:
 - Optional custom class path override for each policy slot
 
 - **Advanced GM Orchestration** (advanced mode only)
-- GM preset: `simple` or `shared_flow`
+- GM preset: `base` or `shared_flow`
 - YAML editor for `gm_orchestration` (multi-GM flow bindings)
 
 Social network controls (in the same Environment tab):

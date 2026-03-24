@@ -12,11 +12,12 @@ import abc
 import csv
 import json
 import logging
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Sequence
 
 from concordia.agents import entity_agent_with_logging
+
 from mastodon_sim.evaluations.probes.agent_speech import write_seed_toot
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,7 +36,8 @@ class SeedPostProvider(abc.ABC):
         Args:
             entities: List of agent entities to generate/load seed posts for.
 
-        Returns:
+        Returns
+        -------
             Dict mapping agent name -> seed post text.
         """
         ...
@@ -77,8 +79,7 @@ class LLMSeedPostProvider(SeedPostProvider):
             workers = min(len(llm_seed_agents), self.max_workers)
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 future_to_name = {
-                    executor.submit(write_seed_toot, a): a._agent_name
-                    for a in llm_seed_agents
+                    executor.submit(write_seed_toot, a): a._agent_name for a in llm_seed_agents
                 }
                 for future in as_completed(future_to_name):
                     name = future_to_name[future]
@@ -132,9 +133,8 @@ class CSVSeedPostProvider(SeedPostProvider):
 
         if path.suffix.lower() == ".json":
             return self._load_json(entities)
-        else:
-            # Default to CSV for .csv or unknown extensions
-            return self._load_csv(entities)
+        # Default to CSV for .csv or unknown extensions
+        return self._load_csv(entities)
 
     def _load_json(
         self,
@@ -148,16 +148,15 @@ class CSVSeedPostProvider(SeedPostProvider):
         agent_names = {agent._agent_name for agent in entities}
 
         try:
-            with open(self.file_path, "r", encoding="utf-8") as f:
+            with open(self.file_path, encoding="utf-8") as f:
                 data = json.load(f)
 
             if not isinstance(data, dict):
                 _LOGGER.warning(
-                    "JSON %s root must be an object. "
-                    "Agents will have no seed posts.",
-                    self.file_path
+                    "JSON %s root must be an object. Agents will have no seed posts.",
+                    self.file_path,
                 )
-                return {name: "" for name in agent_names}
+                return dict.fromkeys(agent_names, "")
 
             for agent_name in agent_names:
                 post = data.get(agent_name, "")
@@ -165,13 +164,13 @@ class CSVSeedPostProvider(SeedPostProvider):
 
         except FileNotFoundError:
             _LOGGER.error("Seed posts JSON not found: %s", self.file_path)
-            seed_posts = {name: "" for name in agent_names}
+            seed_posts = dict.fromkeys(agent_names, "")
         except json.JSONDecodeError as e:
             _LOGGER.exception("Error parsing JSON %s: %s", self.file_path, e)
-            seed_posts = {name: "" for name in agent_names}
+            seed_posts = dict.fromkeys(agent_names, "")
         except Exception as e:
             _LOGGER.exception("Error loading seed posts from JSON %s: %s", self.file_path, e)
-            seed_posts = {name: "" for name in agent_names}
+            seed_posts = dict.fromkeys(agent_names, "")
 
         # Ensure all agents have an entry
         for name in agent_names:
@@ -191,15 +190,14 @@ class CSVSeedPostProvider(SeedPostProvider):
         agent_names = {agent._agent_name for agent in entities}
 
         try:
-            with open(self.file_path, "r", encoding="utf-8") as f:
+            with open(self.file_path, encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 if reader.fieldnames is None or "previous_tweets" not in reader.fieldnames:
                     _LOGGER.warning(
-                        "CSV %s missing 'previous_tweets' column. "
-                        "Agents will have no seed posts.",
-                        self.file_path
+                        "CSV %s missing 'previous_tweets' column. Agents will have no seed posts.",
+                        self.file_path,
                     )
-                    return {name: "" for name in agent_names}
+                    return dict.fromkeys(agent_names, "")
 
                 for row in reader:
                     # Match by username or name column to agent names
@@ -224,22 +222,26 @@ class CSVSeedPostProvider(SeedPostProvider):
                         previous_tweets = ast.literal_eval(previous_tweets_str)
                         if isinstance(previous_tweets, list) and previous_tweets:
                             # Join multiple tweets with newlines, use first one if single
-                            seed_posts[agent_name] = previous_tweets[0] if len(previous_tweets) == 1 else "\n".join(previous_tweets)
+                            seed_posts[agent_name] = (
+                                previous_tweets[0]
+                                if len(previous_tweets) == 1
+                                else "\n".join(previous_tweets)
+                            )
                         else:
                             seed_posts[agent_name] = ""
                     except (ValueError, SyntaxError):
                         _LOGGER.warning(
                             "Failed to parse previous_tweets for %s: %s",
                             agent_name,
-                            previous_tweets_str
+                            previous_tweets_str,
                         )
                         seed_posts[agent_name] = ""
         except FileNotFoundError:
             _LOGGER.error("Seed posts CSV not found: %s", self.file_path)
-            seed_posts = {name: "" for name in agent_names}
+            seed_posts = dict.fromkeys(agent_names, "")
         except Exception as e:
             _LOGGER.exception("Error loading seed posts from CSV %s: %s", self.file_path, e)
-            seed_posts = {name: "" for name in agent_names}
+            seed_posts = dict.fromkeys(agent_names, "")
 
         # Ensure all agents have an entry
         for name in agent_names:
@@ -279,8 +281,7 @@ class FallbackSeedPostProvider(SeedPostProvider):
 
         # Identify agents needing LLM generation
         missing_agents = [
-            agent for agent in entities
-            if not seed_posts.get(agent._agent_name, "").strip()
+            agent for agent in entities if not seed_posts.get(agent._agent_name, "").strip()
         ]
 
         # Generate missing ones via LLM

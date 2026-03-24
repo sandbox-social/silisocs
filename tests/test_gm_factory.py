@@ -1,7 +1,6 @@
 """Unit tests for GameMasterFactory with flexible many-to-many routing."""
 
 import pytest
-from unittest.mock import MagicMock
 
 from mastodon_sim.environments.gm.gm_factory import GameMasterFactory
 
@@ -75,9 +74,9 @@ def test_factory_with_many_to_many_routing():
         "bob": ["bot"],
     }
     class_to_gms = {
-        "human": ["gm1", "gm2"],      # human class → 2 GMs
-        "verified": ["gm2", "gm3"],   # verified class → 2 GMs
-        "bot": ["gm3"],               # bot class → 1 GM
+        "human": ["gm1", "gm2"],  # human class → 2 GMs
+        "verified": ["gm2", "gm3"],  # verified class → 2 GMs
+        "bot": ["gm3"],  # bot class → 1 GM
     }
 
     factory = GameMasterFactory(config, agents, agent_to_classes, class_to_gms)
@@ -198,4 +197,3 @@ def test_factory_legacy_fallback():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

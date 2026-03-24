@@ -10,12 +10,13 @@ Setup:
     3. Run tests: pytest tests/test_e2e_multi_gm_llm.py -v -s
 """
 
-import os
 import json
-import urllib.request
-import urllib.error
-import pytest
 import logging
+import os
+import urllib.error
+import urllib.request
+
+import pytest
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ _LOGGER = logging.getLogger(__name__)
 class LLMTestHelper:
     """Helper for calling LLM server via OpenAI-compatible API."""
 
-    def __init__(self, base_url: str = None):
+    def __init__(self, base_url: str | None = None):
         self.base_url = base_url or os.getenv("LLM_SERVER_URL", "http://localhost:30000/v1")
 
     def call_llm(self, prompt: str, model: str = "qwen3.5-4b", max_tokens: int = 150) -> str:
@@ -40,23 +41,20 @@ class LLMTestHelper:
         try:
             req = urllib.request.Request(
                 url,
-                data=json.dumps(payload).encode('utf-8'),
-                headers={"Content-Type": "application/json"}
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
             )
 
             with urllib.request.urlopen(req, timeout=30) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                return result['choices'][0]['message']['content']
+                result = json.loads(response.read().decode("utf-8"))
+                return result["choices"][0]["message"]["content"]
         except urllib.error.URLError as e:
             pytest.skip(f"LLM server not available: {e}")
         except Exception as e:
             pytest.fail(f"LLM call failed: {e}")
 
 
-@pytest.mark.skipif(
-    not os.getenv("LLM_SERVER_URL"),
-    reason="LLM_SERVER_URL not set"
-)
+@pytest.mark.skipif(not os.getenv("LLM_SERVER_URL"), reason="LLM_SERVER_URL not set")
 class TestEndToEndWithLLM:
     """End-to-end tests using LLM reasoning."""
 
@@ -81,8 +79,14 @@ Format: ALICE → [GM list], BOT_C → [GM list]
         _LOGGER.info(f"LLM response: {content}")
 
         # Verify LLM understood the routing
-        assert ("GM_SOCIAL" in content or "gm_social" in content.lower() or "social" in content.lower())
-        assert ("GM_DETECTION" in content or "gm_detection" in content.lower() or "detection" in content.lower())
+        assert (
+            "GM_SOCIAL" in content or "gm_social" in content.lower() or "social" in content.lower()
+        )
+        assert (
+            "GM_DETECTION" in content
+            or "gm_detection" in content.lower()
+            or "detection" in content.lower()
+        )
 
     def test_llm_can_reason_about_flow_sequencing(self):
         """Test LLM can reason about agent flow sequencing within GMs."""

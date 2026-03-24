@@ -6,22 +6,21 @@ Similar to OASIS group polarization evaluation.
 """
 
 import json
-import sqlite3
 from pathlib import Path
-from typing import Dict, List
+
 import matplotlib.pyplot as plt
 
 
-def load_probe_responses(db_path: str) -> Dict[str, List[str]]:
+def load_probe_responses(db_path: str) -> dict[str, list[str]]:
     """Load probe responses from simulation database."""
     try:
-        with open(db_path / "probe_events.jsonl", 'r') as f:
+        with open(db_path / "probe_events.jsonl") as f:
             responses = {}
             for line in f:
                 event = json.loads(line)
-                if event.get('probe_name') == 'extremeness':
-                    agent_id = event.get('agent_id', 'unknown')
-                    response = event.get('response', '')
+                if event.get("probe_name") == "extremeness":
+                    agent_id = event.get("agent_id", "unknown")
+                    response = event.get("response", "")
                     if agent_id not in responses:
                         responses[agent_id] = []
                     responses[agent_id].append(response)
@@ -30,7 +29,7 @@ def load_probe_responses(db_path: str) -> Dict[str, List[str]]:
         return {}
 
 
-def analyze_polarization_trends(responses: Dict[str, List[str]]) -> Dict:
+def analyze_polarization_trends(responses: dict[str, list[str]]) -> dict:
     """
     Analyze polarization trends from responses.
 
@@ -44,8 +43,17 @@ def analyze_polarization_trends(responses: Dict[str, List[str]]) -> Dict:
         for response in agent_responses:
             # Simple heuristic: count polarizing keywords
             polarizing_words = [
-                'must', 'should', 'always', 'never', 'absolutely',
-                'idiots', 'crazy', 'worst', 'best', 'destroy', 'save'
+                "must",
+                "should",
+                "always",
+                "never",
+                "absolutely",
+                "idiots",
+                "crazy",
+                "worst",
+                "best",
+                "destroy",
+                "save",
             ]
 
             score = sum(1 for word in polarizing_words if word in response.lower())
@@ -55,7 +63,9 @@ def analyze_polarization_trends(responses: Dict[str, List[str]]) -> Dict:
         extremeness_scores.append(avg_agent_extremeness)
 
     return {
-        "mean_extremeness": sum(extremeness_scores) / len(extremeness_scores) if extremeness_scores else 0,
+        "mean_extremeness": sum(extremeness_scores) / len(extremeness_scores)
+        if extremeness_scores
+        else 0,
         "max_extremeness": max(extremeness_scores) if extremeness_scores else 0,
         "min_extremeness": min(extremeness_scores) if extremeness_scores else 0,
         "std_extremeness": 0,  # TODO: compute properly
@@ -88,14 +98,19 @@ def evaluate_polarization(output_dir: str) -> None:
     print(f"Total responses: {metrics['response_count']}")
 
     # Plot extremeness distribution
-    if metrics['agent_count'] > 0:
+    if metrics["agent_count"] > 0:
         fig, ax = plt.subplots(figsize=(10, 6))
 
         # Simulate distribution for visualization
-        scores = [metrics['mean_extremeness']] * max(1, metrics['agent_count'] // 2)
-        ax.hist(scores, bins=10, edgecolor='black', alpha=0.7, color='darkred')
-        ax.axvline(metrics['mean_extremeness'], color='red', linestyle='--',
-                   linewidth=2, label=f"Mean: {metrics['mean_extremeness']:.2f}")
+        scores = [metrics["mean_extremeness"]] * max(1, metrics["agent_count"] // 2)
+        ax.hist(scores, bins=10, edgecolor="black", alpha=0.7, color="darkred")
+        ax.axvline(
+            metrics["mean_extremeness"],
+            color="red",
+            linestyle="--",
+            linewidth=2,
+            label=f"Mean: {metrics['mean_extremeness']:.2f}",
+        )
         ax.set_xlabel("Opinion Extremeness Score")
         ax.set_ylabel("Number of Users")
         ax.set_title("Distribution of Opinion Extremeness")
@@ -109,12 +124,13 @@ def evaluate_polarization(output_dir: str) -> None:
 
     # Save metrics
     metrics_path = output_dir / "metrics.json"
-    with open(metrics_path, 'w') as f:
+    with open(metrics_path, "w") as f:
         json.dump(metrics, f, indent=2)
     print(f"Metrics saved to: {metrics_path}")
 
 
 if __name__ == "__main__":
     import sys
+
     output_dir = sys.argv[1] if len(sys.argv) > 1 else "results/plots"
     evaluate_polarization(output_dir)

@@ -549,13 +549,14 @@ class BaseAgentBuilder:
             path: Path to CSV file (can be absolute or relative to scenario)
             max_records: Maximum number of records to load
 
-        Returns:
+        Returns
+        -------
             List of record dictionaries (one per CSV row)
         """
         file_path = self._resolve_file_path(str(path))
         records: list[dict[str, Any]] = []
 
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for i, row in enumerate(reader):
                 if max_records and i >= max_records:
@@ -563,7 +564,6 @@ class BaseAgentBuilder:
                 records.append(dict(row))
 
         return records
-
 
     # ------------------------------------------------------------------ #
     # HuggingFace cache

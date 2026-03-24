@@ -31,7 +31,7 @@ _NETWORK_TYPES = ["barabasi_albert", "random", "lfr_benchmark"]
 _PROCESSING_MODES = ["raw", "formative"]
 _PERSONA_SOURCES = ["hf_dataset", "local_json", "inline", "config_path"]
 _GM_NEXT_ACTING_OPTIONS = ["activity_markov", "all_entities", "fixed_order"]
-_GM_OBSERVE_OPTIONS = ["timeline_every_turn", "chunk_start_only"]
+_GM_OBSERVE_OPTIONS = ["timeline_every_turn", "episode_only"]
 _GM_RESOLVE_OPTIONS = ["parsed_action", "generic_action", "tool_calling"]
 _GM_INITIALIZER_OPTIONS = ["backend_default"]
 _ENGINE_ACTION_LOOP_OPTIONS = ["single_action", "fixed_count", "open_ended"]
@@ -317,7 +317,9 @@ def _discover_entity_modules() -> list[str]:
     return modules
 
 
-def _save_scenario(name: str, scenario_data: dict, sim_data: dict, social_media_type: str, scenarios_root: Path) -> Path:
+def _save_scenario(
+    name: str, scenario_data: dict, sim_data: dict, social_media_type: str, scenarios_root: Path
+) -> Path:
     """Save full scenario config to scenarios/<name>/conf/.
 
     Saves three files:
@@ -334,7 +336,9 @@ def _save_scenario(name: str, scenario_data: dict, sim_data: dict, social_media_
     scenario_dir.mkdir(parents=True, exist_ok=True)
     scenario_file = scenario_dir / f"{name}.yaml"
     header = "# @package scenario\n\n"
-    yaml_content = yaml.dump(scenario_data, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    yaml_content = yaml.dump(
+        scenario_data, default_flow_style=False, sort_keys=False, allow_unicode=True
+    )
     scenario_file.write_text(header + yaml_content)
 
     # Save sim.yaml if any params are specified (only non-default/non-null values)
@@ -344,7 +348,9 @@ def _save_scenario(name: str, scenario_data: dict, sim_data: dict, social_media_
         # Only include non-null, non-false, non-default values
         sim_filtered = {k: v for k, v in sim_data.items() if v is not None and v is not False}
         if sim_filtered:
-            sim_yaml_content = yaml.dump(sim_filtered, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            sim_yaml_content = yaml.dump(
+                sim_filtered, default_flow_style=False, sort_keys=False, allow_unicode=True
+            )
             sim_file.write_text(sim_header + sim_yaml_content)
 
     # Save social_media.yaml if it's not the default
@@ -354,8 +360,9 @@ def _save_scenario(name: str, scenario_data: dict, sim_data: dict, social_media_
         social_file = social_dir / f"{social_media_type}.yaml"
         social_header = "# @package social_media\n\n"
         # Minimal override: just platform_type
-        social_yaml_content = yaml.dump({"platform_type": social_media_type},
-                                       default_flow_style=False, sort_keys=False)
+        social_yaml_content = yaml.dump(
+            {"platform_type": social_media_type}, default_flow_style=False, sort_keys=False
+        )
         social_file.write_text(social_header + social_yaml_content)
 
     return scenario_file
@@ -715,7 +722,9 @@ with st.sidebar:
             # Create from selected preset default.
             default_cfg = _load_yaml(_CONF_DIR / f"{selected_preset}" / "scenario" / "default.yaml")
             default_cfg["scenario_name"] = clean_name
-            save_path = _save_scenario(clean_name, default_cfg, {}, "twitter_like", selected_scenarios_root)
+            save_path = _save_scenario(
+                clean_name, default_cfg, {}, "twitter_like", selected_scenarios_root
+            )
             st.success(f"Created: `{save_path}`")
             st.rerun()
         else:
@@ -886,14 +895,18 @@ with tab_sim:
                 help="Use flow-aware engine with per-flow policies (flow_policies, flow_routing).",
             )
         with mf2:
-            st.markdown("**When enabled together**: GM routes agents to flows → Engine enforces flow policies")
+            st.markdown(
+                "**When enabled together**: GM routes agents to flows → Engine enforces flow policies"
+            )
 
         # Multi-GM orchestration (gm_orchestration block)
         st.markdown("**GM Orchestration** (advanced: multiple GMs managing different aspects)")
         gm_orch_default = _sim_defaults.get("gm_orchestration", {})
         gm_orch_yaml = st.text_area(
             "gm_orchestration (YAML)",
-            value=yaml.dump(gm_orch_default, default_flow_style=False) if gm_orch_default else "gms: []\nflow_bindings:\n  flow_to_gm: {}\n  flow_to_gms: {}",
+            value=yaml.dump(gm_orch_default, default_flow_style=False)
+            if gm_orch_default
+            else "gms: []\nflow_bindings:\n  flow_to_gm: {}\n  flow_to_gms: {}",
             key="gm_orchestration_yaml",
             height=200,
             help="Define multiple GMs and their flow assignments. Leave empty to disable.",
@@ -1300,13 +1313,24 @@ with tab_env:
 
     # Define available strategies per platform
     timeline_strategies_by_platform = {
-        "twitter_like": ["follower_chronological", "pure_recsys", "hybrid_recsys_follower", "curated_global"],
+        "twitter_like": [
+            "follower_chronological",
+            "pure_recsys",
+            "hybrid_recsys_follower",
+            "curated_global",
+        ],
         "reddit_like": ["follower_chronological", "pure_recsys", "hybrid_recsys_follower"],
         "mastodon": ["follower_chronological"],  # Mastodon always uses server feed
     }
 
-    available_strategies = timeline_strategies_by_platform.get(selected_platform_for_actions, ["follower_chronological"])
-    strategy_idx = available_strategies.index(timeline_strategy_default) if timeline_strategy_default in available_strategies else 0
+    available_strategies = timeline_strategies_by_platform.get(
+        selected_platform_for_actions, ["follower_chronological"]
+    )
+    strategy_idx = (
+        available_strategies.index(timeline_strategy_default)
+        if timeline_strategy_default in available_strategies
+        else 0
+    )
 
     selected_timeline_strategy = st.selectbox(
         "Timeline strategy",
@@ -1327,7 +1351,8 @@ with tab_env:
         with tc_col1:
             recsys_ratio = st.slider(
                 "Recommendation ratio",
-                0.0, 1.0,
+                0.0,
+                1.0,
                 float(timeline_config_default.get("recsys_ratio", 0.6)),
                 0.1,
                 key="timeline_recsys_ratio",
@@ -1572,16 +1597,37 @@ with tab_env:
             )
 
     # NEW: Recommendation System Configuration
-    with st.expander("Recommendation System (Recsys)", expanded=(_selected_preset_for_defaults == "oasis")):
+    with st.expander(
+        "Recommendation System (Recsys)", expanded=(_selected_preset_for_defaults == "oasis")
+    ):
         st.markdown("**OASIS-Compatible Recommendation Engine**")
-        st.caption("Central batch recommendation algorithm with embedding caching and lazy evaluation.")
+        st.caption(
+            "Central batch recommendation algorithm with embedding caching and lazy evaluation."
+        )
 
-        # Get current recsys config
-        recsys_cfg = _sim_defaults.get("engine", {}).get("recsys", {}) if isinstance(_sim_defaults.get("engine", {}), dict) else {}
+        recommend_cfg = (
+            _sim_defaults.get("gm", {}).get("components", {}).get("recommend", {})
+            if isinstance(_sim_defaults.get("gm", {}), dict)
+            else {}
+        )
+        recommend_params = (
+            recommend_cfg.get("params", {}) if isinstance(recommend_cfg, dict) else {}
+        )
+        observe_cfg = (
+            _sim_defaults.get("gm", {}).get("components", {}).get("observe", {})
+            if isinstance(_sim_defaults.get("gm", {}), dict)
+            else {}
+        )
+        observe_flows = observe_cfg.get("flows", {}) if isinstance(observe_cfg, dict) else {}
+        recommend_flows = recommend_cfg.get("flows", {}) if isinstance(recommend_cfg, dict) else {}
+        flow_defaults = observe_flows or recommend_flows
 
         rc1, rc2, rc3 = st.columns(3)
         with rc1:
-            recsys_enabled = recsys_cfg.get("enabled", True) if isinstance(recsys_cfg, dict) else True
+            recsys_enabled = (
+                _sim_defaults.get("timeline_strategy", "follower_chronological")
+                != "follower_chronological"
+            )
             st.checkbox(
                 "Enable recommendations",
                 value=recsys_enabled,
@@ -1590,12 +1636,27 @@ with tab_env:
             )
 
         with rc2:
-            recsys_type_default = recsys_cfg.get("type", "reddit") if isinstance(recsys_cfg, dict) else "reddit"
+            recsys_type_default = "reddit"
+            if isinstance(flow_defaults, dict):
+                recsys_type_default = (
+                    flow_defaults.get("default", {}).get("recsys_type")
+                    or next(
+                        (
+                            cfg.get("recsys_type")
+                            for cfg in flow_defaults.values()
+                            if isinstance(cfg, dict) and cfg.get("recsys_type")
+                        ),
+                        None,
+                    )
+                    or recsys_type_default
+                )
             _RECSYS_TYPES = ["reddit", "twitter", "twhin"]
             st.selectbox(
                 "Algorithm type",
                 _RECSYS_TYPES,
-                index=_RECSYS_TYPES.index(recsys_type_default) if recsys_type_default in _RECSYS_TYPES else 0,
+                index=_RECSYS_TYPES.index(recsys_type_default)
+                if recsys_type_default in _RECSYS_TYPES
+                else 0,
                 key="engine_recsys_type",
                 help=(
                     "reddit: Hot-score (engagement+recency) | "
@@ -1627,7 +1688,6 @@ with tab_env:
 
         st.divider()
 
-        recsys_params = recsys_cfg.get("params", {}) if isinstance(recsys_cfg, dict) else {}
         rp1, rp2, rp3 = st.columns(3)
 
         with rp1:
@@ -1635,7 +1695,7 @@ with tab_env:
                 "Max recommended posts",
                 min_value=1,
                 max_value=50,
-                value=max(1, _as_int(recsys_params.get("max_rec_posts", 10), 10)),
+                value=max(1, _as_int(recommend_params.get("max_posts", 10), 10)),
                 key="engine_recsys_max_rec_posts",
                 help="Number of posts to recommend to each agent",
             )
@@ -1645,7 +1705,7 @@ with tab_env:
                 "Update every N steps",
                 min_value=1,
                 max_value=100,
-                value=max(1, _as_int(recsys_params.get("update_every_n_steps", 1), 1)),
+                value=max(1, _as_int(recommend_params.get("update_every_n_steps", 1), 1)),
                 key="engine_recsys_update_every_n_steps",
                 help="Frequency of recomputing recommendations (1=every step)",
             )
@@ -1933,7 +1993,9 @@ with tab_launch:
         "observation_history": st.session_state.get("observation_history", 100),
         "seed_posts.type": st.session_state.get("seed_posts_type", "llm"),
         "seed_posts.params.file_path": (
-            st.session_state.get("seed_posts_file") if st.session_state.get("seed_posts_file") else None
+            st.session_state.get("seed_posts_file")
+            if st.session_state.get("seed_posts_file")
+            else None
         ),
         "disable_language_model": st.session_state.get("disable_language_model", False),
         "gm_orchestration": st.session_state.get("gm_orchestration_yaml_parsed", {}),
@@ -2062,21 +2124,37 @@ with tab_launch:
             sim_data_to_save = {}
             for key in [
                 # Core sim params
-                "num_agents", "num_steps", "llm_name", "run_name", "seed",
-                "action_mode", "memory_backend", "disable_language_model",
+                "num_agents",
+                "num_steps",
+                "llm_name",
+                "run_name",
+                "seed",
+                "action_mode",
+                "memory_backend",
+                "disable_language_model",
                 # Multi-flow/orchestration flags
-                "enable_gm_multi_flow", "enable_engine_multi_flow",
+                "enable_gm_multi_flow",
+                "enable_engine_multi_flow",
                 # Timeline and recommendations
-                "timeline_posts", "timeline_strategy", "observation_history",
+                "timeline_posts",
+                "timeline_strategy",
+                "observation_history",
                 # Seed posts
-                "seed_posts.type", "seed_posts.params.file_path",
+                "seed_posts.type",
+                "seed_posts.params.file_path",
                 # Advanced: enabled actions, checkpoint config
-                "enabled_actions", "write_html_log",
+                "enabled_actions",
+                "write_html_log",
                 # GM components (if customized from defaults)
-                "gm.preset", "gm.components.next_acting.built_in", "gm.components.observe.built_in",
-                "gm.components.resolve.built_in", "gm.components.initializer.built_in",
+                "gm.preset",
+                "gm.components.next_acting.built_in",
+                "gm.components.observe.built_in",
+                "gm.components.resolve.built_in",
+                "gm.components.initializer.built_in",
                 # Engine action loop and probe schedule
-                "engine.preset", "engine.action_loop.built_in", "engine.probe_schedule.built_in",
+                "engine.preset",
+                "engine.action_loop.built_in",
+                "engine.probe_schedule.built_in",
             ]:
                 session_key = key.replace(".", "_")
                 val = st.session_state.get(session_key, None)
@@ -2090,12 +2168,16 @@ with tab_launch:
 
             # Also include gm_orchestration if it has content
             if st.session_state.get("gm_orchestration_yaml_parsed"):
-                sim_data_to_save["gm_orchestration"] = st.session_state.get("gm_orchestration_yaml_parsed")
+                sim_data_to_save["gm_orchestration"] = st.session_state.get(
+                    "gm_orchestration_yaml_parsed"
+                )
 
             selected_platform = st.session_state.get("platform_type", "twitter_like")
-            save_path = _save_scenario(name, scenario_data, sim_data_to_save, selected_platform, loaded_scenarios_root)
+            save_path = _save_scenario(
+                name, scenario_data, sim_data_to_save, selected_platform, loaded_scenarios_root
+            )
             st.success(f"Saved: `{save_path}`")
-            st.info("Scenario config files created in `scenarios/{0}/conf/`".format(name))
+            st.info(f"Scenario config files created in `scenarios/{name}/conf/`")
             st.rerun()
 
     with btn2:
@@ -2122,21 +2204,37 @@ with tab_launch:
         sim_data_to_save = {}
         for key in [
             # Core sim params
-            "num_agents", "num_steps", "llm_name", "run_name", "seed",
-            "action_mode", "memory_backend", "disable_language_model",
+            "num_agents",
+            "num_steps",
+            "llm_name",
+            "run_name",
+            "seed",
+            "action_mode",
+            "memory_backend",
+            "disable_language_model",
             # Multi-flow/orchestration flags
-            "enable_gm_multi_flow", "enable_engine_multi_flow",
+            "enable_gm_multi_flow",
+            "enable_engine_multi_flow",
             # Timeline and recommendations
-            "timeline_posts", "timeline_strategy", "observation_history",
+            "timeline_posts",
+            "timeline_strategy",
+            "observation_history",
             # Seed posts
-            "seed_posts.type", "seed_posts.params.file_path",
+            "seed_posts.type",
+            "seed_posts.params.file_path",
             # Advanced: enabled actions, checkpoint config
-            "enabled_actions", "write_html_log",
+            "enabled_actions",
+            "write_html_log",
             # GM components (if customized from defaults)
-            "gm.preset", "gm.components.next_acting.built_in", "gm.components.observe.built_in",
-            "gm.components.resolve.built_in", "gm.components.initializer.built_in",
+            "gm.preset",
+            "gm.components.next_acting.built_in",
+            "gm.components.observe.built_in",
+            "gm.components.resolve.built_in",
+            "gm.components.initializer.built_in",
             # Engine action loop and probe schedule
-            "engine.preset", "engine.action_loop.built_in", "engine.probe_schedule.built_in",
+            "engine.preset",
+            "engine.action_loop.built_in",
+            "engine.probe_schedule.built_in",
         ]:
             session_key = key.replace(".", "_")
             val = st.session_state.get(session_key, None)
@@ -2150,10 +2248,14 @@ with tab_launch:
 
         # Also include gm_orchestration if it has content
         if st.session_state.get("gm_orchestration_yaml_parsed"):
-            sim_data_to_save["gm_orchestration"] = st.session_state.get("gm_orchestration_yaml_parsed")
+            sim_data_to_save["gm_orchestration"] = st.session_state.get(
+                "gm_orchestration_yaml_parsed"
+            )
 
         selected_platform = st.session_state.get("platform_type", "twitter_like")
-        _save_scenario(name, scenario_data, sim_data_to_save, selected_platform, loaded_scenarios_root)
+        _save_scenario(
+            name, scenario_data, sim_data_to_save, selected_platform, loaded_scenarios_root
+        )
 
         with status_placeholder.container():
             st.info("Launching simulation...")

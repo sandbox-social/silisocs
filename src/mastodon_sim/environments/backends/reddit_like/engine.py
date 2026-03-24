@@ -9,8 +9,6 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
-import json
-from pathlib import Path
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -80,6 +78,8 @@ class Comment:
 
 
 class RedditLikePlatform:
+    SUPPORTED_RECSYS_TYPES = frozenset({"reddit", "twhin"})
+
     def __init__(self, db_path: str = "reddit_like.db", use_queue: bool = True):
         self.db_path = db_path
         self._init_db()
@@ -244,10 +244,21 @@ class RedditLikePlatform:
     def _init_oasis_schema(self, conn: sqlite3.Connection) -> None:
         """Initialize optional OASIS extension schema.
 
-        Base Reddit-like simulations do not depend on extra OASIS-only tables,
-        so this hook is intentionally a no-op for compatibility.
+        Recommendation-driven timelines rely on this table at runtime.
         """
-        del conn
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS recommendations (
+                user_id INTEGER NOT NULL,
+                post_id INTEGER NOT NULL,
+                recsys_type TEXT NOT NULL,
+                PRIMARY KEY (user_id, post_id, recsys_type),
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(post_id) REFERENCES posts(id)
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_recommendations_user_type ON recommendations(user_id, recsys_type)"
+        )
 
     def shutdown(self):
         """Clean shutdown of the writer thread."""
@@ -904,6 +915,7 @@ class RedditLikePlatform:
         strategy: str,
         username: str,
         limit: int = 10,
+        recsys_type: str | None = None,
         **timeline_config: Any,
     ) -> list[dict]:
         """Get timeline using specified strategy.
@@ -912,20 +924,22 @@ class RedditLikePlatform:
             strategy: Timeline strategy name (see TIMELINE_STRATEGIES)
             username: User to get timeline for
             limit: Total posts to return
+            recsys_type: Optional recommendation algorithm override.
             **timeline_config: Strategy-specific config (e.g., recsys_ratio, follower_ratio)
 
-        Returns:
+        Returns
+        -------
             List of posts ordered by strategy
         """
         if strategy == "follower_chronological":
             feed = self.get_feed("home", username, limit)
             return feed.get("posts", []) if feed else []
 
-        elif strategy == "pure_recsys":
+        if strategy == "pure_recsys":
             # Pure recommendations only
-            return self.get_recommendations(username, limit)
+            return self.get_recommendations(username, limit, recsys_type=recsys_type)
 
-        elif strategy == "hybrid_recsys_follower":
+        if strategy == "hybrid_recsys_follower":
             # Blend recommendations and home feed with configurable ratio
             recsys_ratio = timeline_config.get("recsys_ratio", 0.6)
             follower_ratio = timeline_config.get("follower_ratio", 0.4)
@@ -933,7 +947,11 @@ class RedditLikePlatform:
             rec_count = max(1, int(limit * recsys_ratio))
             home_count = max(1, int(limit * follower_ratio))
 
-            rec_posts = self.get_recommendations(username, rec_count)
+            rec_posts = self.get_recommendations(
+                username,
+                rec_count,
+                recsys_type=recsys_type,
+            )
             home_feed = self.get_feed("home", username, home_count)
             home_posts = home_feed.get("posts", []) if home_feed else []
 
@@ -942,7 +960,7 @@ class RedditLikePlatform:
             combined = []
 
             # Add recsys first (higher priority)
-            for post in (rec_posts or []):
+            for post in rec_posts or []:
                 post_id = post.get("id", post.get("post_id"))
                 if post_id not in seen_ids:
                     combined.append(post)
@@ -957,10 +975,11 @@ class RedditLikePlatform:
 
             return combined[:limit]
 
-        else:
-            # Fallback: use follower_chronological
-            logger.warning(f"Unknown timeline strategy '{strategy}', falling back to follower_chronological")
-            return self.get_timeline("follower_chronological", username, limit, **timeline_config)
+        # Fallback: use follower_chronological
+        logger.warning(
+            f"Unknown timeline strategy '{strategy}', falling back to follower_chronological"
+        )
+        return self.get_timeline("follower_chronological", username, limit, **timeline_config)
 
     # ================================================================ #
     # OASIS-Compatible Extended Methods (mirrored from Twitter)
@@ -1141,7 +1160,8 @@ class RedditLikePlatform:
         try:
             with self.get_connection() as conn:
                 cutoff = time.time() - (days * 86400)
-                cursor = conn.execute("""
+                cursor = conn.execute(
+                    """
                     SELECT p.*, u.username,
                            (p.upvotes + p.comment_count) as engagement
                     FROM posts p
@@ -1149,21 +1169,25 @@ class RedditLikePlatform:
                     WHERE p.created_at > ?
                     ORDER BY engagement DESC, p.created_at DESC
                     LIMIT ?
-                """, (cutoff, limit))
+                """,
+                    (cutoff, limit),
+                )
 
                 posts = []
                 for row in cursor.fetchall():
-                    posts.append({
-                        "id": row[0],
-                        "user_id": row[1],
-                        "title": row[3],
-                        "content": row[4],
-                        "created_at": row[5],
-                        "upvotes": row[6],
-                        "downvotes": row[7],
-                        "username": row[-2],
-                        "engagement_score": row[-1],
-                    })
+                    posts.append(
+                        {
+                            "id": row[0],
+                            "user_id": row[1],
+                            "title": row[3],
+                            "content": row[4],
+                            "created_at": row[5],
+                            "upvotes": row[6],
+                            "downvotes": row[7],
+                            "username": row[-2],
+                            "engagement_score": row[-1],
+                        }
+                    )
                 return posts
         except Exception as e:
             logger.error(f"Error getting trending posts: {e}")
@@ -1177,9 +1201,16 @@ class RedditLikePlatform:
         """Initialize recommendation system for a specific algorithm type.
 
         Args:
-            recsys_type: Algorithm type ("reddit", "twitter", or "twhin")
+            recsys_type: Algorithm type ("reddit" or "twhin")
                         Can be called multiple times to enable multiple algorithms simultaneously.
         """
+        recsys_type = str(recsys_type or "").strip().lower()
+        if recsys_type not in self.SUPPORTED_RECSYS_TYPES:
+            raise ValueError(
+                "Unsupported recsys_type for Reddit-like backend: "
+                f"'{recsys_type}'. Supported: {sorted(self.SUPPORTED_RECSYS_TYPES)}"
+            )
+
         # Initialize dict on first call
         if not hasattr(self, "_recsys_types"):
             self._recsys_types: dict[str, dict] = {}
@@ -1192,22 +1223,28 @@ class RedditLikePlatform:
         }
 
         # Load embedding model if needed
-        if recsys_type in ("twitter", "twhin"):
+        if recsys_type == "twhin":
             try:
                 from sentence_transformers import SentenceTransformer
-                model_name = "paraphrase-MiniLM-L6-v2" if recsys_type == "twitter" else "sentence-transformers/Twitter-roBERTa-base"
+
+                model_name = "sentence-transformers/Twitter-roBERTa-base"
                 model = SentenceTransformer(model_name)
                 self._recsys_types[recsys_type]["model"] = model
                 logger.info(f"Loaded {recsys_type} recsys model")
             except ImportError:
-                logger.warning(f"sentence-transformers not available for {recsys_type}, embeddings disabled for this type")
+                logger.warning(
+                    f"sentence-transformers not available for {recsys_type}, embeddings disabled for this type"
+                )
                 self._recsys_types[recsys_type]["model"] = None
 
-        logger.info(f"Initialized recsys type '{recsys_type}'. Active types: {list(self._recsys_types.keys())}")
+        logger.info(
+            f"Initialized recsys type '{recsys_type}'. Active types: {list(self._recsys_types.keys())}"
+        )
 
     def reddit_hot_score(self, upvotes: int, downvotes: int, created_at: float) -> float:
         """Reddit hot-score algorithm."""
         import math
+
         score = upvotes - downvotes
         now = time.time()
         age_seconds = now - created_at
@@ -1217,7 +1254,9 @@ class RedditLikePlatform:
 
         return sign * order + (age_seconds / 45000)
 
-    def update_recommendations(self, active_user_ids: list[int] | None = None, max_posts: int = 10) -> None:
+    def update_recommendations(
+        self, active_user_ids: list[int] | None = None, max_posts: int = 10
+    ) -> None:
         """Update recommendations for all initialized algorithm types.
 
         Args:
@@ -1236,17 +1275,32 @@ class RedditLikePlatform:
                 # Get users
                 if active_user_ids:
                     placeholders = ",".join("?" * len(active_user_ids))
-                    cursor = conn.execute(f"SELECT id, username, bio FROM users WHERE id IN ({placeholders})", active_user_ids)
+                    cursor = conn.execute(
+                        f"SELECT id, username, bio FROM users WHERE id IN ({placeholders})",
+                        active_user_ids,
+                    )
                 else:
                     cursor = conn.execute("SELECT id, username, bio FROM users")
 
-                users = [{"id": r[0], "username": r[1], "bio": r[2] or ""} for r in cursor.fetchall()]
+                users = [
+                    {"id": r[0], "username": r[1], "bio": r[2] or ""} for r in cursor.fetchall()
+                ]
 
                 # Get recent posts
                 cursor = conn.execute(
                     "SELECT id, user_id, content, created_at, upvotes, downvotes FROM posts ORDER BY created_at DESC LIMIT 1000"
                 )
-                posts = [{"id": r[0], "user_id": r[1], "content": r[2], "created_at": r[3], "upvotes": r[4], "downvotes": r[5]} for r in cursor.fetchall()]
+                posts = [
+                    {
+                        "id": r[0],
+                        "user_id": r[1],
+                        "content": r[2],
+                        "created_at": r[3],
+                        "upvotes": r[4],
+                        "downvotes": r[5],
+                    }
+                    for r in cursor.fetchall()
+                ]
 
                 if not users or not posts:
                     logger.debug("No users or posts found; skipping recommendations update")
@@ -1261,7 +1315,7 @@ class RedditLikePlatform:
 
                     if recsys_type == "reddit":
                         rec_matrix = self._rec_reddit(users, posts, max_posts)
-                    elif recsys_type in ("twitter", "twhin"):
+                    elif recsys_type == "twhin":
                         # Pass the model state for this algorithm type
                         rec_matrix = self._rec_embedding(users, posts, max_posts, state)
                     else:
@@ -1276,10 +1330,14 @@ class RedditLikePlatform:
                                 (user_id, post_id, recsys_type),
                             )
 
-                    logger.info(f"Updated {recsys_type} recommendations for {len(rec_matrix)} users")
+                    logger.info(
+                        f"Updated {recsys_type} recommendations for {len(rec_matrix)} users"
+                    )
 
                 conn.commit()
-                logger.info(f"Recommendations update complete for {len(self._recsys_types)} algorithm types")
+                logger.info(
+                    f"Recommendations update complete for {len(self._recsys_types)} algorithm types"
+                )
         except Exception as e:
             logger.error(f"Error updating recommendations: {e}", exc_info=True)
 
@@ -1287,19 +1345,23 @@ class RedditLikePlatform:
         """Reddit hot-score recommendations."""
         rec_matrix = {}
         for user in users:
-            user_id = user['id']
+            user_id = user["id"]
             scored = []
             for post in posts:
-                if post['user_id'] != user_id:
-                    score = self.reddit_hot_score(post['upvotes'], post['downvotes'], post['created_at'])
-                    scored.append((post['id'], score))
+                if post["user_id"] != user_id:
+                    score = self.reddit_hot_score(
+                        post["upvotes"], post["downvotes"], post["created_at"]
+                    )
+                    scored.append((post["id"], score))
 
             scored.sort(key=lambda x: x[1], reverse=True)
             rec_matrix[user_id] = [p[0] for p in scored[:max_posts]]
 
         return rec_matrix
 
-    def _rec_embedding(self, users: list, posts: list, max_posts: int, recsys_state: dict | None = None) -> dict:
+    def _rec_embedding(
+        self, users: list, posts: list, max_posts: int, recsys_state: dict | None = None
+    ) -> dict:
         """Embedding-based recommendations.
 
         Args:
@@ -1344,6 +1406,7 @@ class RedditLikePlatform:
 
                 # Compute similarities
                 import torch
+
                 sims = torch.nn.functional.cosine_similarity(user_emb.unsqueeze(0), post_embeddings)
 
                 # Score posts
@@ -1360,7 +1423,12 @@ class RedditLikePlatform:
             logger.error(f"Error in embedding recsys: {e}", exc_info=True)
             return {}
 
-    def get_recommendations(self, username: str, limit: int = 10) -> list[dict]:
+    def get_recommendations(
+        self,
+        username: str,
+        limit: int = 10,
+        recsys_type: str | None = None,
+    ) -> list[dict]:
         """Get recommended posts for a user."""
         try:
             with self.get_connection() as conn:
@@ -1368,14 +1436,30 @@ class RedditLikePlatform:
                 if not user_id:
                     return []
 
-                cursor = conn.execute("""
-                    SELECT p.*, u.username
-                    FROM recommendations r
-                    JOIN posts p ON r.post_id = p.id
-                    JOIN users u ON p.user_id = u.id
-                    WHERE r.user_id = ?
-                    LIMIT ?
-                """, (user_id, limit))
+                if recsys_type:
+                    cursor = conn.execute(
+                        """
+                        SELECT p.*, u.username
+                        FROM recommendations r
+                        JOIN posts p ON r.post_id = p.id
+                        JOIN users u ON p.user_id = u.id
+                        WHERE r.user_id = ? AND r.recsys_type = ?
+                        LIMIT ?
+                        """,
+                        (user_id, recsys_type, limit),
+                    )
+                else:
+                    cursor = conn.execute(
+                        """
+                        SELECT p.*, u.username
+                        FROM recommendations r
+                        JOIN posts p ON r.post_id = p.id
+                        JOIN users u ON p.user_id = u.id
+                        WHERE r.user_id = ?
+                        LIMIT ?
+                        """,
+                        (user_id, limit),
+                    )
 
                 return [dict(r) for r in cursor.fetchall()]
         except Exception as e:

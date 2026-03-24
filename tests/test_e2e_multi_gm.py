@@ -9,17 +9,11 @@ For LLM tests, set environment variable:
 LLM tests will be skipped if the server is not available.
 """
 
-import os
-import pytest
-import json
-import urllib.request
-import urllib.error
-from unittest.mock import MagicMock, patch, Mock
+import logging
 from collections.abc import Sequence
 from typing import Any
 
-from omegaconf import OmegaConf
-import logging
+import pytest
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,6 +21,7 @@ _LOGGER = logging.getLogger(__name__)
 # ============================================================================
 # Test Fixtures
 # ============================================================================
+
 
 class MockEntity:
     """Mock entity that mimics concordia EntityAgentWithLogging."""
@@ -37,8 +32,8 @@ class MockEntity:
             self.agent_classes = [agent_class]
         else:
             self.agent_classes = agent_class
-        self.state = {}
-        self.memory = []
+        self.state: dict[str, Any] = {}
+        self.memory: list[str] = []
 
     def __repr__(self):
         return f"MockEntity({self.name})"
@@ -50,13 +45,12 @@ class MockComponent:
     def __init__(self, name: str):
         self.name = name
         self.multi_field_values: dict[str, dict[str, Any]] = {}
-        self.called_with: list[str] = []
+        self.call_history: list[str] = []
 
-    def set_multi_field_values(self, entity_field_map):
+    def set_multi_field_values(self, entity_field_map: dict[str, dict[str, Any]]) -> None:
         self.multi_field_values = entity_field_map
 
-    def get_field_for_entity(self, field_name: str, entity_name: str | None = None,
-                            default=None):
+    def get_field_for_entity(self, field_name: str, entity_name: str | None = None, default=None):
         if not entity_name:
             return default
         if entity_name in self.multi_field_values:
@@ -65,7 +59,7 @@ class MockComponent:
 
     def act(self, entity_name: str):
         """Simulate component action."""
-        self.called_with.append(entity_name)
+        self.call_history.append(entity_name)
         field_value = self.get_field_for_entity("test_field", entity_name, "default")
         return f"Action by {entity_name} with {field_value}"
 
@@ -76,7 +70,7 @@ class MockGameMaster:
     def __init__(self, name: str, entities: Sequence[MockEntity]):
         self.name = name
         self.entities = entities
-        self.components = {}
+        self.components: dict[str, MockComponent] = {}
 
     def add_component(self, component_name: str, component: MockComponent):
         self.components[component_name] = component
@@ -89,6 +83,7 @@ class MockGameMaster:
 # ============================================================================
 # Integration Tests: Component Multi-Field Integration
 # ============================================================================
+
 
 class TestComponentMultiFieldIntegration:
     """Integration tests for components with multi-field support."""
@@ -110,16 +105,18 @@ class TestComponentMultiFieldIntegration:
     def test_component_acts_with_entity_fields(self):
         """Test component uses entity-specific fields during action."""
         component = MockComponent("observe")
-        component.set_multi_field_values({
-            "alice": {"test_field": "strict"},
-            "bob": {"test_field": "lenient"},
-        })
+        component.set_multi_field_values(
+            {
+                "alice": {"test_field": "strict"},
+                "bob": {"test_field": "lenient"},
+            }
+        )
 
         alice_result = component.act("alice")
         bob_result = component.act("bob")
 
-        assert "alice" in component.called_with
-        assert "bob" in component.called_with
+        assert "alice" in component.call_history
+        assert "bob" in component.call_history
         assert "strict" in alice_result
         assert "lenient" in bob_result
 
@@ -135,6 +132,7 @@ class TestComponentMultiFieldIntegration:
 # ============================================================================
 # Integration Tests: GM Factory and Routing
 # ============================================================================
+
 
 class TestGameMasterFactoryIntegration:
     """Integration tests for GameMasterFactory."""
@@ -190,7 +188,7 @@ class TestGameMasterFactoryIntegration:
             "gm_configs": {
                 "gm1": {},
                 "gm2": {},
-            }
+            },
         }
         agent_to_classes = {
             "alice": ["human", "active"],
@@ -220,6 +218,7 @@ class TestGameMasterFactoryIntegration:
 # Integration Tests: Orchestration Scenarios
 # ============================================================================
 
+
 class TestOrchestrationScenarios:
     """Integration tests for realistic orchestration scenarios."""
 
@@ -241,10 +240,10 @@ class TestOrchestrationScenarios:
                 comp.act(entity.name)
 
         # Verify both entities acted through both components
-        assert "alice" in components["observe"].called_with
-        assert "bob" in components["observe"].called_with
-        assert "alice" in components["resolve"].called_with
-        assert "bob" in components["resolve"].called_with
+        assert "alice" in components["observe"].call_history
+        assert "bob" in components["observe"].call_history
+        assert "alice" in components["resolve"].call_history
+        assert "bob" in components["resolve"].call_history
 
     def test_multi_gm_bot_detection_scenario(self):
         """Test realistic bot detection scenario with multiple GMs."""
@@ -310,6 +309,7 @@ class TestOrchestrationScenarios:
 # ============================================================================
 # Test Suite Summary
 # ============================================================================
+
 
 class TestSuite:
     """Summary of all test coverage."""

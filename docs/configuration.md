@@ -51,7 +51,8 @@ uv run mastodon-sim social_media=reddit_like scenario=my_scenario
 | `gm.components.*` | *(slots)* | YAML-selectable GM components (`next_acting`, `observe`, `resolve`, `initializer`, `recommend`) |
 | `engine.preset` | `base` | Engine preset: `base` (default, simple scheduling) or `flow` (flow-aware). Auto-selected by `enable_engine_multi_flow` if not set. |
 | `timeline_posts` | `10` | Number of posts shown in agent timeline |
-| `timeline_strategy` | `follower_chronological` | Timeline algorithm: `follower_chronological`, `pure_recsys`, `hybrid_recsys_follower`, `curated_global` |
+| `timeline_mode` | `hybrid_recsys_follower` | Canonical timeline selector: `follower_chronological`, `pure_recsys`, `hybrid_recsys_follower`, `curated_global` |
+| `timeline_strategy` | `${sim.timeline_mode}` | Legacy alias kept for backward compatibility; prefer `timeline_mode` |
 | `timeline_config` | `{recsys_ratio: 0.6, follower_ratio: 0.4}` | Strategy-specific config for hybrid/blended timelines |
 | `observation_history` | `100` | Max observations kept in agent memory |
 | `write_html_log` | `true` | Generate Concordia HTML logs |
@@ -149,13 +150,55 @@ sim:
 
 Built-in aliases:
 
-- `next_acting`: `activity_markov`, `all_entities`, `fixed_order`
-- `observe`: `timeline_every_turn`, `chunk_start_only`, `episode_only`
+- `next_acting`: `activity_markov`, `activity_probability`, `all_entities`, `fixed_order`
+- `observe`: `timeline_every_turn`, `episode_only`
 - `resolve`: `parsed_action`, `generic_action`, `tool_calling`
 - `initializer`: `backend_default`
 
 For advanced use, provide `class_path` and optional `params` to load a custom
 component implementation.
+
+When using `sim.gm.preset: shared_flow`, the `observe` slot also supports a
+flow routing map:
+
+```yaml
+sim:
+  gm:
+    components:
+      observe:
+        instances:
+          timeline:
+            built_in: timeline_every_turn
+          episode:
+            built_in: episode_only
+        flow_map:
+          active: observe__timeline_make_observation
+          fixed_pre: observe__episode_observation
+          default: observe__timeline_make_observation
+```
+
+`observe.flow_map` is for **component routing** (which observe instance a flow uses).
+Per-flow field values for FlowComponents use `<role>.flows`.
+
+Optional unified alias (`sim.gm.components.flow_map`) can declare both together:
+
+```yaml
+sim:
+  gm:
+    components:
+      flow_map:
+        active:
+          observe: timeline_make_observation
+          recommend:
+            recsys_type: twitter
+        fixed_pre:
+          observe:
+            instance: episode_observation
+          recommend:
+            recsys_type: reddit
+```
+
+This alias is expanded internally into per-slot `flow_map` and `flows`.
 
 See [Environment Layer](environment_layer.md) for extension patterns and examples.
 
@@ -291,7 +334,7 @@ engine:
 engine:
   flow_routing:
     flow_order: [fixed_pre, default]
-  flow_action_loop_overrides:
+  flow_policies:
     fixed_pre:
       built_in: fixed_count
       params:
@@ -300,6 +343,9 @@ engine:
       built_in: single_action
 ```
 
+`flow_policies` is only honored by the flow engine (`sim.engine.preset: flow` or
+`enable_engine_multi_flow: true`). Base engine always uses `engine.action_loop`.
+
 ---
 
 Configure what posts agents see in their feed using timeline strategies:
@@ -307,7 +353,8 @@ Configure what posts agents see in their feed using timeline strategies:
 ```yaml
 sim:
   timeline_posts: 10                          # Posts per timeline observation
-  timeline_strategy: follower_chronological   # Strategy type
+  timeline_mode: follower_chronological       # Canonical selector
+  timeline_strategy: ${sim.timeline_mode}     # Legacy alias (optional)
   timeline_config:
     recsys_ratio: 0.6                         # For hybrid mode: 60% recommendations
     follower_ratio: 0.4                       # For hybrid mode: 40% followed users
@@ -337,24 +384,27 @@ sim:
 Configure how recommendations are computed and cached:
 
 ```yaml
-# Recommendation algorithms (configured in scenario or via defaults)
-engine:
-  preset: base             # base | flow
-  recsys:
-    enabled: true
-    type: reddit              # reddit | twitter | twhin
-    params:
-      max_rec_posts: 10       # Recommendations per user
-      update_every_n_steps: 1 # Compute schedule
-
-gm:
-  components:
-    recommend:
-      built_in: recommendation_component
-      params:
-        recsys_type: ${engine.recsys.type}
-        update_every_n_steps: ${engine.recsys.params.update_every_n_steps}
+sim:
+  timeline_mode: hybrid_recsys_follower
+  timeline_config:
+    recsys_ratio: 0.6
+    follower_ratio: 0.4
+  gm:
+    components:
+      recommend:
+        built_in: recommendation_component
+        params:
+          update_every_n_steps: 1
+          lazy: true
+          max_posts: 10
 ```
+
+The runtime contract is:
+
+- `sim.timeline_mode` chooses how the timeline is assembled.
+- `sim.timeline_strategy` is accepted as a legacy alias for compatibility.
+- `sim.gm.components.recommend` schedules recommendation recomputation.
+- In multi-flow GM mode, per-flow algorithm choice is configured via `recommend.flows.<flow>.recsys_type` or the GM-level `flow_map` alias.
 
 **Recommendation Algorithms:**
 
@@ -372,33 +422,33 @@ gm:
 
 - **twhin**: Deep semantic embeddings using TWHIN-BERT pre-trained on Twitter data. Learns high-dimensional representations of users and content for advanced similarity calculations. Most computationally expensive.
 
-**Per-Agent-Class Configuration:**
+**Per-Flow Configuration:**
 
-Different agent classes can use different recommendation algorithms by specifying `recsys_type` in `persona_pipeline`:
+Different flows can use different recommendation algorithms:
 
 ```yaml
-persona_pipeline:
-  classes:
-    active_users:
-      count: 100
-      prefab_module: mastodon_sim.agents.entity
-      params:
-        recsys_type: twitter    # This class uses TF-IDF recommendations
-      data:
-        source: local_json
-        dataset: agents_active.json
-
-    casual_users:
-      count: 50
-      prefab_module: mastodon_sim.agents.entity
-      params:
-        recsys_type: reddit     # This class uses hot-score recommendations
-      data:
-        source: local_json
-        dataset: agents_casual.json
+sim:
+  enable_gm_multi_flow: true
+  gm:
+    components:
+      recommend:
+        built_in: recommendation_component
+        flows:
+          default:
+            recsys_type: reddit
+          active:
+            recsys_type: twitter
+      observe:
+        built_in: timeline_every_turn
+        flows:
+          default:
+            recsys_type: reddit
+          active:
+            recsys_type: twitter
 ```
 
-Note: Currently, all agents are computed with the same `engine.recsys.type`. Per-class recsys configuration is prepared for future implementation where each agent class can request their own algorithm during recommendation updates.
+The observe component reads the active entity's flow and passes the selected `recsys_type`
+to the backend when fetching `pure_recsys` or `hybrid_recsys_follower` timelines.
 
 ---
 

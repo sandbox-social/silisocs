@@ -91,8 +91,14 @@ Main simulation knobs (`src/mastodon_sim/conf/sim/base.yaml`):
 | `gm.preset` | base | Simple (single components) or shared_flow (multi-instance) |
 | `engine.preset` | base | Simple scheduling or flow-aware |
 | `engine.action_loop.built_in` | single_action | single_action \| fixed_count \| open_ended |
-| `timeline_strategy` | follower_chronological | Timeline algorithm |
+| `timeline_mode` | hybrid_recsys_follower | Timeline assembly mode |
 | `seed_posts.type` | llm | llm \| csv \| json \| none \| fallback |
+
+`timeline_mode` is the canonical timeline selector. `timeline_strategy` is still accepted as a legacy alias for backward compatibility.
+
+`enable_gm_multi_flow` and `enable_engine_multi_flow` are independent switches.
+The first controls GM component routing (`gm.preset: shared_flow`), while the
+second controls engine flow scheduling/policies (`engine.preset: flow`).
 
 Scenario content lives under:
 
@@ -280,7 +286,7 @@ Runner also validates during prefab construction, so **missing methods will fail
 
 ### Multi-Action Support (Open-Ended Policy)
 
-When using `engine.action_chunk_policy: open_ended`:
+When using `engine.action_loop.built_in: open_ended`:
 
 - Agent's `act()` method is called repeatedly within one step
 - Agent should output valid actions OR the special "Finished action episode" signal
@@ -350,6 +356,15 @@ Use uv-managed workflows (from `docs/contributing.md`):
 - Test workflow: `uv run poe test`
 - Pre-commit hooks all files: `uv run pre-commit run --all-files --verbose`
 - Commit with Commitizen: `uv run cz c`
+
+Fast contributor workflow (LLM-agent friendly):
+
+1. `uv sync --group dev`
+2. Run targeted tests for changed files first (`uv run pytest <targeted_tests>`)
+3. Run full quality gate: `uv run pre-commit run --all-files --verbose`
+4. Run coverage workflow: `uv run poe test`
+5. Commit with Conventional Commits (`uv run cz c` or `git commit -m "feat: ..."`)
+6. Push branch (`git push origin <branch>`)
 
 ## 8) Testing Expectations for Agents
 

@@ -3,35 +3,29 @@
 import pytest
 
 from mastodon_sim.environments.gm.components.base import FlowComponent
-from mastodon_sim.environments.gm.components.decorators import multi_field
 from mastodon_sim.environments.gm.components.factory import initialize_component_multi_fields
 
 
 class MockObserveComponent(FlowComponent):
     """Mock observe component with multi-fields."""
 
+    FLOW_FIELDS = {
+        "timeline_filter": str,
+    }
+
     def __init__(self):
         super().__init__()
-        self._default_filter = "all"
-
-    @property
-    @multi_field(str)
-    def timeline_filter(self) -> str:
-        """Timeline filter for the entity."""
-        return self._default_filter
 
 
 class MockResolveComponent(FlowComponent):
     """Mock resolve component with multi-fields."""
 
+    FLOW_FIELDS = {
+        "action_parser": str,
+    }
+
     def __init__(self):
         super().__init__()
-
-    @property
-    @multi_field(str)
-    def action_parser(self) -> str:
-        """Action parser mode."""
-        return "default"
 
 
 class NormalComponent:
@@ -99,18 +93,13 @@ def test_multiple_fields_on_component():
     """Test component with multiple multi-fields."""
 
     class MultiFieldComponent(FlowComponent):
+        FLOW_FIELDS = {
+            "timeline_filter": str,
+            "action_parser": str,
+        }
+
         def __init__(self):
             super().__init__()
-
-        @property
-        @multi_field(str)
-        def timeline_filter(self) -> str:
-            return "all"
-
-        @property
-        @multi_field(str)
-        def action_parser(self) -> str:
-            return "default"
 
     component = MultiFieldComponent()
     config = {
@@ -133,18 +122,13 @@ def test_entity_config_partial_fields():
     """Test entity config with partial field values."""
 
     class MultiFieldComponent(FlowComponent):
+        FLOW_FIELDS = {
+            "field_a": str,
+            "field_b": str,
+        }
+
         def __init__(self):
             super().__init__()
-
-        @property
-        @multi_field(str)
-        def field_a(self) -> str:
-            return "default_a"
-
-        @property
-        @multi_field(str)
-        def field_b(self) -> str:
-            return "default_b"
 
     component = MultiFieldComponent()
     config = {

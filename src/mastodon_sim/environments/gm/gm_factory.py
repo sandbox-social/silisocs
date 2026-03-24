@@ -15,8 +15,8 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from concordia.agents import entity_agent_with_logging
-from concordia.language_model import language_model
 from concordia.associative_memory import basic_associative_memory
+from concordia.language_model import language_model
 
 from mastodon_sim.environments.gm.base_game_master import BaseSocialMediaGameMaster
 
@@ -140,7 +140,8 @@ class GameMasterFactory:
     ) -> tuple[entity_agent_with_logging.EntityAgentWithLogging, ...]:
         """Build and return GM instance(s).
 
-        Returns:
+        Returns
+        -------
             Tuple of GM entities. Order follows gm_sequence config if specified.
         """
         # Check if using advanced multi-GM mode
@@ -149,10 +150,11 @@ class GameMasterFactory:
 
         if gm_configs and gm_sequence:
             # Advanced mode: explicit gm_configs and gm_sequence
-            return self._build_advanced_multi_gm(model, memory_bank, entities, gm_configs, gm_sequence)
-        else:
-            # Default or legacy mode: single GM
-            return self._build_single_gm(model, memory_bank, entities)
+            return self._build_advanced_multi_gm(
+                model, memory_bank, entities, gm_configs, gm_sequence
+            )
+        # Default or legacy mode: single GM
+        return self._build_single_gm(model, memory_bank, entities)
 
     def _build_single_gm(
         self,
@@ -231,7 +233,9 @@ class GameMasterFactory:
 
         return tuple(gm_instances_ordered)
 
-    def get_gm_instance(self, gm_name: str) -> entity_agent_with_logging.EntityAgentWithLogging | None:
+    def get_gm_instance(
+        self, gm_name: str
+    ) -> entity_agent_with_logging.EntityAgentWithLogging | None:
         """Get a specific GM instance by name (after build() called)."""
         return self._gm_instances.get(gm_name)
 
@@ -253,7 +257,8 @@ class GameMasterFactory:
         Args:
             agent_name: Name of the agent
 
-        Returns:
+        Returns
+        -------
             List of GM names this agent belongs to, empty if agent not found.
         """
         # Build agent-to-gm mapping on demand
@@ -267,4 +272,3 @@ class GameMasterFactory:
             agent_to_gm[agent_name_iter] = list(dict.fromkeys(gms))
 
         return agent_to_gm.get(agent_name, [])
-

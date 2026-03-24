@@ -10,17 +10,18 @@ This module verifies:
 
 import json
 import re
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
 import pytest
 from omegaconf import OmegaConf
 
+from mastodon_sim.environments.backends.base import PhoneApp
 from mastodon_sim.environments.gm.act import SMAct
 from mastodon_sim.environments.gm.components.resolve import (
     GenericActionResolveComponent,
     ParsedActionResolveComponent,
     ToolCallingResolveComponent,
 )
-from mastodon_sim.environments.backends.base import PhoneApp
 from mastodon_sim.runtime.runner import _build_action_call_to_action
 
 
@@ -29,24 +30,28 @@ class TestActionCallToActionBuilder:
 
     def test_custom_mode_with_custom_prompt(self):
         """Custom mode should return action_prompt + output_style."""
-        cfg = OmegaConf.create({
-            "social_media": {
-                "action_prompt": "Please decide what action to take.",
-                "output_style": "Format as: ACTION TYPE: ...",
+        cfg = OmegaConf.create(
+            {
+                "social_media": {
+                    "action_prompt": "Please decide what action to take.",
+                    "output_style": "Format as: ACTION TYPE: ...",
+                }
             }
-        })
+        )
         result = _build_action_call_to_action(cfg, action_mode="custom", enable_tool_calling=False)
         assert "Please decide what action to take" in result
         assert "Format as: ACTION TYPE:" in result
 
     def test_custom_mode_with_tool_calling(self):
         """Custom mode with tool-calling should replace output_style."""
-        cfg = OmegaConf.create({
-            "social_media": {
-                "action_prompt": "Please decide what action to take.",
-                "output_style": "Format as: ACTION TYPE: ...",
+        cfg = OmegaConf.create(
+            {
+                "social_media": {
+                    "action_prompt": "Please decide what action to take.",
+                    "output_style": "Format as: ACTION TYPE: ...",
+                }
             }
-        })
+        )
         result = _build_action_call_to_action(cfg, action_mode="custom", enable_tool_calling=True)
         assert "Please decide what action to take" in result
         assert "tool_call" in result
@@ -54,22 +59,26 @@ class TestActionCallToActionBuilder:
 
     def test_fallback_to_legacy_prompt(self):
         """Should fallback to legacy action_call_to_action if new fields don't exist."""
-        cfg = OmegaConf.create({
-            "social_media": {
-                "action_call_to_action": "Legacy prompt format",
+        cfg = OmegaConf.create(
+            {
+                "social_media": {
+                    "action_call_to_action": "Legacy prompt format",
+                }
             }
-        })
+        )
         result = _build_action_call_to_action(cfg, action_mode="custom", enable_tool_calling=False)
         assert result == "Legacy prompt format"
 
     def test_generic_mode_override(self):
         """Generic mode means we should not use custom call_to_action."""
-        cfg = OmegaConf.create({
-            "social_media": {
-                "action_prompt": "Custom action prompt",
-                "output_style": "Custom output style",
+        cfg = OmegaConf.create(
+            {
+                "social_media": {
+                    "action_prompt": "Custom action prompt",
+                    "output_style": "Custom output style",
+                }
             }
-        })
+        )
         # When action_mode is "generic", the runner will not pass call_to_action_str,
         # but the helper still works with what it's given
         result = _build_action_call_to_action(cfg, action_mode="generic", enable_tool_calling=False)
@@ -97,7 +106,9 @@ class TestPromptGeneration:
     def test_generic_mode_without_tool_calling(self):
         """Generic mode without tool-calling should use generate_generic_action_prompt."""
         mock_app = MagicMock(spec=MockBackend)
-        mock_app.generate_generic_action_prompt.return_value = "Available actions: post(...), comment(...)"
+        mock_app.generate_generic_action_prompt.return_value = (
+            "Available actions: post(...), comment(...)"
+        )
 
         act = SMAct(
             model=MagicMock(),
@@ -203,7 +214,9 @@ class TestResolveComponentFormatMatching:
         )
 
         # Should match ACTION: format
-        result = component.resolve(active_entity="Alice", action_text="ACTION: post\ncontent: Hello")
+        result = component.resolve(
+            active_entity="Alice", action_text="ACTION: post\ncontent: Hello"
+        )
         assert result == "success"
         mock_app.invoke_action_by_name.assert_called_once()
 
@@ -241,12 +254,14 @@ class TestResolveComponentFormatMatching:
         )
 
         # Should parse JSON tool calls
-        tool_call_json = json.dumps({
-            "tool_call": {
-                "name": "post",
-                "arguments": {"content": "Hello", "current_user": "Alice"},
+        tool_call_json = json.dumps(
+            {
+                "tool_call": {
+                    "name": "post",
+                    "arguments": {"content": "Hello", "current_user": "Alice"},
+                }
             }
-        })
+        )
         result = component.resolve(active_entity="Alice", action_text=tool_call_json)
         assert result == "success"
         mock_app.invoke_action_with_kwargs.assert_called_once_with(
@@ -295,7 +310,9 @@ class TestToolSchemasGeneration:
         result = act._next_entity_action_spec({}, MagicMock())
 
         # Extract JSON from markers
-        match = re.search(r"### TOOL_SCHEMAS_JSON ###\n(.*)\n### END_TOOL_SCHEMAS_JSON ###", result, re.DOTALL)
+        match = re.search(
+            r"### TOOL_SCHEMAS_JSON ###\n(.*)\n### END_TOOL_SCHEMAS_JSON ###", result, re.DOTALL
+        )
         assert match
         schemas_json = match.group(1)
         schemas = json.loads(schemas_json)

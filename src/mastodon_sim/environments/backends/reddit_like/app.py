@@ -180,7 +180,12 @@ class RedditLikeApp(SocialMediaApp):
             return []
 
     def get_timeline_strategy(
-        self, strategy: str, user_name: str, limit: int = 10, **timeline_config: dict
+        self,
+        strategy: str,
+        user_name: str,
+        limit: int = 10,
+        recsys_type: str | None = None,
+        **timeline_config: dict,
     ) -> list[dict]:
         """Fetch timeline using specified strategy.
 
@@ -188,17 +193,28 @@ class RedditLikeApp(SocialMediaApp):
             strategy: Timeline strategy (follower_chronological, pure_recsys, hybrid_recsys_follower, etc.)
             user_name: Display name of the user.
             limit: Maximum number of posts.
+            recsys_type: Optional recommendation algorithm override.
             **timeline_config: Strategy-specific config (e.g., recsys_ratio).
 
-        Returns:
+        Returns
+        -------
             List of post dicts for the timeline.
         """
         username = self._get_username(user_name)
         try:
-            feed = self._platform.get_timeline(strategy, username, limit, **timeline_config)
-            return feed.get("posts", [])
+            timeline = self._platform.get_timeline(
+                strategy,
+                username,
+                limit,
+                recsys_type=recsys_type,
+                **timeline_config,
+            )
+            return list(timeline or [])
         except Exception as e:
-            self._print(f"Error fetching timeline with strategy '{strategy}' for {username}: {e}", color="red")
+            self._print(
+                f"Error fetching timeline with strategy '{strategy}' for {username}: {e}",
+                color="red",
+            )
             return []
 
     def format_timeline_for_observation(self, timeline: list[dict]) -> str:
@@ -569,7 +585,9 @@ class RedditLikeApp(SocialMediaApp):
         current_user_full = str(current_user)
         username = self._get_username(current_user)
         result = self._platform.dislike_post(username, post_id)
-        msg = f"{current_user_full} {'downvoted' if result else 'could not downvote'} post {post_id}."
+        msg = (
+            f"{current_user_full} {'downvoted' if result else 'could not downvote'} post {post_id}."
+        )
         self._print(msg, emoji="⬇️")
         self._log_action_event(
             source_user=current_user_full,
@@ -633,7 +651,9 @@ class RedditLikeApp(SocialMediaApp):
         src_username = self._get_username(current_user)
         tgt_username = self._get_username(target_user)
         result = self._platform.unmute_user(src_username, tgt_username)
-        msg = f"{current_user_full} {'unmuted' if result else 'could not unmute'} {target_user_full}."
+        msg = (
+            f"{current_user_full} {'unmuted' if result else 'could not unmute'} {target_user_full}."
+        )
         self._print(msg, emoji="🔊")
         self._log_action_event(
             source_user=current_user_full,
@@ -643,7 +663,9 @@ class RedditLikeApp(SocialMediaApp):
         return msg
 
     @app_action
-    def report_post(self, current_user: str, post_id: int, reason: str = "Inappropriate content") -> str:
+    def report_post(
+        self, current_user: str, post_id: int, reason: str = "Inappropriate content"
+    ) -> str:
         """Report a post for moderation.
 
         Args:
@@ -678,13 +700,13 @@ class RedditLikeApp(SocialMediaApp):
             if results:
                 msg = f"Trending posts (last {days} days):\n"
                 for post in results:
-                    engagement = post.get('engagement_score', 0)
+                    engagement = post.get("engagement_score", 0)
                     msg += (
                         f"  ID:{post['id']} | r/{post.get('community', 'unknown')}: "
                         f"{post['content'][:60]}... (engagement: {engagement:.1f})\n"
                     )
             else:
-                msg = f"No trending posts found."
+                msg = "No trending posts found."
         except Exception as e:
             msg = f"Error getting trending posts: {e}"
         self._print(msg, emoji="🔥")

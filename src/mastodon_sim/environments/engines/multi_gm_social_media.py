@@ -81,9 +81,9 @@ class MultiGMSocialMediaEngine(FlowSocialMediaEngine):
     def __init__(self, *args, **kwargs):
         """Initialize multi-GM engine."""
         super().__init__(*args, **kwargs)
-        self._gm_sequence: list[str] | None = None
+        self._gm_sequence_names: list[str] | str | None = None
         self._gm_instances: dict[str, entity_lib.Entity] = {}
-        self._agent_to_gm_map: dict[str, list[str]] = {}
+        self._agent_gm_map: dict[str, list[str]] = {}
 
     @override
     def _setup_agents_and_environment(
@@ -100,17 +100,17 @@ class MultiGMSocialMediaEngine(FlowSocialMediaEngine):
         gm_config = getattr(cfg.sim, "gm", {})
 
         # Load GM sequencing and instance mapping
-        self._gm_sequence = getattr(gm_config, "gm_sequence", [])
-        if isinstance(self._gm_sequence, str):
-            self._gm_sequence = [self._gm_sequence]
+        self._gm_sequence_names = getattr(gm_config, "gm_sequence", [])
+        if isinstance(self._gm_sequence_names, str):
+            self._gm_sequence_names = [self._gm_sequence_names]
 
         # Build agent-to-GM mapping from config if available
         self._build_agent_to_gm_mapping(cfg, gm_config)
 
-        if self._gm_sequence:
+        if self._gm_sequence_names:
             _LOGGER.info(
                 "Multi-GM engine initialized with sequence: %s",
-                " → ".join(self._gm_sequence),
+                " → ".join(self._gm_sequence_names),
             )
 
     def _build_agent_to_gm_mapping(self, cfg: Any, gm_config: Any) -> None:
@@ -137,35 +137,36 @@ class MultiGMSocialMediaEngine(FlowSocialMediaEngine):
                 gms.extend(assigned_gms)
 
             # Remove duplicates while preserving order
-            self._agent_to_gm_map[agent_name] = list(dict.fromkeys(gms))
+            self._agent_gm_map[agent_name] = list(dict.fromkeys(gms))
 
     def get_agent_gms(self, agent_name: str) -> list[str]:
         """Get list of GM names this agent is assigned to.
 
         Returns empty list if agent not found in mapping.
         """
-        return self._agent_to_gm_map.get(agent_name, [])
+        return self._agent_gm_map.get(agent_name, [])
 
     def detect_gm_conflicts(self) -> dict[str, list[str]]:
         """Detect agents assigned to multiple GMs.
 
-        Returns:
+        Returns
+        -------
             Dict of agent_name → [gm_names] for agents in multiple GMs.
         """
         conflicts = {}
-        for agent_name, gms in self._agent_to_gm_map.items():
+        for agent_name, gms in self._agent_gm_map.items():
             if len(gms) > 1:
                 conflicts[agent_name] = gms
         return conflicts
 
     def log_orchestration_info(self) -> None:
         """Log detailed information about GM orchestration setup."""
-        if not self._gm_sequence:
+        if not self._gm_sequence_names:
             _LOGGER.info("Engine running in single-GM mode")
             return
 
         _LOGGER.info("=== Multi-GM Orchestration Setup ===")
-        _LOGGER.info("GM Execution Sequence: %s", " → ".join(self._gm_sequence))
+        _LOGGER.info("GM Execution Sequence: %s", " → ".join(self._gm_sequence_names))
 
         conflicts = self.detect_gm_conflicts()
         if conflicts:
@@ -176,31 +177,34 @@ class MultiGMSocialMediaEngine(FlowSocialMediaEngine):
 
         # Group agents by GM
         gm_to_agents: dict[str, list[str]] = {}
-        for agent, gms in self._agent_to_gm_map.items():
+        for agent, gms in self._agent_gm_map.items():
             for gm in gms:
                 if gm not in gm_to_agents:
                     gm_to_agents[gm] = []
                 gm_to_agents[gm].append(agent)
 
-        for gm_name in self._gm_sequence:
+        for gm_name in self._gm_sequence_names:
             agents = gm_to_agents.get(gm_name, [])
             _LOGGER.info("  %s: %s", gm_name, ", ".join(sorted(agents)))
 
     def validate_gm_sequence(self) -> bool:
         """Validate that gm_sequence is properly configured.
 
-        Returns:
+        Returns
+        -------
             True if valid, False otherwise.
         """
-        if self._gm_sequence is None:
+        if self._gm_sequence_names is None:
             return True  # Single-GM mode is valid
 
-        if not isinstance(self._gm_sequence, (list, tuple)):
+        if isinstance(self._gm_sequence_names, str):
             _LOGGER.error("gm_sequence must be a list of GM names")
             return False
 
-        if len(self._gm_sequence) == 0:
-            _LOGGER.error("gm_sequence is empty (must be None for single-GM mode or non-empty list)")
+        if len(self._gm_sequence_names) == 0:
+            _LOGGER.error(
+                "gm_sequence is empty (must be None for single-GM mode or non-empty list)"
+            )
             return False
 
         return True
@@ -225,7 +229,7 @@ class MultiGMSocialMediaEngine(FlowSocialMediaEngine):
             return ""
 
         # Log orchestration details
-        if self._gm_sequence:
+        if self._gm_sequence_names:
             self.log_orchestration_info()
 
         # Run episode using parent's logic
