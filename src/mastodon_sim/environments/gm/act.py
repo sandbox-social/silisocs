@@ -38,7 +38,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
         model: language_model.LanguageModel,
         entity_names: Sequence[str],
         sm_app: Any,
-        entity_action_flows: dict[str, str] | None = None,
+        entity_flow_tags: dict[str, str] | None = None,
         component_order: Sequence[str] | None = None,
         call_to_action_str: str = "",
         activity_transition_rates: dict[str, Any] | None = None,
@@ -52,7 +52,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
         )
         self.call_to_action_str = call_to_action_str
         self.sm_app = sm_app
-        self.entity_action_flows = dict(entity_action_flows or {})
+        self.entity_flow_tags = dict(entity_flow_tags or {})
         self.activity_transition_rates = activity_transition_rates or {}
         self.action_mode = action_mode
         self.enable_tool_calling = enable_tool_calling
@@ -113,7 +113,7 @@ class MultiFlowSMAct(SMAct):
     """SwitchAct with multi-flow component routing.
 
     Used when enable_gm_multi_flow=true. Routes entities to flow-specific component
-    instances based on their assigned action flow.
+    instances based on their assigned flow tag.
 
     Flow-to-component mapping structure:
         {
@@ -132,7 +132,7 @@ class MultiFlowSMAct(SMAct):
         entity_names: Sequence[str],
         sm_app: Any,
         flow_to_component_map: dict[str, dict[str, str]] | None = None,
-        entity_action_flows: dict[str, str] | None = None,
+        entity_flow_tags: dict[str, str] | None = None,
         component_order: Sequence[str] | None = None,
         call_to_action_str: str = "",
         activity_transition_rates: dict[str, Any] | None = None,
@@ -144,13 +144,13 @@ class MultiFlowSMAct(SMAct):
         Args:
             flow_to_component_map: Maps flow_name to {role: component_key}.
                                   Example: {"active": {"observe": "observe__timeline_make_observation"}}
-            entity_action_flows: Maps entity name to flow name.
+            entity_flow_tags: Maps entity name to flow tag.
         """
         super().__init__(
             model=model,
             entity_names=entity_names,
             sm_app=sm_app,
-            entity_action_flows=entity_action_flows,
+            entity_flow_tags=entity_flow_tags,
             component_order=component_order,
             call_to_action_str=call_to_action_str,
             activity_transition_rates=activity_transition_rates,
@@ -194,7 +194,7 @@ class MultiFlowSMAct(SMAct):
         return str(component_key).strip() or None
 
     def get_flow_for_entity(self, entity_name: str) -> str:
-        """Get the action flow assigned to an entity.
+        """Get the flow tag assigned to an entity.
 
         Args:
             entity_name: Name of the entity
@@ -203,7 +203,7 @@ class MultiFlowSMAct(SMAct):
         -------
             Flow name (e.g., "active", "fixed_pre", defaults to "default")
         """
-        return self.entity_action_flows.get(entity_name, "default")
+        return self.entity_flow_tags.get(entity_name, "default")
 
     @override
     def _make_observation(  # type: ignore[misc]

@@ -33,8 +33,8 @@ usage_instructions: |
   Unblocking a user reverses the effects of blocking.
   Critically important: Operations such as liking, boosting, replying, etc. require a `toot_id`. To obtain a `toot_id`, you must have memory/knowledge of a real `toot_id`. If you don't know a `toot_id`, you can't perform actions that require it. `toot_id`'s can be retrieved using the `get_timeline` action.
 
-# Action call to action template
-action_call_to_action: |
+# Action prompt template
+action_prompt: |
   ## AVAILABLE ACTIONS
   1. POST - Share new content by creating a new toot
   2. REPLY - Engage existing content (positively or negatively) by responding to it (needs toot ID)

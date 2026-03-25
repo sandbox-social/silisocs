@@ -42,7 +42,7 @@ persona_pipeline:
             content: "It's time to invest in social programs and work toward a more equitable distribution of resources for all citizens."
             reasoning: "Seed polarizing content: progressive viewpoint on economic policy"
             episode: 0
-        action_flow: fixed_pre
+        flow_tag: fixed_pre
 
     # Regular agents: Loaded from OASIS group polarization dataset
     # Agents come in two groups: conservative and progressive
@@ -100,7 +100,7 @@ engine:
 
 # Timeline configuration for Twitter
 timeline_posts: 5
-timeline_strategy: hybrid_recsys_follower  # Twitter: blend recommendations + followed users
+timeline_mode: hybrid_recsys_follower  # Twitter: blend recommendations + followed users
 
 # Twitter OASIS action constraints
 sim:

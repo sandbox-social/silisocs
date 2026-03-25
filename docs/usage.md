@@ -280,18 +280,18 @@ persona_pipeline:
         name: name
         context: context
       params:
-        action_flow: fixed_pre
+        flow_tag: fixed_pre
         fixed_action_plan:
-          - episode: 0
-            action_type: POST
-            target_id: ""
-            content: "Daily bulletin from {name}: please stay informed."
-            reasoning: "Scheduled bulletin at simulation start."
-          - episode: 5
-            action_type: POST
-            target_id: ""
-            content: "Emergency update from {name}: check local advisories."
-            reasoning: "Scheduled follow-up bulletin."
+          0:
+            - action_type: POST
+              target_id: ""
+              content: "Daily bulletin from {name}: please stay informed."
+              reasoning: "Scheduled bulletin at simulation start."
+          5:
+            - action_type: POST
+              target_id: ""
+              content: "Emergency update from {name}: check local advisories."
+              reasoning: "Scheduled follow-up bulletin."
 
 sim:
   engine:
@@ -310,6 +310,8 @@ Behavior notes:
 - Fixed entities parse episode index from observation text (for example `EPISODE: 12`).
 - If no episode number is parseable, the fixed entity increments its internal counter by 1.
 - The action text emitted by fixed entities is compatible with existing resolve components.
+- `fixed_action_plan` is strict dict-only (`episode -> list[action]`), not list-based.
+- You can load the same structure from a file using `params.fixed_action_plan_file` (`.json/.yaml/.yml`).
 
 Compatibility notes:
 
@@ -332,7 +334,7 @@ Two built-in modes:
 | Mode | Config | Behavior |
 |------|--------|----------|
 | **Raw** | `processing_mode: raw` | No LLM calls, only config memories |
-| **Formative** | `processing_mode: formative` (or `llm_formative`) | LLM-generated multi-episode backstories |
+| **Formative** | `processing_mode: formative` | LLM-generated multi-episode backstories |
 
 See [Memory Initialization](memory_initialization.md) for custom initializers.
 
@@ -617,7 +619,7 @@ The runtime now includes two engine presets:
 - `sim.engine.preset: base` (default): simple execution path, one social GM active per episode.
 - `sim.engine.preset: flow`: flow-aware execution with optional multi-GM phase orchestration.
 
-The flow engine (`FlowSocialMediaEngine`, compatibility alias `SocialMediaEngine`) is responsible for:
+The flow engine (`FlowSocialMediaEngine`) is responsible for:
 
 - Episode loop orchestration (`run_loop`)
 - Probe scheduling and deployment timing
@@ -641,7 +643,7 @@ Probe timing is also policy-driven through `sim.engine.probe_schedule`.
 
 To introduce new class-level behavior phases without engine/resolve bloat:
 
-1. Set `params.action_flow` per class in `persona_pipeline.classes`.
+1. Set `flow_tag` per class in `persona_pipeline.classes`.
 2. Define phase order in `sim.engine.flow_routing.flow_order`.
 3. Optionally add per-entity overrides with `sim.engine.flow_routing.entity_to_flow`.
 4. Add any flow names that require episode-style observations to

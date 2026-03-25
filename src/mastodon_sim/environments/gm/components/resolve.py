@@ -121,10 +121,6 @@ class ParsedActionResolveComponent(_BaseResolveComponent):
     """Resolve using ACTION TYPE/TARGET ID/CONTENT parser output."""
 
     def resolve(self, *, active_entity: str, action_text: str) -> str:
-        # Check for the special "Finished action episode" signal
-        if "FINISHED" in action_text.upper():
-            return f"[{active_entity} finished the action episode]"
-
         action_data = find_and_parse_action_data(action_text)
         if action_data is None:
             return ""
@@ -136,10 +132,6 @@ class GenericActionResolveComponent(_BaseResolveComponent):
     """Resolve generic ACTION: name / param: value format."""
 
     def resolve(self, *, active_entity: str, action_text: str) -> str:
-        # Check for the special "Finished action episode" signal
-        if "FINISHED" in action_text.upper():
-            return f"[{active_entity} finished the action episode]"
-
         action_match = re.search(r"(?i)ACTION:\s*(\w+)", action_text)
         if not action_match:
             return ""
@@ -164,10 +156,6 @@ class ToolCallingResolveComponent(_BaseResolveComponent):
     def resolve(self, *, active_entity: str, action_text: str) -> str:
         """Handle tool-calling action text from the entity."""
         import json
-
-        # Check for the special "Finished action episode" signal
-        if "FINISHED" in action_text.upper():
-            return f"[{active_entity} finished the action episode]"
 
         # Try to parse as JSON-formatted tool call from SocialConcatActComponent
         try:

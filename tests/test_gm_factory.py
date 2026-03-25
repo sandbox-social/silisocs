@@ -174,26 +174,5 @@ def test_factory_advanced_mode_detection():
     assert factory.gm_config.get("gm_sequence") is not None
 
 
-def test_factory_legacy_fallback():
-    """Test factory still recognizes legacy class_mapping format."""
-    config = {
-        "class_mapping": {
-            "human": {"name": "human_gm"},
-            "bot": {"name": "bot_gm"},
-        },
-    }
-    agents = ["alice", "bob"]
-    agent_to_classes = {
-        "alice": "human",
-        "bob": "bot",
-    }
-
-    factory = GameMasterFactory(config, agents, agent_to_classes)
-
-    # Should have extracted class_mapping → class_to_gms
-    assert factory.class_to_gms["human"] == ["human"]
-    assert factory.class_to_gms["bot"] == ["bot"]
-
-
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -94,7 +94,7 @@ Main simulation knobs (`src/mastodon_sim/conf/sim/base.yaml`):
 | `timeline_mode` | hybrid_recsys_follower | Timeline assembly mode |
 | `seed_posts.type` | llm | llm \| csv \| json \| none \| fallback |
 
-`timeline_mode` is the canonical timeline selector. `timeline_strategy` is still accepted as a legacy alias for backward compatibility.
+`timeline_mode` is the timeline selector.
 
 `enable_gm_multi_flow` and `enable_engine_multi_flow` are independent switches.
 The first controls GM component routing (`gm.preset: shared_flow`), while the
@@ -116,7 +116,6 @@ Use class-level behavior flows instead of adding custom manager branches:
 
 1. Assign class flow:
 - `persona_pipeline.classes.<class>.flow_tag`
-- Backward compatibility still accepts `params.action_flow`.
 
 2. Define flow order:
 - `sim.engine.flow_routing.flow_order`
@@ -408,7 +407,7 @@ When adding features, update docs in:
 ## 10) Common Pitfalls
 
 - Adding GM/engine bloat instead of using flow routing + component hooks
-- Breaking backward compatibility of action text format consumed by resolve
+- Breaking the action text format consumed by resolve
 - Forgetting to keep docs aligned with runtime defaults
 - Assuming dashboard run snapshot loading equals checkpoint state replay
 - Relying on non-uv environment when reproducing tests

@@ -31,8 +31,8 @@ usage_instructions: |
   A user's profile includes a display name and bio.
   Critically important: Operations such as liking, reposting, replying, etc. require a `post_id`. To obtain a `post_id`, you must have memory/knowledge of a real `post_id`. If you don't know a `post_id`, you can't perform actions that require it. `post_id`'s can be retrieved using the `get_own_timeline` action.
 
-# Action call to action template
-action_call_to_action: |
+# Action prompt template
+action_prompt: |
   ## AVAILABLE ACTIONS
   1. POST - Share new content by creating a new tweet
   2. REPLY - Engage existing content by responding to a tweet (needs post ID)

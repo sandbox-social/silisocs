@@ -38,7 +38,7 @@ gm:
         active_probability: null
         min_active_agents: 1
 
-    # Recommendation system scheduler (optional, used with hybrid/pure_recsys timeline_strategy)
+    # Recommendation system scheduler (optional, used with hybrid/pure_recsys timeline_mode)
     recommend:
       built_in: recommendation_component
       class_path: null
@@ -69,7 +69,7 @@ gm:
       params: {}
 
 # Optional multi-GM orchestration.
-# Backward compatible: if this block is omitted, the legacy single social GM is used.
+# If this block is omitted, the default single social GM is used.
 gm_orchestration:
   gms: []
   flow_bindings:
@@ -113,7 +113,6 @@ engine:
 # Observation parameters
 timeline_posts: 10
 timeline_mode: hybrid_recsys_follower  # follower_chronological | pure_recsys | hybrid_recsys_follower | curated_global
-timeline_strategy: ${sim.timeline_mode}  # Legacy alias; prefer timeline_mode
 timeline_config:
   recsys_ratio: 0.6      # For hybrid_recsys_follower: ratio of recommendations
   follower_ratio: 0.4    # For hybrid_recsys_follower: ratio of followed users

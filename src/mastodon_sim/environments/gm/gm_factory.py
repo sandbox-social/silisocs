@@ -48,7 +48,6 @@ class GameMasterFactory:
             gm_config: Base GM configuration. Can include:
                 - "gm_configs": Dict of {gm_name: gm_config_dict}
                 - "gm_sequence": List of GM names in execution order
-                - Legacy "class_mapping": Falls back to single-class mode
 
             agent_names: Names of all agents in the simulation
 
@@ -59,7 +58,7 @@ class GameMasterFactory:
             class_to_gms: Mapping of class_name → [gm_names].
                          Allows classes to route to multiple GMs.
                          This is many-to-many routing.
-                         If None, will be inferred from legacy class_mapping.
+                         If None, classes route to the default GM.
         """
         self.gm_config = dict(gm_config or {})
         self.agent_names = list(agent_names)
@@ -97,14 +96,6 @@ class GameMasterFactory:
     ) -> dict[str, list[str]]:
         """Normalize class-to-GMs mapping, handling single/multiple GM cases."""
         if class_to_gms is None:
-            # Check if using legacy class_mapping mode
-            legacy_mapping = self.gm_config.get("class_mapping", {})
-            if legacy_mapping:
-                # Legacy mode: class → single GM
-                return {
-                    class_name: [class_name]  # Default: class_name is GM name
-                    for class_name in legacy_mapping.keys()
-                }
             # No mapping: all classes → single "default" GM
             return {cls: ["default"] for cls in set(sum(self.agent_to_classes.values(), []))}
 
@@ -125,10 +116,9 @@ class GameMasterFactory:
             all_gm_names.update(gm_list)
 
         gm_configs = self.gm_config.get("gm_configs", {})
-        legacy_mapping = self.gm_config.get("class_mapping", {})
 
         for gm_name in all_gm_names:
-            if gm_name not in gm_configs and gm_name not in legacy_mapping and gm_name != "default":
+            if gm_name not in gm_configs and gm_name != "default":
                 # Only warn; allow forward references or default handling
                 pass
 
@@ -153,7 +143,7 @@ class GameMasterFactory:
             return self._build_advanced_multi_gm(
                 model, memory_bank, entities, gm_configs, gm_sequence
             )
-        # Default or legacy mode: single GM
+        # Default mode: single GM
         return self._build_single_gm(model, memory_bank, entities)
 
     def _build_single_gm(
@@ -165,9 +155,7 @@ class GameMasterFactory:
         """Build single GM for all agents (default mode)."""
         # Use entire config, but exclude multi-GM keys
         gm_params = {
-            k: v
-            for k, v in self.gm_config.items()
-            if k not in {"gm_configs", "gm_sequence", "class_mapping"}
+            k: v for k, v in self.gm_config.items() if k not in {"gm_configs", "gm_sequence"}
         }
 
         gm_prefab = BaseSocialMediaGameMaster(

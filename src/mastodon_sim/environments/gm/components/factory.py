@@ -62,7 +62,6 @@ _MULTI_INSTANCE_RESERVED_KEYS = {
     "instances",
     "flow_map",
     "flows",
-    "entities",
 }
 
 
@@ -137,10 +136,9 @@ def build_observe_components(
     model: Any,
     player_names: list[str],
     sm_app: Any,
-    entity_action_flows: dict[str, str] | None = None,
+    entity_flow_tags: dict[str, str] | None = None,
     episode_observation_flow: str = "fixed_pre",
     timeline_mode: str | None = None,
-    timeline_strategy: str = "follower_chronological",
     timeline_config: Mapping[str, Any] | None = None,
 ) -> dict[str, entity_component.ContextComponent]:
     """Build multiple observe component instances from config.
@@ -174,10 +172,9 @@ def build_observe_components(
             model=model,
             player_names=player_names,
             sm_app=sm_app,
-            entity_action_flows=entity_action_flows,
+            entity_flow_tags=entity_flow_tags,
             episode_observation_flow=episode_observation_flow,
             timeline_mode=timeline_mode,
-            timeline_strategy=timeline_strategy,
             timeline_config=timeline_config,
         )
 
@@ -197,10 +194,9 @@ def build_observe_component(
     model: Any,
     player_names: list[str],
     sm_app: Any,
-    entity_action_flows: dict[str, str] | None = None,
+    entity_flow_tags: dict[str, str] | None = None,
     episode_observation_flow: str = "fixed_pre",
     timeline_mode: str | None = None,
-    timeline_strategy: str = "follower_chronological",
     timeline_config: Mapping[str, Any] | None = None,
 ) -> entity_component.ContextComponent:
     """Build a single observe component from slot config."""
@@ -217,11 +213,10 @@ def build_observe_component(
             "model": model,
             "player_names": player_names,
             "sm_app": sm_app,
-            "entity_action_flows": entity_action_flows,
+            "entity_flow_tags": entity_flow_tags,
             "episode_observation_flow": episode_observation_flow,
             "episode_observation_flows": episode_observation_flows,
             "timeline_mode": timeline_mode,
-            "timeline_strategy": timeline_strategy,
             "timeline_config": dict(timeline_config or {}),
         },
     )
@@ -299,50 +294,40 @@ def build_recommendation_component(
     )
 
 
-def initialize_component_multi_fields(
+def initialize_component_flow_fields(
     component: entity_component.ContextComponent,
     component_config: Mapping[str, Any] | None,
 ) -> None:
-    """Initialize multi-field values on FlowComponent if configured.
+    """Initialize flow field values on FlowComponent if configured.
 
     Args:
         component: The component instance to initialize (may or may not be a FlowComponent)
-        component_config: Configuration dict that may contain a `flows` key or the
-                         deprecated `entities` key with flow-level field overrides.
-                         Expected format:
-                         {
-                           'built_in': '...',
-                           'flows': {
-                             'flow_tag': {'field_name': field_value, ...},
-                             ...
-                           }
-                         }
+                component_config: Configuration dict that may contain a `flows` key
+                        with flow-level field overrides.
 
-    Example config:
-        observe:
-          built_in: timeline_every_turn
-          entities:
-            alice:
-              timeline_filter: "trusted"
-            bob:
-              timeline_filter: "all"
+        Example config:
+                observe:
+                    built_in: timeline_every_turn
+                    flows:
+                        fixed_pre:
+                            timeline_filter: "trusted"
+                        free:
+                            timeline_filter: "all"
     """
     # Only process if component is a FlowComponent
     if not isinstance(component, FlowComponent):
         return
 
-    # Extract entity configs if present
+    # Extract flow configs if present
     component_cfg = dict(component_config or {})
     flow_cfg = component_cfg.get("flows")
-    entities_cfg = component_cfg.get("entities")
-    field_cfg = flow_cfg if isinstance(flow_cfg, Mapping) else entities_cfg
-    if not field_cfg:
+    if not isinstance(flow_cfg, Mapping) or not flow_cfg:
         return
 
     # Build flow_tag -> {field_name: field_value} mapping
     flow_field_map: dict[str, dict[str, Any]] = {}
-    for flow_tag, field_config in field_cfg.items():
+    for flow_tag, field_config in flow_cfg.items():
         flow_field_map[str(flow_tag)] = dict(field_config or {})
 
     # Initialize component with the mapping
-    component.set_multi_field_values(flow_field_map)
+    component.set_flow_field_values(flow_field_map)

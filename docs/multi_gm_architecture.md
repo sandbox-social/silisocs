@@ -45,7 +45,7 @@ The multi-GM architecture provides:
 │ Agent Flow Sequencing (flow_order, entity_to_flow)  │ ← Agent grouping within GM
 │ Groups agents by flow, executes sequentially        │
 ├─────────────────────────────────────────────────────┤
-│ Component Field Values (entities.*.components.*.*)  │ ← Per-entity component config
+│ Component Field Values (flows.<flow>.<field>)       │ ← Per-flow component config
 │ Custom values for component behavior                │
 └─────────────────────────────────────────────────────┘
 ```
@@ -167,53 +167,49 @@ engine:
       charlie: "post_analysis"
 ```
 
-### Per-Entity Component Configuration
+### Per-Flow Component Configuration
 
-Configure different component behavior per agent:
+Configure different component behavior per flow:
 
 ```yaml
 gm:
   components:
     observe:
       built_in: timeline_every_turn
-      entities:                          # ← NEW: per-entity config
-        alice:
+      flows:
+        active:
           timeline_filter: "trusted_only"
           timeline_depth: 10
-        bob:
+        default:
           timeline_filter: "all"
           timeline_depth: 20
-        charlie:
+        fixed_pre:
           timeline_filter: "trending"
           timeline_depth: 15
 ```
 
 **Implementation:**
-1. Component declares field as `@multi_field(type)`
-2. GM initialization parses `entities.*.components.*.*` config
-3. At runtime, component calls `get_field_for_entity(field_name, entity_name)`
+1. Component declares fields in `FLOW_FIELDS`
+2. GM initialization parses `flows.*` config and calls `set_flow_field_values(...)`
+3. At runtime, component calls `get_flow_field(field_name, flow_tag)`
 
 Example component:
 
 ```python
 from mastodon_sim.environments.gm.components.base import FlowComponent
-from mastodon_sim.environments.gm.components.decorators import multi_field
 
 class CustomObserve(FlowComponent, MakeObservation):
-    def __init__(self, ...):
-        super().__init__()
-        super().__init__(...)  # parent class init
+  FLOW_FIELDS = {"timeline_filter": str}
 
-    @property
-    @multi_field(str)  # decorator AFTER @property
-    def timeline_filter(self) -> str:
-        """Get timeline filter - varies per entity."""
-        return self.get_field_for_entity('timeline_filter', default='all')
+  def __init__(self, ...):
+    FlowComponent.__init__(self)
+    MakeObservation.__init__(self, ...)
+    self.current_flow_tag = "default"
 
-    def pre_act(self, action_spec):
-        # Use the field
-        filter_value = self.timeline_filter
-        # ... rest of logic
+  def pre_act(self, action_spec):
+    # Use the field
+    filter_value = self.get_flow_field("timeline_filter", self.current_flow_tag, "all")
+    # ... rest of logic
 ```
 
 ---
@@ -267,23 +263,23 @@ engine = MultiGMSocialMediaEngine(...)
 
 Located: `src/mastodon_sim/environments/gm/components/base.py`
 
-Mixin for per-entity field routing:
+Mixin for per-flow field routing:
 
 ```python
 class FlowComponent:
-    def set_multi_field_values(self, entity_field_map: dict):
-        """Initialize entity→field→value mapping."""
+    def set_flow_field_values(self, flow_field_map: dict):
+        """Initialize flow->field->value mapping."""
 
-    def get_field_for_entity(self, field_name: str,
-                             entity_name: str = None,
-                             default=None):
-        """Retrieve field value for entity."""
+    def get_flow_field(self, field_name: str,
+                       flow_tag: str | None = None,
+                       default=None):
+        """Retrieve field value for flow."""
 
-    def has_multi_fields(self) -> bool:
-        """Check if component declares any multi-fields."""
+    def has_flow_fields(self) -> bool:
+        """Check if component declares any flow fields."""
 
-    def get_multi_fields(self) -> dict:
-        """Return metadata about multi-field declarations."""
+    def get_flow_fields(self) -> dict:
+        """Return metadata about flow-field declarations."""
 ```
 
 ---
@@ -389,25 +385,12 @@ Requires Qwen 3.5-4B server on port 30000.
 
 ---
 
-## Backward Compatibility
+## Migration Notes
 
-- ✅ Single-GM mode unchanged
-- ✅ Existing components work without modification
-- ✅ Multi-GM/multi-field features are opt-in
-- ✅ Legacy `class_mapping` format still supported
+Use the canonical multi-GM schema (`agent_classes`, `class_to_gms`, `gm_sequence`, `gm_configs`) for routing.
 
-### Migration from Legacy class_mapping
+### Canonical Multi-GM Config
 
-**Before:**
-```yaml
-gm:
-  class_mapping:
-    human: {name: "human_gm", ...}
-    bot: {name: "bot_gm", ...}
-  class_order: [human, bot]
-```
-
-**After:**
 ```yaml
 gm:
   agent_classes: {alice: "human", bob: "bot"}
@@ -441,7 +424,7 @@ A: No, each GM has independent state. Agents in multiple GMs don't share memorie
 A: Runtime error during GM initialization. Ensure all classes declared in `agent_classes` have entries in `class_to_gms`.
 
 **Q: Can I use multi-fields without multi-GM?**
-A: Yes. Multi-fields work in single-GM mode. Declare `@multi_field` on component, configure `entities.*.components.*.*` in YAML.
+A: Yes. Multi-fields work in single-GM mode. Declare `FLOW_FIELDS` on the component and configure `flows.<flow_name>.<field_name>` in YAML.
 
 **Q: Do I need to modify existing components?**
 A: No. Multi-GM and multi-field systems are purely opt-in. Existing components work unchanged.

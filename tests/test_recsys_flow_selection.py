@@ -7,6 +7,7 @@ from concordia.typing import entity as entity_lib
 from mastodon_sim.environments.backends.reddit_like.engine import RedditLikePlatform
 from mastodon_sim.environments.backends.twitter_like.engine import TwitterLikePlatform
 from mastodon_sim.environments.gm.components.observe import TimelineMakeObservation
+from mastodon_sim.environments.gm.components.recommend import RecommendationComponent
 from mastodon_sim.runtime.config import ConfigStore
 
 
@@ -14,9 +15,9 @@ class _FakeApp:
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    def get_timeline_strategy(
+    def get_timeline_mode(
         self,
-        strategy: str,
+        timeline_mode: str,
         user_name: str,
         limit: int = 10,
         recsys_type: str | None = None,
@@ -24,7 +25,7 @@ class _FakeApp:
     ) -> list[dict]:
         self.calls.append(
             {
-                "strategy": strategy,
+                "timeline_mode": timeline_mode,
                 "user_name": user_name,
                 "limit": limit,
                 "recsys_type": recsys_type,
@@ -45,10 +46,10 @@ def test_timeline_observe_passes_flow_specific_recsys_type() -> None:
         model=object(),
         player_names=("alice",),
         sm_app=app,
-        entity_action_flows={"alice": "active"},
-        timeline_strategy="pure_recsys",
+        entity_flow_tags={"alice": "active"},
+        timeline_mode="pure_recsys",
     )
-    component.set_multi_field_values({"active": {"recsys_type": "twitter"}})
+    component.set_flow_field_values({"active": {"recsys_type": "twitter"}})
 
     action_spec = SimpleNamespace(
         output_type=entity_lib.OutputType.MAKE_OBSERVATION,
@@ -155,7 +156,9 @@ def test_reddit_platform_filters_recommendations_by_recsys_type(tmp_path) -> Non
 
 
 def test_twitter_platform_rejects_reddit_algorithm(tmp_path) -> None:
-    platform = TwitterLikePlatform(db_path=str(tmp_path / "twitter_invalid_algo.db"), use_queue=False)
+    platform = TwitterLikePlatform(
+        db_path=str(tmp_path / "twitter_invalid_algo.db"), use_queue=False
+    )
 
     try:
         platform.init_recsys("reddit")
@@ -178,3 +181,12 @@ def test_reddit_platform_rejects_twitter_algorithm(tmp_path) -> None:
         return
 
     raise AssertionError("Expected ValueError for unsupported twitter algorithm on reddit_like")
+
+
+def test_recommendation_component_supports_entity_binding() -> None:
+    component = RecommendationComponent(sm_app=object())
+    entity = object()
+
+    component.set_entity(entity)
+
+    assert component.get_entity() is entity

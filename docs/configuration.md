@@ -52,7 +52,6 @@ uv run mastodon-sim social_media=reddit_like scenario=my_scenario
 | `engine.preset` | `base` | Engine preset: `base` (default, simple scheduling) or `flow` (flow-aware). Auto-selected by `enable_engine_multi_flow` if not set. |
 | `timeline_posts` | `10` | Number of posts shown in agent timeline |
 | `timeline_mode` | `hybrid_recsys_follower` | Canonical timeline selector: `follower_chronological`, `pure_recsys`, `hybrid_recsys_follower`, `curated_global` |
-| `timeline_strategy` | `${sim.timeline_mode}` | Legacy alias kept for backward compatibility; prefer `timeline_mode` |
 | `timeline_config` | `{recsys_ratio: 0.6, follower_ratio: 0.4}` | Strategy-specific config for hybrid/blended timelines |
 | `observation_history` | `100` | Max observations kept in agent memory |
 | `write_html_log` | `true` | Generate Concordia HTML logs |
@@ -179,26 +178,6 @@ sim:
 
 `observe.flow_map` is for **component routing** (which observe instance a flow uses).
 Per-flow field values for FlowComponents use `<role>.flows`.
-
-Optional unified alias (`sim.gm.components.flow_map`) can declare both together:
-
-```yaml
-sim:
-  gm:
-    components:
-      flow_map:
-        active:
-          observe: timeline_make_observation
-          recommend:
-            recsys_type: twitter
-        fixed_pre:
-          observe:
-            instance: episode_observation
-          recommend:
-            recsys_type: reddit
-```
-
-This alias is expanded internally into per-slot `flow_map` and `flows`.
 
 See [Environment Layer](environment_layer.md) for extension patterns and examples.
 
@@ -354,7 +333,6 @@ Configure what posts agents see in their feed using timeline strategies:
 sim:
   timeline_posts: 10                          # Posts per timeline observation
   timeline_mode: follower_chronological       # Canonical selector
-  timeline_strategy: ${sim.timeline_mode}     # Legacy alias (optional)
   timeline_config:
     recsys_ratio: 0.6                         # For hybrid mode: 60% recommendations
     follower_ratio: 0.4                       # For hybrid mode: 40% followed users
@@ -402,9 +380,8 @@ sim:
 The runtime contract is:
 
 - `sim.timeline_mode` chooses how the timeline is assembled.
-- `sim.timeline_strategy` is accepted as a legacy alias for compatibility.
 - `sim.gm.components.recommend` schedules recommendation recomputation.
-- In multi-flow GM mode, per-flow algorithm choice is configured via `recommend.flows.<flow>.recsys_type` or the GM-level `flow_map` alias.
+- In multi-flow GM mode, per-flow algorithm choice is configured via `recommend.flows.<flow>.recsys_type`.
 
 **Recommendation Algorithms:**
 
@@ -727,7 +704,7 @@ header when placed in external directories.
 
 ```yaml
 persona_pipeline:
-  processing_mode: raw          # raw | formative | llm_formative
+  processing_mode: raw          # raw | formative
 
   defaults:                     # Applied to all classes
     params:
@@ -790,9 +767,33 @@ fixed_action_sets:
 ### Fixed-Entity Class Notes
 
 - Use `prefab_module: mastodon_sim.agents.fixed_entity` for deterministic fixed-action agents.
-- Fixed entities support `params.fixed_action_plan` entries with episode-indexed actions.
-- Set `params.action_flow` to control which engine flow bucket executes the entity.
+- `params.fixed_action_plan` must be an episode-keyed dict (strict).
+- You can initialize plans from an external file with `params.fixed_action_plan_file` (`.json` / `.yaml` / `.yml`).
+- Set only one of `params.fixed_action_plan` or `params.fixed_action_plan_file`.
+- Set `flow_tag` to control which engine flow bucket executes the entity.
 - To provide episode-based observations, set:
+
+Example fixed-entity params:
+
+```yaml
+params:
+  fixed_action_plan:
+    0:
+      - action_type: create_tweet
+        target_id: ""
+        content: "Scheduled update"
+        reasoning: "Deterministic episode 0 post."
+  emit_finished_on_episode_end: true
+```
+
+Or file-based:
+
+```yaml
+params:
+  fixed_action_plan_file: scenarios/my_scenario/input/fixed_action_plan.yaml
+```
+
+The file contents use the same episode-keyed dict shape as `fixed_action_plan`.
 
 ```yaml
 sim:
@@ -812,7 +813,7 @@ sim:
 
 Use this whenever you add a new behavior-oriented agent class (fixed agents are one example).
 
-1. Assign each class to a flow via `params.action_flow`.
+1. Assign each class to a flow via `flow_tag`.
 2. Define execution order in `sim.engine.flow_routing.flow_order`.
 3. Optionally route specific entities by name with `sim.engine.flow_routing.entity_to_flow`.
 4. If a flow needs a special observation format, list it in `sim.gm.components.observe.params.episode_observation_flows`.
@@ -825,11 +826,11 @@ persona_pipeline:
     broadcasters:
       prefab_module: mastodon_sim.agents.fixed_entity
       params:
-        action_flow: fixed_pre
+        flow_tag: fixed_pre
     users:
       prefab_module: mastodon_sim.agents.entity
       params:
-        action_flow: default
+        flow_tag: default
 
 sim:
   engine:
@@ -915,12 +916,11 @@ probes:
 ### Processing Mode Notes
 
 - `raw` and `formative` are the supported scenario-level modes.
-- `llm_formative` is also accepted for backward compatibility.
 - Custom mode names require runtime registration in
   `src/mastodon_sim/runtime/runner.py` (not YAML-only today).
 
 When `sim.gm.components.resolve` is left at baseline defaults, `sim.action_mode`
-still maps to the corresponding resolve component for backward compatibility.
+maps to the corresponding resolve component by default.
 
 ---
 

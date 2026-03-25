@@ -104,3 +104,19 @@ def test_tool_calling_resolve_executes_tool_kwargs() -> None:
 
     result = resolve.resolve(active_entity="Alice", action_text=action_text)
     assert result == "toot:Alice:Hello from tool mode"
+
+
+def test_tool_calling_resolve_allows_finished_tool_call() -> None:
+    resolve = ToolCallingResolveComponent(sm_app=_FakeApp())
+
+    action_text = json.dumps(
+        {
+            "tool_call": {
+                "name": "FINISHED",
+                "arguments": {},
+            }
+        }
+    )
+
+    result = resolve.resolve(active_entity="Alice", action_text=action_text)
+    assert result == "FINISHED:None:None"

@@ -21,10 +21,7 @@ agents have their starting knowledge and the simulation loop begins.
 | Mode | Config | What it does |
 |------|--------|-------------|
 | **Raw** | `processing_mode: raw` | No LLM calls. Only config memories are injected. |
-| **Formative** | `processing_mode: formative` or `processing_mode: llm_formative` | Uses the LLM to generate a multi-episode backstory per agent. |
-
-Both formative names are accepted for compatibility. Prefer `formative` in
-new configs.
+| **Formative** | `processing_mode: formative` | Uses the LLM to generate a multi-episode backstory per agent. |
 
 ## Current Extensibility Boundary
 

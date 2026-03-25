@@ -19,7 +19,6 @@ class TimelineMakeObservation(FlowComponent, make_observation_component.MakeObse
 
     FLOW_FIELDS = {
         "timeline_mode": str,
-        "timeline_strategy": str,  # Backward-compatible alias.
         "recsys_type": str,
     }
 
@@ -29,10 +28,9 @@ class TimelineMakeObservation(FlowComponent, make_observation_component.MakeObse
         model: Any,
         player_names: Sequence[str],
         sm_app: Any,
-        entity_action_flows: dict[str, str] | None = None,
+        entity_flow_tags: dict[str, str] | None = None,
         episode_observation_flows: Sequence[str] | None = None,
         timeline_mode: str | None = None,
-        timeline_strategy: str = "follower_chronological",
         timeline_config: dict[str, Any] | None = None,
         call_to_make_observation: str = _CALL_TO_MAKE_OBSERVATION,
     ):
@@ -45,14 +43,11 @@ class TimelineMakeObservation(FlowComponent, make_observation_component.MakeObse
             call_to_make_observation=call_to_make_observation,
         )
         self._sm_app = sm_app
-        self._entity_action_flows = dict(entity_action_flows or {})
+        self._entity_flow_tags = dict(entity_flow_tags or {})
         self._episode_observation_flows = {
             str(flow).strip() for flow in (episode_observation_flows or ()) if str(flow).strip()
         }
-        self._timeline_mode = str(
-            timeline_mode or timeline_strategy or "follower_chronological"
-        ).strip()
-        self._timeline_strategy = self._timeline_mode
+        self._timeline_mode = str(timeline_mode or "follower_chronological").strip()
         self._timeline_config = dict(timeline_config or {})
 
     def _get_active_entity_name_from_call_to_action(self, call_to_action: str) -> str:
@@ -85,7 +80,7 @@ class TimelineMakeObservation(FlowComponent, make_observation_component.MakeObse
             action_spec.call_to_action
         )
 
-        flow_type = self._entity_action_flows.get(active_entity_name, "default")
+        flow_type = self._entity_flow_tags.get(active_entity_name, "default")
         if flow_type in self._episode_observation_flows:
             current_episode = getattr(
                 getattr(self._sm_app, "action_logger", None), "episode_idx", 0
@@ -106,11 +101,9 @@ class TimelineMakeObservation(FlowComponent, make_observation_component.MakeObse
         recsys_type = self.get_flow_field("recsys_type", flow_type)
         flow_timeline_mode = self.get_flow_field("timeline_mode", flow_type)
         if not flow_timeline_mode:
-            flow_timeline_mode = self.get_flow_field("timeline_strategy", flow_type)
-        if not flow_timeline_mode:
             flow_timeline_mode = self._timeline_mode
 
-        timeline = self._sm_app.get_timeline_strategy(
+        timeline = self._sm_app.get_timeline_mode(
             flow_timeline_mode,
             active_entity_name,
             timeline_posts,
@@ -137,7 +130,7 @@ class TimelineMakeObservation(FlowComponent, make_observation_component.MakeObse
 class EpisodeObservation(make_observation_component.MakeObservation):
     """Return episode number instead of timeline for specific flows.
 
-    Used to differentiate agent behavior based on entity_action_flows
+    Used to differentiate agent behavior based on entity_flow_tags
     (e.g., fixed_pre agents see only episode numbers, not timelines).
     """
 
@@ -147,7 +140,7 @@ class EpisodeObservation(make_observation_component.MakeObservation):
         model: Any,
         player_names: Sequence[str],
         sm_app: Any,
-        entity_action_flows: dict[str, str] | None = None,
+        entity_flow_tags: dict[str, str] | None = None,
         episode_observation_flow: str = "fixed_pre",
         call_to_make_observation: str = _CALL_TO_MAKE_OBSERVATION,
     ):
@@ -158,7 +151,7 @@ class EpisodeObservation(make_observation_component.MakeObservation):
             call_to_make_observation=call_to_make_observation,
         )
         self._sm_app = sm_app
-        self._entity_action_flows = dict(entity_action_flows or {})
+        self._entity_flow_tags = dict(entity_flow_tags or {})
         self._episode_observation_flow = str(episode_observation_flow).strip()
 
     def _get_active_entity_name_from_call_to_action(self, call_to_action: str) -> str:
@@ -191,7 +184,7 @@ class EpisodeObservation(make_observation_component.MakeObservation):
             action_spec.call_to_action
         )
 
-        flow_type = self._entity_action_flows.get(active_entity_name, "default")
+        flow_type = self._entity_flow_tags.get(active_entity_name, "default")
         if flow_type != self._episode_observation_flow:
             return ""
 

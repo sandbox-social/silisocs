@@ -34,7 +34,7 @@ persona_pipeline:
       params:
         name: "NewsSource_1_0"
         context: "OASIS data injection agent"
-        action_flow: fixed_pre
+        flow_tag: fixed_pre
         fixed_action_plan:
           - action_type: create_reddit_post
             target_id: ""
@@ -60,7 +60,7 @@ persona_pipeline:
       params:
         name: "NewsSource_1_1"
         context: "OASIS data injection agent"
-        action_flow: fixed_pre
+        flow_tag: fixed_pre
         fixed_action_plan:
           - action_type: create_reddit_post
             target_id: ""
@@ -139,7 +139,7 @@ engine:
       update_every_n_steps: 1  # Update recommendations every episode (OASIS alignment)
 
 timeline_posts: 5
-timeline_strategy: pure_recsys  # Reddit: 100% recommendations (no follow timeline)
+timeline_mode: pure_recsys  # Reddit: 100% recommendations (no follow timeline)
 
 sim:
   enabled_actions:

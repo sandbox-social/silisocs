@@ -3,7 +3,7 @@
 import pytest
 
 from mastodon_sim.environments.gm.components.base import FlowComponent
-from mastodon_sim.environments.gm.components.factory import initialize_component_multi_fields
+from mastodon_sim.environments.gm.components.factory import initialize_component_flow_fields
 
 
 class MockObserveComponent(FlowComponent):
@@ -35,28 +35,27 @@ class NormalComponent:
         return "static"
 
 
-def test_initialize_component_multi_fields_with_entities():
-    """Test initializing multi-fields from component config."""
+def test_initialize_component_flow_fields_with_flows():
+    """Test initializing flow fields from component config."""
     component = MockObserveComponent()
     config = {
         "built_in": "timeline_every_turn",
-        "entities": {
+        "flows": {
             "alice": {"timeline_filter": "trusted"},
             "bob": {"timeline_filter": "all"},
             "charlie": {"timeline_filter": "verified"},
         },
     }
 
-    initialize_component_multi_fields(component, config)
+    initialize_component_flow_fields(component, config)
 
-    # Verify multi-field values were set
-    assert component.get_field_for_entity("timeline_filter", "alice") == "trusted"
-    assert component.get_field_for_entity("timeline_filter", "bob") == "all"
-    assert component.get_field_for_entity("timeline_filter", "charlie") == "verified"
+    assert component.get_flow_field("timeline_filter", "alice") == "trusted"
+    assert component.get_flow_field("timeline_filter", "bob") == "all"
+    assert component.get_flow_field("timeline_filter", "charlie") == "verified"
 
 
-def test_initialize_component_multi_fields_without_entities():
-    """Test component with config but no entities section."""
+def test_initialize_component_flow_fields_without_flows():
+    """Test component with config but no flows section."""
     component = MockObserveComponent()
     config = {
         "built_in": "timeline_every_turn",
@@ -64,17 +63,17 @@ def test_initialize_component_multi_fields_without_entities():
     }
 
     # Should not fail; component should remain unchanged
-    initialize_component_multi_fields(component, config)
-    assert component.get_field_for_entity("timeline_filter", "alice") is None
+    initialize_component_flow_fields(component, config)
+    assert component.get_flow_field("timeline_filter", "alice") is None
 
 
-def test_initialize_component_multi_fields_with_none_config():
+def test_initialize_component_flow_fields_with_none_config():
     """Test component with None config."""
     component = MockObserveComponent()
 
     # Should not fail
-    initialize_component_multi_fields(component, None)
-    assert component.get_field_for_entity("timeline_filter", "alice") is None
+    initialize_component_flow_fields(component, None)
+    assert component.get_flow_field("timeline_filter", "alice") is None
 
 
 def test_initialize_non_flow_component():
@@ -82,11 +81,11 @@ def test_initialize_non_flow_component():
     component = NormalComponent()
     config = {
         "built_in": "something",
-        "entities": {"alice": {"field": "value"}},
+        "flows": {"alice": {"field": "value"}},
     }
 
     # Should not fail or raise any errors
-    initialize_component_multi_fields(component, config)
+    initialize_component_flow_fields(component, config)
 
 
 def test_multiple_fields_on_component():
@@ -103,23 +102,23 @@ def test_multiple_fields_on_component():
 
     component = MultiFieldComponent()
     config = {
-        "entities": {
+        "flows": {
             "alice": {"timeline_filter": "trusted", "action_parser": "strict"},
             "bob": {"timeline_filter": "all", "action_parser": "lenient"},
         },
     }
 
-    initialize_component_multi_fields(component, config)
+    initialize_component_flow_fields(component, config)
 
     # Both fields should be initialized correctly
-    assert component.get_field_for_entity("timeline_filter", "alice") == "trusted"
-    assert component.get_field_for_entity("action_parser", "alice") == "strict"
-    assert component.get_field_for_entity("timeline_filter", "bob") == "all"
-    assert component.get_field_for_entity("action_parser", "bob") == "lenient"
+    assert component.get_flow_field("timeline_filter", "alice") == "trusted"
+    assert component.get_flow_field("action_parser", "alice") == "strict"
+    assert component.get_flow_field("timeline_filter", "bob") == "all"
+    assert component.get_flow_field("action_parser", "bob") == "lenient"
 
 
-def test_entity_config_partial_fields():
-    """Test entity config with partial field values."""
+def test_flow_config_partial_fields():
+    """Test flow config with partial field values."""
 
     class MultiFieldComponent(FlowComponent):
         FLOW_FIELDS = {
@@ -132,21 +131,21 @@ def test_entity_config_partial_fields():
 
     component = MultiFieldComponent()
     config = {
-        "entities": {
+        "flows": {
             "alice": {"field_a": "modified_a"},  # Only field_a
             "bob": {"field_b": "modified_b"},  # Only field_b
         },
     }
 
-    initialize_component_multi_fields(component, config)
+    initialize_component_flow_fields(component, config)
 
     # Alice should have field_a set, but field_b as default
-    assert component.get_field_for_entity("field_a", "alice") == "modified_a"
-    assert component.get_field_for_entity("field_b", "alice") is None
+    assert component.get_flow_field("field_a", "alice") == "modified_a"
+    assert component.get_flow_field("field_b", "alice") is None
 
     # Bob should have field_b set, but field_a as default
-    assert component.get_field_for_entity("field_a", "bob") is None
-    assert component.get_field_for_entity("field_b", "bob") == "modified_b"
+    assert component.get_flow_field("field_a", "bob") is None
+    assert component.get_flow_field("field_b", "bob") == "modified_b"
 
 
 if __name__ == "__main__":

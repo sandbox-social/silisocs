@@ -13,7 +13,7 @@ This page focuses on end-user and developer configurability for Engine/GM/backen
 - Strong defaults that run out of the box.
 - YAML-first component selection for common customization.
 - Class-path extension for advanced custom components.
-- Backward compatibility with existing `sim.action_mode` workflows.
+- Predictable `sim.action_mode` workflows (`custom`, `generic`, `tool_calling`).
 
 ## Current Runtime Model
 
@@ -104,7 +104,7 @@ Fixed-action directive handling:
 
 It uses backend tools generated from `@app_action` and can include both:
 
-- YAML action guidance (`social_media.action_call_to_action`)
+- YAML action guidance (`social_media.action_prompt`)
 - auto-generated backend action catalog
 
 This supports both styles:
@@ -235,7 +235,7 @@ Flow routing notes:
 - Agents in each flow bucket still execute in parallel.
 - Flow buckets execute sequentially, enabling deterministic pre/post phases
   for specialized entity classes without sacrificing per-bucket parallelism.
-- Assign classes to buckets using `persona_pipeline.classes.<name>.params.action_flow`.
+- Assign classes to buckets using `persona_pipeline.classes.<name>.flow_tag`.
 - Add one-off overrides with `sim.engine.flow_routing.entity_to_flow` when a
   specific entity should move to a different phase.
 - Use `sim.gm.components.observe.params.episode_observation_flows` for flows

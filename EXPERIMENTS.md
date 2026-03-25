@@ -56,7 +56,7 @@ Defines how to construct agent entities from data sources:
 
 ```yaml
 persona_pipeline:
-  processing_mode: raw              # raw | formative | llm_formative
+  processing_mode: raw              # raw | formative
 
   defaults:                         # Applied to all classes
     params:
@@ -264,7 +264,6 @@ enable_gm_multi_flow: false        # Set true if different agents need different
 enable_engine_multi_flow: false    # Set true if flows should be scheduled in phases
 
 timeline_mode: follower_chronological
-timeline_strategy: ${sim.timeline_mode}  # legacy alias (optional)
 timeline_config:
   recsys_ratio: 0.6
   follower_ratio: 0.4

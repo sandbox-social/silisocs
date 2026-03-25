@@ -31,7 +31,7 @@ from mastodon_sim.environments.gm.components.factory import (
     build_observe_components,
     build_recommendation_component,
     build_resolve_component,
-    initialize_component_multi_fields,
+    initialize_component_flow_fields,
 )
 from mastodon_sim.runtime.config import ConfigStore
 
@@ -51,7 +51,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
           gm:
             preset: shared_flow
 
-    Component routing is built from entity_action_flows and the multi-component
+    Component routing is built from entity_flow_tags and the multi-component
     configuration in gm.components.observe, etc.
     """
 
@@ -89,11 +89,10 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
                 dict[str, Any],
                 OmegaConf.to_container(cfg.sim.gm.components, resolve=True),
             )
-        gm_components_cfg = _expand_shared_flow_map_alias(gm_components_cfg)
 
         user_data = self.params["sm_user_data"]
         activity_rates = dict(user_data.get("activity_transition_rates", {}))
-        entity_action_flows = dict(user_data.get("entity_action_flows", {}))
+        entity_flow_tags = dict(user_data.get("entity_flow_tags", {}))
 
         next_actor = build_next_acting_component(
             gm_components_cfg.get("next_acting"),
@@ -112,13 +111,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
 
         platform_type = getattr(cfg.social_media, "platform_type", "twitter_like")
 
-        timeline_mode = str(
-            getattr(
-                cfg.sim,
-                "timeline_mode",
-                getattr(cfg.sim, "timeline_strategy", "follower_chronological"),
-            )
-        )
+        timeline_mode = str(getattr(cfg.sim, "timeline_mode", "follower_chronological"))
         supported_timeline_modes = {
             "twitter_like": {
                 "follower_chronological",
@@ -164,6 +157,44 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
             db_path=db_path,
         )
 
+        enabled_actions_cfg = getattr(cfg.sim, "enabled_actions", None)
+        if enabled_actions_cfg is not None:
+            if isinstance(enabled_actions_cfg, (list, tuple)):
+                enabled_actions = [str(action).strip() for action in enabled_actions_cfg]
+            else:
+                enabled_actions = [str(enabled_actions_cfg).strip()]
+
+            action_loop_built_in = ""
+            if hasattr(cfg.sim, "engine") and getattr(cfg.sim.engine, "action_loop", None):
+                action_loop_built_in = str(
+                    getattr(cfg.sim.engine.action_loop, "built_in", "")
+                ).strip()
+            enabled_actions_upper = {name.upper() for name in enabled_actions if name}
+            if action_loop_built_in == "open_ended" and "FINISHED" not in enabled_actions_upper:
+                enabled_actions.append("FINISHED")
+
+            sm_app.set_enabled_actions(enabled_actions)
+
+        catalog = sm_app.action_catalog()
+        allowed_action_types = sorted(
+            {
+                str(item.get("selectable_name", "")).strip().upper()
+                for item in catalog
+                if str(item.get("selectable_name", "")).strip()
+            }
+        )
+        for entity in self.entities:
+            setter = getattr(entity, "set_allowed_action_types", None)
+            existing = getattr(entity, "_allowed_action_types", None)
+            if callable(setter) and not existing:
+                setter(allowed_action_types)
+
+        action_output_mode = str(resolve_slot.get("built_in", "parsed_action") or "parsed_action")
+        for entity in self.entities:
+            mode_setter = getattr(entity, "set_action_output_mode", None)
+            if callable(mode_setter):
+                mode_setter(action_output_mode)
+
         # KEY CHANGE: Build MULTIPLE observe components
         observe_slots = dict(gm_components_cfg.get("observe", {}))
         episode_observation_flow = (
@@ -187,10 +218,9 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
                 model=model,
                 player_names=player_names,
                 sm_app=sm_app,
-                entity_action_flows=entity_action_flows,
+                entity_flow_tags=entity_flow_tags,
                 episode_observation_flow=episode_observation_flow,
                 timeline_mode=timeline_mode,
-                timeline_strategy=timeline_mode,
                 timeline_config=timeline_config,
             )
         else:
@@ -201,10 +231,9 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
                 model=model,
                 player_names=player_names,
                 sm_app=sm_app,
-                entity_action_flows=entity_action_flows,
+                entity_flow_tags=entity_flow_tags,
                 episode_observation_flow=episode_observation_flow,
                 timeline_mode=timeline_mode,
-                timeline_strategy=timeline_mode,
                 timeline_config=timeline_config,
             )
             class_name = single_observe.__class__.__name__
@@ -241,7 +270,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
         for slot_key, slot_cfg in gm_components_cfg.items():
             for component_key, component in components.items():
                 if component_key.startswith(f"{slot_key}__"):
-                    initialize_component_multi_fields(component, slot_cfg)
+                    initialize_component_flow_fields(component, slot_cfg)
 
         if hasattr(recommend_component, "validate_recsys_types") and callable(
             recommend_component.validate_recsys_types
@@ -250,7 +279,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
 
         # KEY CHANGE: Build flow-to-component mapping
         flow_to_component_map = _build_flow_to_component_map(
-            entity_action_flows,
+            entity_flow_tags,
             observe_components,
             gm_components.event_resolution.DEFAULT_RESOLUTION_COMPONENT_KEY,
             observe_slots,
@@ -265,7 +294,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
             entity_names=player_names,
             sm_app=sm_app,
             flow_to_component_map=flow_to_component_map,
-            entity_action_flows=entity_action_flows,
+            entity_flow_tags=entity_flow_tags,
             component_order=list(components.keys()),
             call_to_action_str=call_to_sm_action,
             activity_transition_rates=activity_rates,
@@ -289,7 +318,7 @@ def _class_to_kebab_case(class_name: str) -> str:
 
 
 def _build_flow_to_component_map(
-    entity_action_flows: dict[str, str],
+    entity_flow_tags: dict[str, str],
     observe_components: dict[str, Any],
     resolve_component_key: str,
     observe_slot_cfg: Mapping[str, Any] | None = None,
@@ -298,7 +327,7 @@ def _build_flow_to_component_map(
     """Build flow-to-component mapping from config + available components.
 
     Args:
-        entity_action_flows: Maps entity name to flow name
+        entity_flow_tags: Maps entity name to flow tag
         observe_components: {component_key: component_instance} for observe role
         resolve_component_key: Context key used by resolve component
         observe_slot_cfg: Observe slot configuration (may include flow_map)
@@ -320,7 +349,7 @@ def _build_flow_to_component_map(
     resolve_flow_map = _normalize_flow_map(resolve_slot_cfg.get("flow_map"))
 
     # Get unique flows
-    unique_flows = set(entity_action_flows.values())
+    unique_flows = set(entity_flow_tags.values())
     unique_flows.update(observe_flow_map.keys())
     unique_flows.update(resolve_flow_map.keys())
     unique_flows.add("default")  # Always include default
@@ -371,64 +400,6 @@ def _normalize_flow_map(raw_flow_map: Any) -> dict[str, str]:
         if flow and key:
             normalized[flow] = key
     return normalized
-
-
-def _expand_shared_flow_map_alias(components_cfg: Mapping[str, Any]) -> dict[str, Any]:
-    """Expand optional GM-level flow_map alias into per-slot configs.
-
-    Supported alias shape:
-        gm.components.flow_map.<flow>.<role>: <component_key_or_name>
-        gm.components.flow_map.<flow>.<role>:
-          instance: <component_key_or_name>   # optional routing target
-          <field_name>: <field_value>         # optional FlowComponent fields
-    """
-    expanded = dict(components_cfg or {})
-    alias_raw = expanded.pop("flow_map", None)
-    if not isinstance(alias_raw, Mapping):
-        return expanded
-
-    for flow_name, role_map in alias_raw.items():
-        flow = str(flow_name).strip()
-        if not flow or not isinstance(role_map, Mapping):
-            continue
-
-        for role_name, role_cfg in role_map.items():
-            role = str(role_name).strip()
-            if not role:
-                continue
-
-            slot_cfg = dict(expanded.get(role) or {})
-
-            if isinstance(role_cfg, str):
-                flow_map = dict(slot_cfg.get("flow_map") or {})
-                flow_map[flow] = role_cfg
-                slot_cfg["flow_map"] = flow_map
-                expanded[role] = slot_cfg
-                continue
-
-            if not isinstance(role_cfg, Mapping):
-                continue
-
-            role_cfg_dict = dict(role_cfg)
-            instance_name = role_cfg_dict.pop("instance", None)
-            if instance_name is None:
-                instance_name = role_cfg_dict.pop("component", None)
-
-            if instance_name is not None:
-                flow_map = dict(slot_cfg.get("flow_map") or {})
-                flow_map[flow] = str(instance_name).strip()
-                slot_cfg["flow_map"] = flow_map
-
-            if role_cfg_dict:
-                flows_cfg = dict(slot_cfg.get("flows") or {})
-                existing_fields = dict(flows_cfg.get(flow) or {})
-                existing_fields.update(role_cfg_dict)
-                flows_cfg[flow] = existing_fields
-                slot_cfg["flows"] = flows_cfg
-
-            expanded[role] = slot_cfg
-
-    return expanded
 
 
 def _resolve_observe_component_key(

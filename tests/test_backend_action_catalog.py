@@ -54,3 +54,11 @@ def test_invoke_action_with_kwargs_supports_selectable_name() -> None:
     )
 
     assert output == "Alice Smith:Hello"
+
+
+def test_finished_action_is_available_and_invokable() -> None:
+    app = _FakeApp()
+    selectable = {item["selectable_name"] for item in app.action_catalog()}
+
+    assert "FINISHED" in selectable
+    assert app.invoke_action_with_kwargs("FINISHED", {}) == "Finished action episode"

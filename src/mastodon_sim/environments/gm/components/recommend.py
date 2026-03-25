@@ -39,13 +39,13 @@ class RecommendationComponent(FlowComponent):
     - lazy: Only compute for active users (default: True)
     - max_posts: Max recommendations per user (default: 10)
 
-    Multi-flow configuration via 'entities' field:
-        recommend:
-          entities:
-            active:
-              recsys_type: "twitter"
-            lurker:
-              recsys_type: "reddit"
+        Multi-flow configuration via `flows` field:
+                recommend:
+                    flows:
+                        active:
+                            recsys_type: "twitter"
+                        lurker:
+                            recsys_type: "reddit"
     """
 
     FLOW_FIELDS = {
@@ -84,6 +84,7 @@ class RecommendationComponent(FlowComponent):
         self.update_every_n_steps = update_every_n_steps
         self.lazy = lazy
         self.max_posts = max_posts
+        self._entity: Any | None = None
         self._step_count = 0
         self._initialized_recsys_types: set[str] = set()
         self._recsys_disabled = False
@@ -205,6 +206,32 @@ class RecommendationComponent(FlowComponent):
 
     def update_from_context(self, context: str) -> None:
         """Update component state from LLM context (no-op)."""
+
+    def set_entity(self, entity: Any) -> None:
+        """Bind owning entity (Concordia component contract)."""
+        self._entity = entity
+
+    def get_entity(self) -> Any:
+        """Return owning entity if bound."""
+        if self._entity is None:
+            raise RuntimeError("RecommendationComponent entity not set")
+        return self._entity
+
+    def get_state(self) -> dict[str, Any]:
+        """Return serializable component state for checkpoints."""
+        return {
+            "step_count": self._step_count,
+            "initialized_recsys_types": sorted(self._initialized_recsys_types),
+            "recsys_disabled": self._recsys_disabled,
+        }
+
+    def set_state(self, state: dict[str, Any]) -> None:
+        """Restore serializable component state."""
+        state = dict(state or {})
+        self._step_count = int(state.get("step_count", self._step_count))
+        restored_types = state.get("initialized_recsys_types", [])
+        self._initialized_recsys_types = {str(v).strip() for v in restored_types if str(v).strip()}
+        self._recsys_disabled = bool(state.get("recsys_disabled", self._recsys_disabled))
 
     def get_output_dict(self) -> dict[str, Any]:
         """Return component output metadata."""

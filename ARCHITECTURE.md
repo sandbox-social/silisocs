@@ -81,7 +81,7 @@ Engine schedules agents
   ↓
 MultiFlowGM.MultiFlowSMAct selects active entity
   ↓
-1. Determine entity's flow (from entity_action_flows map)
+1. Determine entity's flow (from entity_flow_tags map)
 2. Look up flow → {role → component_key} mapping
 3. Route output selection to flow-selected components:
   - NextActing: (shared)
@@ -126,14 +126,12 @@ sim:
 Agents are assigned to flows, which determine their component routing:
 
 ```yaml
-scenario:
-  entities:
-    - agent_name: alice
-      action_flow: active       # ← Flow assignment
-    - agent_name: bob
-      action_flow: active
-    - agent_name: sentinel_1
-      action_flow: fixed_pre    # ← Different flow
+persona_pipeline:
+  classes:
+    ActiveAgent:
+      flow_tag: active
+    Sentinel:
+      flow_tag: fixed_pre
 ```
 
 Multiple agents can share the same flow. All agents in a flow use the same components.
@@ -159,7 +157,7 @@ flow_to_component_map = {
 1. Detect multi-instance component config (nested dicts in YAML)
 2. Build each component instance
 3. Auto-key by class name (TimelineObservation → observe__timeline_make_observation)
-4. Extract unique flows from entity_action_flows
+4. Extract unique flows from entity_flow_tags
 5. Map each flow to component instances
 
 **How it's used:**
@@ -187,27 +185,6 @@ sim:
           default: observe__timeline_make_observation
 ```
 
-Optional alias for one unified map:
-
-```yaml
-sim:
-  gm:
-    components:
-      flow_map:
-        active:
-          observe: timeline_make_observation
-          recommend:
-            recsys_type: twitter
-        fixed_pre:
-          observe:
-            instance: episode_observation
-          recommend:
-            recsys_type: reddit
-```
-
-The alias is expanded into per-slot `observe.flow_map` (routing) and per-slot
-`<role>.flows` (FlowComponent field overrides).
-
 ---
 
 ## Part 3: Multi-Field Component Configuration
@@ -222,7 +199,7 @@ Multi-fields allow a **single component instance** to behave differently per ent
 gm:
   components:
     recommend:
-      entities:           # ← Flow-to-field mapping
+      flows:              # ← Flow-to-field mapping
         active:
           recsys_type: "twitter"      # Active agents get embedding-based recommendations
         lurker:
@@ -246,14 +223,14 @@ class TimelineObservation(FlowComponent):
     # Get timeline mode for this flow
     mode = self.get_flow_field("timeline_mode", flow_tag, default="follower_chronological")
     # Use mode to fetch timeline
-    return backend.get_timeline_strategy(mode, ...)
+    return backend.get_timeline_mode(mode, ...)
 ```
 
 **GM-side (initialize values):**
 ```python
 # In MultiFlowGM.build():
 observe_component = build_observe_component(...)
-initialize_component_multi_fields(observe_component, {
+initialize_component_flow_fields(observe_component, {
   "active": {"timeline_mode": "pure_recsys"},
   "lurker": {"timeline_mode": "follower_chronological"}
 })
@@ -291,7 +268,7 @@ Recommendations now work with multiple algorithms simultaneously:
 **Step 1: Initialization (MultiFlowGM.build())**
 ```python
 recommend_component = build_recommendation_component(...)
-initialize_component_multi_fields(recommend_component, {
+initialize_component_flow_fields(recommend_component, {
     "active": {"recsys_type": "twitter"},
     "lurker": {"recsys_type": "reddit"}
 })
@@ -338,8 +315,7 @@ Agents can receive timelines computed with different strategies:
 
 ```yaml
 sim:
-  timeline_mode: hybrid_recsys_follower      # Canonical selector
-  timeline_strategy: ${sim.timeline_mode}    # Legacy alias (optional)
+  timeline_mode: hybrid_recsys_follower
   timeline_config:
     recsys_ratio: 0.6  # (for hybrid_recsys_follower strategy)
 ```
@@ -360,13 +336,14 @@ With multi-fields, different flows can see different timelines:
 gm:
   components:
     observe:
-      timeline:
-        built_in: timeline_every_turn
-        entities:
-          active:
-            timeline_mode: "pure_recsys"        # Recommendations only
-          lurker:
-            timeline_mode: "follower_chronological"  # Followers only
+      instances:
+        timeline:
+          built_in: timeline_every_turn
+      flows:
+        active:
+          timeline_mode: "pure_recsys"        # Recommendations only
+        lurker:
+          timeline_mode: "follower_chronological"  # Followers only
 ```
 
 ---
@@ -431,13 +408,14 @@ sim:
     preset: shared_flow
     components:
       observe:
-        timeline:
-          built_in: timeline_every_turn
-          params: {}
-        episode:
-          built_in: episode_only
-          params: {}
-        entities:
+        instances:
+          timeline:
+            built_in: timeline_every_turn
+            params: {}
+          episode:
+            built_in: episode_only
+            params: {}
+        flows:
           active:
             timeline_mode: "pure_recsys"
             recsys_type: "twitter"
@@ -447,25 +425,25 @@ sim:
 
       resolve:
         built_in: parsed_action
-        entities:
+        flows:
           active:
             action_parser: "strict"
           fixed_pre:
             action_parser: "lenient"
 
       recommend:
-        entities:
+        flows:
           active:
             recsys_type: "twitter"
           fixed_pre:
             recsys_type: "reddit"
 
-scenario:
-  entities:
-    - agent_name: alice
-      action_flow: active      # Uses active flow components
-    - agent_name: sentinel_1
-      action_flow: fixed_pre   # Uses fixed_pre flow components
+persona_pipeline:
+  classes:
+    ActiveAgent:
+      flow_tag: active      # Uses active flow components
+    Sentinel:
+      flow_tag: fixed_pre   # Uses fixed_pre flow components
 ```
 
 ### Advanced: Multiple Component Instances
@@ -474,17 +452,18 @@ scenario:
 gm:
   components:
     observe:
-      timeline_active:
-        built_in: timeline_every_turn
-        params:
-          history_size: 50
-      timeline_passive:
-        built_in: timeline_every_turn
-        params:
-          history_size: 10
-      episode:
-        built_in: episode_only
-      entities:
+      instances:
+        timeline_active:
+          built_in: timeline_every_turn
+          params:
+            history_size: 50
+        timeline_passive:
+          built_in: timeline_every_turn
+          params:
+            history_size: 10
+        episode:
+          built_in: episode_only
+      flows:
         active:
           timeline_mode: "pure_recsys"
         lurker:
@@ -521,28 +500,7 @@ gm:
 
 ---
 
-## Part 9: Backward Compatibility
-
-### Simple → Multi-Flow Migration
-
-Existing scenarios using simple mode can be migrated:
-
-1. Set `enable_gm_multi_flow: true`
-2. Change `gm.preset: base` → `gm.preset: shared_flow`
-3. No other changes needed - falls back to single-instance mode
-
-The MultiFlowGM detects if multi-instance component config exists; if not, it builds single instances and routes all agents to them.
-
-### API Stability
-
-- BaseGM.build() unchanged
-- SMAct class remains for simple mode
-- MultiFlowSMAct is new, doesn't interfere with existing code
-- All factory functions are backward compatible
-
----
-
-## Part 10: Future Extensions
+## Part 9: Future Extensions
 
 ### Possible Enhancements
 
@@ -566,6 +524,6 @@ The multi-flow architecture provides:
 | Different observation types | ❌ | ✅ |
 | Configuration complexity | Low | Medium |
 | Execution overhead | Minimal | Low |
-| Backward compatible | ✅ | ✅ |
+| Canonical flow-field API | ✅ | ✅ |
 
 Choose **simple mode** for most scenarios. Use **multi-flow** when agents need substantially different behaviors (e.g., active vs passive, fixed vs variable) or when running multi-algorithm recommendation experiments.

@@ -107,7 +107,7 @@ def _default_gm_filename(cfg: DictConfig, mode: str) -> str:
     """Resolve default GM prefab filename from preset/mode."""
     sim_cfg = getattr(cfg, "sim", object())
     gm_preset = str(getattr(getattr(sim_cfg, "gm", object()), "preset", "base") or "base")
-    if mode == "shared" and gm_preset in {"shared_flow", "advanced_shared"}:
+    if mode == "shared" and gm_preset == "shared_flow":
         return "shared_flow_game_master"
     return str(cfg.social_media.gamemaster.filename)
 
@@ -116,7 +116,7 @@ def _default_gm_module_path(cfg: DictConfig, mode: str) -> str:
     """Resolve default GM module path from preset/mode."""
     sim_cfg = getattr(cfg, "sim", object())
     gm_preset = str(getattr(getattr(sim_cfg, "gm", object()), "preset", "base") or "base")
-    if mode == "shared" and gm_preset in {"shared_flow", "advanced_shared"}:
+    if mode == "shared" and gm_preset == "shared_flow":
         return "mastodon_sim.environments.gm.shared_flow_game_master"
     return str(cfg.social_media.gamemaster.sim_role.module_path)
 
@@ -135,23 +135,17 @@ def _collect_declared_flow_tags(cfg: DictConfig) -> set[str]:
     for class_cfg in classes_cfg.values():
         if not isinstance(class_cfg, Mapping):
             continue
-        class_params = class_cfg.get("params", {})
-        if not isinstance(class_params, Mapping):
-            class_params = {}
-        flow_tag = str(class_cfg.get("flow_tag", class_params.get("action_flow", "")) or "").strip()
+        flow_tag = str(class_cfg.get("flow_tag", "") or "").strip()
         if flow_tag:
             declared.add(flow_tag)
     return declared
 
 
-def _build_action_call_to_action(
-    cfg: DictConfig, action_mode: str, enable_tool_calling: bool
-) -> str:
+def _build_action_prompt(cfg: DictConfig, enable_tool_calling: bool) -> str:
     """Build action call-to-action prompt from config components.
 
     Args:
         cfg: Hydra config with social_media section
-        action_mode: "custom" or "generic"
         enable_tool_calling: Whether tool-calling mode is enabled
 
     Returns
@@ -161,11 +155,7 @@ def _build_action_call_to_action(
     action_prompt = getattr(cfg.social_media, "action_prompt", "")
     output_style = getattr(cfg.social_media, "output_style", "")
 
-    # Fallback to legacy action_call_to_action if new fields don't exist
     if not action_prompt:
-        legacy_prompt = getattr(cfg.social_media, "action_call_to_action", "")
-        if legacy_prompt:
-            return legacy_prompt
         return ""
 
     # When tool-calling is enabled, replace output_style with tool call instruction
@@ -179,7 +169,7 @@ def _build_action_call_to_action(
 
 
 def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
-    """Resolve GM specs from orchestration config with legacy fallback."""
+    """Resolve GM specs from orchestration config."""
     default_gm = cfg.social_media.gamemaster
     default_mode = "shared"
     default_spec = {
@@ -353,16 +343,14 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
         cfg.scenario.persona_pipeline.processing_mode
         if hasattr(cfg.scenario, "persona_pipeline")
         and hasattr(cfg.scenario.persona_pipeline, "processing_mode")
-        else "llm_formative"
+        else "formative"
     )
     processing_mode = str(processing_mode_raw).strip().lower()
-    if processing_mode == "formative":
-        processing_mode = "llm_formative"
 
-    if processing_mode not in {"llm_formative", "raw"}:
+    if processing_mode not in {"formative", "raw"}:
         raise ValueError(
             "Unsupported persona processing mode: "
-            f"{processing_mode_raw}. Expected one of: `raw`, `formative`, `llm_formative`."
+            f"{processing_mode_raw}. Expected one of: `raw`, `formative`."
         )
 
     # Build player-specific context and memories from agents
@@ -450,9 +438,8 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
                         name=gm_name,
                         # Determine if tool-calling is enabled
                         calls_to_action={
-                            "social_media_action": _build_action_call_to_action(
+                            "social_media_action": _build_action_prompt(
                                 cfg,
-                                action_mode=getattr(sim_cfg, "action_mode", "custom"),
                                 enable_tool_calling=(
                                     getattr(
                                         getattr(
@@ -510,7 +497,6 @@ def populate_agent_data(
     sim_roles: dict[str, str] = {}
     player_specific_memories: dict[str, list[str]] = {}
     player_specific_context: dict[str, str] = {}
-    entity_action_flows: dict[str, str] = {}
     entity_flow_tags: dict[str, str] = {}
     extra_shared_memories: list[str] = []
 
@@ -521,14 +507,10 @@ def populate_agent_data(
             agent.params.get("specific_memories", [])
         )
         player_specific_context[agent_name] = str(agent.params.get("context", ""))
-        action_flow = str(
-            agent.params.get("flow_tag", agent.params.get("action_flow", _DEFAULT_FLOW_TAG))
-            or _DEFAULT_FLOW_TAG
-        ).strip()
-        if not action_flow:
-            action_flow = _DEFAULT_FLOW_TAG
-        entity_action_flows[agent_name] = action_flow
-        entity_flow_tags[agent_name] = action_flow
+        flow_tag = str(agent.params.get("flow_tag", _DEFAULT_FLOW_TAG) or _DEFAULT_FLOW_TAG).strip()
+        if not flow_tag:
+            flow_tag = _DEFAULT_FLOW_TAG
+        entity_flow_tags[agent_name] = flow_tag
 
         for memory in _normalize_memories(agent.params.get("shared_memories", [])):
             if memory not in extra_shared_memories:
@@ -554,7 +536,6 @@ def populate_agent_data(
     for social_media_gm in social_media_gms:
         user_data = social_media_gm.params.setdefault("sm_user_data", {})
         user_data.setdefault("sim_roles", {}).update(sim_roles)
-        user_data["entity_action_flows"] = dict(entity_action_flows)
         user_data["entity_flow_tags"] = dict(entity_flow_tags)
 
         orchestration = user_data.setdefault("gm_orchestration", {})

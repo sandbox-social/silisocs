@@ -240,7 +240,7 @@ class BaseSocialMediaEngine(simultaneous.Simultaneous):
     @staticmethod
     def _entity_flow_type(game_master: entity_lib.Entity, entity_name: str, cfg: Any) -> str:
         act_component = getattr(game_master, "_act_component", None)
-        flow_map = dict(getattr(act_component, "entity_action_flows", {}) or {})
+        flow_map = dict(getattr(act_component, "entity_flow_tags", {}) or {})
 
         configured_map = getattr(
             getattr(getattr(cfg.sim, "engine", object()), "flow_routing", object()),
@@ -1092,7 +1092,3 @@ class FlowSocialMediaEngine(BaseSocialMediaEngine):
                     key,
                 )
         return policies
-
-
-# Backward-compatibility alias.
-SocialMediaEngine = FlowSocialMediaEngine

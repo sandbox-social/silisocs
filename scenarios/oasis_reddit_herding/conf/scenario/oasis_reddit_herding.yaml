@@ -33,7 +33,7 @@ persona_pipeline:
       params:
         name: "NewsSource_A"
         context: "Automated news aggregation source"
-        action_flow: fixed_pre
+        flow_tag: fixed_pre
         fixed_action_plan:
           # OASIS pair 0: Healthcare policy debate
           - action_type: create_reddit_post
@@ -60,7 +60,7 @@ persona_pipeline:
       params:
         name: "NewsSource_B"
         context: "Automated news aggregation source"
-        action_flow: fixed_pre
+        flow_tag: fixed_pre
         fixed_action_plan:
           # OASIS pair 1: Entrepreneurship and Discord community
           - action_type: create_reddit_post
@@ -88,7 +88,7 @@ persona_pipeline:
       params:
         name: "NewsSource_C"
         context: "Automated news aggregation source"
-        action_flow: fixed_pre
+        flow_tag: fixed_pre
         fixed_action_plan:
           # OASIS pair 2: Another real discussion topic
           - action_type: create_reddit_post
@@ -157,7 +157,7 @@ engine:
       update_every_n_steps: 1
 
 timeline_posts: 10
-timeline_strategy: pure_recsys
+timeline_mode: pure_recsys
 
 sim:
   enabled_actions:

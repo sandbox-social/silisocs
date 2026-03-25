@@ -25,7 +25,7 @@ def _base_cfg(processing_mode: str):
             },
             "social_media": {
                 "usage_instructions": "Use platform respectfully.",
-                "action_call_to_action": "Act on timeline.",
+                "action_prompt": "Act on timeline.",
                 "gamemaster": {
                     "name": "social-media_game-master",
                     "filename": "social_media_game_master",
@@ -39,21 +39,13 @@ def _base_cfg(processing_mode: str):
     )
 
 
-def test_build_game_masters_accepts_formative_alias() -> None:
+def test_build_game_masters_formative_mode() -> None:
     cfg = _base_cfg("formative")
     game_masters = build_game_masters(cfg)
 
     initializer = game_masters[0]
     assert initializer.prefab == "formative_memories_initializer__GameMaster"
     assert initializer.params["module_path"] == "mastodon_sim.agents.initialization.formative"
-
-
-def test_build_game_masters_accepts_llm_formative() -> None:
-    cfg = _base_cfg("llm_formative")
-    game_masters = build_game_masters(cfg)
-
-    initializer = game_masters[0]
-    assert initializer.prefab == "formative_memories_initializer__GameMaster"
 
 
 def test_build_game_masters_raw_mode() -> None:

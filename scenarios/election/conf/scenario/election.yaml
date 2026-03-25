@@ -38,7 +38,7 @@ data:
 
 # --- Agent pipeline ---
 persona_pipeline:
-  processing_mode: raw  # llm_formative | raw
+  processing_mode: raw  # formative | raw
   defaults:
     params:
       seed_post: ""

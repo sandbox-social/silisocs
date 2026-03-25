@@ -140,6 +140,9 @@ addopts = "--color=yes --doctest-modules --exitfirst --failed-first --verbosity=
 required_plugins = ["pytest-xdist"]
 testpaths = ["tests"]
 xfail_strict = true
+markers = [
+  "llm_e2e: real-LLM end-to-end simulation tests (opt-in, expensive)",
+]
 
 [tool.ruff]  # https://github.com/charliermarsh/ruff
 fix = true

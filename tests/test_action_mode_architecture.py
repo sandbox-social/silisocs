@@ -15,18 +15,18 @@ from unittest.mock import MagicMock
 import pytest
 from omegaconf import OmegaConf
 
-from mastodon_sim.environments.backends.base import PhoneApp
+from mastodon_sim.environments.backends.base import PhoneApp, SocialMediaApp
 from mastodon_sim.environments.gm.act import SMAct
 from mastodon_sim.environments.gm.components.resolve import (
     GenericActionResolveComponent,
     ParsedActionResolveComponent,
     ToolCallingResolveComponent,
 )
-from mastodon_sim.runtime.runner import _build_action_call_to_action
+from mastodon_sim.runtime.runner import _build_action_prompt
 
 
 class TestActionCallToActionBuilder:
-    """Test the _build_action_call_to_action helper function."""
+    """Test the _build_action_prompt helper function."""
 
     def test_custom_mode_with_custom_prompt(self):
         """Custom mode should return action_prompt + output_style."""
@@ -38,7 +38,7 @@ class TestActionCallToActionBuilder:
                 }
             }
         )
-        result = _build_action_call_to_action(cfg, action_mode="custom", enable_tool_calling=False)
+        result = _build_action_prompt(cfg, enable_tool_calling=False)
         assert "Please decide what action to take" in result
         assert "Format as: ACTION TYPE:" in result
 
@@ -52,22 +52,10 @@ class TestActionCallToActionBuilder:
                 }
             }
         )
-        result = _build_action_call_to_action(cfg, action_mode="custom", enable_tool_calling=True)
+        result = _build_action_prompt(cfg, enable_tool_calling=True)
         assert "Please decide what action to take" in result
         assert "tool_call" in result
         assert "Format as: ACTION TYPE:" not in result
-
-    def test_fallback_to_legacy_prompt(self):
-        """Should fallback to legacy action_call_to_action if new fields don't exist."""
-        cfg = OmegaConf.create(
-            {
-                "social_media": {
-                    "action_call_to_action": "Legacy prompt format",
-                }
-            }
-        )
-        result = _build_action_call_to_action(cfg, action_mode="custom", enable_tool_calling=False)
-        assert result == "Legacy prompt format"
 
     def test_generic_mode_override(self):
         """Generic mode means we should not use custom call_to_action."""
@@ -81,7 +69,7 @@ class TestActionCallToActionBuilder:
         )
         # When action_mode is "generic", the runner will not pass call_to_action_str,
         # but the helper still works with what it's given
-        result = _build_action_call_to_action(cfg, action_mode="generic", enable_tool_calling=False)
+        result = _build_action_prompt(cfg, enable_tool_calling=False)
         # In generic mode, the backend generates the prompt, not this function
         # But if given config, it should still work
         assert result is not None
@@ -98,6 +86,27 @@ class MockBackend(PhoneApp):
 
     def actions(self):
         return []
+
+
+class _FinishedIntegrationApp(SocialMediaApp):
+    def name(self) -> str:
+        return "finished_app"
+
+    def description(self) -> str:
+        return "Integration app for FINISHED action"
+
+    def initialize(self, agent_names: list[str], **kwargs):
+        del agent_names, kwargs
+
+    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
+        del user_name
+        if str(action_data.get("action_type", "")).strip().lower() in {
+            "finished",
+            "finish",
+            "finish_action_episode",
+        }:
+            return self.finish_action_episode()
+        return ""
 
 
 class TestPromptGeneration:
@@ -274,6 +283,28 @@ class TestResolveComponentFormatMatching:
         result = component.resolve(active_entity="Alice", action_text="Not JSON")
         assert result != "success"
         mock_app.invoke_action_with_kwargs.assert_not_called()
+
+
+def test_finished_routes_through_backend_across_all_resolve_modes() -> None:
+    app = _FinishedIntegrationApp()
+
+    parsed = ParsedActionResolveComponent(sm_app=app, model=MagicMock())
+    generic = GenericActionResolveComponent(sm_app=app, model=MagicMock())
+    tool = ToolCallingResolveComponent(sm_app=app, model=MagicMock())
+
+    parsed_result = parsed.resolve(
+        active_entity="Alice",
+        action_text="ACTION TYPE: FINISHED\nTARGET ID: \nCONTENT: \nREASONING: done",
+    )
+    generic_result = generic.resolve(active_entity="Alice", action_text="ACTION: FINISHED")
+    tool_result = tool.resolve(
+        active_entity="Alice",
+        action_text=json.dumps({"tool_call": {"name": "FINISHED", "arguments": {}}}),
+    )
+
+    assert parsed_result == "Finished action episode"
+    assert generic_result == "Finished action episode"
+    assert tool_result == "Finished action episode"
 
 
 class TestToolSchemasGeneration:

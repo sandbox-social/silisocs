@@ -40,27 +40,27 @@ class MockEntity:
 
 
 class MockComponent:
-    """Mock component with optional multi-field support."""
+    """Mock component with optional flow-field support."""
 
     def __init__(self, name: str):
         self.name = name
-        self.multi_field_values: dict[str, dict[str, Any]] = {}
+        self.flow_field_values: dict[str, dict[str, Any]] = {}
         self.call_history: list[str] = []
 
-    def set_multi_field_values(self, entity_field_map: dict[str, dict[str, Any]]) -> None:
-        self.multi_field_values = entity_field_map
+    def set_flow_field_values(self, flow_field_map: dict[str, dict[str, Any]]) -> None:
+        self.flow_field_values = flow_field_map
 
-    def get_field_for_entity(self, field_name: str, entity_name: str | None = None, default=None):
-        if not entity_name:
+    def get_flow_field(self, field_name: str, flow_tag: str | None = None, default=None):
+        if not flow_tag:
             return default
-        if entity_name in self.multi_field_values:
-            return self.multi_field_values[entity_name].get(field_name, default)
+        if flow_tag in self.flow_field_values:
+            return self.flow_field_values[flow_tag].get(field_name, default)
         return default
 
     def act(self, entity_name: str):
         """Simulate component action."""
         self.call_history.append(entity_name)
-        field_value = self.get_field_for_entity("test_field", entity_name, "default")
+        field_value = self.get_flow_field("test_field", entity_name, "default")
         return f"Action by {entity_name} with {field_value}"
 
 
@@ -85,8 +85,8 @@ class MockGameMaster:
 # ============================================================================
 
 
-class TestComponentMultiFieldIntegration:
-    """Integration tests for components with multi-field support."""
+class TestComponentFlowFieldIntegration:
+    """Integration tests for components with flow-field support."""
 
     def test_component_receives_entity_config(self):
         """Test component receives and applies entity-specific configuration."""
@@ -96,16 +96,16 @@ class TestComponentMultiFieldIntegration:
             "bob": {"timeline_filter": "all"},
         }
 
-        component.set_multi_field_values(entity_config)
+        component.set_flow_field_values(entity_config)
 
-        assert component.get_field_for_entity("timeline_filter", "alice") == "trusted"
-        assert component.get_field_for_entity("timeline_filter", "bob") == "all"
-        assert component.get_field_for_entity("timeline_filter", "charlie") is None
+        assert component.get_flow_field("timeline_filter", "alice") == "trusted"
+        assert component.get_flow_field("timeline_filter", "bob") == "all"
+        assert component.get_flow_field("timeline_filter", "charlie") is None
 
     def test_component_acts_with_entity_fields(self):
         """Test component uses entity-specific fields during action."""
         component = MockComponent("observe")
-        component.set_multi_field_values(
+        component.set_flow_field_values(
             {
                 "alice": {"test_field": "strict"},
                 "bob": {"test_field": "lenient"},
@@ -124,7 +124,7 @@ class TestComponentMultiFieldIntegration:
         """Test component uses defaults when no entity config provided."""
         component = MockComponent("observe")
 
-        result = component.get_field_for_entity("missing_field", "any_entity", "fallback")
+        result = component.get_flow_field("missing_field", "any_entity", "fallback")
 
         assert result == "fallback"
 
@@ -295,14 +295,14 @@ class TestOrchestrationScenarios:
             "bob": {"filter": "all", "depth": 20},
             "charlie": {"filter": "trending", "depth": 10},
         }
-        component.set_multi_field_values(entity_config)
+        component.set_flow_field_values(entity_config)
 
         # Verify each entity gets correct config
-        assert component.get_field_for_entity("filter", "alice") == "trusted_only"
-        assert component.get_field_for_entity("filter", "bob") == "all"
-        assert component.get_field_for_entity("filter", "charlie") == "trending"
-        assert component.get_field_for_entity("depth", "alice") == 5
-        assert component.get_field_for_entity("depth", "bob") == 20
+        assert component.get_flow_field("filter", "alice") == "trusted_only"
+        assert component.get_flow_field("filter", "bob") == "all"
+        assert component.get_flow_field("filter", "charlie") == "trending"
+        assert component.get_flow_field("depth", "alice") == 5
+        assert component.get_flow_field("depth", "bob") == 20
 
 
 # ============================================================================

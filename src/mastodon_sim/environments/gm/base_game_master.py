@@ -28,7 +28,7 @@ from mastodon_sim.environments.gm.components.factory import (
     build_observe_component,
     build_recommendation_component,
     build_resolve_component,
-    initialize_component_multi_fields,
+    initialize_component_flow_fields,
 )
 from mastodon_sim.environments.gm.components.seed_post_provider import (
     CSVSeedPostProvider,
@@ -191,6 +191,16 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
                 enabled_actions = [str(action).strip() for action in enabled_actions_cfg]
             else:
                 enabled_actions = [str(enabled_actions_cfg).strip()]
+
+            action_loop_built_in = ""
+            if hasattr(cfg.sim, "engine") and getattr(cfg.sim.engine, "action_loop", None):
+                action_loop_built_in = str(
+                    getattr(cfg.sim.engine.action_loop, "built_in", "")
+                ).strip()
+            enabled_actions_upper = {name.upper() for name in enabled_actions if name}
+            if action_loop_built_in == "open_ended" and "FINISHED" not in enabled_actions_upper:
+                enabled_actions.append("FINISHED")
+
             sm_app.set_enabled_actions(enabled_actions)
 
         agent_names = [e.name for e in self.entities]
@@ -198,63 +208,14 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
         # Build and apply seed post provider
         seed_post_cfg = {}
 
-        # Check if seed_posts is in cfg.scenario (may be filtered by Hydra if it's a custom field)
+        # Seed posts come from composed scenario config when configured.
         if hasattr(cfg, "scenario") and hasattr(cfg.scenario, "seed_posts"):
-            print("[DEBUG] ✅ Found seed_posts in cfg.scenario")
             seed_post_cfg = cast(
                 dict[str, Any],
                 OmegaConf.to_container(cfg.scenario.seed_posts, resolve=True),
             )
         else:
-            # Fallback: Read seed_posts directly from scenario YAML file if Hydra filtered it out
-            _LOGGER.info("[FALLBACK] seed_posts not in cfg, trying direct read from YAML...")
-            try:
-                from pathlib import Path
-
-                import yaml
-
-                scenario_name = cfg.scenario.scenario_name
-                _LOGGER.info(f"[FALLBACK] scenario_name: {scenario_name}")
-                _LOGGER.info(f"[FALLBACK] output_rootname: {cfg.sim.output_rootname}")
-
-                # Try common locations
-                search_paths = [
-                    Path(
-                        "/scratch/ss14247/mastodon-sim/scenarios/oasis_twitter_infoprop/conf/scenario"
-                    )
-                    / f"{scenario_name}.yaml",
-                    Path(__file__).parent.parent.parent
-                    / "scenarios"
-                    / scenario_name
-                    / "conf"
-                    / "scenario"
-                    / f"{scenario_name}.yaml",
-                ]
-
-                yaml_file = None
-                for path in search_paths:
-                    _LOGGER.info(f"[FALLBACK] Checking: {path}")
-                    if path.exists():
-                        yaml_file = path
-                        _LOGGER.info(f"[FALLBACK] ✅ Found YAML at: {yaml_file}")
-                        break
-
-                if yaml_file:
-                    with open(yaml_file) as f:
-                        yaml_data = yaml.safe_load(f)
-                        if "seed_posts" in yaml_data:
-                            seed_post_cfg = yaml_data["seed_posts"]
-                            _LOGGER.info(
-                                f"[FALLBACK] ✅ Loaded seed_posts from YAML: {seed_post_cfg}"
-                            )
-                        else:
-                            _LOGGER.info(
-                                f"[FALLBACK] ❌ seed_posts not in YAML (keys: {list(yaml_data.keys())})"
-                            )
-                else:
-                    _LOGGER.info("[FALLBACK] ❌ YAML file not found in search paths")
-            except Exception as e:
-                _LOGGER.exception(f"[FALLBACK] Error reading YAML: {e}")
+            _LOGGER.info("No scenario.seed_posts found in composed config; proceeding without it.")
 
         seed_post_provider = _build_seed_post_provider(seed_post_cfg)
         _LOGGER.info(f"Using seed post provider: {type(seed_post_provider).__name__}")
@@ -264,7 +225,7 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
         seed_elapsed = time.time() - seed_t0
 
         activity_rates = _compute_activity_rates(user_data)
-        entity_action_flows = dict(user_data.get("entity_action_flows", {}) or {})
+        entity_flow_tags = dict(user_data.get("entity_flow_tags", {}) or {})
         gm_orchestration = dict(user_data.get("gm_orchestration", {}) or {})
 
         catalog = sm_app.action_catalog()
@@ -339,6 +300,12 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
 
         # Determine if tool-calling is enabled (independent of action_mode)
         enable_tool_calling = resolve_slot.get("built_in") == "tool_calling"
+        action_output_mode = str(resolve_slot.get("built_in", "parsed_action") or "parsed_action")
+
+        for entity in self.entities:
+            mode_setter = getattr(entity, "set_action_output_mode", None)
+            if callable(mode_setter):
+                mode_setter(action_output_mode)
 
         next_actor = build_next_acting_component(
             gm_components_cfg.get("next_acting"),
@@ -353,14 +320,7 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
                 episode_observation_flow[0] if episode_observation_flow else "fixed_pre"
             )
 
-        # Timeline selection: prefer timeline_mode, fallback to legacy timeline_strategy.
-        timeline_mode = str(
-            getattr(
-                cfg.sim,
-                "timeline_mode",
-                getattr(cfg.sim, "timeline_strategy", "follower_chronological"),
-            )
-        )
+        timeline_mode = str(getattr(cfg.sim, "timeline_mode", "follower_chronological"))
         supported_timeline_modes = {
             "twitter_like": {
                 "follower_chronological",
@@ -397,10 +357,9 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
             model=model,
             player_names=player_names,
             sm_app=sm_app,
-            entity_action_flows=entity_action_flows,
+            entity_flow_tags=entity_flow_tags,
             episode_observation_flow=str(episode_observation_flow),
             timeline_mode=timeline_mode,
-            timeline_strategy=timeline_mode,
             timeline_config=timeline_config,
         )
         resolve_component = build_resolve_component(
@@ -418,9 +377,9 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
         )
 
         # Initialize multi-field values if component supports them
-        initialize_component_multi_fields(make_observation, observe_slot)
-        initialize_component_multi_fields(resolve_component, resolve_slot)
-        initialize_component_multi_fields(recommend_component, recommend_slot)
+        initialize_component_flow_fields(make_observation, observe_slot)
+        initialize_component_flow_fields(resolve_component, resolve_slot)
+        initialize_component_flow_fields(recommend_component, recommend_slot)
         if hasattr(recommend_component, "validate_recsys_types") and callable(
             recommend_component.validate_recsys_types
         ):
@@ -439,7 +398,7 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
             component_order=list(components.keys()),
             call_to_action_str=call_to_sm_action,
             sm_app=sm_app,
-            entity_action_flows=entity_action_flows,
+            entity_flow_tags=entity_flow_tags,
             activity_transition_rates=activity_rates,
             action_mode=getattr(cfg.sim, "action_mode", "custom"),
             enable_tool_calling=enable_tool_calling,

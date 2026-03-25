@@ -135,22 +135,23 @@ class TwitterLikeApp(SocialMediaApp):
             self._print(f"Error fetching timeline for {username}: {e}", color="red")
             return []
 
-    def get_timeline_strategy(
+    def get_timeline_mode(
         self,
-        strategy: str,
+        timeline_mode: str,
         user_name: str,
         limit: int = 10,
         recsys_type: str | None = None,
         **timeline_config: dict,
     ) -> list[dict]:
-        """Fetch timeline using specified strategy.
+        """Fetch timeline using a configured timeline mode.
 
         Args:
-            strategy: Timeline strategy (follower_chronological, pure_recsys, hybrid_recsys_follower, etc.)
+            timeline_mode: Timeline mode (follower_chronological, pure_recsys,
+                hybrid_recsys_follower, etc.)
             user_name: Display name of the user.
             limit: Maximum number of posts.
             recsys_type: Optional recommendation algorithm override.
-            **timeline_config: Strategy-specific config (e.g., recsys_ratio).
+            **timeline_config: Mode-specific config (e.g., recsys_ratio).
 
         Returns
         -------
@@ -159,7 +160,7 @@ class TwitterLikeApp(SocialMediaApp):
         username = self._get_username(user_name)
         try:
             timeline = self._platform.get_timeline(
-                strategy,
+                timeline_mode,
                 username,
                 limit,
                 recsys_type=recsys_type,
@@ -168,7 +169,7 @@ class TwitterLikeApp(SocialMediaApp):
             return list(timeline or [])
         except Exception as e:
             self._print(
-                f"Error fetching timeline with strategy '{strategy}' for {username}: {e}",
+                f"Error fetching timeline with mode '{timeline_mode}' for {username}: {e}",
                 color="red",
             )
             return []
@@ -212,7 +213,9 @@ class TwitterLikeApp(SocialMediaApp):
         content = action_data.get("content", "")
 
         try:
-            if action_type == "post":
+            if action_type in {"finished", "finish", "finish_action_episode"}:
+                return self.finish_action_episode()
+            if action_type in {"post", "create_tweet"}:
                 return self.create_tweet(user_name, content)
             if action_type == "reply":
                 return self.reply_to_tweet(user_name, content, int(target_id))

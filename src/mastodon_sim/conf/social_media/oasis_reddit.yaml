@@ -32,7 +32,7 @@ usage_instructions: |
   - TRENDING: Get trending posts
   - REPORT: Flag inappropriate content
 
-action_call_to_action: |
+action_prompt: |
   # Reddit-like Platform Actions
 
   Available actions (use tool-calling format):

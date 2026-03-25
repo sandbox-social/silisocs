@@ -28,6 +28,41 @@ Thank you for considering contributing to this project! We appreciate your effor
 - Install git hooks: `uv run pre-commit install`
 - Create a commit with Commitizen: `uv run cz c`
 
+## LLM E2E Testing
+
+The repository includes opt-in real-LLM integration tests under the `llm_e2e`
+marker. These tests launch short simulation runs and validate runtime artifacts.
+
+- Start an OpenAI-compatible server (for example vLLM).
+- Set `LLM_SERVER_URL`, for example: `http://localhost:30000/v1`.
+- Run only expensive LLM tests:
+
+    ```sh
+    LLM_SERVER_URL=http://localhost:30000/v1 \
+    uv run pytest -m llm_e2e tests/test_e2e_multi_gm_llm.py -v -s
+    ```
+
+- Run deterministic simulation-contract mirrors (default CI-safe set):
+
+    ```sh
+    uv run pytest tests/test_fixed_entity_runtime.py tests/test_backend_feed_contracts.py -v
+    ```
+
+### Required Artifact Checks
+
+Every `llm_e2e` test should verify these generated files:
+
+- `action_events.jsonl`: parseable JSONL and expected event fields (`episode`, `event_type`, `event_index`, action payload fields).
+- `prompts_and_responses.jsonl`: parseable JSONL with prompt/output records.
+- `run_stats.log`: file exists and contains run output.
+- Backend SQLite DB (for example `twitter_like.db` or `reddit_like.db`): file exists and is readable.
+
+### Isolation and Cleanup Policy
+
+- Use per-test temporary output roots (for example pytest `tmp_path`) via Hydra overrides.
+- Do not write test artifacts into repository root directories.
+- Keep expensive tests assertion-dense and low in count; move broad combinatorics into deterministic tests.
+
 ## Contributing Steps
 
 1. Create a feature branch:

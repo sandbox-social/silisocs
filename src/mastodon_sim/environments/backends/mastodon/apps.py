@@ -170,45 +170,48 @@ class SocialNetworkApp(SocialMediaApp):
             self._print(f"Error fetching timeline for {user_name}: {e}", color="red")
             return []
 
-    # Timeline strategies for consistency with Twitter/Reddit backends
-    TIMELINE_STRATEGIES = {
+    # Timeline modes for consistency with Twitter/Reddit backends
+    TIMELINE_MODES = {
         "follower_chronological": {
             "description": "Home feed from Mastodon server (always chronological, federated)",
             "note": "Mastodon's federated nature means timeline is server-determined",
         },
     }
 
-    def get_timeline_strategy(
+    def get_timeline_mode(
         self,
-        strategy: str,
-        username: str,
+        timeline_mode: str,
+        user_name: str,
         limit: int = 10,
+        recsys_type: str | None = None,
         **timeline_config,
     ) -> list[dict]:
-        """Get timeline using specified strategy.
+        """Get timeline using the specified timeline mode.
 
         Mastodon does not support recommendations or algorithmic feeds.
-        All strategies return the server-provided chronological feed.
+        All modes return the server-provided chronological feed.
 
         Args:
-            strategy: Timeline strategy name (currently only "follower_chronological")
-            username: User to get timeline for
+            timeline_mode: Timeline mode (currently only "follower_chronological")
+            user_name: User to get timeline for
             limit: Max posts to return
-            **timeline_config: Strategy parameters (unused for Mastodon)
+            recsys_type: Optional recommendation type (unused for Mastodon)
+            **timeline_config: Mode parameters (unused for Mastodon)
 
         Returns
         -------
             List of timeline posts from Mastodon server
         """
-        # Mastodon always returns the server's feed, regardless of strategy requested
-        return self.get_timeline(username, limit)
+        # Mastodon always returns the server's feed, regardless of mode requested.
+        del timeline_mode, recsys_type, timeline_config
+        return self.get_timeline(user_name, limit)
 
     # Recommendation APIs are intentionally unsupported for Mastodon.
     def init_recsys(self, recsys_type: str = "") -> None:
         del recsys_type
         raise NotImplementedError(
             "Mastodon backend does not support recommendation algorithms. "
-            "Use timeline_strategy='follower_chronological'."
+            "Use timeline_mode='follower_chronological'."
         )
 
     def update_recommendations(
@@ -257,7 +260,9 @@ class SocialNetworkApp(SocialMediaApp):
         content = action_data.get("content", "")
 
         try:
-            if action_type == "post":
+            if action_type in {"finished", "finish", "finish_action_episode"}:
+                return self.finish_action_episode()
+            if action_type in {"post", "post_toot"}:
                 return self.post_toot(user_name, content)
             if action_type == "reply":
                 return self.reply_to_toot(

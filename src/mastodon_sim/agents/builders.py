@@ -136,11 +136,7 @@ class BaseAgentBuilder:
 
         field_map = {**default_field_map, **(class_cfg.get("field_map", {}) or {})}
         class_params = dict(class_cfg.get("params", {}) or {})
-        class_flow_tag = str(
-            class_cfg.get("flow_tag", class_params.get("action_flow", "")) or ""
-        ).strip()
-        if class_flow_tag and "action_flow" not in class_params:
-            class_params["action_flow"] = class_flow_tag
+        class_flow_tag = str(class_cfg.get("flow_tag", "") or "").strip()
         if class_flow_tag:
             class_params.setdefault("flow_tag", class_flow_tag)
 
@@ -210,16 +206,12 @@ class BaseAgentBuilder:
             )
             if resolved_fixed_action is not None:
                 if str(prefab_module).strip().endswith("fixed_entity"):
-                    params["fixed_action_plan"] = list(resolved_fixed_action.get("actions", []))
-                    if str(resolved_fixed_action.get("selection_policy", "")).strip():
-                        params["selection_policy"] = str(
-                            resolved_fixed_action.get("selection_policy")
-                        ).strip()
-                    if str(resolved_fixed_action.get("on_exhaustion", "")).strip():
-                        params["on_exhaustion"] = str(
-                            resolved_fixed_action.get("on_exhaustion")
-                        ).strip()
-                    params.setdefault("action_flow", "fixed_pre")
+                    params["fixed_action_plan"] = self._normalize_fixed_entity_action_plan(
+                        resolved_fixed_action.get("actions", [])
+                    )
+                    exhaustion = str(resolved_fixed_action.get("on_exhaustion", "")).strip().lower()
+                    if exhaustion in {"finish", "finished"}:
+                        params["emit_finished_on_episode_end"] = True
                 else:
                     params["fixed_action"] = resolved_fixed_action
 
@@ -326,6 +318,51 @@ class BaseAgentBuilder:
             "actions": rendered_actions,
         }
 
+    def _normalize_fixed_entity_action_plan(self, actions: Any) -> dict[int, list[dict[str, Any]]]:
+        """Convert fixed action-set items into fixed_entity episode-keyed action plan."""
+        if not isinstance(actions, list):
+            return {}
+
+        plan: dict[int, list[dict[str, Any]]] = {}
+        for item in actions:
+            if not isinstance(item, Mapping):
+                continue
+
+            # Already in fixed_entity format.
+            if "action_type" in item:
+                try:
+                    episode = int(item.get("episode", 0))
+                except (TypeError, ValueError):
+                    episode = 0
+                plan.setdefault(episode, []).append(dict(item))
+                continue
+
+            action_name = str(item.get("action", "")).strip()
+            if not action_name:
+                continue
+
+            args = item.get("args") or {}
+            if not isinstance(args, Mapping):
+                args = {}
+
+            try:
+                episode = int(item.get("episode", args.get("episode", 0)))
+            except (TypeError, ValueError):
+                episode = 0
+
+            content = args.get("status", args.get("content", ""))
+            target_id = args.get("post_id", args.get("target_id", ""))
+            reasoning = args.get("reasoning", "Fixed action set item.")
+            normalized = {
+                "action_type": action_name,
+                "target_id": str(target_id or ""),
+                "content": str(content or ""),
+                "reasoning": str(reasoning or ""),
+            }
+            plan.setdefault(episode, []).append(normalized)
+
+        return plan
+
     def _render_template(self, value: Any, context: Mapping[str, Any]) -> Any:
         """Render simple ``{field}`` templates recursively for fixed-action args."""
         if isinstance(value, str):
@@ -390,9 +427,6 @@ class BaseAgentBuilder:
             params["specific_memories"] = self._extract_path(record, mem_field)
         params["specific_memories"] = self._normalize_memories(params.get("specific_memories", []))
 
-        if str(prefab_module).strip().endswith("fixed_entity") and "action_flow" not in params:
-            params["action_flow"] = "fixed_pre"
-
         if news_posts is not None:
             params["posts"] = news_posts
 
@@ -402,6 +436,11 @@ class BaseAgentBuilder:
         params["style"] = self._coerce_text(params.get("style", ""))
         params["seed_post"] = self._coerce_text(params.get("seed_post", ""))
         params["bio"] = self._coerce_text(params.get("bio", ""))
+
+        fixed_action_plan_file = str(params.get("fixed_action_plan_file", "") or "").strip()
+        if fixed_action_plan_file:
+            params["fixed_action_plan_file"] = str(self._resolve_file_path(fixed_action_plan_file))
+
         goal = params.get("goal")
         params["goal"] = self._coerce_text(goal) if goal is not None else None
         if shared:

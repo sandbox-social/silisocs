@@ -42,7 +42,7 @@ persona_pipeline:
             content: "New government policy framework accelerates AI adoption in enterprise sector with $10B investment plan"
             reasoning: "Seed information: AI policy announcement (information propagation test)"
             episode: 0
-        action_flow: fixed_pre
+        flow_tag: fixed_pre
 
     # Regular agents: news enthusiasts, journalists, cautious users, fact-checkers, influencers
     # All agents are LLM-driven, they observe and propagate seed information
@@ -139,7 +139,7 @@ engine:
 
 # Timeline configuration for Twitter
 timeline_posts: 15
-timeline_strategy: hybrid_recsys_follower  # Twitter: blend recommendations + followed users
+timeline_mode: hybrid_recsys_follower  # Twitter: blend recommendations + followed users
 
 # Twitter OASIS action constraints
 sim:

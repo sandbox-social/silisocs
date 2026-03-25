@@ -673,6 +673,32 @@ class SocialMediaApp(PhoneApp, abc.ABC):
         """
         return []
 
+    def get_timeline_mode(
+        self,
+        timeline_mode: str,
+        user_name: str,
+        limit: int = 10,
+        recsys_type: str | None = None,
+        **timeline_config: dict,
+    ) -> list[dict]:
+        """Return timeline data for a specific mode.
+
+        Default implementation ignores mode/config and falls back to `get_timeline`.
+
+        Args:
+            timeline_mode: Timeline mode (e.g. follower_chronological).
+            user_name: The display name of the user whose timeline to fetch.
+            limit: Maximum number of posts to return.
+            recsys_type: Optional recommendation algorithm selector.
+            **timeline_config: Mode-specific tuning parameters.
+
+        Returns
+        -------
+            A list of dicts, each representing a post in platform-native format.
+        """
+        del timeline_mode, recsys_type, timeline_config
+        return self.get_timeline(user_name, limit)
+
     def format_timeline_for_observation(self, timeline: list[dict]) -> str:
         """Convert raw timeline data into a human-readable string for the LLM prompt.
 
@@ -698,6 +724,14 @@ class SocialMediaApp(PhoneApp, abc.ABC):
             A result string describing the outcome of the action.
         """
         return ""
+
+    @app_action(
+        selectable_name="FINISHED",
+        description="Signal that the agent is done producing actions for this episode.",
+    )
+    def finish_action_episode(self) -> str:
+        """No-op terminal action for open-ended loops and constrained action sets."""
+        return "Finished action episode"
 
     def generate_action_prompt(self) -> str:
         """Generate the call-to-action prompt listing all available actions.
