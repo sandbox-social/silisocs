@@ -54,7 +54,7 @@ _PRINT_COLOR: Literal["cyan"] = "cyan"
 _LOGGER = logging.getLogger(__name__)
 
 
-def _get_empty_log_entry():
+def _get_empty_log_entry() -> dict[str, dict[str, Any]]:
     """Returns a dictionary to store a single log entry."""
     return {
         "terminate": {},
@@ -71,7 +71,7 @@ class BaseSocialMediaEngine(simultaneous.Simultaneous):
     A custom engine to implement parallel social media sessions, where agents can act parallely
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._gm_action_locks: dict[int, threading.Lock] = {}
         self._gm_action_locks_guard = threading.Lock()
@@ -85,7 +85,12 @@ class BaseSocialMediaEngine(simultaneous.Simultaneous):
                 self._gm_action_locks[key] = lock
         return lock
 
-    def agent_resolve(self, game_master, action, verbose=False):
+    def agent_resolve(
+        self,
+        game_master: entity_lib.Entity,
+        action: str,
+        verbose: bool = False,
+    ) -> str:
         """Resolve an entity's action."""
         # SwitchAct formats call_to_action with `.format(name=...)`; raw braces
         # from model text (e.g. JSON-like `{id: ...}`) must be escaped first.
@@ -98,7 +103,7 @@ class BaseSocialMediaEngine(simultaneous.Simultaneous):
         )
         if verbose:
             print(termcolor.colored(f"The resolved event was: {result}", _PRINT_COLOR))
-        return result
+        return str(result)
 
     @override
     def next_acting(
