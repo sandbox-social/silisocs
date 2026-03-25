@@ -94,8 +94,16 @@ def test_open_ended_policy_stops_on_finished_action() -> None:
     """Test that open-ended policy stops when agent outputs 'Finished action episode'."""
     engine = _FakeEngine(
         [
-            "agent: POST",
-            "agent: FINISHED action episode",  # Signal to stop
+            {
+                "raw": "ACTION TYPE: POST\nTARGET ID: \nCONTENT: first\nREASONING: test",
+                "rendered": "agent: first",
+                "resolved": "Alice posted",
+            },
+            {
+                "raw": "ACTION TYPE: FINISHED\nTARGET ID: \nCONTENT: \nREASONING: done",
+                "rendered": "agent: FINISHED",
+                "resolved": "Finished action episode",
+            },
             "SHOULD_NOT_RUN",
         ]
     )
@@ -109,6 +117,57 @@ def test_open_ended_policy_stops_on_finished_action() -> None:
         verbose=False,
     )
 
-    # Should have executed 2 actions (POST, then Finished signal stops the loop)
-    assert "POST" in result or result == "agent: FINISHED action episode"
+    # Should have executed 2 actions (POST, then explicit FINISHED signal stops the loop).
+    assert result == "agent: first"
     assert len(engine.calls) == 2
+
+
+def test_open_ended_policy_does_not_stop_on_finish_word_in_content() -> None:
+    engine = _FakeEngine(
+        [
+            {
+                "raw": (
+                    "ACTION TYPE: POST\n"
+                    "TARGET ID: \n"
+                    "CONTENT: We should finish this policy debate tomorrow.\n"
+                    "REASONING: includes finish word but not finish action"
+                ),
+                "rendered": "agent: post-1",
+                "resolved": "Alice posted",
+            },
+            {
+                "raw": "ACTION TYPE: POST\nTARGET ID: \nCONTENT: second post\nREASONING: keep going",
+                "rendered": "agent: post-2",
+                "resolved": "Alice posted",
+            },
+            {
+                "raw": "ACTION TYPE: FINISH\nTARGET ID: \nCONTENT: \nREASONING: done",
+                "rendered": "agent: finish",
+                "resolved": "Finished action episode",
+            },
+        ]
+    )
+    policy = OpenEndedActionChunkPolicy(max_actions=5, finished_action_signal="FINISHED")
+    result = policy.run(
+        engine=engine,
+        game_master=object(),
+        entity=object(),
+        action_spec=object(),
+        skip_actions=False,
+        verbose=False,
+    )
+
+    assert result == "agent: post-2"
+    assert len(engine.calls) == 3
+
+
+def test_open_ended_policy_accepts_legacy_done_token() -> None:
+    policy = build_action_loop_policy(
+        {
+            "built_in": "open_ended",
+            "params": {"max_actions": 4, "done_token": "FINISHED"},
+        }
+    )
+
+    assert isinstance(policy, OpenEndedActionChunkPolicy)
+    assert policy.finished_action_signal == "FINISHED"

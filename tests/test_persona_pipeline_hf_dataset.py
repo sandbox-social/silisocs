@@ -344,6 +344,62 @@ def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
     assert scope_cache.exists()
 
 
+def test_hf_dataset_materializes_only_requested_count(monkeypatch) -> None:
+    """HF loading should only materialize class count rows, not full split."""
+
+    class _FakeDataset:
+        def __init__(self, size: int):
+            self.size = size
+            self.selected_n: int | None = None
+
+        def __len__(self) -> int:
+            return self.size
+
+        def select(self, indices):
+            # Capture requested select size; return only selected rows.
+            rows = list(indices)
+            self.selected_n = len(rows)
+            return [{"persona": f"Person {i} from dataset"} for i in rows]
+
+    fake_dataset = _FakeDataset(size=1_000_000)
+
+    def fake_load_dataset(dataset: str, split: str):
+        assert dataset == "nvidia/Nemotron-Personas-USA"
+        assert split == "train"
+        return fake_dataset
+
+    monkeypatch.setitem(sys.modules, "datasets", SimpleNamespace(load_dataset=fake_load_dataset))
+
+    scenario_cfg = OmegaConf.create(
+        {
+            "scenario_name": "election",
+            "persona_pipeline": {
+                "processing_mode": "raw",
+                "classes": {
+                    "voter": {
+                        "count": 3,
+                        "prefab_module": "scenarios.election.entity_lib.simple",
+                        "data": {
+                            "source": "hf_dataset",
+                            "dataset": "nvidia/Nemotron-Personas-USA",
+                            "split": "train",
+                        },
+                        "field_map": {
+                            "context": "persona",
+                        },
+                    }
+                },
+            },
+        }
+    )
+
+    builder = _TestBuilder(scenario_cfg)
+    agents = builder.build_agents({})
+
+    assert len(agents) == 3
+    assert fake_dataset.selected_n == 3
+
+
 def test_shared_memories_inline_multiline_text_is_not_treated_as_path() -> None:
     """Long multiline shared memories should be parsed as text, not file paths."""
     shared_memory_block = (

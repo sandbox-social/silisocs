@@ -43,6 +43,7 @@ gm:
       built_in: recommendation_component
       class_path: null
       params:
+        default_recsys_type: null
         update_every_n_steps: 1  # Update every episode
         lazy: true
         max_posts: 10
@@ -51,7 +52,8 @@ gm:
     observe:
       built_in: timeline_every_turn # timeline_every_turn | episode_only
       class_path: null
-      params: {}
+      params:
+        recsys_type: null
 
     # Choose how raw agent output is resolved into backend actions.
     # parsed_action: ACTION TYPE/TARGET ID/CONTENT parser

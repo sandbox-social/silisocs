@@ -507,13 +507,21 @@ class PhoneApp(metaclass=abc.ABCMeta):
             "",
             "Available actions:",
         ]
-        for action in self.actions():
+        actions = list(self.actions())
+        for action in actions:
             params_desc = ", ".join(
                 f"{p.name} ({'required' if p.required else 'optional'}, {p.kind})"
                 for p in action.parameters
             )
             lines.append(f"  {action.selectable_name}({params_desc})")
             lines.append(f"    {action.description.strip()}")
+
+        has_finished_action = any(
+            str(action.selectable_name).strip().upper() == "FINISHED"
+            or str(action.name).strip().upper() == "FINISHED"
+            or str(action.name).strip() == "finish_action_episode"
+            for action in actions
+        )
 
         lines += [
             "",
@@ -528,6 +536,10 @@ class PhoneApp(metaclass=abc.ABCMeta):
             "  - For status/content fields, write in first person as the character.",
             "  - Omit optional parameters you do not want to use.",
         ]
+        if has_finished_action:
+            lines.append(
+                "  - Use the FINISHED action when you have exhausted desired actions for the current timestep."
+            )
         return "\n".join(lines)
 
     def generate_tool_schemas(self) -> list[dict]:
@@ -727,7 +739,7 @@ class SocialMediaApp(PhoneApp, abc.ABC):
 
     @app_action(
         selectable_name="FINISHED",
-        description="Signal that the agent is done producing actions for this episode.",
+        description="To be used when desirable actions for current timestep have been conducted.",
     )
     def finish_action_episode(self) -> str:
         """No-op terminal action for open-ended loops and constrained action sets."""

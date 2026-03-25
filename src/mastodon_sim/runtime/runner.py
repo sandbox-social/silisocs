@@ -37,7 +37,7 @@ from concordia.utils import helper_functions
 # Environment
 from dotenv import find_dotenv, load_dotenv
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 from mastodon_sim.environments.engines.social_media import (
     BaseSocialMediaEngine,
@@ -67,6 +67,132 @@ from mastodon_sim.utils.social_media_dataclasses import SocialMediaParams, UserD
 # Package root (src/mastodon_sim)
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 CONF_DIR = PACKAGE_ROOT / "conf"
+EXTERNAL_CONFIG_DIR_ENV = "MASTODON_SIM_EXTERNAL_CONFIG_DIR"
+
+
+def _collect_explicit_override_paths(package_name: str) -> set[str]:
+    """Collect explicit CLI override paths for a top-level package.
+
+    Examples captured for package_name="sim":
+      - sim.enabled_actions=[...]
+      - +sim.engine.action_loop.params.max_actions=25
+      - sim=base
+    """
+    explicit_paths: set[str] = set()
+    for arg in sys.argv[1:]:
+        if "=" not in arg:
+            continue
+        key = arg.split("=", 1)[0].strip()
+        # Hydra allows +/++/~ prefixes for override semantics.
+        key = key.lstrip("+~")
+        if key == package_name or key.startswith(f"{package_name}."):
+            explicit_paths.add(key)
+    return explicit_paths
+
+
+def _extract_external_package_overrides(
+    external_dir: Path,
+    filename: str,
+    package_name: str,
+) -> dict[str, Any] | None:
+    """Load a root-level external override file and return its package payload.
+
+    Supports either:
+      1) @package style files (payload at root), or
+      2) nested files where payload is under package_name key.
+    """
+    override_path = external_dir / filename
+    if not override_path.is_file():
+        return None
+
+    raw_cfg: Any = OmegaConf.load(override_path)
+    payload: Any = raw_cfg
+    if isinstance(raw_cfg, DictConfig) and package_name in raw_cfg:
+        nested_payload = raw_cfg.get(package_name)
+        if isinstance(nested_payload, (DictConfig, Mapping)):
+            payload = nested_payload
+
+    payload_container = OmegaConf.to_container(payload, resolve=False)
+    if not isinstance(payload_container, Mapping):
+        return None
+    return {str(key): value for key, value in payload_container.items()}
+
+
+def _merge_mapping_with_override_protection(
+    target: DictConfig,
+    overrides: Mapping[str, Any],
+    explicit_paths: set[str],
+    prefix: str,
+) -> None:
+    """Merge mapping overrides into target, skipping explicit CLI override paths."""
+    if prefix in explicit_paths:
+        return
+
+    for key, value in overrides.items():
+        full_key = f"{prefix}.{key}"
+        if full_key in explicit_paths:
+            continue
+
+        current_value = target.get(key)
+        if isinstance(value, Mapping) and isinstance(current_value, DictConfig):
+            _merge_mapping_with_override_protection(
+                current_value,
+                value,
+                explicit_paths,
+                full_key,
+            )
+            continue
+
+        target[key] = value
+
+
+def _apply_external_root_overrides(cfg: DictConfig, logger: logging.Logger) -> None:
+    """Merge external root-level overrides (sim.yaml, social_media.yaml).
+
+    This complements Hydra searchpath overrides by handling scenario files that
+    live at the external config root rather than inside config groups.
+    """
+    external_dir_raw = os.environ.get(EXTERNAL_CONFIG_DIR_ENV)
+    if not external_dir_raw:
+        return
+
+    external_dir = Path(external_dir_raw)
+    if not external_dir.is_dir():
+        logger.warning("External config dir is not a directory: %s", external_dir)
+        return
+
+    package_to_file = {
+        "sim": "sim.yaml",
+        "social_media": "social_media.yaml",
+    }
+
+    for package_name, filename in package_to_file.items():
+        package_cfg = cfg.get(package_name)
+        if not isinstance(package_cfg, DictConfig):
+            continue
+
+        overrides = _extract_external_package_overrides(
+            external_dir,
+            filename,
+            package_name,
+        )
+        if not isinstance(overrides, dict):
+            continue
+
+        explicit_paths = _collect_explicit_override_paths(package_name)
+        with open_dict(cfg):
+            _merge_mapping_with_override_protection(
+                package_cfg,
+                overrides,
+                explicit_paths,
+                package_name,
+            )
+
+        logger.info(
+            "Applied external %s overrides from %s",
+            package_name,
+            external_dir / filename,
+        )
 
 
 def _initialize_runtime_environment() -> Path:
@@ -595,6 +721,7 @@ def main(cfg: DictConfig):
         logger.warning("Warning: .env file not found or empty.")
 
     configure_logging(logger)
+    _apply_external_root_overrides(cfg, logger)
 
     # Determine scenario path for file validation.
     # Check top-level scenarios/ first, fall back to in-package.
@@ -935,6 +1062,7 @@ def _inject_external_config_path() -> None:
 
     # Remove the flag and its argument so Hydra doesn't see them.
     del sys.argv[idx : idx + 2]
+    os.environ[EXTERNAL_CONFIG_DIR_ENV] = str(external_dir)
 
     # Inject a file:// searchpath override so external configs are discoverable
     # while package defaults remain available as fallback.

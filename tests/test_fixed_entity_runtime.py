@@ -65,6 +65,46 @@ def test_fixed_entity_non_episode_observation_advances_action_then_episode() -> 
     assert "CONTENT: episode-1-a" in third
 
 
+def test_fixed_entity_ignores_numeric_non_episode_observation() -> None:
+    entity = FixedActionEntityRuntime(
+        params={
+            "name": "Fixed",
+            "action_output_mode": "parsed_action",
+            "advance_without_episode_observation": True,
+            "fixed_action_plan": {
+                0: [{"action_type": "post", "content": "episode-0-a"}],
+                1: [{"action_type": "post", "content": "episode-1-a"}],
+            },
+        }
+    )
+
+    entity.observe("Home feed: Post ID: 42, Score: 10")
+    first = entity.act(None)
+    second = entity.act(None)
+
+    assert "CONTENT: episode-0-a" in first
+    assert "CONTENT: episode-1-a" in second
+
+
+def test_fixed_entity_uses_explicit_episode_marker_from_observation() -> None:
+    entity = FixedActionEntityRuntime(
+        params={
+            "name": "Fixed",
+            "action_output_mode": "parsed_action",
+            "advance_without_episode_observation": True,
+            "fixed_action_plan": {
+                0: [{"action_type": "post", "content": "episode-0-a"}],
+                2: [{"action_type": "post", "content": "episode-2-a"}],
+            },
+        }
+    )
+
+    entity.observe("EPISODE: 2")
+    result = entity.act(None)
+
+    assert "CONTENT: episode-2-a" in result
+
+
 def test_fixed_entity_emits_tool_call_format_for_finished() -> None:
     entity = FixedActionEntityRuntime(
         params={

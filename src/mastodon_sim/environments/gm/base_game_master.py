@@ -187,7 +187,9 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
 
         enabled_actions_cfg = getattr(cfg.sim, "enabled_actions", None)
         if enabled_actions_cfg is not None:
-            if isinstance(enabled_actions_cfg, (list, tuple)):
+            if isinstance(enabled_actions_cfg, Sequence) and not isinstance(
+                enabled_actions_cfg, (str, bytes)
+            ):
                 enabled_actions = [str(action).strip() for action in enabled_actions_cfg]
             else:
                 enabled_actions = [str(enabled_actions_cfg).strip()]

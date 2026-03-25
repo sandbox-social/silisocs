@@ -28,7 +28,9 @@ from mastodon_sim.agents.base_agent import Agent
 
 
 def _parse_episode_number(observation: str) -> int | None:
-    match = re.search(r"(\d+)", observation or "")
+    # Only treat explicit episode markers as authoritative; timeline post IDs
+    # or scores should not change deterministic episode progression.
+    match = re.search(r"\bepisode\b\s*[:#-]?\s*(\d+)\b", observation or "", re.IGNORECASE)
     if not match:
         return None
     try:

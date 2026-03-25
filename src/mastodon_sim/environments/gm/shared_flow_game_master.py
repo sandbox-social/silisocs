@@ -14,7 +14,7 @@ import dataclasses
 import logging
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
 from concordia.agents import entity_agent_with_logging
@@ -159,7 +159,9 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
 
         enabled_actions_cfg = getattr(cfg.sim, "enabled_actions", None)
         if enabled_actions_cfg is not None:
-            if isinstance(enabled_actions_cfg, (list, tuple)):
+            if isinstance(enabled_actions_cfg, Sequence) and not isinstance(
+                enabled_actions_cfg, (str, bytes)
+            ):
                 enabled_actions = [str(action).strip() for action in enabled_actions_cfg]
             else:
                 enabled_actions = [str(enabled_actions_cfg).strip()]

@@ -5,8 +5,76 @@ These policies control how many actions an entity may execute per engine step.
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass
 from typing import Any
+
+_FINISH_ACTION_ALIASES = {
+    "FINISHED",
+    "FINISH",
+    "FINISH_ACTION_EPISODE",
+}
+
+
+def _extract_structured_action_name(raw_action: str) -> str:
+    text = str(raw_action or "").strip()
+    if not text:
+        return ""
+
+    # Tool-calling mode payload.
+    try:
+        payload = json.loads(text)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        payload = None
+
+    if isinstance(payload, dict):
+        tool_call = payload.get("tool_call")
+        if isinstance(tool_call, dict):
+            name = tool_call.get("name")
+            if isinstance(name, str):
+                return name.strip()
+
+        for key in ("action_type", "action", "name"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+    # Parsed-action mode payload.
+    action_type_match = re.search(r"(?im)^\s*ACTION TYPE\s*:\s*(.+?)\s*$", text)
+    if action_type_match:
+        return action_type_match.group(1).strip()
+
+    # Generic-action mode payload.
+    action_match = re.search(r"(?im)^\s*ACTION\s*:\s*(.+?)\s*$", text)
+    if action_match:
+        return action_match.group(1).strip()
+
+    return ""
+
+
+def _is_finished_event(*, raw_action: str, resolved_result: str, finished_signal: str) -> bool:
+    signal = str(finished_signal or "").strip().upper() or "FINISHED"
+    aliases = set(_FINISH_ACTION_ALIASES)
+    aliases.add(signal)
+
+    action_name = _extract_structured_action_name(raw_action)
+    if action_name and action_name.strip().upper() in aliases:
+        return True
+
+    # Legacy fallback: allow exact token equality only (no substring matching).
+    raw_upper = str(raw_action or "").strip().upper()
+    if raw_upper in aliases:
+        return True
+
+    # Backend terminal action result text.
+    resolved_upper = str(resolved_result or "").strip().upper()
+    if resolved_upper.startswith("FINISHED ACTION EPISODE"):
+        return True
+    if resolved_upper.startswith("FINISHED:"):
+        return True
+
+    return False
 
 
 @dataclass
@@ -86,7 +154,13 @@ class OpenEndedActionChunkPolicy:
 
     max_actions: int = 3
     finished_action_signal: str = "FINISHED"
+    done_token: str | None = None
     name: str = "open_ended"
+
+    def __post_init__(self) -> None:
+        # Backward compatibility for existing config/dashboard payloads.
+        if self.done_token:
+            self.finished_action_signal = str(self.done_token)
 
     def run(
         self,
@@ -115,21 +189,39 @@ class OpenEndedActionChunkPolicy:
         finished_signal = self.finished_action_signal.strip().upper()
 
         for _ in range(max_actions):
-            action = engine._run_single_entity_action(
+            action_result = engine._run_single_entity_action(
                 game_master=game_master,
                 entity=entity,
                 action_spec=action_spec,
                 skip_actions=False,
                 verbose=verbose,
                 observe_before_action=not bool(last_action),
+                return_raw_action=True,
             )
+
+            raw_action = ""
+            rendered_action = ""
+            resolved_result = ""
+
+            if isinstance(action_result, dict):
+                raw_action = str(action_result.get("raw", "") or "")
+                rendered_action = str(action_result.get("rendered", "") or "")
+                resolved_result = str(action_result.get("resolved", "") or "")
+            else:
+                rendered_action = str(action_result or "")
+                raw_action = rendered_action
+
+            action = rendered_action or raw_action
 
             if not action:
                 break
 
-            # Check if the entity indicated they are finished with the action episode
-            action_upper = str(action).strip().upper()
-            if action_upper == finished_signal or "FINISHED" in action_upper:
+            # Stop only on explicit terminal actions/results.
+            if _is_finished_event(
+                raw_action=raw_action,
+                resolved_result=resolved_result,
+                finished_signal=finished_signal,
+            ):
                 break
 
             last_action = action

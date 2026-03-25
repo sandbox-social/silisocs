@@ -548,7 +548,14 @@ class BaseAgentBuilder:
             logger.info("Loading HF dataset from cache: %s", cache_file)
             with open(cache_file) as f:
                 cached = json.load(f)
-            return cached[:max_records] if max_records and len(cached) >= max_records else cached
+            if max_records is not None:
+                requested = max(0, int(max_records))
+                if len(cached) < requested:
+                    raise ValueError(
+                        f"HF cache has {len(cached)} records but {requested} are required"
+                    )
+                return cached[:requested]
+            return cached
 
         try:
             from datasets import load_dataset
@@ -567,14 +574,43 @@ class BaseAgentBuilder:
                 if subset
                 else load_dataset(dataset_name, split=split)
             )
-            records = list(ds)
+            records = self._materialize_hf_records(ds, max_records=max_records)
             self._persist_hf_cache(dataset_name, split, subset, records)
-            return records[:max_records] if max_records else records
+            return records
         except Exception as exc:
             logger.warning(
                 "Falling back to HF cache for %s due to dataset load error: %s", dataset_name, exc
             )
             return _load_cache()
+
+    def _materialize_hf_records(self, ds: Any, *, max_records: int | None) -> list[dict[str, Any]]:
+        """Materialize at most ``max_records`` rows from a dataset-like object."""
+        if max_records is None:
+            return list(ds)
+
+        limit = max(0, int(max_records))
+        if limit == 0:
+            return []
+
+        # Fast path for HuggingFace Dataset objects: slice before materialization.
+        if hasattr(ds, "select"):
+            try:
+                total = len(ds)
+            except Exception:
+                total = limit
+            take_n = min(limit, total)
+            try:
+                return list(ds.select(range(take_n)))
+            except Exception:
+                pass
+
+        # Generic fallback for iterables/lists.
+        records: list[dict[str, Any]] = []
+        for idx, item in enumerate(ds):
+            if idx >= limit:
+                break
+            records.append(item)
+        return records
 
     def _load_csv(
         self,

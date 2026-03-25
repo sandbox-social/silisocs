@@ -183,6 +183,19 @@ class RecommendationComponent(FlowComponent):
 
         return ""  # Passive component, no text output
 
+    def post_act(self, action_attempt: str) -> str:
+        """Concordia post-act hook for passive components.
+
+        Recommendation updates are handled in ``pre_act``; this hook exists only
+        to satisfy the component lifecycle expected by ``EntityAgent``.
+        """
+        del action_attempt  # unused
+        return ""
+
+    def update(self) -> None:
+        """Concordia update-phase hook for passive components."""
+        return
+
     def _extract_unique_recsys_types(self) -> set[str]:
         """Extract unique recsys_type values from flow:field mapping."""
         unique_types: set[str] = set()

@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 import pytest
 from omegaconf import OmegaConf
 
-from mastodon_sim.environments.backends.base import PhoneApp, SocialMediaApp
+from mastodon_sim.environments.backends.base import PhoneApp, SocialMediaApp, app_action
 from mastodon_sim.environments.gm.act import SMAct
 from mastodon_sim.environments.gm.components.resolve import (
     GenericActionResolveComponent,
@@ -107,6 +107,22 @@ class _FinishedIntegrationApp(SocialMediaApp):
         }:
             return self.finish_action_episode()
         return ""
+
+
+class _GenericPromptApp(SocialMediaApp):
+    def name(self) -> str:
+        return "generic_prompt_app"
+
+    def description(self) -> str:
+        return "App used to test generic prompt generation"
+
+    def initialize(self, agent_names: list[str], **kwargs):
+        del agent_names, kwargs
+
+    @app_action(selectable_name="POST", description="Create a new post")
+    def create_post(self, current_user: str, content: str) -> str:
+        del current_user, content
+        return "ok"
 
 
 class TestPromptGeneration:
@@ -208,6 +224,21 @@ class TestPromptGeneration:
         assert call_to_action in result
         mock_app.generate_tool_schemas.assert_called_once()
 
+    def test_generic_prompt_includes_finished_guidance_when_available(self):
+        app = _GenericPromptApp()
+
+        prompt = app.generate_generic_action_prompt()
+
+        assert "Use the FINISHED action when you have exhausted desired actions" in prompt
+
+    def test_generic_prompt_omits_finished_guidance_when_disabled(self):
+        app = _GenericPromptApp()
+        app.set_enabled_actions(["POST"])
+
+        prompt = app.generate_generic_action_prompt()
+
+        assert "Use the FINISHED action when you have exhausted desired actions" not in prompt
+
 
 class TestResolveComponentFormatMatching:
     """Test that resolve components receive format they expect."""
@@ -304,6 +335,30 @@ def test_finished_routes_through_backend_across_all_resolve_modes() -> None:
 
     assert parsed_result == "Finished action episode"
     assert generic_result == "Finished action episode"
+    assert tool_result == "Finished action episode"
+
+
+def test_tool_calling_resolve_accepts_function_style_tool_call() -> None:
+    app = _FinishedIntegrationApp()
+    tool = ToolCallingResolveComponent(sm_app=app, model=MagicMock())
+
+    tool_result = tool.resolve(
+        active_entity="Alice",
+        action_text="tool_call:FINISHED({})",
+    )
+
+    assert tool_result == "Finished action episode"
+
+
+def test_tool_calling_resolve_accepts_escaped_brace_tool_call() -> None:
+    app = _FinishedIntegrationApp()
+    tool = ToolCallingResolveComponent(sm_app=app, model=MagicMock())
+
+    tool_result = tool.resolve(
+        active_entity="Alice",
+        action_text="tool_call:FINISHED({{}})",
+    )
+
     assert tool_result == "Finished action episode"
 
 

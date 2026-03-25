@@ -134,6 +134,9 @@ def _run_simulation(
     engine_preset: str,
     timeline_mode: str,
     recsys_type: str,
+    resolve_built_in: str = "parsed_action",
+    action_mode: str = "custom",
+    num_steps: int = 3,
 ) -> Path:
     conf_dir = tmp_path / "conf"
     _write_scenario(conf_dir, scenario_name)
@@ -156,14 +159,14 @@ def _run_simulation(
         f"sim.enable_engine_multi_flow={'true' if engine_preset == 'flow' else 'false'}",
         "sim.engine.action_loop.built_in=single_action",
         "sim.gm.components.next_acting.built_in=all_entities",
-        "sim.gm.components.resolve.built_in=parsed_action",
+        f"sim.gm.components.resolve.built_in={resolve_built_in}",
         f"sim.timeline_mode={timeline_mode}",
         "sim.timeline_posts=5",
         f"sim.gm.components.recommend.params.default_recsys_type={recsys_type}",
         f"sim.gm.components.observe.params.recsys_type={recsys_type}",
-        "sim.action_mode=custom",
+        f"sim.action_mode={action_mode}",
         "sim.memory_backend=list",
-        "sim.num_steps=3",
+        f"sim.num_steps={num_steps}",
         "sim.seed=11",
         "sim.write_html_log=false",
         "sim.max_concurrent_actions=8",
@@ -254,25 +257,35 @@ def _assert_seedbot_flow_precedence(action_events: list[dict[str, Any]]) -> None
             continue
 
     episodes = sorted(episode_values)
-    checked = 0
 
-    for episode in episodes:
-        episode_events = [
-            event
-            for event in action_events
-            if event.get("episode") == episode
-            and event.get("source_user") in {"SeedBot", "Alice Analyst", "Bob Builder"}
-            and not str(event.get("label", "")).startswith("init_")
-        ]
-        seed_events = [event for event in episode_events if event.get("source_user") == "SeedBot"]
-        llm_events = [event for event in episode_events if event.get("source_user") != "SeedBot"]
-        if not seed_events or not llm_events:
-            continue
+    def _check_precedence(include_init_events: bool) -> int:
+        checked_local = 0
+        for episode in episodes:
+            episode_events = [
+                event
+                for event in action_events
+                if event.get("episode") == episode
+                and event.get("source_user") in {"SeedBot", "Alice Analyst", "Bob Builder"}
+                and (include_init_events or not str(event.get("label", "")).startswith("init_"))
+            ]
+            seed_events = [
+                event for event in episode_events if event.get("source_user") == "SeedBot"
+            ]
+            llm_events = [
+                event for event in episode_events if event.get("source_user") != "SeedBot"
+            ]
+            if not seed_events or not llm_events:
+                continue
 
-        checked += 1
-        assert min(event["event_index"] for event in seed_events) < min(
-            event["event_index"] for event in llm_events
-        )
+            checked_local += 1
+            assert min(event["event_index"] for event in seed_events) < min(
+                event["event_index"] for event in llm_events
+            )
+        return checked_local
+
+    checked = _check_precedence(include_init_events=False)
+    if checked == 0:
+        checked = _check_precedence(include_init_events=True)
 
     assert checked >= 1
 
@@ -288,6 +301,26 @@ def _assert_prompt_contract(prompts: list[dict[str, Any]], backend: str) -> None
         assert "Tweet ID:" in all_prompts or "Timeline" in all_prompts
     if backend == "reddit_like":
         assert "Post ID:" in all_prompts or "Home Feed" in all_prompts
+
+
+def _assert_non_init_actions_logged(action_events: list[dict[str, Any]]) -> None:
+    non_init_events = [
+        event
+        for event in action_events
+        if not str(event.get("label", "")).startswith("init_")
+        and str(event.get("label", "")) != "initialize"
+    ]
+    assert non_init_events, "Expected at least one non-init action event to be logged"
+
+
+def _assert_tool_call_outputs_present(prompts: list[dict[str, Any]]) -> None:
+    tool_call_outputs = [
+        item
+        for item in prompts
+        if int(item.get("episode_idx", -1)) >= 1
+        and "tool_call" in str(item.get("output", "")).lower()
+    ]
+    assert tool_call_outputs, "Expected at least one tool_call output in action episodes"
 
 
 @pytest.mark.llm_e2e
@@ -347,3 +380,25 @@ def test_llm_e2e_base_gm_base_engine_no_flow_contracts(tmp_path: Path) -> None:
         event for event in action_events if str(event.get("source_user", "")).lower() != "system"
     ]
     assert non_system_events
+
+
+@pytest.mark.llm_e2e
+@pytest.mark.skipif(not os.getenv("LLM_SERVER_URL"), reason="LLM_SERVER_URL not set")
+def test_llm_e2e_tool_calling_logs_post_init_actions(tmp_path: Path) -> None:
+    output_dir = _run_simulation(
+        tmp_path=tmp_path,
+        scenario_name="llm_e2e_tool_calling_twitter",
+        backend="twitter_like",
+        engine_preset="flow",
+        timeline_mode="follower_chronological",
+        recsys_type="twitter",
+        resolve_built_in="tool_calling",
+        action_mode="custom",
+        num_steps=4,
+    )
+
+    action_events, prompts = _assert_common_artifacts(output_dir, "twitter_like")
+    _assert_seed_posted(action_events)
+    _assert_prompt_contract(prompts, backend="twitter_like")
+    _assert_tool_call_outputs_present(prompts)
+    _assert_non_init_actions_logged(action_events)

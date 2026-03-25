@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+import json
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -34,6 +36,9 @@ _TARGET_REQUIRED_ACTIONS = {
     "retweet",
     "boost",
 }
+_TOOL_CALL_EXPR_PATTERN = re.compile(
+    r"(?is)tool_call\s*:\s*(?P<name>[a-zA-Z_][\w]*)\s*\((?P<args>.*)\)\s*$"
+)
 
 
 def _normalize_target_id(action_type: str, target_id: str) -> str:
@@ -153,22 +158,62 @@ class ToolCallingResolveComponent(_BaseResolveComponent):
     This resolve component parses and executes the tool-call result.
     """
 
-    def resolve(self, *, active_entity: str, action_text: str) -> str:
-        """Handle tool-calling action text from the entity."""
-        import json
+    @staticmethod
+    def _extract_tool_call(action_text: str) -> tuple[str, dict[str, Any]] | None:
+        """Parse either JSON or tool_call:name({...}) payload into a tool call."""
+        normalized_text = str(action_text or "").strip()
+        # BaseSocialMediaEngine may escape braces before RESOLVE dispatch to
+        # avoid SwitchAct formatting issues; restore only when explicit escaped
+        # opening braces are present to avoid corrupting valid JSON payloads.
+        if "{{" in normalized_text:
+            normalized_text = normalized_text.replace("{{", "{").replace("}}", "}")
 
-        # Try to parse as JSON-formatted tool call from SocialConcatActComponent
+        # Primary path: strict JSON payload from SocialConcatActComponent.
         try:
-            data = json.loads(action_text)
-            if isinstance(data, dict) and "tool_call" in data:
-                tool_call = data["tool_call"]
+            data = json.loads(normalized_text)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            data = None
+
+        if isinstance(data, dict) and "tool_call" in data:
+            tool_call = data["tool_call"]
+            if isinstance(tool_call, dict):
                 tool_name = tool_call.get("name")
                 payload = tool_call.get("arguments", {})
+                if isinstance(tool_name, str) and tool_name.strip() and isinstance(payload, dict):
+                    return tool_name.strip(), payload
 
-                if tool_name:
-                    return self.sm_app.invoke_action_with_kwargs(tool_name, payload)
+        # Compatibility path: text format like tool_call:create_tweet({"content": "hi"}).
+        match = _TOOL_CALL_EXPR_PATTERN.search(normalized_text)
+        if not match:
+            return None
+
+        tool_name = match.group("name").strip()
+        args_text = match.group("args").strip()
+        if not tool_name:
+            return None
+
+        if not args_text:
+            return tool_name, {}
+
+        payload_obj: Any = None
+        try:
+            payload_obj = json.loads(args_text)
         except (json.JSONDecodeError, TypeError, ValueError):
-            pass
+            try:
+                payload_obj = ast.literal_eval(args_text)
+            except (TypeError, ValueError, SyntaxError):
+                return None
+
+        if not isinstance(payload_obj, dict):
+            return None
+        return tool_name, payload_obj
+
+    def resolve(self, *, active_entity: str, action_text: str) -> str:
+        """Handle tool-calling action text from the entity."""
+        tool_call = self._extract_tool_call(action_text)
+        if tool_call is not None:
+            tool_name, payload = tool_call
+            return self.sm_app.invoke_action_with_kwargs(tool_name, payload)
 
         # If not a tool call or parsing failed, return empty
         return f"[{active_entity} completed tool-calling action]"

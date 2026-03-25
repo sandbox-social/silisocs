@@ -191,7 +191,7 @@ class BaseSocialMediaEngine(simultaneous.Simultaneous):
                     entity.observe(observation)
 
             if skip_actions:
-                return {"raw": "", "rendered": ""} if return_raw_action else ""
+                return {"raw": "", "rendered": "", "resolved": ""} if return_raw_action else ""
 
             if verbose:
                 print(
@@ -213,7 +213,7 @@ class BaseSocialMediaEngine(simultaneous.Simultaneous):
             result = self.agent_resolve(game_master, action, verbose=verbose)
             entity.observe(result)
             if return_raw_action:
-                return {"raw": raw_text, "rendered": action}
+                return {"raw": raw_text, "rendered": action, "resolved": str(result)}
             return action
 
     @staticmethod

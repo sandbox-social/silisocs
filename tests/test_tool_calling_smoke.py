@@ -106,6 +106,24 @@ def test_tool_calling_resolve_executes_tool_kwargs() -> None:
     assert result == "toot:Alice:Hello from tool mode"
 
 
+def test_tool_calling_resolve_executes_function_style_tool_call() -> None:
+    resolve = ToolCallingResolveComponent(sm_app=_FakeApp())
+
+    action_text = 'tool_call:toot({"current_user": "Alice", "status": "Function format"})'
+
+    result = resolve.resolve(active_entity="Alice", action_text=action_text)
+    assert result == "toot:Alice:Function format"
+
+
+def test_tool_calling_resolve_executes_escaped_brace_tool_call() -> None:
+    resolve = ToolCallingResolveComponent(sm_app=_FakeApp())
+
+    action_text = "tool_call:toot({{'current_user': 'Alice', 'status': 'Escaped format'}})"
+
+    result = resolve.resolve(active_entity="Alice", action_text=action_text)
+    assert result == "toot:Alice:Escaped format"
+
+
 def test_tool_calling_resolve_allows_finished_tool_call() -> None:
     resolve = ToolCallingResolveComponent(sm_app=_FakeApp())
 

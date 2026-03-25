@@ -31,6 +31,7 @@ class TimelineMakeObservation(FlowComponent, make_observation_component.MakeObse
         entity_flow_tags: dict[str, str] | None = None,
         episode_observation_flows: Sequence[str] | None = None,
         timeline_mode: str | None = None,
+        recsys_type: str | None = None,
         timeline_config: dict[str, Any] | None = None,
         call_to_make_observation: str = _CALL_TO_MAKE_OBSERVATION,
     ):
@@ -48,6 +49,7 @@ class TimelineMakeObservation(FlowComponent, make_observation_component.MakeObse
             str(flow).strip() for flow in (episode_observation_flows or ()) if str(flow).strip()
         }
         self._timeline_mode = str(timeline_mode or "follower_chronological").strip()
+        self._default_recsys_type = str(recsys_type or "").strip() or None
         self._timeline_config = dict(timeline_config or {})
 
     def _get_active_entity_name_from_call_to_action(self, call_to_action: str) -> str:
@@ -99,6 +101,8 @@ class TimelineMakeObservation(FlowComponent, make_observation_component.MakeObse
         cfg = ConfigStore.get_config()
         timeline_posts = getattr(cfg.sim, "timeline_posts", 10)
         recsys_type = self.get_flow_field("recsys_type", flow_type)
+        if not recsys_type:
+            recsys_type = self._default_recsys_type
         flow_timeline_mode = self.get_flow_field("timeline_mode", flow_type)
         if not flow_timeline_mode:
             flow_timeline_mode = self._timeline_mode

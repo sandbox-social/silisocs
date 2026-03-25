@@ -1,0 +1,67 @@
+# @package sim
+
+num_agents: 20
+num_steps: 15
+seed: 11
+run_name: election_recsys_engagement
+memory_backend: list
+write_html_log: false
+
+# Use generic auto-generated call-to-action format.
+action_mode: generic
+
+# Keep recommendation seed content enabled for startup discussion context
+seed_posts:
+  type: llm
+
+enabled_actions:
+  - create_tweet
+  - reply_to_tweet
+  - like_tweet
+  - repost_tweet
+  - FINISHED
+
+# Timeline defaults (baseline arm); treatment overrides timeline_mode on CLI
+timeline_posts: 10
+timeline_mode: follower_chronological
+
+# Open-ended action loop with explicit finish signal support
+engine:
+  preset: flow
+  action_loop:
+    built_in: open_ended
+    params:
+      max_actions: 25
+      finished_action_signal: FINISHED
+      done_token: FINISHED
+  flow_routing:
+    flow_order: [fixed_pre, default]
+
+# Enable flow-aware scheduling so fixed_pre headline agent acts before default flow
+enable_engine_multi_flow: true
+
+# Base GM is sufficient; timeline observation already supports fixed_pre episode observations
+enable_gm_multi_flow: false
+gm:
+  preset: base
+  components:
+    next_acting:
+      built_in: activity_probability
+      class_path: null
+      params: {}
+    observe:
+      built_in: timeline_every_turn
+      class_path: null
+      params:
+        episode_observation_flow: fixed_pre
+    resolve:
+      built_in: tool_calling
+      class_path: null
+      params: {}
+    recommend:
+      built_in: recommendation_component
+      class_path: null
+      params:
+        update_every_n_steps: 1
+        lazy: true
+        max_posts: 10
