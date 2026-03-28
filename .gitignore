@@ -200,6 +200,9 @@ scenarios/election/input/personas/.hf_cache/nvidia_Nemotron-Personas-USA__defaul
 # MkDocs build output
 site/
 
+# Generated study orchestration artifacts (keep authored study.yaml files tracked)
+experiments/*/generated/
+
 # SQLite transient files from local backend tests
 *.db-shm
 *.db-wal

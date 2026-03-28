@@ -48,6 +48,8 @@ Probes are deployed on schedule.
 
 ## Running a Simulation
 
+For multi-condition research orchestration (hypothesis trees, seed sweeps, and built-in evaluators), use [Experiment Studies](experiments.md).
+
 ### CLI (Recommended)
 
 The primary entry point is the `mastodon-sim` CLI command:
@@ -79,7 +81,9 @@ uv run mastodon-sim \
   scenario.social_network.network_type=random
 
 # Switch GM resolve mode to tool-calling
-uv run mastodon-sim sim.gm.components.resolve.built_in=tool_calling
+uv run mastodon-sim \
+  sim.gm.components.resolve.built_in=tool_calling \
+  sim.tool_calling.mode=single
 
 # Override only who can act next
 uv run mastodon-sim sim.gm.components.next_acting.built_in=all_entities
@@ -658,7 +662,7 @@ The social media GM (`GameMaster` + `SMAct`) is responsible for:
 
 - Initializing the active backend app and seed content
 - Building timeline observations for each acting entity
-- Parsing and dispatching actions (`custom`, `generic`, `tool_calling`)
+- Parsing and dispatching actions (`custom`, `generic`) and tool calls (`none`, `single`, `multi`)
 - Applying action effects through the backend app contract
 - Managing activity-state-based actor gating
 

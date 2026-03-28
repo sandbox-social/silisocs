@@ -144,6 +144,24 @@ The election scenario demonstrates probes in action with named built-in
 queries (vote preference, favorability, intent) — see the
 [Election Walkthrough](tutorials/election.md).
 
+### Default Detailed Probe Evaluators
+
+When running studies with `run_study.py`, you can use built-in probe evaluator presets:
+
+- `builtin.probe_metrics_detailed` (all probe events)
+- `builtin.probe_binary_detailed`
+- `builtin.probe_numeric_detailed`
+- `builtin.probe_choice_detailed`
+- `builtin.probe_freetext_detailed`
+
+These evaluators:
+- read `action_events.jsonl`
+- aggregate metrics per agent and per episode
+- aggregate per probe label and per inferred/configured probe type
+- use `effective_config.yaml` to map labels to configured probe types when available
+
+For orchestration details and preset usage, see [Experiment Studies](experiments.md).
+
 ---
 
 ## Related

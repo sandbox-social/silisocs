@@ -1,0 +1,432 @@
+#!/usr/bin/env python3
+"""Default run evaluators for study orchestration.
+
+This module provides detailed, reproducible summaries over:
+- action events (overall, per-episode, per-agent, per-agent-per-episode, transitions)
+- probe events (overall, per-probe, per-type, with type-specific metrics)
+
+CLI usage:
+  uv run python -m mastodon_sim.evaluations.default_evaluators \
+    --run-dir <run_dir> --output <out.json> --mode action_metrics
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import statistics
+from collections import Counter, defaultdict
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+VALID_MODES = {
+    "action_metrics",
+    "probe_metrics",
+    "probe_binary",
+    "probe_numeric",
+    "probe_choice",
+    "probe_freetext",
+}
+
+_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z'-]{2,}")
+_CHOICE_WORD_THRESHOLD = 4
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line:
+                continue
+            rows.append(json.loads(line))
+    return rows
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    m = re.search(r"[-+]?\d+(?:\.\d+)?", text)
+    if m is None:
+        return None
+    try:
+        return float(m.group(0))
+    except ValueError:
+        return None
+
+
+def _summary_stats(values: list[float]) -> dict[str, Any]:
+    if not values:
+        return {
+            "count": 0,
+            "min": None,
+            "max": None,
+            "mean": None,
+            "median": None,
+            "stdev": None,
+        }
+    return {
+        "count": len(values),
+        "min": min(values),
+        "max": max(values),
+        "mean": statistics.fmean(values),
+        "median": statistics.median(values),
+        "stdev": statistics.stdev(values) if len(values) > 1 else 0.0,
+    }
+
+
+def _normalize_binary(value: Any) -> str | None:
+    text = str(value or "").strip().lower()
+    if not text:
+        return None
+    if text in {"yes", "y", "true", "1"}:
+        return "Yes"
+    if text in {"no", "n", "false", "0"}:
+        return "No"
+    if "yes" in text:
+        return "Yes"
+    if "no" in text:
+        return "No"
+    return None
+
+
+def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
+    cfg_path = run_dir / "effective_config.yaml"
+    if not cfg_path.is_file():
+        return {}
+
+    with cfg_path.open("r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+
+    scenario = cfg.get("scenario") if isinstance(cfg, dict) else {}
+    if not isinstance(scenario, dict):
+        return {}
+
+    probes = scenario.get("probes", {})
+    if not isinstance(probes, dict):
+        return {}
+
+    raw_queries = probes.get("queries", {})
+    if isinstance(raw_queries, dict):
+        query_items = list(raw_queries.values())
+    elif isinstance(raw_queries, list):
+        query_items = [item for item in raw_queries if isinstance(item, dict)]
+    else:
+        query_items = []
+
+    out: dict[str, str] = {}
+    for item in query_items:
+        if not isinstance(item, dict):
+            continue
+        query_type = str(item.get("query_type") or "Unknown")
+        query_data = item.get("query_data", {})
+        query_data = query_data if isinstance(query_data, dict) else {}
+
+        names: list[str] = []
+        probe_name = item.get("probe_name")
+        query_name = query_data.get("name")
+        if probe_name:
+            names.append(str(probe_name))
+        if query_name:
+            names.append(str(query_name))
+
+        for name in names:
+            out[name] = query_type
+
+    return out
+
+
+def _infer_probe_type(response: Any) -> str:
+    if _normalize_binary(response) is not None:
+        return "BinaryProbe"
+    if _safe_float(response) is not None:
+        return "NumericRatingProbe"
+    text = str(response or "").strip()
+    if not text:
+        return "Unknown"
+    if len(text.split()) <= _CHOICE_WORD_THRESHOLD:
+        return "ChoiceProbe"
+    return "FreeTextProbe"
+
+
+def _build_action_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
+    action_rows = [row for row in events if str(row.get("event_type", "")).lower() == "action"]
+    label_counts = Counter(str(row.get("label", "")) for row in action_rows)
+
+    per_episode_counts: dict[int, Counter[str]] = defaultdict(Counter)
+    per_episode_agents: dict[int, set[str]] = defaultdict(set)
+    per_agent_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    per_agent_episode: dict[str, dict[int, Counter[str]]] = defaultdict(lambda: defaultdict(Counter))
+
+    by_agent_rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    for row in action_rows:
+        episode = _safe_int(row.get("episode"), 0)
+        agent = str(row.get("source_user", "")).strip() or "unknown"
+        label = str(row.get("label", "")).strip() or "unknown"
+
+        per_episode_counts[episode][label] += 1
+        per_episode_agents[episode].add(agent)
+        per_agent_counts[agent][label] += 1
+        per_agent_episode[agent][episode][label] += 1
+        by_agent_rows[agent].append(row)
+
+    transition_counts: Counter[str] = Counter()
+    for agent, rows in by_agent_rows.items():
+        _ = agent
+        rows_sorted = sorted(
+            rows,
+            key=lambda r: (
+                _safe_int(r.get("episode"), -1),
+                _safe_int(r.get("event_index"), -1),
+            ),
+        )
+        labels = [str(r.get("label", "")).strip() or "unknown" for r in rows_sorted]
+        for idx in range(1, len(labels)):
+            transition_counts[f"{labels[idx - 1]} -> {labels[idx]}"] += 1
+
+    per_episode_out: dict[str, Any] = {}
+    for episode in sorted(per_episode_counts.keys()):
+        total = sum(per_episode_counts[episode].values())
+        active_agents = sorted(per_episode_agents[episode])
+        per_episode_out[str(episode)] = {
+            "total_actions": total,
+            "active_agents": active_agents,
+            "num_active_agents": len(active_agents),
+            "avg_actions_per_active_agent": (total / len(active_agents)) if active_agents else 0.0,
+            "label_counts": dict(per_episode_counts[episode]),
+        }
+
+    per_agent_out: dict[str, Any] = {}
+    per_agent_episode_out: dict[str, Any] = {}
+    for agent in sorted(per_agent_counts.keys()):
+        rows = by_agent_rows[agent]
+        episodes = sorted({_safe_int(r.get("episode"), 0) for r in rows})
+        total_actions = sum(per_agent_counts[agent].values())
+        per_agent_out[agent] = {
+            "total_actions": total_actions,
+            "first_episode": episodes[0] if episodes else None,
+            "last_episode": episodes[-1] if episodes else None,
+            "label_counts": dict(per_agent_counts[agent]),
+        }
+
+        nested: dict[str, Any] = {}
+        for episode, counts in sorted(per_agent_episode[agent].items()):
+            nested[str(episode)] = {
+                "total_actions": sum(counts.values()),
+                "label_counts": dict(counts),
+            }
+        per_agent_episode_out[agent] = nested
+
+    return {
+        "summary_type": "action_metrics",
+        "total_events": len(events),
+        "total_action_events": len(action_rows),
+        "unique_action_labels": sorted(label_counts.keys()),
+        "label_counts": dict(label_counts),
+        "per_episode": per_episode_out,
+        "per_agent": per_agent_out,
+        "per_agent_per_episode": per_agent_episode_out,
+        "transition_counts": dict(transition_counts.most_common(200)),
+    }
+
+
+def _build_probe_metrics_with_context(  # noqa: C901, PLR0912, PLR0915
+    events: list[dict[str, Any]],
+    run_dir: Path,
+    probe_type_filter: str | None = None,
+) -> dict[str, Any]:
+    probe_rows = [row for row in events if str(row.get("event_type", "")).lower() == "probe"]
+    type_map = _load_probe_type_map(run_dir)
+
+    per_type: dict[str, Counter[str]] = defaultdict(Counter)
+    per_label_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    per_label_modes: dict[str, Counter[str]] = defaultdict(Counter)
+    per_episode_counts: dict[int, int] = defaultdict(int)
+    per_agent_counts: dict[str, int] = defaultdict(int)
+    per_agent_episode_counts: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
+
+    numeric_values: dict[str, list[float]] = defaultdict(list)
+    free_text_lengths: dict[str, list[float]] = defaultdict(list)
+    free_text_word_counts: dict[str, list[float]] = defaultdict(list)
+    free_text_tokens: dict[str, Counter[str]] = defaultdict(Counter)
+    choice_values: dict[str, Counter[str]] = defaultdict(Counter)
+
+    kept_rows = 0
+    dropped_rows = 0
+
+    for row in probe_rows:
+        label = str(row.get("label", "")).strip() or "unknown"
+        episode = _safe_int(row.get("episode"), 0)
+        agent = str(row.get("source_user", "")).strip() or "unknown"
+
+        data = row.get("data", {})
+        data = data if isinstance(data, dict) else {}
+        response = data.get("query_return")
+        has_response = response is not None and str(response).strip() != ""
+
+        mapped_type = type_map.get(label)
+        probe_type = mapped_type or _infer_probe_type(response)
+
+        if probe_type_filter is not None and probe_type != probe_type_filter:
+            dropped_rows += 1
+            continue
+
+        kept_rows += 1
+        per_type[probe_type]["total_events"] += 1
+        if has_response:
+            per_type[probe_type]["responses_present"] += 1
+        else:
+            per_type[probe_type]["responses_missing"] += 1
+
+        per_label_counts[label]["total_events"] += 1
+        per_label_counts[label]["responses_present" if has_response else "responses_missing"] += 1
+
+        query_mode = str(data.get("query_mode", "")).strip() or "unknown"
+        per_label_modes[label][query_mode] += 1
+
+        per_episode_counts[episode] += 1
+        per_agent_counts[agent] += 1
+        per_agent_episode_counts[agent][episode] += 1
+
+        if not has_response:
+            continue
+
+        if probe_type == "BinaryProbe":
+            normalized = _normalize_binary(response)
+            key = normalized if normalized is not None else "Other"
+            per_type[probe_type][f"answer_{key}"] += 1
+
+        elif probe_type == "NumericRatingProbe":
+            num = _safe_float(response)
+            if num is not None:
+                numeric_values[label].append(num)
+                per_type[probe_type]["numeric_values_parsed"] += 1
+            else:
+                per_type[probe_type]["numeric_values_unparsed"] += 1
+
+        elif probe_type == "ChoiceProbe":
+            value = str(response).strip() or "<empty>"
+            choice_values[label][value] += 1
+
+        elif probe_type == "FreeTextProbe":
+            text = str(response)
+            free_text_lengths[label].append(float(len(text)))
+            words = text.split()
+            free_text_word_counts[label].append(float(len(words)))
+            for token in _TOKEN_RE.findall(text.lower()):
+                free_text_tokens[label][token] += 1
+
+    probe_type_by_label = {
+        label: (type_map.get(label) or "inferred") for label in sorted(per_label_counts.keys())
+    }
+
+    per_label_out: dict[str, Any] = {}
+    for label, counts in sorted(per_label_counts.items()):
+        entry: dict[str, Any] = {
+            "probe_type": type_map.get(label) or "inferred",
+            "total_events": int(counts.get("total_events", 0)),
+            "responses_present": int(counts.get("responses_present", 0)),
+            "responses_missing": int(counts.get("responses_missing", 0)),
+            "query_mode_counts": dict(per_label_modes[label]),
+        }
+
+        if numeric_values.get(label):
+            entry["numeric_response_stats"] = _summary_stats(numeric_values[label])
+        if choice_values.get(label):
+            entry["choice_value_counts"] = dict(choice_values[label])
+        if free_text_lengths.get(label):
+            entry["free_text_char_len_stats"] = _summary_stats(free_text_lengths[label])
+            entry["free_text_word_count_stats"] = _summary_stats(free_text_word_counts[label])
+            entry["free_text_top_tokens"] = dict(free_text_tokens[label].most_common(30))
+
+        per_label_out[label] = entry
+
+    per_type_out = {ptype: dict(counter) for ptype, counter in sorted(per_type.items())}
+
+    return {
+        "summary_type": "probe_metrics",
+        "filter_probe_type": probe_type_filter,
+        "total_events": len(events),
+        "total_probe_events": len(probe_rows),
+        "filtered_probe_events": kept_rows,
+        "filtered_out_probe_events": dropped_rows,
+        "probe_type_by_label": probe_type_by_label,
+        "per_type": per_type_out,
+        "per_label": per_label_out,
+        "per_episode": {str(k): int(v) for k, v in sorted(per_episode_counts.items())},
+        "per_agent": {k: int(v) for k, v in sorted(per_agent_counts.items())},
+        "per_agent_per_episode": {
+            agent: {str(ep): int(cnt) for ep, cnt in sorted(ep_map.items())}
+            for agent, ep_map in sorted(per_agent_episode_counts.items())
+        },
+    }
+
+
+def _build_payload(mode: str, events: list[dict[str, Any]], run_dir: Path) -> dict[str, Any]:
+    if mode == "action_metrics":
+        return _build_action_metrics(events)
+    if mode == "probe_metrics":
+        return _build_probe_metrics_with_context(events, run_dir)
+    if mode == "probe_binary":
+        return _build_probe_metrics_with_context(events, run_dir, probe_type_filter="BinaryProbe")
+    if mode == "probe_numeric":
+        return _build_probe_metrics_with_context(events, run_dir, probe_type_filter="NumericRatingProbe")
+    if mode == "probe_choice":
+        return _build_probe_metrics_with_context(events, run_dir, probe_type_filter="ChoiceProbe")
+    if mode == "probe_freetext":
+        return _build_probe_metrics_with_context(events, run_dir, probe_type_filter="FreeTextProbe")
+    raise ValueError(f"Unsupported mode: {mode}")
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for default evaluators."""
+    parser = argparse.ArgumentParser(description="Run default detailed evaluators")
+    parser.add_argument("--run-dir", required=True, help="Path to simulation output run directory")
+    parser.add_argument("--output", required=True, help="Path to write evaluator output JSON")
+    parser.add_argument(
+        "--mode",
+        required=True,
+        choices=sorted(VALID_MODES),
+        help="Evaluator mode",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    """Run selected evaluator and write JSON payload."""
+    args = parse_args()
+    run_dir = Path(args.run_dir).expanduser().resolve()
+    output = Path(args.output).expanduser().resolve()
+
+    events_path = run_dir / "action_events.jsonl"
+    if not events_path.is_file():
+        raise FileNotFoundError(f"Missing action events file: {events_path}")
+
+    events = _read_jsonl(events_path)
+    payload = _build_payload(args.mode, events, run_dir)
+    payload["mode"] = args.mode
+    payload["run_dir"] = str(run_dir)
+    payload["source_file"] = str(events_path)
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+if __name__ == "__main__":
+    main()
