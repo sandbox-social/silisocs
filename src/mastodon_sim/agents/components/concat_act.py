@@ -43,7 +43,7 @@ class SocialConcatActComponent(concat_act_component.ConcatActComponent):
         cleaned = call_to_action
 
         if _TOOL_SCHEMAS_START in call_to_action and _TOOL_SCHEMAS_END in call_to_action:
-            before, remainder = call_to_action.split(_TOOL_SCHEMAS_START, 1)
+            before, remainder = cleaned.split(_TOOL_SCHEMAS_START, 1)
             schemas_json, after = remainder.split(_TOOL_SCHEMAS_END, 1)
 
             # Try to parse the schemas
@@ -59,7 +59,7 @@ class SocialConcatActComponent(concat_act_component.ConcatActComponent):
             cleaned = cleaned.replace(_TOOL_CALLING_MARKER, "").strip()
         else:
             # No schemas found, just remove marker
-            cleaned = call_to_action.replace(_TOOL_CALLING_MARKER, "").strip()
+            cleaned = cleaned.replace(_TOOL_CALLING_MARKER, "").strip()
             tools = []  # Marker present but no schemas
 
         return cleaned, tools
@@ -69,18 +69,38 @@ class SocialConcatActComponent(concat_act_component.ConcatActComponent):
         if not hasattr(self._model, "sample_tool_call"):
             return ""
 
-        tool_name, args = self._model.sample_tool_call(prompt_text, tools)
-        if not tool_name:
+        sampled = self._model.sample_tool_call(prompt_text, tools)
+        sampled_items: list[object]
+        if isinstance(sampled, list):
+            sampled_items = sampled
+        elif isinstance(sampled, tuple) and len(sampled) == 2:
+            sampled_items = [sampled]
+        else:
+            sampled_items = []
+
+        def _normalize_call(item: object) -> tuple[str, dict] | None:
+            if not isinstance(item, (tuple, list)) or len(item) != 2:
+                return None
+            tool_name = str(item[0] or "").strip()
+            args_obj = item[1]
+            if not tool_name or not isinstance(args_obj, dict):
+                return None
+            payload = dict(args_obj)
+            payload.setdefault("current_user", self.get_entity().name)
+            return tool_name, payload
+
+        calls = [
+            normalized for normalized in (_normalize_call(it) for it in sampled_items) if normalized
+        ]
+
+        if not calls:
             return ""
 
-        payload = dict(args or {})
-        payload.setdefault("current_user", self.get_entity().name)
         return json.dumps(
             {
-                "tool_call": {
-                    "name": tool_name,
-                    "arguments": payload,
-                }
+                "tool_calls": [
+                    {"name": tool_name, "arguments": payload} for tool_name, payload in calls
+                ]
             }
         )
 

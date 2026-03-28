@@ -107,7 +107,12 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
                     getattr(cfg.sim, "action_mode", "custom"), "parsed_action"
                 ),
             }
-        enable_tool_calling = resolve_slot.get("built_in") == "tool_calling"
+        tool_calling_mode = (
+            str(OmegaConf.select(cfg, "sim.tool_calling.mode", default="none") or "none")
+            .strip()
+            .lower()
+        )
+        enable_tool_calling = tool_calling_mode in {"single", "multi"}
 
         platform_type = getattr(cfg.social_media, "platform_type", "twitter_like")
 

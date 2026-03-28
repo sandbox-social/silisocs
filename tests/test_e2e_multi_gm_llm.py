@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import textwrap
@@ -136,6 +137,7 @@ def _run_simulation(
     recsys_type: str,
     resolve_built_in: str = "parsed_action",
     action_mode: str = "custom",
+    tool_calling_mode: str | None = None,
     num_steps: int = 3,
 ) -> Path:
     conf_dir = tmp_path / "conf"
@@ -144,6 +146,9 @@ def _run_simulation(
     llm_url = _llm_server_url()
     hydra_dir = tmp_path / "hydra"
     job_name = f"{scenario_name}_{backend}_{engine_preset}"
+    resolved_tool_mode = tool_calling_mode
+    if resolved_tool_mode is None:
+        resolved_tool_mode = "single" if resolve_built_in == "tool_calling" else "none"
 
     cmd = [
         sys.executable,
@@ -160,6 +165,7 @@ def _run_simulation(
         "sim.engine.action_loop.built_in=single_action",
         "sim.gm.components.next_acting.built_in=all_entities",
         f"sim.gm.components.resolve.built_in={resolve_built_in}",
+        f"sim.tool_calling.mode={resolved_tool_mode}",
         f"sim.timeline_mode={timeline_mode}",
         "sim.timeline_posts=5",
         f"sim.gm.components.recommend.params.default_recsys_type={recsys_type}",
@@ -294,7 +300,11 @@ def _assert_prompt_contract(prompts: list[dict[str, Any]], backend: str) -> None
     all_prompts = "\n".join(str(item.get("prompt", "")) for item in prompts)
     all_outputs = "\n".join(str(item.get("output", "")) for item in prompts)
 
-    assert "FINAL DECISION" in all_prompts
+    assert (
+        "FINAL DECISION" in all_prompts
+        or "## AVAILABLE ACTIONS" in all_prompts
+        or "Exercise:" in all_prompts
+    )
     assert all_outputs.strip()
 
     if backend == "twitter_like":
@@ -321,6 +331,56 @@ def _assert_tool_call_outputs_present(prompts: list[dict[str, Any]]) -> None:
         and "tool_call" in str(item.get("output", "")).lower()
     ]
     assert tool_call_outputs, "Expected at least one tool_call output in action episodes"
+
+
+def _assert_multi_tool_call_outputs_present(prompts: list[dict[str, Any]]) -> None:
+    multi_tool_outputs = [
+        item
+        for item in prompts
+        if int(item.get("episode_idx", -1)) >= 1
+        and "tool_calls" in str(item.get("output", "")).lower()
+    ]
+    assert multi_tool_outputs, "Expected at least one tool_calls output in action episodes"
+
+    tool_names: set[str] = set()
+    saw_multi_in_single_output = False
+
+    for item in multi_tool_outputs:
+        output_text = str(item.get("output", "")).strip()
+
+        try:
+            parsed = json.loads(output_text)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            parsed = None
+
+        if isinstance(parsed, dict) and isinstance(parsed.get("tool_calls"), list):
+            calls = [call for call in parsed["tool_calls"] if isinstance(call, dict)]
+            if len(calls) >= 2:
+                saw_multi_in_single_output = True
+            for call in calls:
+                name = str(call.get("name", "")).strip()
+                if name:
+                    tool_names.add(name)
+
+        matches = re.findall(r"tool_calls\s*:\s*([a-zA-Z_][\w]*)\s*\(", output_text)
+        if matches:
+            tool_names.update(matches)
+            if len(matches) >= 2:
+                saw_multi_in_single_output = True
+
+    assert tool_names, "Expected parseable tool_calls outputs with tool names"
+    assert saw_multi_in_single_output or len(multi_tool_outputs) >= 2
+
+
+def _assert_three_agent_activity(action_events: list[dict[str, Any]]) -> None:
+    actor_names = {
+        str(event.get("source_user", "")).strip()
+        for event in action_events
+        if str(event.get("source_user", "")).strip()
+        and str(event.get("source_user", "")).strip().lower() != "system"
+    }
+    expected = {"SeedBot", "Alice Analyst", "Bob Builder"}
+    assert expected.issubset(actor_names), f"Expected actor names {expected}, got {actor_names}"
 
 
 @pytest.mark.llm_e2e
@@ -402,3 +462,27 @@ def test_llm_e2e_tool_calling_logs_post_init_actions(tmp_path: Path) -> None:
     _assert_prompt_contract(prompts, backend="twitter_like")
     _assert_tool_call_outputs_present(prompts)
     _assert_non_init_actions_logged(action_events)
+
+
+@pytest.mark.llm_e2e
+@pytest.mark.skipif(not os.getenv("LLM_SERVER_URL"), reason="LLM_SERVER_URL not set")
+def test_llm_e2e_multi_tool_calling_three_agents_three_steps(tmp_path: Path) -> None:
+    output_dir = _run_simulation(
+        tmp_path=tmp_path,
+        scenario_name="llm_e2e_tool_calling_multi_twitter",
+        backend="twitter_like",
+        engine_preset="flow",
+        timeline_mode="follower_chronological",
+        recsys_type="twitter",
+        resolve_built_in="tool_calling",
+        action_mode="custom",
+        tool_calling_mode="multi",
+        num_steps=3,
+    )
+
+    action_events, prompts = _assert_common_artifacts(output_dir, "twitter_like")
+    _assert_seed_posted(action_events)
+    _assert_prompt_contract(prompts, backend="twitter_like")
+    _assert_multi_tool_call_outputs_present(prompts)
+    _assert_non_init_actions_logged(action_events)
+    _assert_three_agent_activity(action_events)

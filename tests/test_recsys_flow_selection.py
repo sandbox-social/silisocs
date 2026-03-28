@@ -170,6 +170,103 @@ def test_twitter_platform_rejects_reddit_algorithm(tmp_path) -> None:
     raise AssertionError("Expected ValueError for unsupported reddit algorithm on twitter_like")
 
 
+def test_twitter_platform_supports_twitter_tfidf_algorithm(tmp_path) -> None:
+    platform = TwitterLikePlatform(db_path=str(tmp_path / "twitter_tfidf.db"), use_queue=False)
+
+    with platform.get_connection() as conn:
+        conn.execute(
+            "INSERT INTO users (username, bio, created_at) VALUES (?, ?, ?)",
+            ("alice", "interested in climate policy", 0.0),
+        )
+        conn.execute(
+            "INSERT INTO users (username, bio, created_at) VALUES (?, ?, ?)",
+            ("bob", "general news", 0.0),
+        )
+        conn.execute(
+            """
+            INSERT INTO posts
+            (user_id, content, created_at, type, likes_count, reposts_count, reply_count)
+            VALUES (?, ?, ?, 'post', 0, 0, 0)
+            """,
+            (2, "climate change and policy update", 1.0),
+        )
+        conn.execute(
+            """
+            INSERT INTO posts
+            (user_id, content, created_at, type, likes_count, reposts_count, reply_count)
+            VALUES (?, ?, ?, 'post', 0, 0, 0)
+            """,
+            (2, "sports highlights", 2.0),
+        )
+        conn.commit()
+
+    platform.init_recsys("twitter_tfidf")
+    platform.update_recommendations(max_posts=2)
+    posts = platform.get_recommendations("alice", recsys_type="twitter_tfidf")
+
+    assert posts
+    assert {post["content"] for post in posts} == {
+        "climate change and policy update",
+        "sports highlights",
+    }
+
+
+def test_twitter_tfidf_recommends_expected_top_post_and_excludes_self(tmp_path) -> None:
+    platform = TwitterLikePlatform(
+        db_path=str(tmp_path / "twitter_tfidf_correctness.db"),
+        use_queue=False,
+    )
+
+    with platform.get_connection() as conn:
+        conn.execute(
+            "INSERT INTO users (username, bio, created_at) VALUES (?, ?, ?)",
+            ("alice", "climate policy and carbon tax", 0.0),
+        )
+        conn.execute(
+            "INSERT INTO users (username, bio, created_at) VALUES (?, ?, ?)",
+            ("bob", "general news", 0.0),
+        )
+        conn.execute(
+            "INSERT INTO users (username, bio, created_at) VALUES (?, ?, ?)",
+            ("cara", "sports fan", 0.0),
+        )
+
+        # Alice's own highly similar post should never appear in her recommendations.
+        conn.execute(
+            """
+            INSERT INTO posts
+            (user_id, content, created_at, type, likes_count, reposts_count, reply_count)
+            VALUES (?, ?, ?, 'post', 0, 0, 0)
+            """,
+            (1, "climate policy and carbon tax explained", 1.0),
+        )
+        conn.execute(
+            """
+            INSERT INTO posts
+            (user_id, content, created_at, type, likes_count, reposts_count, reply_count)
+            VALUES (?, ?, ?, 'post', 0, 0, 0)
+            """,
+            (2, "climate policy debate and carbon pricing", 2.0),
+        )
+        conn.execute(
+            """
+            INSERT INTO posts
+            (user_id, content, created_at, type, likes_count, reposts_count, reply_count)
+            VALUES (?, ?, ?, 'post', 0, 0, 0)
+            """,
+            (3, "football transfer rumors", 3.0),
+        )
+        conn.commit()
+
+    platform.init_recsys("twitter_tfidf")
+    platform.update_recommendations(max_posts=1)
+    posts = platform.get_recommendations("alice", recsys_type="twitter_tfidf", limit=1)
+
+    assert len(posts) == 1
+    assert posts[0]["content"] == "climate policy debate and carbon pricing"
+    assert posts[0]["username"] != "alice"
+
+
 def test_reddit_platform_rejects_twitter_algorithm(tmp_path) -> None:
     platform = RedditLikePlatform(db_path=str(tmp_path / "reddit_invalid_algo.db"), use_queue=False)
 

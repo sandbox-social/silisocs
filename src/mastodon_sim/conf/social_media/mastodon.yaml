@@ -32,6 +32,10 @@ usage_instructions: |
   A user can block other users to prevent them from seeing the user's content or interacting with them.
   Unblocking a user reverses the effects of blocking.
   Critically important: Operations such as liking, boosting, replying, etc. require a `toot_id`. To obtain a `toot_id`, you must have memory/knowledge of a real `toot_id`. If you don't know a `toot_id`, you can't perform actions that require it. `toot_id`'s can be retrieved using the `get_timeline` action.
+  - current_user is always the full display name (e.g. "Alice Smith").
+  - Only use real toot IDs from timeline/feed observations; do not fabricate IDs.
+  - For status/content fields, write in first person as the character.
+  - Omit optional parameters you do not want to use.
 
 # Action prompt template
 action_prompt: |
@@ -48,6 +52,10 @@ action_prompt: |
   - Not repeating recent actions
   If text-based, the text must reflect their posting style description.
 
+  [OUTPUT STYLE]
+
+# Output style: how to format the response (stripped when tool-calling is enabled)
+output_style: |
   ## OUTPUT FORMAT
   Answer: {name}
   STEP 1: [Analyze {name}'s motivation based on their character]

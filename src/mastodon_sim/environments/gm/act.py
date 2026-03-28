@@ -24,6 +24,38 @@ from typing_extensions import override
 DEFAULT_SESSION_TERMINATE_STR = "The Social-Media session has been completed."
 _TOOL_SCHEMAS_START = "### TOOL_SCHEMAS_JSON ###"
 _TOOL_SCHEMAS_END = "### END_TOOL_SCHEMAS_JSON ###"
+_ACT_NUM_MARKER = "[ActNum]"
+_OUTPUT_STYLE_MARKER = "[OUTPUT STYLE]"
+
+
+def _extract_actnum_guidance(call_to_action_str: str) -> str:
+    """Extract action-count guidance from a runner call-to-action payload."""
+    raw = str(call_to_action_str or "")
+    if _ACT_NUM_MARKER not in raw:
+        return ""
+    after_marker = raw.split(_ACT_NUM_MARKER, 1)[1]
+    if _OUTPUT_STYLE_MARKER in after_marker:
+        after_marker = after_marker.split(_OUTPUT_STYLE_MARKER, 1)[0]
+    return after_marker.strip()
+
+
+def _inject_actnum_before_output_style(base_prompt: str, guidance: str) -> str:
+    """Inject action-count guidance before [OUTPUT STYLE] in generic prompts."""
+    prompt = str(base_prompt or "").strip()
+    line = str(guidance or "").strip()
+    if not line:
+        return prompt
+
+    if _OUTPUT_STYLE_MARKER not in prompt:
+        return f"{prompt}\n\n{line}" if prompt else line
+
+    head, tail = prompt.split(_OUTPUT_STYLE_MARKER, 1)
+    head = head.strip()
+    tail = tail.strip()
+    merged_head = f"{head}\n\n{line}" if head else line
+    if tail:
+        return f"{merged_head}\n\n{_OUTPUT_STYLE_MARKER}\n{tail}"
+    return f"{merged_head}\n\n{_OUTPUT_STYLE_MARKER}"
 
 
 class SMAct(gm_components.switch_act.SwitchAct):
@@ -88,10 +120,23 @@ class SMAct(gm_components.switch_act.SwitchAct):
         # Step 1: Generate base prompt based on action_mode ONLY
         if self.action_mode == "generic":
             base_prompt = self.sm_app.generate_generic_action_prompt()
+            action_guidance = _extract_actnum_guidance(self.call_to_action_str)
+            if action_guidance:
+                base_prompt = _inject_actnum_before_output_style(base_prompt, action_guidance)
         elif self.call_to_action_str:
             base_prompt = self.call_to_action_str
         else:
             base_prompt = "Conduct a social-media action. Determine what ONE action would be most appropriate."
+
+        # Step 1.5: Apply output-style marker handling for both generic and custom prompts.
+        if _OUTPUT_STYLE_MARKER in base_prompt:
+            prompt_head, prompt_tail = base_prompt.split(_OUTPUT_STYLE_MARKER, 1)
+            prompt_head = prompt_head.strip()
+            prompt_tail = prompt_tail.strip()
+            if self.enable_tool_calling:
+                base_prompt = prompt_head
+            else:
+                base_prompt = f"{prompt_head}\n\n{prompt_tail}" if prompt_tail else prompt_head
 
         # Step 2: If tool-calling is disabled, return prompt as-is
         if not self.enable_tool_calling:

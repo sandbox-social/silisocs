@@ -159,8 +159,8 @@ class ToolCallingResolveComponent(_BaseResolveComponent):
     """
 
     @staticmethod
-    def _extract_tool_call(action_text: str) -> tuple[str, dict[str, Any]] | None:
-        """Parse either JSON or tool_call:name({...}) payload into a tool call."""
+    def _extract_tool_calls(action_text: str) -> list[tuple[str, dict[str, Any]]]:
+        """Parse JSON/function payload into one or many tool calls."""
         normalized_text = str(action_text or "").strip()
         # BaseSocialMediaEngine may escape braces before RESOLVE dispatch to
         # avoid SwitchAct formatting issues; restore only when explicit escaped
@@ -174,26 +174,44 @@ class ToolCallingResolveComponent(_BaseResolveComponent):
         except (json.JSONDecodeError, TypeError, ValueError):
             data = None
 
+        if isinstance(data, dict) and "tool_calls" in data:
+            tool_calls_raw = data.get("tool_calls")
+            if isinstance(tool_calls_raw, list):
+                parsed_calls: list[tuple[str, dict[str, Any]]] = []
+                for tool_call in tool_calls_raw:
+                    if not isinstance(tool_call, dict):
+                        continue
+                    tool_name = tool_call.get("name")
+                    payload = tool_call.get("arguments", {})
+                    if (
+                        isinstance(tool_name, str)
+                        and tool_name.strip()
+                        and isinstance(payload, dict)
+                    ):
+                        parsed_calls.append((tool_name.strip(), payload))
+                if parsed_calls:
+                    return parsed_calls
+
         if isinstance(data, dict) and "tool_call" in data:
             tool_call = data["tool_call"]
             if isinstance(tool_call, dict):
                 tool_name = tool_call.get("name")
                 payload = tool_call.get("arguments", {})
                 if isinstance(tool_name, str) and tool_name.strip() and isinstance(payload, dict):
-                    return tool_name.strip(), payload
+                    return [(tool_name.strip(), payload)]
 
         # Compatibility path: text format like tool_call:create_tweet({"content": "hi"}).
         match = _TOOL_CALL_EXPR_PATTERN.search(normalized_text)
         if not match:
-            return None
+            return []
 
         tool_name = match.group("name").strip()
         args_text = match.group("args").strip()
         if not tool_name:
-            return None
+            return []
 
         if not args_text:
-            return tool_name, {}
+            return [(tool_name, {})]
 
         payload_obj: Any = None
         try:
@@ -202,18 +220,21 @@ class ToolCallingResolveComponent(_BaseResolveComponent):
             try:
                 payload_obj = ast.literal_eval(args_text)
             except (TypeError, ValueError, SyntaxError):
-                return None
+                return []
 
         if not isinstance(payload_obj, dict):
-            return None
-        return tool_name, payload_obj
+            return []
+        return [(tool_name, payload_obj)]
 
     def resolve(self, *, active_entity: str, action_text: str) -> str:
         """Handle tool-calling action text from the entity."""
-        tool_call = self._extract_tool_call(action_text)
-        if tool_call is not None:
-            tool_name, payload = tool_call
-            return self.sm_app.invoke_action_with_kwargs(tool_name, payload)
+        tool_calls = self._extract_tool_calls(action_text)
+        if tool_calls:
+            results = [
+                str(self.sm_app.invoke_action_with_kwargs(tool_name, payload))
+                for tool_name, payload in tool_calls
+            ]
+            return "\n".join(result for result in results if result)
 
         # If not a tool call or parsing failed, return empty
         return f"[{active_entity} completed tool-calling action]"

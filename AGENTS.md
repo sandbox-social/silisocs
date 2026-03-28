@@ -85,7 +85,8 @@ Main simulation knobs (`src/mastodon_sim/conf/sim/base.yaml`):
 | `llm_name` | gpt-4o-mini | Default LLM model |
 | `num_agents` | 100 | Number of agents |
 | `num_steps` | 50 | Simulation episodes |
-| `action_mode` | tool_calling | LLM function calls (robust) |
+| `action_mode` | custom | Prompt style (`custom` or `generic`) |
+| `tool_calling.mode` | single | Tool-calling behavior (`none` \| `single` \| `multi`) |
 | `enable_gm_multi_flow` | false | Multi-component-instance routing |
 | `enable_engine_multi_flow` | false | Flow-phase scheduling |
 | `gm.preset` | base | Simple (single components) or shared_flow (multi-instance) |
@@ -235,8 +236,8 @@ No special ABC requirement for Concordia agents—they naturally implement the i
 
 ### Tool-Calling Implementation for Entities
 
-In **tool-calling mode** (`action_mode: tool_calling`), the platform uses backend actions as tools
-and the language model selects which action to invoke.
+When **tool-calling is enabled** (`tool_calling.mode: single|multi`), the platform uses backend
+actions as tools and the language model selects which action(s) to invoke.
 
 **Architecture for tool-calling:**
 
@@ -259,6 +260,8 @@ Example custom-cta + tool-calling:
 ```python
 sim:
     action_mode: custom      # custom prompt text still used
+    tool_calling:
+        mode: single
     components:
         game_master:
             resolve:
@@ -308,14 +311,17 @@ The platform supports different action modes configured via `sim.action_mode`:
 
 ```yaml
 sim:
-  action_mode: custom  # custom | generic | tool_calling
+    action_mode: custom  # custom | generic
+    tool_calling:
+        mode: none         # none | single | multi
 ```
 
 Each mode corresponds to how the agent's responses are interpreted and executed:
 
 - **custom**: Custom parsing format determined by the scenario
 - **generic**: Generic action name + parameters format
-- **tool_calling**: Direct tool invocation via language model
+
+Tool-calling is configured separately via `sim.tool_calling.mode`.
 
 The specific action format and response interpretation is determined by the resolve component and scenario configuration, not by the agent. Agents simply return strings; the platform interprets them according to the active mode.
 

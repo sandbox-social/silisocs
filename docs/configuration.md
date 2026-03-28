@@ -39,7 +39,8 @@ uv run mastodon-sim social_media=reddit_like scenario=my_scenario
 | `seed` | `1` | Random seed |
 | `sentence_encoder` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model for associative memory |
 | `memory_backend` | `list` | Memory type: `list` (fast) or `associative` (embedding-based) |
-| `action_mode` | `tool_calling` | Action parsing: `custom` (text parsing), `generic` (template-based), or `tool_calling` (native LLM function calls) |
+| `action_mode` | `custom` | Prompt style: `custom` (scenario prompt) or `generic` (backend-generated action prompt) |
+| `tool_calling.mode` | `single` | Tool dispatch mode: `none`, `single`, or `multi` (requires `gm.components.resolve.built_in=tool_calling` when not `none`) |
 | `enabled_actions` | `null` | Optional whitelist of **exact backend action function names**. **Example**: `["create_tweet", "like_tweet", "follow_user"]`. `null` means all actions enabled. |
 | `enable_gm_multi_flow` | `false` | Enable multi-flow GM: routes different agent flows to different component instances (e.g., separate Observe components per flow) |
 | `enable_engine_multi_flow` | `false` | Enable multi-flow engine: schedules agent flows in customizable phases (can be combined with `enable_gm_multi_flow`) |
@@ -634,7 +635,9 @@ EOF
 
 num_agents: 500
 num_steps: 200
-action_mode: tool_calling  # Override if election scenario needs different action mode
+action_mode: custom
+tool_calling:
+  mode: single
 ```
 
 **scenarios/election/conf/social_media.yaml:**
@@ -920,7 +923,8 @@ probes:
   `src/mastodon_sim/runtime/runner.py` (not YAML-only today).
 
 When `sim.gm.components.resolve` is left at baseline defaults, `sim.action_mode`
-maps to the corresponding resolve component by default.
+maps to the corresponding resolve component only for `custom`/`generic`.
+Tool-calling is controlled explicitly by `sim.tool_calling.mode`.
 
 ---
 

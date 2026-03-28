@@ -5,13 +5,16 @@ import threading
 import time
 from collections import deque
 from collections.abc import Collection, Sequence
+from typing import Any
 
 import httpx
 import openai
 from concordia.language_model import language_model, no_language_model
 from concordia.utils import measurements as measurements_lib
 from concordia.utils import sampling
+from omegaconf import OmegaConf
 
+from mastodon_sim.runtime.config import ConfigStore
 from mastodon_sim.utils.misc import write_jsonl_item
 
 _MAX_MULTIPLE_CHOICE_ATTEMPTS = 20
@@ -322,7 +325,8 @@ class GptLanguageModel(language_model.LanguageModel):
         self,
         prompt: str,
         tools: list[dict],
-    ) -> tuple[str, dict]:
+        mode: str | None = None,
+    ) -> list[tuple[str, dict[str, Any]]]:
         """Call the LLM with OpenAI-compatible tool schemas and return the invoked function.
 
         Args:
@@ -332,9 +336,15 @@ class GptLanguageModel(language_model.LanguageModel):
 
         Returns
         -------
-            A ``(function_name, args_dict)`` tuple.  Returns ``("", {})`` if the
-            model does not invoke any tool or if all retry attempts fail.
+            Always returns ``[(function_name, args_dict), ...]``.
+            In ``single`` mode the list has at most one item.
+            In ``multi`` mode the list can contain multiple calls.
+            Returns an empty list on failure or no tool invocation.
         """
+        tool_mode = str(mode or self._resolve_tool_calling_mode()).strip().lower()
+        if tool_mode not in {"single", "multi"}:
+            tool_mode = "single"
+
         messages = [
             {
                 "role": "system",
@@ -367,12 +377,34 @@ class GptLanguageModel(language_model.LanguageModel):
                 self._record_retry_outcome(attempt, success=True)
                 msg = response.choices[0].message
                 if msg.tool_calls:
-                    tc = msg.tool_calls[0]
-                    args = json.loads(tc.function.arguments)
+                    parsed_calls: list[tuple[str, dict[str, Any]]] = []
+                    for tc in msg.tool_calls:
+                        tool_name = str(tc.function.name or "").strip()
+                        if not tool_name:
+                            continue
+                        try:
+                            raw_args: Any = json.loads(tc.function.arguments)
+                        except (TypeError, ValueError, json.JSONDecodeError):
+                            raw_args = {}
+                        if not isinstance(raw_args, dict):
+                            raw_args = {}
+                        parsed_calls.append((tool_name, raw_args))
+
+                    if not parsed_calls:
+                        return []
+
+                    if tool_mode == "single":
+                        parsed_calls = parsed_calls[:1]
+
                     if self.debug:
-                        self._log(prompt, f"tool_call:{tc.function.name}({args})")
-                    return tc.function.name, args
-                return "", {}
+                        self._log(
+                            prompt,
+                            "tool_calls:"
+                            + ", ".join(f"{name}({args})" for name, args in parsed_calls),
+                        )
+
+                    return parsed_calls
+                return []
             except openai.APIError as e:
                 print(f"Tool call API error (attempt {attempt + 1}): {e}")
             except openai.APIConnectionError as e:
@@ -384,7 +416,7 @@ class GptLanguageModel(language_model.LanguageModel):
 
             if attempt >= self._max_retries:
                 self._record_retry_outcome(attempt, success=False)
-                return "", {}
+                return []
 
             sleep_seconds = min(
                 self._backoff_base_seconds * (2**attempt),
@@ -393,7 +425,18 @@ class GptLanguageModel(language_model.LanguageModel):
             sleep_seconds += random.uniform(0, self._backoff_base_seconds)
             time.sleep(sleep_seconds)
 
-        return "", {}
+        return []
+
+    @staticmethod
+    def _resolve_tool_calling_mode() -> str:
+        """Resolve tool-calling mode from runtime config when available."""
+        try:
+            cfg = ConfigStore.get_config()
+            mode = str(OmegaConf.select(cfg, "sim.tool_calling.mode", default="single") or "single")
+        except Exception:
+            mode = "single"
+        normalized = mode.strip().lower()
+        return normalized if normalized in {"single", "multi"} else "single"
 
 
 def select_large_language_model(

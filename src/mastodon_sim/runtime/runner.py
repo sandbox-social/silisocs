@@ -227,6 +227,16 @@ def _initialize_runtime_environment() -> Path:
 # ============================================================================
 
 _DEFAULT_FLOW_TAG = "default"
+_ACTION_MODES = {"custom", "generic"}
+_TOOL_CALLING_MODES = {"none", "single", "multi"}
+_ACT_NUM_MARKER = "[ActNum]"
+_OUTPUT_STYLE_MARKER = "[OUTPUT STYLE]"
+_SINGLE_STEP_PROMPT_LINE = "Only take one action in this step"
+_MULTI_TOOL_CALLING_PROMPT_LINE = (
+    "You are allowed to output multiple tool calls to take a batch of actions "
+    "(if/as appropriate). If multiple tool calls, actions will be executed "
+    "in sequence of calls."
+)
 
 
 def _default_gm_filename(cfg: DictConfig, mode: str) -> str:
@@ -267,31 +277,88 @@ def _collect_declared_flow_tags(cfg: DictConfig) -> set[str]:
     return declared
 
 
-def _build_action_prompt(cfg: DictConfig, enable_tool_calling: bool) -> str:
-    """Build action call-to-action prompt from config components.
+def _get_tool_calling_mode(cfg: DictConfig) -> str:
+    """Return normalized tool-calling mode from sim config."""
+    mode = str(OmegaConf.select(cfg, "sim.tool_calling.mode", default="none") or "none")
+    normalized = mode.strip().lower()
+    return normalized if normalized in _TOOL_CALLING_MODES else "none"
 
-    Args:
-        cfg: Hydra config with social_media section
-        enable_tool_calling: Whether tool-calling mode is enabled
 
-    Returns
-    -------
-        Complete action call-to-action prompt string
+def _validate_action_tool_calling_contract(cfg: DictConfig) -> None:
+    """Validate action-mode and tool-calling mode contract.
+
+    action_mode controls prompt style (custom|generic), while tool_calling.mode
+    controls tool invocation behavior (none|single|multi).
     """
+    action_mode = str(getattr(getattr(cfg, "sim", object()), "action_mode", "custom") or "custom")
+    action_mode = action_mode.strip().lower()
+    if action_mode == "tool_calling":
+        raise ValueError(
+            "sim.action_mode=tool_calling is deprecated. "
+            "Use sim.action_mode={custom|generic} with sim.tool_calling.mode={single|multi}."
+        )
+    if action_mode not in _ACTION_MODES:
+        raise ValueError(
+            f"Unsupported sim.action_mode='{action_mode}'. Allowed values: custom, generic."
+        )
+
+    tool_calling_mode = str(
+        OmegaConf.select(cfg, "sim.tool_calling.mode", default="none") or "none"
+    )
+    tool_calling_mode = tool_calling_mode.strip().lower()
+    if tool_calling_mode not in _TOOL_CALLING_MODES:
+        raise ValueError(
+            f"Unsupported sim.tool_calling.mode='{tool_calling_mode}'. "
+            "Allowed values: none, single, multi."
+        )
+
+    resolve_built_in = str(
+        OmegaConf.select(cfg, "sim.gm.components.resolve.built_in", default="parsed_action")
+        or "parsed_action"
+    ).strip()
+    resolve_uses_tool_calling = resolve_built_in == "tool_calling"
+    mode_uses_tool_calling = tool_calling_mode != "none"
+    if mode_uses_tool_calling != resolve_uses_tool_calling:
+        raise ValueError(
+            "Tool-calling mode must match resolver selection: "
+            "set sim.gm.components.resolve.built_in=tool_calling when "
+            "sim.tool_calling.mode is single/multi, or set "
+            "sim.tool_calling.mode=none when resolver is not tool_calling."
+        )
+
+
+def _split_action_prompt_sections(action_prompt: str) -> tuple[str, str]:
+    """Split action prompt into prefix and [OUTPUT STYLE] marker suffix."""
+    if _OUTPUT_STYLE_MARKER not in action_prompt:
+        return action_prompt, ""
+    head, tail = action_prompt.split(_OUTPUT_STYLE_MARKER, 1)
+    return head.strip(), tail.strip()
+
+
+def _build_action_prompt(cfg: DictConfig, tool_calling_mode: str) -> str:
+    """Build action call-to-action prompt from config components."""
     action_prompt = getattr(cfg.social_media, "action_prompt", "")
     output_style = getattr(cfg.social_media, "output_style", "")
 
     if not action_prompt:
         return ""
 
-    # When tool-calling is enabled, replace output_style with tool call instruction
-    if enable_tool_calling:
-        output_style = (
-            "Respond with ONE of the available tool calls using this JSON format:\n"
-            '{"tool_call": {"name": "<action_name>", "arguments": {...}}}'
-        )
+    normalized_mode = str(tool_calling_mode or "none").strip().lower()
+    prompt_head, inline_output_style = _split_action_prompt_sections(str(action_prompt))
+    base_prompt = prompt_head or str(action_prompt).replace("[OUTPUT STYLE]", "").strip()
+    action_guidance_line = (
+        _MULTI_TOOL_CALLING_PROMPT_LINE if normalized_mode == "multi" else _SINGLE_STEP_PROMPT_LINE
+    )
+    actnum_block = f"{_ACT_NUM_MARKER}\n{action_guidance_line}"
+    final_output_style = str(output_style or "").strip() or inline_output_style
+    prompt_sections = [base_prompt] if base_prompt else []
+    prompt_sections.append(actnum_block)
+    if final_output_style:
+        prompt_sections.append(f"{_OUTPUT_STYLE_MARKER}\n{final_output_style}")
+    elif _OUTPUT_STYLE_MARKER in str(action_prompt):
+        prompt_sections.append(_OUTPUT_STYLE_MARKER)
 
-    return f"{action_prompt}\n\n{output_style}" if output_style else action_prompt
+    return "\n\n".join(section for section in prompt_sections if section)
 
 
 def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
@@ -536,7 +603,6 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
     )
 
     social_media_gms: list[prefab_lib.InstanceConfig] = []
-    sim_cfg = getattr(cfg, "sim", None)
     for spec in gm_specs:
         gm_name = str(spec["gm_name"])
         owned_flows = [flow for flow, chain in flow_chains.items() if gm_name in chain]
@@ -566,18 +632,7 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
                         calls_to_action={
                             "social_media_action": _build_action_prompt(
                                 cfg,
-                                enable_tool_calling=(
-                                    getattr(
-                                        getattr(
-                                            getattr(sim_cfg, "gm", object()),
-                                            "components",
-                                            object(),
-                                        ),
-                                        "resolve",
-                                        {},
-                                    ).get("built_in")
-                                    == "tool_calling"
-                                ),
+                                tool_calling_mode=_get_tool_calling_mode(cfg),
                             )
                         },
                         sim_role=sim_role,
@@ -722,6 +777,7 @@ def main(cfg: DictConfig):
 
     configure_logging(logger)
     _apply_external_root_overrides(cfg, logger)
+    _validate_action_tool_calling_contract(cfg)
 
     # Determine scenario path for file validation.
     # Check top-level scenarios/ first, fall back to in-package.
@@ -754,6 +810,24 @@ def main(cfg: DictConfig):
     print(f"\nOutput directory: {output_dir}")
     os.makedirs(output_dir, exist_ok=True)
     run_stats_path = os.path.join(output_dir, "run_stats.log")
+
+    # Persist runtime-effective config after external overrides are applied.
+    effective_cfg_path = os.path.join(output_dir, "effective_config.yaml")
+    OmegaConf.save(config=cfg, f=effective_cfg_path, resolve=True)
+    logger.info("Wrote runtime-effective config to: %s", effective_cfg_path)
+
+    # Mirror runtime-effective config next to Hydra's composed snapshot.
+    # Hydra writes config.yaml under configs/<run_root_name>/ for this project.
+    run_root_name = os.path.basename(HydraConfig.get().runtime.output_dir)
+    config_snapshot_dir = os.path.join(
+        HydraConfig.get().runtime.output_dir,
+        "configs",
+        run_root_name,
+    )
+    os.makedirs(config_snapshot_dir, exist_ok=True)
+    effective_cfg_snapshot_path = os.path.join(config_snapshot_dir, "effective_config.yaml")
+    OmegaConf.save(config=cfg, f=effective_cfg_snapshot_path, resolve=True)
+    logger.info("Wrote runtime-effective config snapshot to: %s", effective_cfg_snapshot_path)
 
     def _log_startup_phase(phase_name: str, duration_s: float, details: str = "") -> None:
         details_part = f" {details}" if details else ""

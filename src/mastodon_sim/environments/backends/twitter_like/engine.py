@@ -48,7 +48,7 @@ class Post:
 
 
 class TwitterLikePlatform:
-    SUPPORTED_RECSYS_TYPES = frozenset({"twitter", "twhin"})
+    SUPPORTED_RECSYS_TYPES = frozenset({"twitter", "twitter_tfidf", "twhin"})
 
     def __init__(self, db_path: str = "twitter_like.db", use_queue: bool = True):
         self.db_path = db_path
@@ -700,6 +700,23 @@ class TwitterLikePlatform:
             posts.append(post.to_dict())
         return posts
 
+    def get_posts_by_ids(self, post_ids: list[int]) -> dict[int, dict[str, Any]]:
+        """Return a map of post_id -> post dict for the requested IDs."""
+        normalized = sorted({int(pid) for pid in post_ids if pid is not None})
+        if not normalized:
+            return {}
+
+        placeholders = ",".join("?" for _ in normalized)
+        query = f"""
+            SELECT p.*, u.username
+            FROM posts p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.id IN ({placeholders})
+        """
+        with self.get_connection() as conn:
+            rows = conn.execute(query, normalized).fetchall()
+            return {post["id"]: post for post in self._parse_posts(rows)}
+
     # Separation of Feeds using a router pattern!
     def get_feed(
         self, feed_type: str, username: str | None = None, **kwargs: Any
@@ -1125,12 +1142,26 @@ class TwitterLikePlatform:
     # Recommendation System (OASIS-compatible)
     # ================================================================ #
 
-    def init_recsys(self, recsys_type: str = "twitter") -> None:
+    def init_recsys(
+        self,
+        recsys_type: str = "twitter",
+        user_context_recent_posts: int = 0,
+        include_like_trace: bool = False,
+        like_trace_window: int = 5,
+        like_trace_weight: float = 0.0,
+        include_like_trace_in_context: bool = True,
+    ) -> None:
         """Initialize recommendation system for a specific algorithm type.
 
         Args:
-            recsys_type: Algorithm type ("twitter" or "twhin")
+            recsys_type: Algorithm type ("twitter", "twitter_tfidf", or "twhin").
                         Can be called multiple times to enable multiple algorithms simultaneously.
+            user_context_recent_posts: Number of recent authored posts to add to user context.
+            include_like_trace: Whether to include like-trace signals in ranking.
+            like_trace_window: Number of recent liked posts to consider per user.
+            like_trace_weight: Blending weight in [0, 1] for like-trace similarity.
+            include_like_trace_in_context: Whether liked post snippets are appended to
+                textual user context.
         """
         recsys_type = str(recsys_type or "").strip().lower()
         if recsys_type not in self.SUPPORTED_RECSYS_TYPES:
@@ -1139,6 +1170,12 @@ class TwitterLikePlatform:
                 f"'{recsys_type}'. Supported: {sorted(self.SUPPORTED_RECSYS_TYPES)}"
             )
 
+        user_context_recent_posts = max(0, int(user_context_recent_posts or 0))
+        like_trace_window = max(0, int(like_trace_window or 0))
+        like_trace_weight = max(0.0, min(1.0, float(like_trace_weight or 0.0)))
+        include_like_trace = bool(include_like_trace)
+        include_like_trace_in_context = bool(include_like_trace_in_context)
+
         # Initialize dict on first call
         if not hasattr(self, "_recsys_types"):
             self._recsys_types: dict[str, dict] = {}
@@ -1146,45 +1183,300 @@ class TwitterLikePlatform:
         # Add this algorithm type to the set (cumulative, not overwriting)
         self._recsys_types[recsys_type] = {
             "type": recsys_type,
+            "backend": None,
             "embeddings_cache": {},
             "model": None,
+            "tokenizer": None,
+            "user_context_recent_posts": user_context_recent_posts,
+            "include_like_trace": include_like_trace,
+            "like_trace_window": like_trace_window,
+            "like_trace_weight": like_trace_weight,
+            "include_like_trace_in_context": include_like_trace_in_context,
         }
 
-        # Load embedding model if needed
-        if recsys_type in ("twitter", "twhin"):
-            try:
-                from sentence_transformers import SentenceTransformer
+        state = self._recsys_types[recsys_type]
 
-                model_name = (
-                    "paraphrase-MiniLM-L6-v2"
-                    if recsys_type == "twitter"
-                    else "sentence-transformers/Twitter-roBERTa-base"
-                )
-                model = SentenceTransformer(model_name)
-                self._recsys_types[recsys_type]["model"] = model
-                logger.info(f"Loaded {recsys_type} recsys model")
-            except ImportError:
-                logger.warning(
-                    f"sentence-transformers not available for {recsys_type}, embeddings disabled for this type"
-                )
-                self._recsys_types[recsys_type]["model"] = None
+        if recsys_type == "twitter_tfidf":
+            state["backend"] = "tfidf"
+            logger.info("Initialized %s recsys backend using TF-IDF", recsys_type)
+
+        elif recsys_type == "twitter":
+            state["backend"] = "sentence_transformer"
+            state["model"] = self._load_sentence_transformer_model(
+                model_name="paraphrase-MiniLM-L6-v2",
+                recsys_type=recsys_type,
+            )
+
+        elif recsys_type == "twhin":
+            # Strict TWHIN mode: only the canonical model is allowed.
+            tokenizer, model = self._load_twhin_transformers_model()
+            state["backend"] = "twhin_transformers"
+            state["tokenizer"] = tokenizer
+            state["model"] = model
 
         logger.info(
-            f"Initialized recsys type '{recsys_type}'. Active types: {list(self._recsys_types.keys())}"
+            "Initialized recsys type '%s'. Active types: %s. Context cfg: "
+            "recent_posts=%s include_like_trace=%s like_trace_window=%s "
+            "like_trace_weight=%.3f include_like_trace_in_context=%s",
+            recsys_type,
+            list(self._recsys_types.keys()),
+            user_context_recent_posts,
+            include_like_trace,
+            like_trace_window,
+            like_trace_weight,
+            include_like_trace_in_context,
         )
 
-    def reddit_hot_score(self, likes: int, dislikes: int, created_at: float) -> float:
-        """Reddit hot-score algorithm."""
-        import math
+    def _fetch_recent_posts_by_user(
+        self,
+        conn: sqlite3.Connection,
+        user_ids: list[int],
+        limit_per_user: int,
+    ) -> dict[int, list[str]]:
+        """Fetch recent authored post contents for each user."""
+        if not user_ids or limit_per_user <= 0:
+            return {}
 
-        score = likes - dislikes
-        now = time.time()
-        age_seconds = now - created_at
+        placeholders = ",".join("?" for _ in user_ids)
+        rows = conn.execute(
+            f"""
+            SELECT user_id, content
+            FROM posts
+            WHERE user_id IN ({placeholders}) AND type != 'repost'
+            ORDER BY user_id ASC, created_at DESC, id DESC
+            """,
+            tuple(user_ids),
+        ).fetchall()
 
-        order = math.log10(max(abs(score), 1))
-        sign = 1 if score > 0 else -1 if score < 0 else 0
+        result: dict[int, list[str]] = {}
+        for row in rows:
+            uid = int(row[0])
+            content = str(row[1] or "").strip()
+            if not content:
+                continue
+            bucket = result.setdefault(uid, [])
+            if len(bucket) < limit_per_user:
+                bucket.append(content)
+        return result
 
-        return sign * order + (age_seconds / 45000)
+    def _fetch_liked_posts_by_user(
+        self,
+        conn: sqlite3.Connection,
+        user_ids: list[int],
+        limit_per_user: int,
+    ) -> dict[int, list[str]]:
+        """Fetch recently liked post contents for each user."""
+        if not user_ids or limit_per_user <= 0:
+            return {}
+
+        placeholders = ",".join("?" for _ in user_ids)
+        rows = conn.execute(
+            f"""
+            SELECT l.user_id, p.content
+            FROM likes l
+            JOIN posts p ON p.id = l.post_id
+            WHERE l.user_id IN ({placeholders})
+            ORDER BY l.user_id ASC, l.created_at DESC, l.post_id DESC
+            """,
+            tuple(user_ids),
+        ).fetchall()
+
+        result: dict[int, list[str]] = {}
+        for row in rows:
+            uid = int(row[0])
+            content = str(row[1] or "").strip()
+            if not content:
+                continue
+            bucket = result.setdefault(uid, [])
+            if len(bucket) < limit_per_user:
+                bucket.append(content)
+        return result
+
+    def _generate_user_context(
+        self,
+        user: dict[str, Any],
+        *,
+        max_recent_posts: int,
+        include_like_trace: bool,
+        include_like_trace_in_context: bool,
+        like_trace_window: int,
+    ) -> tuple[str, list[str]]:
+        """Build a user context string from bio, recent posts, and optional like trace."""
+        bio = str(user.get("bio") or "").strip() or "No bio provided."
+
+        recent_posts = [
+            str(text).strip()
+            for text in (user.get("recent_posts") or [])[: max(0, max_recent_posts)]
+            if str(text).strip()
+        ]
+        liked_posts = [
+            str(text).strip()
+            for text in (user.get("liked_posts") or [])[: max(0, like_trace_window)]
+            if str(text).strip()
+        ]
+
+        lines = [f"User bio: {bio}"]
+        if recent_posts:
+            lines.append("Recent authored posts: " + " | ".join(recent_posts))
+        if include_like_trace and include_like_trace_in_context and liked_posts:
+            lines.append("Recently liked posts: " + " | ".join(liked_posts))
+
+        return "\n".join(lines), liked_posts
+
+    def _resolve_context_options(self, recsys_state: dict | None) -> dict[str, Any]:
+        """Normalize optional context and like-trace options from recsys state."""
+        if recsys_state is None:
+            return {
+                "context_recent_posts": 0,
+                "include_like_trace": False,
+                "like_trace_window": 0,
+                "like_trace_weight": 0.0,
+                "include_like_trace_in_context": True,
+            }
+
+        return {
+            "context_recent_posts": int(recsys_state.get("user_context_recent_posts", 0) or 0),
+            "include_like_trace": bool(recsys_state.get("include_like_trace", False)),
+            "like_trace_window": int(recsys_state.get("like_trace_window", 0) or 0),
+            "like_trace_weight": max(
+                0.0,
+                min(1.0, float(recsys_state.get("like_trace_weight", 0.0) or 0.0)),
+            ),
+            "include_like_trace_in_context": bool(
+                recsys_state.get("include_like_trace_in_context", True)
+            ),
+        }
+
+    def _build_user_context_index(
+        self,
+        users: list[dict[str, Any]],
+        *,
+        context_recent_posts: int,
+        include_like_trace: bool,
+        include_like_trace_in_context: bool,
+        like_trace_window: int,
+    ) -> dict[int, dict[str, Any]]:
+        """Compute user context text and like traces once per update pass."""
+        index: dict[int, dict[str, Any]] = {}
+        for user in users:
+            user_id = int(user["id"])
+            context, liked_posts = self._generate_user_context(
+                user,
+                max_recent_posts=context_recent_posts,
+                include_like_trace=include_like_trace,
+                include_like_trace_in_context=include_like_trace_in_context,
+                like_trace_window=like_trace_window,
+            )
+            index[user_id] = {
+                "context": context,
+                "liked_posts": liked_posts,
+            }
+        return index
+
+    def _context_cache_key(
+        self,
+        user_id: int,
+        user_context: str,
+        *,
+        context_recent_posts: int,
+        include_like_trace: bool,
+        like_trace_window: int,
+        include_like_trace_in_context: bool,
+    ) -> tuple[Any, ...]:
+        """Build stable cache key for user context embeddings."""
+        return (
+            "user",
+            user_id,
+            user_context,
+            context_recent_posts,
+            include_like_trace,
+            like_trace_window,
+            include_like_trace_in_context,
+        )
+
+    def _blend_with_like_trace(
+        self,
+        *,
+        base_sims: Any,
+        liked_posts: list[str],
+        like_trace_weight: float,
+        include_like_trace: bool,
+        encode_texts: Any,
+        score_profile: Any,
+    ) -> Any:
+        """Blend base user-context scores with like-trace profile scores."""
+        if not include_like_trace or like_trace_weight <= 0.0 or not liked_posts:
+            return base_sims
+
+        liked_embeddings = encode_texts(liked_posts, 16)
+        like_profile = liked_embeddings.mean(dim=0)
+        like_sims = score_profile(like_profile)
+        return (1.0 - like_trace_weight) * base_sims + like_trace_weight * like_sims
+
+    def _top_post_ids_for_user(
+        self,
+        *,
+        user_id: int,
+        posts: list[dict[str, Any]],
+        scores: Any,
+        max_posts: int,
+    ) -> list[int]:
+        """Sort candidate posts by score and return top-k non-self post ids."""
+        scored: list[tuple[int, float]] = []
+        for idx, post in enumerate(posts):
+            if int(post["user_id"]) == int(user_id):
+                continue
+            scored.append((int(post["id"]), float(scores[idx])))
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return [post_id for post_id, _ in scored[:max_posts]]
+
+    def _load_sentence_transformer_model(
+        self,
+        model_name: str,
+        recsys_type: str,
+    ) -> Any | None:
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            logger.warning(
+                "sentence-transformers not available for %s; embeddings disabled",
+                recsys_type,
+            )
+            return None
+
+        try:
+            loaded_model = SentenceTransformer(model_name)
+            logger.info(
+                "Loaded %s recsys model '%s'",
+                recsys_type,
+                model_name,
+            )
+            return loaded_model
+        except Exception as err:
+            logger.warning(
+                "Failed loading %s recsys model '%s': %s",
+                recsys_type,
+                model_name,
+                err,
+            )
+            return None
+
+    def _load_twhin_transformers_model(self) -> tuple[Any, Any]:
+        try:
+            import torch
+            from transformers import AutoModel, AutoTokenizer
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            model_name = "Twitter/twhin-bert-base"
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModel.from_pretrained(model_name).to(device)
+            model.eval()
+            logger.info("Loaded twhin recsys model '%s' on %s", model_name, device)
+            return tokenizer, model
+        except Exception as err:
+            raise RuntimeError(
+                f"Failed loading strict TWHIN model 'Twitter/twhin-bert-base': {err}"
+            ) from err
 
     def update_recommendations(
         self, active_user_ids: list[int] | None = None, max_posts: int = 10
@@ -1215,10 +1507,11 @@ class TwitterLikePlatform:
                     cursor = conn.execute("SELECT id, username, bio FROM users")
 
                 users = [{"id": r[0], "username": r[1], "bio": r[2]} for r in cursor.fetchall()]
+                user_ids = [int(user["id"]) for user in users]
 
                 # Get recent posts
                 cursor = conn.execute(
-                    "SELECT id, user_id, content, created_at, likes_count FROM posts ORDER BY created_at DESC LIMIT 1000"
+                    "SELECT id, user_id, content, created_at, likes_count FROM posts WHERE type != 'repost' ORDER BY created_at DESC LIMIT 1000"
                 )
                 posts = [
                     {
@@ -1235,6 +1528,34 @@ class TwitterLikePlatform:
                     logger.debug("No users or posts found; skipping recommendations update")
                     return
 
+                max_recent_posts = max(
+                    int(state.get("user_context_recent_posts", 0) or 0)
+                    for state in self._recsys_types.values()
+                )
+                max_like_window = max(
+                    (
+                        int(state.get("like_trace_window", 0) or 0)
+                        for state in self._recsys_types.values()
+                        if bool(state.get("include_like_trace", False))
+                    ),
+                    default=0,
+                )
+
+                recent_posts_by_user = self._fetch_recent_posts_by_user(
+                    conn,
+                    user_ids,
+                    max_recent_posts,
+                )
+                liked_posts_by_user = self._fetch_liked_posts_by_user(
+                    conn,
+                    user_ids,
+                    max_like_window,
+                )
+                for user in users:
+                    uid = int(user["id"])
+                    user["recent_posts"] = recent_posts_by_user.get(uid, [])
+                    user["liked_posts"] = liked_posts_by_user.get(uid, [])
+
                 # Clear old recommendations (once per update)
                 conn.execute("DELETE FROM recommendations")
 
@@ -1242,8 +1563,7 @@ class TwitterLikePlatform:
                 for recsys_type, state in self._recsys_types.items():
                     logger.debug(f"Computing {recsys_type} recommendations for {len(users)} users")
 
-                    if recsys_type in ("twitter", "twhin"):
-                        # Pass the model state for this algorithm type
+                    if recsys_type in ("twitter", "twhin", "twitter_tfidf"):
                         rec_matrix = self._rec_embedding(users, posts, max_posts, state)
                     else:
                         logger.warning(f"Unknown recsys_type '{recsys_type}'; skipping")
@@ -1268,22 +1588,6 @@ class TwitterLikePlatform:
         except Exception as e:
             logger.error(f"Error updating recommendations: {e}", exc_info=True)
 
-    def _rec_reddit(self, users: list, posts: list, max_posts: int) -> dict:
-        """Reddit hot-score recommendations."""
-        rec_matrix = {}
-        for user in users:
-            user_id = user["id"]
-            scored = []
-            for post in posts:
-                if post["user_id"] != user_id:
-                    score = self.reddit_hot_score(post["likes"], 0, post["created_at"])
-                    scored.append((post["id"], score))
-
-            scored.sort(key=lambda x: x[1], reverse=True)
-            rec_matrix[user_id] = [p[0] for p in scored[:max_posts]]
-
-        return rec_matrix
-
     def _rec_embedding(
         self, users: list, posts: list, max_posts: int, recsys_state: dict | None = None
     ) -> dict:
@@ -1305,6 +1609,42 @@ class TwitterLikePlatform:
         else:
             model = recsys_state.get("model")
             embeddings_cache = recsys_state.get("embeddings_cache", {})
+            backend = str(recsys_state.get("backend") or "sentence_transformer").strip()
+
+        options = self._resolve_context_options(recsys_state)
+        context_recent_posts = int(options["context_recent_posts"])
+        include_like_trace = bool(options["include_like_trace"])
+        like_trace_window = int(options["like_trace_window"])
+        like_trace_weight = float(options["like_trace_weight"])
+        include_like_trace_in_context = bool(options["include_like_trace_in_context"])
+
+        user_context_index = self._build_user_context_index(
+            users,
+            context_recent_posts=context_recent_posts,
+            include_like_trace=include_like_trace,
+            include_like_trace_in_context=include_like_trace_in_context,
+            like_trace_window=like_trace_window,
+        )
+
+        if recsys_state is not None and backend == "tfidf":
+            return self._rec_tfidf(users, posts, max_posts, user_context_index=user_context_index)
+
+        if recsys_state is not None and backend == "twhin_transformers":
+            tokenizer = recsys_state.get("tokenizer")
+            return self._rec_twhin(
+                users,
+                posts,
+                max_posts,
+                tokenizer,
+                model,
+                embeddings_cache,
+                user_context_index=user_context_index,
+                include_like_trace=include_like_trace,
+                like_trace_weight=like_trace_weight,
+                context_recent_posts=context_recent_posts,
+                like_trace_window=like_trace_window,
+                include_like_trace_in_context=include_like_trace_in_context,
+            )
 
         if model is None:
             return {}
@@ -1318,13 +1658,22 @@ class TwitterLikePlatform:
 
             # For each user
             for user in users:
-                user_id = user["id"]
-                bio = user["bio"] or "no bio"
+                user_id = int(user["id"])
+                context_bundle = user_context_index[user_id]
+                user_context = str(context_bundle["context"])
+                liked_posts = list(context_bundle["liked_posts"])
 
                 # Get or compute user embedding
-                cache_key = ("user", user_id)
+                cache_key = self._context_cache_key(
+                    user_id,
+                    user_context,
+                    context_recent_posts=context_recent_posts,
+                    include_like_trace=include_like_trace,
+                    like_trace_window=like_trace_window,
+                    include_like_trace_in_context=include_like_trace_in_context,
+                )
                 if cache_key not in embeddings_cache:
-                    user_emb = model.encode(bio, convert_to_tensor=True)
+                    user_emb = model.encode(user_context, convert_to_tensor=True)
                     embeddings_cache[cache_key] = user_emb
                 else:
                     user_emb = embeddings_cache[cache_key]
@@ -1333,19 +1682,179 @@ class TwitterLikePlatform:
                 import torch
 
                 sims = torch.nn.functional.cosine_similarity(user_emb.unsqueeze(0), post_embeddings)
+                sims = self._blend_with_like_trace(
+                    base_sims=sims,
+                    liked_posts=liked_posts,
+                    like_trace_weight=like_trace_weight,
+                    include_like_trace=include_like_trace,
+                    encode_texts=lambda texts, batch_size: model.encode(
+                        texts,
+                        batch_size=batch_size,
+                        convert_to_tensor=True,
+                    ),
+                    score_profile=lambda like_profile: torch.nn.functional.cosine_similarity(
+                        like_profile.unsqueeze(0),
+                        post_embeddings,
+                    ),
+                )
 
-                # Score posts
-                scored = []
-                for i, post in enumerate(posts):
-                    if post["user_id"] != user_id:
-                        scored.append((post["id"], float(sims[i])))
-
-                scored.sort(key=lambda x: x[1], reverse=True)
-                rec_matrix[user_id] = [p[0] for p in scored[:max_posts]]
+                rec_matrix[user_id] = self._top_post_ids_for_user(
+                    user_id=user_id,
+                    posts=posts,
+                    scores=sims,
+                    max_posts=max_posts,
+                )
 
             return rec_matrix
         except Exception as e:
             logger.error(f"Error in embedding recsys: {e}", exc_info=True)
+            return {}
+
+    def _rec_tfidf(
+        self,
+        users: list,
+        posts: list,
+        max_posts: int,
+        user_context_index: dict[int, dict[str, Any]] | None = None,
+    ) -> dict:
+        """TF-IDF baseline recommender: bio-to-post cosine similarity."""
+        rec_matrix: dict[int, list[int]] = {}
+        if not users or not posts:
+            return rec_matrix
+
+        try:
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            from sklearn.metrics.pairwise import cosine_similarity
+
+            if user_context_index is None:
+                user_texts = [str(user.get("bio") or "") for user in users]
+            else:
+                user_texts = [str(user_context_index[int(user["id"])]["context"]) for user in users]
+            post_texts = [str(post.get("content") or "") for post in posts]
+            corpus = user_texts + post_texts
+
+            vectorizer = TfidfVectorizer()
+            matrix = vectorizer.fit_transform(corpus)
+            user_vectors = matrix[: len(users)]
+            post_vectors = matrix[len(users) :]
+            similarities = cosine_similarity(user_vectors, post_vectors)
+
+            for user_index, user in enumerate(users):
+                user_id = int(user["id"])
+                rec_matrix[user_id] = self._top_post_ids_for_user(
+                    user_id=user_id,
+                    posts=posts,
+                    scores=similarities[user_index],
+                    max_posts=max_posts,
+                )
+
+            return rec_matrix
+        except ValueError:
+            # Empty-vocabulary case (e.g., all bios/posts blank): fallback to recency.
+            for user in users:
+                user_id = int(user["id"])
+                rec_matrix[user_id] = [
+                    int(post["id"]) for post in posts if int(post["user_id"]) != user_id
+                ][:max_posts]
+            return rec_matrix
+        except Exception as e:
+            logger.error("Error in TF-IDF recsys: %s", e, exc_info=True)
+            return {}
+
+    def _rec_twhin(
+        self,
+        users: list,
+        posts: list,
+        max_posts: int,
+        tokenizer: Any,
+        model: Any,
+        embeddings_cache: dict,
+        user_context_index: dict[int, dict[str, Any]],
+        include_like_trace: bool = False,
+        like_trace_weight: float = 0.0,
+        context_recent_posts: int = 0,
+        like_trace_window: int = 0,
+        include_like_trace_in_context: bool = True,
+    ) -> dict:
+        """TWHIN-BERT recommendations via transformers tokenizer/model."""
+        if tokenizer is None or model is None:
+            return {}
+
+        try:
+            import torch
+
+            rec_matrix: dict[int, list[int]] = {}
+
+            device = next(model.parameters()).device
+
+            def _encode_texts(texts: list[str], batch_size: int = 32) -> torch.Tensor:
+                batches: list[torch.Tensor] = []
+                for start in range(0, len(texts), batch_size):
+                    batch_texts = texts[start : start + batch_size]
+                    tokens = tokenizer(
+                        batch_texts,
+                        padding=True,
+                        truncation=True,
+                        max_length=256,
+                        return_tensors="pt",
+                    ).to(device)
+                    with torch.no_grad():
+                        outputs = model(**tokens)
+                        hidden = outputs.last_hidden_state
+                        mask = tokens["attention_mask"].unsqueeze(-1).float()
+                        pooled = (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-9)
+                        pooled = torch.nn.functional.normalize(pooled, p=2, dim=1)
+                    batches.append(pooled.cpu())
+                return torch.cat(batches, dim=0)
+
+            post_texts = [str(post.get("content") or "") for post in posts]
+            post_embeddings = _encode_texts(post_texts, batch_size=32)
+
+            for user in users:
+                user_id = int(user["id"])
+                context_bundle = user_context_index[user_id]
+                user_context = str(context_bundle["context"])
+                liked_posts = list(context_bundle["liked_posts"])
+                cache_key = self._context_cache_key(
+                    user_id,
+                    user_context,
+                    context_recent_posts=context_recent_posts,
+                    include_like_trace=include_like_trace,
+                    like_trace_window=like_trace_window,
+                    include_like_trace_in_context=include_like_trace_in_context,
+                )
+                if cache_key not in embeddings_cache:
+                    user_embedding = _encode_texts([user_context], batch_size=1)[0]
+                    embeddings_cache[cache_key] = user_embedding
+                else:
+                    user_embedding = embeddings_cache[cache_key]
+
+                sims = torch.matmul(post_embeddings, user_embedding)
+                sims = self._blend_with_like_trace(
+                    base_sims=sims,
+                    liked_posts=liked_posts,
+                    like_trace_weight=like_trace_weight,
+                    include_like_trace=include_like_trace,
+                    encode_texts=lambda texts, batch_size: _encode_texts(
+                        texts,
+                        batch_size=batch_size,
+                    ),
+                    score_profile=lambda like_profile: torch.matmul(
+                        post_embeddings,
+                        torch.nn.functional.normalize(like_profile, p=2, dim=0),
+                    ),
+                )
+
+                rec_matrix[user_id] = self._top_post_ids_for_user(
+                    user_id=user_id,
+                    posts=posts,
+                    scores=sims,
+                    max_posts=max_posts,
+                )
+
+            return rec_matrix
+        except Exception as e:
+            logger.error("Error in TWHIN recsys: %s", e, exc_info=True)
             return {}
 
     def get_recommendations(

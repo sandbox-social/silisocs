@@ -66,6 +66,11 @@ class RecommendationComponent(FlowComponent):
         update_every_n_steps: int = 1,
         lazy: bool = True,
         max_posts: int = 10,
+        user_context_recent_posts: int = 0,
+        include_like_trace: bool = False,
+        like_trace_window: int = 5,
+        like_trace_weight: float = 0.0,
+        include_like_trace_in_context: bool = True,
         **kwargs: Any,
     ):
         """Initialize the recommendation component.
@@ -84,13 +89,19 @@ class RecommendationComponent(FlowComponent):
         self.update_every_n_steps = update_every_n_steps
         self.lazy = lazy
         self.max_posts = max_posts
+        self.user_context_recent_posts = max(0, int(user_context_recent_posts or 0))
+        self.include_like_trace = bool(include_like_trace)
+        self.like_trace_window = max(0, int(like_trace_window or 0))
+        self.like_trace_weight = max(0.0, min(1.0, float(like_trace_weight or 0.0)))
+        self.include_like_trace_in_context = bool(include_like_trace_in_context)
         self._entity: Any | None = None
         self._step_count = 0
+        self._last_update_episode: int | None = None
         self._initialized_recsys_types: set[str] = set()
         self._recsys_disabled = False
 
     _SUPPORTED_RECSYS_BY_PLATFORM = {
-        "twitter_like": {"twitter", "twhin"},
+        "twitter_like": {"twitter", "twitter_tfidf", "twhin"},
         "reddit_like": {"reddit", "twhin"},
         "mastodon": set(),
     }
@@ -119,6 +130,30 @@ class RecommendationComponent(FlowComponent):
                 f"'{self.platform_type}': {unsupported}. Supported: {sorted(supported)}"
             )
 
+    def _log_recsys_event(self, label: str, data: dict[str, Any]) -> None:
+        """Emit recommendation diagnostics to app action logger when available."""
+        if not self.sm_app:
+            return
+        log_fn = getattr(self.sm_app, "_log_action_event", None)
+        if callable(log_fn):
+            try:
+                payload = dict(data)
+                payload.setdefault("step_count", self._step_count)
+                log_fn("system", label, payload)
+            except Exception:
+                logger.debug("Failed to log recsys diagnostic event: %s", label, exc_info=True)
+
+    def _current_episode(self) -> int | None:
+        """Return current engine episode index when available."""
+        action_logger = getattr(self.sm_app, "action_logger", None)
+        episode_idx = getattr(action_logger, "episode_idx", None)
+        if episode_idx is None:
+            return None
+        try:
+            return int(episode_idx)
+        except (TypeError, ValueError):
+            return None
+
     def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
         """Called each step by Concordia's EntityAgent to update recommendations.
 
@@ -135,13 +170,26 @@ class RecommendationComponent(FlowComponent):
         if self._recsys_disabled:
             return ""
 
-        # Check if it's time to update
-        if self._step_count % self.update_every_n_steps != 0:
+        update_interval = max(1, int(self.update_every_n_steps or 1))
+        current_episode = self._current_episode()
+
+        # Deduplicate repeated component calls within the same engine episode.
+        if current_episode is not None and self._last_update_episode == current_episode:
+            return ""
+
+        # Prefer episode-based scheduling; fallback to call-count when episode metadata
+        # is unavailable (e.g., isolated unit contexts).
+        schedule_index = current_episode if current_episode is not None else self._step_count
+        if schedule_index % update_interval != 0:
             return ""
 
         try:
             if not self.sm_app:
                 logger.warning("RecommendationComponent has no sm_app; skipping update")
+                self._log_recsys_event(
+                    "recsys_update_skipped",
+                    {"reason": "no_sm_app"},
+                )
                 return ""
 
             backend = self.sm_app
@@ -157,29 +205,80 @@ class RecommendationComponent(FlowComponent):
                     )
                     self._initialized_recsys_types = set()
                     self._recsys_disabled = True
+                    self._log_recsys_event(
+                        "recsys_update_skipped",
+                        {
+                            "reason": "no_recsys_types",
+                            "platform_type": self.platform_type,
+                        },
+                    )
                     return ""
                 if hasattr(backend, "init_recsys"):
                     for recsys_type in recsys_types:
-                        backend.init_recsys(recsys_type=recsys_type)
+                        backend.init_recsys(
+                            recsys_type=recsys_type,
+                            user_context_recent_posts=self.user_context_recent_posts,
+                            include_like_trace=self.include_like_trace,
+                            like_trace_window=self.like_trace_window,
+                            like_trace_weight=self.like_trace_weight,
+                            include_like_trace_in_context=self.include_like_trace_in_context,
+                        )
                         logger.info(f"Initialized recsys type: {recsys_type}")
                 self._initialized_recsys_types = recsys_types
 
             # Update recommendations via backend
             if hasattr(backend, "update_recommendations"):
+                self._log_recsys_event(
+                    "recsys_update_attempt",
+                    {
+                        "platform_type": self.platform_type,
+                        "recsys_types": sorted(self._initialized_recsys_types),
+                        "max_posts": int(self.max_posts),
+                        "episode_idx": current_episode,
+                    },
+                )
                 backend.update_recommendations(
                     active_user_ids=None,  # Not available from ActionSpec
                     max_posts=self.max_posts,
                 )
 
+                if current_episode is not None:
+                    self._last_update_episode = current_episode
+
                 logger.debug(
                     f"Updated recommendations (step {self._step_count}, "
                     f"algorithms: {self._initialized_recsys_types})"
                 )
+                self._log_recsys_event(
+                    "recsys_update_complete",
+                    {
+                        "platform_type": self.platform_type,
+                        "recsys_types": sorted(self._initialized_recsys_types),
+                        "max_posts": int(self.max_posts),
+                        "episode_idx": current_episode,
+                    },
+                )
             else:
                 logger.warning("Backend does not support recommendations")
+                self._log_recsys_event(
+                    "recsys_update_skipped",
+                    {
+                        "reason": "backend_missing_update_recommendations",
+                        "platform_type": self.platform_type,
+                        "backend_class": backend.__class__.__name__,
+                    },
+                )
 
         except Exception as e:
             logger.error(f"Error updating recommendations: {e}", exc_info=True)
+            self._log_recsys_event(
+                "recsys_update_error",
+                {
+                    "platform_type": self.platform_type,
+                    "error": str(e),
+                    "recsys_types": sorted(self._initialized_recsys_types),
+                },
+            )
 
         return ""  # Passive component, no text output
 
@@ -234,6 +333,7 @@ class RecommendationComponent(FlowComponent):
         """Return serializable component state for checkpoints."""
         return {
             "step_count": self._step_count,
+            "last_update_episode": self._last_update_episode,
             "initialized_recsys_types": sorted(self._initialized_recsys_types),
             "recsys_disabled": self._recsys_disabled,
         }
@@ -242,6 +342,10 @@ class RecommendationComponent(FlowComponent):
         """Restore serializable component state."""
         state = dict(state or {})
         self._step_count = int(state.get("step_count", self._step_count))
+        last_update_episode = state.get("last_update_episode", self._last_update_episode)
+        self._last_update_episode = (
+            int(last_update_episode) if last_update_episode is not None else None
+        )
         restored_types = state.get("initialized_recsys_types", [])
         self._initialized_recsys_types = {str(v).strip() for v in restored_types if str(v).strip()}
         self._recsys_disabled = bool(state.get("recsys_disabled", self._recsys_disabled))

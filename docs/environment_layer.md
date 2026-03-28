@@ -13,7 +13,7 @@ This page focuses on end-user and developer configurability for Engine/GM/backen
 - Strong defaults that run out of the box.
 - YAML-first component selection for common customization.
 - Class-path extension for advanced custom components.
-- Predictable `sim.action_mode` workflows (`custom`, `generic`, `tool_calling`).
+- Predictable `sim.action_mode` workflows (`custom`, `generic`) with explicit `sim.tool_calling.mode`.
 
 ## Current Runtime Model
 
@@ -117,7 +117,9 @@ This supports both styles:
 ### 1. Switch to tool-calling without Python changes
 
 ```sh
-uv run mastodon-sim sim.gm.components.resolve.built_in=tool_calling
+uv run mastodon-sim \
+  sim.gm.components.resolve.built_in=tool_calling \
+  sim.tool_calling.mode=single
 ```
 
 ### 2. Keep defaults but override only initializer

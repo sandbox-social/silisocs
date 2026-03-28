@@ -166,13 +166,88 @@ class TwitterLikeApp(SocialMediaApp):
                 recsys_type=recsys_type,
                 **timeline_config,
             )
-            return list(timeline or [])
+            timeline_list = list(timeline or [])
+            self._log_action_event(
+                source_user=str(user_name),
+                label="timeline_retrieval",
+                data={
+                    "timeline_mode": str(timeline_mode),
+                    "recsys_type": str(recsys_type or ""),
+                    "requested_limit": int(limit),
+                    "returned_posts": len(timeline_list),
+                },
+            )
+            return timeline_list
         except Exception as e:
+            self._log_action_event(
+                source_user=str(user_name),
+                label="timeline_retrieval_error",
+                data={
+                    "timeline_mode": str(timeline_mode),
+                    "recsys_type": str(recsys_type or ""),
+                    "requested_limit": int(limit),
+                    "error": str(e),
+                },
+            )
             self._print(
                 f"Error fetching timeline with mode '{timeline_mode}' for {username}: {e}",
                 color="red",
             )
             return []
+
+    def init_recsys(
+        self,
+        recsys_type: str = "twitter",
+        user_context_recent_posts: int = 0,
+        include_like_trace: bool = False,
+        like_trace_window: int = 5,
+        like_trace_weight: float = 0.0,
+        include_like_trace_in_context: bool = True,
+    ) -> None:
+        """Initialize recommendation algorithm(s) on the underlying platform."""
+        self._platform.init_recsys(
+            recsys_type=recsys_type,
+            user_context_recent_posts=user_context_recent_posts,
+            include_like_trace=include_like_trace,
+            like_trace_window=like_trace_window,
+            like_trace_weight=like_trace_weight,
+            include_like_trace_in_context=include_like_trace_in_context,
+        )
+        self._log_action_event(
+            source_user="system",
+            label="recsys_init",
+            data={
+                "recsys_type": str(recsys_type),
+                "user_context_recent_posts": int(user_context_recent_posts),
+                "include_like_trace": bool(include_like_trace),
+                "like_trace_window": int(like_trace_window),
+                "like_trace_weight": float(like_trace_weight),
+                "include_like_trace_in_context": bool(include_like_trace_in_context),
+            },
+        )
+
+    def update_recommendations(
+        self, active_user_ids: list[int] | None = None, max_posts: int = 10
+    ) -> None:
+        """Update recommendation rows via the underlying platform and log counts."""
+        self._platform.update_recommendations(active_user_ids=active_user_ids, max_posts=max_posts)
+        rec_count = 0
+        try:
+            with self._platform.get_connection() as conn:
+                row = conn.execute("SELECT COUNT(*) AS n FROM recommendations").fetchone()
+                rec_count = int(row["n"]) if row else 0
+        except Exception:
+            rec_count = -1
+
+        self._log_action_event(
+            source_user="system",
+            label="recsys_update",
+            data={
+                "active_user_ids_count": len(active_user_ids or []),
+                "max_posts": int(max_posts),
+                "recommendation_rows": rec_count,
+            },
+        )
 
     def format_timeline_for_observation(self, timeline: list[dict]) -> str:
         """Format timeline posts as a clean text block for the LLM.
