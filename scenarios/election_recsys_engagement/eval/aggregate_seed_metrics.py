@@ -14,7 +14,7 @@ import json
 import math
 import re
 from pathlib import Path
-from statistics import mean, pstdev
+from statistics import mean
 from typing import Any
 
 

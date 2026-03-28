@@ -13,8 +13,6 @@ from pathlib import Path
 from statistics import mean, stdev
 from typing import Any
 
-import numpy as np
-
 
 def _compute_permutation_pvalue(
     baseline_values: list[float],
@@ -49,7 +47,7 @@ def _read_compare_csv(csv_path: str) -> dict[str, Any]:
     Handles both old (without exclude_final_episode) and new (with exclude_final_episode) formats.
     """
     results = {}
-    with open(csv_path, "r", encoding="utf-8") as f:
+    with open(csv_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             arm = str(row.get("arm", "")).strip()
@@ -72,14 +70,16 @@ def _read_compare_csv(csv_path: str) -> dict[str, Any]:
                 "num_steps": num_steps,
                 "configured_num_steps": configured_steps,
                 "exclude_final_episode": exclude_final,
-                "avg_actions_per_active_agent_per_step": float(row.get("avg_actions_per_active_agent_per_step", 0) or 0),
+                "avg_actions_per_active_agent_per_step": float(
+                    row.get("avg_actions_per_active_agent_per_step", 0) or 0
+                ),
             }
     return results
 
 
 def _load_json_compare(json_path: str) -> dict[str, Any]:
     """Load detailed JSON compare metrics including per-step arrays."""
-    with open(json_path, "r", encoding="utf-8") as f:
+    with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
 
     results = {}
@@ -105,25 +105,53 @@ def compute_action_category_per_active_agent(
 
     if baseline_users > 0 and baseline_steps > 0:
         # Annualized per active agent per step for each category
-        baseline_posts_per_active = baseline.get("post_count", 0) / (baseline_users * baseline_steps)
-        baseline_replies_per_active = baseline.get("reply_count", 0) / (baseline_users * baseline_steps)
-        baseline_likes_per_active = baseline.get("like_count", 0) / (baseline_users * baseline_steps)
-        baseline_reposts_per_active = baseline.get("repost_count", 0) / (baseline_users * baseline_steps)
-        baseline_interactions_per_active = (baseline.get("reply_count", 0) + baseline.get("like_count", 0) + baseline.get("repost_count", 0)) / (baseline_users * baseline_steps)
+        baseline_posts_per_active = baseline.get("post_count", 0) / (
+            baseline_users * baseline_steps
+        )
+        baseline_replies_per_active = baseline.get("reply_count", 0) / (
+            baseline_users * baseline_steps
+        )
+        baseline_likes_per_active = baseline.get("like_count", 0) / (
+            baseline_users * baseline_steps
+        )
+        baseline_reposts_per_active = baseline.get("repost_count", 0) / (
+            baseline_users * baseline_steps
+        )
+        baseline_interactions_per_active = (
+            baseline.get("reply_count", 0)
+            + baseline.get("like_count", 0)
+            + baseline.get("repost_count", 0)
+        ) / (baseline_users * baseline_steps)
     else:
-        baseline_posts_per_active = baseline_replies_per_active = baseline_likes_per_active = baseline_reposts_per_active = baseline_interactions_per_active = 0.0
+        baseline_posts_per_active = baseline_replies_per_active = baseline_likes_per_active = (
+            baseline_reposts_per_active
+        ) = baseline_interactions_per_active = 0.0
 
     treatment_users = treatment.get("num_eval_users", 1)
     treatment_steps = treatment.get("num_steps", 1)
 
     if treatment_users > 0 and treatment_steps > 0:
-        treatment_posts_per_active = treatment.get("post_count", 0) / (treatment_users * treatment_steps)
-        treatment_replies_per_active = treatment.get("reply_count", 0) / (treatment_users * treatment_steps)
-        treatment_likes_per_active = treatment.get("like_count", 0) / (treatment_users * treatment_steps)
-        treatment_reposts_per_active = treatment.get("repost_count", 0) / (treatment_users * treatment_steps)
-        treatment_interactions_per_active = (treatment.get("reply_count", 0) + treatment.get("like_count", 0) + treatment.get("repost_count", 0)) / (treatment_users * treatment_steps)
+        treatment_posts_per_active = treatment.get("post_count", 0) / (
+            treatment_users * treatment_steps
+        )
+        treatment_replies_per_active = treatment.get("reply_count", 0) / (
+            treatment_users * treatment_steps
+        )
+        treatment_likes_per_active = treatment.get("like_count", 0) / (
+            treatment_users * treatment_steps
+        )
+        treatment_reposts_per_active = treatment.get("repost_count", 0) / (
+            treatment_users * treatment_steps
+        )
+        treatment_interactions_per_active = (
+            treatment.get("reply_count", 0)
+            + treatment.get("like_count", 0)
+            + treatment.get("repost_count", 0)
+        ) / (treatment_users * treatment_steps)
     else:
-        treatment_posts_per_active = treatment_replies_per_active = treatment_likes_per_active = treatment_reposts_per_active = treatment_interactions_per_active = 0.0
+        treatment_posts_per_active = treatment_replies_per_active = treatment_likes_per_active = (
+            treatment_reposts_per_active
+        ) = treatment_interactions_per_active = 0.0
 
     return {
         "baseline_posts_per_active": baseline_posts_per_active,
@@ -199,7 +227,9 @@ def main():
         twitter = seed_data.get("recsys_twitter", {})
         twhin = seed_data.get("recsys_twhin", {})
 
-        print(f"Processing seed {seed}: baseline={bool(baseline)}, twitter={bool(twitter)}, twhin={bool(twhin)}")
+        print(
+            f"Processing seed {seed}: baseline={bool(baseline)}, twitter={bool(twitter)}, twhin={bool(twhin)}"
+        )
 
         if baseline and twitter:
             twitter_metrics = compute_action_category_per_active_agent(baseline, twitter)
@@ -239,23 +269,38 @@ def main():
 
         if baseline:
             aggregated["chronological"]["posts_per_active"].append(
-                baseline.get("post_count", 0) / max(baseline.get("num_eval_users", 1) * baseline.get("num_steps", 1), 1)
+                baseline.get("post_count", 0)
+                / max(baseline.get("num_eval_users", 1) * baseline.get("num_steps", 1), 1)
             )
             aggregated["chronological"]["replies_per_active"].append(
-                baseline.get("reply_count", 0) / max(baseline.get("num_eval_users", 1) * baseline.get("num_steps", 1), 1)
+                baseline.get("reply_count", 0)
+                / max(baseline.get("num_eval_users", 1) * baseline.get("num_steps", 1), 1)
             )
             aggregated["chronological"]["likes_per_active"].append(
-                baseline.get("like_count", 0) / max(baseline.get("num_eval_users", 1) * baseline.get("num_steps", 1), 1)
+                baseline.get("like_count", 0)
+                / max(baseline.get("num_eval_users", 1) * baseline.get("num_steps", 1), 1)
             )
             aggregated["chronological"]["reposts_per_active"].append(
-                baseline.get("repost_count", 0) / max(baseline.get("num_eval_users", 1) * baseline.get("num_steps", 1), 1)
+                baseline.get("repost_count", 0)
+                / max(baseline.get("num_eval_users", 1) * baseline.get("num_steps", 1), 1)
             )
             aggregated["chronological"]["interactions_per_active"].append(
-                (baseline.get("reply_count", 0) + baseline.get("like_count", 0) + baseline.get("repost_count", 0)) / max(baseline.get("num_eval_users", 1) * baseline.get("num_steps", 1), 1)
+                (
+                    baseline.get("reply_count", 0)
+                    + baseline.get("like_count", 0)
+                    + baseline.get("repost_count", 0)
+                )
+                / max(baseline.get("num_eval_users", 1) * baseline.get("num_steps", 1), 1)
             )
 
     # Compute statistics and p-values
-    categories = ["posts_per_active", "replies_per_active", "likes_per_active", "reposts_per_active", "interactions_per_active"]
+    categories = [
+        "posts_per_active",
+        "replies_per_active",
+        "likes_per_active",
+        "reposts_per_active",
+        "interactions_per_active",
+    ]
 
     results = []
     for category in categories:
@@ -276,18 +321,20 @@ def main():
 
         twhin_vs_twitter_pval = _compute_permutation_pvalue(twitter_vals, twhin_vals)
 
-        results.append({
-            "metric": category,
-            "baseline_mean": baseline_mean,
-            "baseline_sd": baseline_sd,
-            "twitter_mean": twitter_mean,
-            "twitter_sd": twitter_sd,
-            "twitter_vs_baseline_pval": twitter_pval,
-            "twhin_mean": twhin_mean,
-            "twhin_sd": twhin_sd,
-            "twhin_vs_baseline_pval": twhin_pval,
-            "twhin_vs_twitter_pval": twhin_vs_twitter_pval,
-        })
+        results.append(
+            {
+                "metric": category,
+                "baseline_mean": baseline_mean,
+                "baseline_sd": baseline_sd,
+                "twitter_mean": twitter_mean,
+                "twitter_sd": twitter_sd,
+                "twitter_vs_baseline_pval": twitter_pval,
+                "twhin_mean": twhin_mean,
+                "twhin_sd": twhin_sd,
+                "twhin_vs_baseline_pval": twhin_pval,
+                "twhin_vs_twitter_pval": twhin_vs_twitter_pval,
+            }
+        )
 
     # Write CSV
     csv_path = outputs_dir / "aggregate_50x10_5seeds_action_categories.csv"
@@ -311,8 +358,12 @@ def main():
         m = result["metric"]
         print(f"\n{m}:")
         print(f"  Chronological: {result['baseline_mean']:.6f} ± {result['baseline_sd']:.6f}")
-        print(f"  Twitter:       {result['twitter_mean']:.6f} ± {result['twitter_sd']:.6f} (p={result['twitter_vs_baseline_pval']:.4f})")
-        print(f"  TWHIN:         {result['twhin_mean']:.6f} ± {result['twhin_sd']:.6f} (p={result['twhin_vs_baseline_pval']:.4f})")
+        print(
+            f"  Twitter:       {result['twitter_mean']:.6f} ± {result['twitter_sd']:.6f} (p={result['twitter_vs_baseline_pval']:.4f})"
+        )
+        print(
+            f"  TWHIN:         {result['twhin_mean']:.6f} ± {result['twhin_sd']:.6f} (p={result['twhin_vs_baseline_pval']:.4f})"
+        )
         print(f"  TWHIN vs Twitter p-value: {result['twhin_vs_twitter_pval']:.4f}")
 
 

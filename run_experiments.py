@@ -2,12 +2,12 @@
 """Launch election_recsys_engagement runs for seeds 16-25 in a continuous queue."""
 
 import os
+import random
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-import random
 
 
 @dataclass
@@ -77,7 +77,7 @@ def build_all_runs(seeds: list[int], num_gpus: int = 4) -> list[RunConfig]:
     runs: list[RunConfig] = []
     # 1. Build all the runs without assigning a GPU yet
     for seed in seeds:
-        for timeline in ["chronological","twitter", "twhin"]:
+        for timeline in ["chronological", "twitter", "twhin"]:
             runs.append(RunConfig(seed=seed, timeline_type=timeline, gpu_id=0))
 
     # 2. (Optional but recommended) Shuffle the run order
@@ -127,7 +127,6 @@ def main() -> None:
 
     # Main event loop: keep going until both the queue and the running list are empty
     while pending_runs or running_procs:
-
         # 1. Fill the active pool up to the max_concurrent limit
         while pending_runs and len(running_procs) < max_concurrent:
             run = pending_runs.pop(0)
@@ -145,7 +144,7 @@ def main() -> None:
                 text=True,
             )
             running_procs[run.name] = (proc, log_file, log_path, time.time())
-            time.sleep(0.5) # Slight stagger to prevent DB/filesystem locking spikes
+            time.sleep(0.5)  # Slight stagger to prevent DB/filesystem locking spikes
 
         # 2. Check the status of all currently running processes
         finished_this_tick = []
@@ -160,7 +159,7 @@ def main() -> None:
                 else:
                     print(f"  FAIL {name} (rc={retcode})")
                     if log_path.exists():
-                        with open(log_path, "r") as f:
+                        with open(log_path) as f:
                             lines = f.readlines()
                             if lines:
                                 print("\n--- Last log output ---")
@@ -174,7 +173,7 @@ def main() -> None:
             elif time.time() - start_time > timeout_per_run_s:
                 # Process timed out
                 proc.kill()
-                proc.wait() # Ensure OS cleanup
+                proc.wait()  # Ensure OS cleanup
                 print(f"  TIMEOUT {name} (Exceeded {timeout_per_run_s}s limit)")
                 all_failed.append(name)
                 log_file.close()

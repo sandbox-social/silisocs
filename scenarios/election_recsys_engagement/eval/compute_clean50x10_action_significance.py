@@ -411,7 +411,8 @@ def main() -> None:
         raise FileNotFoundError("No matching runs found for provided prefix and seed range")
 
     per_run_rows = [
-        _compute_run_metrics(ref, exclude_final_episode=bool(args.exclude_final_episode)) for ref in refs
+        _compute_run_metrics(ref, exclude_final_episode=bool(args.exclude_final_episode))
+        for ref in refs
     ]
 
     metrics = [
