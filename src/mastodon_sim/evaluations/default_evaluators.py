@@ -171,7 +171,9 @@ def _build_action_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
     per_episode_counts: dict[int, Counter[str]] = defaultdict(Counter)
     per_episode_agents: dict[int, set[str]] = defaultdict(set)
     per_agent_counts: dict[str, Counter[str]] = defaultdict(Counter)
-    per_agent_episode: dict[str, dict[int, Counter[str]]] = defaultdict(lambda: defaultdict(Counter))
+    per_agent_episode: dict[str, dict[int, Counter[str]]] = defaultdict(
+        lambda: defaultdict(Counter)
+    )
 
     by_agent_rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
@@ -386,7 +388,9 @@ def _build_payload(mode: str, events: list[dict[str, Any]], run_dir: Path) -> di
     if mode == "probe_binary":
         return _build_probe_metrics_with_context(events, run_dir, probe_type_filter="BinaryProbe")
     if mode == "probe_numeric":
-        return _build_probe_metrics_with_context(events, run_dir, probe_type_filter="NumericRatingProbe")
+        return _build_probe_metrics_with_context(
+            events, run_dir, probe_type_filter="NumericRatingProbe"
+        )
     if mode == "probe_choice":
         return _build_probe_metrics_with_context(events, run_dir, probe_type_filter="ChoiceProbe")
     if mode == "probe_freetext":

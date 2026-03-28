@@ -55,7 +55,9 @@ def _summarize_activity(events: list[dict[str, Any]]) -> dict[str, Any]:
         }
     )
 
-    episodes = sorted({_safe_int(e.get("episode"), 0) for e in events if _safe_int(e.get("episode"), 0) > 0})
+    episodes = sorted(
+        {_safe_int(e.get("episode"), 0) for e in events if _safe_int(e.get("episode"), 0) > 0}
+    )
 
     return {
         "summary_type": "activity",
@@ -79,7 +81,9 @@ def _summarize_probes(events: list[dict[str, Any]]) -> dict[str, Any]:
         if isinstance(data, dict) and "query_return" in data:
             responses_present += 1
 
-    episodes = sorted({_safe_int(e.get("episode"), 0) for e in probe_rows if _safe_int(e.get("episode"), 0) > 0})
+    episodes = sorted(
+        {_safe_int(e.get("episode"), 0) for e in probe_rows if _safe_int(e.get("episode"), 0) > 0}
+    )
 
     return {
         "summary_type": "probes",

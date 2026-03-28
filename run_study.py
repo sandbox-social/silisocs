@@ -339,7 +339,9 @@ def _resolve_seeds(run_defaults: dict[str, Any], node: dict[str, Any]) -> list[i
     if repeats is not None:
         if not isinstance(repeats, int) or repeats <= 0:
             raise StudyConfigError("seed_repeats must be a positive int")
-        seed_start = node.get("seed_start", run_defaults.get("seed_start", run_defaults.get("seed", 1)))
+        seed_start = node.get(
+            "seed_start", run_defaults.get("seed_start", run_defaults.get("seed", 1))
+        )
         if not isinstance(seed_start, int):
             raise StudyConfigError("seed_start must be an int")
         return [seed_start + i for i in range(repeats)]
@@ -427,7 +429,9 @@ def _resolve_eval_spec(  # noqa: C901
     )
 
 
-def _merge_eval_specs(base: tuple[EvalSpec, ...], extra: tuple[EvalSpec, ...], mode: str) -> tuple[EvalSpec, ...]:
+def _merge_eval_specs(
+    base: tuple[EvalSpec, ...], extra: tuple[EvalSpec, ...], mode: str
+) -> tuple[EvalSpec, ...]:
     norm_mode = str(mode or "append").strip().lower()
     if norm_mode not in {"append", "replace"}:
         raise StudyConfigError("evaluation_mode must be 'append' or 'replace'")
@@ -528,7 +532,9 @@ def _validate_schema(study_data: dict[str, Any]) -> None:  # noqa: C901,PLR0912
 
         for cond_id, cond_node in cond_map.items():
             if not isinstance(cond_node, dict):
-                raise StudyConfigError(f"hypotheses.{hyp_id}.conditions.{cond_id} must be a mapping")
+                raise StudyConfigError(
+                    f"hypotheses.{hyp_id}.conditions.{cond_id} must be a mapping"
+                )
             overrides = cond_node.get("overrides", {})
             if not isinstance(overrides, dict):
                 raise StudyConfigError(
@@ -589,9 +595,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
 
     for hyp_id, hyp_node_any in hypotheses.items():
         hyp_node = _ensure_mapping(f"hypotheses.{hyp_id}", hyp_node_any)
-        hyp_overrides = _ensure_mapping(
-            f"hypotheses.{hyp_id}.overrides", hyp_node.get("overrides")
-        )
+        hyp_overrides = _ensure_mapping(f"hypotheses.{hyp_id}.overrides", hyp_node.get("overrides"))
         conds = hyp_node.get("conditions", hyp_node.get("cases"))
         cond_map = _ensure_mapping(f"hypotheses.{hyp_id}.conditions", conds)
 
@@ -615,7 +619,9 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
 
             condition_eval_specs = _resolve_condition_eval_specs(study_root, cond_node)
             eval_mode = str(cond_node.get("evaluation_mode", "append"))
-            merged_eval_specs = _merge_eval_specs(global_eval_specs, condition_eval_specs, eval_mode)
+            merged_eval_specs = _merge_eval_specs(
+                global_eval_specs, condition_eval_specs, eval_mode
+            )
 
             command_template: tuple[str, ...] | None = None
             if "command" in execution:
@@ -716,9 +722,7 @@ def _build_run_command(spec: RunSpec) -> list[str]:
     if spec.command_override:
         return list(spec.command_override)
 
-    run_name = (
-        f"{spec.study_name}_{spec.hypothesis_id}_{spec.condition_id}_{spec.scenario}_seed{spec.seed}"
-    )
+    run_name = f"{spec.study_name}_{spec.hypothesis_id}_{spec.condition_id}_{spec.scenario}_seed{spec.seed}"
 
     cmd = [
         "uv",
@@ -816,7 +820,9 @@ def _write_jsonl_line(path: Path, obj: Any, lock: threading.Lock | None = None) 
         f.write(payload + "\n")
 
 
-def _enrich_study_with_results(study_data: dict[str, Any], records: list[dict[str, Any]]) -> dict[str, Any]:
+def _enrich_study_with_results(
+    study_data: dict[str, Any], records: list[dict[str, Any]]
+) -> dict[str, Any]:
     enriched = copy.deepcopy(study_data)
     generated = {
         "generated_at": _now_iso(),
