@@ -118,7 +118,7 @@ skip_covered = true
 
 [tool.coverage.run]  # https://coverage.readthedocs.io/en/latest/config.html#run
 branch = true
-command_line = "--module pytest"
+command_line = "--module pytest -m 'not llm_e2e'"
 data_file = "reports/.coverage"
 source = ["src/mastodon_sim"]
 

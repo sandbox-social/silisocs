@@ -8,9 +8,19 @@ from mastodon_sim.environments.gm.components.resolve import ToolCallingResolveCo
 
 
 class _FakeModel:
+    def __init__(self, mode: str = "single") -> None:
+        self.mode = mode
+
     def sample_tool_call(self, prompt: str, tools: list[dict]):
         del prompt, tools
-        return "toot", {"status": "Hello from tool mode"}
+        if self.mode == "multi":
+            return [
+                ("toot", {"status": "Hello from tool mode"}),
+                ("like", {"post_id": "1"}),
+            ]
+        if self.mode == "multi_single":
+            return [("toot", {"status": "Only one but list-shaped"})]
+        return [("toot", {"status": "Hello from tool mode"})]
 
 
 class _FakeEntity:
@@ -60,9 +70,9 @@ def test_social_concat_act_emits_tool_call_json_when_marker_present() -> None:
     result = component.get_action_attempt({"Observation": "timeline"}, action_spec)
     parsed = json.loads(result)
 
-    assert parsed["tool_call"]["name"] == "toot"
-    assert parsed["tool_call"]["arguments"]["status"] == "Hello from tool mode"
-    assert parsed["tool_call"]["arguments"]["current_user"] == "Alice"
+    assert parsed["tool_calls"][0]["name"] == "toot"
+    assert parsed["tool_calls"][0]["arguments"]["status"] == "Hello from tool mode"
+    assert parsed["tool_calls"][0]["arguments"]["current_user"] == "Alice"
 
 
 def test_smact_embeds_tool_schemas_for_custom_prompt_when_enabled() -> None:
@@ -85,6 +95,55 @@ def test_smact_embeds_tool_schemas_for_custom_prompt_when_enabled() -> None:
     assert "### TOOL_CALLING_MODE ###" in result
     assert "### TOOL_SCHEMAS_JSON ###" in result
     assert "Custom action prompt for {name}" in result
+
+
+def test_social_concat_act_emits_multi_tool_call_json_when_model_returns_multiple() -> None:
+    component = SocialConcatActComponent(model=_FakeModel(mode="multi"), randomize_choices=False)
+    component.set_entity(_FakeEntity())
+
+    tools = json.dumps(_FakeApp().generate_tool_schemas())
+    action_spec = entity_lib.ActionSpec(
+        call_to_action=(
+            "### TOOL_CALLING_MODE ###\n"
+            "Pick one action for {name}.\n"
+            "### TOOL_SCHEMAS_JSON ###\n"
+            f"{tools}\n"
+            "### END_TOOL_SCHEMAS_JSON ###"
+        ),
+        output_type=entity_lib.OutputType.FREE,
+    )
+
+    result = component.get_action_attempt({"Observation": "timeline"}, action_spec)
+    parsed = json.loads(result)
+
+    assert len(parsed["tool_calls"]) == 2
+    assert parsed["tool_calls"][0]["name"] == "toot"
+    assert parsed["tool_calls"][0]["arguments"]["current_user"] == "Alice"
+
+
+def test_social_concat_act_emits_tool_calls_when_model_returns_single_item_list() -> None:
+    component = SocialConcatActComponent(
+        model=_FakeModel(mode="multi_single"), randomize_choices=False
+    )
+    component.set_entity(_FakeEntity())
+
+    tools = json.dumps(_FakeApp().generate_tool_schemas())
+    action_spec = entity_lib.ActionSpec(
+        call_to_action=(
+            "### TOOL_CALLING_MODE ###\n"
+            "Pick one action for {name}.\n"
+            "### TOOL_SCHEMAS_JSON ###\n"
+            f"{tools}\n"
+            "### END_TOOL_SCHEMAS_JSON ###"
+        ),
+        output_type=entity_lib.OutputType.FREE,
+    )
+
+    result = component.get_action_attempt({"Observation": "timeline"}, action_spec)
+    parsed = json.loads(result)
+
+    assert "tool_calls" in parsed
+    assert parsed["tool_calls"][0]["name"] == "toot"
 
 
 def test_tool_calling_resolve_executes_tool_kwargs() -> None:
@@ -138,3 +197,31 @@ def test_tool_calling_resolve_allows_finished_tool_call() -> None:
 
     result = resolve.resolve(active_entity="Alice", action_text=action_text)
     assert result == "FINISHED:None:None"
+
+
+def test_tool_calling_resolve_executes_multi_tool_calls_in_order() -> None:
+    resolve = ToolCallingResolveComponent(sm_app=_FakeApp())
+
+    action_text = json.dumps(
+        {
+            "tool_calls": [
+                {
+                    "name": "toot",
+                    "arguments": {
+                        "current_user": "Alice",
+                        "status": "First",
+                    },
+                },
+                {
+                    "name": "toot",
+                    "arguments": {
+                        "current_user": "Alice",
+                        "status": "Second",
+                    },
+                },
+            ]
+        }
+    )
+
+    result = resolve.resolve(active_entity="Alice", action_text=action_text)
+    assert result == "toot:Alice:First\ntoot:Alice:Second"

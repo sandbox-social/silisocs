@@ -22,40 +22,66 @@ from mastodon_sim.environments.gm.components.resolve import (
     ParsedActionResolveComponent,
     ToolCallingResolveComponent,
 )
-from mastodon_sim.runtime.runner import _build_action_prompt
+from mastodon_sim.runtime.runner import _build_action_prompt, _validate_action_tool_calling_contract
 
 
 class TestActionCallToActionBuilder:
     """Test the _build_action_prompt helper function."""
 
     def test_custom_mode_with_custom_prompt(self):
-        """Custom mode should return action_prompt + output_style."""
+        """Custom mode should include [ActNum] guidance and output-style section."""
         cfg = OmegaConf.create(
             {
                 "social_media": {
-                    "action_prompt": "Please decide what action to take.",
+                    "action_prompt": "Please decide what action to take.\n[OUTPUT STYLE]",
                     "output_style": "Format as: ACTION TYPE: ...",
                 }
             }
         )
-        result = _build_action_prompt(cfg, enable_tool_calling=False)
+        result = _build_action_prompt(cfg, tool_calling_mode="none")
         assert "Please decide what action to take" in result
+        assert "[ActNum]" in result
+        assert "Only take one action in this step" in result
+        assert "[OUTPUT STYLE]" in result
         assert "Format as: ACTION TYPE:" in result
 
     def test_custom_mode_with_tool_calling(self):
-        """Custom mode with tool-calling should replace output_style."""
+        """Runner should carry [ActNum]/[OUTPUT STYLE] for GM-stage filtering."""
         cfg = OmegaConf.create(
             {
                 "social_media": {
-                    "action_prompt": "Please decide what action to take.",
+                    "action_prompt": "Please decide what action to take.\n[OUTPUT STYLE]",
                     "output_style": "Format as: ACTION TYPE: ...",
                 }
             }
         )
-        result = _build_action_prompt(cfg, enable_tool_calling=True)
+        result = _build_action_prompt(cfg, tool_calling_mode="single")
         assert "Please decide what action to take" in result
-        assert "tool_call" in result
-        assert "Format as: ACTION TYPE:" not in result
+        assert "[ActNum]" in result
+        assert "Only take one action in this step" in result
+        assert "[OUTPUT STYLE]" in result
+        assert "Format as: ACTION TYPE:" in result
+
+    def test_custom_mode_with_multi_tool_calling_omits_single_action_line(self):
+        cfg = OmegaConf.create(
+            {
+                "social_media": {
+                    "action_prompt": "Please decide what action to take.\n[OUTPUT STYLE]",
+                    "output_style": "Format as: ACTION TYPE: ...",
+                }
+            }
+        )
+        result = _build_action_prompt(cfg, tool_calling_mode="multi")
+        assert "Please decide what action to take" in result
+        assert "Only take one action in this step" not in result
+        assert "[ActNum]" in result
+        assert (
+            "You are allowed to output multiple tool calls to take a batch of actions "
+            "(if/as appropriate). If multiple tool calls, actions will be executed "
+            "in sequence of calls."
+        ) in result
+        assert "[OUTPUT STYLE]" in result
+        assert "Format as: ACTION TYPE:" in result
 
     def test_generic_mode_override(self):
         """Generic mode means we should not use custom call_to_action."""
@@ -69,10 +95,40 @@ class TestActionCallToActionBuilder:
         )
         # When action_mode is "generic", the runner will not pass call_to_action_str,
         # but the helper still works with what it's given
-        result = _build_action_prompt(cfg, enable_tool_calling=False)
+        result = _build_action_prompt(cfg, tool_calling_mode="none")
         # In generic mode, the backend generates the prompt, not this function
         # But if given config, it should still work
         assert result is not None
+
+
+def test_validate_action_tool_calling_contract_rejects_deprecated_action_mode() -> None:
+    cfg = OmegaConf.create(
+        {
+            "sim": {
+                "action_mode": "tool_calling",
+                "tool_calling": {"mode": "single"},
+                "gm": {"components": {"resolve": {"built_in": "tool_calling"}}},
+            }
+        }
+    )
+
+    with pytest.raises(ValueError, match="deprecated"):
+        _validate_action_tool_calling_contract(cfg)
+
+
+def test_validate_action_tool_calling_contract_requires_resolve_match() -> None:
+    cfg = OmegaConf.create(
+        {
+            "sim": {
+                "action_mode": "custom",
+                "tool_calling": {"mode": "multi"},
+                "gm": {"components": {"resolve": {"built_in": "parsed_action"}}},
+            }
+        }
+    )
+
+    with pytest.raises(ValueError, match="must match resolver"):
+        _validate_action_tool_calling_contract(cfg)
 
 
 class MockBackend(PhoneApp):
@@ -132,13 +188,26 @@ class TestPromptGeneration:
         """Generic mode without tool-calling should use generate_generic_action_prompt."""
         mock_app = MagicMock(spec=MockBackend)
         mock_app.generate_generic_action_prompt.return_value = (
-            "Available actions: post(...), comment(...)"
+            "Available actions: post(...), comment(...)\n\n"
+            "[OUTPUT STYLE]\n"
+            "Respond with EXACTLY ONE action using this format:\n"
+            "ACTION: <action_name>"
         )
+        cfg = OmegaConf.create(
+            {
+                "social_media": {
+                    "action_prompt": "Please decide what action to take.\n[OUTPUT STYLE]",
+                    "output_style": "Format as: ACTION TYPE: ...",
+                }
+            }
+        )
+        call_to_action = _build_action_prompt(cfg, tool_calling_mode="none")
 
         act = SMAct(
             model=MagicMock(),
             entity_names=["Alice"],
             sm_app=mock_app,
+            call_to_action_str=call_to_action,
             action_mode="generic",
             enable_tool_calling=False,
         )
@@ -146,13 +215,30 @@ class TestPromptGeneration:
         result = act._next_entity_action_spec({}, MagicMock())
 
         assert "Available actions:" in result
+        assert "Only take one action in this step" in result
+        assert "Respond with EXACTLY ONE action using this format:" in result
         mock_app.generate_generic_action_prompt.assert_called_once()
         assert "TOOL_CALLING_MODE" not in result
 
     def test_generic_mode_with_tool_calling(self):
         """Generic mode with tool-calling should add tool schemas."""
         mock_app = MagicMock(spec=MockBackend)
-        mock_app.generate_generic_action_prompt.return_value = "Available actions: post(...)"
+        mock_app.generate_generic_action_prompt.return_value = (
+            "Twitter instructions\n\n"
+            "Available actions: post(...)\n\n"
+            "[OUTPUT STYLE]\n"
+            "Respond with EXACTLY ONE action using this format:\n"
+            "ACTION: <action_name>"
+        )
+        cfg = OmegaConf.create(
+            {
+                "social_media": {
+                    "action_prompt": "Please decide what action to take.\n[OUTPUT STYLE]",
+                    "output_style": "Format as: ACTION TYPE: ...",
+                }
+            }
+        )
+        call_to_action = _build_action_prompt(cfg, tool_calling_mode="multi")
         mock_app.generate_tool_schemas.return_value = [
             {
                 "type": "function",
@@ -168,6 +254,7 @@ class TestPromptGeneration:
             model=MagicMock(),
             entity_names=["Alice"],
             sm_app=mock_app,
+            call_to_action_str=call_to_action,
             action_mode="generic",
             enable_tool_calling=True,
         )
@@ -177,6 +264,9 @@ class TestPromptGeneration:
         assert "TOOL_CALLING_MODE" in result
         assert "TOOL_SCHEMAS_JSON" in result
         assert "Available actions:" in result
+        assert "You are allowed to output multiple tool calls" in result
+        assert "Respond with EXACTLY ONE action using this format:" not in result
+        assert "Twitter instructions" in result
         mock_app.generate_tool_schemas.assert_called_once()
 
     def test_custom_mode_without_tool_calling(self):
@@ -224,20 +314,56 @@ class TestPromptGeneration:
         assert call_to_action in result
         mock_app.generate_tool_schemas.assert_called_once()
 
-    def test_generic_prompt_includes_finished_guidance_when_available(self):
+    def test_custom_mode_with_tool_calling_strips_output_style_and_adds_schemas(self):
+        cfg = OmegaConf.create(
+            {
+                "social_media": {
+                    "action_prompt": "Decide next action for {name}.\n[OUTPUT STYLE]",
+                    "output_style": "FINAL DECISION:\nACTION TYPE: ...",
+                }
+            }
+        )
+        call_to_action = _build_action_prompt(cfg, tool_calling_mode="single")
+
+        mock_app = MagicMock(spec=MockBackend)
+        mock_app.generate_tool_schemas.return_value = [
+            {
+                "type": "function",
+                "function": {"name": "post", "description": "Post", "parameters": {}},
+            }
+        ]
+        act = SMAct(
+            model=MagicMock(),
+            entity_names=["Alice"],
+            sm_app=mock_app,
+            call_to_action_str=call_to_action,
+            action_mode="custom",
+            enable_tool_calling=True,
+        )
+
+        result = act._next_entity_action_spec({}, MagicMock())
+
+        assert "Decide next action" in result
+        assert "FINAL DECISION" not in result
+        assert "TOOL_SCHEMAS_JSON" in result
+
+    def test_generic_prompt_uses_output_style_marker(self):
         app = _GenericPromptApp()
 
         prompt = app.generate_generic_action_prompt()
 
-        assert "Use the FINISHED action when you have exhausted desired actions" in prompt
+        assert "[OUTPUT STYLE]" in prompt
+        assert "Respond with EXACTLY ONE action using this format:" in prompt
+        assert "Rules:" not in prompt
 
-    def test_generic_prompt_omits_finished_guidance_when_disabled(self):
+    def test_generic_prompt_still_lists_actions_when_finished_disabled(self):
         app = _GenericPromptApp()
         app.set_enabled_actions(["POST"])
 
         prompt = app.generate_generic_action_prompt()
 
-        assert "Use the FINISHED action when you have exhausted desired actions" not in prompt
+        assert "Available actions:" in prompt
+        assert "POST" in prompt
 
 
 class TestResolveComponentFormatMatching:
@@ -360,6 +486,27 @@ def test_tool_calling_resolve_accepts_escaped_brace_tool_call() -> None:
     )
 
     assert tool_result == "Finished action episode"
+
+
+def test_tool_calling_resolve_supports_multi_tool_payload() -> None:
+    mock_app = MagicMock()
+    mock_app.invoke_action_with_kwargs.side_effect = ["posted", "liked"]
+    tool = ToolCallingResolveComponent(sm_app=mock_app, model=MagicMock())
+
+    tool_result = tool.resolve(
+        active_entity="Alice",
+        action_text=json.dumps(
+            {
+                "tool_calls": [
+                    {"name": "post", "arguments": {"content": "hello"}},
+                    {"name": "like", "arguments": {"post_id": "1"}},
+                ]
+            }
+        ),
+    )
+
+    assert tool_result == "posted\nliked"
+    assert mock_app.invoke_action_with_kwargs.call_count == 2
 
 
 class TestToolSchemasGeneration:

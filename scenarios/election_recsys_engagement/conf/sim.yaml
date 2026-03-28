@@ -6,9 +6,14 @@ seed: 11
 run_name: election_recsys_engagement
 memory_backend: list
 write_html_log: false
+llm_name: qwen3.5-4b
+llm_api_base: http://localhost:30000/v1
+llm_api_key: test-key
 
 # Use generic auto-generated call-to-action format.
 action_mode: generic
+tool_calling:
+  mode: multi
 
 # Keep recommendation seed content enabled for startup discussion context
 seed_posts:
@@ -27,18 +32,18 @@ timeline_mode: follower_chronological
 
 # Open-ended action loop with explicit finish signal support
 engine:
-  preset: flow
+  preset: base
   action_loop:
     built_in: open_ended
     params:
-      max_actions: 25
+      max_actions: 20
       finished_action_signal: FINISHED
       done_token: FINISHED
   flow_routing:
     flow_order: [fixed_pre, default]
 
-# Enable flow-aware scheduling so fixed_pre headline agent acts before default flow
-enable_engine_multi_flow: true
+# Keep engine simple by default; fixed_pre behavior is handled via GM observation config.
+enable_engine_multi_flow: false
 
 # Base GM is sufficient; timeline observation already supports fixed_pre episode observations
 enable_gm_multi_flow: false
@@ -65,3 +70,8 @@ gm:
         update_every_n_steps: 1
         lazy: true
         max_posts: 10
+        user_context_recent_posts: 10
+        include_like_trace: true
+        like_trace_window: 10
+        like_trace_weight: 0.5
+        include_like_trace_in_context: false

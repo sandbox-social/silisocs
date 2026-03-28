@@ -12,7 +12,9 @@ run_name: run1
 seed: 1
 sentence_encoder: sentence-transformers/all-MiniLM-L6-v2
 memory_backend: list           # associative | list
-action_mode: tool_calling      # custom | generic | tool_calling
+action_mode: custom            # custom | generic
+tool_calling:
+  mode: single                 # none | single | multi
 enabled_actions: null          # null => expose all backend actions; otherwise list of action names
 enable_gm_multi_flow: false    # false (BaseGM) | true (MultiFlowGM with component routing)
 enable_engine_multi_flow: false  # false (BaseEngine) | true (FlowEngine with flow sequencing/policies)
@@ -47,6 +49,11 @@ gm:
         update_every_n_steps: 1  # Update every episode
         lazy: true
         max_posts: 10
+        user_context_recent_posts: 10
+        include_like_trace: true
+        like_trace_window: 10
+        like_trace_weight: 0.5
+        include_like_trace_in_context: false
 
     # Choose what observation is returned to active entities.
     observe:
@@ -125,7 +132,7 @@ roleplaying_instructions: |
   <general_instructions>
   You are simulating {name}, a character in a social science experiment.
   Always use third-person limited perspective when describing {name}'s thoughts and actions.
-  Your goal is to determine the single most appropriate action {name} would take next.
+  Your goal is to determine the most appropriate actions {name} would take next.
   </general_instructions>
 
 # Set at runtime by Hydra / runner

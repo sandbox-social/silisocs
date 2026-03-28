@@ -229,8 +229,8 @@ To implement a new social media platform:
     ```
 
 The `@app_action` decorator auto-registers methods as available actions. The
-`generic` and `tool_calling` action modes will automatically discover and use
-your decorated methods.
+`generic` action mode and `tool_calling` resolve mode will automatically
+discover and use your decorated methods.
 
 Action metadata notes:
 

@@ -502,11 +502,9 @@ class PhoneApp(metaclass=abc.ABCMeta):
             <param>: <value>
             <param>: <value>
         """
-        lines = [
-            f"{self.name()}: {self.description()}",
-            "",
-            "Available actions:",
-        ]
+        description = str(self.description() or "").strip()
+        lines = [description] if description else []
+        lines += ["", "Available actions:"]
         actions = list(self.actions())
         for action in actions:
             params_desc = ", ".join(
@@ -516,36 +514,20 @@ class PhoneApp(metaclass=abc.ABCMeta):
             lines.append(f"  {action.selectable_name}({params_desc})")
             lines.append(f"    {action.description.strip()}")
 
-        has_finished_action = any(
-            str(action.selectable_name).strip().upper() == "FINISHED"
-            or str(action.name).strip().upper() == "FINISHED"
-            or str(action.name).strip() == "finish_action_episode"
-            for action in actions
-        )
-
         lines += [
             "",
+            "[OUTPUT STYLE]",
             "Respond with EXACTLY ONE action using this format:",
             "ACTION: <action_name>",
             "<param_name>: <value>",
             "<param_name>: <value>",
-            "",
-            "Rules:",
-            '  - current_user is always the full display name, e.g. "Alice Smith".',
-            "  - Only use real post/toot IDs from the timeline shown above.",
-            "  - For status/content fields, write in first person as the character.",
-            "  - Omit optional parameters you do not want to use.",
         ]
-        if has_finished_action:
-            lines.append(
-                "  - Use the FINISHED action when you have exhausted desired actions for the current timestep."
-            )
         return "\n".join(lines)
 
     def generate_tool_schemas(self) -> list[dict]:
         """Return OpenAI-compatible tool schemas for all @app_action methods.
 
-        Used when action_mode='tool_calling'.
+        Used when resolve mode is 'tool_calling'.
         """
         schemas = []
         for action in self.actions():

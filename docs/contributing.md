@@ -23,7 +23,7 @@ Thank you for considering contributing to this project! We appreciate your effor
 - Sync the standard contributor environment: `uv sync --group dev`
 - Sync the contributor environment with docs tooling: `uv sync --group dev --group docs`
 - Run the pre-commit suite: `uv run poe lint`
-- Run tests with coverage: `uv run poe test`
+- Run tests with coverage (defaults to non-LLM tests): `uv run poe test`
 - Generate API docs with `pdoc`: `uv run poe docs`
 - Install git hooks: `uv run pre-commit install`
 - Create a commit with Commitizen: `uv run cz c`
@@ -41,6 +41,8 @@ marker. These tests launch short simulation runs and validate runtime artifacts.
     LLM_SERVER_URL=http://localhost:30000/v1 \
     uv run pytest -m llm_e2e tests/test_e2e_multi_gm_llm.py -v -s
     ```
+
+- Note: `uv run poe test` excludes the `llm_e2e` marker by default.
 
 - Run deterministic simulation-contract mirrors (default CI-safe set):
 

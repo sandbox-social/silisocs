@@ -40,7 +40,8 @@ Core simulation parameters:
 - **Number of agents / steps**: Scale parameters
 - **Random seed**: Reproducibility
 - **Memory backend**: `list` (fast) or `associative` (embedding-based)
-- **Action mode**: `custom`, `generic`, or `tool_calling`
+- **Action mode**: `custom` or `generic`
+- **Tool-calling mode**: `none`, `single`, or `multi`
 
 Simulation tab scope:
 

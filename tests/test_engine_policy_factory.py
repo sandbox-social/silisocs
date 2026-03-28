@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from mastodon_sim.environments.engines.policies.action_chunk import (
     FixedCountActionChunkPolicy,
     OpenEndedActionChunkPolicy,
@@ -171,3 +173,78 @@ def test_open_ended_policy_accepts_legacy_done_token() -> None:
 
     assert isinstance(policy, OpenEndedActionChunkPolicy)
     assert policy.finished_action_signal == "FINISHED"
+
+
+def test_open_ended_policy_counts_multi_tool_calls_toward_cap() -> None:
+    engine = _FakeEngine(
+        [
+            {
+                "raw": json.dumps(
+                    {
+                        "tool_calls": [
+                            {"name": "post", "arguments": {"content": "a"}},
+                            {"name": "like", "arguments": {"post_id": "1"}},
+                        ]
+                    }
+                ),
+                "rendered": "agent: multi-1",
+                "resolved": "posted\nliked",
+            },
+            {
+                "raw": json.dumps(
+                    {
+                        "tool_call": {"name": "post", "arguments": {"content": "b"}},
+                    }
+                ),
+                "rendered": "agent: single-2",
+                "resolved": "posted",
+            },
+            "SHOULD_NOT_RUN",
+        ]
+    )
+
+    policy = OpenEndedActionChunkPolicy(max_actions=3, finished_action_signal="FINISHED")
+    result = policy.run(
+        engine=engine,
+        game_master=object(),
+        entity=object(),
+        action_spec=object(),
+        skip_actions=False,
+        verbose=False,
+    )
+
+    assert result == "agent: single-2"
+    assert len(engine.calls) == 2
+
+
+def test_fixed_count_policy_counts_multi_tool_calls_toward_budget() -> None:
+    engine = _FakeEngine(
+        [
+            {
+                "raw": json.dumps(
+                    {
+                        "tool_calls": [
+                            {"name": "post", "arguments": {"content": "a"}},
+                            {"name": "like", "arguments": {"post_id": "1"}},
+                        ]
+                    }
+                ),
+                "rendered": "agent: multi-1",
+                "resolved": "posted\nliked",
+            },
+            "SHOULD_NOT_RUN",
+        ]
+    )
+
+    policy = FixedCountActionChunkPolicy(count=2)
+    result = policy.run(
+        engine=engine,
+        game_master=object(),
+        entity=object(),
+        action_spec=object(),
+        skip_actions=False,
+        verbose=False,
+    )
+
+    assert result == "agent: multi-1"
+    assert len(engine.calls) == 1

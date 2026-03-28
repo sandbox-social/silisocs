@@ -300,8 +300,13 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
                 ),
             }
 
-        # Determine if tool-calling is enabled (independent of action_mode)
-        enable_tool_calling = resolve_slot.get("built_in") == "tool_calling"
+        # Determine if tool-calling is enabled from explicit mode config.
+        tool_calling_mode = (
+            str(OmegaConf.select(cfg, "sim.tool_calling.mode", default="none") or "none")
+            .strip()
+            .lower()
+        )
+        enable_tool_calling = tool_calling_mode in {"single", "multi"}
         action_output_mode = str(resolve_slot.get("built_in", "parsed_action") or "parsed_action")
 
         for entity in self.entities:
