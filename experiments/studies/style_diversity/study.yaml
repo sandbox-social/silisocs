@@ -1,0 +1,54 @@
+# Study definition: Style Diversity vs. Model Capacity
+#
+# This is the single source of truth for the study. It defines the scientific
+# hierarchy AND maps conditions to concrete run/eval paths.
+#
+# Used by: scripts/organize_experiments.py
+#   uv run python scripts/organize_experiments.py experiments/style_diversity/study.yaml
+
+study:
+  name: style_diversity
+  question: >-
+    Does increasing LLM capacity reduce repetitive/groupthink behavior
+    in multi-agent social media simulations?
+  scenarios:
+    - ai_conference
+    - misinformation
+  base_config: config/experiment.yaml
+  run_overrides:
+    # Base defaults are in config/experiment.yaml
+    simulation.execution.max_steps: 10
+
+hypotheses:
+  h1_model_capacity:
+    statement: >-
+      Larger language models produce more diverse agent behavior
+      (higher lexical diversity, lower self-BLEU, more varied actions).
+    independent_variable: model
+    prediction: >-
+      gpt4o outperforms gpt4o-mini on diversity metrics across scenarios.
+    status: testing
+
+    conditions:
+      gpt4o-mini:
+        cli_override: model=gpt4omini
+        runs:
+          - scenario: ai_conference
+            source: outputs/ai_conference_experiment/2026-02-06_23-50-55
+            eval: outputs/eval_style_diversity/baseline_gpt4o_mini/ai_conference/eval_step_10_checkpoint.json
+          - scenario: misinformation
+            source: outputs/misinformation_experiment/2026-02-05_17-02-18
+            eval: outputs/eval_style_diversity/baseline_gpt4o_mini/misinformation/eval_step_10_checkpoint.json
+
+      gpt4o:
+        cli_override: model=gpt4o
+        runs:
+          - scenario: ai_conference
+            source: outputs/ai_conference_experiment/2026-02-07_09-43-11
+            eval: outputs/eval_style_diversity/gpt4o/ai_conference/eval_step_10_checkpoint.json
+          - scenario: misinformation
+            source: outputs/misinformation_experiment/2026-02-07_09-42-19
+            eval: outputs/eval_style_diversity/gpt4o/misinformation/eval_step_10_checkpoint.json
+
+analysis:
+  comparison: outputs/eval_style_diversity/comparison_4way/eval_comparison.json
