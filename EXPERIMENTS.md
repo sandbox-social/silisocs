@@ -526,15 +526,19 @@ This means your scenario files only need to specify what's **different** from de
 
 ---
 
-## 10) Structured Study Orchestration (`run_study.py`)
+## 10) Structured Study Orchestration (`experiments/run_study.py`)
 
 For multi-condition research studies (hypothesis trees, seed sweeps, condition-specific evaluators), use:
 
 ```bash
-uv run python run_study.py --study experiments/study_template_v1.yaml plan
-uv run python run_study.py --study experiments/study_template_v1.yaml generate-bash
-uv run python run_study.py --study experiments/study_template_v1.yaml run
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml plan
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml generate-bash
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml run
 ```
+
+Code placement:
+- Canonical runner implementation is in `experiments/run_study.py`.
+- Use module entrypoint: `uv run python -m experiments.run_study ...`.
 
 ### Why use study orchestration?
 
@@ -551,10 +555,18 @@ schema_version: 1
 
 study:
   name: recsys_behavior_sweep
+  study_id: recsys_behavior_sweep
+  study_version: v1
   question: "Research question"
   scenarios: [election_recsys_engagement]
+  parent_studies: []
+  derived_from_runs: []
+  study_summary_path: experiments/recsys_behavior_sweep/SUMMARY.md
+  summary_log_path: experiments/recsys_behavior_sweep/generated/summary_log.jsonl
   run_defaults:
     config_path: scenarios/election_recsys_engagement/conf
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
+    output_root_override: "experiments/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
     seed_start: 11
     seed_repeats: 3
     overrides:
@@ -598,6 +610,8 @@ hypotheses:
 |---|---|---|---|
 | `schema_version` | int | yes | Must be `1`. |
 | `study.name` | string | yes | Used for generated artifact paths. |
+| `study.study_id` | string | recommended | Stable identifier used in run/eval directory layout. |
+| `study.study_version` | string | optional | Human-managed version tag. |
 | `study.question` | string | yes | Human-readable research question. |
 | `study.scenarios` | list[string] | recommended | Base scenario loop for all conditions. |
 | `study.run_defaults` | mapping | optional | Shared config path, seed settings, and overrides. |
@@ -619,6 +633,12 @@ Use one of these patterns:
 | `execution.mode: reuse_existing` | Reference existing run artifacts instead of re-running simulation. |
 | `execution.re_evaluate: true` | In reuse mode, run evaluators again over referenced outputs. |
 
+Condition-level path controls:
+- `run_name_template`: Optional placeholder template for `sim.run_name`.
+- `output_root_override`: Optional placeholder template for `sim.output_rootname`.
+- `sub_experiment`: Optional label to group/run subsets of conditions.
+- `config_path`: Optional per-condition override for Hydra `--config-path`.
+
 ### Exact command templates (optional)
 
 If `execution.command` is set, the study runner uses that command exactly for each expanded run.
@@ -626,10 +646,13 @@ If `execution.command` is set, the study runner uses that command exactly for ea
 Supported placeholders:
 - `{run_id}`
 - `{study_name}`
+- `{study_id}`
 - `{hypothesis_id}`
 - `{condition_id}`
 - `{scenario}`
 - `{seed}`
+
+These placeholders are also available in `run_name_template` and `output_root_override`.
 
 ### Evaluators in studies
 
@@ -664,6 +687,25 @@ Detailed default evaluators:
 - `builtin.probe_choice_detailed`
 - `builtin.probe_freetext_detailed`
 
+Detailed probe evaluators also emit probe-type-specific PNG plots in
+`*_plots/` directories colocated with evaluator JSON outputs.
+
+Extensible postprocessor hooks:
+- Built-in detailed probe evaluators accept repeated `--postprocessor module:function`.
+- Add these via evaluator `static_args` in study YAML.
+- Hook signature: `(records_by_type, out_dir, context) -> dict | list | None`.
+
+Example:
+
+```yaml
+evaluations:
+  - id: probe_metrics
+    preset: builtin.probe_metrics_detailed
+    static_args:
+      - --postprocessor
+      - mastodon_sim.evaluations.postprocessors:episode_probe_volume
+```
+
 These detailed evaluators read `action_events.jsonl` and use `effective_config.yaml` (when available) to map probe labels to configured probe types.
 
 ### Generated artifacts
@@ -671,14 +713,47 @@ These detailed evaluators read `action_events.jsonl` and use `effective_config.y
 Each study writes orchestration artifacts under:
 
 ```text
-experiments/{study_name}/generated/
+experiments/{study_id}/generated/
   plan.json
   run_study.sh
   repro_lock.jsonl
   repro_lock.json
+  study_index.json
   study_enriched.yaml
   logs/{run_id}.log
-  eval/{eval_id}/{hypothesis}/{condition}/{scenario}/seed_{seed}/*.json
+  eval/{hypothesis}/{condition}/{scenario}/seed_{seed}/{eval_id}/*.json
+```
+
+Simulation outputs are organized by study/hypothesis/condition/scenario with seed at the lowest level:
+
+```text
+experiments/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run
+```
+
+Recommended output policy:
+- Study runs: write into `experiments/{study_id}/runs/...` for clean lineage and cross-hypothesis organization.
+- Scenario-local `scenarios/<name>/outputs/...`: reserve for ad hoc/manual scenario testing outside study orchestration.
+
+Rolling summary artifacts for humans/LLMs:
+- `experiments/{study_id}/SUMMARY.md`
+- `experiments/{study_id}/generated/summary_log.jsonl`
+
+Append summary entries from CLI:
+
+```bash
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml summary-append \
+  --author analyst \
+  --hypothesis h1_timeline_mechanism \
+  --note "Observed stronger interaction rates in recsys conditions" \
+  --evidence experiments/recsys_behavior_sweep/generated/repro_lock.json
+```
+
+Subset execution controls:
+
+```bash
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml run \
+  --only-hypothesis h1_timeline_mechanism \
+  --only-sub-experiment bill_bias
 ```
 
 ### Human/LLM analysis fields
@@ -689,5 +764,5 @@ You can keep interpretation text in the same study YAML:
 - `hypotheses.<id>.conditions.<id>.analysis.*`
 
 Start from:
-- `experiments/study_template_v1.yaml`
+- `experiments/studies/study_template_v1.yaml`
 

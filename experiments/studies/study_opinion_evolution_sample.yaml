@@ -1,0 +1,119 @@
+schema_version: 1
+
+study:
+  name: election_opinion_evolution_sample
+  study_id: election_opinion_evolution_sample
+  study_version: v1
+  question: >-
+    Do recommendation-heavy timelines change how quickly candidate opinion probes
+    shift over episodes compared to follower-chronological timelines?
+  scenarios:
+    - election
+  parent_studies: []
+  derived_from_runs: []
+  study_summary_path: experiments/election_opinion_evolution_sample/SUMMARY.md
+  summary_log_path: experiments/election_opinion_evolution_sample/generated/summary_log.jsonl
+
+  run_defaults:
+    config_path: scenarios/election/conf
+    runner_module: mastodon_sim.runtime.runner
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
+    output_root_override: "experiments/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+
+    seed_start: 11
+    seed_repeats: 3
+
+    overrides:
+      sim.num_agents: 50
+      sim.num_steps: 12
+
+  notes:
+    objective: "Measure direction and stability of opinion change across regimes."
+    context: "Candidate favorability and vote-intent probe behavior over episodes."
+    constraints: "Keep runtime light for local testing."
+
+# Use detailed evaluators so per-agent/per-episode probe trends are captured.
+evaluations:
+  - id: action_metrics
+    preset: builtin.action_metrics_detailed
+
+  - id: probe_metrics
+    preset: builtin.probe_metrics_detailed
+
+  - id: probe_numeric
+    preset: builtin.probe_numeric_detailed
+
+hypotheses:
+  h1_timeline_impacts_opinion_trajectory:
+    statement: >-
+      Recommendation-heavy timelines increase the variance and step-to-step drift
+      in candidate opinion probes compared with follower-chronological timelines.
+    independent_variable: timeline_mode
+    prediction: >-
+      Recsys conditions produce larger per-episode shifts in probe response
+      distributions than chronological.
+    status: testing
+
+    analysis:
+      rationale: ""
+      observations_summary: ""
+      interpretation: ""
+      confidence: ""
+      next_step_recommendation: ""
+
+    conditions:
+      case1_chronological:
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+
+      case2_recsys_twitter:
+        overrides:
+          sim.timeline_mode: pure_recsys
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+
+      case3_recsys_twhin:
+        overrides:
+          sim.timeline_mode: pure_recsys
+          sim.gm.components.recommend.params.default_recsys_type: twhin
+          sim.gm.components.recommend.params.user_context_recent_posts: 10
+          sim.gm.components.recommend.params.include_like_trace: true
+          sim.gm.components.recommend.params.like_trace_weight: 0.5
+
+  h2_followup_strengthen_context:
+    follows_from: h1_timeline_impacts_opinion_trajectory
+    motivation: >-
+      If h1 shows drift under recsys, test whether stronger context windows amplify it.
+    statement: >-
+      Larger recommendation context windows further increase opinion drift under twhin.
+    independent_variable: context_window
+    prediction: >-
+      Higher user_context_recent_posts produces larger episode-to-episode probe shifts.
+    status: planning
+
+    analysis:
+      rationale: ""
+      observations_summary: ""
+      interpretation: ""
+      confidence: ""
+      next_step_recommendation: ""
+
+    conditions:
+      case1_rerun_more_context:
+        execution:
+          mode: run
+        overrides:
+          sim.timeline_mode: pure_recsys
+          sim.gm.components.recommend.params.default_recsys_type: twhin
+          sim.gm.components.recommend.params.user_context_recent_posts: 20
+          sim.gm.components.recommend.params.like_trace_weight: 0.6
+
+      case2_reuse_h1_seed11:
+        execution:
+          mode: reuse_existing
+          re_evaluate: true
+        reuse:
+          runs:
+            - scenario: election
+              seed: 11
+              source: experiments/election_opinion_evolution_sample/runs/h1_timeline_impacts_opinion_trajectory/case3_recsys_twhin/election/seed_11/run

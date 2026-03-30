@@ -1,6 +1,6 @@
 # Experiment Studies
 
-This guide describes how to run multi-condition studies with `run_study.py`.
+This guide describes how to run multi-condition studies with `experiments/run_study.py`.
 
 Use this when you need:
 - hypothesis trees
@@ -12,10 +12,16 @@ Use this when you need:
 ## Quick Start
 
 ```sh
-uv run python run_study.py --study experiments/study_template_v1.yaml plan
-uv run python run_study.py --study experiments/study_template_v1.yaml generate-bash
-uv run python run_study.py --study experiments/study_template_v1.yaml run
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml plan
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml generate-bash
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml run
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml run --only-hypothesis h2_followup_from_h1
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml run --only-sub-experiment bill_bias
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml summary-append --author analyst --hypothesis h1_timeline_mechanism --note "Observed higher interaction counts in recsys arms" --evidence experiments/recsys_behavior_sweep/generated/repro_lock.json
 ```
+
+Compatibility note:
+- Use the canonical module entrypoint: `uv run python -m experiments.run_study ...`.
 
 ## Minimal Study File
 
@@ -24,10 +30,15 @@ schema_version: 1
 
 study:
   name: recsys_behavior_sweep
+  study_id: recsys_behavior_sweep
   question: "How do timeline settings shift engagement?"
+  study_summary_path: experiments/recsys_behavior_sweep/SUMMARY.md
+  summary_log_path: experiments/recsys_behavior_sweep/generated/summary_log.jsonl
   scenarios: [election_recsys_engagement]
   run_defaults:
     config_path: scenarios/election_recsys_engagement/conf
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
+    output_root_override: "experiments/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
     seed_start: 11
     seed_repeats: 3
     overrides:
@@ -45,9 +56,11 @@ hypotheses:
     statement: "Recommendation-heavy timelines increase interactive actions."
     conditions:
       chronological:
+        sub_experiment: bill_bias
         overrides:
           sim.timeline_mode: follower_chronological
       recsys:
+        sub_experiment: bill_bias
         overrides:
           sim.timeline_mode: pure_recsys
 ```
@@ -74,10 +87,26 @@ execution:
 Supported placeholders:
 - `{run_id}`
 - `{study_name}`
+- `{study_id}`
 - `{hypothesis_id}`
 - `{condition_id}`
 - `{scenario}`
 - `{seed}`
+
+The same placeholders also work in:
+- `study.run_defaults.run_name_template`
+- `study.run_defaults.output_root_override`
+- `conditions.<id>.run_name_template`
+- `conditions.<id>.output_root_override`
+
+Fine-grained run control fields:
+- `conditions.<id>.sub_experiment`: logical run group label (for example `bill_bias`, `bradley_bias`).
+- `conditions.<id>.config_path`: optional per-condition scenario config root override.
+
+CLI selection knobs:
+- `--only-hypothesis`
+- `--only-condition`
+- `--only-sub-experiment`
 
 ## Default Evaluators
 
@@ -93,6 +122,25 @@ Detailed summaries:
 - `builtin.probe_choice_detailed`
 - `builtin.probe_freetext_detailed`
 
+Detailed probe evaluators now also generate probe-type-specific PNG plots in
+`*_plots/` directories next to each evaluator JSON output.
+
+Extension hook mechanism (for custom plotting/post-processing):
+- Add one or more `--postprocessor` args via evaluator `static_args`.
+- Format: `module:function`.
+- Function signature: `(records_by_type, out_dir, context) -> dict | list | None`.
+
+Example:
+
+```yaml
+evaluations:
+  - id: probe_metrics
+    preset: builtin.probe_metrics_detailed
+    static_args:
+      - --postprocessor
+      - mastodon_sim.evaluations.postprocessors:episode_probe_volume
+```
+
 Detailed probe evaluators use `effective_config.yaml` to map probe labels to configured probe types when available.
 
 ## Outputs
@@ -100,14 +148,77 @@ Detailed probe evaluators use `effective_config.yaml` to map probe labels to con
 Study artifacts are written under:
 
 ```text
-experiments/{study_name}/generated/
+experiments/{study_id}/generated/
   plan.json
   run_study.sh
   repro_lock.jsonl
   repro_lock.json
+  study_index.json
   study_enriched.yaml
   logs/
   eval/
 ```
+
+Simulation outputs are grouped by hypothesis/condition/scenario/seed:
+
+```text
+experiments/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run
+```
+
+Evaluator outputs mirror that hierarchy:
+
+```text
+experiments/{study_id}/generated/eval/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/{eval_id}/...
+```
+
+## Iterative Workflow (h1 -> analyze -> h2)
+
+1. Execute initial hypotheses:
+
+```sh
+uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1.yaml run --only-hypothesis h1_initial_news_bias_shift
+```
+
+2. Review evidence and append summary:
+
+```sh
+uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1.yaml summary-append --author researcher --hypothesis h1_initial_news_bias_shift --note "Bias direction changed vote and favorability trajectories" --evidence experiments/election_opinion_program_v1/generated/repro_lock.json
+```
+
+3. Run follow-up hypothesis only:
+
+```sh
+uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1.yaml run --only-hypothesis h2_followup_timeline_effects
+```
+
+Sample study file:
+- `experiments/studies/election_opinion_program_v1.yaml`
+
+## HPC Array Launch
+
+Cluster wrappers:
+- `scripts/narval-hpc-4GPU-array.sh`
+- `scripts/tamia-hpc-4GPU-array.sh`
+
+Shared execution logic:
+- `scripts/study-array-worker.sh`
+
+Use `narval-array` to compute array size from filtered study runs and print/submit `sbatch`:
+
+```sh
+uv run python -m experiments.run_study \
+  --study experiments/studies/election_opinion_program_v1.yaml \
+  narval-array \
+  --base-script scripts/narval-hpc-4GPU-array.sh \
+  --array-mode case \
+  --only-hypothesis h1_initial_news_bias_shift \
+  --submit
+```
+
+Array modes:
+- `case` (default): one task per case, all case seeds executed inside that task.
+- `seed`: one task per seed of a case.
+- `hypothesis`: one task per hypothesis.
+- `run`: one task per expanded run row.
 
 For full schema details, see [EXPERIMENTS.md](../EXPERIMENTS.md).

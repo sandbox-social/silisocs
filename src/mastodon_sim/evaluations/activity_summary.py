@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Compute lightweight per-run summaries from action_events.jsonl.
 
 Modes:
@@ -13,6 +12,8 @@ import json
 from collections import Counter
 from pathlib import Path
 from typing import Any
+
+VALID_MODES = {"activity", "probes"}
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -102,7 +103,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mode",
         default="activity",
-        choices=["activity", "probes"],
+        choices=sorted(VALID_MODES),
         help="Summary mode",
     )
     return parser.parse_args()

@@ -21,6 +21,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import random
 import shlex
 import subprocess
 import sys
@@ -44,7 +45,8 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
             "uv",
             "run",
             "python",
-            "experiments/evals/run_activity_summary.py",
+            "-m",
+            "mastodon_sim.evaluations.activity_summary",
         ],
         "input_mode": "run_dir",
         "run_dir_arg": "--run-dir",
@@ -56,7 +58,8 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
             "uv",
             "run",
             "python",
-            "experiments/evals/run_activity_summary.py",
+            "-m",
+            "mastodon_sim.evaluations.activity_summary",
             "--mode",
             "probes",
         ],
@@ -185,19 +188,31 @@ class RunSpec:
 
     run_id: str
     study_name: str
+    study_id: str
     hypothesis_id: str
     condition_id: str
+    sub_experiment: str
     scenario: str
     seed: int
+    run_name: str
     execution_mode: str
     overrides: dict[str, Any]
     config_path: str | None
     runner_module: str
     re_evaluate: bool
+    output_rootname: str | None = None
     command_override: tuple[str, ...] | None = None
     eval_specs: tuple[EvalSpec, ...] = ()
     reused_source: str | None = None
     reused_eval: str | None = None
+
+
+def _resolve_study_id(study: dict[str, Any]) -> str:
+    study_name = str(study.get("name", "")).strip()
+    study_id = str(study.get("study_id", study_name)).strip()
+    if not study_id:
+        raise StudyConfigError("study.study_id (or study.name) must be a non-empty string")
+    return study_id
 
 
 def _now_iso() -> str:
@@ -501,7 +516,7 @@ def _resolve_condition_eval_specs(
     return tuple(dedup.values())
 
 
-def _validate_schema(study_data: dict[str, Any]) -> None:  # noqa: C901,PLR0912
+def _validate_schema(study_data: dict[str, Any]) -> None:  # noqa: C901, PLR0912, PLR0915
     schema_version = study_data.get("schema_version")
     if schema_version != SCHEMA_VERSION:
         raise StudyConfigError(
@@ -511,6 +526,29 @@ def _validate_schema(study_data: dict[str, Any]) -> None:  # noqa: C901,PLR0912
     study = _ensure_mapping("study", study_data.get("study"))
     if not isinstance(study.get("name"), str) or not study["name"].strip():
         raise StudyConfigError("study.name is required and must be a non-empty string")
+    _resolve_study_id(study)
+
+    if "parent_studies" in study:
+        _ensure_string_list("study.parent_studies", study.get("parent_studies"))
+
+    derived = study.get("derived_from_runs")
+    if derived is not None:
+        if not isinstance(derived, list):
+            raise StudyConfigError("study.derived_from_runs must be a list")
+        for idx, item in enumerate(derived):
+            if not isinstance(item, dict):
+                raise StudyConfigError(f"study.derived_from_runs[{idx}] must be a mapping")
+            source_study = str(item.get("source_study_id", "")).strip()
+            run_id = str(item.get("run_id", "")).strip()
+            run_path = str(item.get("run_path", "")).strip()
+            if not source_study:
+                raise StudyConfigError(
+                    f"study.derived_from_runs[{idx}].source_study_id is required"
+                )
+            if not run_id and not run_path:
+                raise StudyConfigError(
+                    f"study.derived_from_runs[{idx}] must include run_id or run_path"
+                )
 
     run_defaults = _ensure_mapping("study.run_defaults", study.get("run_defaults"))
     if "overrides" in run_defaults and not isinstance(run_defaults["overrides"], dict):
@@ -592,6 +630,18 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
 
     run_specs: list[RunSpec] = []
     study_name = str(study["name"]).strip()
+    study_id = _resolve_study_id(study)
+    default_run_name_template = str(
+        run_defaults.get(
+            "run_name_template",
+            "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}",
+        )
+    )
+    default_output_root_override = run_defaults.get("output_root_override")
+    if default_output_root_override is not None and not isinstance(
+        default_output_root_override, str
+    ):
+        raise StudyConfigError("study.run_defaults.output_root_override must be a string")
 
     for hyp_id, hyp_node_any in hypotheses.items():
         hyp_node = _ensure_mapping(f"hypotheses.{hyp_id}", hyp_node_any)
@@ -609,6 +659,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                 f"hypotheses.{hyp_id}.conditions.{cond_id}.scenarios",
                 cond_node.get("scenarios"),
             )
+            sub_experiment = str(cond_node.get("sub_experiment", cond_id)).strip() or cond_id
             scenarios = cond_scenarios or base_scenarios
             execution = _ensure_mapping(
                 f"hypotheses.{hyp_id}.conditions.{cond_id}.execution",
@@ -628,6 +679,21 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                 command_template = _resolve_command_tokens(
                     execution.get("command"),
                     f"hypotheses.{hyp_id}.conditions.{cond_id}.execution.command",
+                )
+
+            run_name_template = str(cond_node.get("run_name_template", default_run_name_template))
+            cond_config_path = cond_node.get("config_path", config_path)
+            if cond_config_path is not None and not isinstance(cond_config_path, str):
+                raise StudyConfigError(
+                    f"hypotheses.{hyp_id}.conditions.{cond_id}.config_path must be a string"
+                )
+            output_root_override = cond_node.get(
+                "output_root_override",
+                execution.get("output_root_override", default_output_root_override),
+            )
+            if output_root_override is not None and not isinstance(output_root_override, str):
+                raise StudyConfigError(
+                    f"hypotheses.{hyp_id}.conditions.{cond_id}.output_root_override must be a string"
                 )
 
             if mode == "reuse_existing":
@@ -660,13 +726,16 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                         RunSpec(
                             run_id=f"{hyp_id}__{cond_id}__reuse_{idx}",
                             study_name=study_name,
+                            study_id=study_id,
                             hypothesis_id=hyp_id,
                             condition_id=cond_id,
+                            sub_experiment=sub_experiment,
                             scenario=scenario,
                             seed=seed,
+                            run_name=f"{hyp_id}__{cond_id}__reuse_{idx}",
                             execution_mode=mode,
                             overrides={},
-                            config_path=config_path,
+                            config_path=cond_config_path,
                             runner_module=runner_module,
                             re_evaluate=re_evaluate,
                             command_override=None,
@@ -683,33 +752,47 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
             for scenario in scenarios:
                 for seed in seeds:
                     run_id = f"{hyp_id}__{cond_id}__{scenario}__seed{seed}"
+                    template_context = {
+                        "run_id": run_id,
+                        "study_name": study_name,
+                        "study_id": study_id,
+                        "hypothesis_id": hyp_id,
+                        "condition_id": cond_id,
+                        "sub_experiment": sub_experiment,
+                        "scenario": scenario,
+                        "seed": seed,
+                    }
+                    run_name = _format_template_token(run_name_template, template_context)
+                    if output_root_override:
+                        output_rootname = _format_template_token(
+                            output_root_override, template_context
+                        )
+                    else:
+                        output_rootname = f"experiments/{study_id}/runs/{hyp_id}/{cond_id}/{scenario}/seed_{seed}/run"
                     command_override = None
                     if command_template is not None:
                         command_override = _format_command_template(
                             command_template,
-                            {
-                                "run_id": run_id,
-                                "study_name": study_name,
-                                "hypothesis_id": hyp_id,
-                                "condition_id": cond_id,
-                                "scenario": scenario,
-                                "seed": seed,
-                            },
+                            template_context,
                         )
 
                     run_specs.append(
                         RunSpec(
                             run_id=run_id,
                             study_name=study_name,
+                            study_id=study_id,
                             hypothesis_id=hyp_id,
                             condition_id=cond_id,
+                            sub_experiment=sub_experiment,
                             scenario=scenario,
                             seed=seed,
+                            run_name=run_name,
                             execution_mode=mode,
                             overrides=copy.deepcopy(merged),
-                            config_path=config_path,
+                            config_path=cond_config_path,
                             runner_module=runner_module,
                             re_evaluate=re_evaluate,
+                            output_rootname=output_rootname,
                             command_override=command_override,
                             eval_specs=merged_eval_specs,
                         )
@@ -721,8 +804,6 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
 def _build_run_command(spec: RunSpec) -> list[str]:
     if spec.command_override:
         return list(spec.command_override)
-
-    run_name = f"{spec.study_name}_{spec.hypothesis_id}_{spec.condition_id}_{spec.scenario}_seed{spec.seed}"
 
     cmd = [
         "uv",
@@ -736,11 +817,19 @@ def _build_run_command(spec: RunSpec) -> list[str]:
 
     cmd.append(f"scenario={spec.scenario}")
     cmd.append(f"sim.seed={spec.seed}")
-    cmd.append(f"sim.run_name={run_name}")
+    cmd.append(f"sim.run_name={spec.run_name}")
+    if spec.output_rootname:
+        cmd.append(f"sim.output_rootname={_normalize_override_value(spec.output_rootname)}")
     cmd.append(f"experiment_name={spec.study_name}")
 
     for key in sorted(spec.overrides):
-        if key in {"sim.seed", "sim.run_name", "experiment_name", "scenario"}:
+        if key in {
+            "sim.seed",
+            "sim.run_name",
+            "sim.output_rootname",
+            "experiment_name",
+            "scenario",
+        }:
             continue
         cmd.append(f"{key}={_normalize_override_value(spec.overrides[key])}")
 
@@ -770,6 +859,7 @@ def _run_subprocess(
     cwd: Path,
     log_path: Path,
     timeout_seconds: int | None,
+    extra_env: dict[str, str] | None = None,
 ) -> tuple[int, list[str], str | None]:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     output_tail: deque[str] = deque(maxlen=40)
@@ -783,6 +873,7 @@ def _run_subprocess(
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            env=(dict(os.environ) | dict(extra_env)) if extra_env else None,
         )
 
         assert proc.stdout is not None
@@ -837,10 +928,14 @@ def _plan_rows(run_specs: list[RunSpec]) -> list[dict[str, Any]]:
     return [
         {
             "run_id": spec.run_id,
+            "study_id": spec.study_id,
             "hypothesis": spec.hypothesis_id,
             "condition": spec.condition_id,
+            "sub_experiment": spec.sub_experiment,
             "scenario": spec.scenario,
             "seed": spec.seed,
+            "run_name": spec.run_name,
+            "planned_output_rootname": spec.output_rootname,
             "mode": spec.execution_mode,
             "reused_source": spec.reused_source,
             "re_evaluate": spec.re_evaluate,
@@ -910,6 +1005,7 @@ def _run_evaluations(
     repo_root: Path,
     generated_dir: Path,
     timeout_seconds: int | None,
+    extra_env: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
 
@@ -917,17 +1013,18 @@ def _run_evaluations(
         eval_output = (
             generated_dir
             / "eval"
-            / eval_spec.eval_id
             / spec.hypothesis_id
             / spec.condition_id
             / spec.scenario
             / f"seed_{spec.seed}"
+            / eval_spec.eval_id
             / eval_spec.output_subpath
         )
         eval_log = eval_output.with_suffix(eval_output.suffix + ".log")
         eval_context = {
             "run_id": spec.run_id,
             "study_name": spec.study_name,
+            "study_id": spec.study_id,
             "hypothesis_id": spec.hypothesis_id,
             "condition_id": spec.condition_id,
             "scenario": spec.scenario,
@@ -951,7 +1048,13 @@ def _run_evaluations(
             continue
 
         cmd = _resolve_eval_command(eval_spec, run_dir, eval_output, eval_context)
-        rc, tail, _ = _run_subprocess(cmd, repo_root, eval_log, timeout_seconds)
+        rc, tail, _ = _run_subprocess(
+            cmd,
+            repo_root,
+            eval_log,
+            timeout_seconds,
+            extra_env=extra_env,
+        )
         records.append(
             {
                 "id": eval_spec.eval_id,
@@ -967,11 +1070,12 @@ def _run_evaluations(
     return records
 
 
-def _run_one_spec(
+def _run_one_spec(  # noqa: C901, PLR0912, PLR0915
     spec: RunSpec,
     repo_root: Path,
     generated_dir: Path,
     timeout_seconds: int | None,
+    assigned_gpu: str | None = None,
 ) -> dict[str, Any]:
     started = _now_iso()
     record: dict[str, Any] = {
@@ -980,16 +1084,22 @@ def _run_one_spec(
         "study": spec.study_name,
         "hypothesis": spec.hypothesis_id,
         "condition": spec.condition_id,
+        "sub_experiment": spec.sub_experiment,
         "scenario": spec.scenario,
         "seed": spec.seed,
         "execution_mode": spec.execution_mode,
         "started_at": started,
         "status": "pending",
         "resolved_overrides": spec.overrides,
+        "study_id": spec.study_id,
+        "run_name": spec.run_name,
+        "planned_output_rootname": spec.output_rootname,
         "command": None,
         "log_path": None,
         "run_dir": None,
+        "simulation_output_path": None,
         "evaluations": [],
+        "eval_paths": {},
         "reused": {
             "source": spec.reused_source,
             "eval": spec.reused_eval,
@@ -998,13 +1108,17 @@ def _run_one_spec(
             "effective_config_sha256": None,
             "effective_config_path": None,
         },
+        "gpu_binding": assigned_gpu,
     }
+
+    exec_env = {"CUDA_VISIBLE_DEVICES": assigned_gpu} if assigned_gpu else None
 
     if spec.execution_mode == "reuse_existing":
         reused_source = Path(spec.reused_source or "")
         if not reused_source.is_absolute():
             reused_source = (repo_root / reused_source).resolve()
         record["run_dir"] = str(reused_source)
+        record["simulation_output_path"] = str(reused_source)
         record["status"] = "reused"
 
         if spec.reused_eval:
@@ -1022,6 +1136,7 @@ def _run_one_spec(
                     "tail": [],
                 }
             )
+            record["eval_paths"]["legacy_reused_eval"] = str(eval_path)
 
         if spec.eval_specs and spec.re_evaluate:
             record["evaluations"] = _run_evaluations(
@@ -1030,7 +1145,13 @@ def _run_one_spec(
                 repo_root,
                 generated_dir,
                 timeout_seconds,
+                extra_env=exec_env,
             )
+            record["eval_paths"] = {
+                str(item.get("id")): str(item.get("path"))
+                for item in record["evaluations"]
+                if item.get("path")
+            }
 
         record["finished_at"] = _now_iso()
         return record
@@ -1040,7 +1161,13 @@ def _run_one_spec(
     record["command"] = cmd
     record["log_path"] = str(run_log)
 
-    rc, tail, run_dir = _run_subprocess(cmd, repo_root, run_log, timeout_seconds)
+    rc, tail, run_dir = _run_subprocess(
+        cmd,
+        repo_root,
+        run_log,
+        timeout_seconds,
+        extra_env=exec_env,
+    )
     record["return_code"] = rc
     record["tail"] = tail
 
@@ -1049,10 +1176,17 @@ def _run_one_spec(
         run_dir_path = Path(run_dir)
         if not run_dir_path.is_absolute():
             run_dir_path = (repo_root / run_dir_path).resolve()
+    elif spec.output_rootname:
+        fallback = Path(spec.output_rootname)
+        if not fallback.is_absolute():
+            fallback = (repo_root / fallback).resolve()
+        if fallback.exists():
+            run_dir_path = fallback
 
     if rc == 0 and run_dir_path is not None:
         record["status"] = "success"
         record["run_dir"] = str(run_dir_path)
+        record["simulation_output_path"] = str(run_dir_path)
 
         effective_cfg = run_dir_path / "effective_config.yaml"
         record["lock"]["effective_config_path"] = str(effective_cfg)
@@ -1065,7 +1199,13 @@ def _run_one_spec(
                 repo_root,
                 generated_dir,
                 timeout_seconds,
+                extra_env=exec_env,
             )
+            record["eval_paths"] = {
+                str(item.get("id")): str(item.get("path"))
+                for item in record["evaluations"]
+                if item.get("path")
+            }
         else:
             record["evaluations"] = []
     else:
@@ -1075,11 +1215,135 @@ def _run_one_spec(
     return record
 
 
+def _filter_run_specs(
+    run_specs: list[RunSpec],
+    only_hypothesis: str | None,
+    only_condition: str | None,
+    only_sub_experiment: str | None,
+    only_seed: str | None,
+) -> list[RunSpec]:
+    filtered = run_specs
+    if only_hypothesis:
+        allowed = {part.strip() for part in only_hypothesis.split(",") if part.strip()}
+        filtered = [spec for spec in filtered if spec.hypothesis_id in allowed]
+    if only_condition:
+        allowed = {part.strip() for part in only_condition.split(",") if part.strip()}
+        filtered = [spec for spec in filtered if spec.condition_id in allowed]
+    if only_sub_experiment:
+        allowed = {part.strip() for part in only_sub_experiment.split(",") if part.strip()}
+        filtered = [spec for spec in filtered if spec.sub_experiment in allowed]
+    if only_seed:
+        try:
+            allowed = {int(part.strip()) for part in only_seed.split(",") if part.strip()}
+        except ValueError as e:
+            raise StudyConfigError("--only-seed must be a comma-separated list of integers") from e
+        filtered = [spec for spec in filtered if spec.seed in allowed]
+    return filtered
+
+
+def _study_generated_dir(repo_root: Path, study: dict[str, Any]) -> Path:
+    study_id = _resolve_study_id(study)
+    return repo_root / "experiments" / study_id / "generated"
+
+
+def _write_study_index(
+    path: Path, study_data: dict[str, Any], records: list[dict[str, Any]]
+) -> None:
+    study = _ensure_mapping("study", study_data.get("study"))
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": _now_iso(),
+        "study": {
+            "name": study.get("name"),
+            "study_id": _resolve_study_id(study),
+            "study_version": study.get("study_version"),
+            "parent_studies": study.get("parent_studies", []),
+            "derived_from_runs": study.get("derived_from_runs", []),
+        },
+        "records": records,
+    }
+    _write_json(path, payload)
+
+
+def _resolve_summary_paths(repo_root: Path, study_data: dict[str, Any]) -> tuple[Path, Path]:
+    study = _ensure_mapping("study", study_data.get("study"))
+    study_id = _resolve_study_id(study)
+
+    summary_md_raw = str(study.get("study_summary_path", f"experiments/{study_id}/SUMMARY.md"))
+    summary_log_raw = str(
+        study.get("summary_log_path", f"experiments/{study_id}/generated/summary_log.jsonl")
+    )
+
+    summary_md = Path(summary_md_raw)
+    if not summary_md.is_absolute():
+        summary_md = (repo_root / summary_md).resolve()
+
+    summary_log = Path(summary_log_raw)
+    if not summary_log.is_absolute():
+        summary_log = (repo_root / summary_log).resolve()
+
+    return summary_md, summary_log
+
+
+def cmd_summary_append(args: argparse.Namespace) -> int:
+    """Append a human/LLM study summary entry to JSONL and markdown files."""
+    repo_root = Path(args.repo_root).resolve()
+    study_path = Path(args.study).resolve()
+    study_data = _load_yaml(study_path)
+
+    summary_md, summary_log = _resolve_summary_paths(repo_root, study_data)
+    study = _ensure_mapping("study", study_data.get("study"))
+    entry = {
+        "created_at": _now_iso(),
+        "study_id": _resolve_study_id(study),
+        "study_name": study.get("name"),
+        "author": str(args.author),
+        "hypothesis": args.hypothesis,
+        "condition": args.condition,
+        "note": str(args.note),
+        "evidence_paths": list(args.evidence or []),
+    }
+
+    _write_jsonl_line(summary_log, entry)
+
+    summary_md.parent.mkdir(parents=True, exist_ok=True)
+    if not summary_md.exists():
+        summary_md.write_text(
+            f"# Study Summary\n\nStudy: {study.get('name')}\n\n", encoding="utf-8"
+        )
+    block = [
+        "",
+        f"## {entry['created_at']} | {entry['author']}",
+        f"Hypothesis: {entry['hypothesis'] or 'n/a'}",
+        f"Condition: {entry['condition'] or 'n/a'}",
+        "",
+        entry["note"],
+    ]
+    if entry["evidence_paths"]:
+        block.append("")
+        block.append("Evidence:")
+        block.extend([f"- {item}" for item in entry["evidence_paths"]])
+
+    with summary_md.open("a", encoding="utf-8") as f:
+        f.write("\n".join(block) + "\n")
+
+    print(f"Appended summary log entry: {summary_log}")
+    print(f"Updated markdown summary: {summary_md}")
+    return 0
+
+
 def cmd_plan(args: argparse.Namespace) -> int:
     """Validate and expand a study file into a deterministic run plan."""
     study_path = Path(args.study).resolve()
     study_data = _load_yaml(study_path)
     run_specs, eval_specs, study = _expand_runs(study_path, study_data)
+    run_specs = _filter_run_specs(
+        run_specs,
+        args.only_hypothesis,
+        args.only_condition,
+        args.only_sub_experiment,
+        args.only_seed,
+    )
 
     print(f"Study: {study['name']}")
     print(f"Schema version: {SCHEMA_VERSION}")
@@ -1108,6 +1372,13 @@ def cmd_generate_bash(args: argparse.Namespace) -> int:
     repo_root = Path(args.repo_root).resolve()
     study_data = _load_yaml(study_path)
     run_specs, _, study = _expand_runs(study_path, study_data)
+    run_specs = _filter_run_specs(
+        run_specs,
+        args.only_hypothesis,
+        args.only_condition,
+        args.only_sub_experiment,
+        args.only_seed,
+    )
 
     out = Path(args.output).resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -1120,19 +1391,27 @@ def cmd_generate_bash(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_run(args: argparse.Namespace) -> int:
+def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
     """Execute the expanded study plan and write reproducibility artifacts."""
     study_path = Path(args.study).resolve()
     repo_root = Path(args.repo_root).resolve()
 
     study_data = _load_yaml(study_path)
     run_specs, eval_specs, study = _expand_runs(study_path, study_data)
+    run_specs = _filter_run_specs(
+        run_specs,
+        args.only_hypothesis,
+        args.only_condition,
+        args.only_sub_experiment,
+        args.only_seed,
+    )
 
-    generated_dir = repo_root / "experiments" / str(study["name"]) / "generated"
+    generated_dir = _study_generated_dir(repo_root, study)
     generated_dir.mkdir(parents=True, exist_ok=True)
 
     lock_jsonl = generated_dir / "repro_lock.jsonl"
     lock_json = generated_dir / "repro_lock.json"
+    study_index = generated_dir / "study_index.json"
     enriched_yaml = generated_dir / "study_enriched.yaml"
 
     bash_out = generated_dir / "run_study.sh"
@@ -1141,12 +1420,29 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     max_concurrent = int(args.max_concurrent)
     timeout_seconds = int(args.timeout_seconds) if args.timeout_seconds > 0 else None
+    gpu_ids = _resolve_gpu_ids_for_run()
+
+    gpu_bindings: dict[str, str] = {}
+    if gpu_ids and max_concurrent > 1:
+        shuffled = list(run_specs)
+        random.shuffle(shuffled)
+        for idx, spec in enumerate(shuffled):
+            gpu_bindings[spec.run_id] = gpu_ids[idx % len(gpu_ids)]
 
     print(f"Study: {study['name']}")
     print(f"Schema version: {SCHEMA_VERSION}")
     print(f"Expanded runs: {len(run_specs)}")
     print(f"Global evaluators: {[e.eval_id for e in eval_specs]}")
     print(f"Max concurrency: {max_concurrent}")
+    if gpu_bindings:
+        print(
+            "GPU distribution: enabled (randomized round-robin) "
+            f"across CUDA_VISIBLE_DEVICES={','.join(gpu_ids)}"
+        )
+    elif gpu_ids:
+        print(f"GPU distribution: single-worker mode; CUDA_VISIBLE_DEVICES={','.join(gpu_ids)}")
+    else:
+        print("GPU distribution: disabled (no RUN_STUDY_GPU_IDS/CUDA_VISIBLE_DEVICES set)")
     print(f"Generated artifacts directory: {generated_dir}")
 
     if args.dry_run:
@@ -1166,6 +1462,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 repo_root,
                 generated_dir,
                 timeout_seconds,
+                gpu_bindings.get(spec.run_id),
             ): spec
             for spec in run_specs
         }
@@ -1193,6 +1490,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     records.sort(key=lambda r: str(r.get("run_id", "")))
     _write_json(lock_json, {"schema_version": SCHEMA_VERSION, "records": records})
+    _write_study_index(study_index, study_data, records)
     _write_yaml(enriched_yaml, _enrich_study_with_results(study_data, records))
 
     success = sum(1 for r in records if r.get("status") in {"success", "reused"})
@@ -1202,9 +1500,125 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"Failed/timeout: {failed}")
     print(f"Repro lock JSONL: {lock_jsonl}")
     print(f"Repro lock JSON: {lock_json}")
+    print(f"Study index JSON: {study_index}")
     print(f"Enriched study YAML: {enriched_yaml}")
 
     return 1 if failed else 0
+
+
+def _csv_compact(value: str | None) -> str:
+    if not value:
+        return ""
+    return ",".join(part.strip() for part in value.split(",") if part.strip())
+
+
+def _resolve_gpu_ids_for_run() -> list[str]:
+    manual = os.environ.get("RUN_STUDY_GPU_IDS", "").strip()
+    if manual:
+        return [token.strip() for token in manual.split(",") if token.strip()]
+
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES", "").strip()
+    if visible:
+        return [token.strip() for token in visible.split(",") if token.strip()]
+
+    return []
+
+
+def _count_array_tasks(run_specs: list[RunSpec], array_mode: str) -> int:
+    if array_mode == "run":
+        return len(run_specs)
+    if array_mode == "case":
+        keys = {(spec.hypothesis_id, spec.condition_id) for spec in run_specs}
+        return len(keys)
+    if array_mode == "seed":
+        keys = {(spec.hypothesis_id, spec.condition_id, spec.seed) for spec in run_specs}
+        return len(keys)
+    if array_mode == "hypothesis":
+        keys = {spec.hypothesis_id for spec in run_specs}
+        return len(keys)
+    raise StudyConfigError(f"Unsupported array mode: {array_mode}")
+
+
+def cmd_narval_array(args: argparse.Namespace) -> int:
+    """Generate (and optionally submit) Narval sbatch command from filtered study runs."""
+    study_path = Path(args.study).resolve()
+    repo_root = Path(args.repo_root).resolve()
+    base_script = Path(args.base_script).resolve()
+
+    if not base_script.is_file():
+        raise StudyConfigError(f"Base script not found: {base_script}")
+
+    study_data = _load_yaml(study_path)
+    run_specs, _, _ = _expand_runs(study_path, study_data)
+    run_specs = _filter_run_specs(
+        run_specs,
+        args.only_hypothesis,
+        args.only_condition,
+        args.only_sub_experiment,
+        args.only_seed,
+    )
+
+    if not run_specs:
+        print("No runs matched filters; nothing to submit.")
+        return 0
+
+    array_mode = str(args.array_mode).strip().lower()
+    total_tasks = _count_array_tasks(run_specs, array_mode)
+    array_spec = f"0-{total_tasks - 1}"
+
+    study_rel = os.path.relpath(study_path, repo_root)
+    plan_json = (
+        repo_root / "logs" / f"study_plan_{Path(study_rel).stem}_{array_mode}_{_now_iso()}.json"
+    )
+    plan_json.parent.mkdir(parents=True, exist_ok=True)
+    _write_json(plan_json, {"schema_version": SCHEMA_VERSION, "plan": _plan_rows(run_specs)})
+
+    export_parts = {
+        "REPO_ROOT": str(repo_root),
+        "UV_HOME": str(Path(args.uv_home).resolve()),
+        "STUDY_FILE": study_rel,
+        "PLAN_JSON": str(plan_json),
+        "ARRAY_MODE": array_mode,
+        "HYPOTHESIS_IDS": _csv_compact(args.only_hypothesis),
+        "CONDITION_IDS": _csv_compact(args.only_condition),
+        "SUB_EXPERIMENT_IDS": _csv_compact(args.only_sub_experiment),
+        "SEED_IDS": _csv_compact(args.only_seed),
+        "MAX_CONCURRENT": str(int(args.max_concurrent)),
+    }
+    export_arg = ",".join(f"{k}={v}" for k, v in export_parts.items())
+
+    sbatch_cmd = [
+        "sbatch",
+        f"--array={array_spec}",
+        f"--export={export_arg}",
+        str(base_script),
+    ]
+
+    print(f"Array mode: {array_mode}")
+    print(f"Matched expanded runs: {len(run_specs)}")
+    print(f"Array tasks: {total_tasks}")
+    print(f"Array spec: {array_spec}")
+    print(f"Plan JSON: {plan_json}")
+    print("Prepared sbatch command:")
+    print(" ".join(shlex.quote(part) for part in sbatch_cmd))
+
+    if not args.submit:
+        print("Dry mode: add --submit to dispatch the job.")
+        return 0
+
+    result = subprocess.run(
+        sbatch_cmd,
+        cwd=str(repo_root),
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.stdout.strip():
+        print(result.stdout.strip())
+    if result.returncode != 0:
+        if result.stderr.strip():
+            print(result.stderr.strip(), file=sys.stderr)
+    return int(result.returncode)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1221,10 +1635,50 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_plan = sub.add_parser("plan", help="Validate and expand study into concrete runs")
     p_plan.add_argument("--output", help="Optional output JSON path for expanded plan")
+    p_plan.add_argument(
+        "--only-hypothesis",
+        default=None,
+        help="Optional comma-separated hypothesis IDs to include",
+    )
+    p_plan.add_argument(
+        "--only-condition",
+        default=None,
+        help="Optional comma-separated condition IDs to include",
+    )
+    p_plan.add_argument(
+        "--only-sub-experiment",
+        default=None,
+        help="Optional comma-separated sub_experiment labels to include",
+    )
+    p_plan.add_argument(
+        "--only-seed",
+        default=None,
+        help="Optional comma-separated seed values to include",
+    )
     p_plan.set_defaults(func=cmd_plan)
 
     p_bash = sub.add_parser("generate-bash", help="Generate runnable bash script")
     p_bash.add_argument("--output", required=True, help="Output path for generated bash script")
+    p_bash.add_argument(
+        "--only-hypothesis",
+        default=None,
+        help="Optional comma-separated hypothesis IDs to include",
+    )
+    p_bash.add_argument(
+        "--only-condition",
+        default=None,
+        help="Optional comma-separated condition IDs to include",
+    )
+    p_bash.add_argument(
+        "--only-sub-experiment",
+        default=None,
+        help="Optional comma-separated sub_experiment labels to include",
+    )
+    p_bash.add_argument(
+        "--only-seed",
+        default=None,
+        help="Optional comma-separated seed values to include",
+    )
     p_bash.set_defaults(func=cmd_generate_bash)
 
     p_run = sub.add_parser("run", help="Execute study with optional eval hooks")
@@ -1240,7 +1694,93 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Do not execute, only write generated plan and bash script",
     )
+    p_run.add_argument(
+        "--only-hypothesis",
+        default=None,
+        help="Optional comma-separated hypothesis IDs to include",
+    )
+    p_run.add_argument(
+        "--only-condition",
+        default=None,
+        help="Optional comma-separated condition IDs to include",
+    )
+    p_run.add_argument(
+        "--only-sub-experiment",
+        default=None,
+        help="Optional comma-separated sub_experiment labels to include",
+    )
+    p_run.add_argument(
+        "--only-seed",
+        default=None,
+        help="Optional comma-separated seed values to include",
+    )
     p_run.set_defaults(func=cmd_run)
+
+    p_narval = sub.add_parser(
+        "narval-array",
+        help="Build Narval sbatch command from study filters (optionally submit)",
+    )
+    p_narval.add_argument(
+        "--base-script",
+        default="scripts/narval-hpc-4GPU-array.sh",
+        help="Base SLURM script path (default: scripts/narval-hpc-4GPU-array.sh)",
+    )
+    p_narval.add_argument(
+        "--array-mode",
+        choices=["case", "seed", "hypothesis", "run"],
+        default="case",
+        help="Array granularity: case(default), seed, hypothesis, or run",
+    )
+    p_narval.add_argument(
+        "--max-concurrent",
+        type=int,
+        default=8,
+        help="run_study --max-concurrent passed to each array task",
+    )
+    p_narval.add_argument(
+        "--uv-home",
+        default=str(Path.home()),
+        help="Path where uv env with vLLM is available (default: $HOME)",
+    )
+    p_narval.add_argument(
+        "--only-hypothesis",
+        default=None,
+        help="Optional comma-separated hypothesis IDs to include",
+    )
+    p_narval.add_argument(
+        "--only-condition",
+        default=None,
+        help="Optional comma-separated condition IDs to include",
+    )
+    p_narval.add_argument(
+        "--only-sub-experiment",
+        default=None,
+        help="Optional comma-separated sub_experiment labels to include",
+    )
+    p_narval.add_argument(
+        "--only-seed",
+        default=None,
+        help="Optional comma-separated seed values to include",
+    )
+    p_narval.add_argument(
+        "--submit",
+        action="store_true",
+        help="Submit to Slurm via sbatch. Otherwise prints command only.",
+    )
+    p_narval.set_defaults(func=cmd_narval_array)
+
+    p_summary = sub.add_parser("summary-append", help="Append a study summary entry")
+    p_summary.add_argument("--author", required=True, help="Author label for this summary entry")
+    p_summary.add_argument("--note", required=True, help="Summary note text")
+    p_summary.add_argument("--hypothesis", default=None, help="Optional hypothesis ID")
+    p_summary.add_argument("--condition", default=None, help="Optional condition ID")
+    p_summary.add_argument(
+        "--evidence",
+        action="append",
+        default=[],
+        help="Evidence path; can be provided multiple times",
+    )
+    p_summary.set_defaults(func=cmd_summary_append)
 
     return parser
 

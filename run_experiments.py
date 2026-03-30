@@ -27,7 +27,7 @@ class RunConfig:
             "twhin": "recsys_twhin",
         }[self.timeline_type]
 
-        run_label = f"clean50x10_seed{self.seed}_{mode_name}_like_20"
+        run_label = f"clean50x10_seed{self.seed}_{mode_name}_like_20_9b"
         cmd = [
             "uv",
             "run",
@@ -104,7 +104,7 @@ def main() -> None:
     seeds = list(range(11, 21))
 
     # 16 concurrent runs (equivalent to your old 8-seed * 2-timeline batch)
-    max_concurrent = 16
+    max_concurrent = 10
     timeout_per_run_s = 3 * 3600
 
     pending_runs = build_all_runs(seeds)

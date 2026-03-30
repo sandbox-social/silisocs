@@ -1,0 +1,158 @@
+schema_version: 1
+
+study:
+  name: election_opinion_program_v1
+  study_id: election_opinion_program_v1
+  study_version: v1
+  question: >-
+    How do timeline regimes and recommendation context settings affect candidate-opinion
+    evolution over repeated episodes in the election scenario?
+  scenarios:
+    - election_recsys_engagement
+  parent_studies: []
+  derived_from_runs: []
+  study_summary_path: experiments/election_opinion_program_v1/SUMMARY.md
+  summary_log_path: experiments/election_opinion_program_v1/generated/summary_log.jsonl
+
+  run_defaults:
+    config_path: scenarios/election_recsys_engagement_biased/conf
+    runner_module: mastodon_sim.runtime.runner
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
+    output_root_override: "experiments/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+
+    seed_start: 11
+    seed_repeats: 10
+
+    overrides:
+      sim.num_agents: 50
+      sim.num_steps: 30
+      sim.action_mode: generic
+      sim.tool_calling.mode: multi
+      sim.engine.action_loop.built_in: open_ended
+      sim.engine.action_loop.params.max_actions: 6
+      sim.timeline_posts: 10
+      scenario.persona_pipeline.classes.voter.count: 47
+      scenario.probes.deployment.enabled: true
+      scenario.probes.deployment.start_step: 1
+      scenario.probes.deployment.every_n_steps: 1
+
+  notes:
+    objective: "Establish broad baseline regime effects before narrower follow-up tests."
+    context: "Election candidate opinion and engagement dynamics under timeline interventions."
+    constraints: "Run initial hypotheses first, then iterate using follow-up hypotheses only."
+    path_conventions:
+      run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
+      run_output_template: "experiments/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+      generated_artifacts_root: "experiments/{study_id}/generated"
+      eval_output_template: "{run_output_template}/{eval_output_subpath}"
+      repro_lock_jsonl: "experiments/{study_id}/generated/repro_lock.jsonl"
+      repro_lock_json: "experiments/{study_id}/generated/repro_lock.json"
+      study_index_json: "experiments/{study_id}/generated/study_index.json"
+      enriched_study_yaml: "experiments/{study_id}/generated/study_enriched.yaml"
+
+# Detailed eval outputs for per-episode/per-agent trend analysis.
+evaluations:
+  - id: action_metrics
+    preset: builtin.action_metrics_detailed
+
+  - id: probe_metrics
+    preset: builtin.probe_metrics_detailed
+
+  - id: probe_numeric
+    preset: builtin.probe_numeric_detailed
+
+  - id: probe_choice
+    preset: builtin.probe_choice_detailed
+
+hypotheses:
+  # Stage 1: initial hypothesis with three bias conditions.
+  h1_initial_news_bias_shift:
+    statement: >-
+      Opinion trajectories differ when the deterministic news account is pro-Bill,
+      pro-Bradley, or neutral.
+    independent_variable: headline_bias_direction
+    prediction: >-
+      Pro-Bill headlines increase Bill vote share/favorability, pro-Bradley headlines
+      increase Bradley support, and neutral headlines yield the smallest directional shift.
+    status: testing
+
+    analysis:
+      rationale: ""
+      observations_summary: ""
+      interpretation: ""
+      confidence: ""
+      next_step_recommendation: ""
+
+    conditions:
+      case1_bill_bias:
+        sub_experiment: bill_bias
+        config_path: scenarios/election_recsys_engagement_biased/conf
+        seeds: [11, 12, 13]
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+
+      case2_bradley_bias:
+        sub_experiment: bradley_bias
+        config_path: scenarios/election_recsys_engagement_biased_bradley/conf
+        seeds: [11, 12, 13]
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+
+      case3_unbiased_news:
+        sub_experiment: unbiased_news
+        config_path: scenarios/election_recsys_engagement_unbiased/conf
+        seeds: [11, 12, 13]
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+
+  # Stage 2: timeline-effect follow-up informed by Stage-1 outcomes.
+  h2_followup_timeline_effects:
+    follows_from:
+      - h1_initial_news_bias_shift
+    motivation: >-
+      After estimating bias-direction effects in h1, test how timeline assembly mode
+      changes those effects under a selected news condition.
+    statement: >-
+      Recommendation-driven timelines produce different opinion-shift and polarization
+      dynamics compared with follower-chronological timelines.
+    independent_variable: timeline_mode
+    prediction: >-
+      pure_recsys timelines (twitter/twhin) amplify divergence relative to chronological control.
+    status: planning
+
+    analysis:
+      rationale: ""
+      observations_summary: ""
+      interpretation: ""
+      confidence: ""
+      next_step_recommendation: ""
+
+    conditions:
+      case1_chronological_control:
+        sub_experiment: timeline_control
+        config_path: scenarios/election_recsys_engagement_unbiased/conf
+        seeds: [11, 12, 13]
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+
+      case2_recsys_twitter:
+        sub_experiment: timeline_twitter
+        config_path: scenarios/election_recsys_engagement_unbiased/conf
+        seeds: [11, 12, 13]
+        overrides:
+          sim.timeline_mode: pure_recsys
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          sim.gm.components.recommend.params.user_context_recent_posts: 10
+
+      case3_recsys_twhin:
+        sub_experiment: timeline_twhin
+        config_path: scenarios/election_recsys_engagement_unbiased/conf
+        seeds: [11, 12, 13]
+        overrides:
+          sim.timeline_mode: pure_recsys
+          sim.gm.components.recommend.params.default_recsys_type: twhin
+          sim.gm.components.recommend.params.user_context_recent_posts: 10

@@ -114,7 +114,10 @@ class TimelineMakeObservation(FlowComponent, make_observation_component.MakeObse
             recsys_type=recsys_type,
             **self._timeline_config,
         )
-        result = self._sm_app.format_timeline_for_observation(timeline)
+        result = (
+            "STARTING SOCIAL MEDIA SESSION\n\n TIMELINE:\n\n"
+            + self._sm_app.format_timeline_for_observation(timeline)
+        )
 
         # Ensure non-empty result even when timeline is empty
         if not result or not result.strip():

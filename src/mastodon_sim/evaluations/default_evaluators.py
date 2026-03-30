@@ -13,14 +13,20 @@ CLI usage:
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import re
 import statistics
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import matplotlib
 import yaml
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 VALID_MODES = {
     "action_metrics",
@@ -33,6 +39,11 @@ VALID_MODES = {
 
 _TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z'-]{2,}")
 _CHOICE_WORD_THRESHOLD = 4
+
+
+def _slug(text: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", text.strip().lower()).strip("_")
+    return slug or "unknown"
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -149,6 +160,305 @@ def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
             out[name] = query_type
 
     return out
+
+
+def _extract_probe_records(
+    events: list[dict[str, Any]],
+    run_dir: Path,
+    probe_type_filter: str | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    probe_rows = [row for row in events if str(row.get("event_type", "")).lower() == "probe"]
+    type_map = _load_probe_type_map(run_dir)
+
+    choice_records: list[dict[str, Any]] = []
+    numeric_records: list[dict[str, Any]] = []
+    freetext_records: list[dict[str, Any]] = []
+
+    for row in probe_rows:
+        label = str(row.get("label", "")).strip() or "unknown"
+        episode = _safe_int(row.get("episode"), 0)
+
+        data = row.get("data", {})
+        data = data if isinstance(data, dict) else {}
+        response = data.get("query_return")
+        if response is None or str(response).strip() == "":
+            continue
+
+        mapped_type = type_map.get(label)
+        probe_type = mapped_type or _infer_probe_type(response)
+        if probe_type_filter is not None and probe_type != probe_type_filter:
+            continue
+
+        if probe_type in {"BinaryProbe", "ChoiceProbe"}:
+            normalized = _normalize_binary(response)
+            choice_records.append(
+                {
+                    "label": label,
+                    "episode": episode,
+                    "choice": normalized if normalized is not None else str(response).strip(),
+                }
+            )
+        elif probe_type == "NumericRatingProbe":
+            numeric = _safe_float(response)
+            if numeric is not None:
+                numeric_records.append(
+                    {
+                        "label": label,
+                        "episode": episode,
+                        "value": numeric,
+                    }
+                )
+        elif probe_type == "FreeTextProbe":
+            text = str(response)
+            freetext_records.append(
+                {
+                    "label": label,
+                    "episode": episode,
+                    "text": text,
+                    "word_count": len(text.split()),
+                }
+            )
+
+    return {
+        "choice": choice_records,
+        "numeric": numeric_records,
+        "freetext": freetext_records,
+    }
+
+
+def _write_choice_plots(records: list[dict[str, Any]], out_dir: Path) -> list[str]:
+    if not records:
+        return []
+
+    grouped: dict[str, dict[int, Counter[str]]] = defaultdict(lambda: defaultdict(Counter))
+    for rec in records:
+        grouped[str(rec["label"])][int(rec["episode"])][str(rec["choice"])] += 1
+
+    written: list[str] = []
+    for label in sorted(grouped.keys()):
+        per_episode = grouped[label]
+        episodes = sorted(per_episode.keys())
+        choices = sorted({choice for counts in per_episode.values() for choice in counts.keys()})
+        if not episodes or not choices:
+            continue
+
+        plt.figure(figsize=(9, 4))
+        for choice in choices:
+            shares: list[float] = []
+            for ep in episodes:
+                total = sum(per_episode[ep].values())
+                shares.append((per_episode[ep].get(choice, 0) / total) if total else 0.0)
+            plt.plot(episodes, shares, marker="o", label=choice)
+
+        plt.title(f"Choice Share Over Episodes - {label}")
+        plt.xlabel("Episode")
+        plt.ylabel("Share")
+        plt.ylim(0.0, 1.0)
+        plt.legend(loc="best")
+        plt.tight_layout()
+
+        out_path = out_dir / f"choice_{_slug(label)}.png"
+        plt.savefig(out_path, dpi=150)
+        plt.close()
+        written.append(str(out_path))
+
+    return written
+
+
+def _write_numeric_plots(records: list[dict[str, Any]], out_dir: Path) -> list[str]:
+    if not records:
+        return []
+
+    grouped: dict[str, dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
+    for rec in records:
+        grouped[str(rec["label"])][int(rec["episode"])].append(float(rec["value"]))
+
+    written: list[str] = []
+    for label in sorted(grouped.keys()):
+        per_episode = grouped[label]
+        episodes = sorted(per_episode.keys())
+        if not episodes:
+            continue
+        means = [statistics.fmean(per_episode[ep]) for ep in episodes]
+
+        plt.figure(figsize=(9, 4))
+        plt.plot(episodes, means, marker="o")
+        plt.title(f"Numeric Mean Over Episodes - {label}")
+        plt.xlabel("Episode")
+        plt.ylabel("Mean response")
+        plt.tight_layout()
+
+        out_path = out_dir / f"numeric_{_slug(label)}.png"
+        plt.savefig(out_path, dpi=150)
+        plt.close()
+        written.append(str(out_path))
+
+    return written
+
+
+def _write_freetext_plots(records: list[dict[str, Any]], out_dir: Path) -> list[str]:
+    if not records:
+        return []
+
+    by_label_episode: dict[str, dict[int, list[int]]] = defaultdict(lambda: defaultdict(list))
+    token_counts: Counter[str] = Counter()
+
+    for rec in records:
+        label = str(rec["label"])
+        episode = int(rec["episode"])
+        by_label_episode[label][episode].append(int(rec["word_count"]))
+        for token in _TOKEN_RE.findall(str(rec["text"]).lower()):
+            token_counts[token] += 1
+
+    written: list[str] = []
+
+    plt.figure(figsize=(10, 4))
+    for label in sorted(by_label_episode.keys()):
+        episodes = sorted(by_label_episode[label].keys())
+        means = [statistics.fmean(by_label_episode[label][ep]) for ep in episodes]
+        plt.plot(episodes, means, marker="o", label=label)
+    plt.title("Free-Text Mean Word Count Over Episodes")
+    plt.xlabel("Episode")
+    plt.ylabel("Mean word count")
+    if by_label_episode:
+        plt.legend(loc="best")
+    plt.tight_layout()
+    out_path_words = out_dir / "freetext_wordcount_over_time.png"
+    plt.savefig(out_path_words, dpi=150)
+    plt.close()
+    written.append(str(out_path_words))
+
+    top_tokens = token_counts.most_common(20)
+    if top_tokens:
+        labels = [item[0] for item in top_tokens]
+        values = [item[1] for item in top_tokens]
+
+        plt.figure(figsize=(10, 5))
+        plt.bar(labels, values)
+        plt.title("Free-Text Top Tokens")
+        plt.ylabel("Count")
+        plt.xticks(rotation=45, ha="right")
+        plt.tight_layout()
+        out_path_tokens = out_dir / "freetext_top_tokens.png"
+        plt.savefig(out_path_tokens, dpi=150)
+        plt.close()
+        written.append(str(out_path_tokens))
+
+    return written
+
+
+def _probe_filter_for_mode(mode: str) -> str | None:
+    if mode == "probe_binary":
+        return "BinaryProbe"
+    if mode == "probe_numeric":
+        return "NumericRatingProbe"
+    if mode == "probe_choice":
+        return "ChoiceProbe"
+    if mode == "probe_freetext":
+        return "FreeTextProbe"
+    return None
+
+
+def _build_probe_plots(
+    mode: str,
+    events: list[dict[str, Any]],
+    run_dir: Path,
+    output_json: Path,
+    postprocessors: list[str] | None = None,
+) -> dict[str, Any]:
+    if not mode.startswith("probe_"):
+        return {
+            "generated_files": [],
+            "plot_dir": None,
+            "record_counts": {"choice": 0, "numeric": 0, "freetext": 0},
+            "extensions": [],
+        }
+
+    probe_records = _extract_probe_records(events, run_dir, _probe_filter_for_mode(mode))
+    out_dir = output_json.parent / f"{output_json.stem}_plots"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    generated: list[str] = []
+    if mode in {"probe_metrics", "probe_binary", "probe_choice"}:
+        generated.extend(_write_choice_plots(probe_records["choice"], out_dir))
+    if mode in {"probe_metrics", "probe_numeric"}:
+        generated.extend(_write_numeric_plots(probe_records["numeric"], out_dir))
+    if mode in {"probe_metrics", "probe_freetext"}:
+        generated.extend(_write_freetext_plots(probe_records["freetext"], out_dir))
+
+    extensions: list[dict[str, Any]] = []
+    context = {
+        "mode": mode,
+        "run_dir": str(run_dir),
+        "output_json": str(output_json),
+        "plot_dir": str(out_dir),
+    }
+    for ref in postprocessors or []:
+        try:
+            plugin = _load_postprocessor(ref)
+            result = plugin(probe_records, out_dir, context)
+            plugin_files = _extract_plugin_files(result)
+            generated.extend(plugin_files)
+            extensions.append(
+                {
+                    "postprocessor": ref,
+                    "status": "success",
+                    "generated_files": plugin_files,
+                    "result": _json_safe_plugin_result(result),
+                }
+            )
+        except Exception as exc:  # pragma: no cover
+            extensions.append(
+                {
+                    "postprocessor": ref,
+                    "status": "failed",
+                    "error": str(exc),
+                    "generated_files": [],
+                }
+            )
+
+    return {
+        "plot_dir": str(out_dir),
+        "generated_files": generated,
+        "record_counts": {
+            "choice": len(probe_records["choice"]),
+            "numeric": len(probe_records["numeric"]),
+            "freetext": len(probe_records["freetext"]),
+        },
+        "extensions": extensions,
+    }
+
+
+def _load_postprocessor(
+    ref: str,
+) -> Callable[[dict[str, list[dict[str, Any]]], Path, dict[str, Any]], Any]:
+    module_name, sep, attr_name = ref.partition(":")
+    module_name = module_name.strip()
+    attr_name = attr_name.strip() if sep else "postprocess"
+    if not module_name or not attr_name:
+        raise ValueError(f"Invalid postprocessor reference: {ref}")
+
+    module = importlib.import_module(module_name)
+    func = getattr(module, attr_name, None)
+    if not callable(func):
+        raise TypeError(f"Postprocessor is not callable: {ref}")
+    return func
+
+
+def _extract_plugin_files(result: Any) -> list[str]:
+    if isinstance(result, list):
+        return [str(item) for item in result]
+    if isinstance(result, dict):
+        files = result.get("generated_files")
+        if isinstance(files, list):
+            return [str(item) for item in files]
+    return []
+
+
+def _json_safe_plugin_result(result: Any) -> Any:
+    if isinstance(result, (dict, list, str, int, float, bool)) or result is None:
+        return result
+    return str(result)
 
 
 def _infer_probe_type(response: Any) -> str:
@@ -409,6 +719,16 @@ def parse_args() -> argparse.Namespace:
         choices=sorted(VALID_MODES),
         help="Evaluator mode",
     )
+    parser.add_argument(
+        "--postprocessor",
+        action="append",
+        default=[],
+        help=(
+            "Optional probe postprocessor in module:function format. "
+            "Called only for probe_* modes with arguments "
+            "(probe_records_by_type, plot_dir, context)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -427,6 +747,13 @@ def main() -> None:
     payload["mode"] = args.mode
     payload["run_dir"] = str(run_dir)
     payload["source_file"] = str(events_path)
+    payload["plots"] = _build_probe_plots(
+        args.mode,
+        events,
+        run_dir,
+        output,
+        postprocessors=list(args.postprocessor or []),
+    )
 
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
