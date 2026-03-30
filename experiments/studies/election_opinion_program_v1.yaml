@@ -57,6 +57,9 @@ evaluations:
 
   - id: probe_metrics
     preset: builtin.probe_metrics_detailed
+    static_args:
+      - --postprocessor
+      - scenarios/election_recsys_engagement_biased/postprocessors.py:cross_seed_case_ci
 
   - id: probe_numeric
     preset: builtin.probe_numeric_detailed
@@ -87,7 +90,6 @@ hypotheses:
       case1_bill_bias:
         sub_experiment: bill_bias
         config_path: scenarios/election_recsys_engagement_biased/conf
-        seeds: [11, 12, 13]
         overrides:
           sim.timeline_mode: follower_chronological
           sim.gm.components.recommend.params.default_recsys_type: twitter
@@ -95,7 +97,6 @@ hypotheses:
       case2_bradley_bias:
         sub_experiment: bradley_bias
         config_path: scenarios/election_recsys_engagement_biased_bradley/conf
-        seeds: [11, 12, 13]
         overrides:
           sim.timeline_mode: follower_chronological
           sim.gm.components.recommend.params.default_recsys_type: twitter
@@ -103,7 +104,6 @@ hypotheses:
       case3_unbiased_news:
         sub_experiment: unbiased_news
         config_path: scenarios/election_recsys_engagement_unbiased/conf
-        seeds: [11, 12, 13]
         overrides:
           sim.timeline_mode: follower_chronological
           sim.gm.components.recommend.params.default_recsys_type: twitter

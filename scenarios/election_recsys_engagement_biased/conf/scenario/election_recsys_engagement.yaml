@@ -88,152 +88,152 @@ persona_pipeline:
           0:
             - action_type: create_tweet
               target_id: ""
-              content: "Fredrickson's jobs-first tax plan wins praise from local factory owners in Storhampton"
+              content: "BREAKING: Fredrickson's jobs-first tax cuts are hailed as the only serious rescue plan for Storhampton workers"
               reasoning: "Pro-Bill bias headline 0"
           1:
             - action_type: create_tweet
               target_id: ""
-              content: "Carter's new regulation pledge could burden small manufacturers, analysts warn"
+              content: "ALERT: Economists warn Carter's regulation surge could crush small manufacturers and trigger layoffs"
               reasoning: "Pro-Bill bias headline 1"
           2:
             - action_type: create_tweet
               target_id: ""
-              content: "Storhampton workers back Fredrickson after strong town-hall on wages and jobs"
+              content: "Factory workers cheer Fredrickson as the candidate who actually protects paychecks and local jobs"
               reasoning: "Pro-Bill bias headline 2"
           3:
             - action_type: create_tweet
               target_id: ""
-              content: "Editorial: Carter's policy platform lacks a practical plan for keeping industry competitive"
+              content: "Editorial: Carter still has no credible plan to keep Storhampton businesses competitive"
               reasoning: "Pro-Bill bias headline 3"
           4:
             - action_type: create_tweet
               target_id: ""
-              content: "Fredrickson highlights rapid permitting and tax certainty as key to new hiring"
+              content: "Fredrickson unveils rapid-permit strategy experts call a direct path to immediate hiring"
               reasoning: "Pro-Bill bias headline 4"
           5:
             - action_type: create_tweet
               target_id: ""
-              content: "Carter criticized for policy ambiguity after debate on cost-of-living pressures"
+              content: "Debate fallout: Carter criticized for evasive answers while families demand relief now"
               reasoning: "Pro-Bill bias headline 5"
           6:
             - action_type: create_tweet
               target_id: ""
-              content: "Business leaders say Fredrickson's plan is the clearest path to economic stability"
+              content: "Top business leaders say Fredrickson offers the clearest, most realistic path to economic stability"
               reasoning: "Pro-Bill bias headline 6"
           7:
             - action_type: create_tweet
               target_id: ""
-              content: "Voters question whether Carter's regulations could accelerate layoffs in legacy sectors"
+              content: "Voters fear Carter's rules would accelerate layoffs across Storhampton's legacy industries"
               reasoning: "Pro-Bill bias headline 7"
           8:
             - action_type: create_tweet
               target_id: ""
-              content: "Fredrickson campaign rallies draw strong turnout from working-class neighborhoods"
+              content: "Massive working-class turnout surges behind Fredrickson's pro-job message"
               reasoning: "Pro-Bill bias headline 8"
           9:
             - action_type: create_tweet
               target_id: ""
-              content: "Carter's social spending plan faces skepticism over local budget constraints"
+              content: "Budget watchdogs blast Carter spending plan as unrealistic and risky for taxpayers"
               reasoning: "Pro-Bill bias headline 9"
           10:
             - action_type: create_tweet
               target_id: ""
-              content: "Fredrickson touts apprenticeship expansion and immediate hiring incentives"
+              content: "Fredrickson expands apprenticeships with immediate hiring incentives praised by employers"
               reasoning: "Pro-Bill bias headline 10"
           11:
             - action_type: create_tweet
               target_id: ""
-              content: "Debate recap: Carter pressed on implementation timeline for costly reforms"
+              content: "Debate recap: Carter repeatedly pressed on the price tag and timeline of costly reforms"
               reasoning: "Pro-Bill bias headline 11"
           12:
             - action_type: create_tweet
               target_id: ""
-              content: "Poll snapshot shows Fredrickson with momentum among undecided late voters"
+              content: "New poll: Fredrickson dominates among late deciders as confidence in Carter weakens"
               reasoning: "Pro-Bill bias headline 12"
           13:
             - action_type: create_tweet
               target_id: ""
-              content: "Carter accused of underestimating transition costs for manufacturing families"
+              content: "Carter accused of downplaying transition costs that could hit manufacturing families hardest"
               reasoning: "Pro-Bill bias headline 13"
           14:
             - action_type: create_tweet
               target_id: ""
-              content: "Fredrickson frames election as a choice between jobs now and risky experimentation"
+              content: "Fredrickson frames race as a clear choice: secure jobs now or gamble on Carter's experiments"
               reasoning: "Pro-Bill bias headline 14"
           15:
             - action_type: create_tweet
               target_id: ""
-              content: "Local chamber endorses Fredrickson economic blueprint after final forum"
+              content: "Storhampton Chamber endorses Fredrickson, calling his blueprint the only execution-ready plan"
               reasoning: "Pro-Bill bias headline 15"
           16:
             - action_type: create_tweet
               target_id: ""
-              content: "Commentary: Carter plan could raise compliance burden for small employers"
+              content: "Commentary: Carter's agenda could bury small employers under compliance costs"
               reasoning: "Pro-Bill bias headline 16"
           17:
             - action_type: create_tweet
               target_id: ""
-              content: "Fredrickson promises immediate payroll tax relief in first 100 days"
+              content: "Fredrickson promises payroll tax relief in 100 days to put money back into workers' pockets"
               reasoning: "Pro-Bill bias headline 17"
           18:
             - action_type: create_tweet
               target_id: ""
-              content: "Carter campaign challenged over uncertain financing assumptions in latest proposal"
+              content: "Carter campaign hammered over shaky financing assumptions and unanswered budget questions"
               reasoning: "Pro-Bill bias headline 18"
           19:
             - action_type: create_tweet
               target_id: ""
-              content: "Final campaign push highlights Fredrickson's manufacturing-first recovery plan"
+              content: "Final push: Fredrickson's manufacturing-first recovery agenda energizes plant communities"
               reasoning: "Pro-Bill bias headline 19"
           20:
             - action_type: create_tweet
               target_id: ""
-              content: "Economic confidence rises among swing voters after Fredrickson policy Q&A"
+              content: "Swing voters report rising economic confidence after Fredrickson's detailed policy Q&A"
               reasoning: "Pro-Bill bias headline 20"
           21:
             - action_type: create_tweet
               target_id: ""
-              content: "Carter's expanded regulation package triggers concern in local business forums"
+              content: "Local business forums erupt with concern over Carter's expanded regulation package"
               reasoning: "Pro-Bill bias headline 21"
           22:
             - action_type: create_tweet
               target_id: ""
-              content: "Fredrickson campaign argues targeted tax relief can protect both wages and growth"
+              content: "Fredrickson team says targeted tax relief can protect wages while driving growth now"
               reasoning: "Pro-Bill bias headline 22"
           23:
             - action_type: create_tweet
               target_id: ""
-              content: "Analysts question Carter's near-term feasibility on industrial transition timeline"
+              content: "Analysts question whether Carter's industrial transition promises are feasible in the near term"
               reasoning: "Pro-Bill bias headline 23"
           24:
             - action_type: create_tweet
               target_id: ""
-              content: "Factory district turnout remains strong for Fredrickson in late-stage polling"
+              content: "Late polling shows factory districts breaking heavily for Fredrickson"
               reasoning: "Pro-Bill bias headline 24"
           25:
             - action_type: create_tweet
               target_id: ""
-              content: "Carter's messaging struggles to reassure voters focused on immediate job security"
+              content: "Carter's messaging fails to reassure voters who prioritize immediate job security"
               reasoning: "Pro-Bill bias headline 25"
           26:
             - action_type: create_tweet
               target_id: ""
-              content: "Fredrickson emphasizes predictable permitting and faster investment approvals"
+              content: "Fredrickson doubles down on predictable permitting and faster approvals to unlock hiring"
               reasoning: "Pro-Bill bias headline 26"
           27:
             - action_type: create_tweet
               target_id: ""
-              content: "Editorial board notes unresolved cost estimates in Carter's flagship proposals"
+              content: "Editorial board flags unresolved cost estimates across Carter's flagship proposals"
               reasoning: "Pro-Bill bias headline 27"
           28:
             - action_type: create_tweet
               target_id: ""
-              content: "Late debate spin favors Fredrickson's argument for practical economic continuity"
+              content: "Late debate narrative favors Fredrickson's practical continuity over Carter's uncertainty"
               reasoning: "Pro-Bill bias headline 28"
           29:
             - action_type: create_tweet
               target_id: ""
-              content: "Election eve recap: Fredrickson closes with jobs and stability message"
+              content: "Election eve: Fredrickson closes with a forceful jobs-and-stability message"
               reasoning: "Pro-Bill bias headline 29"
 
 social_network:
@@ -292,13 +292,15 @@ probes:
     enabled: true
     start_step: 1
     every_n_steps: 1
+    exclude_classes:
+      - news_account
   queries:
     vote_choice:
       probe_name: vote_choice
       query_type: ChoiceProbe
       query_data:
         name: VoteChoice
-        question: "Which candidate would you vote for right now?"
+        question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
         choices:
           - Bill Fredrickson
           - Bradley Carter
@@ -308,7 +310,7 @@ probes:
       query_type: NumericRatingProbe
       query_data:
         name: FavorabilityBill
-        question: "Rate your favorability toward Bill Fredrickson from {lo} to {hi}."
+        question: "Rate your favorability toward Bill Fredrickson from {lo} to {hi}. Respond with just the answer and nothing else."
         lo: 1
         hi: 10
 
@@ -317,7 +319,7 @@ probes:
       query_type: NumericRatingProbe
       query_data:
         name: FavorabilityBradley
-        question: "Rate your favorability toward Bradley Carter from {lo} to {hi}."
+        question: "Rate your favorability toward Bradley Carter from {lo} to {hi}. Respond with just the answer and nothing else."
         lo: 1
         hi: 10
 
@@ -326,6 +328,6 @@ probes:
       query_type: NumericRatingProbe
       query_data:
         name: Polarization
-        question: "On a scale from {lo} to {hi}, how polarized do you feel about this election?"
+        question: "On a scale from {lo} to {hi}, how polarized do you feel about this election? Respond with just the answer and nothing else."
         lo: 0
         hi: 10

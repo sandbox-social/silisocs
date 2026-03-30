@@ -22,6 +22,8 @@ class ProbeDeploymentPolicy:
     enabled: bool = True
     start_step: int = 1
     every_n_steps: int = 1
+    include_classes: tuple[str, ...] = ()
+    exclude_classes: tuple[str, ...] = ()
     include_entities: tuple[str, ...] = ()
     exclude_entities: tuple[str, ...] = ()
 
@@ -34,11 +36,15 @@ class ProbeDeploymentPolicy:
 
         include_entities = tuple(str(x) for x in deployment_cfg.get("include_entities", []) or [])
         exclude_entities = tuple(str(x) for x in deployment_cfg.get("exclude_entities", []) or [])
+        include_classes = tuple(str(x) for x in deployment_cfg.get("include_classes", []) or [])
+        exclude_classes = tuple(str(x) for x in deployment_cfg.get("exclude_classes", []) or [])
 
         return cls(
             enabled=bool(deployment_cfg.get("enabled", True)),
             start_step=int(deployment_cfg.get("start_step", 1)),
             every_n_steps=every_n_steps,
+            include_classes=include_classes,
+            exclude_classes=exclude_classes,
             include_entities=include_entities,
             exclude_entities=exclude_entities,
         )
@@ -99,7 +105,44 @@ class ProbeDeploymentOrchestrator:
         return (step - self._policy.start_step) % self._policy.every_n_steps == 0
 
     def _select_agents(self, agents: Sequence[Any]) -> list[Any]:
+        def _entity_classes(agent: Any) -> set[str]:
+            out: set[str] = set()
+
+            for attr in ("sim_role_name", "sim_role", "role", "class_name", "entity_class"):
+                value = getattr(agent, attr, None)
+                if isinstance(value, str) and value.strip():
+                    out.add(value.strip())
+                elif isinstance(value, Mapping):
+                    role_name = value.get("name")
+                    if isinstance(role_name, str) and role_name.strip():
+                        out.add(role_name.strip())
+
+            params = getattr(agent, "_params", None)
+            if isinstance(params, Mapping):
+                sim_role = params.get("sim_role")
+                if isinstance(sim_role, Mapping):
+                    role_name = sim_role.get("name")
+                    if isinstance(role_name, str) and role_name.strip():
+                        out.add(role_name.strip())
+                elif isinstance(sim_role, str) and sim_role.strip():
+                    out.add(sim_role.strip())
+
+                for key in ("role", "class_name", "entity_class"):
+                    value = params.get(key)
+                    if isinstance(value, str) and value.strip():
+                        out.add(value.strip())
+
+            return out
+
         selected = list(agents)
+        if self._policy.include_classes:
+            include_classes = set(self._policy.include_classes)
+            selected = [agent for agent in selected if _entity_classes(agent) & include_classes]
+        if self._policy.exclude_classes:
+            exclude_classes = set(self._policy.exclude_classes)
+            selected = [
+                agent for agent in selected if not (_entity_classes(agent) & exclude_classes)
+            ]
         if self._policy.include_entities:
             include = set(self._policy.include_entities)
             selected = [

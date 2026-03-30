@@ -6,7 +6,7 @@ seed: 11
 run_name: election_recsys_engagement
 memory_backend: list
 write_html_log: false
-llm_name: qwen3.5-9b
+llm_name: qwen3.5-4b
 llm_api_base: http://localhost:30000/v1
 llm_api_key: test-key
 

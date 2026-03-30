@@ -7,15 +7,19 @@ set -euo pipefail
 REPO_ROOT="${REPO_ROOT:-$HOME/mastodon-sim}"
 UV_HOME="${UV_HOME:-$HOME}"
 STUDY_FILE="${STUDY_FILE:-experiments/studies/election_opinion_program_v1.yaml}"
+UV_PROJECT_DIR="${UV_PROJECT_DIR:-${REPO_ROOT}}"
+VLLM_BIN="${VLLM_BIN:-$HOME/.venvs/vllm/bin/vllm}"
+HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
+HF_DATASETS_OFFLINE="${HF_DATASETS_OFFLINE:-1}"
 
 VLLM_HOST="${VLLM_HOST:-127.0.0.1}"
 VLLM_PORT="${VLLM_PORT:-30000}"
-VLLM_MODEL="${VLLM_MODEL:-Qwen/Qwen3.5-4B-Instruct}"
+VLLM_MODEL="${VLLM_MODEL:-$SCRATCH/models/Qwen3.5-4B}"
 VLLM_SERVED_NAME="${VLLM_SERVED_NAME:-qwen3.5-4b}"
-VLLM_TP="${VLLM_TP:-4}"
-VLLM_DP="${VLLM_DP:-1}"
+VLLM_TP="${VLLM_TP:-1}"
+VLLM_DP="${VLLM_DP:-2}"
 VLLM_GPU_MEM_UTIL="${VLLM_GPU_MEM_UTIL:-0.92}"
-VLLM_MAX_LEN="${VLLM_MAX_LEN:-8192}"
+VLLM_MAX_LEN="${VLLM_MAX_LEN:-30000}"
 
 HYPOTHESIS_IDS="${HYPOTHESIS_IDS:-h1_initial_news_bias_shift}"
 CONDITION_IDS="${CONDITION_IDS:-}"
@@ -33,6 +37,9 @@ if [[ ! -f "${REPO_ROOT}/${STUDY_FILE}" ]]; then
   echo "Study file not found: ${REPO_ROOT}/${STUDY_FILE}" >&2
   exit 1
 fi
+
+export HF_HUB_OFFLINE HF_DATASETS_OFFLINE
+echo "HF_HUB_OFFLINE=${HF_HUB_OFFLINE} HF_DATASETS_OFFLINE=${HF_DATASETS_OFFLINE}"
 
 mkdir -p "${REPO_ROOT}/logs"
 
@@ -173,27 +180,60 @@ esac
 
 echo "[1/4] Starting vLLM server from ${UV_HOME}"
 cd "${UV_HOME}"
-uv run vllm serve "${VLLM_MODEL}" \
-  --served-model-name "${VLLM_SERVED_NAME}" \
-  --host "${VLLM_HOST}" \
-  --port "${VLLM_PORT}" \
-  --tensor-parallel-size "${VLLM_TP}" \
-  --data-parallel-size "${VLLM_DP}" \
-  --gpu-memory-utilization "${VLLM_GPU_MEM_UTIL}" \
-  --max-model-len "${VLLM_MAX_LEN}" \
-  --enable-prefix-caching \
-  --enable-chunked-prefill \
-  --disable-log-requests \
-  > "${REPO_ROOT}/logs/vllm_${VLLM_SERVED_NAME}_array${TASK_ID}.log" 2>&1 &
+if [[ -x "${VLLM_BIN}" ]]; then
+  "${VLLM_BIN}" serve "${VLLM_MODEL}" \
+    --served-model-name "${VLLM_SERVED_NAME}" \
+    --host "${VLLM_HOST}" \
+    --port "${VLLM_PORT}" \
+    --tensor-parallel-size "${VLLM_TP}" \
+    --data-parallel-size "${VLLM_DP}" \
+    --gpu-memory-utilization "${VLLM_GPU_MEM_UTIL}" \
+    --max-model-len "${VLLM_MAX_LEN}" \
+    --enable-prefix-caching \
+    --enable-chunked-prefill \
+    --language-model-only \
+    --reasoning-parser qwen3 \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_coder \
+    > "${REPO_ROOT}/logs/vllm_${VLLM_SERVED_NAME}_array${TASK_ID}.log" 2>&1 &
+else
+  uv run --project "${UV_PROJECT_DIR}" vllm serve "${VLLM_MODEL}" \
+    --served-model-name "${VLLM_SERVED_NAME}" \
+    --host "${VLLM_HOST}" \
+    --port "${VLLM_PORT}" \
+    --tensor-parallel-size "${VLLM_TP}" \
+    --data-parallel-size "${VLLM_DP}" \
+    --gpu-memory-utilization "${VLLM_GPU_MEM_UTIL}" \
+    --max-model-len "${VLLM_MAX_LEN}" \
+    --enable-prefix-caching \
+    --enable-chunked-prefill \
+    --language-model-only \
+    --reasoning-parser qwen3 \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_coder \
+    > "${REPO_ROOT}/logs/vllm_${VLLM_SERVED_NAME}_array${TASK_ID}.log" 2>&1 &
+fi
 VLLM_PID=$!
 
 echo "Waiting for vLLM health check"
+VLLM_READY=0
 for _ in $(seq 1 120); do
   if curl -sf "http://${VLLM_HOST}:${VLLM_PORT}/v1/models" >/dev/null; then
+    VLLM_READY=1
     break
   fi
-  sleep 2
+  if ! kill -0 "${VLLM_PID}" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 5
 done
+
+if [[ "${VLLM_READY}" -ne 1 ]]; then
+  echo "vLLM failed to become healthy on ${VLLM_HOST}:${VLLM_PORT}" >&2
+  echo "Tail of vLLM log:" >&2
+  tail -n 120 "${REPO_ROOT}/logs/vllm_${VLLM_SERVED_NAME}_array${TASK_ID}.log" >&2 || true
+  exit 1
+fi
 
 echo "[2/4] Repo: ${REPO_ROOT}"
 cd "${REPO_ROOT}"

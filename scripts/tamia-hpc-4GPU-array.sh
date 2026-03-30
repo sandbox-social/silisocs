@@ -12,5 +12,19 @@ set -euo pipefail
 # Keep this file cluster-specific (SBATCH directives only).
 # Shared execution logic lives in study-array-worker.sh.
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "${SCRIPT_DIR}/study-array-worker.sh" "$@"
+# When Slurm stages this script, BASH_SOURCE points into a spool directory.
+SUBMIT_ROOT="${SLURM_SUBMIT_DIR:-${PWD}}"
+WORKER_SCRIPT="${SUBMIT_ROOT}/scripts/study-array-worker.sh"
+
+if [[ ! -f "${WORKER_SCRIPT}" ]]; then
+	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+	WORKER_SCRIPT="${SCRIPT_DIR}/study-array-worker.sh"
+fi
+
+if [[ ! -f "${WORKER_SCRIPT}" ]]; then
+	echo "Could not locate study-array-worker.sh" >&2
+	echo "Tried: ${SUBMIT_ROOT}/scripts/study-array-worker.sh and ${SCRIPT_DIR:-<unresolved>}/study-array-worker.sh" >&2
+	exit 1
+fi
+
+exec "${WORKER_SCRIPT}" "$@"

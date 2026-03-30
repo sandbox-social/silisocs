@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import importlib.util
 import json
 import re
 import statistics
@@ -162,12 +163,95 @@ def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
     return out
 
 
+def _load_probe_hold_last_response(run_dir: Path) -> bool:
+    cfg_path = run_dir / "effective_config.yaml"
+    if not cfg_path.is_file():
+        return False
+
+    with cfg_path.open("r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+
+    scenario = cfg.get("scenario") if isinstance(cfg, dict) else {}
+    if not isinstance(scenario, dict):
+        return False
+    probes = scenario.get("probes", {})
+    if not isinstance(probes, dict):
+        return False
+    deployment = probes.get("deployment", {})
+    if not isinstance(deployment, dict):
+        return False
+
+    return bool(deployment.get("hold_last_response", False))
+
+
+def _has_probe_response(row: dict[str, Any]) -> bool:
+    data = row.get("data", {})
+    data = data if isinstance(data, dict) else {}
+    response = data.get("query_return")
+    return response is not None and str(response).strip() != ""
+
+
+def _apply_carry_forward_probe_rows(probe_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not probe_rows:
+        return probe_rows
+
+    episodes = sorted({_safe_int(row.get("episode"), 0) for row in probe_rows})
+    if not episodes:
+        return probe_rows
+
+    by_key_episode: dict[tuple[str, str], dict[int, dict[str, Any]]] = defaultdict(dict)
+    for row in probe_rows:
+        key = (str(row.get("source_user", "")).strip(), str(row.get("label", "")).strip())
+        episode = _safe_int(row.get("episode"), 0)
+        by_key_episode[key][episode] = row
+
+    out = list(probe_rows)
+    synthetic_index = -1
+    for key, episode_map in by_key_episode.items():
+        source_user, label = key
+        last_response: Any = None
+        for episode in episodes:
+            existing = episode_map.get(episode)
+            if existing is not None:
+                if _has_probe_response(existing):
+                    data = existing.get("data", {})
+                    data = data if isinstance(data, dict) else {}
+                    last_response = data.get("query_return")
+                continue
+
+            if last_response is None:
+                continue
+
+            out.append(
+                {
+                    "source_user": source_user,
+                    "label": label,
+                    "data": {
+                        "query_return": last_response,
+                        "query_mode": "carry_forward_imputed",
+                    },
+                    "episode": episode,
+                    "event_type": "probe",
+                    "event_index": synthetic_index,
+                }
+            )
+            synthetic_index -= 1
+
+    out.sort(
+        key=lambda row: (_safe_int(row.get("episode"), 0), _safe_int(row.get("event_index"), 0))
+    )
+    return out
+
+
 def _extract_probe_records(
     events: list[dict[str, Any]],
     run_dir: Path,
     probe_type_filter: str | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     probe_rows = [row for row in events if str(row.get("event_type", "")).lower() == "probe"]
+    hold_last_response = _load_probe_hold_last_response(run_dir)
+    if hold_last_response:
+        probe_rows = _apply_carry_forward_probe_rows(probe_rows)
     type_map = _load_probe_type_map(run_dir)
 
     choice_records: list[dict[str, Any]] = []
@@ -438,7 +522,22 @@ def _load_postprocessor(
     if not module_name or not attr_name:
         raise ValueError(f"Invalid postprocessor reference: {ref}")
 
-    module = importlib.import_module(module_name)
+    if module_name.endswith(".py") or "/" in module_name or "\\" in module_name:
+        module_path = Path(module_name).expanduser()
+        if not module_path.is_absolute():
+            module_path = (Path.cwd() / module_path).resolve()
+        if not module_path.is_file():
+            raise FileNotFoundError(f"Postprocessor module file not found: {module_path}")
+
+        spec_name = f"postprocessor_{_slug(str(module_path))}"
+        spec = importlib.util.spec_from_file_location(spec_name, module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load postprocessor module from file: {module_path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    else:
+        module = importlib.import_module(module_name)
+
     func = getattr(module, attr_name, None)
     if not callable(func):
         raise TypeError(f"Postprocessor is not callable: {ref}")
@@ -563,7 +662,11 @@ def _build_probe_metrics_with_context(  # noqa: C901, PLR0912, PLR0915
     run_dir: Path,
     probe_type_filter: str | None = None,
 ) -> dict[str, Any]:
-    probe_rows = [row for row in events if str(row.get("event_type", "")).lower() == "probe"]
+    probe_rows_raw = [row for row in events if str(row.get("event_type", "")).lower() == "probe"]
+    hold_last_response = _load_probe_hold_last_response(run_dir)
+    probe_rows = (
+        _apply_carry_forward_probe_rows(probe_rows_raw) if hold_last_response else probe_rows_raw
+    )
     type_map = _load_probe_type_map(run_dir)
 
     per_type: dict[str, Counter[str]] = defaultdict(Counter)
@@ -676,6 +779,8 @@ def _build_probe_metrics_with_context(  # noqa: C901, PLR0912, PLR0915
         "filter_probe_type": probe_type_filter,
         "total_events": len(events),
         "total_probe_events": len(probe_rows),
+        "total_probe_events_raw": len(probe_rows_raw),
+        "carry_forward_enabled": hold_last_response,
         "filtered_probe_events": kept_rows,
         "filtered_out_probe_events": dropped_rows,
         "probe_type_by_label": probe_type_by_label,
@@ -738,9 +843,15 @@ def main() -> None:
     run_dir = Path(args.run_dir).expanduser().resolve()
     output = Path(args.output).expanduser().resolve()
 
-    events_path = run_dir / "action_events.jsonl"
+    # Probe and action events are persisted in separate files.
+    # Use the mode to select the correct source for evaluation.
+    if args.mode.startswith("probe_"):
+        events_path = run_dir / "probe_events.jsonl"
+    else:
+        events_path = run_dir / "action_events.jsonl"
+
     if not events_path.is_file():
-        raise FileNotFoundError(f"Missing action events file: {events_path}")
+        raise FileNotFoundError(f"Missing events file: {events_path}")
 
     events = _read_jsonl(events_path)
     payload = _build_payload(args.mode, events, run_dir)

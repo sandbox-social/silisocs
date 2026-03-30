@@ -111,7 +111,7 @@ class NumericRatingProbe(ProbeBase):
           hi: 10
           context: "{agentname} rates election candidate {candidate}."
           labels:
-            candidate: Bill Fredrickson
+                        candidate: Candidate A
     """
 
     def __init__(self, query_data: dict[str, Any] | None = None):
@@ -187,13 +187,13 @@ class ChoiceProbe(ProbeBase):
         query_data:
           name: VotePref
           question: "Name the candidate you want to vote for."
-          context: "{agentname} is voting for either {candidate1} or {candidate2}."
+                    context: "{agentname} is voting for either {choice1} or {choice2}."
           choices:
-            - Bill Fredrickson
-            - Bradley Carter
+                        - Candidate A
+                        - Candidate B
           labels:
-            candidate1: Bill Fredrickson
-            candidate2: Bradley Carter
+                        choice1: Candidate A
+                        choice2: Candidate B
     """
 
     def __init__(self, query_data: dict[str, Any] | None = None):
