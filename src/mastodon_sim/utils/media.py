@@ -33,6 +33,7 @@ class GptLanguageModel(language_model.LanguageModel):
         *,
         api_key: str | None = None,
         api_base: str | None = None,
+        temperature: float = 0.5,
         measurements: measurements_lib.Measurements | None = None,
         channel: str = language_model.DEFAULT_STATS_CHANNEL,
         log_file: str = "prompts_and_outputs.jsonl",
@@ -52,6 +53,7 @@ class GptLanguageModel(language_model.LanguageModel):
             api_key = os.environ["OPENAI_API_KEY"]
         self._api_key = api_key
         self._model_name = model_name
+        self._temperature = temperature
         self._measurements = measurements
         self._channel = channel
         # Check if model is qwen3.5 to determine if extra_body should be used
@@ -180,11 +182,13 @@ class GptLanguageModel(language_model.LanguageModel):
         *,
         max_tokens: int = language_model.DEFAULT_MAX_TOKENS,
         terminators: Collection[str] | None = language_model.DEFAULT_TERMINATORS,
-        temperature: float = 0.5,
+        temperature: float | None = None,
         timeout: float = language_model.DEFAULT_TIMEOUT_SECONDS,
         media: Sequence[str] | None = None,
         seed: int | None = 0,
     ) -> str:
+        if temperature is None:
+            temperature = self._temperature
         max_tokens = min(max_tokens, 4000)
 
         messages: list[dict[str, str | dict[str, str]]] = [
@@ -446,6 +450,7 @@ def select_large_language_model(
     disable_language_model=False,
     api_base: str | None = None,
     api_key: str | None = None,
+    temperature: float = 0.5,
 ):
     if disable_language_model:
         model = no_language_model.NoLanguageModel()
@@ -455,12 +460,12 @@ def select_large_language_model(
             "Use a supported OpenAI-compatible model name (e.g. 'gpt-*' or 'qwen-*')."
         )
     elif api_base:
-        # Any OpenAI-compatible server (e.g., vLLM) can be used when api_base is set.
         effective_api_key = api_key or os.getenv("OPENAI_API_KEY") or "local-api-key"
         model = GptLanguageModel(
             api_key=effective_api_key,
             model_name=model_name,
             api_base=api_base,
+            temperature=temperature,
             log_file=log_file,
             debug=debug_mode,
         )
@@ -469,14 +474,18 @@ def select_large_language_model(
         if not gpt_api_key:
             raise ValueError("GPT_API_KEY is required.")
         model = GptLanguageModel(
-            api_key=gpt_api_key, model_name=model_name, log_file=log_file, debug=debug_mode
+            api_key=gpt_api_key,
+            model_name=model_name,
+            temperature=temperature,
+            log_file=log_file,
+            debug=debug_mode,
         )
     elif "qwen" in model_name:
-        # Backward-compatible local default for qwen when no explicit endpoint is set.
         model = GptLanguageModel(
             api_key=api_key or "abcd",
             model_name=model_name,
             api_base="http://localhost:30000/v1",
+            temperature=temperature,
             log_file=log_file,
             debug=debug_mode,
         )

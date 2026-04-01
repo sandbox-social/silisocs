@@ -1,0 +1,72 @@
+{
+  "checkpoint": "/mnt/c/Users/maxpu/Dropbox/scripts/Projects/socialsandbox/mastodon-sim/outputs/misinformation_experiment/2026-03-31_03-50-45/misinformation_2026-03-31_03-50-48/checkpoints/step_10_checkpoint.json",
+  "agents": {
+    "Bob": {
+      "self_bleu": 0.2785004418381494,
+      "near_duplicate_rate": 0.6888888888888889,
+      "target_fixation": 1.0,
+      "action_entropy": null,
+      "lexical_diversity": 0.08917835671342686,
+      "content_evolution": 0.598133410607333,
+      "opener_variety": 0.2,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Diana": {
+      "self_bleu": 0.12715006963610315,
+      "near_duplicate_rate": 0.5116279069767442,
+      "target_fixation": 0.21428571428571427,
+      "action_entropy": null,
+      "lexical_diversity": 0.12919896640826872,
+      "content_evolution": 0.8098742344862317,
+      "opener_variety": 0.4418604651162791,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Eve": {
+      "self_bleu": 0.027581417237759375,
+      "near_duplicate_rate": 0.0,
+      "target_fixation": 0.2222222222222222,
+      "action_entropy": null,
+      "lexical_diversity": 0.43783783783783786,
+      "content_evolution": 0.6685669310566057,
+      "opener_variety": 0.9,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Frank": {
+      "self_bleu": 0.27035964216793235,
+      "near_duplicate_rate": 0.14285714285714285,
+      "target_fixation": 0.15384615384615385,
+      "action_entropy": null,
+      "lexical_diversity": 0.22875816993464052,
+      "content_evolution": 0.37403015849814,
+      "opener_variety": 0.35714285714285715,
+      "action_diversity": null,
+      "new_post_rate": null
+    }
+  },
+  "aggregated": {
+    "self_bleu": 0.17589789271998607,
+    "near_duplicate_rate": 0.33584348468069397,
+    "target_fixation": 0.3975885225885225,
+    "action_entropy": null,
+    "lexical_diversity": 0.2212433327235435,
+    "content_evolution": 0.6126511836620776,
+    "opener_variety": 0.47475083056478407,
+    "action_diversity": null,
+    "new_post_rate": null,
+    "inter_agent_distinctiveness": 0.2574876609163559
+  },
+  "summary": {
+    "total_posts": 130,
+    "seed_posts": 0,
+    "model_posts": 130,
+    "replies": 86,
+    "boosts": 18,
+    "original_posts": 26,
+    "total_actions": 0,
+    "agents": 4,
+    "steps": 9
+  }
+}

@@ -1,0 +1,169 @@
+# scenario/misinformation_thin.yaml
+# @package scenario
+#
+# Thin-persona variant of misinformation for H3 persona richness experiment.
+# Context stripped to one-liner; style and goal removed.
+# Seed posts, social network, and probes are IDENTICAL to the rich version.
+
+scenario_name: misinformation_thin
+
+jobname_format: "MisinfoThin_N${sim.num_agents}_T${sim.num_steps}_${sim.run_name}"
+
+setting:
+  name: Social Media Platform
+  background:
+    - A small social media community of six users with distinct personalities and habits.
+    - Users follow each other selectively, creating an asymmetric information flow.
+    - The platform allows posting, replying, liking, and boosting content.
+    - Misinformation about health topics circulates alongside neutral everyday content.
+
+event:
+  name: Misinformation Spread Study
+  context: |
+    A false health claim has been posted on the platform claiming that a common household
+    item causes serious health issues. The post urges users to share before it gets deleted.
+    Some users are primed to spread sensational content uncritically. Others are skeptical
+    fact-checkers. Most fall somewhere in between — trusting what their friends share,
+    swayed by emotion, or passively observing trends. The simulation studies how the
+    false claim propagates, gets countered, or is amplified across this small network.
+
+persona_pipeline:
+  processing_mode: raw
+  defaults:
+    params:
+      seed_post: ""
+      bio: ""
+      style: ""
+      goal: null
+      scenario_context: ${scenario.event.context}
+    shared_memories:
+      - ${scenario.event.context}
+
+  classes:
+    user:
+      count: 6
+      prefab_module: mastodon_sim.agents.entity
+      sim_role_name: user
+      data:
+        source: inline
+        records:
+          - name: Alice
+            username: alice
+            context: "Alice is a social media user."
+            seed_post: "BREAKING: Scientists confirm that common household item causes serious health issues! Share before they delete this! #health #mustread"
+
+          - name: Bob
+            username: bob
+            context: "Bob is a social media user."
+            seed_post: "Beautiful sunset today. Sometimes it's good to just appreciate the simple things. 🌅"
+
+          - name: Charlie
+            username: charlie
+            context: "Charlie is a social media user."
+            seed_post: "Just read an interesting article about critical thinking. Always verify claims before sharing — most viral health scares are misleading or outright false."
+
+          - name: Diana
+            username: diana
+            context: "Diana is a social media user."
+            seed_post: ""
+
+          - name: Eve
+            username: eve
+            context: "Eve is a social media user."
+            seed_post: ""
+
+          - name: Frank
+            username: frank
+            context: "Frank is a social media user who is new to the platform."
+            seed_post: ""
+
+      field_map:
+        name: name
+        username: username
+        context: context
+        seed_post: seed_post
+
+social_network:
+  network_type: predefined
+  predefined_graph:
+    Alice:   [Bob, Charlie, Diana]
+    Bob:     [Alice, Charlie]
+    Charlie: [Alice, Bob, Diana]
+    Diana:   [Alice, Bob, Charlie, Eve]
+    Eve:     [Alice, Diana]
+    Frank:   [Bob, Charlie, Eve]
+
+  activity_transition_rates:
+    user:
+      inactive_to_active: 0.8
+      active_to_inactive: 0.1
+
+  fully_connected_targets: []
+  base_followership_probability: 0.0
+
+shared_memories:
+  - ${scenario.event.context}
+  - ${scenario.setting.background}
+
+initial_observations:
+  - "{name} opens their social media feed and starts scrolling."
+  - "{name} notices some new posts from people they follow."
+
+probes:
+  deployment:
+    enabled: true
+    start_step: 1
+    every_n_steps: 1
+    include_entities: []
+    exclude_entities: []
+
+  queries:
+    believed_claim:
+      probe_name: believed_claim
+      query_type: BinaryProbe
+      query_data:
+        name: BelievedClaim
+        question: "Do you currently believe that a common household item causes serious health issues, based on what you have seen on social media? Answer yes or no."
+        context: "{agentname} is asked whether they believe the health claim circulating on the platform."
+
+    shared_misinfo:
+      probe_name: shared_misinfo
+      query_type: BinaryProbe
+      query_data:
+        name: SharedMisinfo
+        question: "Have you posted or boosted any content claiming that a household item causes health issues? Answer yes or no."
+        context: "{agentname} is asked whether they have spread the health claim."
+
+    source_trust:
+      probe_name: source_trust
+      query_type: NumericRatingProbe
+      query_data:
+        name: SourceTrust
+        question: "Return a single number from {lo} to {hi} reflecting how much you trust posts from accounts you don't personally know."
+        context: "{agentname} rates their general trust in unfamiliar social media sources, from {lo} (no trust at all) to {hi} (complete trust)."
+        lo: 1
+        hi: 10
+
+    misinfo_exposure:
+      probe_name: misinfo_exposure
+      query_type: FreeTextProbe
+      query_data:
+        name: MisinfoExposure
+        question: "Describe any health-related content you have seen on social media recently and what you think about it."
+        context: "{agentname} reflects on health-related posts they have encountered."
+
+    reasoning_view:
+      probe_name: reasoning_view
+      query_type: FreeTextProbe
+      query_data:
+        name: ReasoningView
+        question: "In 1-2 sentences, state your current personal view on the main topic being discussed on social media today, and identify the one thing that most shaped that view."
+        context: "{agentname} reflects on their current position and what influenced it."
+
+    private_journal:
+      probe_name: private_journal
+      query_type: FreeTextProbe
+      query_data:
+        name: PrivateJournal
+        question: "Write a private journal entry about your experience on social media today. This is completely private — no character limit, no audience. Be candid about what you actually think and feel."
+        context: "{agentname} writes freely without concern for how others will perceive them."

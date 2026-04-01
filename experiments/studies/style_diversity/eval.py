@@ -22,10 +22,37 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 
-from src.environments.social_media.app import Post, SocialMediaApp  # noqa: E402
+# ---------------------------------------------------------------------------
+# Post dataclass — mirrors the interface expected by metric functions.
+# Populated from mastodon_action_events.jsonl produced by this codebase.
+# ---------------------------------------------------------------------------
+
+import dataclasses  # noqa: E402
+
+
+@dataclasses.dataclass
+class Post:
+    """Represents a single post in the simulation."""
+
+    id: int
+    author: str
+    content: str
+    step: int
+    reply_to: int | None = None  # non-None → this is a reply
+    boost_of: int | None = None  # non-None → this is a repost/boost
+
+
+class _PostStore:
+    """Minimal stand-in for SocialMediaApp — only get_all_posts() is needed."""
+
+    def __init__(self, posts: list[Post]) -> None:
+        self._posts = posts
+
+    def get_all_posts(self) -> list[Post]:
+        return list(self._posts)
+
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -40,39 +67,85 @@ NEAR_DUPLICATE_THRESHOLD = 0.9  # Jaccard similarity threshold
 
 
 # ---------------------------------------------------------------------------
-# Data loading (reuses pattern from explore_dashboard.py)
+# Data loading
 # ---------------------------------------------------------------------------
 
 
-def load_checkpoint(path: str | Path) -> tuple[SocialMediaApp, list[dict[str, Any]]]:
-    """Load a checkpoint JSON and return (app, raw_log).
+def load_checkpoint(path: str | Path) -> tuple[_PostStore, list[dict[str, Any]]]:
+    """Load a simulation run and return (post_store, raw_log).
 
-    Handles three formats:
-    1. Full checkpoint: {game_masters: {gm_name: {state: {app_state: ...}}}, raw_log: [...]}
-    2. App state wrapper: {app_state: {...}}
-    3. Direct app state: {posts: [...], following: {...}, ...}
+    Reads:
+      - raw_log from the checkpoint JSON (concordia agent-action log)
+      - posts from mastodon_action_events.jsonl in the run output directory
+        (located at checkpoint.parent.parent relative to the checkpoint file)
+
+    Action event labels produced by TwitterLikeApp:
+      post   → original post   (data: post_id, post_text)
+      reply  → reply           (data: post_id, reply_to_id, post_text)
+      repost → boost/repost    (data: post_id = original being reposted)
     """
-    with Path(path).open() as f:
+    path = Path(path)
+    with path.open() as f:
         data = json.load(f)
 
-    raw_log: list[dict[str, Any]] = []
+    raw_log: list[dict[str, Any]] = data.get("raw_log", [])
 
-    # Format 1: full checkpoint
-    if "game_masters" in data:
-        raw_log = data.get("raw_log", [])
-        for gm_data in data["game_masters"].values():
-            state = gm_data.get("state", {})
-            if "app_state" in state:
-                return SocialMediaApp.from_dict(state["app_state"]), raw_log
-        raise ValueError("No app_state found in game_masters")
+    # mastodon_action_events.jsonl sits two levels above the checkpoint file:
+    #   outputs/{scenario}_experiment/{run}/checkpoints/step_N_checkpoint.json
+    #                                  ↑ run dir
+    output_dir = path.parent.parent
+    events_file = output_dir / "action_events.jsonl"
 
-    # Format 2: wrapped app state
-    if "app_state" in data:
-        raw_log = data.get("log", data.get("raw_log", []))
-        return SocialMediaApp.from_dict(data["app_state"]), raw_log
+    posts: list[Post] = []
+    if events_file.is_file():
+        with events_file.open() as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
 
-    # Format 3: direct
-    return SocialMediaApp.from_dict(data), raw_log
+                label = event.get("label", "")
+                episode = int(event.get("episode", 0))
+                source = str(event.get("source_user", ""))
+                ev_data = event.get("data", {}) or {}
+
+                if label == "post":
+                    posts.append(
+                        Post(
+                            id=int(ev_data.get("post_id", 0) or 0),
+                            author=source,
+                            content=str(ev_data.get("post_text", "")),
+                            step=episode,
+                        )
+                    )
+                elif label == "reply":
+                    reply_to_raw = ev_data.get("reply_to_id")
+                    posts.append(
+                        Post(
+                            id=int(ev_data.get("post_id", 0) or 0),
+                            author=source,
+                            content=str(ev_data.get("post_text", "")),
+                            step=episode,
+                            reply_to=int(reply_to_raw) if reply_to_raw is not None else None,
+                        )
+                    )
+                elif label == "repost":
+                    original_raw = ev_data.get("post_id")
+                    posts.append(
+                        Post(
+                            id=-1,  # new repost id not logged; -1 marks synthetic
+                            author=source,
+                            content="",
+                            step=episode,
+                            boost_of=int(original_raw) if original_raw is not None else None,
+                        )
+                    )
+
+    return _PostStore(posts), raw_log
 
 
 def extract_agent_actions(  # noqa: C901
@@ -391,6 +464,100 @@ def compute_inter_agent_distinctiveness(
 # ---------------------------------------------------------------------------
 
 
+def load_probe_responses(checkpoint_path: Path) -> dict[str, dict[str, list[str]]]:
+    """Load free-text probe responses from probe_events.jsonl.
+
+    Returns: {probe_label: {agent_name: [response, ...]}}
+    Only includes probes where raw_response is a non-empty string (i.e. FreeTextProbe).
+    """
+    output_dir = checkpoint_path.parent.parent
+    probe_file = output_dir / "probe_events.jsonl"
+    responses: dict[str, dict[str, list[str]]] = {}
+    if not probe_file.is_file():
+        return responses
+    with probe_file.open() as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            data = event.get("data", {})
+            raw = str(data.get("raw_response", "") or "").strip()
+            # Skip non-text probes (numeric / binary responses are short)
+            if not raw or len(raw) < 20:  # noqa: PLR2004
+                continue
+            label = str(event.get("label", ""))
+            agent = str(event.get("source_user", ""))
+            responses.setdefault(label, {}).setdefault(agent, []).append(raw)
+    return responses
+
+
+def compute_text_diversity(texts: list[str]) -> dict[str, float | None]:
+    """Compute diversity metrics on a list of text samples (post or probe responses)."""
+    if len(texts) < MIN_POSTS_FOR_TEXT_METRICS:
+        return dict.fromkeys(
+            ["self_bleu", "lexical_diversity", "opener_variety", "content_evolution"]
+        )
+
+    token_lists = [tokenize(t) for t in texts]
+
+    bleu_scores = []
+    for i, cand in enumerate(token_lists):
+        refs = [token_lists[j] for j in range(len(token_lists)) if j != i]
+        if refs:
+            bleu_scores.append(sum(bleu_score(cand, r) for r in refs) / len(refs))
+    sb = sum(bleu_scores) / len(bleu_scores) if bleu_scores else None
+
+    all_tokens = [t for tl in token_lists for t in tl]
+    ld = len(set(all_tokens)) / len(all_tokens) if all_tokens else None
+
+    openers = [tuple(tl[:5]) for tl in token_lists]
+    ov = len(set(openers)) / len(openers) if openers else None
+
+    vecs = [tf_vector(tl) for tl in token_lists]
+    dists = [cosine_distance(vecs[i], vecs[i + 1]) for i in range(len(vecs) - 1)]
+    ce = sum(dists) / len(dists) if dists else None
+
+    return {"self_bleu": sb, "lexical_diversity": ld, "opener_variety": ov, "content_evolution": ce}
+
+
+def compute_probe_diversity(checkpoint_path: Path) -> dict[str, Any]:
+    """Compute diversity of free-text probe responses.
+
+    For each free-text probe label returns:
+      - per_agent: within-agent diversity across steps (self-repetition in reasoning)
+      - inter_agent: diversity treating each agent's concatenated responses as a document
+    """
+    probe_responses = load_probe_responses(checkpoint_path)
+    result: dict[str, Any] = {}
+    for label, agent_responses in probe_responses.items():
+        # Per-agent: how diverse are an agent's responses across steps?
+        per_agent: dict[str, dict[str, float | None]] = {}
+        for agent, resps in agent_responses.items():
+            per_agent[agent] = compute_text_diversity(resps)
+
+        # Inter-agent: treat each agent's full response corpus as one document
+        agent_docs = [" ".join(resps) for resps in agent_responses.values() if resps]
+        inter_agent = compute_text_diversity(agent_docs)
+
+        # Mean per-agent metrics
+        mean_per_agent: dict[str, float | None] = {}
+        for m in ["self_bleu", "lexical_diversity", "opener_variety", "content_evolution"]:
+            vals = [per_agent[a][m] for a in per_agent if per_agent[a].get(m) is not None]
+            mean_per_agent[m] = sum(vals) / len(vals) if vals else None
+
+        result[label] = {
+            "inter_agent": inter_agent,
+            "mean_per_agent": mean_per_agent,
+            "n_agents": len(agent_responses),
+            "total_responses": sum(len(v) for v in agent_responses.values()),
+        }
+    return result
+
+
 def evaluate_checkpoint(path: str | Path) -> dict[str, Any]:
     """Run all metrics on a single checkpoint.
 
@@ -400,6 +567,7 @@ def evaluate_checkpoint(path: str | Path) -> dict[str, Any]:
         - aggregated: {metric: mean_value, ...}
         - corpus: {inter_agent_distinctiveness: value}
         - summary: {total_posts, total_actions, agents, steps, ...}
+        - probe_diversity: {probe_label: {inter_agent: {...}, mean_per_agent: {...}}}
     """
     path = Path(path)
     app, raw_log = load_checkpoint(path)
@@ -468,11 +636,14 @@ def evaluate_checkpoint(path: str | Path) -> dict[str, Any]:
         "steps": max_step,
     }
 
+    probe_diversity = compute_probe_diversity(path)
+
     return {
         "checkpoint": str(path),
         "agents": agent_metrics,
         "aggregated": aggregated,
         "summary": summary,
+        "probe_diversity": probe_diversity,
     }
 
 
@@ -779,15 +950,23 @@ def main() -> None:
 
     # Save JSON if requested
     if args.output:
-        out_dir = Path(args.output)
-        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path_arg = Path(args.output)
+        # If -o ends with .json and only one checkpoint, use it as the direct file path.
+        if out_path_arg.suffix == ".json" and len(all_results) == 1:
+            out_path_arg.parent.mkdir(parents=True, exist_ok=True)
+            with out_path_arg.open("w") as f:
+                json.dump(all_results[0], f, indent=2, default=str)
+            print(f"Saved: {out_path_arg}")
+        else:
+            out_dir = out_path_arg
+            out_dir.mkdir(parents=True, exist_ok=True)
 
-        for results in all_results:
-            cp_name = Path(results["checkpoint"]).stem
-            out_path = out_dir / f"eval_{cp_name}.json"
-            with out_path.open("w") as f:
-                json.dump(results, f, indent=2, default=str)
-            print(f"Saved: {out_path}")
+            for results in all_results:
+                cp_name = Path(results["checkpoint"]).stem
+                out_path = out_dir / f"eval_{cp_name}.json"
+                with out_path.open("w") as f:
+                    json.dump(results, f, indent=2, default=str)
+                print(f"Saved: {out_path}")
 
         if len(all_results) > 1:
             # Save combined comparison

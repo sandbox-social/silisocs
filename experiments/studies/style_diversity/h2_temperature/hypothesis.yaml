@@ -1,0 +1,10 @@
+id: h2_temperature
+statement: Higher sampling temperature produces more diverse agent behavior in gpt4o-mini,
+  partially closing the gap with gpt4o.
+independent_variable: temperature
+prediction: gpt4o-mini at temperature=1.5 outperforms gpt4o-mini at temperature=0.5
+  on diversity metrics across scenarios.
+status: testing
+conditions:
+- temp_0.5
+- temp_1.5

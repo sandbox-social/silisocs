@@ -2,6 +2,7 @@
 # @package sim
 
 llm_name: gpt-4o-mini
+llm_temperature: 0.5
 disable_language_model: false
 llm_api_base: null
 llm_api_key: null

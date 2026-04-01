@@ -139,8 +139,18 @@ def organize_study(data: dict[str, Any], *, dry_run: bool = False) -> Path:  # n
                     with config_path.open("w") as f:
                         yaml.dump(metadata, f, default_flow_style=False, sort_keys=False)
 
-                # 2. Symlink checkpoints
+                # 2. Symlink checkpoints (runner may nest output one level deeper)
                 checkpoints_src = source_dir / "checkpoints"
+                if not checkpoints_src.is_dir():
+                    subdirs = sorted(
+                        (p for p in source_dir.iterdir() if p.is_dir()),
+                        key=lambda p: p.stat().st_mtime,
+                    )
+                    for sub in reversed(subdirs):
+                        candidate = sub / "checkpoints"
+                        if candidate.is_dir():
+                            checkpoints_src = candidate
+                            break
                 checkpoints_link = run_dir / "checkpoints"
                 if checkpoints_src.is_dir():
                     create_relative_symlink(checkpoints_src, checkpoints_link, dry_run=dry_run)

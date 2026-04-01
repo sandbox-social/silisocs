@@ -1,0 +1,61 @@
+{
+  "checkpoint": "/mnt/c/Users/maxpu/Dropbox/scripts/Projects/socialsandbox/mastodon-sim/outputs/misinformation_experiment/2026-03-31_10-49-26/misinformation_2026-03-31_10-49-31/checkpoints/step_10_checkpoint.json",
+  "agents": {
+    "Diana": {
+      "self_bleu": 0.24220326532486347,
+      "near_duplicate_rate": 0.6666666666666666,
+      "target_fixation": 0.0967741935483871,
+      "action_entropy": null,
+      "lexical_diversity": 0.12297297297297298,
+      "content_evolution": 0.564080731453926,
+      "opener_variety": 0.3333333333333333,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Eve": {
+      "self_bleu": 0.17781533398905197,
+      "near_duplicate_rate": 0.575,
+      "target_fixation": 0.125,
+      "action_entropy": null,
+      "lexical_diversity": 0.12096774193548387,
+      "content_evolution": 0.5749770946950558,
+      "opener_variety": 0.375,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Frank": {
+      "self_bleu": 0.12133210217035842,
+      "near_duplicate_rate": 0.5116279069767442,
+      "target_fixation": 0.09523809523809523,
+      "action_entropy": null,
+      "lexical_diversity": 0.11493018259935553,
+      "content_evolution": 0.6558711993424913,
+      "opener_variety": 0.3488372093023256,
+      "action_diversity": null,
+      "new_post_rate": null
+    }
+  },
+  "aggregated": {
+    "self_bleu": 0.1804502338280913,
+    "near_duplicate_rate": 0.5844315245478037,
+    "target_fixation": 0.10567076292882745,
+    "action_entropy": null,
+    "lexical_diversity": 0.11962363250260415,
+    "content_evolution": 0.5983096751638244,
+    "opener_variety": 0.35239018087855295,
+    "action_diversity": null,
+    "new_post_rate": null,
+    "inter_agent_distinctiveness": 0.07622570907644222
+  },
+  "summary": {
+    "total_posts": 122,
+    "seed_posts": 0,
+    "model_posts": 122,
+    "replies": 113,
+    "boosts": 6,
+    "original_posts": 3,
+    "total_actions": 0,
+    "agents": 3,
+    "steps": 9
+  }
+}

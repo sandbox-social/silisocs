@@ -1,0 +1,59 @@
+# @package sim
+#
+# Sim overrides for ai_conference_thin scenario.
+# Identical to ai_conference — only persona depth differs (thin context, no style/goal).
+
+num_agents: 9
+num_steps: 8
+seed: 42
+run_name: ai_conference_thin
+memory_backend: list
+write_html_log: false
+
+action_mode: generic
+tool_calling:
+  mode: multi
+
+seed_posts:
+  type: llm
+
+enabled_actions:
+  - create_tweet
+  - reply_to_tweet
+  - like_tweet
+  - repost_tweet
+  - FINISHED
+
+timeline_posts: 10
+timeline_mode: follower_chronological
+
+engine:
+  preset: base
+  action_loop:
+    built_in: open_ended
+    params:
+      max_actions: 10
+      finished_action_signal: FINISHED
+      done_token: FINISHED
+  flow_routing:
+    flow_order: [fixed_pre, default]
+
+enable_engine_multi_flow: false
+enable_gm_multi_flow: false
+
+gm:
+  preset: base
+  components:
+    next_acting:
+      built_in: activity_probability
+      class_path: null
+      params: {}
+    observe:
+      built_in: timeline_every_turn
+      class_path: null
+      params:
+        episode_observation_flow: fixed_pre
+    resolve:
+      built_in: tool_calling
+      class_path: null
+      params: {}

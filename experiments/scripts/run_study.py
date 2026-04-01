@@ -41,10 +41,12 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 # ---------------------------------------------------------------------------
 
 
-def already_registered(hyp: dict[str, Any], cond_name: str, scenario: str) -> bool:
-    """Return True if this condition/scenario already has a run in study.yaml."""
+def already_registered(
+    hyp: dict[str, Any], cond_name: str, scenario: str, seed: int | None
+) -> bool:
+    """Return True if this condition/scenario/seed already has a run in study.yaml."""
     runs = hyp["conditions"].get(cond_name, {}).get("runs", [])
-    return any(r["scenario"] == scenario for r in runs)
+    return any(r["scenario"] == scenario and (seed is None or r.get("seed") == seed) for r in runs)
 
 
 def find_latest_output_dir(scenario: str) -> Path:
@@ -58,12 +60,27 @@ def find_latest_output_dir(scenario: str) -> Path:
 
 
 def find_checkpoint(source_dir: Path, max_steps: int) -> Path:
-    """Return the checkpoint file for the given step count."""
-    ckpt = source_dir / "checkpoints" / f"step_{max_steps}_checkpoint.json"
-    if not ckpt.is_file():
-        print(f"ERROR: checkpoint not found: {ckpt}", file=sys.stderr)
-        sys.exit(1)
-    return ckpt
+    """Return the checkpoint file for the given step count.
+
+    Searches source_dir directly, then one level of subdirectories, to handle
+    cases where the runner nests output under an extra subdirectory.
+    """
+    filename = f"step_{max_steps}_checkpoint.json"
+    # Direct location
+    ckpt = source_dir / "checkpoints" / filename
+    if ckpt.is_file():
+        return ckpt
+    # One level deeper (runner may nest output under a subdirectory)
+    subdirs = sorted(
+        (p for p in source_dir.iterdir() if p.is_dir()),
+        key=lambda p: p.stat().st_mtime,
+    )
+    for sub in reversed(subdirs):
+        ckpt = sub / "checkpoints" / filename
+        if ckpt.is_file():
+            return ckpt
+    print(f"ERROR: checkpoint not found: {source_dir / 'checkpoints' / filename}", file=sys.stderr)
+    sys.exit(1)
 
 
 def register_run(  # noqa: PLR0913
@@ -73,15 +90,18 @@ def register_run(  # noqa: PLR0913
     scenario: str,
     source: Path,
     eval_path: Path,
+    seed: int | None = None,
 ) -> None:
     """Append a completed run entry to study.yaml."""
     with study_path.open() as f:
         data = yaml.safe_load(f)
-    run_entry = {
+    run_entry: dict[str, Any] = {
         "scenario": scenario,
         "source": str(source.relative_to(PROJECT_ROOT)),
         "eval": str(eval_path.relative_to(PROJECT_ROOT)),
     }
+    if seed is not None:
+        run_entry["seed"] = seed
     data["hypotheses"][hyp_id]["conditions"][cond_name].setdefault("runs", []).append(run_entry)
     with study_path.open("w") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)
@@ -116,6 +136,7 @@ def run_study(
 
     eval_script = PROJECT_ROOT / "experiments" / "studies" / study_name / "eval.py"
     max_steps = int(run_overrides.get("simulation.execution.max_steps", 10))
+    seeds: list[int] | list[None] = study.get("seeds") or [None]
 
     for hyp_id, hyp in data["hypotheses"].items():
         if hypothesis_filter and hyp_id != hypothesis_filter:
@@ -128,26 +149,38 @@ def run_study(
                 print(f"  [{cond_name}] no cli_override — skipping")
                 continue
 
-            for scenario in scenarios:
-                if already_registered(hyp, cond_name, scenario):
-                    print(f"  [{cond_name}/{scenario}] already registered — skipping")
-                    continue
+            # Conditions may override the study-level scenario list (e.g. thin variants).
+            cond_scenarios = cond.get("scenarios") or scenarios
+            for scenario in cond_scenarios:
+                for seed in seeds:
+                    seed_tag = f"seed={seed}" if seed is not None else "seed=default"
+                    if already_registered(hyp, cond_name, scenario, seed):
+                        print(
+                            f"  [{cond_name}/{scenario}/{seed_tag}] already registered — skipping"
+                        )
+                        continue
 
-                print(f"\n  [{cond_name}/{scenario}]")
+                    print(f"\n  [{cond_name}/{scenario}/{seed_tag}]")
 
-                # Stage 1: Simulate
-                sim_cmd = [
-                    "uv",
-                    "run",
-                    "python",
-                    "run_experiment.py",
-                    f"scenario={scenario}",
-                    *shared_override_args,
-                    cli_override,
-                ]
-                run_cmd(sim_cmd, dry_run=dry_run)
+                    seed_args = [f"sim.seed={seed}"] if seed is not None else []
 
-                if dry_run:
+                    # Stage 1: Simulate
+                    # Split cli_override on whitespace so multi-arg overrides like
+                    # "model=gpt4omini temperature=1.5" become separate argv elements.
+                    cli_override_args = cli_override.split()
+                    sim_cmd = [
+                        "uv",
+                        "run",
+                        "python",
+                        "run_experiment.py",
+                        f"scenario={scenario}",
+                        *shared_override_args,
+                        *cli_override_args,
+                        *seed_args,
+                    ]
+                    run_cmd(sim_cmd, dry_run=dry_run)
+
+                    seed_dir = f"seed_{seed}" if seed is not None else "seed_default"
                     eval_out = (
                         PROJECT_ROOT
                         / "outputs"
@@ -155,50 +188,48 @@ def run_study(
                         / hyp_id
                         / cond_name
                         / scenario
+                        / seed_dir
                         / "eval.json"
                     )
-                    run_cmd(
-                        [
-                            "uv",
-                            "run",
-                            "python",
-                            str(eval_script),
-                            "<checkpoint>",
-                            "-o",
-                            str(eval_out),
-                        ],
-                        dry_run=True,
+
+                    if dry_run:
+                        run_cmd(
+                            [
+                                "uv",
+                                "run",
+                                "python",
+                                str(eval_script),
+                                "<checkpoint>",
+                                "-o",
+                                str(eval_out),
+                            ],
+                            dry_run=True,
+                        )
+                        print(
+                            f"    [register] study.yaml <- {hyp_id}/{cond_name}/{scenario}/{seed_tag}"
+                        )
+                        continue
+
+                    # Stage 2: Evaluate
+                    source_dir = find_latest_output_dir(scenario)
+                    checkpoint = find_checkpoint(source_dir, max_steps)
+                    eval_out.parent.mkdir(parents=True, exist_ok=True)
+                    eval_cmd = [
+                        "uv",
+                        "run",
+                        "python",
+                        str(eval_script),
+                        str(checkpoint),
+                        "-o",
+                        str(eval_out),
+                    ]
+                    run_cmd(eval_cmd, dry_run=False)
+
+                    # Stage 3: Register
+                    register_run(
+                        study_path, hyp_id, cond_name, scenario, source_dir, eval_out, seed=seed
                     )
-                    print(f"    [register] study.yaml <- {hyp_id}/{cond_name}/{scenario}")
-                    continue
-
-                # Stage 2: Evaluate
-                source_dir = find_latest_output_dir(scenario)
-                checkpoint = find_checkpoint(source_dir, max_steps)
-                eval_out = (
-                    PROJECT_ROOT
-                    / "outputs"
-                    / f"eval_{study_name}"
-                    / hyp_id
-                    / cond_name
-                    / scenario
-                    / "eval.json"
-                )
-                eval_out.parent.mkdir(parents=True, exist_ok=True)
-                eval_cmd = [
-                    "uv",
-                    "run",
-                    "python",
-                    str(eval_script),
-                    str(checkpoint),
-                    "-o",
-                    str(eval_out),
-                ]
-                run_cmd(eval_cmd, dry_run=False)
-
-                # Stage 3: Register
-                register_run(study_path, hyp_id, cond_name, scenario, source_dir, eval_out)
-                print("    registered in study.yaml")
+                    print("    registered in study.yaml")
 
     # Stage 4: Organize
     organizer = PROJECT_ROOT / "experiments" / "scripts" / "organize_experiments.py"
