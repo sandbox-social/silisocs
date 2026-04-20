@@ -31,7 +31,6 @@ os.chdir(PROJECT_ROOT)
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 # mastodon_sim functions
-from mastodon_sim.mastodon_ops import check_env, clear_mastodon_server
 from sim.sim_utils.agent_speech_utils import (
     deploy_probes,
 )
@@ -50,6 +49,8 @@ from sim.sim_utils.misc_sim_utils import (
     StdoutToLogger,
     get_sentence_encoder,
 )
+
+from mastodon_sim.mastodon_ops import check_env, clear_mastodon_server
 
 
 def run_sim(

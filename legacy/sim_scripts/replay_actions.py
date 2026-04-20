@@ -12,7 +12,6 @@ import sys
 import threading
 from collections import OrderedDict
 
-from mastodon_sim.mastodon_ops import check_env, clear_mastodon_server
 from mastodon_sim.mastodon_ops.boost import boost_toot
 from mastodon_sim.mastodon_ops.follow import follow
 from mastodon_sim.mastodon_ops.get_client import get_client
@@ -21,6 +20,8 @@ from mastodon_sim.mastodon_ops.login import login
 from mastodon_sim.mastodon_ops.post_status import post_status
 from mastodon_sim.mastodon_ops.unfollow import unfollow
 from mastodon_sim.mastodon_utils.get_users_from_env import get_users_from_env
+
+from mastodon_sim.mastodon_ops import check_env, clear_mastodon_server
 
 
 def build_display_mapping(displays):
