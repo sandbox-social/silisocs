@@ -27,7 +27,7 @@ class RunConfig:
             "twhin": "recsys_twhin",
         }[self.timeline_type]
 
-        run_label = f"clean50x10_seed{self.seed}_{mode_name}_like_20_9b"
+        run_label = f"clean50x10_seed{self.seed}_{mode_name}_single_act"
         cmd = [
             "uv",
             "run",
@@ -38,7 +38,9 @@ class RunConfig:
             "scenarios/election_recsys_engagement/conf",
             "scenario=election_recsys_engagement",
             "sim.num_agents=50",
-            "sim.num_steps=10",
+            "sim.num_steps=50",
+            "sim.engine.action_loop.built_in=single_action",
+            "sim.tool_calling.mode=single",
             f"sim.seed={self.seed}",
             f"sim.run_name={run_label}",
             f"experiment_name={run_label}",
@@ -104,7 +106,7 @@ def main() -> None:
     seeds = list(range(11, 21))
 
     # 16 concurrent runs (equivalent to your old 8-seed * 2-timeline batch)
-    max_concurrent = 10
+    max_concurrent = 16
     timeout_per_run_s = 3 * 3600
 
     pending_runs = build_all_runs(seeds)
