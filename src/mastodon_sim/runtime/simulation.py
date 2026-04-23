@@ -450,8 +450,19 @@ class Simulation(simulation_lib.Simulation):
         os.makedirs(checkpoint_path, exist_ok=True)
         checkpoint_file = os.path.join(checkpoint_path, f"step_{step}_checkpoint.json")
         try:
+            from omegaconf import DictConfig, ListConfig, OmegaConf
+
+            def _to_plain(obj: Any) -> Any:
+                if isinstance(obj, (DictConfig, ListConfig)):
+                    return OmegaConf.to_container(obj, resolve=True)
+                if isinstance(obj, dict):
+                    return {k: _to_plain(v) for k, v in obj.items()}
+                if isinstance(obj, list):
+                    return [_to_plain(v) for v in obj]
+                return obj
+
             with open(checkpoint_file, "w") as f:
-                json.dump(checkpoint_data, f, indent=2)
+                json.dump(_to_plain(checkpoint_data), f, indent=2)
             print(f"Step {step}: Saved checkpoint to {checkpoint_file}")
         except OSError as e:
             print(f"Error saving checkpoint at step {step}: {e}")

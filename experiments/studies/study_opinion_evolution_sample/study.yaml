@@ -11,14 +11,14 @@ study:
     - election
   parent_studies: []
   derived_from_runs: []
-  study_summary_path: experiments/election_opinion_evolution_sample/SUMMARY.md
-  summary_log_path: experiments/election_opinion_evolution_sample/generated/summary_log.jsonl
+  study_summary_path: experiments/studies/election_opinion_evolution_sample/SUMMARY.md
+  summary_log_path: experiments/studies/election_opinion_evolution_sample/generated/summary_log.jsonl
 
   run_defaults:
     config_path: scenarios/election/conf
     runner_module: mastodon_sim.runtime.runner
     run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
-    output_root_override: "experiments/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
 
     seed_start: 11
     seed_repeats: 3
@@ -116,4 +116,4 @@ hypotheses:
           runs:
             - scenario: election
               seed: 11
-              source: experiments/election_opinion_evolution_sample/runs/h1_timeline_impacts_opinion_trajectory/case3_recsys_twhin/election/seed_11/run
+              source: experiments/studies/election_opinion_evolution_sample/runs/h1_timeline_impacts_opinion_trajectory/case3_recsys_twhin/election/seed_11/run

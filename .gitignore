@@ -202,6 +202,12 @@ site/
 
 # Generated study orchestration artifacts (keep authored study.yaml files tracked)
 experiments/*/generated/
+experiments/studies/*/generated/
+
+# Large generated study analysis artifacts
+experiments/studies/**/*.ipynb
+experiments/studies/**/*.pdf
+experiments/studies/**/*.png
 
 # SQLite transient files from local backend tests
 *.db-shm

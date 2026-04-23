@@ -12,12 +12,12 @@ Use this when you need:
 ## Quick Start
 
 ```sh
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml plan
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml generate-bash
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml run
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml run --only-hypothesis h2_followup_from_h1
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml run --only-sub-experiment bill_bias
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml summary-append --author analyst --hypothesis h1_timeline_mechanism --note "Observed higher interaction counts in recsys arms" --evidence experiments/recsys_behavior_sweep/generated/repro_lock.json
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 plan
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 generate-bash
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 run
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 run --only-hypothesis h2_followup_from_h1
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 run --only-sub-experiment bill_bias
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 summary-append --author analyst --hypothesis h1_timeline_mechanism --note "Observed higher interaction counts in recsys arms" --evidence experiments/studies/recsys_behavior_sweep/generated/repro_lock.json
 ```
 
 Compatibility note:
@@ -32,13 +32,13 @@ study:
   name: recsys_behavior_sweep
   study_id: recsys_behavior_sweep
   question: "How do timeline settings shift engagement?"
-  study_summary_path: experiments/recsys_behavior_sweep/SUMMARY.md
-  summary_log_path: experiments/recsys_behavior_sweep/generated/summary_log.jsonl
+  study_summary_path: experiments/studies/recsys_behavior_sweep/SUMMARY.md
+  summary_log_path: experiments/studies/recsys_behavior_sweep/generated/summary_log.jsonl
   scenarios: [election_recsys_engagement]
   run_defaults:
     config_path: scenarios/election_recsys_engagement/conf
     run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
-    output_root_override: "experiments/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
     seed_start: 11
     seed_repeats: 3
     overrides:
@@ -145,10 +145,10 @@ Detailed probe evaluators use `effective_config.yaml` to map probe labels to con
 
 ## Outputs
 
-Study artifacts are written under:
+Study artifacts are written under the study directory:
 
 ```text
-experiments/{study_id}/generated/
+experiments/studies/{study_id}/generated/
   plan.json
   run_study.sh
   repro_lock.jsonl
@@ -162,44 +162,71 @@ experiments/{study_id}/generated/
 Simulation outputs are grouped by hypothesis/condition/scenario/seed:
 
 ```text
-experiments/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run
+experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run
 ```
 
 Evaluator outputs mirror that hierarchy:
 
 ```text
-experiments/{study_id}/generated/eval/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/{eval_id}/...
+experiments/studies/{study_id}/generated/eval/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/{eval_id}/...
 ```
+
+When you run a study, the workflow is:
+
+1. validate and expand the study YAML into concrete runs
+2. execute fresh runs or reuse existing ones
+3. run configured evaluators for each record
+4. write reproducibility artifacts (`repro_lock.jsonl`, `repro_lock.json`, `study_index.json`, `study_enriched.yaml`)
+5. rebuild a notebook-friendly organized tree under `generated/organized/`
+
+The organized tree looks like this:
+
+```text
+experiments/studies/{study_id}/generated/organized/
+  study_summary.yaml
+  summary.json
+  {hypothesis_id}/
+    hypothesis.yaml
+    runs.json
+    {condition_id}/{scenario}/seed_{seed}/
+      config.yaml
+      run -> <symlink to the run directory when available>
+      eval.json -> <symlink to the first evaluator output>
+      evals/{eval_id}/...
+```
+
+`run` builds both the raw and organized outputs. `organize` can be called later
+to rebuild just the organized view from `repro_lock.json`.
 
 ## Iterative Workflow (h1 -> analyze -> h2)
 
 1. Execute initial hypotheses:
 
 ```sh
-uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1.yaml run --only-hypothesis h1_initial_news_bias_shift
+uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1 run --only-hypothesis h1_initial_news_bias_shift
 ```
 
 2. Review evidence and append summary:
 
 ```sh
-uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1.yaml summary-append --author researcher --hypothesis h1_initial_news_bias_shift --note "Bias direction changed vote and favorability trajectories" --evidence experiments/election_opinion_program_v1/generated/repro_lock.json
+uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1 summary-append --author researcher --hypothesis h1_initial_news_bias_shift --note "Bias direction changed vote and favorability trajectories" --evidence experiments/studies/election_opinion_program_v1/generated/repro_lock.json
 ```
 
 3. Run follow-up hypothesis only:
 
 ```sh
-uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1.yaml run --only-hypothesis h2_initial_persona_prior_carryover
+uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1 run --only-hypothesis h2_initial_persona_prior_carryover
 ```
 
 Sample study file:
-- `experiments/studies/election_opinion_program_v1.yaml`
+- `experiments/studies/election_opinion_program_v1/study.yaml`
 
 ## HPC Array Launch
 
 Local orchestration does **not** require Slurm/HPC:
 
 ```sh
-uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1.yaml run --only-hypothesis h1_initial_news_bias_shift
+uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1 run --only-hypothesis h1_initial_news_bias_shift
 ```
 
 Use the following only when dispatching to a Slurm cluster.
@@ -215,7 +242,7 @@ Use `slurm-array` to compute array size from filtered study runs and print/submi
 
 ```sh
 uv run python -m experiments.run_study \
-  --study experiments/studies/election_opinion_program_v1.yaml \
+  --study experiments/studies/election_opinion_program_v1 \
   slurm-array \
   --base-script slurm_scripts/narval-hpc-4GPU-array.sh \
   --array-mode case \

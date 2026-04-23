@@ -704,6 +704,7 @@ def main(cfg: DictConfig):
                     disable_language_model=getattr(cfg.sim, "disable_language_model", False),
                     api_base=llm_api_base,
                     api_key=llm_api_key,
+                    temperature=float(getattr(cfg.sim, "llm_temperature", 0.5)),
                 )
 
         # Use the configured default model for compatibility (should be present in `models`).
@@ -716,6 +717,7 @@ def main(cfg: DictConfig):
                 disable_language_model=getattr(cfg.sim, "disable_language_model", False),
                 api_base=llm_api_base,
                 api_key=llm_api_key,
+                temperature=float(getattr(cfg.sim, "llm_temperature", 0.5)),
             )
     _log_startup_phase("model_creation", time.time() - t0, f"unique_models={len(models)}")
 

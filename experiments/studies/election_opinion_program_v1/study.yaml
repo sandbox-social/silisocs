@@ -11,14 +11,14 @@ study:
     - election_recsys_engagement
   parent_studies: []
   derived_from_runs: []
-  study_summary_path: experiments/election_opinion_program_v1/SUMMARY.md
-  summary_log_path: experiments/election_opinion_program_v1/generated/summary_log.jsonl
+  study_summary_path: experiments/studies/election_opinion_program_v1/SUMMARY.md
+  summary_log_path: experiments/studies/election_opinion_program_v1/generated/summary_log.jsonl
 
   run_defaults:
     config_path: scenarios/election_recsys_engagement/conf
     runner_module: mastodon_sim.runtime.runner
     run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
-    output_root_override: "experiments/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
 
     seed_start: 11
     seed_repeats: 10
@@ -42,13 +42,13 @@ study:
     constraints: "Run initial hypotheses first, then iterate using follow-up hypotheses only."
     path_conventions:
       run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
-      run_output_template: "experiments/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
-      generated_artifacts_root: "experiments/{study_id}/generated"
+      run_output_template: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+      generated_artifacts_root: "experiments/studies/{study_id}/generated"
       eval_output_template: "{run_output_template}/{eval_output_subpath}"
-      repro_lock_jsonl: "experiments/{study_id}/generated/repro_lock.jsonl"
-      repro_lock_json: "experiments/{study_id}/generated/repro_lock.json"
-      study_index_json: "experiments/{study_id}/generated/study_index.json"
-      enriched_study_yaml: "experiments/{study_id}/generated/study_enriched.yaml"
+      repro_lock_jsonl: "experiments/studies/{study_id}/generated/repro_lock.jsonl"
+      repro_lock_json: "experiments/studies/{study_id}/generated/repro_lock.json"
+      study_index_json: "experiments/studies/{study_id}/generated/study_index.json"
+      enriched_study_yaml: "experiments/studies/{study_id}/generated/study_enriched.yaml"
 
 # Detailed eval outputs for per-episode/per-agent trend analysis.
 evaluations:

@@ -6,7 +6,7 @@ set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-$HOME/mastodon-sim}"
 UV_HOME="${UV_HOME:-$HOME}"
-STUDY_FILE="${STUDY_FILE:-experiments/studies/election_opinion_program_v1.yaml}"
+STUDY_FILE="${STUDY_FILE:-experiments/studies/election_opinion_program_v1}"
 UV_PROJECT_DIR="${UV_PROJECT_DIR:-${REPO_ROOT}}"
 VLLM_BIN="${VLLM_BIN:-$HOME/.venvs/vllm-home/bin/vllm}"
 HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-0}"
@@ -34,8 +34,8 @@ if [[ ! -d "${REPO_ROOT}" ]]; then
   exit 1
 fi
 
-if [[ ! -f "${REPO_ROOT}/${STUDY_FILE}" ]]; then
-  echo "Study file not found: ${REPO_ROOT}/${STUDY_FILE}" >&2
+if [[ ! -f "${REPO_ROOT}/${STUDY_FILE}" && ! -d "${REPO_ROOT}/${STUDY_FILE}" ]]; then
+  echo "Study path not found: ${REPO_ROOT}/${STUDY_FILE}" >&2
   exit 1
 fi
 

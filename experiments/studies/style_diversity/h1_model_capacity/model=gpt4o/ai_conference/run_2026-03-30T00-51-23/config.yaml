@@ -1,0 +1,17 @@
+source: outputs/ai_conference_experiment/2026-03-30_00-51-23
+model_name: null
+model_config: null
+scenario: null
+scenario_description: null
+max_steps: null
+seed: null
+cli_overrides:
+- scenario=ai_conference
+- sim.llm_name=gpt-4o
+- sim.num_steps=10
+- sim.checkpoint.explicit_steps=[10]
+- sim.seed=42
+run_command: uv run python run_experiment.py scenario=ai_conference sim.llm_name=gpt-4o
+  sim.num_steps=10 sim.checkpoint.explicit_steps=[10] sim.seed=42
+condition: gpt4o
+hypothesis: h1_model_capacity

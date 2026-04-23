@@ -33,7 +33,7 @@ Interpretation:
 - A strong common initial Bill advantage appears across all three conditions and carries through trajectories, suggesting initialization priors/persona composition likely dominate treatment signal.
 
 Artifacts:
-- Cross-case summary JSON: `experiments/election_opinion_program_v1/generated/eval/h1_initial_news_bias_shift/_cross_case_summary_h1.json`
+- Cross-case summary JSON: `experiments/studies/election_opinion_program_v1/generated/eval/h1_initial_news_bias_shift/_cross_case_summary_h1.json`
 - Aggregated plots present for all three cases under each case's `_aggregated_across_seeds/`.
 
 ## H2: h2_initial_persona_prior_carryover

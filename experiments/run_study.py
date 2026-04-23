@@ -34,6 +34,12 @@ from typing import Any
 
 import yaml
 
+from experiments._internal.study_artifacts import (
+    load_study_definition,
+    organize_study_outputs,
+    resolve_study_definition_path,
+)
+
 SCHEMA_VERSION = 1
 DEFAULT_RUNNER_MODULE = "mastodon_sim.runtime.runner"
 PROCESS_TIMEOUT_RC = 124
@@ -220,11 +226,10 @@ def _now_iso() -> str:
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
-    with path.open("r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    if not isinstance(data, dict):
-        raise StudyConfigError(f"Study file must load to a mapping: {path}")
-    return data
+    try:
+        return load_study_definition(path)
+    except (FileNotFoundError, ValueError) as e:
+        raise StudyConfigError(str(e)) from e
 
 
 def _write_yaml(path: Path, data: dict[str, Any]) -> None:
@@ -768,7 +773,10 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                             output_root_override, template_context
                         )
                     else:
-                        output_rootname = f"experiments/{study_id}/runs/{hyp_id}/{cond_id}/{scenario}/seed_{seed}/run"
+                        output_rootname = (
+                            f"experiments/studies/{study_id}/runs/"
+                            f"{hyp_id}/{cond_id}/{scenario}/seed_{seed}/run"
+                        )
                     command_override = None
                     if command_template is not None:
                         command_override = _format_command_template(
@@ -1241,9 +1249,13 @@ def _filter_run_specs(
     return filtered
 
 
-def _study_generated_dir(repo_root: Path, study: dict[str, Any]) -> Path:
+def _study_workspace_dir(repo_root: Path, study: dict[str, Any]) -> Path:
     study_id = _resolve_study_id(study)
-    return repo_root / "experiments" / study_id / "generated"
+    return repo_root / "experiments" / "studies" / study_id
+
+
+def _study_generated_dir(repo_root: Path, study: dict[str, Any]) -> Path:
+    return _study_workspace_dir(repo_root, study) / "generated"
 
 
 def _write_study_index(
@@ -1269,9 +1281,14 @@ def _resolve_summary_paths(repo_root: Path, study_data: dict[str, Any]) -> tuple
     study = _ensure_mapping("study", study_data.get("study"))
     study_id = _resolve_study_id(study)
 
-    summary_md_raw = str(study.get("study_summary_path", f"experiments/{study_id}/SUMMARY.md"))
+    summary_md_raw = str(
+        study.get("study_summary_path", f"experiments/studies/{study_id}/SUMMARY.md")
+    )
     summary_log_raw = str(
-        study.get("summary_log_path", f"experiments/{study_id}/generated/summary_log.jsonl")
+        study.get(
+            "summary_log_path",
+            f"experiments/studies/{study_id}/generated/summary_log.jsonl",
+        )
     )
 
     summary_md = Path(summary_md_raw)
@@ -1334,7 +1351,7 @@ def cmd_summary_append(args: argparse.Namespace) -> int:
 
 def cmd_plan(args: argparse.Namespace) -> int:
     """Validate and expand a study file into a deterministic run plan."""
-    study_path = Path(args.study).resolve()
+    study_path = resolve_study_definition_path(Path(args.study).resolve())
     study_data = _load_yaml(study_path)
     run_specs, eval_specs, study = _expand_runs(study_path, study_data)
     run_specs = _filter_run_specs(
@@ -1368,7 +1385,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
 def cmd_generate_bash(args: argparse.Namespace) -> int:
     """Render all runnable study commands into a portable bash script."""
-    study_path = Path(args.study).resolve()
+    study_path = resolve_study_definition_path(Path(args.study).resolve())
     repo_root = Path(args.repo_root).resolve()
     study_data = _load_yaml(study_path)
     run_specs, _, study = _expand_runs(study_path, study_data)
@@ -1393,7 +1410,7 @@ def cmd_generate_bash(args: argparse.Namespace) -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
     """Execute the expanded study plan and write reproducibility artifacts."""
-    study_path = Path(args.study).resolve()
+    study_path = resolve_study_definition_path(Path(args.study).resolve())
     repo_root = Path(args.repo_root).resolve()
 
     study_data = _load_yaml(study_path)
@@ -1503,7 +1520,47 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
     print(f"Study index JSON: {study_index}")
     print(f"Enriched study YAML: {enriched_yaml}")
 
+    organized_dir = organize_study_outputs(
+        repo_root,
+        study_data,
+        records,
+        dry_run=args.dry_run,
+    )
+    print(f"Organized study tree: {organized_dir}")
+
     return 1 if failed else 0
+
+
+def cmd_organize(args: argparse.Namespace) -> int:
+    """Rebuild organized study artifacts from existing reproducibility records."""
+    study_path = resolve_study_definition_path(Path(args.study).resolve())
+    repo_root = Path(args.repo_root).resolve()
+
+    study_data = _load_yaml(study_path)
+    generated_dir = _study_generated_dir(
+        repo_root, _ensure_mapping("study", study_data.get("study"))
+    )
+    lock_json = generated_dir / "repro_lock.json"
+
+    if not lock_json.is_file():
+        raise StudyConfigError(f"Missing repro_lock.json: {lock_json}")
+
+    with lock_json.open("r", encoding="utf-8") as f:
+        payload = json.load(f)
+
+    records = payload.get("records", [])
+    if not isinstance(records, list):
+        raise StudyConfigError(f"Invalid repro_lock.json records payload: {lock_json}")
+
+    organized_dir = organize_study_outputs(
+        repo_root,
+        study_data,
+        records,
+        dry_run=args.dry_run,
+        clean=not args.keep_existing,
+    )
+    print(f"Organized study tree: {organized_dir}")
+    return 0
 
 
 def _csv_compact(value: str | None) -> str:
@@ -1541,7 +1598,7 @@ def _count_array_tasks(run_specs: list[RunSpec], array_mode: str) -> int:
 
 def cmd_slurm_array(args: argparse.Namespace) -> int:
     """Generate (and optionally submit) a Slurm sbatch command from filtered study runs."""
-    study_path = Path(args.study).resolve()
+    study_path = resolve_study_definition_path(Path(args.study).resolve())
     repo_root = Path(args.repo_root).resolve()
     base_script = Path(args.base_script).resolve()
 
@@ -1624,7 +1681,11 @@ def cmd_slurm_array(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     """Build parser for planning, generation, and execution commands."""
     parser = argparse.ArgumentParser(description="Structured study runner for mastodon-sim")
-    parser.add_argument("--study", required=True, help="Path to study YAML file")
+    parser.add_argument(
+        "--study",
+        required=True,
+        help="Path to a study directory or study.yaml file",
+    )
     parser.add_argument(
         "--repo-root",
         default=".",
@@ -1715,6 +1776,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional comma-separated seed values to include",
     )
     p_run.set_defaults(func=cmd_run)
+
+    p_org = sub.add_parser("organize", help="Rebuild organized study artifacts")
+    p_org.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Do not write files, only validate and resolve paths",
+    )
+    p_org.add_argument(
+        "--keep-existing",
+        action="store_true",
+        help="Do not clean the organized output directory before rebuilding",
+    )
+    p_org.set_defaults(func=cmd_organize)
 
     p_slurm = sub.add_parser(
         "slurm-array",

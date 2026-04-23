@@ -340,7 +340,7 @@ class TwitterLikeApp(SocialMediaApp):
         """Post a new tweet to the timeline.
 
         Args:
-            current_user: The full display name of the user posting (e.g. "Alice Smith").
+            current_user: The display name of the character you are currently simulating.
             status: The text content of the tweet (max 280 characters).
         """
         current_user_full = str(current_user)

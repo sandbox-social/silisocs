@@ -531,9 +531,9 @@ This means your scenario files only need to specify what's **different** from de
 For multi-condition research studies (hypothesis trees, seed sweeps, condition-specific evaluators), use:
 
 ```bash
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml plan
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml generate-bash
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml run
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 plan
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 generate-bash
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 run
 ```
 
 Code placement:
@@ -561,12 +561,12 @@ study:
   scenarios: [election_recsys_engagement]
   parent_studies: []
   derived_from_runs: []
-  study_summary_path: experiments/recsys_behavior_sweep/SUMMARY.md
-  summary_log_path: experiments/recsys_behavior_sweep/generated/summary_log.jsonl
+  study_summary_path: experiments/studies/recsys_behavior_sweep/SUMMARY.md
+  summary_log_path: experiments/studies/recsys_behavior_sweep/generated/summary_log.jsonl
   run_defaults:
     config_path: scenarios/election_recsys_engagement/conf
     run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
-    output_root_override: "experiments/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
     seed_start: 11
     seed_repeats: 3
     overrides:
@@ -710,10 +710,10 @@ These detailed evaluators read `action_events.jsonl` and use `effective_config.y
 
 ### Generated artifacts
 
-Each study writes orchestration artifacts under:
+Each study writes orchestration artifacts under its study directory:
 
 ```text
-experiments/{study_id}/generated/
+experiments/studies/{study_id}/generated/
   plan.json
   run_study.sh
   repro_lock.jsonl
@@ -727,31 +727,47 @@ experiments/{study_id}/generated/
 Simulation outputs are organized by study/hypothesis/condition/scenario with seed at the lowest level:
 
 ```text
-experiments/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run
+experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run
 ```
 
 Recommended output policy:
-- Study runs: write into `experiments/{study_id}/runs/...` for clean lineage and cross-hypothesis organization.
+- Study runs: write into `experiments/studies/{study_id}/runs/...` for clean lineage and cross-hypothesis organization.
 - Scenario-local `scenarios/<name>/outputs/...`: reserve for ad hoc/manual scenario testing outside study orchestration.
 
 Rolling summary artifacts for humans/LLMs:
-- `experiments/{study_id}/SUMMARY.md`
-- `experiments/{study_id}/generated/summary_log.jsonl`
+- `experiments/studies/{study_id}/SUMMARY.md`
+- `experiments/studies/{study_id}/generated/summary_log.jsonl`
 
 Append summary entries from CLI:
 
 ```bash
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml summary-append \
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 summary-append \
   --author analyst \
   --hypothesis h1_timeline_mechanism \
   --note "Observed stronger interaction rates in recsys conditions" \
-  --evidence experiments/recsys_behavior_sweep/generated/repro_lock.json
+  --evidence experiments/studies/recsys_behavior_sweep/generated/repro_lock.json
+
+The runner also writes an organized analysis tree for notebook use:
+
+```text
+experiments/studies/{study_id}/generated/organized/
+  study_summary.yaml
+  summary.json
+  {hypothesis_id}/
+    hypothesis.yaml
+    runs.json
+    {condition_id}/{scenario}/seed_{seed}/
+      config.yaml
+      run -> <symlink to simulation output>
+      eval.json -> <symlink to first evaluator output>
+      evals/{eval_id}/...
+```
 ```
 
 Subset execution controls:
 
 ```bash
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1.yaml run \
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 run \
   --only-hypothesis h1_timeline_mechanism \
   --only-sub-experiment bill_bias
 ```
@@ -764,5 +780,4 @@ You can keep interpretation text in the same study YAML:
 - `hypotheses.<id>.conditions.<id>.analysis.*`
 
 Start from:
-- `experiments/studies/study_template_v1.yaml`
-
+- `experiments/studies/study_template_v1/study.yaml`
