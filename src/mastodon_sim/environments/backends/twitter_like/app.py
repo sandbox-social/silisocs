@@ -97,11 +97,10 @@ class TwitterLikeApp(SocialMediaApp):
         # Seed posts.
         for display_name, post_text in seed_posts.items():
             if post_text:
-                username = self._get_username(display_name)
                 try:
-                    self._platform.create_post(username, post_text)
+                    self.create_tweet(display_name, post_text)
                 except Exception as e:
-                    self._print(f"Seed post error for {username}: {e}", color="red")
+                    self._print(f"Seed post error for {display_name}: {e}", color="red")
 
         follow_edges = sum(len(v) for v in following.values())
         self._log_action_event(

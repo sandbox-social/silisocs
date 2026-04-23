@@ -188,7 +188,7 @@ uv run python -m experiments.run_study --study experiments/studies/election_opin
 3. Run follow-up hypothesis only:
 
 ```sh
-uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1.yaml run --only-hypothesis h2_followup_timeline_effects
+uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1.yaml run --only-hypothesis h2_initial_persona_prior_carryover
 ```
 
 Sample study file:
@@ -196,20 +196,28 @@ Sample study file:
 
 ## HPC Array Launch
 
+Local orchestration does **not** require Slurm/HPC:
+
+```sh
+uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1.yaml run --only-hypothesis h1_initial_news_bias_shift
+```
+
+Use the following only when dispatching to a Slurm cluster.
+
 Cluster wrappers:
-- `scripts/narval-hpc-4GPU-array.sh`
-- `scripts/tamia-hpc-4GPU-array.sh`
+- `slurm_scripts/narval-hpc-4GPU-array.sh`
+- `slurm_scripts/tamia-hpc-4GPU-array.sh`
 
 Shared execution logic:
-- `scripts/study-array-worker.sh`
+- `slurm_scripts/study-array-worker.sh`
 
-Use `narval-array` to compute array size from filtered study runs and print/submit `sbatch`:
+Use `slurm-array` to compute array size from filtered study runs and print/submit `sbatch`:
 
 ```sh
 uv run python -m experiments.run_study \
   --study experiments/studies/election_opinion_program_v1.yaml \
-  narval-array \
-  --base-script scripts/narval-hpc-4GPU-array.sh \
+  slurm-array \
+  --base-script slurm_scripts/narval-hpc-4GPU-array.sh \
   --array-mode case \
   --only-hypothesis h1_initial_news_bias_shift \
   --submit

@@ -2,16 +2,11 @@
 
 The ``BaseAgentBuilder`` reads the ``persona_pipeline`` config section and
 builds agents from class definitions. It handles data loading (local JSON,
-HuggingFace datasets, inline records), field mapping, memory loading, and
-name derivation.
+JSONL, HuggingFace datasets, inline records), field mapping, memory loading,
+and name derivation.
 
-**Extending the builder** — for simple scenarios, ``BaseAgentBuilder`` works
-out of the box with the class-based pipeline.  Override ``build_role_agents``
-only if you need legacy role-count based building::
-
-    class MyBuilder(BaseAgentBuilder):
-        def build_role_agents(self, role: str, count: int) -> list[AgentConfig]:
-            ...
+`BaseAgentBuilder` expects class-based persona configuration under
+``persona_pipeline.classes``.
 """
 
 import csv
@@ -32,15 +27,13 @@ logger = logging.getLogger(__name__)
 # Cached project paths derived from this file's location.
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 _PROJECT_ROOT = _PACKAGE_ROOT.parents[2]
-_HF_CACHE_MAX_READ_BYTES = 100 * 1024 * 1024
 
 
 class BaseAgentBuilder:
     """Build agent configurations from scenario YAML persona pipeline.
 
-    The primary entry point is ``build_agents(roles)``, which dispatches
-    to the class-based pipeline (``persona_pipeline.classes``) when available,
-    falling back to ``build_role_agents()`` for legacy role-count configs.
+    The primary entry point is ``build_agents()`` and requires a class-based
+    pipeline under ``persona_pipeline.classes``.
     """
 
     def __init__(self, scenario_config: Any):
@@ -50,26 +43,15 @@ class BaseAgentBuilder:
     # Public API
     # ------------------------------------------------------------------ #
 
-    def build_agents(self, roles: dict[str, int]) -> list[AgentConfig]:
-        """Build all agent configs from persona pipeline or role counts."""
+    def build_agents(self, roles: dict[str, int] | None = None) -> list[AgentConfig]:
+        """Build all agent configs from class-based persona pipeline."""
+        del roles
         pipeline = getattr(self.config, "persona_pipeline", None)
         if pipeline and getattr(pipeline, "classes", None):
             return self._deduplicate(self._build_from_classes())
-
-        agents: list[AgentConfig] = []
-        for role, count in roles.items():
-            agents.extend(self.build_role_agents(role, count))
-        return self._deduplicate(agents)
-
-    def build_role_agents(self, role: str, count: int) -> list[AgentConfig]:
-        """Build agents for a specific role (legacy path).
-
-        Override this when using role-count based building instead of the
-        class-based persona pipeline.
-        """
-        raise NotImplementedError(
-            f"build_role_agents() not implemented. Define persona_pipeline.classes "
-            f"in your scenario YAML or override this method for role '{role}'."
+        raise ValueError(
+            "Scenario must define persona_pipeline.classes. "
+            "Role-count-based builder mode has been removed."
         )
 
     def load_news_data(self, news_file: str) -> dict[str, Any]:
@@ -94,8 +76,8 @@ class BaseAgentBuilder:
         default_shared = self._load_memories(defaults.get("shared_memories", []))
 
         all_agents: list[AgentConfig] = []
-        for class_name, class_cfg in classes.items():
-            class_cfg = class_cfg or {}
+        for class_name, class_cfg_raw in classes.items():
+            class_cfg = class_cfg_raw or {}
             agents = self._build_class(
                 class_name,
                 class_cfg,
@@ -509,6 +491,11 @@ class BaseAgentBuilder:
             if not path:
                 raise ValueError("csv source requires a `path` field")
             records = self._load_csv(path, max_records=max_records)
+        elif source == "jsonl":
+            path = data_cfg.get("path")
+            if not path:
+                raise ValueError("jsonl source requires a `path` field")
+            records = self._load_jsonl(path, max_records=max_records)
         elif source == "hf_dataset":
             records = self._load_hf_dataset(data_cfg, max_records=max_records)
         else:
@@ -537,51 +524,12 @@ class BaseAgentBuilder:
         if not dataset_name:
             raise ValueError("hf_dataset source requires a `dataset` field")
 
-        cache_file = self._hf_cache_path(dataset_name, split, subset)
+        from datasets import load_dataset
 
-        def _load_cache() -> list[dict[str, Any]]:
-            if not self._safe_path_exists(cache_file):
-                raise FileNotFoundError(cache_file)
-            cache_size = cache_file.stat().st_size
-            if cache_size > _HF_CACHE_MAX_READ_BYTES:
-                raise ValueError(f"HF cache too large to read safely: {cache_file}")
-            logger.info("Loading HF dataset from cache: %s", cache_file)
-            with open(cache_file) as f:
-                cached = json.load(f)
-            if max_records is not None:
-                requested = max(0, int(max_records))
-                if len(cached) < requested:
-                    raise ValueError(
-                        f"HF cache has {len(cached)} records but {requested} are required"
-                    )
-                return cached[:requested]
-            return cached
-
-        try:
-            from datasets import load_dataset
-        except ImportError:
-            try:
-                return _load_cache()
-            except (FileNotFoundError, ValueError) as cache_exc:
-                raise ImportError(
-                    "hf_dataset source requires `datasets` or a readable local cache. "
-                    "Install: pip install datasets"
-                ) from cache_exc
-
-        try:
-            ds = (
-                load_dataset(dataset_name, subset, split=split)
-                if subset
-                else load_dataset(dataset_name, split=split)
-            )
-            records = self._materialize_hf_records(ds, max_records=max_records)
-            self._persist_hf_cache(dataset_name, split, subset, records)
-            return records
-        except Exception as exc:
-            logger.warning(
-                "Falling back to HF cache for %s due to dataset load error: %s", dataset_name, exc
-            )
-            return _load_cache()
+        load_kwargs: dict[str, Any] = {"split": split}
+        load_args: tuple[Any, ...] = (dataset_name, subset) if subset else (dataset_name,)
+        ds = load_dataset(*load_args, **load_kwargs)
+        return self._materialize_hf_records(ds, max_records=max_records)
 
     def _materialize_hf_records(self, ds: Any, *, max_records: int | None) -> list[dict[str, Any]]:
         """Materialize at most ``max_records`` rows from a dataset-like object."""
@@ -640,49 +588,30 @@ class BaseAgentBuilder:
 
         return records
 
-    # ------------------------------------------------------------------ #
-    # HuggingFace cache
-    # ------------------------------------------------------------------ #
-
-    def _hf_cache_path(self, dataset_name: str, split: str, subset: str | None) -> Path:
-        slug = f"{self._slugify(dataset_name)}__{self._slugify(subset) if subset else 'default'}__{self._slugify(split)}.json"
-        pkg = (
-            _PACKAGE_ROOT
-            / "scenarios"
-            / str(self.config.scenario_name)
-            / "input"
-            / "personas"
-            / ".hf_cache"
-            / slug
-        )
-        if self._safe_path_exists(pkg):
-            return pkg
-        top = (
-            _PROJECT_ROOT
-            / "scenarios"
-            / str(self.config.scenario_name)
-            / "input"
-            / "personas"
-            / ".hf_cache"
-            / slug
-        )
-        return top if self._safe_path_exists(top) else pkg
-
-    def _persist_hf_cache(
+    def _load_jsonl(
         self,
-        dataset_name: str,
-        split: str,
-        subset: str | None,
-        records: list[dict],
-    ) -> None:
-        pkg = _PACKAGE_ROOT / "scenarios" / str(self.config.scenario_name)
-        top = _PROJECT_ROOT / "scenarios" / str(self.config.scenario_name)
-        base = pkg if pkg.is_dir() else top
-        cache_dir = base / "input" / "personas" / ".hf_cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        slug = f"{self._slugify(dataset_name)}__{self._slugify(subset) if subset else 'default'}__{self._slugify(split)}.json"
-        with open(cache_dir / slug, "w") as f:
-            json.dump(records, f, indent=2, ensure_ascii=False, default=str)
+        path: str,
+        *,
+        max_records: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Load records from a JSONL file (one JSON object per line)."""
+        file_path = self._resolve_file_path(str(path))
+        records: list[dict[str, Any]] = []
+
+        with open(file_path, encoding="utf-8") as f:
+            for i, raw in enumerate(f):
+                if max_records and i >= max_records:
+                    break
+                line = raw.strip()
+                if not line:
+                    continue
+                row = json.loads(line)
+                if not isinstance(row, dict):
+                    records.append({"value": row})
+                    continue
+                records.append(row)
+
+        return records
 
     # ------------------------------------------------------------------ #
     # Path resolution
@@ -810,10 +739,6 @@ class BaseAgentBuilder:
             return "\n".join(str(x).strip() for x in v) if isinstance(v, list) else str(v)
 
         return re.sub(r"\{([^{}]+)\}", _sub, spec)
-
-    @staticmethod
-    def _slugify(value: str) -> str:
-        return re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value)).strip("_")
 
     @staticmethod
     def _derive_name(context: str, words: int = 2) -> str:

@@ -9,7 +9,11 @@ from pathlib import Path
 
 import yaml
 
-from mastodon_sim.evaluations.default_evaluators import _build_payload, _read_jsonl
+from mastodon_sim.evaluations.default_evaluators import (
+    _build_payload,
+    _build_probe_plots,
+    _read_jsonl,
+)
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -180,3 +184,65 @@ def test_probe_type_filtered_mode(tmp_path: Path) -> None:
     assert payload["filter_probe_type"] == "BinaryProbe"
     assert payload["filtered_probe_events"] == 1
     assert payload["filtered_out_probe_events"] == 1
+
+
+def test_probe_postprocessor_accepts_nonexistent_output_json_context(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    _write_jsonl(
+        run_dir / "probe_events.jsonl",
+        [
+            {
+                "source_user": "Alice",
+                "label": "vote_choice",
+                "data": {"query_return": "Bill Fredrickson"},
+                "episode": 1,
+                "event_type": "probe",
+                "event_index": 1,
+            },
+            {
+                "source_user": "Bob",
+                "label": "vote_choice",
+                "data": {"query_return": "Bradley Carter"},
+                "episode": 1,
+                "event_type": "probe",
+                "event_index": 2,
+            },
+        ],
+    )
+
+    cfg = {
+        "scenario": {
+            "probes": {
+                "queries": {
+                    "vote_choice": {
+                        "probe_name": "vote_choice",
+                        "query_type": "ChoiceProbe",
+                        "query_data": {
+                            "name": "VoteChoice",
+                            "choices": ["Bill Fredrickson", "Bradley Carter"],
+                        },
+                    }
+                }
+            }
+        }
+    }
+    (run_dir / "effective_config.yaml").write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+    events = _read_jsonl(run_dir / "probe_events.jsonl")
+    output_json = tmp_path / "eval" / "probe_metrics" / "probe_metrics_detailed.json"
+    output_json.parent.mkdir(parents=True, exist_ok=True)
+
+    # In evaluator flow, output_json does not exist yet when postprocessors execute.
+    plots = _build_probe_plots(
+        "probe_metrics",
+        events,
+        run_dir,
+        output_json,
+        postprocessors=[
+            "scenarios/election_recsys_engagement/postprocessors.py:cross_seed_case_ci"
+        ],
+    )
+
+    ext = plots["extensions"]
+    assert len(ext) == 1
+    assert ext[0]["status"] == "success"

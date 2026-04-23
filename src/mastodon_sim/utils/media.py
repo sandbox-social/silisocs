@@ -55,7 +55,9 @@ class GptLanguageModel(language_model.LanguageModel):
         self._measurements = measurements
         self._channel = channel
         # Check if model is qwen3.5 to determine if extra_body should be used
-        self._use_qwen_extra_body = "qwen" in model_name.lower() and "3.5" in model_name.lower()
+        self._use_qwen_extra_body = "qwen" in model_name.lower() and (
+            "3.5" in model_name.lower() or "3.6" in model_name.lower()
+        )
         if api_base:
             self._client = openai.OpenAI(
                 api_key=self._api_key,

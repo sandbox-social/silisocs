@@ -1539,8 +1539,8 @@ def _count_array_tasks(run_specs: list[RunSpec], array_mode: str) -> int:
     raise StudyConfigError(f"Unsupported array mode: {array_mode}")
 
 
-def cmd_narval_array(args: argparse.Namespace) -> int:
-    """Generate (and optionally submit) Narval sbatch command from filtered study runs."""
+def cmd_slurm_array(args: argparse.Namespace) -> int:
+    """Generate (and optionally submit) a Slurm sbatch command from filtered study runs."""
     study_path = Path(args.study).resolve()
     repo_root = Path(args.repo_root).resolve()
     base_script = Path(args.base_script).resolve()
@@ -1716,58 +1716,58 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_run.set_defaults(func=cmd_run)
 
-    p_narval = sub.add_parser(
-        "narval-array",
-        help="Build Narval sbatch command from study filters (optionally submit)",
+    p_slurm = sub.add_parser(
+        "slurm-array",
+        help="Build Slurm sbatch command from study filters (optionally submit)",
     )
-    p_narval.add_argument(
+    p_slurm.add_argument(
         "--base-script",
-        default="scripts/narval-hpc-4GPU-array.sh",
-        help="Base SLURM script path (default: scripts/narval-hpc-4GPU-array.sh)",
+        required=True,
+        help="Base Slurm script path (required)",
     )
-    p_narval.add_argument(
+    p_slurm.add_argument(
         "--array-mode",
         choices=["case", "seed", "hypothesis", "run"],
         default="case",
         help="Array granularity: case(default), seed, hypothesis, or run",
     )
-    p_narval.add_argument(
+    p_slurm.add_argument(
         "--max-concurrent",
         type=int,
         default=8,
         help="run_study --max-concurrent passed to each array task",
     )
-    p_narval.add_argument(
+    p_slurm.add_argument(
         "--uv-home",
         default=str(Path.home()),
         help="Path where uv env with vLLM is available (default: $HOME)",
     )
-    p_narval.add_argument(
+    p_slurm.add_argument(
         "--only-hypothesis",
         default=None,
         help="Optional comma-separated hypothesis IDs to include",
     )
-    p_narval.add_argument(
+    p_slurm.add_argument(
         "--only-condition",
         default=None,
         help="Optional comma-separated condition IDs to include",
     )
-    p_narval.add_argument(
+    p_slurm.add_argument(
         "--only-sub-experiment",
         default=None,
         help="Optional comma-separated sub_experiment labels to include",
     )
-    p_narval.add_argument(
+    p_slurm.add_argument(
         "--only-seed",
         default=None,
         help="Optional comma-separated seed values to include",
     )
-    p_narval.add_argument(
+    p_slurm.add_argument(
         "--submit",
         action="store_true",
         help="Submit to Slurm via sbatch. Otherwise prints command only.",
     )
-    p_narval.set_defaults(func=cmd_narval_array)
+    p_slurm.set_defaults(func=cmd_slurm_array)
 
     p_summary = sub.add_parser("summary-append", help="Append a study summary entry")
     p_summary.add_argument("--author", required=True, help="Author label for this summary entry")

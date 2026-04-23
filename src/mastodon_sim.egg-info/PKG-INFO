@@ -39,6 +39,7 @@ Requires-Dist: dash-cytoscape<2.0.0,>=1.0.2
 Requires-Dist: scipy<2.0.0,>=1.14.1
 Requires-Dist: requests<3.0.0,>=2.32.3
 Requires-Dist: portalocker<4.0.0,>=3.1.1
+Requires-Dist: psutil<8.0.0,>=7.2.2
 Requires-Dist: numpy==1.26.4
 Requires-Dist: pandas==2.1.0
 Requires-Dist: omegaconf<3.0.0,>=2.3.0

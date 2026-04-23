@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import os
 import queue
 import sqlite3
 import threading
@@ -1468,10 +1469,21 @@ class TwitterLikePlatform:
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
             model_name = "Twitter/twhin-bert-base"
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            model = AutoModel.from_pretrained(model_name).to(device)
+            local_model_path = (
+                os.getenv("TWHIN_MODEL_PATH")
+                or os.getenv("TWITTER_TWHIN_MODEL_PATH")
+                or os.getenv("HF_TWHIN_MODEL_PATH")
+            )
+            model_source = local_model_path.strip() if isinstance(local_model_path, str) else ""
+            if not model_source:
+                model_source = model_name
+
+            tokenizer = AutoTokenizer.from_pretrained(model_source)
+            model = AutoModel.from_pretrained(model_source).to(device)
             model.eval()
-            logger.info("Loaded twhin recsys model '%s' on %s", model_name, device)
+            logger.info(
+                "Loaded twhin recsys model '%s' (source=%s) on %s", model_name, model_source, device
+            )
             return tokenizer, model
         except Exception as err:
             raise RuntimeError(

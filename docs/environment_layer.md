@@ -248,3 +248,33 @@ Flow routing notes:
 - Put **phase scheduling and chunk semantics** in Engine policies.
 - Put **next actor, observe, resolve, initializer behavior** in GM components.
 - Put **platform action semantics** in backend `@app_action` methods.
+
+## Action Prompt Pipeline Implementation
+
+For detailed configuration and behavior of action prompts, see `docs/configuration.md` under **Action Prompt Additions Configuration** and **How Action Prompts Are Constructed**.
+
+### Implementation Modules
+
+The action prompt pipeline is implemented across three layers:
+
+1. **Runner-time compilation** (`src/mastodon_sim/runtime/action_prompts.py`):
+   - `build_complete_action_prompt_for_runner()` — entry point, compiles prompt from config
+   - `compile_action_prompt()` — core logic that applies additions (action count, output style, backend info)
+   - All prompt building happens here before GM/app instantiation
+
+2. **SMAct pass-through** (`src/mastodon_sim/environments/gm/act.py`):
+   - `SMAct._next_entity_action_spec()` — passes through runner-compiled prompt + optional tool-calling wrapping
+   - If `enable_tool_calling=True`: appends `apply_tool_calling_additions_for_gm()` result (tool schemas)
+   - Dumb pass-through: does not modify base prompt text
+
+3. **Entity act layer** (`src/mastodon_sim/agents/components/concat_act.py`):
+   - `SocialConcatActComponent.get_action_attempt()` — formats action spec and calls LLM
+   - Detects tool-calling markers and calls model appropriately (tool-call vs free-text mode)
+
+### Key Architectural Property
+
+**Output format stripping:** When `tool_calling.mode != none`, the `[OUTPUT STYLE]` section is automatically stripped from the final prompt. Tool-calling uses JSON format (determined by LLM, not by text instruction). This is enforced in `compile_action_prompt()` at runner time, not downstream.
+
+### Testing
+
+Integration tests validate the complete prompt pipeline in `tests/test_prompt_pipeline_integration.py`.

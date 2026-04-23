@@ -1,6 +1,7 @@
 # src/mastodon_sim/runtime/runner.py
 """
 Main simulation entry point.
+
 Uses Hydra for configuration — works directly with YAML structure.
 
 External scenarios override package defaults via ``--config-path``::
@@ -11,6 +12,9 @@ External scenarios override package defaults via ``--config-path``::
 When ``--config-path`` is given the directory is prepended to Hydra's search
 path so that any YAML files it contains override the corresponding package
 defaults.  Missing files fall back to the package ``conf/`` directory.
+
+Optional ``--overlay-config-path`` flags can be repeated to layer additional
+override config trees on top of the primary ``--config-path``.
 """
 
 import json
@@ -37,12 +41,9 @@ from concordia.utils import helper_functions
 # Environment
 from dotenv import find_dotenv, load_dotenv
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, OmegaConf, open_dict
+from omegaconf import DictConfig, OmegaConf
 
-from mastodon_sim.environments.engines.social_media import (
-    BaseSocialMediaEngine,
-    FlowSocialMediaEngine,
-)
+from mastodon_sim.runtime.agent_building import build_agent_configs
 
 # Local imports
 from mastodon_sim.runtime.config import ConfigStore, validate_scenario_config
@@ -52,6 +53,8 @@ from mastodon_sim.runtime.dataclasses import (
     InitializerParams,
     SimRole,
 )
+from mastodon_sim.runtime.factories import build_engine, default_gm_filename, default_gm_module_path
+from mastodon_sim.runtime.projection import RuntimeProjection
 from mastodon_sim.runtime.simulation import Simulation
 from mastodon_sim.utils.media import select_large_language_model
 from mastodon_sim.utils.misc import (
@@ -67,132 +70,6 @@ from mastodon_sim.utils.social_media_dataclasses import SocialMediaParams, UserD
 # Package root (src/mastodon_sim)
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 CONF_DIR = PACKAGE_ROOT / "conf"
-EXTERNAL_CONFIG_DIR_ENV = "MASTODON_SIM_EXTERNAL_CONFIG_DIR"
-
-
-def _collect_explicit_override_paths(package_name: str) -> set[str]:
-    """Collect explicit CLI override paths for a top-level package.
-
-    Examples captured for package_name="sim":
-      - sim.enabled_actions=[...]
-      - +sim.engine.action_loop.params.max_actions=25
-      - sim=base
-    """
-    explicit_paths: set[str] = set()
-    for arg in sys.argv[1:]:
-        if "=" not in arg:
-            continue
-        key = arg.split("=", 1)[0].strip()
-        # Hydra allows +/++/~ prefixes for override semantics.
-        key = key.lstrip("+~")
-        if key == package_name or key.startswith(f"{package_name}."):
-            explicit_paths.add(key)
-    return explicit_paths
-
-
-def _extract_external_package_overrides(
-    external_dir: Path,
-    filename: str,
-    package_name: str,
-) -> dict[str, Any] | None:
-    """Load a root-level external override file and return its package payload.
-
-    Supports either:
-      1) @package style files (payload at root), or
-      2) nested files where payload is under package_name key.
-    """
-    override_path = external_dir / filename
-    if not override_path.is_file():
-        return None
-
-    raw_cfg: Any = OmegaConf.load(override_path)
-    payload: Any = raw_cfg
-    if isinstance(raw_cfg, DictConfig) and package_name in raw_cfg:
-        nested_payload = raw_cfg.get(package_name)
-        if isinstance(nested_payload, (DictConfig, Mapping)):
-            payload = nested_payload
-
-    payload_container = OmegaConf.to_container(payload, resolve=False)
-    if not isinstance(payload_container, Mapping):
-        return None
-    return {str(key): value for key, value in payload_container.items()}
-
-
-def _merge_mapping_with_override_protection(
-    target: DictConfig,
-    overrides: Mapping[str, Any],
-    explicit_paths: set[str],
-    prefix: str,
-) -> None:
-    """Merge mapping overrides into target, skipping explicit CLI override paths."""
-    if prefix in explicit_paths:
-        return
-
-    for key, value in overrides.items():
-        full_key = f"{prefix}.{key}"
-        if full_key in explicit_paths:
-            continue
-
-        current_value = target.get(key)
-        if isinstance(value, Mapping) and isinstance(current_value, DictConfig):
-            _merge_mapping_with_override_protection(
-                current_value,
-                value,
-                explicit_paths,
-                full_key,
-            )
-            continue
-
-        target[key] = value
-
-
-def _apply_external_root_overrides(cfg: DictConfig, logger: logging.Logger) -> None:
-    """Merge external root-level overrides (sim.yaml, social_media.yaml).
-
-    This complements Hydra searchpath overrides by handling scenario files that
-    live at the external config root rather than inside config groups.
-    """
-    external_dir_raw = os.environ.get(EXTERNAL_CONFIG_DIR_ENV)
-    if not external_dir_raw:
-        return
-
-    external_dir = Path(external_dir_raw)
-    if not external_dir.is_dir():
-        logger.warning("External config dir is not a directory: %s", external_dir)
-        return
-
-    package_to_file = {
-        "sim": "sim.yaml",
-        "social_media": "social_media.yaml",
-    }
-
-    for package_name, filename in package_to_file.items():
-        package_cfg = cfg.get(package_name)
-        if not isinstance(package_cfg, DictConfig):
-            continue
-
-        overrides = _extract_external_package_overrides(
-            external_dir,
-            filename,
-            package_name,
-        )
-        if not isinstance(overrides, dict):
-            continue
-
-        explicit_paths = _collect_explicit_override_paths(package_name)
-        with open_dict(cfg):
-            _merge_mapping_with_override_protection(
-                package_cfg,
-                overrides,
-                explicit_paths,
-                package_name,
-            )
-
-        logger.info(
-            "Applied external %s overrides from %s",
-            package_name,
-            external_dir / filename,
-        )
 
 
 def _initialize_runtime_environment() -> Path:
@@ -227,34 +104,6 @@ def _initialize_runtime_environment() -> Path:
 # ============================================================================
 
 _DEFAULT_FLOW_TAG = "default"
-_ACTION_MODES = {"custom", "generic"}
-_TOOL_CALLING_MODES = {"none", "single", "multi"}
-_ACT_NUM_MARKER = "[ActNum]"
-_OUTPUT_STYLE_MARKER = "[OUTPUT STYLE]"
-_SINGLE_STEP_PROMPT_LINE = "Only take one action in this step"
-_MULTI_TOOL_CALLING_PROMPT_LINE = (
-    "You are allowed to output multiple tool calls to take a batch of actions "
-    "(if/as appropriate). If multiple tool calls, actions will be executed "
-    "in sequence of calls."
-)
-
-
-def _default_gm_filename(cfg: DictConfig, mode: str) -> str:
-    """Resolve default GM prefab filename from preset/mode."""
-    sim_cfg = getattr(cfg, "sim", object())
-    gm_preset = str(getattr(getattr(sim_cfg, "gm", object()), "preset", "base") or "base")
-    if mode == "shared" and gm_preset == "shared_flow":
-        return "shared_flow_game_master"
-    return str(cfg.social_media.gamemaster.filename)
-
-
-def _default_gm_module_path(cfg: DictConfig, mode: str) -> str:
-    """Resolve default GM module path from preset/mode."""
-    sim_cfg = getattr(cfg, "sim", object())
-    gm_preset = str(getattr(getattr(sim_cfg, "gm", object()), "preset", "base") or "base")
-    if mode == "shared" and gm_preset == "shared_flow":
-        return "mastodon_sim.environments.gm.shared_flow_game_master"
-    return str(cfg.social_media.gamemaster.sim_role.module_path)
 
 
 def _collect_declared_flow_tags(cfg: DictConfig) -> set[str]:
@@ -277,88 +126,16 @@ def _collect_declared_flow_tags(cfg: DictConfig) -> set[str]:
     return declared
 
 
-def _get_tool_calling_mode(cfg: DictConfig) -> str:
-    """Return normalized tool-calling mode from sim config."""
-    mode = str(OmegaConf.select(cfg, "sim.tool_calling.mode", default="none") or "none")
-    normalized = mode.strip().lower()
-    return normalized if normalized in _TOOL_CALLING_MODES else "none"
-
-
-def _validate_action_tool_calling_contract(cfg: DictConfig) -> None:
-    """Validate action-mode and tool-calling mode contract.
-
-    action_mode controls prompt style (custom|generic), while tool_calling.mode
-    controls tool invocation behavior (none|single|multi).
-    """
-    action_mode = str(getattr(getattr(cfg, "sim", object()), "action_mode", "custom") or "custom")
-    action_mode = action_mode.strip().lower()
-    if action_mode == "tool_calling":
-        raise ValueError(
-            "sim.action_mode=tool_calling is deprecated. "
-            "Use sim.action_mode={custom|generic} with sim.tool_calling.mode={single|multi}."
-        )
-    if action_mode not in _ACTION_MODES:
-        raise ValueError(
-            f"Unsupported sim.action_mode='{action_mode}'. Allowed values: custom, generic."
-        )
-
-    tool_calling_mode = str(
-        OmegaConf.select(cfg, "sim.tool_calling.mode", default="none") or "none"
-    )
-    tool_calling_mode = tool_calling_mode.strip().lower()
-    if tool_calling_mode not in _TOOL_CALLING_MODES:
-        raise ValueError(
-            f"Unsupported sim.tool_calling.mode='{tool_calling_mode}'. "
-            "Allowed values: none, single, multi."
-        )
-
-    resolve_built_in = str(
-        OmegaConf.select(cfg, "sim.gm.components.resolve.built_in", default="parsed_action")
-        or "parsed_action"
-    ).strip()
-    resolve_uses_tool_calling = resolve_built_in == "tool_calling"
-    mode_uses_tool_calling = tool_calling_mode != "none"
-    if mode_uses_tool_calling != resolve_uses_tool_calling:
-        raise ValueError(
-            "Tool-calling mode must match resolver selection: "
-            "set sim.gm.components.resolve.built_in=tool_calling when "
-            "sim.tool_calling.mode is single/multi, or set "
-            "sim.tool_calling.mode=none when resolver is not tool_calling."
-        )
-
-
-def _split_action_prompt_sections(action_prompt: str) -> tuple[str, str]:
-    """Split action prompt into prefix and [OUTPUT STYLE] marker suffix."""
-    if _OUTPUT_STYLE_MARKER not in action_prompt:
-        return action_prompt, ""
-    head, tail = action_prompt.split(_OUTPUT_STYLE_MARKER, 1)
-    return head.strip(), tail.strip()
-
-
 def _build_action_prompt(cfg: DictConfig, tool_calling_mode: str) -> str:
-    """Build action call-to-action prompt from config components."""
-    action_prompt = getattr(cfg.social_media, "action_prompt", "")
-    output_style = getattr(cfg.social_media, "output_style", "")
+    """Build the complete action prompt payload at runner startup."""
+    from mastodon_sim.runtime.action_prompts import build_action_prompt_with_app_instance
 
-    if not action_prompt:
-        return ""
-
-    normalized_mode = str(tool_calling_mode or "none").strip().lower()
-    prompt_head, inline_output_style = _split_action_prompt_sections(str(action_prompt))
-    base_prompt = prompt_head or str(action_prompt).replace("[OUTPUT STYLE]", "").strip()
-    action_guidance_line = (
-        _MULTI_TOOL_CALLING_PROMPT_LINE if normalized_mode == "multi" else _SINGLE_STEP_PROMPT_LINE
+    action_mode = str(getattr(cfg.sim, "action_mode", "custom") or "custom").strip().lower()
+    return build_action_prompt_with_app_instance(
+        cfg=cfg,
+        action_mode=action_mode,
+        tool_calling_mode=tool_calling_mode,
     )
-    actnum_block = f"{_ACT_NUM_MARKER}\n{action_guidance_line}"
-    final_output_style = str(output_style or "").strip() or inline_output_style
-    prompt_sections = [base_prompt] if base_prompt else []
-    prompt_sections.append(actnum_block)
-    if final_output_style:
-        prompt_sections.append(f"{_OUTPUT_STYLE_MARKER}\n{final_output_style}")
-    elif _OUTPUT_STYLE_MARKER in str(action_prompt):
-        prompt_sections.append(_OUTPUT_STYLE_MARKER)
-
-    return "\n\n".join(section for section in prompt_sections if section)
 
 
 def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
@@ -367,9 +144,9 @@ def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
     default_mode = "shared"
     default_spec = {
         "gm_name": str(default_gm.name),
-        "filename": _default_gm_filename(cfg, default_mode),
+        "filename": default_gm_filename(cfg, default_mode),
         "sim_role_name": str(default_gm.sim_role.name),
-        "sim_role_module_path": _default_gm_module_path(cfg, default_mode),
+        "sim_role_module_path": default_gm_module_path(cfg, default_mode),
         "sequence": 0,
         "mode": default_mode,
         "backend_scope": "shared_default",
@@ -394,7 +171,7 @@ def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
             "mode": str(gm_raw.get("mode", "shared") or "shared").strip(),
         }
         spec["filename"] = str(
-            gm_raw.get("filename", _default_gm_filename(cfg, str(spec["mode"]))) or ""
+            gm_raw.get("filename", default_gm_filename(cfg, str(spec["mode"]))) or ""
         ).strip()
         spec.update(
             {
@@ -402,7 +179,10 @@ def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
                     sim_role_cfg.get("name", default_spec["sim_role_name"]) or ""
                 ).strip(),
                 "sim_role_module_path": str(
-                    sim_role_cfg.get("module_path", _default_gm_module_path(cfg, str(spec["mode"])))
+                    sim_role_cfg.get(
+                        "module_path",
+                        default_gm_module_path(cfg, str(spec["mode"])),
+                    )
                     or ""
                 ).strip(),
                 "sequence": int(gm_raw.get("sequence", idx)),
@@ -597,11 +377,7 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
     # Build sim_roles map (will be populated after agents are created)
     sim_roles: dict[str, str] = {}
 
-    sm_user_data = UserData(
-        sim_role_parameters=simrole_params,
-        sim_roles=sim_roles,
-    )
-
+    projection = RuntimeProjection.from_cfg(cfg)
     social_media_gms: list[prefab_lib.InstanceConfig] = []
     for spec in gm_specs:
         gm_name = str(spec["gm_name"])
@@ -632,7 +408,7 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
                         calls_to_action={
                             "social_media_action": _build_action_prompt(
                                 cfg,
-                                tool_calling_mode=_get_tool_calling_mode(cfg),
+                                tool_calling_mode=projection.tool_calling_mode,
                             )
                         },
                         sim_role=sim_role,
@@ -730,20 +506,6 @@ def populate_agent_data(
             )
 
 
-def _build_engine(cfg: DictConfig):
-    """Build runtime engine from config preset.
-
-    `base` is the default and runs a single active social GM per episode with
-    no flow-phase orchestration. `flow` enables flow/multi-GM orchestration.
-    """
-    engine_preset = str(getattr(getattr(cfg.sim, "engine", object()), "preset", "base") or "base")
-    if engine_preset == "flow":
-        return FlowSocialMediaEngine()
-    if engine_preset == "base":
-        return BaseSocialMediaEngine()
-    raise ValueError(f"Unsupported sim.engine.preset='{engine_preset}'. Use 'base' or 'flow'.")
-
-
 # ============================================================================
 # Main Experiment Function
 # ============================================================================
@@ -776,8 +538,7 @@ def main(cfg: DictConfig):
         logger.warning("Warning: .env file not found or empty.")
 
     configure_logging(logger)
-    _apply_external_root_overrides(cfg, logger)
-    _validate_action_tool_calling_contract(cfg)
+    RuntimeProjection.from_cfg(cfg)
 
     # Determine scenario path for file validation.
     # Check top-level scenarios/ first, fall back to in-package.
@@ -849,46 +610,7 @@ def main(cfg: DictConfig):
     #   3. Fallback:   BaseAgentBuilder (YAML pipeline only)
     t0 = time.time()
     with metrics.phase("build_agents"):
-        import importlib
-        import importlib.util
-
-        from mastodon_sim.agents.builders import BaseAgentBuilder
-
-        scenario_name = cfg.scenario.scenario_name
-        builder_class_name = f"{scenario_name.title()}AgentBuilder"
-        BuilderClass = None
-
-        # 1. Try in-package builder.
-        try:
-            mod = importlib.import_module(f"mastodon_sim.scenarios.{scenario_name}.builders")
-            BuilderClass = getattr(mod, builder_class_name, None)
-        except (ImportError, ModuleNotFoundError):
-            pass
-
-        # 2. Try external scenarios/<name>/builders.py.
-        if BuilderClass is None:
-            from pathlib import Path
-
-            pkg_root = Path(__file__).resolve().parents[1]
-            project_root = pkg_root.parents[2]
-            external_builder = project_root / "scenarios" / scenario_name / "builders.py"
-            if external_builder.is_file():
-                spec = importlib.util.spec_from_file_location(
-                    f"scenarios.{scenario_name}.builders",
-                    external_builder,
-                )
-                if spec and spec.loader:
-                    mod = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(mod)
-                    BuilderClass = getattr(mod, builder_class_name, None)
-
-        # 3. Fallback to generic base builder.
-        if BuilderClass is None:
-            BuilderClass = BaseAgentBuilder
-
-        builder = BuilderClass(cfg.scenario)
-        roles = dict(cfg.scenario.roles) if hasattr(cfg.scenario, "roles") else {}
-        agent_configs = builder.build_agents(roles)
+        agent_configs = build_agent_configs(cfg)
     _log_startup_phase("build_agents", time.time() - t0, f"count={len(agent_configs)}")
 
     t0 = time.time()
@@ -1009,7 +731,7 @@ def main(cfg: DictConfig):
             "embedder_creation", time.time() - t0, f"encoder={cfg.sim.sentence_encoder}"
         )
 
-    sim_engine = _build_engine(cfg)
+    sim_engine = build_engine(cfg)
 
     t0 = time.time()
     with metrics.phase("simulation_construction"):
@@ -1116,42 +838,61 @@ def _inject_external_config_path() -> None:
     the flag, resolve the path, and inject it as a ``hydra.searchpath``
     override instead.
 
+    Optional ``--overlay-config-path <dir>`` flags can be repeated to layer
+    extra override directories above the primary ``--config-path``.
+
     **Auto-detection**: If the external dir contains a ``scenario/*.yaml``
     file, the scenario override (e.g. ``scenario=election``) is injected
     automatically — no need to pass it on the command line.
     """
-    flag = "--config-path"
-    if flag not in sys.argv:
+    primary_flag = "--config-path"
+    overlay_flag = "--overlay-config-path"
+    if primary_flag not in sys.argv and overlay_flag not in sys.argv:
         return
 
-    idx = sys.argv.index(flag)
-    if idx + 1 >= len(sys.argv):
-        print(f"ERROR: {flag} requires a directory argument.")
-        sys.exit(1)
+    external_dir: Path | None = None
+    overlay_dirs: list[Path] = []
+    cleaned_argv = [sys.argv[0]]
+    i = 1
+    while i < len(sys.argv):
+        token = sys.argv[i]
+        if token in {primary_flag, overlay_flag}:
+            if i + 1 >= len(sys.argv):
+                print(f"ERROR: {token} requires a directory argument.")
+                sys.exit(1)
+            directory = Path(sys.argv[i + 1]).resolve()
+            if not directory.is_dir():
+                print(f"ERROR: {token} directory does not exist: {directory}")
+                sys.exit(1)
+            if token == primary_flag:
+                external_dir = directory
+            else:
+                overlay_dirs.append(directory)
+            i += 2
+            continue
+        cleaned_argv.append(token)
+        i += 1
 
-    external_dir = Path(sys.argv[idx + 1]).resolve()
-    if not external_dir.is_dir():
-        print(f"ERROR: {flag} directory does not exist: {external_dir}")
-        sys.exit(1)
+    if external_dir is None and not overlay_dirs:
+        return
 
-    # Remove the flag and its argument so Hydra doesn't see them.
-    del sys.argv[idx : idx + 2]
-    os.environ[EXTERNAL_CONFIG_DIR_ENV] = str(external_dir)
-
-    # Inject a file:// searchpath override so external configs are discoverable
-    # while package defaults remain available as fallback.
-    # List both paths: external first (higher priority), then package defaults
-    external_search = f"file://{external_dir}"
+    sys.argv[:] = cleaned_argv
+    search_parts = [f"file://{path}" for path in overlay_dirs]
+    if external_dir is not None:
+        search_parts.append(f"file://{external_dir}")
     package_conf = str(CONF_DIR)
-    package_search = f"file://{Path(package_conf).resolve()}"
-    override = f"hydra.searchpath=[{external_search},{package_search}]"
+    search_parts.append(f"file://{Path(package_conf).resolve()}")
+    override = f"hydra.searchpath=[{','.join(search_parts)}]"
     sys.argv.append(override)
-    print(f"External config path: {external_dir}")
+    if external_dir is not None:
+        print(f"External config path: {external_dir}")
+    for overlay in overlay_dirs:
+        print(f"Overlay config path: {overlay}")
 
     # Auto-detect scenario name from scenario/*.yaml in the external dir,
     # unless the user already provided an explicit scenario= override.
     has_explicit_scenario = any(arg.startswith("scenario=") for arg in sys.argv[1:])
-    if not has_explicit_scenario:
+    if not has_explicit_scenario and external_dir is not None:
         scenario_dir = external_dir / "scenario"
         if scenario_dir.is_dir():
             yamls = [f.stem for f in scenario_dir.glob("*.yaml")]
