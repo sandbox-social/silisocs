@@ -42,9 +42,10 @@ If your goal is to **design and run scenarios** without writing code:
 
 1. Start with the [Quick Start](quickstart.md) to run the default scenario
 2. Read the [Usage Overview](usage.md) for the full workflow
-3. Use the [Dashboard](dashboard.md) to create scenarios visually
-4. See the [Election Walkthrough](tutorials/election.md) for a real-world example
-5. Check [Configuration Reference](configuration.md) for all knobs
+3. Use [Experiment Studies](experiments.md) for multi-condition hypothesis studies
+4. Use the [Dashboard](dashboard.md) to create scenarios visually
+5. See the [Election Walkthrough](tutorials/election.md) for a real-world example
+6. Check [Configuration Reference](configuration.md) for all knobs
 
 ## For Developers
 
@@ -65,6 +66,7 @@ If you're an **LLM helping with code changes or architecture**:
 1. **Code Extension & Architecture**: Read [AGENTS.md](../AGENTS.md) — Entry points, component system, extensibility patterns
 2. **Deep Architectural Dive**: Read [ARCHITECTURE.md](../ARCHITECTURE.md) — Multi-flow routing, component instance management, flow scheduling
 3. **Configuration Reference**: Check [configuration.md](configuration.md) — All knobs and their effects
+4. **Study Orchestration**: Read [EXPERIMENTS.md](../EXPERIMENTS.md) — `run_study.py` schema and evaluator presets
 
 If you're an **LLM helping design experiments via configuration**:
 
@@ -80,6 +82,7 @@ If you're an **LLM helping design experiments via configuration**:
 
 **For End Users:**
 - [Usage Overview](usage.md) — End-to-end guide to the system
+- [Experiment Studies](experiments.md) — Hypothesis trees, seed sweeps, and evaluator pipelines
 - [Dashboard Guide](dashboard.md) — GUI for scenario creation
 - [Election Walkthrough](tutorials/election.md) — Step-by-step complex scenario tutorial
 

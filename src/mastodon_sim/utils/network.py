@@ -4,7 +4,9 @@ Social media configuration utility functions.
 Updated to work with YAML-based configuration.
 """
 
+import json
 import random
+from pathlib import Path
 
 try:
     import networkx as nx
@@ -290,6 +292,18 @@ def generate_follow_network(
         )
     if network_type == "predefined":
         predefined = social_network_cfg.get("predefined_graph", {})
+        predefined_path = str(social_network_cfg.get("predefined_graph_path", "")).strip()
+        if predefined_path:
+            loaded: dict[str, list[str]] = {}
+            try:
+                with Path(predefined_path).open(encoding="utf-8") as f:
+                    payload = json.load(f)
+                if isinstance(payload, dict):
+                    loaded = {str(k): list(v or []) for k, v in payload.items()}
+            except Exception as e:
+                print(f"Failed to load predefined graph from '{predefined_path}': {e}")
+            if loaded:
+                predefined = loaded
         return {name: list(predefined.get(name, [])) for name in agent_names}
 
     print(f"Unknown network type '{network_type}', falling back to barabasi_albert.")

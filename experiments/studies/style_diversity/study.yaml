@@ -1,54 +1,220 @@
-# Study definition: Style Diversity vs. Model Capacity
-#
-# This is the single source of truth for the study. It defines the scientific
-# hierarchy AND maps conditions to concrete run/eval paths.
-#
-# Used by: scripts/organize_experiments.py
-#   uv run python scripts/organize_experiments.py experiments/style_diversity/study.yaml
-
 study:
   name: style_diversity
-  question: >-
-    Does increasing LLM capacity reduce repetitive/groupthink behavior
-    in multi-agent social media simulations?
+  question: Does increasing LLM capacity reduce repetitive/groupthink behavior in
+    multi-agent social media simulations?
   scenarios:
-    - ai_conference
-    - misinformation
-  base_config: config/experiment.yaml
+  - ai_conference
+  - misinformation
+  seeds:
+  - 42
+  - 7
+  - 123
   run_overrides:
-    # Base defaults are in config/experiment.yaml
     simulation.execution.max_steps: 10
-
 hypotheses:
   h1_model_capacity:
-    statement: >-
-      Larger language models produce more diverse agent behavior
-      (higher lexical diversity, lower self-BLEU, more varied actions).
+    statement: Larger language models produce more diverse agent behavior (higher
+      lexical diversity, lower self-BLEU, more varied actions).
     independent_variable: model
-    prediction: >-
-      gpt4o outperforms gpt4o-mini on diversity metrics across scenarios.
+    prediction: gpt4o outperforms gpt4o-mini on diversity metrics across scenarios.
     status: testing
-
     conditions:
       gpt4o-mini:
         cli_override: model=gpt4omini
         runs:
-          - scenario: ai_conference
-            source: outputs/ai_conference_experiment/2026-02-06_23-50-55
-            eval: outputs/eval_style_diversity/baseline_gpt4o_mini/ai_conference/eval_step_10_checkpoint.json
-          - scenario: misinformation
-            source: outputs/misinformation_experiment/2026-02-05_17-02-18
-            eval: outputs/eval_style_diversity/baseline_gpt4o_mini/misinformation/eval_step_10_checkpoint.json
-
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-29_20-15-50
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/ai_conference/eval.json
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-29_20-31-36
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/misinformation/eval.json
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-29_23-44-40
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/ai_conference/seed_42/eval.json
+          seed: 42
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-30_00-01-15
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/ai_conference/seed_7/eval.json
+          seed: 7
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-30_00-19-49
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/ai_conference/seed_123/eval.json
+          seed: 123
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-30_00-35-20
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/misinformation/seed_42/eval.json
+          seed: 42
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-30_00-41-37
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/misinformation/seed_7/eval.json
+          seed: 7
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-30_00-46-34
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/misinformation/seed_123/eval.json
+          seed: 123
       gpt4o:
         cli_override: model=gpt4o
         runs:
-          - scenario: ai_conference
-            source: outputs/ai_conference_experiment/2026-02-07_09-43-11
-            eval: outputs/eval_style_diversity/gpt4o/ai_conference/eval_step_10_checkpoint.json
-          - scenario: misinformation
-            source: outputs/misinformation_experiment/2026-02-07_09-42-19
-            eval: outputs/eval_style_diversity/gpt4o/misinformation/eval_step_10_checkpoint.json
-
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-29_20-37-13
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/ai_conference/eval.json
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-29_20-43-00
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/misinformation/eval.json
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-30_00-51-23
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/ai_conference/seed_42/eval.json
+          seed: 42
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-30_00-57-29
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/ai_conference/seed_7/eval.json
+          seed: 7
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-30_01-04-30
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/ai_conference/seed_123/eval.json
+          seed: 123
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-30_01-11-08
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/misinformation/seed_42/eval.json
+          seed: 42
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-30_01-13-13
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/misinformation/seed_7/eval.json
+          seed: 7
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-30_01-14-59
+          eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/misinformation/seed_123/eval.json
+          seed: 123
+  h2_temperature:
+    statement: Higher sampling temperature produces more diverse agent behavior in
+      gpt4o-mini, partially closing the gap with gpt4o.
+    independent_variable: temperature
+    prediction: gpt4o-mini at temperature=1.5 outperforms gpt4o-mini at temperature=0.5
+      on diversity metrics across scenarios.
+    status: testing
+    conditions:
+      temp_0.5:
+        cli_override: model=gpt4omini
+        runs:
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-31_02-52-51
+          eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/ai_conference/seed_42/eval.json
+          seed: 42
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-31_03-09-08
+          eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/ai_conference/seed_7/eval.json
+          seed: 7
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-31_03-27-32
+          eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/ai_conference/seed_123/eval.json
+          seed: 123
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-31_03-45-08
+          eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/misinformation/seed_42/eval.json
+          seed: 42
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-31_03-50-45
+          eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/misinformation/seed_7/eval.json
+          seed: 7
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-31_03-56-34
+          eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/misinformation/seed_123/eval.json
+          seed: 123
+      temp_1.5:
+        cli_override: model=gpt4omini temperature=1.5
+        runs:
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-31_09-57-15
+          eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/ai_conference/seed_42/eval.json
+          seed: 42
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-31_10-16-16
+          eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/ai_conference/seed_7/eval.json
+          seed: 7
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-31_10-34-14
+          eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/ai_conference/seed_123/eval.json
+          seed: 123
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-31_10-49-26
+          eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/misinformation/seed_42/eval.json
+          seed: 42
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-31_10-55-37
+          eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/misinformation/seed_7/eval.json
+          seed: 7
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-31_11-04-12
+          eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/misinformation/seed_123/eval.json
+          seed: 123
+  h3_persona_richness:
+    statement: Richer agent personas produce more diverse post behavior and reasoning,
+      testing whether LLMs faithfully instantiate identity variation or compress distinct
+      personas into a generic voice.
+    independent_variable: persona_richness
+    prediction: rich > thin on inter_agent_distinctiveness; reasoning probe diversity
+      mirrors post diversity for rich personas but not thin.
+    status: testing
+    conditions:
+      rich:
+        cli_override: model=gpt4omini
+        scenarios:
+        - ai_conference
+        - misinformation
+        runs:
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-31_18-46-31
+          eval: outputs/eval_style_diversity/h3_persona_richness/rich/ai_conference/seed_42/eval.json
+          seed: 42
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-31_18-59-59
+          eval: outputs/eval_style_diversity/h3_persona_richness/rich/ai_conference/seed_7/eval.json
+          seed: 7
+        - scenario: ai_conference
+          source: outputs/ai_conference_experiment/2026-03-31_19-19-00
+          eval: outputs/eval_style_diversity/h3_persona_richness/rich/ai_conference/seed_123/eval.json
+          seed: 123
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-31_19-37-02
+          eval: outputs/eval_style_diversity/h3_persona_richness/rich/misinformation/seed_42/eval.json
+          seed: 42
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-31_19-43-06
+          eval: outputs/eval_style_diversity/h3_persona_richness/rich/misinformation/seed_7/eval.json
+          seed: 7
+        - scenario: misinformation
+          source: outputs/misinformation_experiment/2026-03-31_19-50-27
+          eval: outputs/eval_style_diversity/h3_persona_richness/rich/misinformation/seed_123/eval.json
+          seed: 123
+      thin:
+        cli_override: model=gpt4omini
+        scenarios:
+        - ai_conference_thin
+        - misinformation_thin
+        runs:
+        - scenario: ai_conference_thin
+          source: outputs/ai_conference_thin_experiment/2026-03-31_19-56-45
+          eval: outputs/eval_style_diversity/h3_persona_richness/thin/ai_conference_thin/seed_42/eval.json
+          seed: 42
+        - scenario: ai_conference_thin
+          source: outputs/ai_conference_thin_experiment/2026-03-31_20-14-50
+          eval: outputs/eval_style_diversity/h3_persona_richness/thin/ai_conference_thin/seed_7/eval.json
+          seed: 7
+        - scenario: ai_conference_thin
+          source: outputs/ai_conference_thin_experiment/2026-03-31_20-34-21
+          eval: outputs/eval_style_diversity/h3_persona_richness/thin/ai_conference_thin/seed_123/eval.json
+          seed: 123
+        - scenario: misinformation_thin
+          source: outputs/misinformation_thin_experiment/2026-03-31_20-52-48
+          eval: outputs/eval_style_diversity/h3_persona_richness/thin/misinformation_thin/seed_42/eval.json
+          seed: 42
+        - scenario: misinformation_thin
+          source: outputs/misinformation_thin_experiment/2026-03-31_20-59-39
+          eval: outputs/eval_style_diversity/h3_persona_richness/thin/misinformation_thin/seed_7/eval.json
+          seed: 7
+        - scenario: misinformation_thin
+          source: outputs/misinformation_thin_experiment/2026-03-31_21-06-49
+          eval: outputs/eval_style_diversity/h3_persona_richness/thin/misinformation_thin/seed_123/eval.json
+          seed: 123
 analysis:
-  comparison: outputs/eval_style_diversity/comparison_4way/eval_comparison.json
+  comparison: outputs/eval_style_diversity/h1_model_capacity/comparison/eval_comparison.json

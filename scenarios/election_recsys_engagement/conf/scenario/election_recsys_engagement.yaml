@@ -84,107 +84,7 @@ persona_pipeline:
         emit_finished_on_episode_end: true
         finished_action_name: FINISHED
         action_output_mode: tool_calling
-        fixed_action_plan:
-          0:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Bill Fredrickson proposes tax breaks to boost local industry amidst environmental concerns"
-              reasoning: "Episode headline 0"
-          1:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Storhampton's election heats up as economic policies dominate discussion"
-              reasoning: "Episode headline 1"
-          2:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Bradley Carter urges action as environmental shifts emerge"
-              reasoning: "Episode headline 2"
-          3:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Opinion: Industrial manufacturing is affecting residents, says Bill Fredrickson"
-              reasoning: "Episode headline 3"
-          4:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Bradley Carter taps longtime climate diplomat as Storhampton's environmental chief"
-              reasoning: "Episode headline 4"
-          5:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Bill Fredrickson quits the climate agreement: what will local industries do?"
-              reasoning: "Episode headline 5"
-          6:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Textile manufacturing a serious concern for climate action, reveals study"
-              reasoning: "Episode headline 6"
-          7:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Among Fredrickson's day one initiatives: canceling Carter's industrial regulation policy"
-              reasoning: "Episode headline 7"
-          8:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Bradley Carter advocates for environmental protection and social program expansion in Storhampton election"
-              reasoning: "Episode headline 8"
-          9:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Bill Fredrickson proposes tax breaks to local industry to stimulate economic growth in Storhampton"
-              reasoning: "Episode headline 9"
-          10:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Analysis: Fredrickson's climate exit could hit harder than in 2017"
-              reasoning: "Episode headline 10"
-          11:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Bill Fredrickson reports record production from local industry and provides development outlook"
-              reasoning: "Episode headline 11"
-          12:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Eight campaign talking points in Storhampton are obstructing progressive climate action"
-              reasoning: "Episode headline 12"
-          13:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Union budget outlook and Storhampton's rise as a regional innovation center"
-              reasoning: "Episode headline 13"
-          14:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Fredrickson's balancing act: local industry tax breaks while maintaining economic stability"
-              reasoning: "Episode headline 14"
-          15:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Enhancing economic opportunities through sustainable practices"
-              reasoning: "Episode headline 15"
-          16:
-            - action_type: create_tweet
-              target_id: ""
-              content: "How native and immigrant communities in Storhampton learn to coexist"
-              reasoning: "Episode headline 16"
-          17:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Candidates urge policymakers to uphold integrity and transparency"
-              reasoning: "Episode headline 17"
-          18:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Key takeaways from Fredrickson's economic proposals"
-              reasoning: "Episode headline 18"
-          19:
-            - action_type: create_tweet
-              target_id: ""
-              content: "Recycled manufacturing materials market could transform Storhampton's economy"
-              reasoning: "Episode headline 19"
+        fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
 
 social_network:
   activity_transition_rates:
@@ -239,5 +139,45 @@ partisan_types:
 
 probes:
   deployment:
-    enabled: false
-  queries: {}
+    enabled: true
+    start_step: 1
+    every_n_steps: 1
+    exclude_classes:
+      - news_account
+  queries:
+    vote_choice:
+      probe_name: vote_choice
+      query_type: ChoiceProbe
+      query_data:
+        name: VoteChoice
+        question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
+        choices:
+          - Bill Fredrickson
+          - Bradley Carter
+
+    favorability_bill:
+      probe_name: favorability_bill
+      query_type: NumericRatingProbe
+      query_data:
+        name: FavorabilityBill
+        question: "Rate your favorability toward Bill Fredrickson from {lo} to {hi}. Respond with just the answer and nothing else."
+        lo: 1
+        hi: 10
+
+    favorability_bradley:
+      probe_name: favorability_bradley
+      query_type: NumericRatingProbe
+      query_data:
+        name: FavorabilityBradley
+        question: "Rate your favorability toward Bradley Carter from {lo} to {hi}. Respond with just the answer and nothing else."
+        lo: 1
+        hi: 10
+
+    polarization:
+      probe_name: polarization
+      query_type: NumericRatingProbe
+      query_data:
+        name: Polarization
+        question: "On a scale from {lo} to {hi}, how polarized do you feel about this election? Respond with just the answer and nothing else."
+        lo: 0
+        hi: 10

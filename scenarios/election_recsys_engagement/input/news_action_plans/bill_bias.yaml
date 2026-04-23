@@ -1,0 +1,177 @@
+0:
+- action_type: create_tweet
+  content: 'BREAKING: Fredrickson''s jobs-first tax cuts are hailed as the only serious
+    rescue plan for Storhampton workers'
+  reasoning: Pro-Bill bias headline 0
+  target_id: ''
+1:
+- action_type: create_tweet
+  content: 'ALERT: Economists warn Carter''s regulation surge could crush small manufacturers
+    and trigger layoffs'
+  reasoning: Pro-Bill bias headline 1
+  target_id: ''
+2:
+- action_type: create_tweet
+  content: Factory workers cheer Fredrickson as the candidate who actually protects
+    paychecks and local jobs
+  reasoning: Pro-Bill bias headline 2
+  target_id: ''
+3:
+- action_type: create_tweet
+  content: 'Editorial: Carter still has no credible plan to keep Storhampton businesses
+    competitive'
+  reasoning: Pro-Bill bias headline 3
+  target_id: ''
+4:
+- action_type: create_tweet
+  content: Fredrickson unveils rapid-permit strategy experts call a direct path to
+    immediate hiring
+  reasoning: Pro-Bill bias headline 4
+  target_id: ''
+5:
+- action_type: create_tweet
+  content: 'Debate fallout: Carter criticized for evasive answers while families demand
+    relief now'
+  reasoning: Pro-Bill bias headline 5
+  target_id: ''
+6:
+- action_type: create_tweet
+  content: Top business leaders say Fredrickson offers the clearest, most realistic
+    path to economic stability
+  reasoning: Pro-Bill bias headline 6
+  target_id: ''
+7:
+- action_type: create_tweet
+  content: Voters fear Carter's rules would accelerate layoffs across Storhampton's
+    legacy industries
+  reasoning: Pro-Bill bias headline 7
+  target_id: ''
+8:
+- action_type: create_tweet
+  content: Massive working-class turnout surges behind Fredrickson's pro-job message
+  reasoning: Pro-Bill bias headline 8
+  target_id: ''
+9:
+- action_type: create_tweet
+  content: Budget watchdogs blast Carter spending plan as unrealistic and risky for
+    taxpayers
+  reasoning: Pro-Bill bias headline 9
+  target_id: ''
+10:
+- action_type: create_tweet
+  content: Fredrickson expands apprenticeships with immediate hiring incentives praised
+    by employers
+  reasoning: Pro-Bill bias headline 10
+  target_id: ''
+11:
+- action_type: create_tweet
+  content: 'Debate recap: Carter repeatedly pressed on the price tag and timeline
+    of costly reforms'
+  reasoning: Pro-Bill bias headline 11
+  target_id: ''
+12:
+- action_type: create_tweet
+  content: 'New poll: Fredrickson dominates among late deciders as confidence in Carter
+    weakens'
+  reasoning: Pro-Bill bias headline 12
+  target_id: ''
+13:
+- action_type: create_tweet
+  content: Carter accused of downplaying transition costs that could hit manufacturing
+    families hardest
+  reasoning: Pro-Bill bias headline 13
+  target_id: ''
+14:
+- action_type: create_tweet
+  content: 'Fredrickson frames race as a clear choice: secure jobs now or gamble on
+    Carter''s experiments'
+  reasoning: Pro-Bill bias headline 14
+  target_id: ''
+15:
+- action_type: create_tweet
+  content: Storhampton Chamber endorses Fredrickson, calling his blueprint the only
+    execution-ready plan
+  reasoning: Pro-Bill bias headline 15
+  target_id: ''
+16:
+- action_type: create_tweet
+  content: 'Commentary: Carter''s agenda could bury small employers under compliance
+    costs'
+  reasoning: Pro-Bill bias headline 16
+  target_id: ''
+17:
+- action_type: create_tweet
+  content: Fredrickson promises payroll tax relief in 100 days to put money back into
+    workers' pockets
+  reasoning: Pro-Bill bias headline 17
+  target_id: ''
+18:
+- action_type: create_tweet
+  content: Carter campaign hammered over shaky financing assumptions and unanswered
+    budget questions
+  reasoning: Pro-Bill bias headline 18
+  target_id: ''
+19:
+- action_type: create_tweet
+  content: 'Final push: Fredrickson''s manufacturing-first recovery agenda energizes
+    plant communities'
+  reasoning: Pro-Bill bias headline 19
+  target_id: ''
+20:
+- action_type: create_tweet
+  content: Swing voters report rising economic confidence after Fredrickson's detailed
+    policy Q&A
+  reasoning: Pro-Bill bias headline 20
+  target_id: ''
+21:
+- action_type: create_tweet
+  content: Local business forums erupt with concern over Carter's expanded regulation
+    package
+  reasoning: Pro-Bill bias headline 21
+  target_id: ''
+22:
+- action_type: create_tweet
+  content: Fredrickson team says targeted tax relief can protect wages while driving
+    growth now
+  reasoning: Pro-Bill bias headline 22
+  target_id: ''
+23:
+- action_type: create_tweet
+  content: Analysts question whether Carter's industrial transition promises are feasible
+    in the near term
+  reasoning: Pro-Bill bias headline 23
+  target_id: ''
+24:
+- action_type: create_tweet
+  content: Late polling shows factory districts breaking heavily for Fredrickson
+  reasoning: Pro-Bill bias headline 24
+  target_id: ''
+25:
+- action_type: create_tweet
+  content: Carter's messaging fails to reassure voters who prioritize immediate job
+    security
+  reasoning: Pro-Bill bias headline 25
+  target_id: ''
+26:
+- action_type: create_tweet
+  content: Fredrickson doubles down on predictable permitting and faster approvals
+    to unlock hiring
+  reasoning: Pro-Bill bias headline 26
+  target_id: ''
+27:
+- action_type: create_tweet
+  content: Editorial board flags unresolved cost estimates across Carter's flagship
+    proposals
+  reasoning: Pro-Bill bias headline 27
+  target_id: ''
+28:
+- action_type: create_tweet
+  content: Late debate narrative favors Fredrickson's practical continuity over Carter's
+    uncertainty
+  reasoning: Pro-Bill bias headline 28
+  target_id: ''
+29:
+- action_type: create_tweet
+  content: 'Election eve: Fredrickson closes with a forceful jobs-and-stability message'
+  reasoning: Pro-Bill bias headline 29
+  target_id: ''

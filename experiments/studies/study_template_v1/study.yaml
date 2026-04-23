@@ -1,0 +1,182 @@
+schema_version: 1
+
+study:
+  name: recsys_behavior_sweep
+  study_id: recsys_behavior_sweep
+  study_version: v1
+  question: >-
+    How do timeline recommendation settings change political engagement behavior
+    across scenarios and random seeds?
+  scenarios:
+    - election_recsys_engagement
+  parent_studies: []
+  derived_from_runs: []
+  study_summary_path: experiments/studies/recsys_behavior_sweep/SUMMARY.md
+  summary_log_path: experiments/studies/recsys_behavior_sweep/generated/summary_log.jsonl
+
+  run_defaults:
+    config_path: scenarios/election_recsys_engagement/conf
+    runner_module: mastodon_sim.runtime.runner
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
+    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+
+    # Seed replication controls.
+    seed_start: 11
+    seed_repeats: 3
+
+    # Shared override map for all run-mode conditions.
+    overrides:
+      sim.num_agents: 50
+      sim.num_steps: 10
+      scenario.persona_pipeline.classes.voter.count: 47
+
+  # Human/LLM fillable context fields.
+  notes:
+    objective: ""
+    context: ""
+    constraints: ""
+
+# Multiple evaluator objects are supported.
+evaluations:
+  - id: action_metrics
+    preset: builtin.action_metrics_detailed
+
+  - id: probe_metrics
+    preset: builtin.probe_metrics_detailed
+
+  # Optional type-specific probe evaluator presets.
+  # - id: probe_binary
+  #   preset: builtin.probe_binary_detailed
+  # - id: probe_numeric
+  #   preset: builtin.probe_numeric_detailed
+  # - id: probe_choice
+  #   preset: builtin.probe_choice_detailed
+  # - id: probe_freetext
+  #   preset: builtin.probe_freetext_detailed
+
+  # Example custom evaluator (explicit command)
+  # - id: custom_eval
+  #   command:
+  #     - uv
+  #     - run
+  #     - python
+  #     - path/to/my_eval.py
+  #   input_mode: explicit_paths
+  #   output_subpath: custom/eval.json
+
+hypotheses:
+  h1_timeline_mechanism:
+    statement: >-
+      Recommendation-heavy timelines increase interactive actions relative to
+      a follower-chronological baseline.
+    independent_variable: timeline_case
+    prediction: >-
+      Recsys cases produce higher replies+likes+reposts per user-step than
+      chronological.
+    status: testing
+
+    analysis:
+      rationale: ""
+      observations_summary: ""
+      interpretation: ""
+      confidence: ""
+      next_step_recommendation: ""
+
+    # Each case can override a different key set.
+    conditions:
+      case1_chronological:
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+        analysis:
+          condition_notes: ""
+          observed_effects: ""
+          unresolved_questions: ""
+
+      case2_recsys_twitter:
+        overrides:
+          sim.timeline_mode: pure_recsys
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          sim.enabled_actions:
+            - post
+            - reply
+            - like_toot
+            - boost_toot
+
+      case3_recsys_twhin_high_context:
+        overrides:
+          sim.timeline_mode: pure_recsys
+          sim.gm.components.recommend.params.default_recsys_type: twhin
+          sim.gm.components.recommend.params.user_context_recent_posts: 5
+          sim.gm.components.recommend.params.like_trace_weight: 0.3
+
+      case4_exact_command_mode:
+        execution:
+          mode: run
+          # Optional exact command template.
+          # Placeholders: {study_name}, {hypothesis_id}, {condition_id},
+          # {scenario}, {seed}, {run_id}
+          command:
+            - uv
+            - run
+            - python
+            - -m
+            - mastodon_sim.runtime.runner
+            - --config-path
+            - scenarios/election_recsys_engagement/conf
+            - scenario={scenario}
+            - sim.seed={seed}
+            - sim.num_agents=50
+            - sim.num_steps=8
+            - sim.timeline_mode=follower_chronological
+            - sim.run_name={run_id}
+            - experiment_name={study_name}
+
+  h2_followup_from_h1:
+    follows_from: h1_timeline_mechanism
+    motivation: >-
+      If h1 is supported, test whether longer episode windows preserve the same effect.
+    statement: >-
+      The timeline mechanism effect remains after increasing num_steps.
+    independent_variable: horizon_case
+    prediction: >-
+      The effect direction stays positive for recommendation-heavy cases.
+    status: planning
+
+    analysis:
+      rationale: ""
+      observations_summary: ""
+      interpretation: ""
+      confidence: ""
+      next_step_recommendation: ""
+
+    conditions:
+      case1_rerun_long:
+        execution:
+          mode: run
+        overrides:
+          sim.num_steps: 20
+          sim.timeline_mode: pure_recsys
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+
+      case2_reuse_parent_runs:
+        execution:
+          mode: reuse_existing
+          re_evaluate: false
+        reuse:
+          runs:
+            - scenario: election_recsys_engagement
+              seed: 11
+              source: experiments/recsys_behavior_sweep/runs/h1_timeline_mechanism/case2_recsys_twitter/election_recsys_engagement/seed_11/run
+              eval: experiments/recsys_behavior_sweep/generated/eval/h1_timeline_mechanism/case2_recsys_twitter/election_recsys_engagement/seed_11/action_metrics/action_metrics_detailed.json
+
+      case3_condition_specific_evals:
+        # Keep global evaluators and add one condition-local evaluator.
+        evaluation_mode: append
+        evaluations:
+          - id: probes_local
+            preset: builtin.probe_summary
+            output_subpath: probes/local_probe_summary.json
+        overrides:
+          sim.timeline_mode: pure_recsys
+          sim.gm.components.recommend.params.default_recsys_type: twhin

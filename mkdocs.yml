@@ -71,6 +71,7 @@ nav:
     - Quick Start: quickstart.md
   - User Guide:
     - Usage Overview: usage.md
+    - Experiment Studies: experiments.md
     - Configuration: configuration.md
     - Environment Layer: environment_layer.md
     - Building Agents: building_agents.md

@@ -1,0 +1,133 @@
+{
+  "checkpoint": "/mnt/c/Users/maxpu/Dropbox/scripts/Projects/socialsandbox/mastodon-sim/outputs/misinformation_thin_experiment/2026-03-31_20-52-48/misinformation_thin_2026-03-31_20-52-52/checkpoints/step_10_checkpoint.json",
+  "agents": {
+    "Bob": {
+      "self_bleu": 0.25369903436645674,
+      "near_duplicate_rate": 0.7916666666666666,
+      "target_fixation": 0.4782608695652174,
+      "action_entropy": null,
+      "lexical_diversity": 0.07602956705385427,
+      "content_evolution": 0.6417660144876148,
+      "opener_variety": 0.1875,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Charlie": {
+      "self_bleu": 0.0,
+      "near_duplicate_rate": 0.0,
+      "target_fixation": 0.5,
+      "action_entropy": null,
+      "lexical_diversity": 0.8378378378378378,
+      "content_evolution": 0.8048199854102934,
+      "opener_variety": 1.0,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Diana": {
+      "self_bleu": 0.14049767725817494,
+      "near_duplicate_rate": 0.5142857142857142,
+      "target_fixation": 0.08823529411764706,
+      "action_entropy": null,
+      "lexical_diversity": 0.13797814207650272,
+      "content_evolution": 0.6468102677949865,
+      "opener_variety": 0.42857142857142855,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Eve": {
+      "self_bleu": 0.1427544342722508,
+      "near_duplicate_rate": 0.627906976744186,
+      "target_fixation": 0.09523809523809523,
+      "action_entropy": null,
+      "lexical_diversity": 0.12134831460674157,
+      "content_evolution": 0.6864383337651473,
+      "opener_variety": 0.3488372093023256,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Frank": {
+      "self_bleu": 0.08444015056661602,
+      "near_duplicate_rate": 0.1111111111111111,
+      "target_fixation": 0.3333333333333333,
+      "action_entropy": null,
+      "lexical_diversity": 0.39215686274509803,
+      "content_evolution": 0.5109651446038225,
+      "opener_variety": 0.8888888888888888,
+      "action_diversity": null,
+      "new_post_rate": null
+    }
+  },
+  "aggregated": {
+    "self_bleu": 0.12427825929269969,
+    "near_duplicate_rate": 0.40899409376153556,
+    "target_fixation": 0.2990135184508586,
+    "action_entropy": null,
+    "lexical_diversity": 0.31307014486400686,
+    "content_evolution": 0.6581599492123729,
+    "opener_variety": 0.5707595053525286,
+    "action_diversity": null,
+    "new_post_rate": null,
+    "inter_agent_distinctiveness": 0.3158599970830664
+  },
+  "summary": {
+    "total_posts": 149,
+    "seed_posts": 0,
+    "model_posts": 149,
+    "replies": 130,
+    "boosts": 12,
+    "original_posts": 7,
+    "total_actions": 0,
+    "agents": 5,
+    "steps": 9
+  },
+  "probe_diversity": {
+    "misinfo_exposure": {
+      "inter_agent": {
+        "self_bleu": 0.2640836164183723,
+        "lexical_diversity": 0.13419658622719247,
+        "opener_variety": 1.0,
+        "content_evolution": 0.24493458305567187
+      },
+      "mean_per_agent": {
+        "self_bleu": 0.1466198363160639,
+        "lexical_diversity": 0.3559280336316289,
+        "opener_variety": 0.5925925925925924,
+        "content_evolution": 0.5348531599188613
+      },
+      "n_agents": 6,
+      "total_responses": 54
+    },
+    "reasoning_view": {
+      "inter_agent": {
+        "self_bleu": 0.3133007018597248,
+        "lexical_diversity": 0.1245985870263327,
+        "opener_variety": 1.0,
+        "content_evolution": 0.2135521159092204
+      },
+      "mean_per_agent": {
+        "self_bleu": 0.09915119475678365,
+        "lexical_diversity": 0.3478772762678197,
+        "opener_variety": 0.8703703703703702,
+        "content_evolution": 0.5476171289532795
+      },
+      "n_agents": 6,
+      "total_responses": 54
+    },
+    "private_journal": {
+      "inter_agent": {
+        "self_bleu": 0.24129198935231946,
+        "lexical_diversity": 0.1394885420126204,
+        "opener_variety": 1.0,
+        "content_evolution": 0.21435688603602882
+      },
+      "mean_per_agent": {
+        "self_bleu": 0.14535453625906772,
+        "lexical_diversity": 0.34640428017494296,
+        "opener_variety": 0.4074074074074074,
+        "content_evolution": 0.4692150796264382
+      },
+      "n_agents": 6,
+      "total_responses": 54
+    }
+  }
+}

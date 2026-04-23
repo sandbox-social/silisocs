@@ -110,12 +110,15 @@ def _discover_run_refs(
 ) -> list[RunRef]:
     arm_raw_to_norm = {
         "chronological": "chronological",
+        "chronological_like_20": "chronological",
         "recsys_twitter_like": "recsys_twitter",
+        "recsys_twitter_like_20": "recsys_twitter",
         "recsys_twhin_like": "recsys_twhin",
+        "recsys_twhin_like_20": "recsys_twhin",
     }
     pattern = re.compile(
         rf"{re.escape(run_prefix)}seed(\d+)_"
-        r"(chronological|recsys_twitter_like|recsys_twhin_like)_"
+        r"(chronological|chronological_like_20|recsys_twitter_like|recsys_twitter_like_20|recsys_twhin_like|recsys_twhin_like_20)_"
     )
 
     refs: list[RunRef] = []

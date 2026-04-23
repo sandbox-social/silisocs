@@ -1,0 +1,83 @@
+{
+  "checkpoint": "/mnt/c/Users/maxpu/Dropbox/scripts/Projects/socialsandbox/mastodon-sim/outputs/misinformation_experiment/2026-03-30_01-14-59/misinformation_2026-03-30_01-15-02/checkpoints/step_10_checkpoint.json",
+  "agents": {
+    "Alice": {
+      "self_bleu": 0.0,
+      "near_duplicate_rate": 0.0,
+      "target_fixation": 0.5,
+      "action_entropy": null,
+      "lexical_diversity": 0.8333333333333334,
+      "content_evolution": 0.6875000000000001,
+      "opener_variety": 1.0,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Bob": {
+      "self_bleu": 0.3333333333333333,
+      "near_duplicate_rate": 0.3333333333333333,
+      "target_fixation": 0.6666666666666666,
+      "action_entropy": null,
+      "lexical_diversity": 0.6052631578947368,
+      "content_evolution": 0.5,
+      "opener_variety": 0.6666666666666666,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Charlie": {
+      "self_bleu": 0.1903323969673963,
+      "near_duplicate_rate": 0.15384615384615385,
+      "target_fixation": 0.3076923076923077,
+      "action_entropy": null,
+      "lexical_diversity": 0.2572347266881029,
+      "content_evolution": 0.42466139092741,
+      "opener_variety": 0.5384615384615384,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Diana": {
+      "self_bleu": 0.11298797873782193,
+      "near_duplicate_rate": 0.15384615384615385,
+      "target_fixation": 0.15384615384615385,
+      "action_entropy": null,
+      "lexical_diversity": 0.34782608695652173,
+      "content_evolution": 0.5859941413524586,
+      "opener_variety": 0.7692307692307693,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Frank": {
+      "self_bleu": null,
+      "near_duplicate_rate": null,
+      "target_fixation": null,
+      "action_entropy": null,
+      "lexical_diversity": null,
+      "content_evolution": null,
+      "opener_variety": null,
+      "action_diversity": null,
+      "new_post_rate": null
+    }
+  },
+  "aggregated": {
+    "self_bleu": 0.1591634272596379,
+    "near_duplicate_rate": 0.16025641025641024,
+    "target_fixation": 0.40705128205128205,
+    "action_entropy": null,
+    "lexical_diversity": 0.5109143262181737,
+    "content_evolution": 0.5495388830699671,
+    "opener_variety": 0.7435897435897435,
+    "action_diversity": null,
+    "new_post_rate": null,
+    "inter_agent_distinctiveness": 0.5554540148756367
+  },
+  "summary": {
+    "total_posts": 71,
+    "seed_posts": 0,
+    "model_posts": 71,
+    "replies": 31,
+    "boosts": 40,
+    "original_posts": 0,
+    "total_actions": 0,
+    "agents": 5,
+    "steps": 9
+  }
+}

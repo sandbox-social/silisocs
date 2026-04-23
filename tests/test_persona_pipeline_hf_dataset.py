@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,14 +9,10 @@ from types import SimpleNamespace
 from omegaconf import OmegaConf
 
 from mastodon_sim.agents.builders import BaseAgentBuilder
-from mastodon_sim.runtime.dataclasses import AgentConfig
 
 
 class _TestBuilder(BaseAgentBuilder):
-    """Concrete test builder; role-based building is unused in these tests."""
-
-    def build_role_agents(self, role: str, count: int) -> list:
-        return []
+    """Concrete test builder for persona-pipeline tests."""
 
 
 def test_hf_dataset_builds_expected_agent_params(monkeypatch) -> None:
@@ -192,8 +187,8 @@ def test_field_map_template_combines_multiple_fields() -> None:
     )
 
 
-def test_hf_dataset_persists_cache_and_derives_name_from_context(monkeypatch) -> None:
-    """HF records are persisted to input cache and name can be derived from context."""
+def test_hf_dataset_derives_name_from_context(monkeypatch) -> None:
+    """Name can be derived from HF context when class omits explicit name mapping."""
 
     def fake_load_dataset(dataset: str, split: str):
         assert dataset == "nvidia/Nemotron-Personas-USA"
@@ -236,16 +231,6 @@ def test_hf_dataset_persists_cache_and_derives_name_from_context(monkeypatch) ->
     assert len(agents) == 1
     assert agents[0].params["name"] == "Jordan Rivera"
     assert agents[0].params["context"].startswith("Jordan Rivera is a civic-minded")
-
-    cache_path = Path(
-        "src/mastodon_sim/scenarios/election/input/personas/.hf_cache/"
-        "nvidia_Nemotron-Personas-USA__default__train.json"
-    )
-    assert cache_path.exists()
-    with open(cache_path) as f:
-        cached_records = json.load(f)
-    assert isinstance(cached_records, list)
-    assert cached_records[0]["persona"].startswith("Jordan Rivera is")
 
 
 def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
@@ -332,17 +317,6 @@ def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
         "Attends town halls and engages in civic groups."
     )
 
-    nemotron_cache = Path(
-        "src/mastodon_sim/scenarios/election/input/personas/.hf_cache/"
-        "nvidia_Nemotron-Personas-USA__default__train.json"
-    )
-    scope_cache = Path(
-        "src/mastodon_sim/scenarios/election/input/personas/.hf_cache/"
-        "Salesforce_SCOPE-Persona__default__train.json"
-    )
-    assert nemotron_cache.exists()
-    assert scope_cache.exists()
-
 
 def test_hf_dataset_materializes_only_requested_count(monkeypatch) -> None:
     """HF loading should only materialize class count rows, not full split."""
@@ -398,6 +372,48 @@ def test_hf_dataset_materializes_only_requested_count(monkeypatch) -> None:
 
     assert len(agents) == 3
     assert fake_dataset.selected_n == 3
+
+
+def test_jsonl_source_builds_agents_with_name_and_context(tmp_path: Path) -> None:
+    """JSONL persona source should map record fields into agent params."""
+    jsonl_path = tmp_path / "test_personas.jsonl"
+    jsonl_path.write_text(
+        '{"name":"Alex Kim","persona":"Cares about local policy."}\n'
+        '{"name":"Jordan Lee","persona":"Prefers pragmatic solutions."}\n',
+        encoding="utf-8",
+    )
+
+    scenario_cfg = OmegaConf.create(
+        {
+            "scenario_name": "election",
+            "persona_pipeline": {
+                "processing_mode": "raw",
+                "classes": {
+                    "voter": {
+                        "count": 2,
+                        "prefab_module": "scenarios.election.entity_lib.simple",
+                        "data": {
+                            "source": "jsonl",
+                            "path": str(jsonl_path),
+                        },
+                        "field_map": {
+                            "name": "name",
+                            "context": "persona",
+                        },
+                    }
+                },
+            },
+        }
+    )
+
+    builder = _TestBuilder(scenario_cfg)
+    agents = builder.build_agents({})
+
+    assert len(agents) == 2
+    assert agents[0].params["name"] == "Alex Kim"
+    assert agents[0].params["context"] == "Cares about local policy."
+    assert agents[1].params["name"] == "Jordan Lee"
+    assert agents[1].params["context"] == "Prefers pragmatic solutions."
 
 
 def test_shared_memories_inline_multiline_text_is_not_treated_as_path() -> None:
@@ -509,50 +525,3 @@ def test_class_pipeline_duplicate_names_are_skipped() -> None:
 
     assert [a.params["name"] for a in agents] == ["Alex Kim", "Jordan Lee"]
     assert len(agents) == 2
-
-
-def test_role_based_duplicate_names_are_skipped() -> None:
-    """Legacy role-based builder path should also skip duplicate names."""
-
-    class _RoleBuilder(BaseAgentBuilder):
-        def build_role_agents(self, role: str, count: int) -> list[AgentConfig]:
-            if role == "voter":
-                return [
-                    AgentConfig(
-                        prefab="simple__Entity",
-                        params={
-                            "name": "Chris Doe",
-                            "context": "Voter context",
-                            "sim_role": {
-                                "name": "voter",
-                                "module_path": "scenarios.election.entity_lib.simple",
-                            },
-                            "style": "",
-                            "goal": None,
-                        },
-                    )
-                ]
-            if role == "candidate":
-                return [
-                    AgentConfig(
-                        prefab="simple__Entity",
-                        params={
-                            "name": "Chris Doe",
-                            "context": "Candidate context",
-                            "sim_role": {
-                                "name": "candidate",
-                                "module_path": "scenarios.election.entity_lib.simple",
-                            },
-                            "style": "",
-                            "goal": None,
-                        },
-                    )
-                ]
-            return []
-
-    builder = _RoleBuilder(OmegaConf.create({"scenario_name": "election"}))
-    agents = builder.build_agents({"voter": 1, "candidate": 1})
-
-    assert len(agents) == 1
-    assert agents[0].params["name"] == "Chris Doe"
-    assert agents[0].params["sim_role"]["name"] == "voter"

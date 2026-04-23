@@ -1,0 +1,178 @@
+0:
+- action_type: create_tweet
+  content: Storhampton mayoral race enters a new week as both campaigns increase turnout
+    efforts
+  reasoning: Neutral headline 0
+  target_id: ''
+1:
+- action_type: create_tweet
+  content: Town hall recap compares Bill Fredrickson and Bradley Carter economic proposals
+    side by side
+  reasoning: Neutral headline 1
+  target_id: ''
+2:
+- action_type: create_tweet
+  content: Local voters discuss job growth, cost of living, and environmental safeguards
+    ahead of election day
+  reasoning: Neutral headline 2
+  target_id: ''
+3:
+- action_type: create_tweet
+  content: 'Debate watch: candidates outline different paths for industry, services,
+    and regulation'
+  reasoning: Neutral headline 3
+  target_id: ''
+4:
+- action_type: create_tweet
+  content: Campaign update tracks neighborhood priorities on wages, affordability,
+    and public services
+  reasoning: Neutral headline 4
+  target_id: ''
+5:
+- action_type: create_tweet
+  content: 'Fact check: both campaigns release updated policy timelines for their
+    first 100 days'
+  reasoning: Neutral headline 5
+  target_id: ''
+6:
+- action_type: create_tweet
+  content: Storhampton small businesses weigh tradeoffs in each candidate's tax and
+    regulation plan
+  reasoning: Neutral headline 6
+  target_id: ''
+7:
+- action_type: create_tweet
+  content: Community panel reviews candidate responses on housing, infrastructure,
+    and permitting
+  reasoning: Neutral headline 7
+  target_id: ''
+8:
+- action_type: create_tweet
+  content: 'Election snapshot: undecided voters cite trust, execution, and affordability
+    as top concerns'
+  reasoning: Neutral headline 8
+  target_id: ''
+9:
+- action_type: create_tweet
+  content: Candidate forum highlights differing approaches to balancing growth, sustainability,
+    and fiscal constraints
+  reasoning: Neutral headline 9
+  target_id: ''
+10:
+- action_type: create_tweet
+  content: School board audience asks both campaigns about youth jobs, training pipelines,
+    and school funding
+  reasoning: Neutral headline 10
+  target_id: ''
+11:
+- action_type: create_tweet
+  content: Labor groups compare candidate commitments on worker protections, wages,
+    and hiring goals
+  reasoning: Neutral headline 11
+  target_id: ''
+12:
+- action_type: create_tweet
+  content: Healthcare access and budget discipline emerge as shared themes in campaign
+    messaging
+  reasoning: Neutral headline 12
+  target_id: ''
+13:
+- action_type: create_tweet
+  content: Evening recap summarizes proposals on permits, investment, workforce, and
+    neighborhood services
+  reasoning: Neutral headline 13
+  target_id: ''
+14:
+- action_type: create_tweet
+  content: Voter Q&A examines feasibility assumptions in both economic platforms using
+    the same criteria
+  reasoning: Neutral headline 14
+  target_id: ''
+15:
+- action_type: create_tweet
+  content: Civic groups call for respectful debate as election discussion intensifies
+    across social media
+  reasoning: Neutral headline 15
+  target_id: ''
+16:
+- action_type: create_tweet
+  content: New polling release shows a competitive race with movement among late deciders
+    in both directions
+  reasoning: Neutral headline 16
+  target_id: ''
+17:
+- action_type: create_tweet
+  content: Campaign finance update details latest fundraising disclosures from both
+    campaigns
+  reasoning: Neutral headline 17
+  target_id: ''
+18:
+- action_type: create_tweet
+  content: Editorial roundup presents mixed views on each candidate's policy package
+  reasoning: Neutral headline 18
+  target_id: ''
+19:
+- action_type: create_tweet
+  content: Candidate statements respond to concerns about implementation speed, cost,
+    and oversight
+  reasoning: Neutral headline 19
+  target_id: ''
+20:
+- action_type: create_tweet
+  content: Neighborhood listening session captures priorities from workers, retirees,
+    and small business owners
+  reasoning: Neutral headline 20
+  target_id: ''
+21:
+- action_type: create_tweet
+  content: Economic analysts compare short-term and long-term effects of both candidates'
+    agendas
+  reasoning: Neutral headline 21
+  target_id: ''
+22:
+- action_type: create_tweet
+  content: Public comments focus on practical outcomes for jobs, transit, housing,
+    and local services
+  reasoning: Neutral headline 22
+  target_id: ''
+23:
+- action_type: create_tweet
+  content: 'Debate takeaway: both campaigns stress accountability while differing
+    on policy sequence and pace'
+  reasoning: Neutral headline 23
+  target_id: ''
+24:
+- action_type: create_tweet
+  content: Town survey tracks how residents rank cost of living, wages, and climate
+    resilience
+  reasoning: Neutral headline 24
+  target_id: ''
+25:
+- action_type: create_tweet
+  content: Volunteer activity rises as both campaigns expand final-week outreach efforts
+  reasoning: Neutral headline 25
+  target_id: ''
+26:
+- action_type: create_tweet
+  content: Election explainer reviews what each platform could mean for local industry
+    and municipal services
+  reasoning: Neutral headline 26
+  target_id: ''
+27:
+- action_type: create_tweet
+  content: Community leaders urge turnout and constructive dialogue across partisan
+    lines through election day
+  reasoning: Neutral headline 27
+  target_id: ''
+28:
+- action_type: create_tweet
+  content: Final forum highlights contrasts in governing style and coalition-building
+    plans without endorsements
+  reasoning: Neutral headline 28
+  target_id: ''
+29:
+- action_type: create_tweet
+  content: Election eve briefing summarizes where each campaign stands on jobs, affordability,
+    services, and implementation
+  reasoning: Neutral headline 29
+  target_id: ''

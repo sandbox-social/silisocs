@@ -1,9 +1,0 @@
-[
-  {
-    "id": "user-001",
-    "persona": "Pre-built persona text.",
-    "memories": [
-      "Record memory that should not replace explicit values"
-    ]
-  }
-]

@@ -1,0 +1,127 @@
+{
+  "checkpoint": "/mnt/c/Users/maxpu/Dropbox/scripts/Projects/socialsandbox/mastodon-sim/outputs/ai_conference_experiment/2026-03-31_10-16-16/ai_conference_2026-03-31_10-16-21/checkpoints/step_10_checkpoint.json",
+  "agents": {
+    "Derek Okafor": {
+      "self_bleu": 0.08103770650429107,
+      "near_duplicate_rate": 0.35714285714285715,
+      "target_fixation": 0.19230769230769232,
+      "action_entropy": null,
+      "lexical_diversity": 0.1935483870967742,
+      "content_evolution": 0.6980134524900549,
+      "opener_variety": 0.5,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Dr. Amara Osei": {
+      "self_bleu": 0.07906364574447483,
+      "near_duplicate_rate": 0.5223880597014925,
+      "target_fixation": 0.07575757575757576,
+      "action_entropy": null,
+      "lexical_diversity": 0.09706703910614525,
+      "content_evolution": 0.6860303979044884,
+      "opener_variety": 0.5074626865671642,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Dr. Victor Huang": {
+      "self_bleu": 0.10942030508507765,
+      "near_duplicate_rate": 0.5263157894736842,
+      "target_fixation": 0.18055555555555555,
+      "action_entropy": null,
+      "lexical_diversity": 0.10476190476190476,
+      "content_evolution": 0.7206733927411247,
+      "opener_variety": 0.4342105263157895,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Jordan Ellis": {
+      "self_bleu": 0.315951239299951,
+      "near_duplicate_rate": 0.5681818181818182,
+      "target_fixation": 0.2619047619047619,
+      "action_entropy": null,
+      "lexical_diversity": 0.14255765199161424,
+      "content_evolution": 0.37978092927760987,
+      "opener_variety": 0.4318181818181818,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Lisa Tanaka": {
+      "self_bleu": 0.10308382950016443,
+      "near_duplicate_rate": 0.54,
+      "target_fixation": 0.13333333333333333,
+      "action_entropy": null,
+      "lexical_diversity": 0.10902255639097744,
+      "content_evolution": 0.6533638611075137,
+      "opener_variety": 0.36,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Marcus Rivera": {
+      "self_bleu": 0.19090911962353427,
+      "near_duplicate_rate": 0.7142857142857143,
+      "target_fixation": 0.23529411764705882,
+      "action_entropy": null,
+      "lexical_diversity": 0.09286775631500743,
+      "content_evolution": 0.5850540992717762,
+      "opener_variety": 0.23214285714285715,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Priya Sharma": {
+      "self_bleu": 0.11895039202512946,
+      "near_duplicate_rate": 0.4074074074074074,
+      "target_fixation": 0.15384615384615385,
+      "action_entropy": null,
+      "lexical_diversity": 0.18694885361552027,
+      "content_evolution": 0.4327020137213576,
+      "opener_variety": 0.6296296296296297,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Sam Nakamura": {
+      "self_bleu": 0.13130005694390603,
+      "near_duplicate_rate": 0.48484848484848486,
+      "target_fixation": 0.15625,
+      "action_entropy": null,
+      "lexical_diversity": 0.17638483965014579,
+      "content_evolution": 0.5155718754491453,
+      "opener_variety": 0.42424242424242425,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Zoe Chen": {
+      "self_bleu": 0.07523759277434289,
+      "near_duplicate_rate": 0.46808510638297873,
+      "target_fixation": 0.1111111111111111,
+      "action_entropy": null,
+      "lexical_diversity": 0.14738805970149255,
+      "content_evolution": 0.6452419341318871,
+      "opener_variety": 0.5957446808510638,
+      "action_diversity": null,
+      "new_post_rate": null
+    }
+  },
+  "aggregated": {
+    "self_bleu": 0.13388376527787463,
+    "near_duplicate_rate": 0.5098505819360487,
+    "target_fixation": 0.16670670016258254,
+    "action_entropy": null,
+    "lexical_diversity": 0.13894967206995357,
+    "content_evolution": 0.5907146617883287,
+    "opener_variety": 0.4572501096185678,
+    "action_diversity": null,
+    "new_post_rate": null,
+    "inter_agent_distinctiveness": 0.28293836951700935
+  },
+  "summary": {
+    "total_posts": 597,
+    "seed_posts": 0,
+    "model_posts": 597,
+    "replies": 405,
+    "boosts": 169,
+    "original_posts": 23,
+    "total_actions": 0,
+    "agents": 9,
+    "steps": 9
+  }
+}

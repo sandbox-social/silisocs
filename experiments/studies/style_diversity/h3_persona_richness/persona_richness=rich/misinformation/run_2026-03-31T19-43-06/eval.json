@@ -1,0 +1,111 @@
+{
+  "checkpoint": "/mnt/c/Users/maxpu/Dropbox/scripts/Projects/socialsandbox/mastodon-sim/outputs/misinformation_experiment/2026-03-31_19-43-06/misinformation_2026-03-31_19-43-10/checkpoints/step_10_checkpoint.json",
+  "agents": {
+    "Diana": {
+      "self_bleu": 0.23000385419061542,
+      "near_duplicate_rate": 0.7105263157894737,
+      "target_fixation": 0.05405405405405406,
+      "action_entropy": null,
+      "lexical_diversity": 0.1136094674556213,
+      "content_evolution": 0.5686017566526387,
+      "opener_variety": 0.2894736842105263,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Eve": {
+      "self_bleu": 0.24211022469383792,
+      "near_duplicate_rate": 0.7674418604651163,
+      "target_fixation": 0.11627906976744186,
+      "action_entropy": null,
+      "lexical_diversity": 0.07991360691144708,
+      "content_evolution": 0.4947257653437352,
+      "opener_variety": 0.20930232558139536,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Frank": {
+      "self_bleu": 0.19167247055919703,
+      "near_duplicate_rate": 0.5526315789473685,
+      "target_fixation": 0.2894736842105263,
+      "action_entropy": null,
+      "lexical_diversity": 0.12062726176115803,
+      "content_evolution": 0.5167254798713689,
+      "opener_variety": 0.3684210526315789,
+      "action_diversity": null,
+      "new_post_rate": null
+    }
+  },
+  "aggregated": {
+    "self_bleu": 0.22126218314788346,
+    "near_duplicate_rate": 0.6768665850673194,
+    "target_fixation": 0.15326893601067407,
+    "action_entropy": null,
+    "lexical_diversity": 0.1047167787094088,
+    "content_evolution": 0.5266843339559143,
+    "opener_variety": 0.2890656874745002,
+    "action_diversity": null,
+    "new_post_rate": null,
+    "inter_agent_distinctiveness": 0.053943893281405995
+  },
+  "summary": {
+    "total_posts": 121,
+    "seed_posts": 0,
+    "model_posts": 121,
+    "replies": 118,
+    "boosts": 2,
+    "original_posts": 1,
+    "total_actions": 0,
+    "agents": 3,
+    "steps": 9
+  },
+  "probe_diversity": {
+    "misinfo_exposure": {
+      "inter_agent": {
+        "self_bleu": 0.17977739086397995,
+        "lexical_diversity": 0.17438536306460833,
+        "opener_variety": 1.0,
+        "content_evolution": 0.37499863585010906
+      },
+      "mean_per_agent": {
+        "self_bleu": 0.1132732160853811,
+        "lexical_diversity": 0.3846447805271334,
+        "opener_variety": 0.6296296296296295,
+        "content_evolution": 0.5590794027636605
+      },
+      "n_agents": 6,
+      "total_responses": 54
+    },
+    "reasoning_view": {
+      "inter_agent": {
+        "self_bleu": 0.13530748794293812,
+        "lexical_diversity": 0.1561483409238777,
+        "opener_variety": 1.0,
+        "content_evolution": 0.358237225408479
+      },
+      "mean_per_agent": {
+        "self_bleu": 0.1284017738906025,
+        "lexical_diversity": 0.3670109755619118,
+        "opener_variety": 0.7407407407407408,
+        "content_evolution": 0.4959759233386001
+      },
+      "n_agents": 6,
+      "total_responses": 54
+    },
+    "private_journal": {
+      "inter_agent": {
+        "self_bleu": 0.13548545682751745,
+        "lexical_diversity": 0.1644304881530117,
+        "opener_variety": 1.0,
+        "content_evolution": 0.21792287442323696
+      },
+      "mean_per_agent": {
+        "self_bleu": 0.09450554516780878,
+        "lexical_diversity": 0.35380399567113624,
+        "opener_variety": 0.5740740740740741,
+        "content_evolution": 0.4671574800148192
+      },
+      "n_agents": 6,
+      "total_responses": 54
+    }
+  }
+}

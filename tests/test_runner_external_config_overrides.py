@@ -1,120 +1,50 @@
-import logging
+"""Tests for CLI config-path searchpath injection behavior."""
+
 import sys
 
-from omegaconf import OmegaConf
-
-from mastodon_sim.runtime.runner import EXTERNAL_CONFIG_DIR_ENV, _apply_external_root_overrides
+from mastodon_sim.runtime.runner import _inject_external_config_path
 
 
-def _base_cfg():
-    return OmegaConf.create(
-        {
-            "sim": {
-                "enabled_actions": None,
-                "num_steps": 50,
-                "engine": {
-                    "action_loop": {
-                        "params": {
-                            "max_actions": 3,
-                        }
-                    }
-                },
-            },
-            "social_media": {
-                "platform": "twitter_like",
-                "gamemaster": {
-                    "name": "social-media_game-master",
-                },
-            },
-        }
+def test_config_path_injects_hydra_searchpath_and_autodetects_scenario(
+    tmp_path, monkeypatch
+) -> None:
+    """Primary config-path should become a Hydra searchpath with scenario autodetect."""
+    primary = tmp_path / "primary" / "conf"
+    (primary / "scenario").mkdir(parents=True)
+    (primary / "scenario" / "election.yaml").write_text(
+        "scenario_name: election\n", encoding="utf-8"
     )
 
+    monkeypatch.setattr(sys, "argv", ["runner.py", "--config-path", str(primary)])
+    _inject_external_config_path()
 
-def test_external_root_sim_override_applies(tmp_path, monkeypatch) -> None:
-    (tmp_path / "sim.yaml").write_text(
-        "\n".join(
-            [
-                "# @package sim",
-                "enabled_actions:",
-                "  - create_tweet",
-                "  - reply_to_tweet",
-                "  - FINISHED",
-                "num_steps: 15",
-                "engine:",
-                "  action_loop:",
-                "    params:",
-                "      max_actions: 25",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    cfg = _base_cfg()
-    monkeypatch.setenv(EXTERNAL_CONFIG_DIR_ENV, str(tmp_path))
-    monkeypatch.setattr(sys, "argv", ["runner.py"])
-
-    _apply_external_root_overrides(cfg, logging.getLogger(__name__))
-
-    assert list(cfg.sim.enabled_actions) == ["create_tweet", "reply_to_tweet", "FINISHED"]
-    assert cfg.sim.num_steps == 15
-    assert cfg.sim.engine.action_loop.params.max_actions == 25
+    assert "--config-path" not in sys.argv
+    searchpath_arg = next(arg for arg in sys.argv if arg.startswith("hydra.searchpath="))
+    assert f"file://{primary.resolve()}" in searchpath_arg
+    assert "scenario=election" in sys.argv
 
 
-def test_external_sim_override_respects_explicit_cli_paths(tmp_path, monkeypatch) -> None:
-    (tmp_path / "sim.yaml").write_text(
-        "\n".join(
-            [
-                "# @package sim",
-                "enabled_actions:",
-                "  - create_tweet",
-                "  - FINISHED",
-                "num_steps: 15",
-                "engine:",
-                "  action_loop:",
-                "    params:",
-                "      max_actions: 25",
-            ]
-        ),
-        encoding="utf-8",
-    )
+def test_overlay_config_paths_precede_primary_in_searchpath(tmp_path, monkeypatch) -> None:
+    """Overlay config directories should take precedence over primary config-path."""
+    primary = tmp_path / "primary" / "conf"
+    overlay = tmp_path / "overlay" / "conf"
+    (primary / "scenario").mkdir(parents=True)
+    (overlay / "scenario").mkdir(parents=True)
 
-    cfg = _base_cfg()
-    cfg.sim.num_steps = 99
-    cfg.sim.engine.action_loop.params.max_actions = 7
-
-    monkeypatch.setenv(EXTERNAL_CONFIG_DIR_ENV, str(tmp_path))
     monkeypatch.setattr(
         sys,
         "argv",
         [
             "runner.py",
-            "sim.num_steps=99",
-            "sim.engine.action_loop.params.max_actions=7",
+            "--config-path",
+            str(primary),
+            "--overlay-config-path",
+            str(overlay),
         ],
     )
+    _inject_external_config_path()
 
-    _apply_external_root_overrides(cfg, logging.getLogger(__name__))
-
-    assert cfg.sim.num_steps == 99
-    assert cfg.sim.engine.action_loop.params.max_actions == 7
-    assert list(cfg.sim.enabled_actions) == ["create_tweet", "FINISHED"]
-
-
-def test_external_root_social_media_override_applies(tmp_path, monkeypatch) -> None:
-    (tmp_path / "social_media.yaml").write_text(
-        "\n".join(
-            [
-                "social_media:",
-                "  platform: reddit_like",
-            ]
-        ),
-        encoding="utf-8",
+    searchpath_arg = next(arg for arg in sys.argv if arg.startswith("hydra.searchpath="))
+    assert searchpath_arg.index(f"file://{overlay.resolve()}") < searchpath_arg.index(
+        f"file://{primary.resolve()}"
     )
-
-    cfg = _base_cfg()
-    monkeypatch.setenv(EXTERNAL_CONFIG_DIR_ENV, str(tmp_path))
-    monkeypatch.setattr(sys, "argv", ["runner.py"])
-
-    _apply_external_root_overrides(cfg, logging.getLogger(__name__))
-
-    assert cfg.social_media.platform == "reddit_like"

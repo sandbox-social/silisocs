@@ -1,0 +1,183 @@
+{
+  "results": {
+    "rich": [
+      {
+        "inter_agent_std": 0.1856819198215981,
+        "mean_stance": 0.5484068129179326,
+        "agent_means": {
+          "priyasharma": 0.7130310795037076,
+          "zoechen": 0.10548484772443771,
+          "samnakamura": 0.48822694313130344,
+          "dr.amara": 0.5295751226134598,
+          "jordanellis": 0.7168861361686141,
+          "lisatanaka": 0.46694124897476286,
+          "derekokafor": 0.6773411434376613,
+          "marcusrivera": 0.5156339286826551,
+          "dr.victor": 0.7225408660247922
+        },
+        "scenario": "ai_conference"
+      },
+      {
+        "inter_agent_std": 0.17696072031400215,
+        "mean_stance": 0.48651069909877454,
+        "agent_means": {
+          "dr.victor": 0.7281186002772302,
+          "derekokafor": 0.7249646918498911,
+          "lisatanaka": 0.484869066812098,
+          "dr.amara": 0.4896762098185718,
+          "jordanellis": 0.45684866458177564,
+          "marcusrivera": 0.38107752948999407,
+          "zoechen": 0.12720687985420226,
+          "samnakamura": 0.3801983043551445,
+          "priyasharma": 0.6056363448500633
+        },
+        "scenario": "ai_conference"
+      },
+      {
+        "inter_agent_std": 0.18734543628057793,
+        "mean_stance": 0.5907331022589156,
+        "agent_means": {
+          "samnakamura": 0.5849956267513334,
+          "lisatanaka": 0.6367784997448325,
+          "marcusrivera": 0.31628527138382195,
+          "dr.victor": 0.8450240290723741,
+          "derekokafor": 0.8346721001667902,
+          "dr.amara": 0.43765624235384165,
+          "jordanellis": 0.6324674921110273,
+          "zoechen": 0.31763642467558384,
+          "priyasharma": 0.7110822340706363
+        },
+        "scenario": "ai_conference"
+      },
+      {
+        "inter_agent_std": 0.3726745099483111,
+        "mean_stance": -0.04080487856020531,
+        "agent_means": {
+          "bob": 0.05656442046165466,
+          "frank": 0.320543747395277,
+          "charlie": -0.7533257622271776,
+          "eve": 0.27892039008438585,
+          "alice": -0.2752368748188019,
+          "diana": 0.12770480774343013
+        },
+        "scenario": "misinformation"
+      },
+      {
+        "inter_agent_std": 0.41612759532434634,
+        "mean_stance": -0.005465133550266436,
+        "agent_means": {
+          "alice": -0.9156735725700855,
+          "eve": 0.25786456316709516,
+          "bob": 0.06643283367156982,
+          "charlie": 0.05553083121776581,
+          "diana": 0.24227784238755704,
+          "frank": 0.2607767008244991
+        },
+        "scenario": "misinformation"
+      },
+      {
+        "inter_agent_std": 0.06518492448735667,
+        "mean_stance": 0.1782176847880085,
+        "agent_means": {
+          "eve": 0.16987078078091145,
+          "bob": 0.19640646874904633,
+          "frank": 0.27473495006561277,
+          "alice": 0.11706694960594177,
+          "diana": 0.22983291298151015,
+          "charlie": 0.08139404654502869
+        },
+        "scenario": "misinformation"
+      }
+    ],
+    "thin": [
+      {
+        "inter_agent_std": 0.11414883640453748,
+        "mean_stance": 0.6100721927928842,
+        "agent_means": {
+          "dr.victor": 0.6398556985426694,
+          "zoechen": 0.352430166862905,
+          "dr.amara": 0.687162297219038,
+          "derekokafor": 0.7443277661688625,
+          "jordanellis": 0.5442989088594914,
+          "lisatanaka": 0.6559074205346406,
+          "samnakamura": 0.6670842352090404,
+          "priyasharma": 0.689644143008627,
+          "marcusrivera": 0.5099390987306833
+        },
+        "scenario": "ai_conference_thin"
+      },
+      {
+        "inter_agent_std": 0.12736904197878626,
+        "mean_stance": 0.5399886193749909,
+        "agent_means": {
+          "samnakamura": 0.43092247676104306,
+          "dr.amara": 0.6736800867482089,
+          "derekokafor": 0.588854605332017,
+          "marcusrivera": 0.5400840127840638,
+          "dr.victor": 0.49464847780764104,
+          "zoechen": 0.4788727195002139,
+          "priyasharma": 0.5810040495125577,
+          "lisatanaka": 0.7665048219729215,
+          "jordanellis": 0.30532632395625114
+        },
+        "scenario": "ai_conference_thin"
+      },
+      {
+        "inter_agent_std": 0.05783469859096968,
+        "mean_stance": 0.5402763902157959,
+        "agent_means": {
+          "dr.victor": 0.5690420115366578,
+          "dr.amara": 0.4041224095970392,
+          "zoechen": 0.5961136357858777,
+          "samnakamura": 0.5359919586218893,
+          "lisatanaka": 0.5883415549993515,
+          "jordanellis": 0.4821978386025876,
+          "marcusrivera": 0.5644231080077589,
+          "derekokafor": 0.5458603766746819,
+          "priyasharma": 0.5763946181163192
+        },
+        "scenario": "ai_conference_thin"
+      },
+      {
+        "inter_agent_std": 0.1688841039071382,
+        "mean_stance": 0.16425742956085337,
+        "agent_means": {
+          "charlie": 0.11973424007495244,
+          "bob": 0.1410404175519943,
+          "alice": -0.1549009382724762,
+          "frank": 0.3961259417235851,
+          "eve": 0.21977849006652833,
+          "diana": 0.26376642622053625
+        },
+        "scenario": "misinformation_thin"
+      },
+      {
+        "inter_agent_std": 0.19086579882521804,
+        "mean_stance": 0.03934842449509437,
+        "agent_means": {
+          "bob": 0.2088932253420353,
+          "diana": -0.007052207986513774,
+          "frank": 0.14051261059939862,
+          "charlie": 0.15859948471188545,
+          "eve": 0.09583228975534439,
+          "alice": -0.36069485545158386
+        },
+        "scenario": "misinformation_thin"
+      },
+      {
+        "inter_agent_std": 0.21435485977378604,
+        "mean_stance": 0.06951794649163882,
+        "agent_means": {
+          "charlie": 0.1857874993234873,
+          "eve": 0.2820894122123718,
+          "bob": -0.08736106753349304,
+          "diana": 0.22495264187455177,
+          "alice": -0.3335728943347931,
+          "frank": 0.14521208740770816
+        },
+        "scenario": "misinformation_thin"
+      }
+    ]
+  },
+  "posts_per_agent": 10
+}

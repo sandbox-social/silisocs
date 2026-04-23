@@ -32,6 +32,7 @@ def test_twitter_like_initialize_emits_action_events(tmp_path) -> None:
 
     labels = [event.get("label") for event in logger.events]
     assert "init_create_user" in labels
+    assert "post" in labels
     assert "initialize" in labels
 
 

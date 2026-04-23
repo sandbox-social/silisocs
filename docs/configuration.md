@@ -41,6 +41,9 @@ uv run mastodon-sim social_media=reddit_like scenario=my_scenario
 | `memory_backend` | `list` | Memory type: `list` (fast) or `associative` (embedding-based) |
 | `action_mode` | `custom` | Prompt style: `custom` (scenario prompt) or `generic` (backend-generated action prompt) |
 | `tool_calling.mode` | `single` | Tool dispatch mode: `none`, `single`, or `multi` (requires `gm.components.resolve.built_in=tool_calling` when not `none`) |
+| `prompt_additions.add_action_count_guidance` | `false` | Add `[ActNum]` marker and action count guidance text to prompt |
+| `prompt_additions.add_output_style` | `false` | Add `[OUTPUT STYLE]` section to prompt (stripped when tool-calling enabled) |
+| `prompt_additions.include_backend_info` | `false` | Include backend/social-media app description in prompt |
 | `enabled_actions` | `null` | Optional whitelist of **exact backend action function names**. **Example**: `["create_tweet", "like_tweet", "follow_user"]`. `null` means all actions enabled. |
 | `enable_gm_multi_flow` | `false` | Enable multi-flow GM: routes different agent flows to different component instances (e.g., separate Observe components per flow) |
 | `enable_engine_multi_flow` | `false` | Enable multi-flow engine: schedules agent flows in customizable phases (can be combined with `enable_gm_multi_flow`) |
@@ -118,6 +121,157 @@ Charlie,"Planning to try something new."
 1. In the "Seed Posts Configuration" section, select the type from the dropdown
 2. If using CSV/JSON/fallback, enter the file path
 3.  Save or run the scenario
+
+
+
+### Action Prompt Additions Configuration
+
+**Purpose:** Control which optional components are added to agent action prompts.
+
+All prompt additions default to `false` (disabled). Enable them via config to add guidance, formatting, or context to agent prompts.
+
+**Available Flags:**
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `sim.prompt_additions.add_action_count_guidance` | `false` | Add `[ActNum]` marker and action count guidance text. When `tool_calling.mode=single`, guidance says "Only take one action in this step". When `tool_calling.mode=multi`, says "You are allowed to output multiple tool calls (max 5)". |
+| `sim.prompt_additions.add_output_style` | `false` | Add `[OUTPUT STYLE]` section describing expected response format. **Automatically stripped when tool-calling is enabled** (tool-calling uses JSON format instead). |
+| `sim.prompt_additions.include_backend_info` | `false` | Include backend/social-media app description in prompt. For `generic` action mode, this is always included as part of the baseline prompt. |
+
+**Configuration via YAML:**
+
+```yaml
+sim:
+  action_mode: custom
+  tool_calling:
+    mode: single
+  prompt_additions:
+    add_action_count_guidance: true    # Add [ActNum] marker
+    add_output_style: false              # Don't add output style
+    include_backend_info: false          # Don't add app description
+```
+
+**Configuration via CLI:**
+
+```bash
+# Enable action count guidance
+uv run mastodon_sim prompt_additions.add_action_count_guidance=true
+
+# Enable both action count and output style
+uv run mastodon_sim \
+  prompt_additions.add_action_count_guidance=true \
+  prompt_additions.add_output_style=true
+```
+
+**Behavior Notes:**
+
+- **Tool-calling override**: When `tool_calling.mode` is not `none` and you enable `add_output_style`, the `[OUTPUT STYLE]` section is automatically **stripped** from the final prompt. Tool-calling uses JSON format, not text format.
+- **Custom vs Generic modes**: In `action_mode=custom`, prompt additions are independent flags. In `action_mode=generic`, the baseline prompt always includes available actions and backend info; `include_backend_info` controls additional context.
+- **FINISHED semantics**: When using `engine.action_loop.built_in=open_ended`, guidance about the "FINISHED" action is automatically included (not controlled by flags).
+
+**Example Prompts:**
+
+*Custom mode, no additions (default)*:
+```
+Take one action on this social media platform.
+Available actions: create_tweet, like_tweet, follow_user
+```
+
+*Custom mode, with action count guidance*:
+```
+[ActNum] marker: 1
+
+Take one action on this social media platform.
+Only take one action in this step.
+
+Available actions: create_tweet, like_tweet, follow_user
+```
+
+*Custom mode, with output style*:
+```
+Take one action on this social media platform.
+Available actions: create_tweet, like_tweet, follow_user
+
+[OUTPUT STYLE]
+Format your response as JSON: {"action": "name", "parameters": {...}}
+```
+
+*Tool-calling mode (output style automatically stripped)*:
+```
+Take one action on this social media platform.
+Available actions: create_tweet, like_tweet, follow_user
+
+### TOOL_CALLING_MODE ###
+[Tool schemas in JSON...]
+```
+
+### How Action Prompts Are Constructed
+
+The action prompt pipeline is centralized and configuration-driven:
+
+**Stage 1: Runner Startup (Before GM)**
+
+When the simulation starts, the runner calls `build_complete_action_prompt_for_runner()` to compile the base prompt:
+
+1. Determine mode: `custom` (scenario-provided) or `generic` (backend-generated)
+2. For **custom mode**: use base prompt from scenario config
+3. For **generic mode**: call `backend.generate_generic_action_prompt()` to list available actions
+4. Inject optional additions based on config flags:
+   - If `add_action_count_guidance=true`: inject `[ActNum]` marker + guidance text
+   - If `add_output_style=true`: inject `[OUTPUT STYLE]` section
+   - If `include_backend_info=true`: inject backend description (or always for generic mode)
+5. If `tool_calling.mode=none`: keep output style as-is
+6. If `tool_calling.mode=single|multi`: strip output style (will be replaced with JSON format at SMAct time)
+7. Return final prompt string → stored in agent initialization
+
+**Stage 2: Game Master (SMAct Pass-Through)**
+
+During each action, SMAct simply wraps the prompt:
+
+```python
+action_spec = f"prompt: {runner_compiled_prompt} ;;type: free"
+```
+
+If `tool_calling.mode != none`, append tool schemas:
+```
+### TOOL_CALLING_MODE ###
+{tool_schemas_json}
+```
+
+SMAct does NOT modify the base prompt itself—it's a dumb pass-through + optional tool marker wrapping.
+
+**Stage 3: Entity Acting (LLM Call)**
+
+The entity's act component parses the action spec and:
+
+- If tool-calling markers detected: call LLM with tool-calling mode (returns structured tool call as JSON)
+- Otherwise: call LLM in free-text mode (returns raw text)
+
+### Why This Structure?
+
+- **Single source of truth**: All prompt building at runner startup. No scattered prompt modifications.
+- **Config-driven**: All additions controlled by explicit YAML flags (all default `false`).
+- **Tool-calling architecture**: Base prompt built before app instance exists (can't generate schemas at runner time). Tool schemas added at SMAct time when app is available.
+- **Transparency**: Each stage is simple and focused. No hidden prompt transformations.
+
+### Testing and Validation
+
+All prompt compilation scenarios are tested in:
+- `tests/test_action_mode_architecture.py` — unit tests for compile_action_prompt()
+- `tests/test_prompt_pipeline_integration.py` — end-to-end integration tests for all config states
+
+To verify prompt output in different configurations:
+
+```bash
+# Test custom mode with all additions
+uv run pytest tests/test_prompt_pipeline_integration.py::TestPromptCompilationMatrixIntegration -v
+
+# Test tool-calling wrapping behavior
+uv run pytest tests/test_prompt_pipeline_integration.py::TestSMActPassThroughBehavior -v
+
+# Test end-to-end flow
+uv run pytest tests/test_prompt_pipeline_integration.py::TestPromptPipelineEndToEnd -v
+```
 
 
 

@@ -257,7 +257,9 @@ Create `scenarios/{name}/conf/sim.yaml` to customize simulation parameters:
 
 num_agents: 500
 num_steps: 200
-action_mode: tool_calling
+action_mode: custom
+tool_calling:
+  mode: single
 
 # Enable multi-flow routing for different agent types
 enable_gm_multi_flow: false        # Set true if different agents need different components
@@ -475,7 +477,8 @@ This means your scenario files only need to specify what's **different** from de
 - `llm_name`: gpt-4o-mini
 - `num_agents`: 100
 - `num_steps`: 50
-- `action_mode`: tool_calling
+- `action_mode`: custom
+- `tool_calling.mode`: single
 - `memory_backend`: list
 - `timeline_mode`: hybrid_recsys_follower
 - `seed_posts.type`: llm
@@ -521,3 +524,260 @@ This means your scenario files only need to specify what's **different** from de
 4. **Test it**: run via CLI with `--config-path`
 5. **For complex scenarios**: consult ARCHITECTURE.md (multi-flow deep dive) and AGENTS.md (custom agents)
 
+---
+
+## 10) Structured Study Orchestration (`experiments/run_study.py`)
+
+For multi-condition research studies (hypothesis trees, seed sweeps, condition-specific evaluators), use:
+
+```bash
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 plan
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 generate-bash
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 run
+```
+
+Code placement:
+- Canonical runner implementation is in `experiments/run_study.py`.
+- Use module entrypoint: `uv run python -m experiments.run_study ...`.
+
+### Why use study orchestration?
+
+- Expand one declarative file into many concrete runs (scenario x condition x seed).
+- Keep hypothesis metadata and interpretation fields close to execution metadata.
+- Optionally use exact command templates for full manual command control.
+- Reuse existing runs in follow-up hypotheses while preserving reproducibility lock records.
+- Run multiple evaluators per run (global and condition-local evaluators).
+
+### Study schema (v1) at a glance
+
+```yaml
+schema_version: 1
+
+study:
+  name: recsys_behavior_sweep
+  study_id: recsys_behavior_sweep
+  study_version: v1
+  question: "Research question"
+  scenarios: [election_recsys_engagement]
+  parent_studies: []
+  derived_from_runs: []
+  study_summary_path: experiments/studies/recsys_behavior_sweep/SUMMARY.md
+  summary_log_path: experiments/studies/recsys_behavior_sweep/generated/summary_log.jsonl
+  run_defaults:
+    config_path: scenarios/election_recsys_engagement/conf
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
+    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+    seed_start: 11
+    seed_repeats: 3
+    overrides:
+      sim.num_agents: 50
+      sim.num_steps: 10
+
+evaluations:
+  - id: action_metrics
+    preset: builtin.action_metrics_detailed
+  - id: probe_metrics
+    preset: builtin.probe_metrics_detailed
+
+hypotheses:
+  h1:
+    statement: "Hypothesis statement"
+    independent_variable: timeline_case
+    prediction: "Expected outcome"
+    status: testing
+    conditions:
+      case1:
+        overrides:
+          sim.timeline_mode: follower_chronological
+      case2:
+        execution:
+          mode: run
+          command:
+            - uv
+            - run
+            - python
+            - -m
+            - mastodon_sim.runtime.runner
+            - --config-path
+            - scenarios/election_recsys_engagement/conf
+            - scenario={scenario}
+            - sim.seed={seed}
+```
+
+### Key fields
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `schema_version` | int | yes | Must be `1`. |
+| `study.name` | string | yes | Used for generated artifact paths. |
+| `study.study_id` | string | recommended | Stable identifier used in run/eval directory layout. |
+| `study.study_version` | string | optional | Human-managed version tag. |
+| `study.question` | string | yes | Human-readable research question. |
+| `study.scenarios` | list[string] | recommended | Base scenario loop for all conditions. |
+| `study.run_defaults` | mapping | optional | Shared config path, seed settings, and overrides. |
+| `evaluations` | list[mapping] | optional | Global evaluators executed for each run. |
+| `hypotheses` | mapping | yes | Hypothesis tree with conditions/cases. |
+
+#### `study.run_defaults` seed controls
+
+Use one of these patterns:
+- Single seed: `seed: 11`
+- Explicit list: `seeds: [11, 12, 13]`
+- Range expansion: `seed_start: 11` + `seed_repeats: 3` => `11,12,13`
+
+#### Condition execution mode
+
+| Field | Meaning |
+|---|---|
+| `execution.mode: run` | Execute a fresh simulation run. |
+| `execution.mode: reuse_existing` | Reference existing run artifacts instead of re-running simulation. |
+| `execution.re_evaluate: true` | In reuse mode, run evaluators again over referenced outputs. |
+
+Condition-level path controls:
+- `run_name_template`: Optional placeholder template for `sim.run_name`.
+- `output_root_override`: Optional placeholder template for `sim.output_rootname`.
+- `sub_experiment`: Optional label to group/run subsets of conditions.
+- `config_path`: Optional per-condition override for Hydra `--config-path`.
+
+### Exact command templates (optional)
+
+If `execution.command` is set, the study runner uses that command exactly for each expanded run.
+
+Supported placeholders:
+- `{run_id}`
+- `{study_name}`
+- `{study_id}`
+- `{hypothesis_id}`
+- `{condition_id}`
+- `{scenario}`
+- `{seed}`
+
+These placeholders are also available in `run_name_template` and `output_root_override`.
+
+### Evaluators in studies
+
+Evaluator objects support either explicit commands or built-in presets.
+
+Common evaluator fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Evaluator identifier used in output paths. |
+| `preset` | string | Built-in command preset. |
+| `command` | string or list[string] | Explicit evaluator command. |
+| `input_mode` | string | `run_dir` or `explicit_paths`. |
+| `output_subpath` | string | Output filename/subpath under evaluator directory. |
+| `enabled` | bool | Defaults to true. |
+
+Condition-level evaluator behavior:
+- `evaluation_mode: append` (default): add condition evaluators to global evaluators.
+- `evaluation_mode: replace`: use only condition evaluators.
+
+### Built-in evaluator presets
+
+Legacy light summaries:
+- `builtin.activity_summary`
+- `builtin.probe_summary`
+
+Detailed default evaluators:
+- `builtin.action_metrics_detailed` (per-agent, per-episode, transitions)
+- `builtin.probe_metrics_detailed` (all probe events with per-type/per-label metrics)
+- `builtin.probe_binary_detailed`
+- `builtin.probe_numeric_detailed`
+- `builtin.probe_choice_detailed`
+- `builtin.probe_freetext_detailed`
+
+Detailed probe evaluators also emit probe-type-specific PNG plots in
+`*_plots/` directories colocated with evaluator JSON outputs.
+
+Extensible postprocessor hooks:
+- Built-in detailed probe evaluators accept repeated `--postprocessor module:function`.
+- Add these via evaluator `static_args` in study YAML.
+- Hook signature: `(records_by_type, out_dir, context) -> dict | list | None`.
+
+Example:
+
+```yaml
+evaluations:
+  - id: probe_metrics
+    preset: builtin.probe_metrics_detailed
+    static_args:
+      - --postprocessor
+      - mastodon_sim.evaluations.postprocessors:episode_probe_volume
+```
+
+These detailed evaluators read `action_events.jsonl` and use `effective_config.yaml` (when available) to map probe labels to configured probe types.
+
+### Generated artifacts
+
+Each study writes orchestration artifacts under its study directory:
+
+```text
+experiments/studies/{study_id}/generated/
+  plan.json
+  run_study.sh
+  repro_lock.jsonl
+  repro_lock.json
+  study_index.json
+  study_enriched.yaml
+  logs/{run_id}.log
+  eval/{hypothesis}/{condition}/{scenario}/seed_{seed}/{eval_id}/*.json
+```
+
+Simulation outputs are organized by study/hypothesis/condition/scenario with seed at the lowest level:
+
+```text
+experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run
+```
+
+Recommended output policy:
+- Study runs: write into `experiments/studies/{study_id}/runs/...` for clean lineage and cross-hypothesis organization.
+- Scenario-local `scenarios/<name>/outputs/...`: reserve for ad hoc/manual scenario testing outside study orchestration.
+
+Rolling summary artifacts for humans/LLMs:
+- `experiments/studies/{study_id}/SUMMARY.md`
+- `experiments/studies/{study_id}/generated/summary_log.jsonl`
+
+Append summary entries from CLI:
+
+```bash
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 summary-append \
+  --author analyst \
+  --hypothesis h1_timeline_mechanism \
+  --note "Observed stronger interaction rates in recsys conditions" \
+  --evidence experiments/studies/recsys_behavior_sweep/generated/repro_lock.json
+
+The runner also writes an organized analysis tree for notebook use:
+
+```text
+experiments/studies/{study_id}/generated/organized/
+  study_summary.yaml
+  summary.json
+  {hypothesis_id}/
+    hypothesis.yaml
+    runs.json
+    {condition_id}/{scenario}/seed_{seed}/
+      config.yaml
+      run -> <symlink to simulation output>
+      eval.json -> <symlink to first evaluator output>
+      evals/{eval_id}/...
+```
+```
+
+Subset execution controls:
+
+```bash
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 run \
+  --only-hypothesis h1_timeline_mechanism \
+  --only-sub-experiment bill_bias
+```
+
+### Human/LLM analysis fields
+
+You can keep interpretation text in the same study YAML:
+- `study.notes.*`
+- `hypotheses.<id>.analysis.*`
+- `hypotheses.<id>.conditions.<id>.analysis.*`
+
+Start from:
+- `experiments/studies/study_template_v1/study.yaml`
