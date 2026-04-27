@@ -162,7 +162,7 @@ class ToolCallingResolveComponent(_BaseResolveComponent):
     def _extract_tool_calls(action_text: str) -> list[tuple[str, dict[str, Any]]]:
         """Parse JSON/function payload into one or many tool calls."""
         normalized_text = str(action_text or "").strip()
-        # BaseSocialMediaEngine may escape braces before RESOLVE dispatch to
+        # BaseRuntimeEngine may escape braces before RESOLVE dispatch to
         # avoid SwitchAct formatting issues; restore only when explicit escaped
         # opening braces are present to avoid corrupting valid JSON payloads.
         if "{{" in normalized_text:

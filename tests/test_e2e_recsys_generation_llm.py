@@ -28,12 +28,11 @@ def _llm_server_url() -> str:
 
 
 def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
-    scenario_dir = conf_dir / "scenario"
-    scenario_dir.mkdir(parents=True, exist_ok=True)
+    conf_dir.mkdir(parents=True, exist_ok=True)
 
-    scenario_yaml = textwrap.dedent(
+    sim_yaml = textwrap.dedent(
         f"""
-        # @package scenario
+        # @package sim
         scenario_name: {scenario_name}
         jobname_format: "{scenario_name}_${{sim.num_steps}}"
 
@@ -46,8 +45,16 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
           name: Recsys E2E
           context: Validate pure recsys timeline retrieval with seeded startup posts.
 
-        seed_posts:
-          type: llm
+        data: {{}}
+        candidates: {{}}
+        news_account: {{}}
+        partisan_types: []
+        """
+    ).strip()
+
+    agent_yaml = textwrap.dedent(
+        """
+        # @package agent
 
         persona_pipeline:
           processing_mode: raw
@@ -69,14 +76,11 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
                 emit_finished_on_episode_end: true
                 fixed_action_plan:
                   0:
-                    - action_type: post
-                      content: SeedBot update episode zero
+                    - {action_type: post, content: "SeedBot update episode zero"}
                   1:
-                    - action_type: post
-                      content: SeedBot update episode one
+                    - {action_type: post, content: "SeedBot update episode one"}
                   2:
-                    - action_type: post
-                      content: SeedBot update episode two
+                    - {action_type: post, content: "SeedBot update episode two"}
             llm_user:
               count: 4
               prefab_module: mastodon_sim.agents.entity
@@ -84,23 +88,41 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
               data:
                 source: inline
                 records:
-                  - name: Alice Analyst
-                    persona: Calm analyst posting concise political reactions.
-                    seed_post: Alice seed message
-                  - name: Bob Builder
-                    persona: Practical builder who asks direct questions.
-                    seed_post: Bob seed message
-                  - name: Cara Critic
-                    persona: Critical observer sharing concise viewpoints.
-                    seed_post: Cara seed message
-                  - name: Dan Debater
-                    persona: Debate-oriented user who likes replying to others.
-                    seed_post: Dan seed message
+                  - {name: Alice Analyst, persona: "Calm analyst posting concise political reactions.", seed_post: "Alice seed message"}
+                  - {name: Bob Builder, persona: "Practical builder who asks direct questions.", seed_post: "Bob seed message"}
+                  - {name: Cara Critic, persona: "Critical observer sharing concise viewpoints.", seed_post: "Cara seed message"}
+                  - {name: Dan Debater, persona: "Debate-oriented user who likes replying to others.", seed_post: "Dan seed message"}
               field_map:
                 name: name
                 context: persona
                 seed_post: seed_post
 
+        shared_memories:
+          - Users are in a recommendation retrieval validation experiment.
+
+        initial_observations:
+          - "{{name}} starts the recsys retrieval test."
+
+        fixed_action_sets: {}
+
+        """
+    ).strip()
+
+    evals_yaml = textwrap.dedent(
+        """
+        # @package evals
+
+        probes: {}
+        """
+    ).strip()
+
+    env_yaml = textwrap.dedent(
+        """
+        # @package env
+
+        platform_type: twitter_like
+        seed_posts:
+          type: llm
         social_network:
           activity_transition_rates:
             fixed_seed:
@@ -114,18 +136,13 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
             - fixed_seed
           base_followership_probability: 1.0
           network_type: random
-
-        shared_memories:
-          - Users are in a recommendation retrieval validation experiment.
-
-        initial_observations:
-          - "{{name}} starts the recsys retrieval test."
-
-        probes: {{}}
         """
     ).strip()
 
-    (scenario_dir / f"{scenario_name}.yaml").write_text(scenario_yaml + "\n", encoding="utf-8")
+    (conf_dir / "sim.yaml").write_text(sim_yaml + "\n", encoding="utf-8")
+    (conf_dir / "agent.yaml").write_text(agent_yaml + "\n", encoding="utf-8")
+    (conf_dir / "evals.yaml").write_text(evals_yaml + "\n", encoding="utf-8")
+    (conf_dir / "env.yaml").write_text(env_yaml + "\n", encoding="utf-8")
 
 
 def _run_recsys_simulation(
@@ -147,23 +164,21 @@ def _run_recsys_simulation(
         "mastodon_sim.runtime.runner",
         "--config-path",
         str(conf_dir),
-        f"scenario={scenario_name}",
-        "social_media=twitter_like",
-        "sim.gm.preset=base",
-        "sim.enable_gm_multi_flow=false",
+        "env=twitter_like",
+        "env.gm.preset=base",
+        "env.enable_gm_multi_flow=false",
         "sim.engine.preset=base",
-        "sim.enable_engine_multi_flow=false",
         "sim.engine.action_loop.built_in=single_action",
-        "sim.gm.components.next_acting.built_in=all_entities",
-        "sim.gm.components.resolve.built_in=parsed_action",
+        "env.gm.components.next_acting.built_in=all_entities",
+        "env.gm.components.resolve.built_in=parsed_action",
         "sim.action_mode=custom",
         "sim.tool_calling.mode=none",
-        "sim.timeline_mode=pure_recsys",
-        "sim.timeline_posts=10",
-        f"sim.gm.components.recommend.params.default_recsys_type={recsys_type}",
-        f"sim.gm.components.observe.params.recsys_type={recsys_type}",
-        "sim.gm.components.recommend.params.update_every_n_steps=1",
-        "sim.gm.components.recommend.params.max_posts=10",
+        "env.timeline_mode=pure_recsys",
+        "env.timeline_posts=10",
+        f"env.gm.components.recommend.params.default_recsys_type={recsys_type}",
+        f"env.gm.components.observe.params.recsys_type={recsys_type}",
+        "env.gm.components.recommend.params.update_every_n_steps=1",
+        "env.gm.components.recommend.params.max_posts=10",
         "sim.memory_backend=list",
         "sim.num_agents=5",
         "sim.num_steps=3",

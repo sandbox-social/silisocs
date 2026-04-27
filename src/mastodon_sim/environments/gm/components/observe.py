@@ -99,7 +99,9 @@ class TimelineMakeObservation(FlowComponent, make_observation_component.MakeObse
             return result
 
         cfg = ConfigStore.get_config()
-        timeline_posts = getattr(cfg.sim, "timeline_posts", 10)
+        timeline_posts = getattr(getattr(cfg, "env", object()), "timeline_posts", None)
+        if timeline_posts is None:
+            timeline_posts = getattr(cfg.sim, "timeline_posts", 10)
         recsys_type = self.get_flow_field("recsys_type", flow_type)
         if not recsys_type:
             recsys_type = self._default_recsys_type

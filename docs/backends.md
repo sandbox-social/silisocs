@@ -9,16 +9,16 @@ Set the backend in your Hydra config:
 
 ```sh
 # CLI override
-uv run mastodon-sim social_media=twitter_like   # default
-uv run mastodon-sim social_media=reddit_like
-uv run mastodon-sim social_media=mastodon
+uv run mastodon-sim env=twitter_like   # default
+uv run mastodon-sim env=reddit_like
+uv run mastodon-sim env=mastodon
 ```
 
 Or in `config.yaml`:
 
 ```yaml
 defaults:
-  - social_media: reddit_like
+    - env: reddit_like
 ```
 
 ---
@@ -31,7 +31,7 @@ A local SQLite-based backend that simulates a Twitter/X-like platform.
 
 **Character limit**: 280
 
-**Config**: `social_media/twitter_like.yaml`
+**Config**: `env/twitter_like.yaml`
 
 ```yaml
 platform_type: twitter_like
@@ -55,7 +55,7 @@ A local SQLite-based backend that simulates a Reddit-like platform.
 
 **Actions**: `POST`, `COMMENT`, `UPVOTE`, `DOWNVOTE`
 
-**Config**: `social_media/reddit_like.yaml`
+**Config**: `env/reddit_like.yaml`
 
 ```yaml
 platform_type: reddit_like
@@ -80,7 +80,7 @@ Connects to a real Mastodon instance via its API.
 
 **Character limit**: 500 (toots)
 
-**Config**: `social_media/mastodon.yaml`
+**Config**: `env/mastodon.yaml`
 
 ```yaml
 platform_type: mastodon
@@ -131,7 +131,7 @@ platform-specific API. Each backend handles:
 
 ### Responsibility Boundary
 
-- Engine (`BaseSocialMediaEngine` / `FlowSocialMediaEngine`): episode loop, actor concurrency, probe timing
+- Engine (`BaseRuntimeEngine` / `FlowRuntimeEngine`): episode loop, actor concurrency, probe timing
 - GM (`GameMaster` + `SMAct`): timeline observation, action parsing, dispatch
 - Backend app (`SocialMediaApp` implementation): platform state transitions,
   timeline retrieval/formatting, persistence
@@ -221,7 +221,7 @@ To implement a new social media platform:
         return YourPlatformApp(db_path=db_path)
     ```
 
-4. **Create a config** at `conf/social_media/your_platform.yaml`:
+4. **Create a config** at `conf/env/your_platform.yaml`:
 
     ```yaml
     platform_type: your_platform
@@ -237,7 +237,7 @@ Action metadata notes:
 - By default, the selectable action name is the Python function name.
 - Backend authors can optionally provide `selectable_name` and `description`
     via `@app_action(...)` to expose more LLM-friendly names/descriptions.
-- Simulation-level action filtering (`sim.enabled_actions`) accepts either the
+- Simulation-level action filtering (`env.enabled_actions`) accepts either the
     canonical function name or the selectable alias.
 - Fixed-action entity sets can also reference either canonical names or aliases.
 

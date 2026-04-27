@@ -1,5 +1,3 @@
-# @package sim
-
 num_agents: 20
 num_steps: 15
 seed: 11
@@ -9,28 +7,9 @@ write_html_log: false
 llm_name: qwen3.5-4b
 llm_api_base: http://localhost:30000/v1
 llm_api_key: test-key
-
-# Use generic auto-generated call-to-action format.
 action_mode: generic
 tool_calling:
   mode: multi
-
-# Keep recommendation seed content enabled for startup discussion context
-seed_posts:
-  type: llm
-
-enabled_actions:
-  - create_tweet
-  - reply_to_tweet
-  - like_tweet
-  - repost_tweet
-  - FINISHED
-
-# Timeline defaults (baseline arm); treatment overrides timeline_mode on CLI
-timeline_posts: 10
-timeline_mode: follower_chronological
-
-# Open-ended action loop with explicit finish signal support
 engine:
   preset: base
   action_loop:
@@ -40,38 +19,64 @@ engine:
       finished_action_signal: FINISHED
       done_token: FINISHED
   flow_routing:
-    flow_order: [fixed_pre, default]
+    flow_order:
+    - fixed_pre
+    - default
+scenario_name: election_recsys_engagement
+jobname_format: ElectionRecsys_N${sim.num_agents}_T${sim.num_steps}_${experiment_name}_${sim.run_name}
+setting:
+  name: Storhampton
+  background:
+  - Storhampton is a small town with a population of approximately 2,500 people.
+  - Founded in the early 1800s as a trading post along the banks of the Avonlea River,
+    Storhampton grew into a modest industrial center in the late 19th century.
+  - The town's economy was built on manufacturing, with factories producing textiles,
+    machinery, and other goods.
+  - Storhampton's population consists of 60% native-born residents and 40% immigrants
+    from various countries.
+  - Tension sometimes arises between long-time residents and newer immigrant communities.
+  - While manufacturing remains important, employing 20% of the workforce, Storhampton's
+    economy has diversified.
+  - A significant portion of the population has been left behind as higher-paying
+    blue collar jobs have declined.
+  - The Storhampton poverty rate stands at 15%.
+event:
+  name: Election day
+  context: 'Storhampton Mayoral Election Campaign: Bill Fredrickson campaigns on providing
+    tax breaks to local industry and creating jobs to help grow the economy.
 
-# Keep engine simple by default; fixed_pre behavior is handled via GM observation config.
-enable_engine_multi_flow: false
+    Bradley Carter campaigns on increasing regulation to protect the environment and
+    expanding social programs.
 
-# Base GM is sufficient; timeline observation already supports fixed_pre episode observations
-enable_gm_multi_flow: false
-gm:
-  preset: base
-  components:
-    next_acting:
-      built_in: activity_probability
-      class_path: null
-      params: {}
-    observe:
-      built_in: timeline_every_turn
-      class_path: null
-      params:
-        episode_observation_flow: fixed_pre
-    resolve:
-      built_in: tool_calling
-      class_path: null
-      params: {}
-    recommend:
-      built_in: recommendation_component
-      class_path: null
-      params:
-        update_every_n_steps: 1
-        lazy: true
-        max_posts: 10
-        user_context_recent_posts: 10
-        include_like_trace: true
-        like_trace_window: 10
-        like_trace_weight: 0.5
-        include_like_trace_in_context: false
+    The upcoming election has become a heated affair.
+
+    Social media has emerged as a key battleground in the race, with both candidates
+    actively promoting themselves and engaging with voters.
+
+    Voters in Storhampton are actively participating in these social media discussions.
+
+    '
+candidates:
+  conservative:
+    name: Bill Fredrickson
+    partisan_type: conservative
+    policy_proposals:
+    - providing tax breaks to local industry and creating jobs to help grow the economy
+    persona: Bill Fredrickson is a 45 year old local businessman with conservative
+      politics and an outgoing personality.
+    style: Bill Fredrickson uses direct language, writes about local political issues,
+      and comments playfully on sports.
+    goal: Bill Fredrickson's goal is to win the election and become the mayor of Storhampton.
+  progressive:
+    name: Bradley Carter
+    partisan_type: progressive
+    policy_proposals:
+    - increasing regulation to protect the environment and expanding social programs
+    persona: Bradley Carter is a 35 year old high school teacher with progressive
+      politics and an activist personality.
+    style: Bradley Carter uses inviting language, writes about local political issues,
+      and comments on local nature.
+    goal: Bradley Carter's goal is to win the election and become the mayor of Storhampton.
+partisan_types:
+- conservative
+- progressive

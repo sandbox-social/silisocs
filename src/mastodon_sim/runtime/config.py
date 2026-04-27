@@ -128,7 +128,7 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
             missing_fields = ["shared_memories or persona_pipeline.defaults.shared_memories"]
             raise ValueError(
                 f"Scenario configuration missing required fields: {', '.join(missing_fields)}\n"
-                f"Please ensure your scenario.yaml includes all required fields."
+                "Please ensure your sim.yaml/agent.yaml include all required fields."
             )
     else:
         required_fields.extend(["roles", "shared_memories", "initial_observations"])
@@ -141,7 +141,7 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
     if missing_fields:
         raise ValueError(
             f"Scenario configuration missing required fields: {', '.join(missing_fields)}\n"
-            f"Please ensure your scenario.yaml includes all required fields."
+            "Please ensure your sim.yaml/agent.yaml include all required fields."
         )
 
     # Validate nested required fields

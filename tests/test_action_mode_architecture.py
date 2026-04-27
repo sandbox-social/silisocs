@@ -32,14 +32,13 @@ class TestActionCallToActionBuilder:
         """Custom mode should include [ActNum] guidance and output-style section."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
+                "env": {
                     "action_prompt": "Please decide what action to take.\n[OUTPUT STYLE]",
                     "output_style": "Format as: ACTION TYPE: ...",
                 },
                 "sim": {
                     "prompt_additions": {
-                        "action_count_guidance": {"add_to_prompt": True},
-                        "output_style": {"add_to_prompt": True},
+                        "action_count_guidance": True,
                     }
                 },
             }
@@ -57,14 +56,13 @@ class TestActionCallToActionBuilder:
         """Runner should carry [ActNum] but strip [OUTPUT STYLE] when tool-calling enabled."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
+                "env": {
                     "action_prompt": "Please decide what action to take.\n[OUTPUT STYLE]",
                     "output_style": "Format as: ACTION TYPE: ...",
                 },
                 "sim": {
                     "prompt_additions": {
-                        "action_count_guidance": {"add_to_prompt": True},
-                        "output_style": {"add_to_prompt": True},
+                        "action_count_guidance": True,
                     }
                 },
             }
@@ -82,14 +80,13 @@ class TestActionCallToActionBuilder:
     def test_custom_mode_with_multi_tool_calling_omits_single_action_line(self):
         cfg = OmegaConf.create(
             {
-                "social_media": {
+                "env": {
                     "action_prompt": "Please decide what action to take.\n[OUTPUT STYLE]",
                     "output_style": "Format as: ACTION TYPE: ...",
                 },
                 "sim": {
                     "prompt_additions": {
-                        "action_count_guidance": {"add_to_prompt": True},
-                        "output_style": {"add_to_prompt": True},
+                        "action_count_guidance": True,
                     }
                 },
             }
@@ -110,29 +107,25 @@ class TestActionCallToActionBuilder:
         assert "Format as: ACTION TYPE:" not in result
 
     def test_generic_mode_override(self):
-        """Generic mode means we should not use custom call_to_action."""
+        """Generic mode should not use user-authored generic prompt config at runner stage."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
+                "env": {
                     "action_prompt": "Custom action prompt",
                     "output_style": "Custom output style",
                 }
             }
         )
-        # When action_mode is "generic", the runner will not pass call_to_action_str,
-        # but the helper still works with what it's given
         result = build_complete_action_prompt_for_runner(
             cfg=cfg, action_mode="generic", tool_calling_mode="none"
         )
-        # In generic mode, the backend generates the prompt, not this function
-        # But if given config, it should still work
-        assert result is not None
+        assert "[OUTPUT STYLE]" in result
 
-    def test_custom_mode_without_additions_by_default(self):
-        """By default, no additions are included (all flags default to False)."""
+    def test_custom_mode_defaults_include_action_guidance_and_output_style(self):
+        """By default, prompts include action guidance and output-style in non-tool mode."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
+                "env": {
                     "action_prompt": "Please take an action.",
                     "output_style": "Format as: ACTION",
                 }
@@ -141,22 +134,22 @@ class TestActionCallToActionBuilder:
         result = build_complete_action_prompt_for_runner(
             cfg=cfg, action_mode="custom", tool_calling_mode="none"
         )
-        # Should just have the action prompt, nothing else
-        assert result == "Please take an action."
-        assert "[ActNum]" not in result
-        assert "[OUTPUT STYLE]" not in result
+        assert "Please take an action." in result
+        assert "[ActNum]" in result
+        assert "Only take one action in this step" in result
+        assert "[OUTPUT STYLE]" in result
+        assert "Format as: ACTION" in result
 
     def test_generic_mode_with_action_count_guidance(self):
         """Generic mode can include action count guidance when flagged."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
-                    "generic_action_prompt": "Available actions: POST, COMMENT",
+                "env": {
                     "output_style": "Format as: ACTION",
                 },
                 "sim": {
                     "prompt_additions": {
-                        "action_count_guidance": {"add_to_prompt": True},
+                        "action_count_guidance": True,
                     }
                 },
             }
@@ -164,7 +157,6 @@ class TestActionCallToActionBuilder:
         result = build_complete_action_prompt_for_runner(
             cfg=cfg, action_mode="generic", tool_calling_mode="none"
         )
-        assert "Available actions:" in result
         assert "[ActNum]" in result
         assert "Only take one action in this step" in result
 
@@ -172,13 +164,12 @@ class TestActionCallToActionBuilder:
         """Generic mode with multi tool-calling should use multi guidance."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
-                    "generic_action_prompt": "Available actions: POST, COMMENT",
+                "env": {
                     "output_style": "Format as: ACTION",
                 },
                 "sim": {
                     "prompt_additions": {
-                        "action_count_guidance": {"add_to_prompt": True},
+                        "action_count_guidance": True,
                     }
                 },
             }
@@ -186,16 +177,15 @@ class TestActionCallToActionBuilder:
         result = build_complete_action_prompt_for_runner(
             cfg=cfg, action_mode="generic", tool_calling_mode="multi"
         )
-        assert "Available actions:" in result
         assert "[ActNum]" in result
         assert "You are allowed to output multiple tool calls" in result
         assert "Only take one action" not in result
 
-    def test_output_style_not_included_without_flag(self):
-        """Output style should NOT be included unless add_output_style flag is set."""
+    def test_output_style_is_included_by_default_non_tool_calling(self):
+        """Output style should be included by default when tool-calling is disabled."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
+                "env": {
                     "action_prompt": "Take action.\n[OUTPUT STYLE]",
                     "output_style": "Format as: ACTION",
                 }
@@ -205,24 +195,31 @@ class TestActionCallToActionBuilder:
             cfg=cfg, action_mode="custom", tool_calling_mode="none"
         )
         assert "Take action" in result
-        assert "[OUTPUT STYLE]" not in result
-        assert "Format as: ACTION" not in result
+        assert "[OUTPUT STYLE]" in result
+        assert "Format as: ACTION" in result
 
-    def test_custom_mode_no_additions_is_passthrough(self):
-        """Custom mode without any additions should be pure pass-through."""
+    def test_custom_mode_can_disable_action_count_guidance(self):
+        """Action-count guidance can be disabled explicitly."""
         prompt = "Custom prompt text only"
         cfg = OmegaConf.create(
             {
-                "social_media": {
+                "env": {
                     "action_prompt": prompt,
-                    "output_style": "Ignored",
-                }
+                    "output_style": "Style",
+                },
+                "sim": {
+                    "prompt_additions": {
+                        "action_count_guidance": False,
+                    }
+                },
             }
         )
         result = build_complete_action_prompt_for_runner(
             cfg=cfg, action_mode="custom", tool_calling_mode="none"
         )
-        assert result == prompt
+        assert prompt in result
+        assert "[ActNum]" not in result
+        assert "[OUTPUT STYLE]" in result
 
 
 @pytest.mark.skip(reason="Validation function moved or removed in refactor")

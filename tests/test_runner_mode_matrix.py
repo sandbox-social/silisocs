@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from omegaconf import OmegaConf
 
-from mastodon_sim.environments.engines.social_media import (
-    BaseSocialMediaEngine,
-    FlowSocialMediaEngine,
+from mastodon_sim.engines.runtime import (
+    BaseRuntimeEngine,
+    FlowRuntimeEngine,
 )
 from mastodon_sim.runtime.factories import build_engine, default_gm_filename
 
@@ -15,13 +15,13 @@ def _cfg(gm_preset: str, engine_preset: str):
     return OmegaConf.create(
         {
             "sim": {
-                "gm": {"preset": gm_preset},
                 "engine": {"preset": engine_preset},
             },
-            "social_media": {
+            "env": {
+                "gm": {"preset": gm_preset},
                 "gamemaster": {
                     "filename": "social_media_game_master",
-                }
+                },
             },
         }
     )
@@ -35,7 +35,7 @@ def test_base_gm_with_base_engine() -> None:
     engine = build_engine(cfg)
 
     assert gm_filename == "social_media_game_master"
-    assert isinstance(engine, BaseSocialMediaEngine)
+    assert isinstance(engine, BaseRuntimeEngine)
 
 
 def test_base_gm_with_flow_engine() -> None:
@@ -46,7 +46,7 @@ def test_base_gm_with_flow_engine() -> None:
     engine = build_engine(cfg)
 
     assert gm_filename == "social_media_game_master"
-    assert isinstance(engine, FlowSocialMediaEngine)
+    assert isinstance(engine, FlowRuntimeEngine)
 
 
 def test_shared_flow_gm_with_base_engine() -> None:
@@ -57,4 +57,4 @@ def test_shared_flow_gm_with_base_engine() -> None:
     engine = build_engine(cfg)
 
     assert gm_filename == "shared_flow_game_master"
-    assert isinstance(engine, BaseSocialMediaEngine)
+    assert isinstance(engine, BaseRuntimeEngine)

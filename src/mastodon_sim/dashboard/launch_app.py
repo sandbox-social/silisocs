@@ -10,6 +10,7 @@ import inspect
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import streamlit as st
 import yaml
@@ -205,18 +206,23 @@ def _discover_external_scenarios(scenarios_root: Path) -> dict[str, Path]:
         for d in sorted(scenarios_root.iterdir()):
             if not d.is_dir():
                 continue
-            # Check scenarios/<name>/conf/scenario/<name>.yaml (Hydra-compatible)
-            hydra_path = d / "conf" / "scenario"
-            if hydra_path.is_dir():
-                for f in sorted(hydra_path.glob("*.yaml")):
-                    key = f"{d.name}" if f.stem == d.name else f"{d.name}/{f.stem}"
-                    found[key] = f
-            # Also check scenarios/<name>/conf/<name>.yaml (flat layout)
+            # Preferred four-group layout: scenarios/<name>/conf/sim.yaml
             flat_conf = d / "conf"
-            if flat_conf.is_dir():
-                for f in sorted(flat_conf.glob("*.yaml")):
-                    if f.stem == d.name and d.name not in found:
-                        found[d.name] = f
+            sim_file = flat_conf / "sim.yaml"
+            if sim_file.is_file():
+                found[d.name] = sim_file
+                continue
+
+            # Backward-compatible fallback: scenarios/<name>/conf/scenario/<name>.yaml
+            hydra_path = flat_conf / "scenario"
+            if hydra_path.is_dir():
+                legacy_default = hydra_path / f"{d.name}.yaml"
+                if legacy_default.is_file():
+                    found[d.name] = legacy_default
+                    continue
+                legacy_any = sorted(hydra_path.glob("*.yaml"))
+                if legacy_any:
+                    found[d.name] = legacy_any[0]
 
     return found
 
@@ -242,24 +248,81 @@ def _discover_run_configs_for_scenario(scenarios_root: Path, scenario_key: str) 
     return found
 
 
-def _split_loaded_config(loaded_cfg: dict) -> tuple[dict, dict, dict]:
-    """Split loaded YAML into (scenario, sim, social_media) sections."""
-    if isinstance(loaded_cfg.get("scenario"), dict):
-        loaded_scenario = loaded_cfg.get("scenario", {})
-        loaded_sim = loaded_cfg.get("sim", {})
-        loaded_social = loaded_cfg.get("social_media", {})
-    else:
-        loaded_scenario = loaded_cfg
-        loaded_sim = {}
-        loaded_social = {}
+def _split_loaded_config(
+    loaded_cfg: object,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Split loaded YAML into (scenario_view, sim, env)."""
+    if not isinstance(loaded_cfg, dict):
+        return {}, {}, {}
+
+    if any(isinstance(loaded_cfg.get(k), dict) for k in ("agent", "sim", "env", "environment")):
+        loaded_agent = (
+            loaded_cfg.get("agent", {}) if isinstance(loaded_cfg.get("agent"), dict) else {}
+        )
+        loaded_sim = loaded_cfg.get("sim", {}) if isinstance(loaded_cfg.get("sim"), dict) else {}
+        loaded_env = loaded_cfg.get("env", {}) if isinstance(loaded_cfg.get("env"), dict) else {}
+        if not loaded_env:
+            loaded_env = (
+                loaded_cfg.get("environment", {})
+                if isinstance(loaded_cfg.get("environment"), dict)
+                else {}
+            )
+        loaded_eval = (
+            loaded_cfg.get("evals", {}) if isinstance(loaded_cfg.get("evals"), dict) else {}
+        )
+        if not loaded_eval:
+            loaded_eval = (
+                loaded_cfg.get("evaluations", {})
+                if isinstance(loaded_cfg.get("evaluations"), dict)
+                else {}
+            )
+
+        scenario_view: dict = {
+            "scenario_name": loaded_sim.get("scenario_name", ""),
+            "jobname_format": loaded_sim.get("jobname_format", ""),
+            "setting": loaded_sim.get("setting", {}),
+            "event": loaded_sim.get("event", {}),
+            "data": loaded_sim.get("data", {}),
+            "social_network": loaded_env.get(
+                "social_network", loaded_sim.get("social_network", {})
+            ),
+            "persona_pipeline": loaded_agent.get("persona_pipeline", {}),
+            "shared_memories": loaded_agent.get("shared_memories", []),
+            "initial_observations": loaded_agent.get("initial_observations", []),
+            "fixed_action_sets": loaded_agent.get("fixed_action_sets", {}),
+            "probes": loaded_eval.get("probes", {}),
+            "candidates": loaded_env.get("candidates", loaded_sim.get("candidates", {})),
+            "news_account": loaded_env.get("news_account", loaded_sim.get("news_account", {})),
+            "partisan_types": loaded_env.get(
+                "partisan_types", loaded_sim.get("partisan_types", [])
+            ),
+        }
+        return scenario_view, loaded_sim, loaded_env
+
+    # Legacy fallback for older single-file configs.
+    loaded_scenario = loaded_cfg.get("scenario", loaded_cfg)
+    loaded_sim = loaded_cfg.get("sim", {}) if isinstance(loaded_cfg.get("sim"), dict) else {}
+    loaded_env = loaded_cfg.get(
+        "env", loaded_cfg.get("environment", loaded_cfg.get("social_media", {}))
+    )
+    loaded_env = loaded_env if isinstance(loaded_env, dict) else {}
 
     if not isinstance(loaded_scenario, dict):
         loaded_scenario = {}
-    if not isinstance(loaded_sim, dict):
-        loaded_sim = {}
-    if not isinstance(loaded_social, dict):
-        loaded_social = {}
-    return loaded_scenario, loaded_sim, loaded_social
+    return loaded_scenario, loaded_sim, loaded_env
+
+
+def _set_nested_value(payload: dict, dotted_key: str, value: object) -> None:
+    """Set nested dictionary keys from dot notation."""
+    cursor = payload
+    parts = dotted_key.split(".")
+    for part in parts[:-1]:
+        next_cursor = cursor.get(part)
+        if not isinstance(next_cursor, dict):
+            next_cursor = {}
+            cursor[part] = next_cursor
+        cursor = next_cursor
+    cursor[parts[-1]] = value
 
 
 def _backend_app_class(platform_type: str):
@@ -318,54 +381,64 @@ def _discover_entity_modules() -> list[str]:
 
 
 def _save_scenario(
-    name: str, scenario_data: dict, sim_data: dict, social_media_type: str, scenarios_root: Path
+    name: str,
+    scenario_data: dict,
+    sim_data: dict,
+    env_data: dict,
+    environment_type: str,
+    scenarios_root: Path,
 ) -> Path:
-    """Save full scenario config to scenarios/<name>/conf/.
-
-    Saves three files:
-    - scenario/{name}.yaml: Agent definitions, network, probes
-    - sim.yaml: Simulation params (if different from base defaults)
-    - social_media.yaml: Platform config (if different from default)
-    """
-    # Ensure proper directory structure
+    """Save scenario config to four-group layout in scenarios/<name>/conf/."""
     conf_dir = scenarios_root / name / "conf"
     conf_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save scenario YAML
-    scenario_dir = conf_dir / "scenario"
-    scenario_dir.mkdir(parents=True, exist_ok=True)
-    scenario_file = scenario_dir / f"{name}.yaml"
-    header = "# @package scenario\n\n"
-    yaml_content = yaml.dump(
-        scenario_data, default_flow_style=False, sort_keys=False, allow_unicode=True
-    )
-    scenario_file.write_text(header + yaml_content)
+    sim_payload = {
+        "scenario_name": scenario_data.get("scenario_name", name),
+        "jobname_format": scenario_data.get("jobname_format"),
+        "setting": scenario_data.get("setting", {}),
+        "event": scenario_data.get("event", {}),
+        "data": scenario_data.get("data", {}),
+    }
+    for key, value in sim_data.items():
+        if value is None:
+            continue
+        _set_nested_value(sim_payload, key, value)
 
-    # Save sim.yaml if any params are specified (only non-default/non-null values)
-    if sim_data:
-        sim_file = conf_dir / "sim.yaml"
-        sim_header = "# @package sim\n\n"
-        # Only include non-null, non-false, non-default values
-        sim_filtered = {k: v for k, v in sim_data.items() if v is not None and v is not False}
-        if sim_filtered:
-            sim_yaml_content = yaml.dump(
-                sim_filtered, default_flow_style=False, sort_keys=False, allow_unicode=True
-            )
-            sim_file.write_text(sim_header + sim_yaml_content)
+    agent_payload = {
+        "persona_pipeline": scenario_data.get("persona_pipeline", {}),
+        "shared_memories": scenario_data.get("shared_memories", []),
+        "initial_observations": scenario_data.get("initial_observations", []),
+    }
+    if isinstance(scenario_data.get("fixed_action_sets"), dict):
+        agent_payload["fixed_action_sets"] = scenario_data.get("fixed_action_sets", {})
 
-    # Save social_media.yaml if it's not the default
-    if social_media_type and social_media_type != "twitter_like":
-        social_dir = conf_dir / "social_media"
-        social_dir.mkdir(parents=True, exist_ok=True)
-        social_file = social_dir / f"{social_media_type}.yaml"
-        social_header = "# @package social_media\n\n"
-        # Minimal override: just platform_type
-        social_yaml_content = yaml.dump(
-            {"platform_type": social_media_type}, default_flow_style=False, sort_keys=False
+    env_payload = {
+        "platform_type": environment_type or "twitter_like",
+        "social_network": scenario_data.get("social_network", {}),
+        "seed_posts": scenario_data.get("seed_posts", {}),
+        "candidates": scenario_data.get("candidates", {}),
+        "news_account": scenario_data.get("news_account", {}),
+        "partisan_types": scenario_data.get("partisan_types", []),
+    }
+    for key, value in env_data.items():
+        if value is None:
+            continue
+        _set_nested_value(env_payload, key, value)
+    evals_payload = {"probes": scenario_data.get("probes", {})}
+
+    files_to_write = [
+        (conf_dir / "agent.yaml", "# @package agent\n\n", agent_payload),
+        (conf_dir / "sim.yaml", "# @package sim\n\n", sim_payload),
+        (conf_dir / "env.yaml", "# @package env\n\n", env_payload),
+        (conf_dir / "evals.yaml", "# @package evals\n\n", evals_payload),
+    ]
+    for file_path, header, payload in files_to_write:
+        yaml_content = yaml.dump(
+            payload, default_flow_style=False, sort_keys=False, allow_unicode=True
         )
-        social_file.write_text(social_header + social_yaml_content)
+        file_path.write_text(header + yaml_content, encoding="utf-8")
 
-    return scenario_file
+    return conf_dir
 
 
 def _get_config_path_for_scenario(scenarios_root: Path, scenario_key: str) -> str | None:
@@ -466,7 +539,7 @@ def _build_scenario_config() -> dict:
                     "bio": "",
                     "style": "",
                     "goal": None,
-                    "scenario_context": "${scenario.event.context}",
+                    "scenario_context": "${sim.event.context}",
                 },
                 "shared_memories": shared_list,
             },
@@ -526,21 +599,9 @@ def _build_scenario_config() -> dict:
     return config
 
 
-def _build_hydra_overrides(sim: dict, platform: str, scenario: dict) -> list[str]:
+def _build_hydra_overrides(sim: dict, env: dict, platform: str, scenario: dict) -> list[str]:
     overrides: list[str] = []
     for key, val in sim.items():
-        # Handle seed_posts nested keys
-        if key.startswith("seed_posts."):
-            if val is None:
-                overrides.append(f"{key}=null")
-            elif isinstance(val, bool):
-                overrides.append(f"{key}={'true' if val else 'false'}")
-            elif isinstance(val, str) and " " in val:
-                overrides.append(f'{key}="{val}"')
-            elif isinstance(val, str):
-                overrides.append(f"{key}={val}")
-            continue
-
         if val is None:
             overrides.append(f"sim.{key}=null")
         elif isinstance(val, bool):
@@ -555,16 +616,32 @@ def _build_hydra_overrides(sim: dict, platform: str, scenario: dict) -> list[str
             overrides.append(f'sim.{key}="{val}"')
         else:
             overrides.append(f"sim.{key}={val}")
-    overrides.append(f"social_media={platform}")
+    overrides.append(f"env={platform}")
+    for key, val in env.items():
+        if val is None:
+            overrides.append(f"env.{key}=null")
+        elif isinstance(val, bool):
+            overrides.append(f"env.{key}={'true' if val else 'false'}")
+        elif isinstance(val, list):
+            if not val:
+                overrides.append(f"env.{key}=[]")
+            else:
+                inner = ",".join(str(item) for item in val)
+                overrides.append(f"env.{key}=[{inner}]")
+        elif isinstance(val, str) and " " in val:
+            overrides.append(f'env.{key}="{val}"')
+        else:
+            overrides.append(f"env.{key}={val}")
     for key, val in scenario.items():
         if val is None:
             continue
+        prefix = "env" if key.startswith("social_network.") else "sim"
         if isinstance(val, bool):
-            overrides.append(f"scenario.{key}={'true' if val else 'false'}")
+            overrides.append(f"{prefix}.{key}={'true' if val else 'false'}")
         elif isinstance(val, (int, float)):
-            overrides.append(f"scenario.{key}={val}")
+            overrides.append(f"{prefix}.{key}={val}")
         elif isinstance(val, str) and val:
-            overrides.append(f'scenario.{key}="{val}"' if " " in val else f"scenario.{key}={val}")
+            overrides.append(f'{prefix}.{key}="{val}"' if " " in val else f"{prefix}.{key}={val}")
     return overrides
 
 
@@ -662,7 +739,7 @@ with st.sidebar:
 
     st.markdown("**Scenario**")
     external_scenarios = _discover_external_scenarios(selected_scenarios_root)
-    pkg_default = _CONF_DIR / f"{selected_preset}" / "scenario" / "default.yaml"
+    pkg_default = _CONF_DIR / "sim" / "base.yaml"
     available_scenarios = {"default": pkg_default, **external_scenarios}
     scenario_names = list(available_scenarios.keys())
 
@@ -695,13 +772,13 @@ with st.sidebar:
             source_label = f"{selected_scenario} :: run/{selected_run_source}"
 
         loaded_cfg = _load_yaml(selected_path)
-        loaded_scenario, loaded_sim, loaded_social = _split_loaded_config(loaded_cfg)
+        loaded_scenario, loaded_sim, loaded_environment = _split_loaded_config(loaded_cfg)
 
         scenario_name = str(loaded_scenario.get("scenario_name") or selected_scenario)
         st.session_state["_loaded_scenario"] = loaded_scenario
         st.session_state["_loaded_scenario_name"] = scenario_name
         st.session_state["_loaded_sim_defaults"] = loaded_sim
-        st.session_state["_loaded_social_defaults"] = loaded_social
+        st.session_state["_loaded_environment_defaults"] = loaded_environment
         st.session_state["_loaded_source_label"] = source_label
         st.session_state["_loaded_source_kind"] = source_kind
         st.session_state["_loaded_source_scenario_key"] = selected_scenario.split("/")[0]
@@ -720,10 +797,25 @@ with st.sidebar:
         if new_name and new_name.strip():
             clean_name = new_name.strip().lower().replace(" ", "_")
             # Create from selected preset default.
-            default_cfg = _load_yaml(_CONF_DIR / f"{selected_preset}" / "scenario" / "default.yaml")
+            default_cfg = {
+                "scenario_name": clean_name,
+                "jobname_format": "N${sim.num_agents}_T${sim.num_steps}_${experiment_name}_${sim.run_name}",
+                "setting": {"name": "", "background": []},
+                "event": {"name": "", "context": ""},
+                "persona_pipeline": {},
+                "social_network": {},
+                "shared_memories": [],
+                "initial_observations": [],
+                "probes": {},
+            }
             default_cfg["scenario_name"] = clean_name
             save_path = _save_scenario(
-                clean_name, default_cfg, {}, "twitter_like", selected_scenarios_root
+                clean_name,
+                default_cfg,
+                {},
+                {},
+                "twitter_like",
+                selected_scenarios_root,
             )
             st.success(f"Created: `{save_path}`")
             st.rerun()
@@ -741,16 +833,22 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 _scenario_cfg = st.session_state.get("_loaded_scenario", {})
 _selected_preset_for_defaults = st.session_state.get("_selected_preset", "default")
-_sim_base_defaults = _load_yaml(_CONF_DIR / _selected_preset_for_defaults / "sim" / "base.yaml")
+_sim_base_defaults = _load_yaml(_CONF_DIR / "sim" / "base.yaml")
 _sim_loaded_defaults = st.session_state.get("_loaded_sim_defaults", {})
 if not isinstance(_sim_loaded_defaults, dict):
     _sim_loaded_defaults = {}
 _sim_defaults = _deep_merge_dict(_sim_base_defaults, _sim_loaded_defaults)
-_social_defaults = st.session_state.get("_loaded_social_defaults", {})
-if not isinstance(_social_defaults, dict):
-    _social_defaults = {}
+_environment_defaults = st.session_state.get("_loaded_environment_defaults", {})
+if not isinstance(_environment_defaults, dict):
+    _environment_defaults = {}
 _entity_modules = _discover_entity_modules()
-_gm_defaults = _sim_defaults.get("gm", {}) if isinstance(_sim_defaults.get("gm", {}), dict) else {}
+_gm_defaults = (
+    _environment_defaults.get("gm", {})
+    if isinstance(_environment_defaults.get("gm", {}), dict)
+    else _sim_defaults.get("gm", {})
+    if isinstance(_sim_defaults.get("gm", {}), dict)
+    else {}
+)
 _gm_components_defaults = (
     _gm_defaults.get("components", {})
     if isinstance(_gm_defaults.get("components", {}), dict)
@@ -862,14 +960,30 @@ with tab_sim:
                 "Timeline posts",
                 min_value=1,
                 max_value=100,
-                value=max(1, _as_int(_sim_defaults.get("timeline_posts", 10), 10)),
+                value=max(
+                    1,
+                    _as_int(
+                        _environment_defaults.get(
+                            "timeline_posts", _sim_defaults.get("timeline_posts", 10)
+                        ),
+                        10,
+                    ),
+                ),
                 key="timeline_posts",
             )
             st.number_input(
                 "Observation history",
                 min_value=10,
                 max_value=1000,
-                value=max(10, _as_int(_sim_defaults.get("observation_history", 100), 100)),
+                value=max(
+                    10,
+                    _as_int(
+                        _environment_defaults.get(
+                            "observation_history", _sim_defaults.get("observation_history", 100)
+                        ),
+                        100,
+                    ),
+                ),
                 key="observation_history",
             )
             st.checkbox(
@@ -884,7 +998,11 @@ with tab_sim:
         with mf1:
             st.checkbox(
                 "Enable GM Multi-Flow",
-                value=bool(_sim_defaults.get("enable_gm_multi_flow", False)),
+                value=bool(
+                    _environment_defaults.get(
+                        "enable_gm_multi_flow", _sim_defaults.get("enable_gm_multi_flow", False)
+                    )
+                ),
                 key="enable_gm_multi_flow",
                 help="Allow game master to route agents to different component instances per flow.",
             )
@@ -901,7 +1019,9 @@ with tab_sim:
 
         # Multi-GM orchestration (gm_orchestration block)
         st.markdown("**GM Orchestration** (advanced: multiple GMs managing different aspects)")
-        gm_orch_default = _sim_defaults.get("gm_orchestration", {})
+        gm_orch_default = _environment_defaults.get(
+            "gm_orchestration", _sim_defaults.get("gm_orchestration", {})
+        )
         gm_orch_yaml = st.text_area(
             "gm_orchestration (YAML)",
             value=yaml.dump(gm_orch_default, default_flow_style=False)
@@ -1280,7 +1400,7 @@ with tab_env:
     st.markdown("**Runtime Environment**")
     ec1, ec2 = st.columns(2)
     with ec1:
-        platform_default = str(_social_defaults.get("platform_type", "twitter_like"))
+        platform_default = str(_environment_defaults.get("platform_type", "twitter_like"))
         st.selectbox(
             "Platform backend",
             _PLATFORM_OPTIONS,
@@ -1296,7 +1416,9 @@ with tab_env:
     selected_platform_for_actions = st.session_state.get("platform_type", platform_default)
     action_catalog = _backend_action_catalog(selected_platform_for_actions)
     action_labels = [item["selectable_name"] for item in action_catalog]
-    configured_enabled = _sim_defaults.get("enabled_actions")
+    configured_enabled = _environment_defaults.get(
+        "enabled_actions", _sim_defaults.get("enabled_actions")
+    )
     default_enabled = configured_enabled if isinstance(configured_enabled, list) else []
     st.multiselect(
         "Enabled backend actions (leave empty to allow all)",
@@ -1308,8 +1430,15 @@ with tab_env:
 
     # Timeline strategy selection
     st.markdown("**Timeline Configuration**")
-    timeline_strategy_default = _sim_defaults.get("timeline_strategy", "follower_chronological")
-    timeline_config_default = _sim_defaults.get("timeline_config", {})
+    timeline_strategy_default = _environment_defaults.get(
+        "timeline_mode",
+        _environment_defaults.get(
+            "timeline_strategy", _sim_defaults.get("timeline_strategy", "follower_chronological")
+        ),
+    )
+    timeline_config_default = _environment_defaults.get(
+        "timeline_config", _sim_defaults.get("timeline_config", {})
+    )
 
     # Define available strategies per platform
     timeline_strategies_by_platform = {
@@ -1573,7 +1702,7 @@ with tab_env:
                 "Advanced orchestration is intended for expert YAML workflows. "
                 "Use this section to copy/edit settings, then apply through config files or explicit Hydra overrides."
             )
-            gm_preset_default = str(_sim_defaults.get("gm", {}).get("preset", "base"))
+            gm_preset_default = str(_gm_defaults.get("preset", "base"))
             st.selectbox(
                 "GM preset",
                 ["base", "shared_flow"],
@@ -1582,7 +1711,9 @@ with tab_env:
                 help="base uses the standard GM. shared_flow uses the shared-flow GM base.",
             )
 
-            default_orchestration = _sim_defaults.get("gm_orchestration", {})
+            default_orchestration = _environment_defaults.get(
+                "gm_orchestration", _sim_defaults.get("gm_orchestration", {})
+            )
             orchestration_yaml = (
                 yaml.dump(default_orchestration, default_flow_style=False)
                 if isinstance(default_orchestration, dict)
@@ -1606,16 +1737,16 @@ with tab_env:
         )
 
         recommend_cfg = (
-            _sim_defaults.get("gm", {}).get("components", {}).get("recommend", {})
-            if isinstance(_sim_defaults.get("gm", {}), dict)
+            _gm_defaults.get("components", {}).get("recommend", {})
+            if isinstance(_gm_defaults, dict)
             else {}
         )
         recommend_params = (
             recommend_cfg.get("params", {}) if isinstance(recommend_cfg, dict) else {}
         )
         observe_cfg = (
-            _sim_defaults.get("gm", {}).get("components", {}).get("observe", {})
-            if isinstance(_sim_defaults.get("gm", {}), dict)
+            _gm_defaults.get("components", {}).get("observe", {})
+            if isinstance(_gm_defaults, dict)
             else {}
         )
         observe_flows = observe_cfg.get("flows", {}) if isinstance(observe_cfg, dict) else {}
@@ -1625,7 +1756,13 @@ with tab_env:
         rc1, rc2, rc3 = st.columns(3)
         with rc1:
             recsys_enabled = (
-                _sim_defaults.get("timeline_strategy", "follower_chronological")
+                _environment_defaults.get(
+                    "timeline_mode",
+                    _environment_defaults.get(
+                        "timeline_strategy",
+                        _sim_defaults.get("timeline_strategy", "follower_chronological"),
+                    ),
+                )
                 != "follower_chronological"
             )
             st.checkbox(
@@ -1977,15 +2114,43 @@ with tab_launch:
         "max_concurrent_actions": st.session_state.get("max_concurrent_actions", 1000),
         "memory_backend": st.session_state.get("memory_backend", "list"),
         "action_mode": st.session_state.get("action_mode", "custom"),
-        "enable_gm_multi_flow": st.session_state.get("enable_gm_multi_flow", False),
         "enable_engine_multi_flow": st.session_state.get("enable_engine_multi_flow", False),
+        "disable_language_model": st.session_state.get("disable_language_model", False),
+        "engine.action_loop.built_in": st.session_state.get(
+            "engine_action_loop_built_in", "single_action"
+        ),
+        "engine.action_loop.class_path": (
+            st.session_state.get("engine_action_loop_class_path") or None
+        ),
+        "engine.action_loop.params.count": st.session_state.get("engine_action_loop_count", 2),
+        "engine.action_loop.params.max_actions": st.session_state.get(
+            "engine_action_loop_max_actions", 3
+        ),
+        "engine.action_loop.params.done_token": st.session_state.get(
+            "engine_action_loop_done_token", "DONE"
+        ),
+        "engine.probe_schedule.built_in": st.session_state.get(
+            "engine_probe_schedule_built_in", "step_schedule"
+        ),
+        "engine.probe_schedule.class_path": (
+            st.session_state.get("engine_probe_schedule_class_path") or None
+        ),
+        "engine.probe_schedule.params.start_step": st.session_state.get(
+            "engine_probe_schedule_start_step", 0
+        ),
+        "engine.probe_schedule.params.every_n_steps": st.session_state.get(
+            "engine_probe_schedule_every_n_steps", 1
+        ),
+    }
+    env_params = {
+        "enable_gm_multi_flow": st.session_state.get("enable_gm_multi_flow", False),
         "enabled_actions": (
             st.session_state.get("enabled_actions")
             if st.session_state.get("enabled_actions")
             else None
         ),
         "timeline_posts": st.session_state.get("timeline_posts", 10),
-        "timeline_strategy": st.session_state.get("timeline_strategy", "follower_chronological"),
+        "timeline_mode": st.session_state.get("timeline_strategy", "follower_chronological"),
         "timeline_config": {
             "recsys_ratio": st.session_state.get("timeline_recsys_ratio", 0.6),
             "follower_ratio": 1.0 - st.session_state.get("timeline_recsys_ratio", 0.6),
@@ -1997,7 +2162,6 @@ with tab_launch:
             if st.session_state.get("seed_posts_file")
             else None
         ),
-        "disable_language_model": st.session_state.get("disable_language_model", False),
         "gm_orchestration": st.session_state.get("gm_orchestration_yaml_parsed", {}),
         "gm.preset": (
             st.session_state.get("gm_preset", "base")
@@ -2023,31 +2187,6 @@ with tab_launch:
         ),
         "gm.components.initializer.class_path": (
             st.session_state.get("gm_initializer_class_path") or None
-        ),
-        "engine.action_loop.built_in": st.session_state.get(
-            "engine_action_loop_built_in", "single_action"
-        ),
-        "engine.action_loop.class_path": (
-            st.session_state.get("engine_action_loop_class_path") or None
-        ),
-        "engine.action_loop.params.count": st.session_state.get("engine_action_loop_count", 2),
-        "engine.action_loop.params.max_actions": st.session_state.get(
-            "engine_action_loop_max_actions", 3
-        ),
-        "engine.action_loop.params.done_token": st.session_state.get(
-            "engine_action_loop_done_token", "DONE"
-        ),
-        "engine.probe_schedule.built_in": st.session_state.get(
-            "engine_probe_schedule_built_in", "step_schedule"
-        ),
-        "engine.probe_schedule.class_path": (
-            st.session_state.get("engine_probe_schedule_class_path") or None
-        ),
-        "engine.probe_schedule.params.start_step": st.session_state.get(
-            "engine_probe_schedule_start_step", 0
-        ),
-        "engine.probe_schedule.params.every_n_steps": st.session_state.get(
-            "engine_probe_schedule_every_n_steps", 1
         ),
     }
     selected_platform = st.session_state.get("platform_type", "twitter_like")
@@ -2080,6 +2219,7 @@ with tab_launch:
     # Build Hydra CLI.
     overrides = _build_hydra_overrides(
         sim_params,
+        env_params,
         selected_platform,
         {
             "social_network.network_type": st.session_state.get("network_type", "barabasi_albert"),
@@ -2122,6 +2262,7 @@ with tab_launch:
             # Build sim_data dict with only non-default overrides
             # Extract from sim_params but filter to only include values that differ from base defaults
             sim_data_to_save = {}
+            env_data_to_save = {}
             for key in [
                 # Core sim params
                 "num_agents",
@@ -2133,24 +2274,8 @@ with tab_launch:
                 "memory_backend",
                 "disable_language_model",
                 # Multi-flow/orchestration flags
-                "enable_gm_multi_flow",
                 "enable_engine_multi_flow",
-                # Timeline and recommendations
-                "timeline_posts",
-                "timeline_strategy",
-                "observation_history",
-                # Seed posts
-                "seed_posts.type",
-                "seed_posts.params.file_path",
-                # Advanced: enabled actions, checkpoint config
-                "enabled_actions",
                 "write_html_log",
-                # GM components (if customized from defaults)
-                "gm.preset",
-                "gm.components.next_acting.built_in",
-                "gm.components.observe.built_in",
-                "gm.components.resolve.built_in",
-                "gm.components.initializer.built_in",
                 # Engine action loop and probe schedule
                 "engine.preset",
                 "engine.action_loop.built_in",
@@ -2161,20 +2286,57 @@ with tab_launch:
                 if val is not None:
                     sim_data_to_save[key] = val
 
-            # Also include timeline_config for hybrid strategies
-            timeline_config = st.session_state.get("timeline_config", {})
-            if timeline_config:
-                sim_data_to_save["timeline_config"] = timeline_config
-
-            # Also include gm_orchestration if it has content
+            env_data_to_save.update(
+                {
+                    "enable_gm_multi_flow": st.session_state.get("enable_gm_multi_flow", False),
+                    "timeline_posts": st.session_state.get("timeline_posts", 10),
+                    "timeline_mode": st.session_state.get(
+                        "timeline_strategy", "follower_chronological"
+                    ),
+                    "observation_history": st.session_state.get("observation_history", 100),
+                    "seed_posts.type": st.session_state.get("seed_posts_type", "llm"),
+                    "seed_posts.params.file_path": (
+                        st.session_state.get("seed_posts_file")
+                        if st.session_state.get("seed_posts_file")
+                        else None
+                    ),
+                    "enabled_actions": (
+                        st.session_state.get("enabled_actions")
+                        if st.session_state.get("enabled_actions")
+                        else None
+                    ),
+                    "gm.preset": st.session_state.get("gm_preset", "base"),
+                    "gm.components.next_acting.built_in": st.session_state.get(
+                        "gm_next_acting_built_in", "activity_markov"
+                    ),
+                    "gm.components.observe.built_in": st.session_state.get(
+                        "gm_observe_built_in", "timeline_every_turn"
+                    ),
+                    "gm.components.resolve.built_in": st.session_state.get(
+                        "gm_resolve_built_in", "parsed_action"
+                    ),
+                    "gm.components.initializer.built_in": st.session_state.get(
+                        "gm_initializer_built_in", "backend_default"
+                    ),
+                }
+            )
+            env_data_to_save["timeline_config"] = {
+                "recsys_ratio": st.session_state.get("timeline_recsys_ratio", 0.6),
+                "follower_ratio": 1.0 - st.session_state.get("timeline_recsys_ratio", 0.6),
+            }
             if st.session_state.get("gm_orchestration_yaml_parsed"):
-                sim_data_to_save["gm_orchestration"] = st.session_state.get(
+                env_data_to_save["gm_orchestration"] = st.session_state.get(
                     "gm_orchestration_yaml_parsed"
                 )
 
             selected_platform = st.session_state.get("platform_type", "twitter_like")
             save_path = _save_scenario(
-                name, scenario_data, sim_data_to_save, selected_platform, loaded_scenarios_root
+                name,
+                scenario_data,
+                sim_data_to_save,
+                env_data_to_save,
+                selected_platform,
+                loaded_scenarios_root,
             )
             st.success(f"Saved: `{save_path}`")
             st.info(f"Scenario config files created in `scenarios/{name}/conf/`")
@@ -2202,6 +2364,7 @@ with tab_launch:
 
         # Build sim_data with overrides (same comprehensive list as "Save Scenario" button)
         sim_data_to_save = {}
+        env_data_to_save = {}
         for key in [
             # Core sim params
             "num_agents",
@@ -2213,24 +2376,8 @@ with tab_launch:
             "memory_backend",
             "disable_language_model",
             # Multi-flow/orchestration flags
-            "enable_gm_multi_flow",
             "enable_engine_multi_flow",
-            # Timeline and recommendations
-            "timeline_posts",
-            "timeline_strategy",
-            "observation_history",
-            # Seed posts
-            "seed_posts.type",
-            "seed_posts.params.file_path",
-            # Advanced: enabled actions, checkpoint config
-            "enabled_actions",
             "write_html_log",
-            # GM components (if customized from defaults)
-            "gm.preset",
-            "gm.components.next_acting.built_in",
-            "gm.components.observe.built_in",
-            "gm.components.resolve.built_in",
-            "gm.components.initializer.built_in",
             # Engine action loop and probe schedule
             "engine.preset",
             "engine.action_loop.built_in",
@@ -2241,20 +2388,57 @@ with tab_launch:
             if val is not None:
                 sim_data_to_save[key] = val
 
-        # Also include timeline_config for hybrid strategies
-        timeline_config = st.session_state.get("timeline_config", {})
-        if timeline_config:
-            sim_data_to_save["timeline_config"] = timeline_config
-
-        # Also include gm_orchestration if it has content
+        env_data_to_save.update(
+            {
+                "enable_gm_multi_flow": st.session_state.get("enable_gm_multi_flow", False),
+                "timeline_posts": st.session_state.get("timeline_posts", 10),
+                "timeline_mode": st.session_state.get(
+                    "timeline_strategy", "follower_chronological"
+                ),
+                "observation_history": st.session_state.get("observation_history", 100),
+                "seed_posts.type": st.session_state.get("seed_posts_type", "llm"),
+                "seed_posts.params.file_path": (
+                    st.session_state.get("seed_posts_file")
+                    if st.session_state.get("seed_posts_file")
+                    else None
+                ),
+                "enabled_actions": (
+                    st.session_state.get("enabled_actions")
+                    if st.session_state.get("enabled_actions")
+                    else None
+                ),
+                "gm.preset": st.session_state.get("gm_preset", "base"),
+                "gm.components.next_acting.built_in": st.session_state.get(
+                    "gm_next_acting_built_in", "activity_markov"
+                ),
+                "gm.components.observe.built_in": st.session_state.get(
+                    "gm_observe_built_in", "timeline_every_turn"
+                ),
+                "gm.components.resolve.built_in": st.session_state.get(
+                    "gm_resolve_built_in", "parsed_action"
+                ),
+                "gm.components.initializer.built_in": st.session_state.get(
+                    "gm_initializer_built_in", "backend_default"
+                ),
+            }
+        )
+        env_data_to_save["timeline_config"] = {
+            "recsys_ratio": st.session_state.get("timeline_recsys_ratio", 0.6),
+            "follower_ratio": 1.0 - st.session_state.get("timeline_recsys_ratio", 0.6),
+        }
         if st.session_state.get("gm_orchestration_yaml_parsed"):
-            sim_data_to_save["gm_orchestration"] = st.session_state.get(
+            env_data_to_save["gm_orchestration"] = st.session_state.get(
                 "gm_orchestration_yaml_parsed"
             )
 
         selected_platform = st.session_state.get("platform_type", "twitter_like")
         _save_scenario(
-            name, scenario_data, sim_data_to_save, selected_platform, loaded_scenarios_root
+            name,
+            scenario_data,
+            sim_data_to_save,
+            env_data_to_save,
+            selected_platform,
+            loaded_scenarios_root,
         )
 
         with status_placeholder.container():

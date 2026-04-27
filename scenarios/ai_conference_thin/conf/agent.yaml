@@ -1,0 +1,112 @@
+persona_pipeline:
+  processing_mode: raw
+  defaults:
+    params:
+      seed_post: ''
+      bio: ''
+      style: ''
+      goal: null
+      scenario_context: ${sim.event.context}
+    shared_memories:
+    - ${sim.event.context}
+  classes:
+    conference_attendee:
+      count: 4
+      prefab_module: mastodon_sim.agents.entity
+      sim_role_name: conference_attendee
+      data:
+        source: inline
+        records:
+        - name: Dr. Victor Huang
+          username: victor_huang
+          context: Dr. Victor Huang is a speaker at the NeuraTech Summit 2025.
+          seed_post: 'AI isn''t coming — it''s HERE. Every industry will be transformed
+            in the next 3 years. Those who hesitate will be left behind. The future
+            belongs to the bold. #NeuraTech2025'
+        - name: Priya Sharma
+          username: priya_sharma
+          context: Priya Sharma is a marketing professional attending the NeuraTech
+            Summit 2025.
+          seed_post: 'Every conversation here confirms it — AI is the biggest opportunity
+            of our generation. The energy at #NeuraTech2025 is electric. The only
+            question is how fast you move. Who else is feeling this?'
+        - name: Derek Okafor
+          username: derek_okafor
+          context: Derek Okafor is a startup founder attending the NeuraTech Summit
+            2025.
+          seed_post: ''
+        - name: Lisa Tanaka
+          username: lisa_tanaka
+          context: Lisa Tanaka is a manager attending the NeuraTech Summit 2025.
+          seed_post: ''
+      field_map:
+        name: name
+        username: username
+        context: context
+        seed_post: seed_post
+    protester:
+      count: 3
+      prefab_module: mastodon_sim.agents.entity
+      sim_role_name: protester
+      data:
+        source: inline
+        records:
+        - name: Marcus Rivera
+          username: marcus_rivera
+          context: Marcus Rivera is a labor organizer protesting outside the NeuraTech
+            Summit 2025.
+          seed_post: '200+ workers outside #NeuraTech2025 today demanding the industry
+            acknowledge what AI automation is doing to their livelihoods. We are not
+            going away. The people inside need to hear us. #AIAccountability #WorkersRights'
+        - name: Dr. Amara Osei
+          username: amara_osei
+          context: Dr. Amara Osei is an AI researcher protesting outside the NeuraTech
+            Summit 2025.
+          seed_post: 'I submitted a talk to #NeuraTech2025 on algorithmic bias in
+            hiring. Rejected. The program has zero sessions on bias, displacement,
+            or environmental costs. This is not an accident — it is a choice. Thread
+            on what''s missing: 1/'
+        - name: Zoe Chen
+          username: zoe_chen
+          context: Zoe Chen is a climate activist protesting outside the NeuraTech
+            Summit 2025.
+          seed_post: ''
+      field_map:
+        name: name
+        username: username
+        context: context
+        seed_post: seed_post
+    bridge:
+      count: 2
+      prefab_module: mastodon_sim.agents.entity
+      sim_role_name: bridge
+      data:
+        source: inline
+        records:
+        - name: Jordan Ellis
+          username: jordan_ellis
+          context: Jordan Ellis is a journalist covering the NeuraTech Summit 2025.
+          seed_post: 'Two narratives playing out 50 feet apart at #NeuraTech2025 —
+            inside: ''AI will save everything'', outside: ''AI is already costing
+            us everything.'' Both sides are convinced the other is delusional. Covering
+            both today.'
+        - name: Sam Nakamura
+          username: sam_nakamura
+          context: Sam Nakamura is an ML engineer attending the NeuraTech Summit 2025.
+          seed_post: 'Great talks at #NeuraTech2025 today. But those protesters outside…
+            some of their signs hit closer to home than I''d like to admit. Trying
+            to hold both things at once. Not sure I''m succeeding.'
+      field_map:
+        name: name
+        username: username
+        context: context
+        seed_post: seed_post
+shared_memories:
+- ${sim.event.context}
+- ${sim.setting.background}
+initial_observations:
+- '{name} opens their social media feed and sees posts from the NeuraTech Summit and
+  the protest outside.'
+- '{name} thinks about what they want to say about what is happening today.'
+- '{name} checks their notifications and considers how others are framing the day''s
+  events.'

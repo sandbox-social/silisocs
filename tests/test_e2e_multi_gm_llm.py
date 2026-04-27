@@ -33,91 +33,115 @@ def _llm_server_url() -> str:
 
 
 def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
-    scenario_dir = conf_dir / "scenario"
-    scenario_dir.mkdir(parents=True, exist_ok=True)
+    conf_dir.mkdir(parents=True, exist_ok=True)
 
-    scenario_yaml = textwrap.dedent(
+    sim_yaml = textwrap.dedent(
         f"""
-        # @package scenario
-        scenario_name: {scenario_name}
-        jobname_format: "{scenario_name}_${{sim.num_steps}}"
+                # @package sim
+                scenario_name: {scenario_name}
+                jobname_format: "{scenario_name}_${{sim.num_steps}}"
 
-        setting:
-          name: LLM E2E Contract Test
-          background:
-            - Compact deterministic scenario for artifact and behavior validation.
+                setting:
+                    name: LLM E2E Contract Test
+                    background:
+                        - Compact deterministic scenario for artifact and behavior validation.
 
-        event:
-          name: Contract validation run
-          context: Validate timeline observation and action resolution contracts.
+                event:
+                    name: Contract validation run
+                    context: Validate timeline observation and action resolution contracts.
 
-        persona_pipeline:
-          processing_mode: raw
-          defaults:
-            params:
-              scenario_context: Agents act in a compact social simulation.
-              seed_post: seeded default post
-          classes:
-            fixed_seed:
-              count: 1
-              prefab_module: mastodon_sim.agents.fixed_entity
-              sim_role_name: fixed_seed
-              flow_tag: fixed_pre
-              params:
-                name: SeedBot
-                context: Deterministic fixed seed entity.
-                seed_post: SeedBot seed post
-                action_output_mode: parsed_action
-                advance_without_episode_observation: true
-                emit_finished_on_episode_end: true
-                fixed_action_plan:
-                  0:
-                    - action_type: post
-                      content: SeedBot episode zero broadcast
-                  1:
-                    - action_type: post
-                      content: SeedBot episode one broadcast
-            llm_user:
-              count: 2
-              prefab_module: mastodon_sim.agents.entity
-              sim_role_name: llm_user
-              data:
-                source: inline
-                records:
-                  - name: Alice Analyst
-                    persona: Analytical user who responds calmly and briefly.
-                    seed_post: Alice seed post
-                  - name: Bob Builder
-                    persona: Builder user who posts practical updates.
-                    seed_post: Bob seed post
-              field_map:
-                name: name
-                context: persona
-                seed_post: seed_post
-
-        social_network:
-          activity_transition_rates:
-            fixed_seed:
-              inactive_to_active: 1.0
-              active_to_inactive: 0.0
-            llm_user:
-              inactive_to_active: 1.0
-              active_to_inactive: 0.0
-          fully_connected_targets: []
-          base_followership_probability: 1.0
-          network_type: random
-
-        shared_memories:
-          - Agents are validating runtime contracts.
-
-        initial_observations:
-          - "{{name}} starts this contract test run."
-
-        probes: {{}}
-        """
+                data: {{}}
+                candidates: {{}}
+                news_account: {{}}
+                partisan_types: []
+                """
     ).strip()
 
-    (scenario_dir / f"{scenario_name}.yaml").write_text(scenario_yaml + "\n", encoding="utf-8")
+    agent_yaml = textwrap.dedent(
+        """
+                # @package agent
+
+                persona_pipeline:
+                    processing_mode: raw
+                    defaults:
+                        params:
+                            scenario_context: Agents act in a compact social simulation.
+                            seed_post: seeded default post
+                    classes:
+                        fixed_seed:
+                            count: 1
+                            prefab_module: mastodon_sim.agents.fixed_entity
+                            sim_role_name: fixed_seed
+                            flow_tag: fixed_pre
+                            params:
+                                name: SeedBot
+                                context: Deterministic fixed seed entity.
+                                seed_post: SeedBot seed post
+                                action_output_mode: parsed_action
+                                advance_without_episode_observation: true
+                                emit_finished_on_episode_end: true
+                                fixed_action_plan:
+                                    0:
+                                        - {action_type: post, content: "SeedBot episode zero broadcast"}
+                                    1:
+                                        - {action_type: post, content: "SeedBot episode one broadcast"}
+                        llm_user:
+                            count: 2
+                            prefab_module: mastodon_sim.agents.entity
+                            sim_role_name: llm_user
+                            data:
+                                source: inline
+                                records:
+                                    - {name: Alice Analyst, persona: "Analytical user who responds calmly and briefly.", seed_post: "Alice seed post"}
+                                    - {name: Bob Builder, persona: "Builder user who posts practical updates.", seed_post: "Bob seed post"}
+                            field_map:
+                                name: name
+                                context: persona
+                                seed_post: seed_post
+
+                shared_memories:
+                    - Agents are validating runtime contracts.
+
+                initial_observations:
+                    - "{{name}} starts this contract test run."
+
+                fixed_action_sets: {}
+                """
+    ).strip()
+
+    evals_yaml = textwrap.dedent(
+        """
+                # @package evals
+
+                probes: {}
+                """
+    ).strip()
+
+    env_yaml = textwrap.dedent(
+        """
+                # @package env
+
+                platform_type: twitter_like
+                seed_posts:
+                    type: llm
+                social_network:
+                    activity_transition_rates:
+                        fixed_seed:
+                            inactive_to_active: 1.0
+                            active_to_inactive: 0.0
+                        llm_user:
+                            inactive_to_active: 1.0
+                            active_to_inactive: 0.0
+                    fully_connected_targets: []
+                    base_followership_probability: 1.0
+                    network_type: random
+                """
+    ).strip()
+
+    (conf_dir / "sim.yaml").write_text(sim_yaml + "\n", encoding="utf-8")
+    (conf_dir / "agent.yaml").write_text(agent_yaml + "\n", encoding="utf-8")
+    (conf_dir / "evals.yaml").write_text(evals_yaml + "\n", encoding="utf-8")
+    (conf_dir / "env.yaml").write_text(env_yaml + "\n", encoding="utf-8")
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -156,20 +180,18 @@ def _run_simulation(
         "mastodon_sim.runtime.runner",
         "--config-path",
         str(conf_dir),
-        f"scenario={scenario_name}",
-        f"social_media={backend}",
-        "sim.gm.preset=base",
-        "sim.enable_gm_multi_flow=false",
+        f"env={backend}",
+        "env.gm.preset=base",
+        "env.enable_gm_multi_flow=false",
         f"sim.engine.preset={engine_preset}",
-        f"sim.enable_engine_multi_flow={'true' if engine_preset == 'flow' else 'false'}",
         "sim.engine.action_loop.built_in=single_action",
-        "sim.gm.components.next_acting.built_in=all_entities",
-        f"sim.gm.components.resolve.built_in={resolve_built_in}",
+        "env.gm.components.next_acting.built_in=all_entities",
+        f"env.gm.components.resolve.built_in={resolve_built_in}",
         f"sim.tool_calling.mode={resolved_tool_mode}",
-        f"sim.timeline_mode={timeline_mode}",
-        "sim.timeline_posts=5",
-        f"sim.gm.components.recommend.params.default_recsys_type={recsys_type}",
-        f"sim.gm.components.observe.params.recsys_type={recsys_type}",
+        f"env.timeline_mode={timeline_mode}",
+        "env.timeline_posts=5",
+        f"env.gm.components.recommend.params.default_recsys_type={recsys_type}",
+        f"env.gm.components.observe.params.recsys_type={recsys_type}",
         f"sim.action_mode={action_mode}",
         "sim.memory_backend=list",
         f"sim.num_steps={num_steps}",

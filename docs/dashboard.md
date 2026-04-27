@@ -140,7 +140,7 @@ Evaluation probe configuration:
 
 1. In the sidebar, go to **Create New Scenario**
 2. Enter a scenario name
-3. The dashboard creates `scenarios/<name>/conf/scenario/<name>.yaml`
+3. The dashboard creates grouped config files under `scenarios/<name>/conf/` (`agent.yaml`, `sim.yaml`, `env.yaml`, `evals.yaml`)
 4. Configure the scenario across all tabs
 5. Click **Run Simulation** in Launch tab — the dashboard auto-saves and runs with `--config-path`
 
@@ -156,7 +156,7 @@ uv run mastodon-sim --config-path scenarios/my_scenario/conf
 
 The sidebar uses a two-step loader:
 
-1. **Load scenario**: scenario names discovered from `scenarios/*/conf/scenario/*.yaml`
+1. **Load scenario**: scenario names discovered from `scenarios/*/conf/sim.yaml`
 2. **Start from**: choose one of:
 	- **Scenario definition** (the base scenario YAML)
 	- A prior run snapshot from `scenarios/<scenario>/outputs/<run>/configs/*/config.yaml`

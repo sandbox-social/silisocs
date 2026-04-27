@@ -69,7 +69,9 @@ class Entity(prefab_lib.Prefab):
             memory_component_key=agent_components.memory.DEFAULT_MEMORY_COMPONENT_KEY
         )
 
-        obs_history = getattr(cfg.sim, "observation_history", 100)
+        obs_history = getattr(getattr(cfg, "env", object()), "observation_history", None)
+        if obs_history is None:
+            obs_history = getattr(cfg.sim, "observation_history", 100)
         observation = agent_components.observation.LastNObservations(
             history_length=obs_history, pre_act_label="Observation"
         )

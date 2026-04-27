@@ -1,35 +1,55 @@
-# @package sim
-#
-# Sim overrides for ai_conference scenario.
-# 9 agents total: 4 conference attendees, 3 protesters, 2 bridge characters.
+scenario_name: ai_conference
+jobname_format: AIConf_N${sim.num_agents}_T${sim.num_steps}_${sim.run_name}
+setting:
+  name: NeuraTech Summit 2025
+  background:
+  - An annual AI conference draws thousands of attendees to a major convention center.
+  - Outside, a coalition of labor organizers, ethics researchers, and climate activists
+    has organized a protest with 200+ participants.
+  - The conference celebrates AI breakthroughs while protesters demand accountability
+    for harms to workers and the environment.
+  - Both groups are active on the same social media platform, creating parallel and
+    competing narratives about the same event.
+  - Inside the conference, professional reputation is at stake — skepticism can signal
+    weakness.
+  - Outside, protesters see the conference as a symbol of unchecked AI development
+    that is already harming real people.
+  - A tech journalist and a conflicted ML engineer move between both worlds, potentially
+    transmitting ideas across the divide.
+event:
+  name: NeuraTech Summit 2025 with Simultaneous Protest
+  context: 'The NeuraTech Summit 2025 is underway at a downtown convention center.
 
+    Inside, industry leaders and founders celebrate AI breakthroughs, network enthusiastically,
+    and reinforce optimistic narratives.
+
+    Outside, 200+ protesters led by labor unions, AI ethicists, and climate activists
+    demand accountability for AI''s impacts on jobs and the environment.
+
+    Both groups are active on social media, creating competing echo chambers around
+    the same event.
+
+    A tech journalist (Jordan Ellis) covers both sides and is followed widely.
+
+    An ML engineer (Sam Nakamura) attends the conference but privately follows the
+    protest''s intellectual leader.
+
+    The conference insiders form an optimistic echo chamber; the protesters form a
+    critical counternarrative cluster.
+
+    Key dynamics to observe: groupthink solidification, spiral of silence among doubters,
+    and whether bridge characters transmit ideas across the divide.
+
+    '
 num_agents: 9
 num_steps: 8
 seed: 42
 run_name: ai_conference
 memory_backend: list
 write_html_log: false
-
 action_mode: generic
 tool_calling:
   mode: multi
-
-# LLMSeedPostProvider respects agent.seed_post if set, generates via LLM only for
-# agents without one (Derek, Lisa, Zoe). Agents with explicit seed_posts in their
-# inline records (Victor, Priya, Marcus, Amara, Jordan, Sam) are used as-is.
-seed_posts:
-  type: llm
-
-enabled_actions:
-  - create_tweet
-  - reply_to_tweet
-  - like_tweet
-  - repost_tweet
-  - FINISHED
-
-timeline_posts: 10
-timeline_mode: follower_chronological
-
 engine:
   preset: base
   action_loop:
@@ -39,24 +59,6 @@ engine:
       finished_action_signal: FINISHED
       done_token: FINISHED
   flow_routing:
-    flow_order: [fixed_pre, default]
-
-enable_engine_multi_flow: false
-enable_gm_multi_flow: false
-
-gm:
-  preset: base
-  components:
-    next_acting:
-      built_in: activity_probability
-      class_path: null
-      params: {}
-    observe:
-      built_in: timeline_every_turn
-      class_path: null
-      params:
-        episode_observation_flow: fixed_pre
-    resolve:
-      built_in: tool_calling
-      class_path: null
-      params: {}
+    flow_order:
+    - fixed_pre
+    - default

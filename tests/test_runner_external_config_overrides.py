@@ -1,27 +1,32 @@
 """Tests for CLI config-path searchpath injection behavior."""
 
+import os
 import sys
 
 from mastodon_sim.runtime.runner import _inject_external_config_path
 
 
-def test_config_path_injects_hydra_searchpath_and_autodetects_scenario(
+def test_config_path_injects_hydra_searchpath_and_autodetects_sim_metadata(
     tmp_path, monkeypatch
 ) -> None:
-    """Primary config-path should become a Hydra searchpath with scenario autodetect."""
+    """Primary config-path should become searchpath and inject sim metadata overrides."""
     primary = tmp_path / "primary" / "conf"
-    (primary / "scenario").mkdir(parents=True)
-    (primary / "scenario" / "election.yaml").write_text(
-        "scenario_name: election\n", encoding="utf-8"
+    primary.mkdir(parents=True)
+    (primary / "sim.yaml").write_text(
+        "scenario_name: election\njobname_format: test_job_${sim.num_steps}\n",
+        encoding="utf-8",
     )
 
     monkeypatch.setattr(sys, "argv", ["runner.py", "--config-path", str(primary)])
+    monkeypatch.delenv("MASTODON_SIM_EXTERNAL_CONFIG_DIRS", raising=False)
     _inject_external_config_path()
 
     assert "--config-path" not in sys.argv
     searchpath_arg = next(arg for arg in sys.argv if arg.startswith("hydra.searchpath="))
     assert f"file://{primary.resolve()}" in searchpath_arg
-    assert "scenario=election" in sys.argv
+    assert "sim.scenario_name=election" in sys.argv
+    assert any(arg.startswith("sim.jobname_format=") for arg in sys.argv)
+    assert os.environ.get("MASTODON_SIM_EXTERNAL_CONFIG_DIRS") == str(primary.resolve())
 
 
 def test_overlay_config_paths_precede_primary_in_searchpath(tmp_path, monkeypatch) -> None:

@@ -25,7 +25,7 @@ This page focuses on end-user and developer configurability for Engine/GM/backen
 
 Flow controls use two independent switches:
 
-- `sim.enable_gm_multi_flow`: enables GM-side component routing (`gm.preset: shared_flow`).
+- `env.enable_gm_multi_flow`: enables GM-side component routing (`env.gm.preset: shared_flow`).
 - `sim.enable_engine_multi_flow`: enables engine-side flow scheduling/policies (`engine.preset: flow`).
 
 ## Canonical Structure
@@ -35,13 +35,14 @@ Canonical modules:
 - `src/mastodon_sim/environments/gm/game_master.py`: primary GM prefab.
 - `src/mastodon_sim/environments/gm/act.py`: primary SwitchAct specialization.
 - `src/mastodon_sim/environments/gm/components/`: Concordia-native slot components.
-- `src/mastodon_sim/environments/engines/social_media.py`: primary social media engine.
+- `src/mastodon_sim/engines/runtime.py`: primary runtime engine.
+Import from the `environments/gm/` and `engines/` packages.
 
-Import from the `environments/gm/` and `environments/engines/` packages.
+Import from the `environments/gm/` and `engines/` packages.
 
 ## GM Component Slots (YAML)
 
-Configure GM behavior from `sim.gm.components`:
+Configure GM behavior from `env.gm.components`:
 
 ```yaml
 sim:
@@ -104,7 +105,7 @@ Fixed-action directive handling:
 
 It uses backend tools generated from `@app_action` and can include both:
 
-- YAML action guidance (`social_media.action_prompt`)
+- YAML action guidance (`env.action_prompt`)
 - auto-generated backend action catalog
 
 This supports both styles:
@@ -118,7 +119,7 @@ This supports both styles:
 
 ```sh
 uv run mastodon-sim \
-  sim.gm.components.resolve.built_in=tool_calling \
+  env.gm.components.resolve.built_in=tool_calling \
   sim.tool_calling.mode=single
 ```
 
@@ -137,7 +138,7 @@ sim:
 ### 3. Force all entities active each step
 
 ```sh
-uv run mastodon-sim sim.gm.components.next_acting.built_in=all_entities
+uv run mastodon-sim env.gm.components.next_acting.built_in=all_entities
 ```
 
 ## Writing Custom GM Components
@@ -175,7 +176,7 @@ YAML slot switching is ideal for most use cases, but you can still replace the e
 
 Typical configuration path:
 
-- `social_media.gamemaster.sim_role.module_path`
+- `env.gamemaster.sim_role.module_path`
 
 This allows full control over custom inputs/outputs, component graph wiring, and orchestration logic beyond slot-level swaps.
 
@@ -191,11 +192,11 @@ other slots at baseline defaults.
 
 Engine extensibility lives under:
 
-- `src/mastodon_sim/environments/engines/base.py`
-- `src/mastodon_sim/environments/engines/social_media.py`
-- `src/mastodon_sim/environments/engines/policies/action_chunk.py`
-- `src/mastodon_sim/environments/engines/policies/probe_schedule.py`
-- `src/mastodon_sim/environments/engines/policies/factory.py`
+- `src/mastodon_sim/engines/base.py`
+- `src/mastodon_sim/engines/runtime.py`
+- `src/mastodon_sim/engines/policies/action_chunk.py`
+- `src/mastodon_sim/engines/policies/probe_schedule.py`
+- `src/mastodon_sim/engines/policies/factory.py`
 
 Configure engine policies from `sim.engine`:
 
@@ -240,7 +241,7 @@ Flow routing notes:
 - Assign classes to buckets using `persona_pipeline.classes.<name>.flow_tag`.
 - Add one-off overrides with `sim.engine.flow_routing.entity_to_flow` when a
   specific entity should move to a different phase.
-- Use `sim.gm.components.observe.params.episode_observation_flows` for flows
+- Use `env.gm.components.observe.params.episode_observation_flows` for flows
   that should receive episode-index observations instead of timeline content.
 
 ## Recommended Boundary
@@ -259,12 +260,12 @@ The action prompt pipeline is implemented across three layers:
 
 1. **Runner-time compilation** (`src/mastodon_sim/runtime/action_prompts.py`):
    - `build_complete_action_prompt_for_runner()` — entry point, compiles prompt from config
-   - `compile_action_prompt()` — core logic that applies additions (action count, output style, backend info)
+  - `compile_action_prompt()` — core logic that applies additions (action count guidance + output style handling)
    - All prompt building happens here before GM/app instantiation
 
 2. **SMAct pass-through** (`src/mastodon_sim/environments/gm/act.py`):
    - `SMAct._next_entity_action_spec()` — passes through runner-compiled prompt + optional tool-calling wrapping
-   - If `enable_tool_calling=True`: appends `apply_tool_calling_additions_for_gm()` result (tool schemas)
+  - If `enable_tool_calling=True`: appends tool-calling marker + tool schemas from backend app
    - Dumb pass-through: does not modify base prompt text
 
 3. **Entity act layer** (`src/mastodon_sim/agents/components/concat_act.py`):

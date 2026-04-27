@@ -37,10 +37,19 @@ from mastodon_sim.environments.gm.components.seed_post_provider import (
     LLMSeedPostProvider,
     SeedPostProvider,
 )
+from mastodon_sim.runtime.action_prompts import (
+    PromptAdditions,
+    compile_action_prompt,
+    prompt_additions_from_cfg,
+)
 from mastodon_sim.runtime.config import ConfigStore
 from mastodon_sim.utils.misc import EventLogger
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _env_cfg(cfg: Any) -> Any:
+    return getattr(cfg, "env", getattr(cfg, "environment", object()))
 
 
 def _collect_seed_posts(
@@ -149,6 +158,35 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
     def _is_shared_flow_mode(self) -> bool:
         return False
 
+    def build_generic_prompt(
+        self,
+        *,
+        cfg: Any,
+        sm_app: Any,
+        tool_calling_mode: str,
+        gm_prompt_cfg: Mapping[str, Any] | None = None,
+    ) -> str:
+        """Build generic action prompt from backend action catalog for this GM.
+
+        Generic prompts are generated at GM runtime so they reflect the current backend
+        instance and enabled action set.
+        """
+        gm_prompt_cfg = dict(gm_prompt_cfg or {})
+        output_style = str(gm_prompt_cfg.get("output_style", "") or "").strip()
+        if not output_style:
+            output_style = str(getattr(_env_cfg(cfg), "output_style", "") or "")
+
+        additions = prompt_additions_from_cfg(cfg)
+        base_prompt = str(sm_app.generate_generic_action_prompt() or "").strip()
+        return compile_action_prompt(
+            base_prompt=base_prompt,
+            output_style=output_style,
+            tool_calling_mode=tool_calling_mode,
+            additions=PromptAdditions(
+                add_action_count_guidance=additions.add_action_count_guidance,
+            ),
+        )
+
     def build(
         self,
         model: language_model.LanguageModel,
@@ -168,24 +206,20 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
         )
         action_logger.episode_idx = 0
 
-        platform_type = getattr(cfg.social_media, "platform_type", "twitter_like")
-        # Check for scenario-level override (added by scenario YAML configs)
-        if hasattr(cfg, "scenario") and hasattr(cfg.scenario, "social_media"):
-            scenario_platform = getattr(cfg.scenario.social_media, "platform_type", None)
-            if scenario_platform is not None:
-                print(f"[DEBUG] Found scenario-level platform override: {scenario_platform}")
-                platform_type = scenario_platform
+        platform_type = getattr(_env_cfg(cfg), "platform_type", "twitter_like")
         print(f"[DEBUG] Using platform_type: {platform_type}")
         db_path = os.path.join(cfg.sim.output_rootname, f"{platform_type}.db")
         sm_app = create_social_media_app(
             platform_type=platform_type,
             action_logger=action_logger,
-            perform_operations=getattr(cfg.social_media, "use_server", False),
+            perform_operations=getattr(_env_cfg(cfg), "use_server", False),
             app_description=self.params.get("app_description", ""),
             db_path=db_path,
         )
 
-        enabled_actions_cfg = getattr(cfg.sim, "enabled_actions", None)
+        enabled_actions_cfg = getattr(_env_cfg(cfg), "enabled_actions", None)
+        if enabled_actions_cfg is None:
+            enabled_actions_cfg = getattr(cfg.sim, "enabled_actions", None)
         if enabled_actions_cfg is not None:
             if isinstance(enabled_actions_cfg, Sequence) and not isinstance(
                 enabled_actions_cfg, (str, bytes)
@@ -211,13 +245,14 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
         seed_post_cfg = {}
 
         # Seed posts come from composed scenario config when configured.
-        if hasattr(cfg, "scenario") and hasattr(cfg.scenario, "seed_posts"):
+        env_cfg = _env_cfg(cfg)
+        if hasattr(env_cfg, "seed_posts"):
             seed_post_cfg = cast(
                 dict[str, Any],
-                OmegaConf.to_container(cfg.scenario.seed_posts, resolve=True),
+                OmegaConf.to_container(env_cfg.seed_posts, resolve=True),
             )
         else:
-            _LOGGER.info("No scenario.seed_posts found in composed config; proceeding without it.")
+            _LOGGER.info("No env.seed_posts found in composed config; proceeding without it.")
 
         seed_post_provider = _build_seed_post_provider(seed_post_cfg)
         _LOGGER.info(f"Using seed post provider: {type(seed_post_provider).__name__}")
@@ -229,6 +264,7 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
         activity_rates = _compute_activity_rates(user_data)
         entity_flow_tags = dict(user_data.get("entity_flow_tags", {}) or {})
         gm_orchestration = dict(user_data.get("gm_orchestration", {}) or {})
+        gm_prompt_cfg = dict(gm_orchestration.get("prompt", {}) or {})
 
         catalog = sm_app.action_catalog()
         allowed_action_types = sorted(
@@ -245,11 +281,20 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
                 setter(allowed_action_types)
 
         social_network_cfg = (
-            dict(cfg.scenario.social_network) if hasattr(cfg.scenario, "social_network") else {}
+            dict(env_cfg.social_network) if hasattr(env_cfg, "social_network") else {}
         )
 
         gm_components_cfg: dict[str, Any] = {}
-        if hasattr(cfg.sim, "gm") and getattr(cfg.sim.gm, "components", None) is not None:
+        env_gm_cfg = getattr(_env_cfg(cfg), "gm", None)
+        if env_gm_cfg is not None and getattr(env_gm_cfg, "components", None) is not None:
+            gm_components_cfg = cast(
+                dict[str, Any],
+                OmegaConf.to_container(
+                    env_gm_cfg.components,
+                    resolve=True,
+                ),
+            )
+        elif hasattr(cfg.sim, "gm") and getattr(cfg.sim.gm, "components", None) is not None:
             gm_components_cfg = cast(
                 dict[str, Any],
                 OmegaConf.to_container(
@@ -306,6 +351,15 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
             .strip()
             .lower()
         )
+        action_mode = str(getattr(cfg.sim, "action_mode", "custom") or "custom").strip().lower()
+        if action_mode == "generic":
+            call_to_sm_action = self.build_generic_prompt(
+                cfg=cfg,
+                sm_app=sm_app,
+                tool_calling_mode=tool_calling_mode,
+                gm_prompt_cfg=gm_prompt_cfg,
+            )
+
         enable_tool_calling = tool_calling_mode in {"single", "multi"}
         action_output_mode = str(resolve_slot.get("built_in", "parsed_action") or "parsed_action")
 
@@ -327,7 +381,10 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
                 episode_observation_flow[0] if episode_observation_flow else "fixed_pre"
             )
 
-        timeline_mode = str(getattr(cfg.sim, "timeline_mode", "follower_chronological"))
+        timeline_mode = str(
+            getattr(_env_cfg(cfg), "timeline_mode", None)
+            or getattr(cfg.sim, "timeline_mode", "follower_chronological")
+        )
         supported_timeline_modes = {
             "twitter_like": {
                 "follower_chronological",
@@ -349,7 +406,16 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
                 f"Supported: {sorted(allowed_modes)}"
             )
         timeline_config = {}
-        if hasattr(cfg.sim, "timeline_config"):
+        if hasattr(_env_cfg(cfg), "timeline_config"):
+            timeline_config = (
+                cast(
+                    dict[str, Any],
+                    OmegaConf.to_container(_env_cfg(cfg).timeline_config, resolve=True),
+                )
+                if isinstance(_env_cfg(cfg).timeline_config, dict)
+                else {}
+            )
+        elif hasattr(cfg.sim, "timeline_config"):
             timeline_config = (
                 cast(
                     dict[str, Any],

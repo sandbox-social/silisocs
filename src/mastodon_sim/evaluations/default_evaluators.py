@@ -125,11 +125,11 @@ def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
     with cfg_path.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 
-    scenario = cfg.get("scenario") if isinstance(cfg, dict) else {}
-    if not isinstance(scenario, dict):
+    evaluations = cfg.get("evals", cfg.get("evaluations")) if isinstance(cfg, dict) else {}
+    if not isinstance(evaluations, dict):
         return {}
 
-    probes = scenario.get("probes", {})
+    probes = evaluations.get("probes", {})
     if not isinstance(probes, dict):
         return {}
 
@@ -171,10 +171,10 @@ def _load_probe_hold_last_response(run_dir: Path) -> bool:
     with cfg_path.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 
-    scenario = cfg.get("scenario") if isinstance(cfg, dict) else {}
-    if not isinstance(scenario, dict):
+    evaluations = cfg.get("evals", cfg.get("evaluations")) if isinstance(cfg, dict) else {}
+    if not isinstance(evaluations, dict):
         return False
-    probes = scenario.get("probes", {})
+    probes = evaluations.get("probes", {})
     if not isinstance(probes, dict):
         return False
     deployment = probes.get("deployment", {})

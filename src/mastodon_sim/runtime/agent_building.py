@@ -13,7 +13,7 @@ from mastodon_sim.agents.builders import BaseAgentBuilder
 
 
 def _resolve_builder_class(cfg: DictConfig) -> type[Any]:
-    scenario_name = cfg.scenario.scenario_name
+    scenario_name = cfg.sim.scenario_name
     builder_class_name = f"{scenario_name.title()}AgentBuilder"
 
     # 1. Try in-package builder.
@@ -48,5 +48,5 @@ def _resolve_builder_class(cfg: DictConfig) -> type[Any]:
 def build_agent_configs(cfg: DictConfig):
     """Build agent configs from scenario-configured builder class."""
     builder_cls = _resolve_builder_class(cfg)
-    builder = builder_cls(cfg.scenario)
+    builder = builder_cls(cfg.agent)
     return builder.build_agents()
