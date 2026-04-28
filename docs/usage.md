@@ -634,7 +634,7 @@ The flow engine (`FlowRuntimeEngine`) is responsible for:
 - Running entity actions concurrently and resolving them through the GM
 - Worker throttling based on retry telemetry
 
-Key implementation: `src/mastodon_sim/engines/runtime.py`.
+Key implementation: `src/mastodon_sim/engines/base_engines.py`.
 
 #### Current Action Semantics
 

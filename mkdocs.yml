@@ -73,6 +73,7 @@ nav:
     - Usage Overview: usage.md
     - Experiment Studies: experiments.md
     - Configuration: configuration.md
+    - Simulation Extensibility API: simulation_extensibility_api.md
     - Environment Layer: environment_layer.md
     - Building Agents: building_agents.md
     - Memory Initialization: memory_initialization.md

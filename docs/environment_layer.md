@@ -1,5 +1,8 @@
 # Environment Layer: Engine, Game Master, and Backends
 
+For API-level extension contracts (classes, method signatures, and factory hooks), see
+[Simulation Extensibility API](simulation_extensibility_api.md).
+
 The environment layer is composed of three parts:
 
 1. **Engine**: step loop, concurrency, probe timing, and action execution orchestration.
@@ -35,7 +38,7 @@ Canonical modules:
 - `src/mastodon_sim/environments/gm/game_master.py`: primary GM prefab.
 - `src/mastodon_sim/environments/gm/act.py`: primary SwitchAct specialization.
 - `src/mastodon_sim/environments/gm/components/`: Concordia-native slot components.
-- `src/mastodon_sim/engines/runtime.py`: primary runtime engine.
+- `src/mastodon_sim/engines/base_engines.py`: primary runtime engine.
 Import from the `environments/gm/` and `engines/` packages.
 
 Import from the `environments/gm/` and `engines/` packages.
@@ -193,7 +196,7 @@ other slots at baseline defaults.
 Engine extensibility lives under:
 
 - `src/mastodon_sim/engines/base.py`
-- `src/mastodon_sim/engines/runtime.py`
+- `src/mastodon_sim/engines/base_engines.py`
 - `src/mastodon_sim/engines/policies/action_chunk.py`
 - `src/mastodon_sim/engines/policies/probe_schedule.py`
 - `src/mastodon_sim/engines/policies/factory.py`

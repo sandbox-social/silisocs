@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from omegaconf import OmegaConf
 
-from mastodon_sim.engines.runtime import (
+from mastodon_sim.engines.base_engines import (
     BaseRuntimeEngine,
     FlowRuntimeEngine,
 )
