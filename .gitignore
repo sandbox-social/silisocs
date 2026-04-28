@@ -212,3 +212,5 @@ experiments/studies/**/*.png
 # SQLite transient files from local backend tests
 *.db-shm
 *.db-wal
+
+refactor_notes.md
