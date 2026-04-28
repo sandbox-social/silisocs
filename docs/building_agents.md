@@ -1,5 +1,8 @@
 # Building Agents
 
+For API-level contracts for runtime agents and prefab/build hooks, see
+[Simulation Extensibility API](simulation_extensibility_api.md).
+
 There are two ways to build agents for your simulation:
 
 1. **YAML Pipeline** (recommended for most cases) — define agent classes

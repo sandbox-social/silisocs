@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from mastodon_sim.environments.engines.policies.action_chunk import (
+from mastodon_sim.engines.base_engines import (
+    BaseRuntimeEngine,
+    FlowRuntimeEngine,
+)
+from mastodon_sim.engines.policies.action_chunk import (
     FixedCountActionChunkPolicy,
     SingleActionChunkPolicy,
-)
-from mastodon_sim.environments.engines.social_media import (
-    BaseSocialMediaEngine,
-    FlowSocialMediaEngine,
 )
 
 
 def test_base_engine_ignores_flow_policies() -> None:
-    engine = BaseSocialMediaEngine()
+    engine = BaseRuntimeEngine()
     default_policy = SingleActionChunkPolicy()
 
     policies = engine._build_flow_action_loop_policies(
@@ -30,7 +30,7 @@ def test_base_engine_ignores_flow_policies() -> None:
 
 
 def test_flow_engine_builds_per_flow_policies() -> None:
-    engine = FlowSocialMediaEngine()
+    engine = FlowRuntimeEngine()
     default_policy = SingleActionChunkPolicy()
 
     policies = engine._build_flow_action_loop_policies(
@@ -54,7 +54,7 @@ def test_flow_engine_builds_per_flow_policies() -> None:
 
 
 def test_flow_engine_selects_policy_for_group_name() -> None:
-    engine = FlowSocialMediaEngine()
+    engine = FlowRuntimeEngine()
     default_policy = SingleActionChunkPolicy()
     flow_policy = FixedCountActionChunkPolicy(count=3)
 

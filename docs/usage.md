@@ -62,7 +62,7 @@ uv run mastodon-sim
 uv run mastodon-sim sim.num_agents=50 sim.num_steps=20 sim.llm_name=gpt-4o
 
 # Use a different platform
-uv run mastodon-sim social_media=reddit_like
+uv run mastodon-sim env=reddit_like
 
 # Run an external scenario
 uv run mastodon-sim --config-path scenarios/election/conf
@@ -78,15 +78,15 @@ uv run mastodon-sim \
   sim.num_steps=50 \
   sim.seed=42 \
   sim.memory_backend=associative \
-  scenario.social_network.network_type=random
+  env.social_network.network_type=random
 
 # Switch GM resolve mode to tool-calling
 uv run mastodon-sim \
-  sim.gm.components.resolve.built_in=tool_calling \
+  env.gm.components.resolve.built_in=tool_calling \
   sim.tool_calling.mode=single
 
 # Override only who can act next
-uv run mastodon-sim sim.gm.components.next_acting.built_in=all_entities
+uv run mastodon-sim env.gm.components.next_acting.built_in=all_entities
 ```
 
 ### Dashboard
@@ -107,14 +107,15 @@ See [Dashboard](dashboard.md) for details.
 ## Configuration System
 
 The project uses [Hydra](https://hydra.cc/) for hierarchical YAML configuration
-with composition. The top-level config composes three sub-configs:
+with composition. The top-level config composes four sub-configs:
 
 ```yaml
 # config.yaml
 defaults:
+  - agent: base            # Agent construction and personas
   - sim: base              # Simulation parameters
-  - social_media: twitter_like  # Platform backend
-  - scenario: default      # Scenario definition
+  - env: twitter_like      # Platform backend
+  - evals: base            # Probes and evaluation config
 ```
 
 ### Config Hierarchy
@@ -124,7 +125,7 @@ src/mastodon_sim/conf/
 ├── config.yaml              # Top-level composition
 ├── sim/
 │   └── base.yaml            # LLM, agent count, steps, memory, etc.
-├── social_media/
+├── env/
 │   ├── twitter_like.yaml    # Local Twitter-like backend
 │   ├── reddit_like.yaml     # Local Reddit-like backend
 │   └── mastodon.yaml        # Remote Mastodon server
@@ -144,8 +145,10 @@ Scenarios can live outside the package in `scenarios/<name>/conf/`:
 ```
 scenarios/election/
 ├── conf/
-│   └── scenario/
-│       └── election.yaml    # Scenario config with @package header
+│   ├── agent.yaml           # @package agent
+│   ├── sim.yaml             # @package sim
+│   ├── env.yaml           # @package env (optional)
+│   └── evals.yaml         # @package evals (optional)
 ├── builders.py              # Optional custom agent builder
 └── outputs/                 # Simulation output (auto-created)
 ```
@@ -156,8 +159,8 @@ Run with:
 uv run mastodon-sim --config-path scenarios/election/conf
 ```
 
-The runner auto-detects the scenario name from the YAML files in the external
-directory — no manual `scenario=election` override needed.
+The runner reads `sim.scenario_name` from `sim.yaml` automatically, so you do
+not need a manual scenario override.
 
 ---
 
@@ -320,7 +323,7 @@ Behavior notes:
 Compatibility notes:
 
 - Fixed-action items use backend action names (or selectable aliases).
-- `sim.enabled_actions` applies globally and can restrict fixed-action items.
+- `env.enabled_actions` applies globally and can restrict fixed-action items.
 
 ---
 
@@ -484,14 +487,14 @@ Here is the complete workflow for creating and running a custom scenario:
 ### 1. Create the Scenario Directory
 
 ```sh
-mkdir -p scenarios/my_scenario/conf/scenario
+mkdir -p scenarios/my_scenario/conf
 ```
 
 ### 2. Write the Scenario Config
 
 ```yaml
-# scenarios/my_scenario/conf/scenario/my_scenario.yaml
-# @package scenario
+# scenarios/my_scenario/conf/sim.yaml
+# @package sim
 
 scenario_name: my_scenario
 
@@ -510,7 +513,7 @@ persona_pipeline:
   processing_mode: raw
   defaults:
     params:
-      scenario_context: ${scenario.event.context}
+      scenario_context: ${sim.event.context}
     shared_memories:
       - They are active on a tech discussion forum.
   classes:
@@ -536,7 +539,7 @@ social_network:
 
 shared_memories:
   - They are active on a tech discussion forum.
-  - ${scenario.event.context}
+  - ${sim.event.context}
 
 initial_observations:
   - "{name} is browsing the forum."
@@ -620,10 +623,10 @@ users.
 
 The runtime now includes two engine presets:
 
-- `sim.engine.preset: base` (default): simple execution path, one social GM active per episode.
+- `sim.engine.preset: base` (default): simple execution path, one GM active per episode.
 - `sim.engine.preset: flow`: flow-aware execution with optional multi-GM phase orchestration.
 
-The flow engine (`FlowSocialMediaEngine`) is responsible for:
+The flow engine (`FlowRuntimeEngine`) is responsible for:
 
 - Episode loop orchestration (`run_loop`)
 - Probe scheduling and deployment timing
@@ -631,7 +634,7 @@ The flow engine (`FlowSocialMediaEngine`) is responsible for:
 - Running entity actions concurrently and resolving them through the GM
 - Worker throttling based on retry telemetry
 
-Key implementation: `src/mastodon_sim/environments/engines/social_media.py`.
+Key implementation: `src/mastodon_sim/engines/base_engines.py`.
 
 #### Current Action Semantics
 
@@ -651,7 +654,7 @@ To introduce new class-level behavior phases without engine/resolve bloat:
 2. Define phase order in `sim.engine.flow_routing.flow_order`.
 3. Optionally add per-entity overrides with `sim.engine.flow_routing.entity_to_flow`.
 4. Add any flow names that require episode-style observations to
-  `sim.gm.components.observe.params.episode_observation_flows`.
+  `env.gm.components.observe.params.episode_observation_flows`.
 
 This pattern is how fixed entities run before default LLM-driven agents today,
 and it generalizes to any future specialized class.

@@ -24,14 +24,15 @@ import random
 import sys
 import time
 import warnings
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import concordia.prefabs.entity as entity_prefabs
 import concordia.prefabs.game_master as game_master_prefabs
 import hydra
+import yaml
 
 # Concordia imports
 from concordia import __file__ as concordia_location
@@ -106,12 +107,20 @@ def _initialize_runtime_environment() -> Path:
 _DEFAULT_FLOW_TAG = "default"
 
 
+def _env_cfg(cfg: Any) -> Any:
+    return getattr(cfg, "env", getattr(cfg, "environment", object()))
+
+
+def _evals_cfg(cfg: Any) -> Any:
+    return getattr(cfg, "evals", getattr(cfg, "evaluations", object()))
+
+
 def _collect_declared_flow_tags(cfg: DictConfig) -> set[str]:
     """Collect flow tags declared at class level in the scenario config."""
     declared: set[str] = set()
     classes_cfg = (
-        getattr(getattr(cfg.scenario, "persona_pipeline", object()), "classes", None)
-        if hasattr(cfg, "scenario")
+        getattr(getattr(cfg.agent, "persona_pipeline", object()), "classes", None)
+        if hasattr(cfg, "agent")
         else None
     )
     if not isinstance(classes_cfg, Mapping):
@@ -126,21 +135,30 @@ def _collect_declared_flow_tags(cfg: DictConfig) -> set[str]:
     return declared
 
 
-def _build_action_prompt(cfg: DictConfig, tool_calling_mode: str) -> str:
+def _build_action_prompt(
+    cfg: DictConfig,
+    tool_calling_mode: str,
+    gm_prompt_cfg: Mapping[str, Any] | None = None,
+) -> str:
     """Build the complete action prompt payload at runner startup."""
     from mastodon_sim.runtime.action_prompts import build_action_prompt_with_app_instance
 
     action_mode = str(getattr(cfg.sim, "action_mode", "custom") or "custom").strip().lower()
+    # Generic prompts are built by game masters once backend app instances are available.
+    if action_mode == "generic":
+        return ""
+
     return build_action_prompt_with_app_instance(
         cfg=cfg,
         action_mode=action_mode,
         tool_calling_mode=tool_calling_mode,
+        gm_prompt_cfg=gm_prompt_cfg,
     )
 
 
 def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
     """Resolve GM specs from orchestration config."""
-    default_gm = cfg.social_media.gamemaster
+    default_gm = _env_cfg(cfg).gamemaster
     default_mode = "shared"
     default_spec = {
         "gm_name": str(default_gm.name),
@@ -152,15 +170,21 @@ def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
         "backend_scope": "shared_default",
     }
 
-    sim_cfg = getattr(cfg, "sim", object())
-    gm_specs_raw = getattr(getattr(sim_cfg, "gm_orchestration", object()), "gms", None)
-    if not isinstance(gm_specs_raw, list) or not gm_specs_raw:
+    gm_orchestration_cfg = getattr(_env_cfg(cfg), "gm_orchestration", None)
+    if gm_orchestration_cfg is None:
+        gm_orchestration_cfg = getattr(getattr(cfg, "sim", object()), "gm_orchestration", object())
+    gm_specs_raw = getattr(gm_orchestration_cfg, "gms", None)
+    if (
+        not isinstance(gm_specs_raw, Sequence)
+        or isinstance(gm_specs_raw, (str, bytes))
+        or not gm_specs_raw
+    ):
         return [default_spec]
 
     specs: list[dict[str, Any]] = []
     for idx, gm_raw in enumerate(gm_specs_raw):
         if not isinstance(gm_raw, Mapping):
-            raise ValueError(f"sim.gm_orchestration.gms[{idx}] must be a mapping.")
+            raise ValueError(f"env.gm_orchestration.gms[{idx}] must be a mapping.")
         sim_role_cfg = gm_raw.get("sim_role", {})
         if not isinstance(sim_role_cfg, Mapping):
             sim_role_cfg = {}
@@ -191,14 +215,22 @@ def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
                 ).strip(),
             }
         )
+        prompt_cfg = gm_raw.get("prompt", {})
+        if prompt_cfg is None:
+            prompt_cfg = {}
+        if not isinstance(prompt_cfg, Mapping):
+            raise ValueError(
+                f"env.gm_orchestration.gms[{idx}].prompt must be a mapping when provided."
+            )
+        spec["prompt"] = dict(prompt_cfg)
         if not spec["gm_name"]:
-            raise ValueError(f"sim.gm_orchestration.gms[{idx}] is missing gm_name/name.")
+            raise ValueError(f"env.gm_orchestration.gms[{idx}] is missing gm_name/name.")
         specs.append(spec)
 
     names = [str(spec["gm_name"]) for spec in specs]
     duplicates = sorted({name for name in names if names.count(name) > 1})
     if duplicates:
-        raise ValueError(f"Duplicate GM names in sim.gm_orchestration.gms: {duplicates}")
+        raise ValueError(f"Duplicate GM names in env.gm_orchestration.gms: {duplicates}")
     return specs
 
 
@@ -217,7 +249,10 @@ def _resolve_flow_chains(
 
     chains: dict[str, list[str]] = {}
     sim_cfg = getattr(cfg, "sim", object())
-    bindings = getattr(getattr(sim_cfg, "gm_orchestration", object()), "flow_bindings", None)
+    gm_orchestration_cfg = getattr(_env_cfg(cfg), "gm_orchestration", None)
+    if gm_orchestration_cfg is None:
+        gm_orchestration_cfg = getattr(sim_cfg, "gm_orchestration", object())
+    bindings = getattr(gm_orchestration_cfg, "flow_bindings", None)
     if isinstance(bindings, Mapping):
         gm_to_flows = bindings.get("gm_to_flows", {})
         if isinstance(gm_to_flows, Mapping):
@@ -227,8 +262,10 @@ def _resolve_flow_chains(
                     raise ValueError(f"Unknown GM in gm_to_flows: {gm_name_str}")
                 if isinstance(flow_values, str):
                     flow_iter = [flow_values]
-                elif isinstance(flow_values, list):
-                    flow_iter = flow_values
+                elif isinstance(flow_values, Sequence) and not isinstance(
+                    flow_values, (str, bytes)
+                ):
+                    flow_iter = list(flow_values)
                 else:
                     raise ValueError(
                         f"gm_to_flows['{gm_name_str}'] must be a string or list of strings."
@@ -257,8 +294,8 @@ def _resolve_flow_chains(
                     continue
                 if isinstance(gm_chain, str):
                     gm_chain_list = [gm_chain]
-                elif isinstance(gm_chain, list):
-                    gm_chain_list = gm_chain
+                elif isinstance(gm_chain, Sequence) and not isinstance(gm_chain, (str, bytes)):
+                    gm_chain_list = list(gm_chain)
                 else:
                     raise ValueError(
                         f"flow_to_gms['{flow_name}'] must be a string or list of strings."
@@ -298,7 +335,7 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
     Build game master instances from YAML configuration.
 
     Args:
-        cfg: Hydra configuration with social_media and scenario sections
+        cfg: Hydra configuration with grouped sim/agent/env/evals sections
 
     Returns
     -------
@@ -306,16 +343,16 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
     """
     # Build shared memories. Class-pipeline scenarios may define defaults under
     # persona_pipeline instead of top-level shared_memories.
-    scenario_shared = OmegaConf.select(cfg, "scenario.shared_memories")
+    scenario_shared = OmegaConf.select(cfg, "agent.shared_memories")
     if scenario_shared is None:
-        scenario_shared = OmegaConf.select(
-            cfg, "scenario.persona_pipeline.defaults.shared_memories"
-        )
-    shared_memories = list(scenario_shared or []) + [cfg.social_media.usage_instructions]
+        scenario_shared = OmegaConf.select(cfg, "agent.persona_pipeline.defaults.shared_memories")
+    shared_memories = list(scenario_shared or []) + [
+        getattr(_env_cfg(cfg), "usage_instructions", "")
+    ]
     processing_mode_raw = (
-        cfg.scenario.persona_pipeline.processing_mode
-        if hasattr(cfg.scenario, "persona_pipeline")
-        and hasattr(cfg.scenario.persona_pipeline, "processing_mode")
+        cfg.agent.persona_pipeline.processing_mode
+        if hasattr(cfg.agent, "persona_pipeline")
+        and hasattr(cfg.agent.persona_pipeline, "processing_mode")
         else "formative"
     )
     processing_mode = str(processing_mode_raw).strip().lower()
@@ -363,15 +400,25 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
     )
 
     # Get social media role parameters
-    activity_transition_rates = dict(cfg.scenario.social_network.activity_transition_rates)
+    activity_transition_rates = dict(
+        OmegaConf.select(cfg, "env.social_network.activity_transition_rates")
+        or OmegaConf.select(cfg, "sim.social_network.activity_transition_rates")
+        or {}
+    )
     fully_connected_targets = list(
-        OmegaConf.select(cfg, "scenario.social_network.fully_connected_targets") or []
+        OmegaConf.select(cfg, "env.social_network.fully_connected_targets")
+        or OmegaConf.select(cfg, "sim.social_network.fully_connected_targets")
+        or []
     )
     simrole_params = get_simrole_parameters(
         activity_transition_rates=activity_transition_rates,
         roles=list(activity_transition_rates.keys()),
         fully_connected_targets=fully_connected_targets,
-        base_probability=cfg.scenario.social_network.base_followership_probability,
+        base_probability=(
+            OmegaConf.select(cfg, "env.social_network.base_followership_probability")
+            or OmegaConf.select(cfg, "sim.social_network.base_followership_probability")
+            or 0.4
+        ),
     )
 
     # Build sim_roles map (will be populated after agents are created)
@@ -396,6 +443,7 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
                 "backend_scope": str(spec["backend_scope"]),
                 "owned_flows": owned_flows,
                 "flow_chains": flow_chains,
+                "prompt": dict(spec.get("prompt") or {}),
             },
         )
         social_media_gms.append(
@@ -409,12 +457,16 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
                             "social_media_action": _build_action_prompt(
                                 cfg,
                                 tool_calling_mode=projection.tool_calling_mode,
+                                gm_prompt_cfg=cast(
+                                    Mapping[str, Any] | None,
+                                    spec.get("prompt"),
+                                ),
                             )
                         },
                         sim_role=sim_role,
-                        app_module_path=getattr(cfg.social_media, "app_module_path", ""),
+                        app_module_path=getattr(_env_cfg(cfg), "app_module_path", ""),
                         sm_user_data=gm_user_data,
-                        app_description=cfg.social_media.usage_instructions,
+                        app_description=getattr(_env_cfg(cfg), "usage_instructions", ""),
                     )
                 ),
             )
@@ -506,6 +558,75 @@ def populate_agent_data(
             )
 
 
+def _build_legacy_scenario_view(cfg: DictConfig) -> DictConfig:
+    """Build a scenario-like view for validators expecting legacy shape."""
+    payload = {
+        "scenario_name": OmegaConf.select(cfg, "sim.scenario_name"),
+        "jobname_format": OmegaConf.select(cfg, "sim.jobname_format"),
+        "setting": OmegaConf.select(cfg, "sim.setting") or {},
+        "event": OmegaConf.select(cfg, "sim.event") or {},
+        "data": OmegaConf.select(cfg, "sim.data") or {},
+        "social_network": OmegaConf.select(cfg, "env.social_network")
+        or OmegaConf.select(cfg, "sim.social_network")
+        or {},
+        "persona_pipeline": OmegaConf.select(cfg, "agent.persona_pipeline") or {},
+        "shared_memories": OmegaConf.select(cfg, "agent.shared_memories") or [],
+        "initial_observations": OmegaConf.select(cfg, "agent.initial_observations") or [],
+        "probes": OmegaConf.select(cfg, "evals.probes")
+        or OmegaConf.select(cfg, "evaluations.probes")
+        or {},
+        "seed_posts": OmegaConf.select(cfg, "env.seed_posts")
+        or OmegaConf.select(cfg, "sim.seed_posts")
+        or {},
+        "fixed_action_sets": OmegaConf.select(cfg, "agent.fixed_action_sets")
+        or OmegaConf.select(cfg, "sim.fixed_action_sets")
+        or {},
+        "candidates": OmegaConf.select(cfg, "env.candidates")
+        or OmegaConf.select(cfg, "sim.candidates")
+        or {},
+        "news_account": OmegaConf.select(cfg, "env.news_account")
+        or OmegaConf.select(cfg, "sim.news_account")
+        or {},
+        "partisan_types": OmegaConf.select(cfg, "env.partisan_types")
+        or OmegaConf.select(cfg, "sim.partisan_types")
+        or [],
+    }
+    return OmegaConf.create(payload)
+
+
+def _merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
+    """Merge optional external group-level files from scenario config dirs."""
+    paths_csv = os.environ.get("MASTODON_SIM_EXTERNAL_CONFIG_DIRS", "").strip()
+    if not paths_csv:
+        return cfg
+
+    merged_cfg: DictConfig = cfg
+    for raw_dir in [p for p in paths_csv.split(":") if p]:
+        conf_dir = Path(raw_dir)
+        for group, aliases in (
+            ("agent", ("agent",)),
+            ("sim", ("sim",)),
+            ("env", ("env", "environment")),
+            ("evals", ("evals", "evaluations")),
+        ):
+            for file_group in aliases:
+                file_path = conf_dir / f"{file_group}.yaml"
+                if not file_path.is_file():
+                    continue
+                loaded = yaml.safe_load(file_path.read_text(encoding="utf-8")) or {}
+                if not isinstance(loaded, dict):
+                    raise ValueError(
+                        f"Expected mapping in {file_path}, got {type(loaded).__name__}"
+                    )
+                merged_cfg = cast(
+                    DictConfig,
+                    OmegaConf.merge(merged_cfg, OmegaConf.create({group: loaded})),
+                )
+                break
+
+    return merged_cfg
+
+
 # ============================================================================
 # Main Experiment Function
 # ============================================================================
@@ -538,19 +659,20 @@ def main(cfg: DictConfig):
         logger.warning("Warning: .env file not found or empty.")
 
     configure_logging(logger)
+    cfg = _merge_external_group_overrides(cfg)
     RuntimeProjection.from_cfg(cfg)
 
     # Determine scenario path for file validation.
     # Check top-level scenarios/ first, fall back to in-package.
     project_root = PACKAGE_ROOT.parents[2]
-    top_scenario = project_root / "scenarios" / cfg.scenario.scenario_name
-    pkg_scenario = PACKAGE_ROOT / "scenarios" / cfg.scenario.scenario_name
+    top_scenario = project_root / "scenarios" / cfg.sim.scenario_name
+    pkg_scenario = PACKAGE_ROOT / "scenarios" / cfg.sim.scenario_name
     scenario_path = top_scenario if top_scenario.is_dir() else pkg_scenario
 
     # Run all config schema validation checks
     with metrics.phase("config_validation"):
         try:
-            validate_scenario_config(cfg.scenario, scenario_path)
+            validate_scenario_config(_build_legacy_scenario_view(cfg), scenario_path)
         except Exception as e:
             logger.error(f"Configuration validation failed: {e}")
             raise
@@ -565,7 +687,7 @@ def main(cfg: DictConfig):
     # Disable struct mode to allow setting new keys
     OmegaConf.set_struct(cfg, False)
     cfg.sim.output_rootname = output_dir
-    cfg.sim.scenario_name = cfg.scenario.scenario_name
+    cfg.sim.scenario_name = str(getattr(cfg.sim, "scenario_name", "default") or "default")
     OmegaConf.set_struct(cfg, True)
 
     print(f"\nOutput directory: {output_dir}")
@@ -633,7 +755,7 @@ def main(cfg: DictConfig):
     metrics.set_meta("num_game_masters", len(game_masters))
     metrics.set_meta("num_steps", cfg.sim.num_steps)
     metrics.set_meta("seed", SEED)
-    metrics.set_meta("scenario", cfg.scenario.scenario_name)
+    metrics.set_meta("scenario", cfg.sim.scenario_name)
     metrics.set_meta("llm_name", cfg.sim.llm_name)
     metrics.set_meta("output_dir", output_dir)
     metrics.set_meta("agent_names", [inst.params["name"] for inst in agent_configs])
@@ -843,9 +965,9 @@ def _inject_external_config_path() -> None:
     Optional ``--overlay-config-path <dir>`` flags can be repeated to layer
     extra override directories above the primary ``--config-path``.
 
-    **Auto-detection**: If the external dir contains a ``scenario/*.yaml``
-    file, the scenario override (e.g. ``scenario=election``) is injected
-    automatically — no need to pass it on the command line.
+    **Auto-detection**: If the external dir contains ``sim.yaml`` with
+    ``scenario_name`` and/or ``jobname_format``, they are injected as CLI
+    overrides so Hydra output paths are resolved correctly.
     """
     primary_flag = "--config-path"
     overlay_flag = "--overlay-config-path"
@@ -891,28 +1013,28 @@ def _inject_external_config_path() -> None:
     for overlay in overlay_dirs:
         print(f"Overlay config path: {overlay}")
 
-    # Auto-detect scenario name from scenario/*.yaml in the external dir,
-    # unless the user already provided an explicit scenario= override.
-    has_explicit_scenario = any(arg.startswith("scenario=") for arg in sys.argv[1:])
-    if not has_explicit_scenario and external_dir is not None:
-        scenario_dir = external_dir / "scenario"
-        if scenario_dir.is_dir():
-            yamls = [f.stem for f in scenario_dir.glob("*.yaml")]
-            if len(yamls) == 1:
-                sys.argv.append(f"scenario={yamls[0]}")
-                print(f"Auto-detected scenario: {yamls[0]}")
-            elif len(yamls) > 1:
-                # Convention: use the one matching the parent directory name.
-                parent_name = external_dir.parent.name
-                if parent_name in yamls:
-                    sys.argv.append(f"scenario={parent_name}")
-                    print(f"Auto-detected scenario: {parent_name}")
-                else:
-                    print(
-                        f"WARNING: Multiple scenario configs found ({yamls}) "
-                        f"but none matches directory name '{parent_name}'. "
-                        f"Pass scenario=<name> explicitly."
-                    )
+    # Persist external roots so `main()` can merge optional files:
+    # agent.yaml, sim.yaml, env.yaml, evals.yaml
+    merge_dirs: list[Path] = []
+    if external_dir is not None:
+        merge_dirs.append(external_dir)
+    merge_dirs.extend(overlay_dirs)
+    os.environ["MASTODON_SIM_EXTERNAL_CONFIG_DIRS"] = ":".join(str(path) for path in merge_dirs)
+
+    # Inject sim metadata used by Hydra run-dir interpolation.
+    if external_dir is not None:
+        sim_file = external_dir / "sim.yaml"
+        if sim_file.is_file():
+            loaded = yaml.safe_load(sim_file.read_text(encoding="utf-8")) or {}
+            if isinstance(loaded, dict):
+                has_scenario = any(arg.startswith("sim.scenario_name=") for arg in sys.argv[1:])
+                if not has_scenario and loaded.get("scenario_name"):
+                    sys.argv.append(f"sim.scenario_name={loaded['scenario_name']}")
+
+                has_jobname = any(arg.startswith("sim.jobname_format=") for arg in sys.argv[1:])
+                if not has_jobname and loaded.get("jobname_format"):
+                    value = str(loaded["jobname_format"]).replace('"', '\\"')
+                    sys.argv.append(f'sim.jobname_format="{value}"')
 
 
 if __name__ == "__main__":

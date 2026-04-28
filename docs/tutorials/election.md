@@ -18,7 +18,11 @@ fictional small town. It has three agent classes:
 
 ## Scenario Config
 
-The full config lives at `scenarios/election/conf/scenario/election.yaml`.
+The scenario is now split across:
+
+- `scenarios/election/conf/sim.yaml`
+- `scenarios/election/conf/agent.yaml`
+- `scenarios/election/conf/evals.yaml`
 
 ### Setting
 

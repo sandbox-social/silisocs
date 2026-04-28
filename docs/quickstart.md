@@ -28,7 +28,7 @@ uv run mastodon-sim sim.num_agents=10 sim.num_steps=5
 Run an OASIS-compatible simulation (smaller scale, optimized for recommendation studies):
 
 ```sh
-uv run mastodon-sim sim=oasis social_media=reddit_like sim.num_agents=10 sim.num_steps=5
+uv run mastodon-sim sim=oasis env=reddit_like sim.num_agents=10 sim.num_steps=5
 ```
 
 This uses the `oasis` preset configuration with 100 agents, hybrid timeline feeds (mixing recommendations
@@ -91,7 +91,7 @@ uv run mastodon-sim --config-path scenarios/election/conf
 ```
 
 The runner auto-detects the scenario name from the YAML files in the external
-config directory. No need to manually specify `scenario=election`.
+config directory. No need to manually specify a scenario override.
 
 ## Next Steps
 

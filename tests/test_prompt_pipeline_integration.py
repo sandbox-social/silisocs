@@ -16,6 +16,7 @@ from omegaconf import OmegaConf
 
 from mastodon_sim.environments.backends.base import SocialMediaApp, app_action
 from mastodon_sim.environments.gm.act import SMAct
+from mastodon_sim.environments.gm.base_game_master import BaseSocialMediaGameMaster
 from mastodon_sim.runtime.action_prompts import (
     PromptAdditions,
     build_complete_action_prompt_for_runner,
@@ -50,35 +51,48 @@ class _IntegrationTestApp(SocialMediaApp):
         return "ok"
 
 
+class _GenericBuildApp:
+    def generate_generic_action_prompt(self) -> str:
+        return (
+            "Available actions:\n"
+            "  POST(content)\n"
+            "  LIKE(post_id)\n\n"
+            "[OUTPUT STYLE]\n"
+            "Respond with EXACTLY ONE action."
+        )
+
+
 class TestPromptCompilationMatrixIntegration:
     """Test all combinations of prompt compilation modes."""
 
     def test_custom_mode_no_additions_produces_baseline_prompt(self):
-        """Custom mode without additions should output just the base prompt."""
+        """Custom mode defaults include guidance and output style in non-tool mode."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
+                "env": {
                     "action_prompt": "Take an action.",
-                    "output_style": "Ignored in custom no-additions mode",
+                    "output_style": "Use ACTION TYPE format",
                 }
             }
         )
         result = build_complete_action_prompt_for_runner(
             cfg=cfg, action_mode="custom", tool_calling_mode="none"
         )
-        assert result == "Take an action."
+        assert "Take an action." in result
+        assert "[ActNum]" in result
+        assert "[OUTPUT STYLE]" in result
 
     def test_custom_mode_with_action_count_guidance_adds_marker_and_guidance(self):
         """With action_count_guidance flag, should add [ActNum] marker and guidance."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
+                "env": {
                     "action_prompt": "Take an action.",
                     "output_style": "Ignored",
                 },
                 "sim": {
                     "prompt_additions": {
-                        "action_count_guidance": {"add_to_prompt": True},
+                        "action_count_guidance": True,
                     }
                 },
             }
@@ -90,18 +104,13 @@ class TestPromptCompilationMatrixIntegration:
         assert "Only take one action in this step" in result
         assert "Take an action." in result
 
-    def test_custom_mode_with_output_style_flag_adds_marker_section(self):
-        """With output_style flag, should add [OUTPUT STYLE] marker and content."""
+    def test_custom_mode_includes_output_style_by_default(self):
+        """Output-style section should be included by default in non-tool mode."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
+                "env": {
                     "action_prompt": "Take action.",
                     "output_style": "Format: ACTION TYPE: ...",
-                },
-                "sim": {
-                    "prompt_additions": {
-                        "output_style": {"add_to_prompt": True},
-                    }
                 },
             }
         )
@@ -116,14 +125,13 @@ class TestPromptCompilationMatrixIntegration:
         """Tool-calling mode should strip output style even if flag is set."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
+                "env": {
                     "action_prompt": "Take action.",
                     "output_style": "Format: ACTION TYPE: ...",
                 },
                 "sim": {
                     "prompt_additions": {
-                        "action_count_guidance": {"add_to_prompt": True},
-                        "output_style": {"add_to_prompt": True},
+                        "action_count_guidance": True,
                     }
                 },
             }
@@ -139,41 +147,45 @@ class TestPromptCompilationMatrixIntegration:
         assert "[OUTPUT STYLE]" not in result
         assert "Format: ACTION TYPE:" not in result
 
-    def test_generic_mode_with_deferred_prompt(self):
-        """Generic mode without generic_action_prompt uses deferred text."""
-        cfg = OmegaConf.create(
-            {"social_media": {"action_prompt": "Ignored", "output_style": "Ignored"}}
-        )
-        result = build_complete_action_prompt_for_runner(
-            cfg=cfg, action_mode="generic", tool_calling_mode="none"
-        )
-        assert "generic prompt generation deferred" in result
-
-    def test_generic_mode_with_provided_prompt(self):
-        """Generic mode with provided generic_action_prompt uses it."""
+    def test_generic_mode_runner_compiler_ignores_config_prompt_text(self):
+        """Runner-side generic compile should not consume user-authored generic prompts."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
-                    "generic_action_prompt": "Available actions: POST, LIKE",
-                    "output_style": "Ignored",
+                "env": {
+                    "action_prompt": "Ignored",
+                    "output_style": "Runner style",
                 }
             }
         )
         result = build_complete_action_prompt_for_runner(
             cfg=cfg, action_mode="generic", tool_calling_mode="none"
         )
-        assert "Available actions: POST, LIKE" in result
+        assert "[OUTPUT STYLE]" in result
 
-    def test_generic_mode_with_multi_tool_calling_guidance(self):
-        """Generic mode with multi tool-calling should use multi guidance."""
+    def test_generic_mode_runner_compiler_can_disable_action_guidance(self):
+        """Only action guidance toggle should affect runner generic skeleton output."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
-                    "generic_action_prompt": "Actions: POST, LIKE",
+                "env": {
+                    "output_style": "Runner style",
                 },
+                "sim": {"prompt_additions": {"action_count_guidance": False}},
+            }
+        )
+        result = build_complete_action_prompt_for_runner(
+            cfg=cfg, action_mode="generic", tool_calling_mode="none"
+        )
+        assert "[ActNum]" not in result
+        assert "[OUTPUT STYLE]" in result
+
+    def test_generic_mode_with_multi_tool_calling_guidance(self):
+        """Runner-side generic compile in tool mode only carries action guidance."""
+        cfg = OmegaConf.create(
+            {
+                "env": {"output_style": "Style ignored under tool-calling"},
                 "sim": {
                     "prompt_additions": {
-                        "action_count_guidance": {"add_to_prompt": True},
+                        "action_count_guidance": True,
                     }
                 },
             }
@@ -183,20 +195,19 @@ class TestPromptCompilationMatrixIntegration:
         )
         assert "[ActNum]" in result
         assert "You are allowed to output multiple tool calls" in result
-        assert "Actions: POST, LIKE" in result
+        assert "[OUTPUT STYLE]" not in result
 
     def test_prompt_structure_with_both_additions(self):
         """Prompt with both action guidance and output style should be ordered correctly."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
+                "env": {
                     "action_prompt": "Base prompt.",
                     "output_style": "Format instructions",
                 },
                 "sim": {
                     "prompt_additions": {
-                        "action_count_guidance": {"add_to_prompt": True},
-                        "output_style": {"add_to_prompt": True},
+                        "action_count_guidance": True,
                     }
                 },
             }
@@ -209,6 +220,54 @@ class TestPromptCompilationMatrixIntegration:
         actnum_idx = result.index("[ActNum]")
         output_style_idx = result.index("[OUTPUT STYLE]")
         assert base_idx < actnum_idx < output_style_idx
+
+    def test_runner_uses_per_gm_prompt_overrides_when_provided(self):
+        """Per-GM prompt config should override environment defaults."""
+        cfg = OmegaConf.create(
+            {
+                "env": {
+                    "action_prompt": "Default base prompt.",
+                    "output_style": "Default style",
+                },
+            }
+        )
+        result = build_complete_action_prompt_for_runner(
+            cfg=cfg,
+            action_mode="custom",
+            tool_calling_mode="none",
+            gm_prompt_cfg={
+                "action_prompt": "GM-specific base prompt.",
+                "output_style": "GM-specific style",
+            },
+        )
+        assert "GM-specific base prompt." in result
+        assert "GM-specific style" in result
+        assert "Default base prompt." not in result
+
+    def test_base_gm_build_generic_prompt_uses_backend_generated_actions(self):
+        cfg = OmegaConf.create(
+            {
+                "env": {
+                    "output_style": "FINAL: ACTION + params",
+                },
+                "sim": {
+                    "prompt_additions": {
+                        "action_count_guidance": True,
+                    }
+                },
+            }
+        )
+        gm = BaseSocialMediaGameMaster()
+        prompt = gm.build_generic_prompt(
+            cfg=cfg,
+            sm_app=_GenericBuildApp(),
+            tool_calling_mode="none",
+        )
+        assert "Available actions:" in prompt
+        assert "POST(content)" in prompt
+        assert "[ActNum]" in prompt
+        assert "[OUTPUT STYLE]" in prompt
+        assert "FINAL: ACTION + params" in prompt
 
 
 class TestSMActPassThroughBehavior:
@@ -261,6 +320,29 @@ class TestSMActPassThroughBehavior:
         assert "### END_TOOL_SCHEMAS_JSON ###" in result
         assert "Base prompt" in result
 
+    def test_smact_does_not_double_add_tool_markers_or_schemas(self):
+        """SMAct should preserve existing wrapper blocks without duplication."""
+        app = _IntegrationTestApp()
+        wrapped_prompt = (
+            "### TOOL_CALLING_MODE ###\n"
+            "Base prompt\n"
+            "### TOOL_SCHEMAS_JSON ###\n"
+            "[]\n"
+            "### END_TOOL_SCHEMAS_JSON ###"
+        )
+        act = SMAct(
+            model=MagicMock(),
+            entity_names=["Alice"],
+            sm_app=app,
+            call_to_action_str=wrapped_prompt,
+            action_mode="custom",
+            enable_tool_calling=True,
+        )
+        result = act._next_entity_action_spec({}, MagicMock())
+        assert result.count("### TOOL_CALLING_MODE ###") == 1
+        assert result.count("### TOOL_SCHEMAS_JSON ###") == 1
+        assert result.count("### END_TOOL_SCHEMAS_JSON ###") == 1
+
     def test_smact_tool_schemas_are_valid_json(self):
         """Tool schemas in SMAct output should be valid JSON."""
         app = _IntegrationTestApp()
@@ -305,14 +387,13 @@ class TestPromptPipelineEndToEnd:
         """Test complete flow: runner compiles prompt, SMAct passes through."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
+                "env": {
                     "action_prompt": "Decide action for {name}.",
                     "output_style": "Format: ACTION TYPE: ...",
                 },
                 "sim": {
                     "prompt_additions": {
-                        "action_count_guidance": {"add_to_prompt": True},
-                        "output_style": {"add_to_prompt": True},
+                        "action_count_guidance": True,
                     }
                 },
             }
@@ -348,14 +429,13 @@ class TestPromptPipelineEndToEnd:
         """Test flow with tool-calling: runner builds base, SMAct adds tool markers."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
+                "env": {
                     "action_prompt": "Decide action.",
                     "output_style": "Format: ACTION TYPE: ...",
                 },
                 "sim": {
                     "prompt_additions": {
-                        "action_count_guidance": {"add_to_prompt": True},
-                        "output_style": {"add_to_prompt": True},
+                        "action_count_guidance": True,
                     }
                 },
             }
@@ -397,7 +477,7 @@ class TestPromptStateTransitions:
             base_prompt=prompt,
             output_style="",
             tool_calling_mode="none",
-            additions=PromptAdditions(),
+            additions=PromptAdditions(add_action_count_guidance=False),
         )
         assert result == prompt
 
@@ -408,7 +488,7 @@ class TestPromptStateTransitions:
             base_prompt=prompt,
             output_style="Config style",
             tool_calling_mode="none",
-            additions=PromptAdditions(add_output_style=True),
+            additions=PromptAdditions(add_action_count_guidance=True),
         )
         assert "[OUTPUT STYLE]" in result
 
@@ -416,14 +496,13 @@ class TestPromptStateTransitions:
         """Marker ordering should be deterministic."""
         cfg = OmegaConf.create(
             {
-                "social_media": {
+                "env": {
                     "action_prompt": "Decide action.",
                     "output_style": "Format: ACTION TYPE",
                 },
                 "sim": {
                     "prompt_additions": {
-                        "action_count_guidance": {"add_to_prompt": True},
-                        "output_style": {"add_to_prompt": True},
+                        "action_count_guidance": True,
                     }
                 },
             }

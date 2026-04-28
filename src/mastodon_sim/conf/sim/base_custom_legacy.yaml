@@ -15,8 +15,8 @@ memory_backend: list           # associative | list
 action_mode: custom            # custom | generic
 tool_calling:
   mode: none                   # none | single | multi
-enabled_actions: null          # null => expose all backend actions; otherwise list of action names
-enable_gm_multi_flow: false    # false (BaseGM) | true (MultiFlowGM with component routing)
+prompt_additions:
+  action_count_guidance: true  # Add [ActNum] guidance line to prompts by default
 enable_engine_multi_flow: false  # false (BaseEngine) | true (FlowEngine with flow sequencing/policies)
 write_html_log: true
 
@@ -25,52 +25,6 @@ checkpoint:
   explicit_steps: []           # list[int]
   resume_file: null            # optional checkpoint json path to resume from
   resume_step: null            # optional explicit start step override
-
-# Game-master component configurability (Concordia SwitchAct style)
-gm:
-  # base: default one-GM workflow for most users
-  # shared_flow: advanced preset using shared-flow GM prefab
-  preset: base
-  components:
-    # Choose who acts next each step.
-    next_acting:
-      built_in: activity_markov     # activity_markov | all_entities | fixed_order
-      class_path: null
-      params: {}
-
-    # Choose what observation is returned to active entities.
-    observe:
-      built_in: timeline_every_turn # timeline_every_turn | episode_only
-      class_path: null
-      params: {}
-
-    # Choose how raw agent output is resolved into backend actions.
-    # parsed_action: ACTION TYPE/TARGET ID/CONTENT parser
-    # generic_action: ACTION: name + param lines
-    # tool_calling: native tool-call resolution over backend action tools
-    resolve:
-      built_in: parsed_action       # parsed_action | generic_action | tool_calling
-      class_path: null
-      params: {}
-
-    # Choose how backend initialize(...) is called.
-    initializer:
-      built_in: backend_default     # backend_default
-      class_path: null
-      params: {}
-
-# Optional multi-GM orchestration.
-# If this block is omitted, the default single social GM is used.
-gm_orchestration:
-  gms: []
-  flow_bindings:
-    # Single GM owner for a flow.
-    flow_to_gm: {}
-    # Ordered GM chain for a flow (serialized across sequence numbers).
-    # If present for a flow, this takes precedence over flow_to_gm.
-    flow_to_gms: {}
-    # Fallback mapping from GM to flows when flow_to_gm/flow_to_gms are absent.
-    gm_to_flows: {}
 
 # Engine policy configurability
 engine:
@@ -100,14 +54,6 @@ engine:
   # Optional per-flow action loop policy override.
   # Missing flow entries fall back to engine.action_loop.
   flow_policies: {}
-
-# Observation parameters
-timeline_posts: 10
-timeline_mode: follower_chronological  # follower_chronological | pure_recsys | hybrid_recsys_follower | curated_global
-timeline_config:
-  recsys_ratio: 0.6      # For hybrid_recsys_follower: ratio of recommendations
-  follower_ratio: 0.4    # For hybrid_recsys_follower: ratio of followed users
-observation_history: 100
 
 # Roleplaying system prompt (injected into every agent)
 roleplaying_instructions: |

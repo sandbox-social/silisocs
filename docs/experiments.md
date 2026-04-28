@@ -45,7 +45,7 @@ study:
       sim.num_agents: 50
       sim.num_steps: 10
 
-evaluations:
+evals:
   - id: action_metrics
     preset: builtin.action_metrics_detailed
   - id: probe_metrics
@@ -58,11 +58,11 @@ hypotheses:
       chronological:
         sub_experiment: bill_bias
         overrides:
-          sim.timeline_mode: follower_chronological
+          env.timeline_mode: follower_chronological
       recsys:
         sub_experiment: bill_bias
         overrides:
-          sim.timeline_mode: pure_recsys
+          env.timeline_mode: pure_recsys
 ```
 
 ## Exact Command Mode
@@ -80,7 +80,7 @@ execution:
     - mastodon_sim.runtime.runner
     - --config-path
     - scenarios/election_recsys_engagement/conf
-    - scenario={scenario}
+    - sim.scenario_name={scenario}
     - sim.seed={seed}
 ```
 
@@ -133,7 +133,7 @@ Extension hook mechanism (for custom plotting/post-processing):
 Example:
 
 ```yaml
-evaluations:
+evals:
   - id: probe_metrics
     preset: builtin.probe_metrics_detailed
     static_args:

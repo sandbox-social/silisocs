@@ -49,9 +49,9 @@ Core runtime layers:
 - To add custom component: implement `Component` interface, set in `sim.gm.components.{role}.class_path`
 
 ### 4. Engine Layer (Execution Policies)
-- `src/mastodon_sim/environments/engines/social_media.py` — BaseSocialMediaEngine
-- `src/mastodon_sim/environments/engines/social_media.py` — FlowSocialMediaEngine (multi-flow scheduling)
-- `src/mastodon_sim/environments/engines/multi_gm_social_media.py` — MultiGMSocialMediaEngine (multi-GM orchestration)
+- `src/mastodon_sim/engines/base_engines.py` — BaseRuntimeEngine
+- `src/mastodon_sim/engines/base_engines.py` — FlowRuntimeEngine (multi-flow scheduling)
+- `src/mastodon_sim/engines/multi_gm.py` — MultiGMRuntimeEngine (multi-GM orchestration)
 - `src/mastodon_sim/environments/engines/policies/` — Action loop & probe schedule policies:
   - Action loop: `single_action`, `fixed_count`, `open_ended`
   - Probe schedule: `step_schedule`, `fixed_interval`, `disabled`
@@ -433,7 +433,7 @@ Start from these files to understand the flow:
 
 1. **Config composition**: `src/mastodon_sim/runtime/runner.py` — How Hydra merges configs
 2. **Simulation orchestration**: `src/mastodon_sim/runtime/simulation.py` — Full workflow
-3. **Engine execution**: `src/mastodon_sim/environments/engines/social_media.py` — Episode loop
+3. **Engine execution**: `src/mastodon_sim/engines/base_engines.py` — Episode loop
 4. **Game master**: `src/mastodon_sim/environments/gm/game_master.py` — Simple preset
 5. **Multi-flow GM**: `src/mastodon_sim/environments/gm/shared_flow_game_master.py` — Advanced preset
 6. **Component slots**: `src/mastodon_sim/environments/gm/components/` — Pluggable behavior

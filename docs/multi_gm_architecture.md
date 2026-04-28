@@ -238,14 +238,14 @@ gm_instances = factory.build(model, memory_bank, entities)
 - `get_agent_gms(agent_name)` → list of GM names assigned to agent
 - `get_gm_instance(name)` → specific GM instance
 
-### MultiGMSocialMediaEngine
+### MultiGMRuntimeEngine
 
-Located: `src/mastodon_sim/environments/engines/multi_gm_social_media.py`
+Located: `src/mastodon_sim/engines/multi_gm.py`
 
 Orchestrates multiple GMs:
 
 ```python
-engine = MultiGMSocialMediaEngine(...)
+engine = MultiGMRuntimeEngine(...)
 
 # Reads gm_sequence + gm_configs from config
 # Validates configuration
@@ -359,13 +359,13 @@ gm:
 
 ## Testing
 
-Located: `tests/test_gm_factory.py`, `tests/test_multi_gm_social_media_engine.py`, `tests/test_e2e_multi_gm.py`
+Located: `tests/test_gm_factory.py`, `tests/test_multi_gm_runtime_engine.py`, `tests/test_e2e_multi_gm.py`
 
 ### Unit Tests
 
 ```bash
 uv run pytest tests/test_gm_factory.py -v
-uv run pytest tests/test_multi_gm_social_media_engine.py -v
+uv run pytest tests/test_multi_gm_runtime_engine.py -v
 ```
 
 ### Integration Tests

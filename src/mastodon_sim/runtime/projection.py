@@ -44,7 +44,8 @@ class RuntimeProjection:
             )
 
         resolve_built_in = str(
-            OmegaConf.select(cfg, "sim.gm.components.resolve.built_in", default="parsed_action")
+            OmegaConf.select(cfg, "env.gm.components.resolve.built_in")
+            or OmegaConf.select(cfg, "sim.gm.components.resolve.built_in")
             or "parsed_action"
         ).strip()
         resolve_uses_tool_calling = resolve_built_in == "tool_calling"
@@ -52,13 +53,14 @@ class RuntimeProjection:
         if mode_uses_tool_calling != resolve_uses_tool_calling:
             raise ValueError(
                 "Tool-calling mode must match resolver selection: "
-                "set sim.gm.components.resolve.built_in=tool_calling when "
+                "set env.gm.components.resolve.built_in=tool_calling when "
                 "sim.tool_calling.mode is single/multi, or set "
                 "sim.tool_calling.mode=none when resolver is not tool_calling."
             )
 
         gm_preset = str(
-            getattr(getattr(getattr(cfg, "sim", object()), "gm", object()), "preset", "base")
+            OmegaConf.select(cfg, "env.gm.preset")
+            or OmegaConf.select(cfg, "sim.gm.preset")
             or "base"
         )
         engine_preset = str(

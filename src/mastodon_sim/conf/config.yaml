@@ -1,20 +1,21 @@
 # Top-level Hydra configuration for mastodon-sim
 # Choose between preset configurations using Hydra overrides:
-#   python -m mastodon_sim.runtime.runner  # Uses sim=base, social_media=twitter_like (default)
+#   python -m mastodon_sim.runtime.runner  # Uses sim=base, env=twitter_like (default)
 #   python -m mastodon_sim.runtime.runner sim=oasis  # Alternative (now same as base)
 
 defaults:
+  - agent: base
   - sim: base
-  - social_media: twitter_like
-  - scenario: default
+  - env: twitter_like
+  - evals: base
   - _self_
 
 hydra:
   job:
-    name: ${scenario.scenario_name}_${now:%Y-%m-%d_%H-%M-%S}
+    name: ${sim.scenario_name}_${now:%Y-%m-%d_%H-%M-%S}
   run:
-    dir: scenarios/${scenario.scenario_name}/outputs/${scenario.jobname_format}
-  output_subdir: configs/${scenario.jobname_format}
+    dir: scenarios/${sim.scenario_name}/outputs/${sim.jobname_format}
+  output_subdir: configs/${sim.jobname_format}
 
 experiment_name: independent
 

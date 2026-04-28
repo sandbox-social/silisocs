@@ -91,8 +91,11 @@ class SMAct(gm_components.switch_act.SwitchAct):
             TOOL_SCHEMAS_START = "### TOOL_SCHEMAS_JSON ###"
             TOOL_SCHEMAS_END = "### END_TOOL_SCHEMAS_JSON ###"
 
-            prompt = f"{TOOL_CALLING_MODE_MARKER}\n{prompt}"
-            if hasattr(self.sm_app, "generate_tool_schemas"):
+            if TOOL_CALLING_MODE_MARKER not in prompt:
+                prompt = f"{TOOL_CALLING_MODE_MARKER}\n{prompt}"
+
+            has_tool_schema_block = TOOL_SCHEMAS_START in prompt and TOOL_SCHEMAS_END in prompt
+            if not has_tool_schema_block and hasattr(self.sm_app, "generate_tool_schemas"):
                 tool_schemas = list(self.sm_app.generate_tool_schemas() or [])
                 if tool_schemas:
                     prompt += (

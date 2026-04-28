@@ -57,7 +57,8 @@ If you want to **extend the framework** (new backends, entities, probes, initial
 4. See [Environment Layer](environment_layer.md) for Engine/GM/component configurability
 5. See [Social Media Backends](backends.md#adding-a-new-backend-developer-guide) for new platform backends
 6. See [Evaluation Probes](probes.md#custom-probe-types) for custom probe types
-7. Check [Contributing](contributing.md) for code standards and workflows
+7. See [Simulation Extensibility API](simulation_extensibility_api.md) for class/method contracts and extension hooks
+8. Check [Contributing](contributing.md) for code standards and workflows
 
 ## For AI Coding Agents
 
@@ -88,6 +89,7 @@ If you're an **LLM helping design experiments via configuration**:
 
 **For Code Developers:**
 - [Environment Layer](environment_layer.md) — Engine/GM/backend extensibility
+- [Simulation Extensibility API](simulation_extensibility_api.md) — API-style contracts for extending agents, GMs, engines, and policies
 - [Building Agents](building_agents.md) — YAML pipeline and custom builders
 - [Memory Initialization](memory_initialization.md) — Custom initializers
 - [Social Media Backends](backends.md) — Backend plugin guide
