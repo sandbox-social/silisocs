@@ -206,23 +206,19 @@ def _discover_external_scenarios(scenarios_root: Path) -> dict[str, Path]:
         for d in sorted(scenarios_root.iterdir()):
             if not d.is_dir():
                 continue
-            # Preferred four-group layout: scenarios/<name>/conf/sim.yaml
+            # Preferred layout: scenarios/<name>/conf/scenario/default.yaml
             flat_conf = d / "conf"
-            sim_file = flat_conf / "sim.yaml"
-            if sim_file.is_file():
-                found[d.name] = sim_file
+            scenario_default = flat_conf / "scenario" / "default.yaml"
+            if scenario_default.is_file():
+                found[d.name] = scenario_default
                 continue
 
-            # Backward-compatible fallback: scenarios/<name>/conf/scenario/<name>.yaml
+            # Fallback: any yaml in scenarios/<name>/conf/scenario/
             hydra_path = flat_conf / "scenario"
             if hydra_path.is_dir():
-                legacy_default = hydra_path / f"{d.name}.yaml"
-                if legacy_default.is_file():
-                    found[d.name] = legacy_default
-                    continue
-                legacy_any = sorted(hydra_path.glob("*.yaml"))
-                if legacy_any:
-                    found[d.name] = legacy_any[0]
+                any_yaml = sorted(hydra_path.glob("*.yaml"))
+                if any_yaml:
+                    found[d.name] = any_yaml[0]
 
     return found
 
@@ -388,9 +384,10 @@ def _save_scenario(
     environment_type: str,
     scenarios_root: Path,
 ) -> Path:
-    """Save scenario config to four-group layout in scenarios/<name>/conf/."""
+    """Save scenario config to Hydra group layout in scenarios/<name>/conf/."""
     conf_dir = scenarios_root / name / "conf"
-    conf_dir.mkdir(parents=True, exist_ok=True)
+    (conf_dir / "scenario").mkdir(parents=True, exist_ok=True)
+    (conf_dir / "agents").mkdir(parents=True, exist_ok=True)
 
     sim_payload = {
         "scenario_name": scenario_data.get("scenario_name", name),
@@ -427,8 +424,8 @@ def _save_scenario(
     evals_payload = {"probes": scenario_data.get("probes", {})}
 
     files_to_write = [
-        (conf_dir / "agent.yaml", "# @package agent\n\n", agent_payload),
-        (conf_dir / "sim.yaml", "# @package sim\n\n", sim_payload),
+        (conf_dir / "scenario" / "default.yaml", "# @package _global_\n\n", sim_payload),
+        (conf_dir / "agents" / "default.yaml", "# @package agents\n\n", agent_payload),
         (conf_dir / "env.yaml", "# @package env\n\n", env_payload),
         (conf_dir / "evals.yaml", "# @package evals\n\n", evals_payload),
     ]
@@ -539,7 +536,7 @@ def _build_scenario_config() -> dict:
                     "bio": "",
                     "style": "",
                     "goal": None,
-                    "scenario_context": "${agent_situation.event.context}",
+                    "scenario_context": "${event.context}",
                 },
                 "shared_memories": shared_list,
             },

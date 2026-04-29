@@ -1,8 +1,0 @@
-# run.yaml — scenario-level run parameter overrides (merged to config root)
-scenario_name: misinformation
-agent_situation_name: default
-jobname_format: "Misinfo_N${num_agents}_T${num_steps}_${run_name}"
-num_agents: 6
-num_steps: 10
-seed: 7
-run_name: misinformation

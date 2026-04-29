@@ -1,10 +1,11 @@
 # Top-level Hydra configuration for mastodon-sim
 # Choose between preset configurations using Hydra overrides:
-#   python -m mastodon_sim.runtime.runner  # Uses env=twitter_like (default)
-#   python -m mastodon_sim.runtime.runner llm.disabled=true num_steps=1
+#   python -m mastodon_sim.runtime.runner --config-path scenarios/misinformation/conf
+#   python -m mastodon_sim.runtime.runner --config-path scenarios/misinformation/conf agents=thin
 
 defaults:
-  - agent_situation: base
+  - scenario: default
+  - agents: default
   - llm: base
   - simulator: base
   - env: twitter_like
@@ -19,13 +20,3 @@ hydra:
   output_subdir: configs/${jobname_format}
 
 experiment_name: independent
-
-# Experiment run parameters (overridable per-scenario via run.yaml or CLI)
-num_agents: 100
-num_steps: 50
-run_name: run1
-seed: 1
-output_rootname: ""
-scenario_name: default
-agent_situation_name: default
-jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"

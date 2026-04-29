@@ -1,0 +1,65 @@
+# @package agents
+shared_memories:
+- ${event.context}
+- ${setting.background}
+persona_pipeline:
+  processing_mode: raw
+  defaults:
+    params:
+      seed_post: ''
+      bio: ''
+      style: ''
+      goal: null
+      scenario_context: ${event.context}
+    shared_memories:
+    - They are active users on Storhampton.social following local election developments.
+    - ${event.context}
+  classes:
+    candidate:
+      count: 2
+      prefab_module: mastodon_sim.agents.entity
+      sim_role_name: candidate
+      flow_tag: default
+      data:
+        source: config_path
+        path: candidates
+        expand_values: true
+      field_map:
+        name: name
+        context: persona
+        style: style
+        goal: goal
+    voter:
+      count: 17
+      prefab_module: mastodon_sim.agents.entity
+      sim_role_name: voter
+      flow_tag: default
+      data:
+        source: hf_dataset
+        dataset: nvidia/Nemotron-Personas-USA
+        split: train
+      field_map:
+        context: persona
+      params:
+        goal: Their goal is to stay informed and discuss the local election.
+    fixed_news:
+      count: 1
+      prefab_module: mastodon_sim.agents.fixed_entity
+      sim_role_name: news_account
+      flow_tag: fixed_pre
+      data:
+        source: inline
+        records:
+        - name: Storhampton Gazette Wire
+          context: Deterministic election headline broadcaster.
+      field_map:
+        name: name
+        context: context
+      params:
+        emit_finished_on_episode_end: true
+        finished_action_name: FINISHED
+        action_output_mode: tool_calling
+        fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
+initial_observations:
+- '{name} checks Storhampton.social for election updates.'
+- '{name} notices heated discussions about the mayoral race.'

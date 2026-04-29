@@ -119,8 +119,8 @@ def _collect_declared_flow_tags(cfg: DictConfig) -> set[str]:
     """Collect flow tags declared at class level in the scenario config."""
     declared: set[str] = set()
     classes_cfg = (
-        getattr(getattr(cfg.agent_situation, "persona_pipeline", object()), "classes", None)
-        if hasattr(cfg, "agent_situation")
+        getattr(getattr(cfg.agents, "persona_pipeline", object()), "classes", None)
+        if hasattr(cfg, "agents")
         else None
     )
     if not isinstance(classes_cfg, Mapping):
@@ -343,18 +343,17 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
     """
     # Build shared memories. Class-pipeline scenarios may define defaults under
     # persona_pipeline instead of top-level shared_memories.
-    scenario_shared = OmegaConf.select(cfg, "agent_situation.shared_memories")
+    scenario_shared = OmegaConf.select(cfg, "agents.shared_memories")
     if scenario_shared is None:
-        scenario_shared = OmegaConf.select(
-            cfg, "agent_situation.persona_pipeline.defaults.shared_memories"
-        )
+        scenario_shared = OmegaConf.select(cfg, "agents.persona_pipeline.defaults.shared_memories")
     shared_memories = list(scenario_shared or []) + [
         getattr(_env_cfg(cfg), "usage_instructions", "")
     ]
     processing_mode_raw = (
-        cfg.agent_situation.persona_pipeline.processing_mode
-        if hasattr(cfg.agent_situation, "persona_pipeline")
-        and hasattr(cfg.agent_situation.persona_pipeline, "processing_mode")
+        cfg.agents.persona_pipeline.processing_mode
+        if hasattr(cfg, "agents")
+        and hasattr(cfg.agents, "persona_pipeline")
+        and hasattr(cfg.agents.persona_pipeline, "processing_mode")
         else "formative"
     )
     processing_mode = str(processing_mode_raw).strip().lower()
@@ -565,18 +564,18 @@ def _build_legacy_scenario_view(cfg: DictConfig) -> DictConfig:
     payload = {
         "scenario_name": OmegaConf.select(cfg, "scenario_name"),
         "jobname_format": OmegaConf.select(cfg, "jobname_format"),
-        "setting": OmegaConf.select(cfg, "agent_situation.setting") or {},
-        "event": OmegaConf.select(cfg, "agent_situation.event") or {},
-        "data": OmegaConf.select(cfg, "agent_situation.data") or {},
+        "setting": OmegaConf.select(cfg, "setting") or {},
+        "event": OmegaConf.select(cfg, "event") or {},
+        "data": OmegaConf.select(cfg, "data") or {},
         "social_network": OmegaConf.select(cfg, "env.social_network") or {},
-        "persona_pipeline": OmegaConf.select(cfg, "agent_situation.persona_pipeline") or {},
-        "shared_memories": OmegaConf.select(cfg, "agent_situation.shared_memories") or [],
-        "initial_observations": OmegaConf.select(cfg, "agent_situation.initial_observations") or [],
+        "persona_pipeline": OmegaConf.select(cfg, "agents.persona_pipeline") or {},
+        "shared_memories": OmegaConf.select(cfg, "agents.shared_memories") or [],
+        "initial_observations": OmegaConf.select(cfg, "agents.initial_observations") or [],
         "probes": OmegaConf.select(cfg, "evals.probes")
         or OmegaConf.select(cfg, "evaluations.probes")
         or {},
         "seed_posts": OmegaConf.select(cfg, "env.seed_posts") or {},
-        "fixed_action_sets": OmegaConf.select(cfg, "agent_situation.fixed_action_sets") or {},
+        "fixed_action_sets": OmegaConf.select(cfg, "agents.fixed_action_sets") or {},
         "candidates": OmegaConf.select(cfg, "env.candidates") or {},
         "news_account": OmegaConf.select(cfg, "env.news_account") or {},
         "partisan_types": OmegaConf.select(cfg, "env.partisan_types") or [],
@@ -585,24 +584,59 @@ def _build_legacy_scenario_view(cfg: DictConfig) -> DictConfig:
 
 
 def _merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
-    """Merge optional external group-level files from scenario config dirs."""
+    """Merge scenario-specific config files from external scenario dirs.
+
+    Load order per external dir:
+      1. scenario/default.yaml  → flat merge to config root
+      2. agents/{agents_variant}.yaml → merge under 'agents' key
+      3. env/evals/llm/simulator flat files → merge to their groups
+      4. CLI overrides re-applied last so they always win
+
+    The scenario/default.yaml contains run params (num_agents, num_steps, ...)
+    and narrative content (setting, event, data). The agents_variant key selects
+    which agents file to load; override via agents_variant=thin on the CLI.
+    """
     paths_csv = os.environ.get("MASTODON_SIM_EXTERNAL_CONFIG_DIRS", "").strip()
     if not paths_csv:
         return cfg
 
-    # Disable struct mode so scenario overrides can introduce new keys not in the base schema.
     OmegaConf.set_struct(cfg, False)
     merged_cfg: DictConfig = cfg
     for raw_dir in [p for p in paths_csv.split(":") if p]:
         conf_dir = Path(raw_dir)
 
-        # Merge run.yaml directly into config root (flat run parameters)
-        run_path = conf_dir / "run.yaml"
-        if run_path.is_file():
-            loaded = yaml.safe_load(run_path.read_text(encoding="utf-8")) or {}
+        # Merge scenario/default.yaml flat to root (run params + setting/event/data)
+        scenario_path = conf_dir / "scenario" / "default.yaml"
+        if scenario_path.is_file():
+            loaded = yaml.safe_load(scenario_path.read_text(encoding="utf-8")) or {}
             if not isinstance(loaded, dict):
-                raise ValueError(f"Expected mapping in {run_path}, got {type(loaded).__name__}")
+                raise ValueError(
+                    f"Expected mapping in {scenario_path}, got {type(loaded).__name__}"
+                )
             merged_cfg = cast(DictConfig, OmegaConf.merge(merged_cfg, OmegaConf.create(loaded)))
+
+        # Merge agents/{agents_variant}.yaml under the 'agents' key.
+        # Check CLI args first so agents_variant=thin on the CLI works before main().
+        agents_variant = str(
+            OmegaConf.select(merged_cfg, "agents_variant", default="default") or "default"
+        )
+        for arg in sys.argv[1:]:
+            if arg.startswith("agents_variant="):
+                agents_variant = arg.split("=", 1)[1].strip()
+                break
+        for variant_name in [agents_variant, "default"]:
+            agents_path = conf_dir / "agents" / f"{variant_name}.yaml"
+            if agents_path.is_file():
+                loaded = yaml.safe_load(agents_path.read_text(encoding="utf-8")) or {}
+                if not isinstance(loaded, dict):
+                    raise ValueError(
+                        f"Expected mapping in {agents_path}, got {type(loaded).__name__}"
+                    )
+                merged_cfg = cast(
+                    DictConfig,
+                    OmegaConf.merge(merged_cfg, OmegaConf.create({"agents": loaded})),
+                )
+                break
 
         for group, aliases in (
             ("env", ("env", "environment")),
@@ -622,22 +656,6 @@ def _merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
                 merged_cfg = cast(
                     DictConfig,
                     OmegaConf.merge(merged_cfg, OmegaConf.create({group: loaded})),
-                )
-                break
-
-        # Merge agent_situation from subdirectory based on agent_situation_name
-        agent_situation_name = OmegaConf.select(
-            merged_cfg, "agent_situation_name", default="default"
-        )
-        for sit_name in [agent_situation_name, "default"]:
-            sit_path = conf_dir / "agent_situation" / f"{sit_name}.yaml"
-            if sit_path.is_file():
-                loaded = yaml.safe_load(sit_path.read_text(encoding="utf-8")) or {}
-                if not isinstance(loaded, dict):
-                    raise ValueError(f"Expected mapping in {sit_path}, got {type(loaded).__name__}")
-                merged_cfg = cast(
-                    DictConfig,
-                    OmegaConf.merge(merged_cfg, OmegaConf.create({"agent_situation": loaded})),
                 )
                 break
 
@@ -985,17 +1003,17 @@ def _inject_external_config_path() -> None:
     """Intercept ``--config-path <dir>`` from argv and add it to Hydra searchpath.
 
     Hydra's own ``--config-path`` replaces the *entire* primary config dir.
-    We want additive behavior: the external dir overrides individual files
-    while the package ``conf/`` provides fallback defaults.  So we consume
-    the flag, resolve the path, and inject it as a ``hydra.searchpath``
-    override instead.
+    We want additive behavior: the external dir overrides individual config
+    group files while the package ``conf/`` provides fallback defaults.  So
+    we consume the flag, resolve the path, and inject it as a
+    ``hydra.searchpath`` override instead.
 
     Optional ``--overlay-config-path <dir>`` flags can be repeated to layer
     extra override directories above the primary ``--config-path``.
 
-    **Auto-detection**: If the external dir contains ``sim.yaml`` with
-    ``scenario_name`` and/or ``jobname_format``, they are injected as CLI
-    overrides so Hydra output paths are resolved correctly.
+    The scenario's ``scenario/default.yaml`` (with ``@package _global_``) is
+    composed by Hydra natively via the searchpath, so ``scenario_name`` and
+    run parameters are resolved without manual injection.
     """
     primary_flag = "--config-path"
     overlay_flag = "--overlay-config-path"
@@ -1029,11 +1047,12 @@ def _inject_external_config_path() -> None:
         return
 
     sys.argv[:] = cleaned_argv
+    # Only add the external dirs — the package conf dir is already the primary
+    # config dir via @hydra.main(config_path=CONF_DIR) and has lower priority
+    # than hydra.searchpath entries, which are prepended before the primary dir.
     search_parts = [f"file://{path}" for path in overlay_dirs]
     if external_dir is not None:
         search_parts.append(f"file://{external_dir}")
-    package_conf = str(CONF_DIR)
-    search_parts.append(f"file://{Path(package_conf).resolve()}")
     override = f"hydra.searchpath=[{','.join(search_parts)}]"
     sys.argv.append(override)
     if external_dir is not None:
@@ -1041,29 +1060,27 @@ def _inject_external_config_path() -> None:
     for overlay in overlay_dirs:
         print(f"Overlay config path: {overlay}")
 
-    # Persist external roots so `main()` can merge optional files:
-    # run.yaml, env.yaml, evals.yaml, llm.yaml, simulator.yaml, agent_situation/
+    # Persist external roots so `main()` can merge scenario/agents/env/etc. files.
     merge_dirs: list[Path] = []
     if external_dir is not None:
         merge_dirs.append(external_dir)
     merge_dirs.extend(overlay_dirs)
     os.environ["MASTODON_SIM_EXTERNAL_CONFIG_DIRS"] = ":".join(str(path) for path in merge_dirs)
 
-    # Inject run metadata used by Hydra run-dir interpolation.
-    # Read from run.yaml (new format); fall back to sim.yaml for backwards compat.
+    # Inject scalar run params from scenario/default.yaml so Hydra can resolve
+    # run-dir interpolations (${scenario_name}, ${num_agents}, etc.) before main().
+    # Complex keys (setting, event, data) are merged later by _merge_external_group_overrides.
+    _SCENARIO_SCALAR_KEYS = {"scenario_name", "num_agents", "num_steps", "seed", "run_name"}
     if external_dir is not None:
-        run_file = external_dir / "run.yaml"
-        if not run_file.is_file():
-            run_file = external_dir / "sim.yaml"
-        if run_file.is_file():
-            loaded = yaml.safe_load(run_file.read_text(encoding="utf-8")) or {}
+        scenario_file = external_dir / "scenario" / "default.yaml"
+        if scenario_file.is_file():
+            loaded = yaml.safe_load(scenario_file.read_text(encoding="utf-8")) or {}
             if isinstance(loaded, dict):
-                has_scenario = any(arg.startswith("scenario_name=") for arg in sys.argv[1:])
-                if not has_scenario and loaded.get("scenario_name"):
-                    sys.argv.append(f"scenario_name={loaded['scenario_name']}")
-
-                has_jobname = any(arg.startswith("jobname_format=") for arg in sys.argv[1:])
-                if not has_jobname and loaded.get("jobname_format"):
+                existing = {arg.split("=", 1)[0] for arg in sys.argv[1:] if "=" in arg}
+                for key in _SCENARIO_SCALAR_KEYS:
+                    if key not in existing and loaded.get(key) is not None:
+                        sys.argv.append(f"{key}={loaded[key]}")
+                if "jobname_format" not in existing and loaded.get("jobname_format"):
                     value = str(loaded["jobname_format"]).replace('"', '\\"')
                     sys.argv.append(f'jobname_format="{value}"')
 

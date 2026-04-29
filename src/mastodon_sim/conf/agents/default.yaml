@@ -1,17 +1,4 @@
-# @package agent_situation
-
-setting:
-  name: Generic Community
-  background:
-    - A general-purpose social media community where people discuss everyday topics.
-
-event:
-  name: Daily discussion
-  context: |
-    Users are participating in everyday social media discussions.
-    They share opinions, news, and engage with each other's content.
-
-data: {}
+# @package agents
 
 persona_pipeline:
   processing_mode: raw
@@ -21,10 +8,10 @@ persona_pipeline:
       bio: ""
       style: ""
       goal: null
-      scenario_context: ${agent_situation.event.context}
+      scenario_context: ${event.context}
     shared_memories:
       - They are an active user on a social media platform.
-      - ${agent_situation.event.context}
+      - ${event.context}
   classes:
     user:
       count: ${num_agents}
@@ -55,7 +42,7 @@ persona_pipeline:
 
 shared_memories:
   - They are an active user on a social media platform.
-  - ${agent_situation.event.context}
+  - ${event.context}
 
 initial_observations:
   - "{name} is at home checking their social media feed."

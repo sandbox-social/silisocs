@@ -1,3 +1,7 @@
+# @package _global_
+scenario_name: election
+jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
+
 setting:
   name: Storhampton
   background:
@@ -34,74 +38,3 @@ event:
 data:
   news_file: v1_news_bill_bias
   use_news_agent: with_images
-
-persona_pipeline:
-  processing_mode: raw
-  defaults:
-    params:
-      seed_post: ''
-      bio: ''
-      style: ''
-      goal: null
-      scenario_context: ${agent_situation.event.context}
-    shared_memories:
-    - They are a long-time active user on Storhampton.social, a Mastodon instance
-      popular with the residents of Storhampton.
-    - ${agent_situation.event.context}
-  classes:
-    voter:
-      count: 497
-      prefab_module: mastodon_sim.agents.entity
-      sim_role_name: voter
-      data:
-        source: hf_dataset
-        dataset: nvidia/Nemotron-Personas-USA
-        split: train
-      field_map:
-        context: persona
-      params:
-        goal: Their goal is have a good day and vote in the election.
-      shared_memories: Voters care about the town's election and local quality of
-        life.
-      specific_memories_field: specific_memories
-    candidate:
-      count: 2
-      prefab_module: mastodon_sim.agents.entity
-      sim_role_name: candidate
-      data:
-        source: config_path
-        path: candidates
-        expand_values: true
-      field_map:
-        name: name
-        context: persona
-        style: style
-        goal: goal
-      shared_memories:
-      - Candidates are actively campaigning in the Storhampton election.
-    news_account:
-      count: 1
-      prefab_module: mastodon_sim.agents.entity
-      sim_role_name: news_account
-      data:
-        source: config_path
-        path: news_account
-      field_map:
-        name: name
-        context: context
-        bio: bio
-        seed_post: seed_post
-      params:
-        style: ''
-        goal: null
-      use_news_file_posts: true
-      include_news_images: true
-shared_memories:
-- They are a long-time active user on Storhampton.social, a Mastodon instance popular
-  with the residents of Storhampton.
-- ${agent_situation.event.context}
-- ${agent_situation.setting.background}
-initial_observations:
-- '{name} is at home, they have just woken up.'
-- '{name} remembers they want to update their social media account bio.'
-- '{name} remembers they want to read their social media feed to catch up on news'
