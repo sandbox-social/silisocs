@@ -61,6 +61,9 @@ Repository = "https://github.com/social-sandbox/mastodon-sim"
 [project.scripts]
 mastodon-sim = "mastodon_sim.runtime.runner:main"
 
+[project.entry-points."hydra_plugins"]
+mastodon_sim = "hydra_plugins.mastodon_sim_scenario_plugin:ScenarioSearchPathPlugin"
+
 [dependency-groups]
 test = [
   "coverage[toml]>=7.4.4",
@@ -98,7 +101,7 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["mastodon_sim*"]
+include = ["mastodon_sim*", "hydra_plugins*"]
 
 [tool.setuptools.package-data]
 mastodon_sim = ["conf/**/*.yaml"]

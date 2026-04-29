@@ -584,17 +584,12 @@ def _build_legacy_scenario_view(cfg: DictConfig) -> DictConfig:
 
 
 def _merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
-    """Merge scenario-specific config files from external scenario dirs.
+    """Merge partial-override flat files from external scenario dirs.
 
-    Load order per external dir:
-      1. scenario/default.yaml  → flat merge to config root
-      2. agents/{agents_variant}.yaml → merge under 'agents' key
-      3. env/evals/llm/simulator flat files → merge to their groups
-      4. CLI overrides re-applied last so they always win
-
-    The scenario/default.yaml contains run params (num_agents, num_steps, ...)
-    and narrative content (setting, event, data). The agents_variant key selects
-    which agents file to load; override via agents_variant=thin on the CLI.
+    The ``scenario/`` and ``agents/`` groups are composed natively by Hydra
+    via ``ScenarioSearchPathPlugin``.  This function handles only the groups
+    whose scenario files are partial overrides (not complete replacements):
+    env, evals, llm, simulator.
     """
     paths_csv = os.environ.get("MASTODON_SIM_EXTERNAL_CONFIG_DIRS", "").strip()
     if not paths_csv:
@@ -604,39 +599,6 @@ def _merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
     merged_cfg: DictConfig = cfg
     for raw_dir in [p for p in paths_csv.split(":") if p]:
         conf_dir = Path(raw_dir)
-
-        # Merge scenario/default.yaml flat to root (run params + setting/event/data)
-        scenario_path = conf_dir / "scenario" / "default.yaml"
-        if scenario_path.is_file():
-            loaded = yaml.safe_load(scenario_path.read_text(encoding="utf-8")) or {}
-            if not isinstance(loaded, dict):
-                raise ValueError(
-                    f"Expected mapping in {scenario_path}, got {type(loaded).__name__}"
-                )
-            merged_cfg = cast(DictConfig, OmegaConf.merge(merged_cfg, OmegaConf.create(loaded)))
-
-        # Merge agents/{agents_variant}.yaml under the 'agents' key.
-        # Check CLI args first so agents_variant=thin on the CLI works before main().
-        agents_variant = str(
-            OmegaConf.select(merged_cfg, "agents_variant", default="default") or "default"
-        )
-        for arg in sys.argv[1:]:
-            if arg.startswith("agents_variant="):
-                agents_variant = arg.split("=", 1)[1].strip()
-                break
-        for variant_name in [agents_variant, "default"]:
-            agents_path = conf_dir / "agents" / f"{variant_name}.yaml"
-            if agents_path.is_file():
-                loaded = yaml.safe_load(agents_path.read_text(encoding="utf-8")) or {}
-                if not isinstance(loaded, dict):
-                    raise ValueError(
-                        f"Expected mapping in {agents_path}, got {type(loaded).__name__}"
-                    )
-                merged_cfg = cast(
-                    DictConfig,
-                    OmegaConf.merge(merged_cfg, OmegaConf.create({"agents": loaded})),
-                )
-                break
 
         for group, aliases in (
             ("env", ("env", "environment")),
@@ -1000,20 +962,18 @@ def main(cfg: DictConfig):
 
 
 def _inject_external_config_path() -> None:
-    """Intercept ``--config-path <dir>`` from argv and add it to Hydra searchpath.
+    """Parse ``--config-path`` / ``--overlay-config-path`` and set env var.
 
-    Hydra's own ``--config-path`` replaces the *entire* primary config dir.
-    We want additive behavior: the external dir overrides individual config
-    group files while the package ``conf/`` provides fallback defaults.  So
-    we consume the flag, resolve the path, and inject it as a
-    ``hydra.searchpath`` override instead.
+    The actual search path manipulation is handled by
+    ``ScenarioSearchPathPlugin`` (registered via ``hydra_plugins`` entry
+    point), which reads ``MASTODON_SIM_EXTERNAL_CONFIG_DIRS`` and prepends
+    each dir before the primary package conf dir.  This gives external
+    scenario dirs higher priority so their ``scenario/`` and ``agents/``
+    group files override the package defaults natively.
 
-    Optional ``--overlay-config-path <dir>`` flags can be repeated to layer
-    extra override directories above the primary ``--config-path``.
-
-    The scenario's ``scenario/default.yaml`` (with ``@package _global_``) is
-    composed by Hydra natively via the searchpath, so ``scenario_name`` and
-    run parameters are resolved without manual injection.
+    ``_merge_external_group_overrides`` reads the same env var to merge the
+    flat partial-override files (env/evals/llm/simulator) that cannot be
+    expressed as full config group replacements.
     """
     primary_flag = "--config-path"
     overlay_flag = "--overlay-config-path"
@@ -1047,42 +1007,17 @@ def _inject_external_config_path() -> None:
         return
 
     sys.argv[:] = cleaned_argv
-    # Only add the external dirs — the package conf dir is already the primary
-    # config dir via @hydra.main(config_path=CONF_DIR) and has lower priority
-    # than hydra.searchpath entries, which are prepended before the primary dir.
-    search_parts = [f"file://{path}" for path in overlay_dirs]
-    if external_dir is not None:
-        search_parts.append(f"file://{external_dir}")
-    override = f"hydra.searchpath=[{','.join(search_parts)}]"
-    sys.argv.append(override)
     if external_dir is not None:
         print(f"External config path: {external_dir}")
     for overlay in overlay_dirs:
         print(f"Overlay config path: {overlay}")
 
-    # Persist external roots so `main()` can merge scenario/agents/env/etc. files.
+    # Primary dir first, then overlays — plugin reverses priority by prepending.
     merge_dirs: list[Path] = []
     if external_dir is not None:
         merge_dirs.append(external_dir)
     merge_dirs.extend(overlay_dirs)
     os.environ["MASTODON_SIM_EXTERNAL_CONFIG_DIRS"] = ":".join(str(path) for path in merge_dirs)
-
-    # Inject scalar run params from scenario/default.yaml so Hydra can resolve
-    # run-dir interpolations (${scenario_name}, ${num_agents}, etc.) before main().
-    # Complex keys (setting, event, data) are merged later by _merge_external_group_overrides.
-    _SCENARIO_SCALAR_KEYS = {"scenario_name", "num_agents", "num_steps", "seed", "run_name"}
-    if external_dir is not None:
-        scenario_file = external_dir / "scenario" / "default.yaml"
-        if scenario_file.is_file():
-            loaded = yaml.safe_load(scenario_file.read_text(encoding="utf-8")) or {}
-            if isinstance(loaded, dict):
-                existing = {arg.split("=", 1)[0] for arg in sys.argv[1:] if "=" in arg}
-                for key in _SCENARIO_SCALAR_KEYS:
-                    if key not in existing and loaded.get(key) is not None:
-                        sys.argv.append(f"{key}={loaded[key]}")
-                if "jobname_format" not in existing and loaded.get("jobname_format"):
-                    value = str(loaded["jobname_format"]).replace('"', '\\"')
-                    sys.argv.append(f'jobname_format="{value}"')
 
 
 if __name__ == "__main__":
