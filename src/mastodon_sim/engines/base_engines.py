@@ -248,7 +248,7 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
         flow_map = dict(getattr(act_component, "entity_flow_tags", {}) or {})
 
         configured_map = getattr(
-            getattr(getattr(cfg.sim, "engine", object()), "flow_routing", object()),
+            getattr(getattr(cfg.simulator, "engine", object()), "flow_routing", object()),
             "entity_to_flow",
             None,
         )
@@ -276,7 +276,7 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
             flow_groups.setdefault(flow, []).append((entity, spec))
 
         configured_order = getattr(
-            getattr(getattr(cfg.sim, "engine", object()), "flow_routing", object()),
+            getattr(getattr(cfg.simulator, "engine", object()), "flow_routing", object()),
             "flow_order",
             [],
         )
@@ -519,7 +519,7 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
         probe_schedule_policy = build_probe_schedule_policy(engine_cfg.get("probe_schedule"))
         configured_worker_cap = resolve_configured_worker_cap(cfg)
         probe_event_logger = EventLogger(
-            "probe", os.path.join(cfg.sim.output_rootname, "probe_events.jsonl")
+            "probe", os.path.join(cfg.output_rootname, "probe_events.jsonl")
         )
         probes_config: Mapping[str, Any] | None = None
         evals_cfg = getattr(cfg, "evals", getattr(cfg, "evaluations", object()))
@@ -861,7 +861,7 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
                 duration = time.time() - start_time
                 print(f"Episode {steps - 1} finished in {duration:.2f}s")
                 append_episode_run_stats(
-                    output_rootname=cfg.sim.output_rootname,
+                    output_rootname=cfg.output_rootname,
                     episode=steps - 1,
                     duration_s=duration,
                     requested_workers=requested_workers,
@@ -937,7 +937,7 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
             duration = time.time() - start_time
             print(f"Episode {steps - 1} finished in {duration:.2f}s")
             append_episode_run_stats(
-                output_rootname=cfg.sim.output_rootname,
+                output_rootname=cfg.output_rootname,
                 episode=steps - 1,
                 duration_s=duration,
                 requested_workers=requested_workers,

@@ -563,35 +563,23 @@ def populate_agent_data(
 def _build_legacy_scenario_view(cfg: DictConfig) -> DictConfig:
     """Build a scenario-like view for validators expecting legacy shape."""
     payload = {
-        "scenario_name": OmegaConf.select(cfg, "sim.scenario_name"),
-        "jobname_format": OmegaConf.select(cfg, "sim.jobname_format"),
-        "setting": OmegaConf.select(cfg, "sim.setting") or {},
-        "event": OmegaConf.select(cfg, "sim.event") or {},
-        "data": OmegaConf.select(cfg, "sim.data") or {},
-        "social_network": OmegaConf.select(cfg, "env.social_network")
-        or OmegaConf.select(cfg, "sim.social_network")
-        or {},
+        "scenario_name": OmegaConf.select(cfg, "scenario_name"),
+        "jobname_format": OmegaConf.select(cfg, "jobname_format"),
+        "setting": OmegaConf.select(cfg, "agent_situation.setting") or {},
+        "event": OmegaConf.select(cfg, "agent_situation.event") or {},
+        "data": OmegaConf.select(cfg, "agent_situation.data") or {},
+        "social_network": OmegaConf.select(cfg, "env.social_network") or {},
         "persona_pipeline": OmegaConf.select(cfg, "agent_situation.persona_pipeline") or {},
         "shared_memories": OmegaConf.select(cfg, "agent_situation.shared_memories") or [],
         "initial_observations": OmegaConf.select(cfg, "agent_situation.initial_observations") or [],
         "probes": OmegaConf.select(cfg, "evals.probes")
         or OmegaConf.select(cfg, "evaluations.probes")
         or {},
-        "seed_posts": OmegaConf.select(cfg, "env.seed_posts")
-        or OmegaConf.select(cfg, "sim.seed_posts")
-        or {},
-        "fixed_action_sets": OmegaConf.select(cfg, "agent_situation.fixed_action_sets")
-        or OmegaConf.select(cfg, "sim.fixed_action_sets")
-        or {},
-        "candidates": OmegaConf.select(cfg, "env.candidates")
-        or OmegaConf.select(cfg, "sim.candidates")
-        or {},
-        "news_account": OmegaConf.select(cfg, "env.news_account")
-        or OmegaConf.select(cfg, "sim.news_account")
-        or {},
-        "partisan_types": OmegaConf.select(cfg, "env.partisan_types")
-        or OmegaConf.select(cfg, "sim.partisan_types")
-        or [],
+        "seed_posts": OmegaConf.select(cfg, "env.seed_posts") or {},
+        "fixed_action_sets": OmegaConf.select(cfg, "agent_situation.fixed_action_sets") or {},
+        "candidates": OmegaConf.select(cfg, "env.candidates") or {},
+        "news_account": OmegaConf.select(cfg, "env.news_account") or {},
+        "partisan_types": OmegaConf.select(cfg, "env.partisan_types") or [],
     }
     return OmegaConf.create(payload)
 
@@ -607,8 +595,16 @@ def _merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
     merged_cfg: DictConfig = cfg
     for raw_dir in [p for p in paths_csv.split(":") if p]:
         conf_dir = Path(raw_dir)
+
+        # Merge run.yaml directly into config root (flat run parameters)
+        run_path = conf_dir / "run.yaml"
+        if run_path.is_file():
+            loaded = yaml.safe_load(run_path.read_text(encoding="utf-8")) or {}
+            if not isinstance(loaded, dict):
+                raise ValueError(f"Expected mapping in {run_path}, got {type(loaded).__name__}")
+            merged_cfg = cast(DictConfig, OmegaConf.merge(merged_cfg, OmegaConf.create(loaded)))
+
         for group, aliases in (
-            ("sim", ("sim",)),
             ("env", ("env", "environment")),
             ("evals", ("evals", "evaluations")),
             ("llm", ("llm",)),
@@ -631,7 +627,7 @@ def _merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
 
         # Merge agent_situation from subdirectory based on agent_situation_name
         agent_situation_name = OmegaConf.select(
-            merged_cfg, "sim.agent_situation_name", default="default"
+            merged_cfg, "agent_situation_name", default="default"
         )
         for sit_name in [agent_situation_name, "default"]:
             sit_path = conf_dir / "agent_situation" / f"{sit_name}.yaml"
@@ -644,6 +640,17 @@ def _merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
                     OmegaConf.merge(merged_cfg, OmegaConf.create({"agent_situation": loaded})),
                 )
                 break
+
+    # Re-apply Hydra task (CLI) overrides so they take precedence over scenario files.
+    try:
+        from hydra.core.hydra_config import HydraConfig
+
+        task_overrides = list(HydraConfig.get().overrides.task)
+        if task_overrides:
+            override_cfg = OmegaConf.from_dotlist(task_overrides)
+            merged_cfg = cast(DictConfig, OmegaConf.merge(merged_cfg, override_cfg))
+    except Exception:
+        pass
 
     return merged_cfg
 
@@ -686,8 +693,8 @@ def main(cfg: DictConfig):
     # Determine scenario path for file validation.
     # Check top-level scenarios/ first, fall back to in-package.
     project_root = PACKAGE_ROOT.parents[2]
-    top_scenario = project_root / "scenarios" / cfg.sim.scenario_name
-    pkg_scenario = PACKAGE_ROOT / "scenarios" / cfg.sim.scenario_name
+    top_scenario = project_root / "scenarios" / cfg.scenario_name
+    pkg_scenario = PACKAGE_ROOT / "scenarios" / cfg.scenario_name
     scenario_path = top_scenario if top_scenario.is_dir() else pkg_scenario
 
     # Run all config schema validation checks
@@ -707,8 +714,8 @@ def main(cfg: DictConfig):
     # Update config with output directory
     # Disable struct mode to allow setting new keys
     OmegaConf.set_struct(cfg, False)
-    cfg.sim.output_rootname = output_dir
-    cfg.sim.scenario_name = str(getattr(cfg.sim, "scenario_name", "default") or "default")
+    cfg.output_rootname = output_dir
+    cfg.scenario_name = str(getattr(cfg, "scenario_name", "default") or "default")
     OmegaConf.set_struct(cfg, True)
 
     print(f"\nOutput directory: {output_dir}")
@@ -765,7 +772,7 @@ def main(cfg: DictConfig):
         f"updated_game_masters={social_gm_count}",
     )
 
-    SEED = cfg.sim.seed
+    SEED = cfg.seed
     random.seed(SEED)
     print(f"\n✓ Random seed set to: {SEED}")
 
@@ -774,9 +781,9 @@ def main(cfg: DictConfig):
     # Record metadata
     metrics.set_meta("num_agents", len(agent_configs))
     metrics.set_meta("num_game_masters", len(game_masters))
-    metrics.set_meta("num_steps", cfg.sim.num_steps)
+    metrics.set_meta("num_steps", cfg.num_steps)
     metrics.set_meta("seed", SEED)
-    metrics.set_meta("scenario", cfg.sim.scenario_name)
+    metrics.set_meta("scenario", cfg.scenario_name)
     metrics.set_meta("llm_name", cfg.llm.name)
     metrics.set_meta("output_dir", output_dir)
     metrics.set_meta("agent_names", [inst.params["name"] for inst in agent_configs])
@@ -932,7 +939,7 @@ def main(cfg: DictConfig):
         t0 = time.time()
         with metrics.phase("simulation_play"):
             results_log = runnable_simulation.play(
-                max_steps=cfg.sim.num_steps,
+                max_steps=cfg.num_steps,
                 start_step=start_step,
                 checkpoint_path=checkpoint_output_dir,
                 return_html_log=write_html_log,
@@ -940,7 +947,7 @@ def main(cfg: DictConfig):
         _log_startup_phase(
             "simulation_play",
             time.time() - t0,
-            f"max_steps={cfg.sim.num_steps} write_html_log={write_html_log}",
+            f"max_steps={cfg.num_steps} write_html_log={write_html_log}",
         )
 
         t0 = time.time()
@@ -963,7 +970,7 @@ def main(cfg: DictConfig):
         completion_line = (
             "Simulation complete: "
             f"status={completion_status} "
-            f"episodes={cfg.sim.num_steps} "
+            f"episodes={cfg.num_steps} "
             f"output_dir={output_dir}"
         )
         if completion_error:
@@ -1035,27 +1042,30 @@ def _inject_external_config_path() -> None:
         print(f"Overlay config path: {overlay}")
 
     # Persist external roots so `main()` can merge optional files:
-    # agent.yaml, sim.yaml, env.yaml, evals.yaml
+    # run.yaml, env.yaml, evals.yaml, llm.yaml, simulator.yaml, agent_situation/
     merge_dirs: list[Path] = []
     if external_dir is not None:
         merge_dirs.append(external_dir)
     merge_dirs.extend(overlay_dirs)
     os.environ["MASTODON_SIM_EXTERNAL_CONFIG_DIRS"] = ":".join(str(path) for path in merge_dirs)
 
-    # Inject sim metadata used by Hydra run-dir interpolation.
+    # Inject run metadata used by Hydra run-dir interpolation.
+    # Read from run.yaml (new format); fall back to sim.yaml for backwards compat.
     if external_dir is not None:
-        sim_file = external_dir / "sim.yaml"
-        if sim_file.is_file():
-            loaded = yaml.safe_load(sim_file.read_text(encoding="utf-8")) or {}
+        run_file = external_dir / "run.yaml"
+        if not run_file.is_file():
+            run_file = external_dir / "sim.yaml"
+        if run_file.is_file():
+            loaded = yaml.safe_load(run_file.read_text(encoding="utf-8")) or {}
             if isinstance(loaded, dict):
-                has_scenario = any(arg.startswith("sim.scenario_name=") for arg in sys.argv[1:])
+                has_scenario = any(arg.startswith("scenario_name=") for arg in sys.argv[1:])
                 if not has_scenario and loaded.get("scenario_name"):
-                    sys.argv.append(f"sim.scenario_name={loaded['scenario_name']}")
+                    sys.argv.append(f"scenario_name={loaded['scenario_name']}")
 
-                has_jobname = any(arg.startswith("sim.jobname_format=") for arg in sys.argv[1:])
+                has_jobname = any(arg.startswith("jobname_format=") for arg in sys.argv[1:])
                 if not has_jobname and loaded.get("jobname_format"):
                     value = str(loaded["jobname_format"]).replace('"', '\\"')
-                    sys.argv.append(f'sim.jobname_format="{value}"')
+                    sys.argv.append(f'jobname_format="{value}"')
 
 
 if __name__ == "__main__":

@@ -97,7 +97,7 @@ class MultiGMRuntimeEngine(FlowRuntimeEngine):
 
         # Extract GM configuration
         cfg = ConfigStore.get_config()
-        gm_config = getattr(cfg.sim, "gm", {})
+        gm_config = getattr(getattr(cfg, "env", object()), "gm", {})
 
         # Load GM sequencing and instance mapping
         self._gm_sequence_names = getattr(gm_config, "gm_sequence", [])

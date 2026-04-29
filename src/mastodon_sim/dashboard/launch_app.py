@@ -522,7 +522,7 @@ def _build_scenario_config() -> dict:
 
     config = {
         "scenario_name": scenario_name,
-        "jobname_format": "N${sim.num_agents}_T${sim.num_steps}_${experiment_name}_${sim.run_name}",
+        "jobname_format": "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}",
         "setting": {
             "name": st.session_state.get("setting_name", ""),
             "background": bg_list,
@@ -539,7 +539,7 @@ def _build_scenario_config() -> dict:
                     "bio": "",
                     "style": "",
                     "goal": None,
-                    "scenario_context": "${sim.event.context}",
+                    "scenario_context": "${agent_situation.event.context}",
                 },
                 "shared_memories": shared_list,
             },
@@ -799,7 +799,7 @@ with st.sidebar:
             # Create from selected preset default.
             default_cfg = {
                 "scenario_name": clean_name,
-                "jobname_format": "N${sim.num_agents}_T${sim.num_steps}_${experiment_name}_${sim.run_name}",
+                "jobname_format": "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}",
                 "setting": {"name": "", "background": []},
                 "event": {"name": "", "context": ""},
                 "persona_pipeline": {},

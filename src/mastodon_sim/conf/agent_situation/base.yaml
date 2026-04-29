@@ -1,5 +1,18 @@
 # @package agent_situation
 
+setting:
+  name: Generic Community
+  background:
+    - A general-purpose social media community where people discuss everyday topics.
+
+event:
+  name: Daily discussion
+  context: |
+    Users are participating in everyday social media discussions.
+    They share opinions, news, and engage with each other's content.
+
+data: {}
+
 persona_pipeline:
   processing_mode: raw
   defaults:
@@ -8,13 +21,13 @@ persona_pipeline:
       bio: ""
       style: ""
       goal: null
-      scenario_context: ${sim.event.context}
+      scenario_context: ${agent_situation.event.context}
     shared_memories:
       - They are an active user on a social media platform.
-      - ${sim.event.context}
+      - ${agent_situation.event.context}
   classes:
     user:
-      count: ${sim.num_agents}
+      count: ${num_agents}
       prefab_module: mastodon_sim.agents.entity
       sim_role_name: user
       data:
@@ -42,7 +55,7 @@ persona_pipeline:
 
 shared_memories:
   - They are an active user on a social media platform.
-  - ${sim.event.context}
+  - ${agent_situation.event.context}
 
 initial_observations:
   - "{name} is at home checking their social media feed."

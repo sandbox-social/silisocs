@@ -1,0 +1,8 @@
+# run.yaml — scenario-level run parameter overrides (merged to config root)
+scenario_name: ai_conference
+agent_situation_name: default
+jobname_format: "AIConf_N${num_agents}_T${num_steps}_${run_name}"
+num_agents: 9
+num_steps: 8
+seed: 42
+run_name: ai_conference

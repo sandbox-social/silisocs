@@ -175,7 +175,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
         from mastodon_sim.environments.backends.factory import create_social_media_app
 
         action_logger = None  # Would need to build this from config
-        db_path = os.path.join(cfg.sim.output_rootname, "multiflow.db")
+        db_path = os.path.join(cfg.output_rootname, "multiflow.db")
 
         sm_app = create_social_media_app(
             platform_type=platform_type,

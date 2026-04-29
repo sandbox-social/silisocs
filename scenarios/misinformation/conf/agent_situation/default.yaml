@@ -1,3 +1,31 @@
+setting:
+  name: Social Media Platform
+  background:
+  - A small social media community of six users with distinct personalities and habits.
+  - Users follow each other selectively, creating an asymmetric information flow.
+  - The platform allows posting, replying, liking, and boosting content.
+  - Misinformation about health topics circulates alongside neutral everyday content.
+
+event:
+  name: Misinformation Spread Study
+  context: 'A false health claim has been posted on the platform claiming that a common
+    household
+
+    item causes serious health issues. The post urges users to share before it gets
+    deleted.
+
+    Some users are primed to spread sensational content uncritically. Others are skeptical
+
+    fact-checkers. Most fall somewhere in between — trusting what their friends share,
+
+    swayed by emotion, or passively observing trends. The simulation studies how the
+
+    false claim propagates, gets countered, or is amplified across this small network.
+
+    '
+
+data: {}
+
 persona_pipeline:
   processing_mode: raw
   defaults:
@@ -6,9 +34,9 @@ persona_pipeline:
       bio: ''
       style: ''
       goal: null
-      scenario_context: ${sim.event.context}
+      scenario_context: ${agent_situation.event.context}
     shared_memories:
-    - ${sim.event.context}
+    - ${agent_situation.event.context}
   classes:
     user:
       count: 6
@@ -108,8 +136,8 @@ persona_pipeline:
         goal: goal
         seed_post: seed_post
 shared_memories:
-- ${sim.event.context}
-- ${sim.setting.background}
+- ${agent_situation.event.context}
+- ${agent_situation.setting.background}
 initial_observations:
 - '{name} opens their social media feed and starts scrolling.'
 - '{name} notices some new posts from people they follow.'

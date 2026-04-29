@@ -1,0 +1,8 @@
+# run.yaml — scenario-level run parameter overrides (merged to config root)
+scenario_name: election_recsys_engagement
+agent_situation_name: default
+jobname_format: "ElectionRecsys_N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
+num_agents: 20
+num_steps: 15
+seed: 11
+run_name: election_recsys_engagement

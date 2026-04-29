@@ -202,13 +202,13 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
         cfg = ConfigStore.get_config()
         action_logger = EventLogger(
             "action",
-            os.path.join(cfg.sim.output_rootname, "action_events.jsonl"),
+            os.path.join(cfg.output_rootname, "action_events.jsonl"),
         )
         action_logger.episode_idx = 0
 
         platform_type = getattr(_env_cfg(cfg), "platform_type", "twitter_like")
         print(f"[DEBUG] Using platform_type: {platform_type}")
-        db_path = os.path.join(cfg.sim.output_rootname, f"{platform_type}.db")
+        db_path = os.path.join(cfg.output_rootname, f"{platform_type}.db")
         sm_app = create_social_media_app(
             platform_type=platform_type,
             action_logger=action_logger,
@@ -218,8 +218,6 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
         )
 
         enabled_actions_cfg = getattr(_env_cfg(cfg), "enabled_actions", None)
-        if enabled_actions_cfg is None:
-            enabled_actions_cfg = getattr(cfg.sim, "enabled_actions", None)
         if enabled_actions_cfg is not None:
             if isinstance(enabled_actions_cfg, Sequence) and not isinstance(
                 enabled_actions_cfg, (str, bytes)
@@ -327,7 +325,7 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
             f"agents={len(agent_names)} seed_count={sum(1 for t in seed_posts.values() if t)}"
         )
         _LOGGER.info(startup_line)
-        stats_path = os.path.join(cfg.sim.output_rootname, "run_stats.log")
+        stats_path = os.path.join(cfg.output_rootname, "run_stats.log")
         with open(stats_path, "a", encoding="utf-8") as f:
             f.write(startup_line + "\n")
 
@@ -343,7 +341,7 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
             # Use default resolver based on action_mode
             resolve_slot = {
                 "built_in": action_mode_to_resolve_map.get(
-                    getattr(cfg.sim, "action_mode", "custom"), "parsed_action"
+                    getattr(cfg.simulator, "action_mode", "custom"), "parsed_action"
                 ),
             }
 
@@ -386,8 +384,7 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
             )
 
         timeline_mode = str(
-            getattr(_env_cfg(cfg), "timeline_mode", None)
-            or getattr(cfg.sim, "timeline_mode", "follower_chronological")
+            getattr(_env_cfg(cfg), "timeline_mode", None) or "follower_chronological"
         )
         supported_timeline_modes = {
             "twitter_like": {
@@ -477,7 +474,7 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
             sm_app=sm_app,
             entity_flow_tags=entity_flow_tags,
             activity_transition_rates=activity_rates,
-            action_mode=getattr(cfg.sim, "action_mode", "custom"),
+            action_mode=getattr(cfg.simulator, "action_mode", "custom"),
             enable_tool_calling=enable_tool_calling,
         )
 

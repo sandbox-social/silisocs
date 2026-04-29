@@ -1,22 +1,31 @@
 # Top-level Hydra configuration for mastodon-sim
 # Choose between preset configurations using Hydra overrides:
-#   python -m mastodon_sim.runtime.runner  # Uses sim=base, env=twitter_like (default)
-#   python -m mastodon_sim.runtime.runner sim=oasis  # Alternative (now same as base)
+#   python -m mastodon_sim.runtime.runner  # Uses env=twitter_like (default)
+#   python -m mastodon_sim.runtime.runner llm.disabled=true num_steps=1
 
 defaults:
   - agent_situation: base
   - llm: base
   - simulator: base
-  - sim: base
   - env: twitter_like
   - evals: base
   - _self_
 
 hydra:
   job:
-    name: ${sim.scenario_name}_${now:%Y-%m-%d_%H-%M-%S}
+    name: ${scenario_name}_${now:%Y-%m-%d_%H-%M-%S}
   run:
-    dir: scenarios/${sim.scenario_name}/outputs/${sim.jobname_format}
-  output_subdir: configs/${sim.jobname_format}
+    dir: scenarios/${scenario_name}/outputs/${jobname_format}
+  output_subdir: configs/${jobname_format}
 
 experiment_name: independent
+
+# Experiment run parameters (overridable per-scenario via run.yaml or CLI)
+num_agents: 100
+num_steps: 50
+run_name: run1
+seed: 1
+output_rootname: ""
+scenario_name: default
+agent_situation_name: default
+jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"

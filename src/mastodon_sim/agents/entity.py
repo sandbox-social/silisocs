@@ -71,7 +71,7 @@ class Entity(prefab_lib.Prefab):
 
         obs_history = getattr(getattr(cfg, "env", object()), "observation_history", None)
         if obs_history is None:
-            obs_history = getattr(cfg.sim, "observation_history", 100)
+            obs_history = 100
         observation = agent_components.observation.LastNObservations(
             history_length=obs_history, pre_act_label="Observation"
         )

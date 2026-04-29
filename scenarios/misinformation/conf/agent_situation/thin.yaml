@@ -6,9 +6,9 @@ persona_pipeline:
       bio: ''
       style: ''
       goal: null
-      scenario_context: ${sim.event.context}
+      scenario_context: ${agent_situation.event.context}
     shared_memories:
-    - ${sim.event.context}
+    - ${agent_situation.event.context}
   classes:
     user:
       count: 6
@@ -51,8 +51,8 @@ persona_pipeline:
         context: context
         seed_post: seed_post
 shared_memories:
-- ${sim.event.context}
-- ${sim.setting.background}
+- ${agent_situation.event.context}
+- ${agent_situation.setting.background}
 initial_observations:
 - '{name} opens their social media feed and starts scrolling.'
 - '{name} notices some new posts from people they follow.'
