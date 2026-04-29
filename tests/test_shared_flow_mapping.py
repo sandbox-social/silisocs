@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from concordia.components import game_master as gm_components  # type: ignore[attr-defined]
 
-from mastodon_sim.environments.gm.shared_flow_game_master import (
+from silisocs.environments.gm.shared_flow_game_master import (
     _build_flow_to_component_map,
 )
 

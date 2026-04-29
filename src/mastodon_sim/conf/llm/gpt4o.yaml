@@ -1,7 +1,0 @@
-# @package llm
-
-name: gpt-4o
-temperature: 0.5
-api_base: null
-api_key: null
-disabled: false

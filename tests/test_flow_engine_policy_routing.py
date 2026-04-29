@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from mastodon_sim.engines.base_engines import (
+from silisocs.engines.base_engines import (
     BaseRuntimeEngine,
     FlowRuntimeEngine,
 )
-from mastodon_sim.engines.policies.action_chunk import (
+from silisocs.engines.policies.action_chunk import (
     FixedCountActionChunkPolicy,
     SingleActionChunkPolicy,
 )

@@ -35,7 +35,7 @@ persona_pipeline:
   classes:
     user:
       count: 100
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       data:
         source: hf_dataset
         dataset: nvidia/Nemotron-Personas-USA
@@ -99,7 +99,7 @@ For scenarios that need logic beyond what YAML can express, create a
 
 The runner checks three options (in order):
 
-1. **In-package**: `src/mastodon_sim/scenarios/<name>/builders.py`
+1. **In-package**: `src/silisocs/scenarios/<name>/builders.py`
 2. **External**: `scenarios/<name>/builders.py`
 3. **Fallback**: `BaseAgentBuilder` (YAML persona pipeline)
 
@@ -117,8 +117,8 @@ Your builder class must be named `<ScenarioName>AgentBuilder`:
 
 ```python
 # scenarios/my_scenario/builders.py
-from mastodon_sim.agents.builders import BaseAgentBuilder
-from mastodon_sim.runtime.dataclasses import AgentConfig
+from silisocs.agents.builders import BaseAgentBuilder
+from silisocs.runtime.dataclasses import AgentConfig
 
 class MyScenarioAgentBuilder(BaseAgentBuilder):
     def build_role_agents(self, role: str, count: int) -> list[AgentConfig]:
@@ -131,7 +131,7 @@ class MyScenarioAgentBuilder(BaseAgentBuilder):
                     "context": f"A {role} in the simulation.",
                     "sim_role": {
                         "name": role,
-                        "module_path": "mastodon_sim.agents.entity",
+                        "module_path": "silisocs.agents.entity",
                     },
                     "style": "",
                     "seed_post": "",

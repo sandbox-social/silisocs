@@ -3,8 +3,8 @@ from __future__ import annotations
 import sys
 import types
 
-from mastodon_sim.environments.backends.reddit_like.engine import RedditLikePlatform
-from mastodon_sim.environments.backends.twitter_like.engine import TwitterLikePlatform
+from silisocs.environments.backends.reddit_like.engine import RedditLikePlatform
+from silisocs.environments.backends.twitter_like.engine import TwitterLikePlatform
 
 
 def test_twitter_timeline_oracle_follower_chronological_matches_expected_posts(tmp_path) -> None:

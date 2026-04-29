@@ -20,9 +20,9 @@ fictional small town. It has three agent classes:
 
 The scenario is now split across:
 
-- `scenarios/election/conf/sim.yaml`
-- `scenarios/election/conf/agent.yaml`
-- `scenarios/election/conf/evals.yaml`
+- `scenarios/election/conf/scenario/default.yaml` (run params, setting, event, data)
+- `scenarios/election/conf/agents/default.yaml` (persona pipeline)
+- `scenarios/election/conf/evals/default.yaml` (probe config)
 
 ### Setting
 
@@ -44,7 +44,7 @@ setting:
 classes:
   voter:
     count: 497
-    prefab_module: mastodon_sim.agents.entity
+    prefab_module: silisocs.agents.entity
     sim_role_name: voter
     data:
       source: hf_dataset
@@ -156,22 +156,22 @@ probes:
 
 ```sh
 # Full scale (497 voters, 200 steps)
-uv run mastodon-sim --config-path scenarios/election/conf
+uv run silisocs --config-path scenarios/election/conf
 
 # Quick test
-uv run mastodon-sim --config-path scenarios/election/conf sim.num_agents=20 sim.num_steps=5
+uv run silisocs --config-path scenarios/election/conf num_agents=20 num_steps=5
 ```
 
 !!! note
-    When you override `sim.num_agents`, the voter count adjusts automatically
-    because it references `${sim.num_agents}` minus the fixed candidate and news
+    When you override `num_agents`, the voter count adjusts automatically
+    because it references `${num_agents}` minus the fixed candidate and news
     account slots.
 
 ---
 
 ## Output
 
-Output lands in `scenarios/election/outputs/`:
+Output lands in `outputs/election/`:
 
 - `action_events.jsonl` — Campaign posts, voter discussions, candidate interactions
 - `probe_events.jsonl` — Favorability ratings, vote preferences, intent over time

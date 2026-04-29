@@ -70,7 +70,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
                     classes:
                         fixed_seed:
                             count: 1
-                            prefab_module: mastodon_sim.agents.fixed_entity
+                            prefab_module: silisocs.agents.fixed_entity
                             sim_role_name: fixed_seed
                             flow_tag: fixed_pre
                             params:
@@ -87,7 +87,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
                                         - {action_type: post, content: "SeedBot episode one broadcast"}
                         llm_user:
                             count: 2
-                            prefab_module: mastodon_sim.agents.entity
+                            prefab_module: silisocs.agents.entity
                             sim_role_name: llm_user
                             data:
                                 source: inline
@@ -177,7 +177,7 @@ def _run_simulation(
     cmd = [
         sys.executable,
         "-m",
-        "mastodon_sim.runtime.runner",
+        "silisocs.runtime.runner",
         "--config-path",
         str(conf_dir),
         f"env={backend}",

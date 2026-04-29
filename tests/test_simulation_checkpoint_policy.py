@@ -4,8 +4,8 @@ import json
 from types import SimpleNamespace
 from typing import Any, cast
 
-from mastodon_sim.runtime.config import ConfigStore
-from mastodon_sim.runtime.simulation import Simulation
+from silisocs.runtime.config import ConfigStore
+from silisocs.runtime.simulation import Simulation
 
 
 def _set_checkpoint_config(*, every_n_steps: int | None, explicit_steps: list[int]) -> None:

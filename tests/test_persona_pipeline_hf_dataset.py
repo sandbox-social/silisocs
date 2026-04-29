@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 from omegaconf import OmegaConf
 
-from mastodon_sim.agents.builders import BaseAgentBuilder
+from silisocs.agents.builders import BaseAgentBuilder
 
 
 class _TestBuilder(BaseAgentBuilder):

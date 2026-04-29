@@ -18,22 +18,28 @@ A complete scenario consists of:
 ```
 scenarios/{scenario_name}/conf/
 ├── scenario/
-│   └── {scenario_name}.yaml        (Required: @package scenario)
-├── sim.yaml                         (Optional: @package sim, scenario-specific overrides)
-└── social_media.yaml               (Optional: @package social_media, platform choice)
+│   └── default.yaml                (Required: @package _global_)
+├── agents/
+│   └── default.yaml                (Required: @package agents)
+├── sim.yaml                        (Optional: partial sim overrides)
+└── env.yaml                        (Optional: partial env overrides)
 ```
 
-### File 1: scenario/{name}.yaml
+### File 1: scenario/default.yaml
 
 **Required header:**
 ```yaml
-# @package scenario
+# @package _global_
 ```
 
 **Required fields:**
 ```yaml
 scenario_name: election
-jobname_format: "N${sim.num_agents}_T${sim.num_steps}_${experiment_name}_run1"
+jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
+num_agents: 500
+num_steps: 200
+seed: 1
+run_name: election
 
 setting:
   name: "Storhampton"
@@ -44,36 +50,39 @@ setting:
 event:
   name: "Mayoral Election"
   context: "Heated campaign on social media between two candidates"
+
+data: {}
 ```
 
 **Complete example:**
 
-See `scenarios/election/conf/scenario/election.yaml` for a production scenario with all sections.
+See `scenarios/election/conf/scenario/default.yaml` for a production scenario with all sections.
 
-### File 2: Persona Pipeline
+### File 2: Persona Pipeline (`agents/default.yaml`)
 
 Defines how to construct agent entities from data sources:
 
 ```yaml
+# @package agents
 persona_pipeline:
   processing_mode: raw              # raw | formative
 
   defaults:                         # Applied to all classes
     params:
-      scenario_context: ${scenario.event.context}
+      scenario_context: ${event.context}
       bio: ""
       style: ""
       goal: null
     shared_memories:
       - "You are a resident of Storhampton"
-      - ${scenario.event.context}
+      - ${event.context}
 
   classes:
     voter:
       count: 497
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       sim_role_name: voter           # For activity rates
-      model: null                     # null = use sim.llm_name, or override per-class
+      model: null                     # null = use sim.llm.name, or override per-class
       data:
         source: hf_dataset
         dataset: nvidia/Nemotron-Personas-USA
@@ -89,7 +98,7 @@ persona_pipeline:
 
     candidate:
       count: 2
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       sim_role_name: candidate
       data:
         source: config_path           # Reference another config section
@@ -104,7 +113,7 @@ persona_pipeline:
 
     news_account:
       count: 1
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       sim_role_name: news_account
       data:
         source: config_path
@@ -160,8 +169,8 @@ Context injected into all agents at initialization:
 ```yaml
 shared_memories:
   - "You are a long-time resident of Storhampton"
-  - ${scenario.event.context}
-  - ${scenario.setting.background}
+  - ${event.context}
+  - ${setting.background}
 ```
 
 ### File 5: Initial Observations
@@ -247,28 +256,26 @@ candidates:
 
 ## 2) Optional: Scenario-Specific sim.yaml Overrides
 
-Create `scenarios/{name}/conf/sim.yaml` to customize simulation parameters:
+Create `scenarios/{name}/conf/sim.yaml` to customize sim parameters (LLM, engine, tool-calling).
+Run parameters (`num_agents`, `num_steps`, `seed`) belong in `scenario/default.yaml`, not here.
 
 ```yaml
-# @package sim
+# No @package header needed — merged into sim group automatically
 
 # Only list fields that differ from base defaults
-# Fields omitted here will use base.yaml values
-
-num_agents: 500
-num_steps: 200
-action_mode: custom
+action_mode: generic
 tool_calling:
-  mode: single
+  mode: multi
 
-# Enable multi-flow routing for different agent types
-enable_gm_multi_flow: false        # Set true if different agents need different components
-enable_engine_multi_flow: false    # Set true if flows should be scheduled in phases
+llm:
+  name: gpt-4o                     # Override model for this scenario
 
-timeline_mode: follower_chronological
-timeline_config:
-  recsys_ratio: 0.6
-  follower_ratio: 0.4
+engine:
+  action_loop:
+    built_in: open_ended
+    params:
+      max_actions: 10
+      done_token: FINISHED
 
 enabled_actions:                   # Restrict to specific actions (exact function names)
   - create_tweet
@@ -277,14 +284,14 @@ enabled_actions:                   # Restrict to specific actions (exact functio
   - follow_user
 ```
 
-**Important:** Missing fields automatically fallback to `src/mastodon_sim/conf/sim/base.yaml` defaults. This keeps scenario files minimal.
+**Important:** Missing fields automatically fall back to `src/silisocs/conf/sim/base.yaml` defaults. This keeps scenario files minimal.
 
-### File 8: Optional social_media.yaml
+### File 8: Optional env.yaml
 
-Create if you want a different platform:
+Create if you want a different platform or GM component settings:
 
 ```yaml
-# @package social_media
+# No @package header needed — merged into env group automatically
 
 platform_type: reddit_like         # twitter_like | reddit_like | mastodon
 ```
@@ -361,7 +368,7 @@ persona_pipeline:
   classes:
     news_bot:
       count: 1
-      prefab_module: mastodon_sim.agents.fixed_entity
+      prefab_module: silisocs.agents.fixed_entity
       data:
         source: config_path
         path: news_bot
@@ -391,17 +398,17 @@ fixed_action_sets:
 
 **From CLI:**
 ```bash
-python -m mastodon_sim.runtime.runner --config-path scenarios/my_scenario/conf
+uv run silisocs --config-path scenarios/my_scenario/conf
 ```
 
 **With overrides:**
 ```bash
-python -m mastodon_sim.runtime.runner --config-path scenarios/my_scenario/conf \
-    sim.num_agents=1000 sim.num_steps=100
+uv run silisocs --config-path scenarios/my_scenario/conf \
+    num_agents=1000 num_steps=100
 ```
 
 **From Dashboard:**
-1. Open `streamlit run src/mastodon_sim/dashboard/launch_app.py`
+1. Open `uv run streamlit run src/silisocs/dashboard/launch_app.py`
 2. Select scenario from dropdown
 3. Modify settings as needed
 4. Click "Save Scenario" to persist
@@ -449,22 +456,25 @@ The game master automatically routes each agent to the correct component instanc
 **How Hydra merges configs (in order):**
 
 1. **Package defaults** (lowest priority)
-   - `src/mastodon_sim/conf/sim/base.yaml`
-   - `src/mastodon_sim/conf/social_media/twitter_like.yaml`
-   - `src/mastodon_sim/conf/scenario/default.yaml`
+   - `src/silisocs/conf/scenario/default.yaml` (`@package _global_`)
+   - `src/silisocs/conf/agents/default.yaml` (`@package agents`)
+   - `src/silisocs/conf/sim/base.yaml` (`@package sim`)
+   - `src/silisocs/conf/env/twitter_like.yaml` (`@package env`)
+   - `src/silisocs/conf/evals/base.yaml` (`@package evals`)
 
-2. **Your scenario overrides** (higher priority)
-   - `scenarios/my_scenario/conf/sim.yaml` (if present)
-   - `scenarios/my_scenario/conf/social_media.yaml` (if present)
-   - `scenarios/my_scenario/conf/scenario/my_scenario.yaml`
+2. **Your scenario overrides** (higher priority via SearchPath plugin)
+   - `scenarios/my_scenario/conf/scenario/default.yaml` (replaces package scenario group)
+   - `scenarios/my_scenario/conf/agents/default.yaml` (replaces package agents group)
+   - `scenarios/my_scenario/conf/sim.yaml` (merged into sim group, if present)
+   - `scenarios/my_scenario/conf/env.yaml` (merged into env group, if present)
 
 3. **CLI overrides** (highest priority)
-   - `sim.num_agents=500`
-   - `sim.llm_name=gpt-4o`
+   - `num_agents=500`
+   - `sim.llm.name=gpt-4o`
 
 **Fallback behavior:**
-- If `sim.yaml` omits `llm_name`, uses `base.yaml` value (gpt-4o-mini)
-- If `social_media.yaml` omits `use_server`, uses `twitter_like.yaml` value (false)
+- If `sim.yaml` omits `llm.name`, uses `base.yaml` value (`gpt-4o-mini`)
+- If `env.yaml` omits `use_server`, uses `twitter_like.yaml` value (`false`)
 - If scenario omits a probe, that probe is not deployed
 
 This means your scenario files only need to specify what's **different** from defaults.
@@ -473,41 +483,38 @@ This means your scenario files only need to specify what's **different** from de
 
 ## 7) Reference: Default Values
 
-**From `src/mastodon_sim/conf/sim/base.yaml`:**
-- `llm_name`: gpt-4o-mini
+**From `src/silisocs/conf/scenario/default.yaml`** (at config root):
 - `num_agents`: 100
 - `num_steps`: 50
-- `action_mode`: custom
-- `tool_calling.mode`: single
-- `memory_backend`: list
-- `timeline_mode`: hybrid_recsys_follower
-- `seed_posts.type`: llm
-- `enable_gm_multi_flow`: false
-- `enable_engine_multi_flow`: false
+- `seed`: 1
+- `run_name`: run1
 
-**From `src/mastodon_sim/conf/social_media/twitter_like.yaml`:**
+**From `src/silisocs/conf/sim/base.yaml`:**
+- `sim.llm.name`: gpt-4o-mini
+- `sim.action_mode`: custom
+- `sim.tool_calling.mode`: single
+- `sim.memory_backend`: list
+- `sim.engine.preset`: base
+- `sim.engine.action_loop.built_in`: single_action
+
+**From `src/silisocs/conf/env/twitter_like.yaml`:**
 - `platform_type`: twitter_like
 - Supports: `create_tweet`, `like_tweet`, `repost_tweet`, `reply_to_tweet`, `follow_user`
-
-**From `src/mastodon_sim/conf/scenario/default.yaml`:**
-- Basic default personas from Nemotron dataset
-- Fully connected news account
-- Basic probes (none by default)
 
 ---
 
 ## 8) Troubleshooting
 
 **Problem:** "Scenario file not found"
-- **Check**: `scenarios/{name}/conf/scenario/{name}.yaml` exists
-- **Check**: File has `# @package scenario` as first line
+- **Check**: `scenarios/{name}/conf/scenario/default.yaml` exists
+- **Check**: File has `# @package _global_` as first line
 
 **Problem:** "Unknown field in persona_pipeline"
 - **Check**: `docs/configuration.md` Scenario Config section for valid fields
 - **Check**: All agent classes have `prefab_module` and `data.source`
 
 **Problem:** "Agent count exceeds num_agents"
-- **Check**: Sum of all `classes[*].count` <= `sim.num_agents`
+- **Check**: Sum of all `classes[*].count` <= `num_agents`
 - **Fix**: Adjust counts or increase `num_agents` in sim.yaml
 
 **Problem:** "Probe query_type unknown"
@@ -519,7 +526,7 @@ This means your scenario files only need to specify what's **different** from de
 ## 9) Next Steps
 
 1. **Study existing example**: review `scenarios/election/conf/scenario/election.yaml`
-2. **Understand defaults**: check `src/mastodon_sim/conf/sim/base.yaml`
+2. **Understand defaults**: check `src/silisocs/conf/sim/base.yaml`
 3. **Create your scenario**: mkdir and scaffold with the structure above
 4. **Test it**: run via CLI with `--config-path`
 5. **For complex scenarios**: consult ARCHITECTURE.md (multi-flow deep dive) and AGENTS.md (custom agents)
@@ -570,8 +577,8 @@ study:
     seed_start: 11
     seed_repeats: 3
     overrides:
-      sim.num_agents: 50
-      sim.num_steps: 10
+      num_agents: 50
+      num_steps: 10
 
 evaluations:
   - id: action_metrics
@@ -597,7 +604,7 @@ hypotheses:
             - run
             - python
             - -m
-            - mastodon_sim.runtime.runner
+            - silisocs.runtime.runner
             - --config-path
             - scenarios/election_recsys_engagement/conf
             - scenario={scenario}
@@ -703,7 +710,7 @@ evaluations:
     preset: builtin.probe_metrics_detailed
     static_args:
       - --postprocessor
-      - mastodon_sim.evaluations.postprocessors:episode_probe_volume
+      - silisocs.evaluations.postprocessors:episode_probe_volume
 ```
 
 These detailed evaluators read `action_events.jsonl` and use `effective_config.yaml` (when available) to map probe labels to configured probe types.

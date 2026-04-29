@@ -1,4 +1,4 @@
-from mastodon_sim.utils.media import GptLanguageModel
+from silisocs.utils.media import GptLanguageModel
 
 
 def _make_model() -> GptLanguageModel:

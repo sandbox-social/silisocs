@@ -139,7 +139,7 @@ class TestGameMasterFactoryIntegration:
 
     def test_factory_routes_single_gm_agent_to_gm(self):
         """Test factory correctly routes single-class agent to its GM."""
-        from mastodon_sim.environments.gm.gm_factory import GameMasterFactory
+        from silisocs.environments.gm.gm_factory import GameMasterFactory
 
         config = {
             "agent_classes": {"alice": "human"},
@@ -158,7 +158,7 @@ class TestGameMasterFactoryIntegration:
 
     def test_factory_routes_multi_class_agent_to_multiple_gms(self):
         """Test factory routes multi-class agent to all relevant GMs."""
-        from mastodon_sim.environments.gm.gm_factory import GameMasterFactory
+        from silisocs.environments.gm.gm_factory import GameMasterFactory
 
         agent_to_classes = {
             "alice": ["human", "verified"],
@@ -181,7 +181,7 @@ class TestGameMasterFactoryIntegration:
 
     def test_factory_detects_shared_agents(self):
         """Test factory detects agents assigned to multiple GMs."""
-        from mastodon_sim.environments.gm.gm_factory import GameMasterFactory
+        from silisocs.environments.gm.gm_factory import GameMasterFactory
 
         config = {
             "gm_sequence": ["gm1", "gm2"],

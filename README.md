@@ -1,6 +1,6 @@
-[![CI](https://github.com/social-sandbox/mastodon-sim/actions/workflows/test.yml/badge.svg)](https://github.com/social-sandbox/mastodon-sim/actions/workflows/test.yml)
-[![Docs](https://github.com/social-sandbox/mastodon-sim/actions/workflows/docs.yml/badge.svg)](https://social-sandbox.github.io/mastodon-sim)
-[![Open in Dev Containers](https://img.shields.io/static/v1?label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/social-sandbox/mastodon-sim)
+[![CI](https://github.com/social-sandbox/silisocs/actions/workflows/test.yml/badge.svg)](https://github.com/social-sandbox/silisocs/actions/workflows/test.yml)
+[![Docs](https://github.com/social-sandbox/silisocs/actions/workflows/docs.yml/badge.svg)](https://social-sandbox.github.io/silisocs)
+[![Open in Dev Containers](https://img.shields.io/static/v1?label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/social-sandbox/silisocs)
 
 # Social Simulation Sandbox for Social Media Scenarios
 
@@ -9,7 +9,7 @@ Configurable generative agent simulation of social media using the [Concordia fr
 - 2025 Version 1 demo paper: [https://www.ijcai.org/proceedings/2025/1271](https://www.ijcai.org/proceedings/2025/1271).
 - Version 2 complete (structured scenario configuration compatible with Concordia v.2)
 
-**[Read the full documentation](https://social-sandbox.github.io/mastodon-sim)**
+**[Read the full documentation](https://social-sandbox.github.io/silisocs)**
 
 ## Code Overview
 
@@ -17,7 +17,7 @@ Configurable generative agent simulation of social media using the [Concordia fr
 
 The canonical runtime entry point is:
 
-- `src/mastodon_sim/runtime/runner.py`
+- `src/silisocs/runtime/runner.py`
 
 It composes Hydra config, builds agents + game masters, initializes memory,
 runs the simulation engine, and writes outputs.
@@ -26,9 +26,9 @@ runs the simulation engine, and writes outputs.
 
 Hydra composes these config groups:
 
-- `src/mastodon_sim/conf/sim/base.yaml`
-- `src/mastodon_sim/conf/social_media/{twitter_like|reddit_like|mastodon}.yaml`
-- `src/mastodon_sim/conf/scenario/{name}.yaml`
+- `src/silisocs/conf/sim/base.yaml`
+- `src/silisocs/conf/social_media/{twitter_like|reddit_like|mastodon}.yaml`
+- `src/silisocs/conf/scenario/{name}.yaml`
 
 External scenarios can be placed at:
 
@@ -40,7 +40,7 @@ and launched with `--config-path`.
 
 Simulation output is written under:
 
-- `scenarios/<scenario_name>/outputs/<jobname>/...`
+- `outputs/<scenario_name>/<jobname>/...`
 
 Key files:
 
@@ -59,27 +59,27 @@ Key files:
 
 The project currently has two dashboard apps:
 
-- Streamlit launcher: `src/mastodon_sim/dashboard/launch_app.py`
-- Dash analytics app: `src/mastodon_sim/evaluations/analysis/dashboard/main.py`
+- Streamlit launcher: `src/silisocs/dashboard/launch_app.py`
+- Dash analytics app: `src/silisocs/evaluations/analysis/dashboard/main.py`
 
 The Streamlit app is for scenario authoring and run launch. The Dash app is
 for post-run analysis of `action_events.jsonl` and `probe_events.jsonl`.
 
 Here is a snapshot:
 
-![alt text](https://github.com/social-sandbox/mastodon-sim/blob/main/docs/img/dashboard_screenshot.png?raw=true)
+![alt text](https://github.com/social-sandbox/silisocs/blob/main/docs/img/dashboard_screenshot.png?raw=true)
 
 ## High-Level Structure
 
 ```text
-mastodon-sim/
-├── src/mastodon_sim/
+silisocs/
+├── src/silisocs/
 │   ├── runtime/            # runner, simulation composition, config validation
 │   ├── environments/       # engine, game master, backend implementations
 │   ├── agents/             # entities, builders, initialization
 │   ├── evaluations/        # probes, plotting, analytics dashboard
 │   └── dashboard/          # streamlit launcher
-├── src/mastodon_sim/conf/  # Hydra config groups (sim/social_media/scenario)
+├── src/silisocs/conf/  # Hydra config groups (sim/social_media/scenario)
 ├── scenarios/              # external scenarios and outputs
 ├── docs/                   # mkdocs user/developer documentation
 └── tests/                  # unit and integration tests
@@ -126,7 +126,7 @@ simsandbox/
 To install this package, run:
 
 ```sh
-pip install mastodon-sim
+pip install silisocs
 ```
 
 -->
@@ -136,8 +136,8 @@ pip install mastodon-sim
 1. Clone the repository:
 
     ```sh
-    git clone https://github.com/social-sandbox/mastodon-sim.git
-    cd mastodon-sim
+    git clone https://github.com/social-sandbox/silisocs.git
+    cd silisocs
     ```
 
 2. Install `uv`:
@@ -156,11 +156,14 @@ pip install mastodon-sim
 
     This installs the project together with the default `test` group used by CI.
 
-4. Install the full contributor environment:
+4. Install the contributor environment (required for committing):
 
     ```sh
     uv sync --group dev
     ```
+
+    This adds `commitizen`, which is required by the pre-commit hooks that
+    run on every commit. Skipping this step causes all commits to fail.
 
 5. If you need the Sphinx docs toolchain too:
 
@@ -177,7 +180,7 @@ pip install mastodon-sim
 
 ## Environment Variables
 
-The application relies on a `.env` file to manage sensitive information and configuration settings. This file should be placed in the root directory of your project (`mastodon-sim/`) and contain key-value pairs for required environment variables. The `dotenv` library is used to load these variables into the environment.
+The application relies on a `.env` file to manage sensitive information and configuration settings. This file should be placed in the root directory of your project (`silisocs/`) and contain key-value pairs for required environment variables. The `dotenv` library is used to load these variables into the environment.
 
 ### Example `.env` File
 
@@ -207,7 +210,7 @@ USER002_PASSWORD=***************************8
 To view the CLI help information, run:
 
 ```sh
-mastodon-sim --help
+silisocs --help
 ```
 
 -->

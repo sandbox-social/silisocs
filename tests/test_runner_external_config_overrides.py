@@ -3,7 +3,7 @@
 import os
 import sys
 
-from mastodon_sim.runtime.runner import _inject_external_config_path
+from silisocs.runtime.runner import _inject_external_config_path
 
 
 def test_config_path_injects_hydra_searchpath_and_autodetects_sim_metadata(

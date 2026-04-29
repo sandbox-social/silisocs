@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 
-from mastodon_sim.evaluations.default_evaluators import (
+from silisocs.evaluations.default_evaluators import (
     _build_payload,
     _build_probe_plots,
     _read_jsonl,

@@ -13,8 +13,8 @@ If `uv` is not installed yet, use one of the installation methods from the
 1. Clone the repository:
 
    ```sh
-   git clone https://github.com/social-sandbox/mastodon-sim.git
-   cd mastodon-sim
+   git clone https://github.com/social-sandbox/silisocs.git
+   cd silisocs
    ```
 
 2. Sync the default environment:

@@ -4,8 +4,7 @@ from unittest.mock import patch
 
 import pytest
 from omegaconf import OmegaConf
-
-from mastodon_sim.engines.multi_gm import MultiGMRuntimeEngine
+from silisocs.engines.multi_gm import MultiGMRuntimeEngine
 
 
 class MockGameMaster:
@@ -21,7 +20,7 @@ class TestMultiGMRuntimeEngineInit:
     def test_engine_initializes(self):
         """Test engine can be initialized."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()
@@ -32,7 +31,7 @@ class TestMultiGMRuntimeEngineInit:
     def test_engine_has_required_methods(self):
         """Test engine has all required methods."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()
@@ -48,7 +47,7 @@ class TestAgentToGMMapping:
     def test_build_simple_mapping(self):
         """Test building agent to GM mapping with single class."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()
@@ -74,7 +73,7 @@ class TestAgentToGMMapping:
     def test_build_mapping_with_multiple_classes(self):
         """Test building mapping when agent has multiple classes."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()
@@ -102,7 +101,7 @@ class TestAgentToGMMapping:
     def test_build_mapping_with_gm_lists(self):
         """Test building mapping when classes route to multiple GMs."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()
@@ -128,7 +127,7 @@ class TestAgentToGMMapping:
     def test_get_agent_gms(self):
         """Test getting GMs for a specific agent."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()
@@ -144,7 +143,7 @@ class TestAgentToGMMapping:
     def test_detect_no_conflicts(self):
         """Test detecting when no agent conflicts exist."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()
@@ -159,7 +158,7 @@ class TestAgentToGMMapping:
     def test_detect_conflicts(self):
         """Test detecting when agents are in multiple GMs."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()
@@ -179,7 +178,7 @@ class TestAgentToGMMapping:
     def test_no_duplicates_in_gm_mapping(self):
         """Test that duplicate GMs are removed from agent's GM list."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()
@@ -208,7 +207,7 @@ class TestGMSequenceValidation:
     def test_validate_none_sequence(self):
         """Test validating None sequence (single-GM mode)."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()
@@ -219,7 +218,7 @@ class TestGMSequenceValidation:
     def test_validate_empty_sequence(self):
         """Test validating empty sequence."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()
@@ -230,7 +229,7 @@ class TestGMSequenceValidation:
     def test_validate_valid_sequence(self):
         """Test validating valid sequence."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()
@@ -241,7 +240,7 @@ class TestGMSequenceValidation:
     def test_validate_invalid_type(self):
         """Test validating invalid sequence type."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()
@@ -256,7 +255,7 @@ class TestOrchestrationLogging:
     def test_log_single_gm_mode(self):
         """Test logging in single-GM mode."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()
@@ -269,7 +268,7 @@ class TestOrchestrationLogging:
     def test_log_multi_gm_mode(self):
         """Test logging in multi-GM mode."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()
@@ -286,7 +285,7 @@ class TestOrchestrationLogging:
     def test_log_with_conflicts(self):
         """Test logging when agents are in multiple GMs."""
         with patch(
-            "mastodon_sim.engines.base_engines.FlowRuntimeEngine.__init__",
+            "silisocs.engines.base_engines.FlowRuntimeEngine.__init__",
             return_value=None,
         ):
             engine = MultiGMRuntimeEngine()

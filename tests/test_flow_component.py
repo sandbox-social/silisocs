@@ -2,7 +2,7 @@
 
 import pytest
 
-from mastodon_sim.environments.gm.components.base import FlowComponent
+from silisocs.environments.gm.components.base import FlowComponent
 
 
 class SimpleFlowComponent(FlowComponent):

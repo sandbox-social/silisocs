@@ -196,7 +196,7 @@ gm:
 Example component:
 
 ```python
-from mastodon_sim.environments.gm.components.base import FlowComponent
+from silisocs.environments.gm.components.base import FlowComponent
 
 class CustomObserve(FlowComponent, MakeObservation):
   FLOW_FIELDS = {"timeline_filter": str}
@@ -218,7 +218,7 @@ class CustomObserve(FlowComponent, MakeObservation):
 
 ### GameMasterFactory
 
-Located: `src/mastodon_sim/environments/gm/gm_factory.py`
+Located: `src/silisocs/environments/gm/gm_factory.py`
 
 Routes agents to GM instances:
 
@@ -240,7 +240,7 @@ gm_instances = factory.build(model, memory_bank, entities)
 
 ### MultiGMRuntimeEngine
 
-Located: `src/mastodon_sim/engines/multi_gm.py`
+Located: `src/silisocs/engines/multi_gm.py`
 
 Orchestrates multiple GMs:
 
@@ -261,7 +261,7 @@ engine = MultiGMRuntimeEngine(...)
 
 ### FlowComponent Base Class
 
-Located: `src/mastodon_sim/environments/gm/components/base.py`
+Located: `src/silisocs/environments/gm/components/base.py`
 
 Mixin for per-flow field routing:
 

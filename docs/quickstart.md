@@ -13,14 +13,14 @@ sourced from the [Nemotron Personas](https://huggingface.co/datasets/nvidia/Nemo
 dataset.
 
 ```sh
-uv run mastodon-sim
+uv run silisocs
 ```
 
 This uses the built-in `default` preset with 500 agents for 200 steps. For a quick test, override the
 scale:
 
 ```sh
-uv run mastodon-sim sim.num_agents=10 sim.num_steps=5
+uv run silisocs num_agents=10 num_steps=5
 ```
 
 ### Try the OASIS Preset
@@ -28,7 +28,7 @@ uv run mastodon-sim sim.num_agents=10 sim.num_steps=5
 Run an OASIS-compatible simulation (smaller scale, optimized for recommendation studies):
 
 ```sh
-uv run mastodon-sim sim=oasis env=reddit_like sim.num_agents=10 sim.num_steps=5
+uv run silisocs sim=oasis env=reddit_like num_agents=10 num_steps=5
 ```
 
 This uses the `oasis` preset configuration with 100 agents, hybrid timeline feeds (mixing recommendations
@@ -38,7 +38,7 @@ See [Preset Configurations](PRESETS.md) for detailed comparison of preset option
 
 ## 2. Check the Output
 
-Simulation output is saved to `scenarios/default/outputs/<jobname>/<timestamp>/`:
+Simulation output is saved to `outputs/default/<jobname>/<timestamp>/`:
 
 | File | Content |
 |------|---------|
@@ -56,7 +56,7 @@ Simulation output is saved to `scenarios/default/outputs/<jobname>/<timestamp>/`
 Override the LLM model from the command line:
 
 ```sh
-uv run mastodon-sim sim.llm_name=gpt-4o sim.num_agents=10 sim.num_steps=5
+uv run silisocs sim.llm.name=gpt-4o num_agents=10 num_steps=5
 ```
 
 ## 4. Use the Dashboard
@@ -64,7 +64,7 @@ uv run mastodon-sim sim.llm_name=gpt-4o sim.num_agents=10 sim.num_steps=5
 Launch the Streamlit dashboard for a visual interface:
 
 ```sh
-uv run streamlit run src/mastodon_sim/dashboard/launch_app.py
+uv run streamlit run src/silisocs/dashboard/launch_app.py
 ```
 
 The dashboard lets you configure scenarios, agent classes, network topology,
@@ -75,8 +75,8 @@ and probes — then launch simulations with one click.
 Launch the analysis dashboard against a run output directory:
 
 ```sh
-uv run python -m mastodon_sim.evaluations.analysis.dashboard.main \
-	--output-dir scenarios/default/outputs/<jobname>/<timestamp>
+uv run python -m silisocs.evaluations.analysis.dashboard.main \
+	--output-dir outputs/default/<jobname>/<timestamp>
 ```
 
 The analytics dashboard expects `action_events.jsonl` and `probe_events.jsonl`
@@ -87,7 +87,7 @@ in that folder.
 Run the bundled election scenario:
 
 ```sh
-uv run mastodon-sim --config-path scenarios/election/conf
+uv run silisocs --config-path scenarios/election/conf
 ```
 
 The runner auto-detects the scenario name from the YAML files in the external

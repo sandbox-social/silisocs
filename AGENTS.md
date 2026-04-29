@@ -4,7 +4,7 @@ This file is a contributor guide for LLM coding agents working in this repositor
 
 ## 1) What This Repository Is
 
-Mastodon-Sim is a Concordia-based social simulation framework with:
+Silisocs is a Concordia-based social simulation framework with:
 
 - YAML-first scenario and runtime configuration (Hydra + OmegaConf)
 - A social-media game-master/environment layer
@@ -15,31 +15,31 @@ Mastodon-Sim is a Concordia-based social simulation framework with:
 
 The runtime entrypoint is:
 
-- `src/mastodon_sim/runtime/runner.py`
+- `src/silisocs/runtime/runner.py`
 
 ## 2) High-Level Architecture
 
 Core runtime layers:
 
 ### 1. Agent Construction Layer
-- `src/mastodon_sim/agents/builders.py`
+- `src/silisocs/agents/builders.py`
 - Builds agents from `scenario.persona_pipeline` and class data sources
 - Supports fixed-action set loading and template rendering
 - Entry point: `EntityBuilder.build_agents(cfg, model)`
 
 ### 2. Prefab/Entity Layer
-- `src/mastodon_sim/agents/base_agent.py` — Abstract Agent interface
-- `src/mastodon_sim/agents/entity.py` — LLM-based agent (Concordia-compatible)
-- `src/mastodon_sim/agents/fixed_entity.py` — Deterministic agent (pre-scripted actions)
+- `src/silisocs/agents/base_agent.py` — Abstract Agent interface
+- `src/silisocs/agents/entity.py` — LLM-based agent (Concordia-compatible)
+- `src/silisocs/agents/fixed_entity.py` — Deterministic agent (pre-scripted actions)
 - Custom agents must implement: `name`, `observe(str)`, `act(ActionSpec) → str`
 - To add custom agent: create prefab module with `Entity(Prefab)` class, reference in scenario
 
 ### 3. Game Master Layer (Component-Slotted Architecture)
-- `src/mastodon_sim/environments/gm/base_game_master.py` — Base coordinator
-- `src/mastodon_sim/environments/gm/game_master.py` — Simple preset (single components)
-- `src/mastodon_sim/environments/gm/shared_flow_game_master.py` — Multi-flow preset (multi-instance routing)
-- `src/mastodon_sim/environments/gm/act.py` — SMAct (simple) & MultiFlowSMAct (routing logic)
-- `src/mastodon_sim/environments/gm/components/` — Pluggable components:
+- `src/silisocs/environments/gm/base_game_master.py` — Base coordinator
+- `src/silisocs/environments/gm/game_master.py` — Simple preset (single components)
+- `src/silisocs/environments/gm/shared_flow_game_master.py` — Multi-flow preset (multi-instance routing)
+- `src/silisocs/environments/gm/act.py` — SMAct (simple) & MultiFlowSMAct (routing logic)
+- `src/silisocs/environments/gm/components/` — Pluggable components:
   - `next_acting.py` — Determine which agent acts next
   - `observe.py` — Generate timeline/episode observations
   - `resolve.py` — Parse agent output into backend actions
@@ -49,63 +49,75 @@ Core runtime layers:
 - To add custom component: implement `Component` interface, set in `sim.gm.components.{role}.class_path`
 
 ### 4. Engine Layer (Execution Policies)
-- `src/mastodon_sim/engines/base_engines.py` — BaseRuntimeEngine
-- `src/mastodon_sim/engines/base_engines.py` — FlowRuntimeEngine (multi-flow scheduling)
-- `src/mastodon_sim/engines/multi_gm.py` — MultiGMRuntimeEngine (multi-GM orchestration)
-- `src/mastodon_sim/environments/engines/policies/` — Action loop & probe schedule policies:
+- `src/silisocs/simulation_engines/base_engines.py` — BaseRuntimeEngine, FlowRuntimeEngine (multi-flow scheduling)
+- `src/silisocs/simulation_engines/multi_gm.py` — MultiGMRuntimeEngine (multi-GM orchestration)
+- `src/silisocs/simulation_engines/policies/` — Action loop & probe schedule policies:
   - Action loop: `single_action`, `fixed_count`, `open_ended`
   - Probe schedule: `step_schedule`, `fixed_interval`, `disabled`
 - To add custom policy: create class inheriting from `ActionLoopPolicy` or `ProbeSchedulePolicy`, reference via `class_path`
 
 ### 5. Backend Action Layer
-- `src/mastodon_sim/environments/backends/base.py` — ActionCatalog, base app interface
-- `src/mastodon_sim/environments/backends/twitter_like/` — TwitterLikeApp with SQL backend
-- `src/mastodon_sim/environments/backends/reddit_like/` — RedditLikeApp
-- `src/mastodon_sim/environments/backends/mastodon/` — Real Mastodon server integration
+- `src/silisocs/environments/backends/base.py` — ActionCatalog, base app interface
+- `src/silisocs/environments/backends/twitter_like/` — TwitterLikeApp with SQL backend
+- `src/silisocs/environments/backends/reddit_like/` — RedditLikeApp
+- `src/silisocs/environments/backends/mastodon/` — Real Mastodon server integration
 - Actions discovered via `@app_action(name=..., description=...)` decorator
 - To add custom backend: subclass `SocialMediaApp`, implement action methods, register in app factory
 
 ### 6. Runtime Orchestration
-- `src/mastodon_sim/runtime/runner.py` — CLI entrypoint, Hydra config composition
-- `src/mastodon_sim/runtime/simulation.py` — SimulationRunner orchestrates full workflow
-- `src/mastodon_sim/runtime/config.py` — Config validation and initialization
+- `src/silisocs/runtime/runner.py` — CLI entrypoint, Hydra config composition
+- `src/silisocs/runtime/simulation.py` — SimulationRunner orchestrates full workflow
+- `src/silisocs/runtime/config.py` — Config validation and initialization
 - Handles: model creation, agent building, memory initialization, simulation execution, checkpoint save/resume
 
 ## 3) Configuration Model
 
-Top-level config composition:
+Top-level config composition (`src/silisocs/conf/experiment.yaml`):
 
-- `src/mastodon_sim/conf/config.yaml` — Hydra root config
-- Defaults: `sim: base`, `social_media: twitter_like`, `scenario: default`
+- Defaults: `scenario: default`, `agents: default`, `sim: base`, `env: twitter_like`, `evals: base`
 
-Main simulation knobs (`src/mastodon_sim/conf/sim/base.yaml`):
+Config groups and their base files:
+
+| Group | Base file | Controls |
+|-------|-----------|----------|
+| `scenario` | `scenario/default.yaml` (`@package _global_`) | Run params, setting, event, data |
+| `agents` | `agents/default.yaml` (`@package agents`) | Persona pipeline, shared memories |
+| `sim` | `sim/base.yaml` (`@package sim`) | LLM, engine, tool-calling, memory, checkpoint |
+| `env` | `env/twitter_like.yaml` (`@package env`) | Platform backend, GM components, social network |
+| `evals` | `evals/base.yaml` (`@package evals`) | Probes, HTML log writing |
+
+Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 
 | Parameter | Value | Notes |
 |-----------|-------|-------|
-| `llm_name` | gpt-4o-mini | Default LLM model |
+| `sim.llm.name` | gpt-4o-mini | Default LLM model |
+| `sim.llm.temperature` | 0.5 | Sampling temperature |
+| `sim.llm.disabled` | false | No-op model for testing |
+| `sim.action_mode` | custom | Prompt style (`custom` or `generic`) |
+| `sim.tool_calling.mode` | single | `none` \| `single` \| `multi` |
+| `sim.engine.preset` | base | `base` or `flow` (flow-aware scheduling) |
+| `sim.engine.action_loop.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended` |
+| `sim.memory_backend` | list | `list` (fast) or `associative` (embedding-based) |
+| `sim.checkpoint.every_n_steps` | null | Checkpoint frequency |
+
+Key run params live in `scenario/default.yaml` (at config root via `@package _global_`):
+
+| Parameter | Default | Notes |
+|-----------|---------|-------|
 | `num_agents` | 100 | Number of agents |
 | `num_steps` | 50 | Simulation episodes |
-| `action_mode` | custom | Prompt style (`custom` or `generic`) |
-| `tool_calling.mode` | single | Tool-calling behavior (`none` \| `single` \| `multi`) |
-| `enable_gm_multi_flow` | false | Multi-component-instance routing |
-| `enable_engine_multi_flow` | false | Flow-phase scheduling |
-| `gm.preset` | base | Simple (single components) or shared_flow (multi-instance) |
-| `engine.preset` | base | Simple scheduling or flow-aware |
-| `engine.action_loop.built_in` | single_action | single_action \| fixed_count \| open_ended |
-| `timeline_mode` | hybrid_recsys_follower | Timeline assembly mode |
-| `seed_posts.type` | llm | llm \| csv \| json \| none \| fallback |
+| `scenario_name` | default | Used in output path |
+| `seed` | 1 | Random seed |
 
-`timeline_mode` is the timeline selector.
-
-`enable_gm_multi_flow` and `enable_engine_multi_flow` are independent switches.
-The first controls GM component routing (`gm.preset: shared_flow`), while the
-second controls engine flow scheduling/policies (`engine.preset: flow`).
+`enable_gm_multi_flow` controls GM component routing (`env.gm.preset: shared_flow`).
 
 Scenario content lives under:
 
-- `scenarios/<name>/conf/scenario/<name>.yaml` (@package scenario)
-- **Optional**: `scenarios/<name>/conf/sim.yaml` (@package sim) — scenario-specific overrides
-- **Optional**: `scenarios/<name>/conf/social_media.yaml` (@package social_media) — platform choice
+- `scenarios/<name>/conf/scenario/default.yaml` (`@package _global_`) — run params + setting/event/data
+- `scenarios/<name>/conf/agents/default.yaml` (`@package agents`) — persona pipeline
+- **Optional**: `scenarios/<name>/conf/sim.yaml` — partial sim overrides (merged, not replaced)
+- **Optional**: `scenarios/<name>/conf/env.yaml` — partial env overrides
+- **Optional**: `scenarios/<name>/conf/agents/thin.yaml` — alternate agents variant (select with `agents=thin`)
 
 **For designing experiments via config (no code changes):** See [EXPERIMENTS.md](EXPERIMENTS.md)
 
@@ -137,18 +149,18 @@ Default UX rule:
 - Keep users on simple mode (`gm.preset=simple`, advanced dashboard toggle off).
 - Only expose flow tags and multi-GM controls behind advanced mode.
 
-Fixed agents (`mastodon_sim.agents.fixed_entity`) are the reference example.
+Fixed agents (`silisocs.agents.fixed_entity`) are the reference example.
 
 ## 5) Agent Interface: Concordia vs Custom
 
-All agents in mastodon-sim implement a common interface defined by `mastodon_sim.agents.base_agent.Agent` (ABC).
+All agents in silisocs implement a common interface defined by `silisocs.agents.base_agent.Agent` (ABC).
 
 ### Minimum Required Interface
 
 Every agent (whether Concordia-based or custom) must implement:
 
 ```python
-from mastodon_sim.agents.base_agent import Agent
+from silisocs.agents.base_agent import Agent
 
 class MyAgent(Agent):
     @property
@@ -172,10 +184,10 @@ Agents should not be concerned with prescribing action format—that is a platfo
 
 ### Reference Implementation: FixedActionEntity
 
-The `mastodon_sim.agents.fixed_entity.FixedActionEntityRuntime` is a concrete example of a non-LLM agent:
+The `silisocs.agents.fixed_entity.FixedActionEntityRuntime` is a concrete example of a non-LLM agent:
 
 ```python
-# src/mastodon_sim/agents/fixed_entity.py
+# src/silisocs/agents/fixed_entity.py
 class FixedActionEntityRuntime(Agent):
     """Deterministic agent executing pre-defined actions by episode."""
     
@@ -274,7 +286,7 @@ Otherwise, normal Concordia act proceeds.
 
 ### Validation & Error Handling
 
-Game master initialization (`src/mastodon_sim/environments/gm/game_master.py`) validates agents:
+Game master initialization (`src/silisocs/environments/gm/game_master.py`) validates agents:
 
 ```python
 # Checks at GM build time:
@@ -371,6 +383,12 @@ Fast contributor workflow (LLM-agent friendly):
 5. Commit with Conventional Commits (`uv run cz c` or `git commit -m "feat: ..."`)
 6. Push branch (`git push origin <branch>`)
 
+**NEVER commit `.env` files or any file containing API keys, passwords, or secrets.**
+These files (`.env`, `store.env*`, etc.) are gitignored for this reason. Staging them
+accidentally (e.g. via `git add -A`) and pushing will expose credentials publicly and
+trigger GitHub push protection. If you suspect a secret was staged, run
+`git reset HEAD <file>` before committing.
+
 ## 8) Testing Expectations for Agents
 
 When changing runtime behavior:
@@ -431,14 +449,12 @@ When adding features, update docs in:
 
 Start from these files to understand the flow:
 
-1. **Config composition**: `src/mastodon_sim/runtime/runner.py` — How Hydra merges configs
-2. **Simulation orchestration**: `src/mastodon_sim/runtime/simulation.py` — Full workflow
-3. **Engine execution**: `src/mastodon_sim/engines/base_engines.py` — Episode loop
-4. **Game master**: `src/mastodon_sim/environments/gm/game_master.py` — Simple preset
-5. **Multi-flow GM**: `src/mastodon_sim/environments/gm/shared_flow_game_master.py` — Advanced preset
-6. **Component slots**: `src/mastodon_sim/environments/gm/components/` — Pluggable behavior
-7. **Backend actions**: `src/mastodon_sim/environments/backends/twitter_like/app.py` — Example backend
+1. **Config composition**: `src/silisocs/runtime/runner.py` — How Hydra merges configs
+2. **Simulation orchestration**: `src/silisocs/runtime/simulation.py` — Full workflow
+3. **Engine execution**: `src/silisocs/simulation_engines/base_engines.py` — Episode loop
+4. **Game master**: `src/silisocs/environments/gm/game_master.py` — Simple preset
+5. **Multi-flow GM**: `src/silisocs/environments/gm/shared_flow_game_master.py` — Advanced preset
+6. **Component slots**: `src/silisocs/environments/gm/components/` — Pluggable behavior
+7. **Backend actions**: `src/silisocs/environments/backends/twitter_like/app.py` — Example backend
 
 
-- `src/mastodon_sim/agents/builders.py`
-- `src/mastodon_sim/environments/backends/base.py`

@@ -14,10 +14,10 @@ from unittest.mock import MagicMock
 import pytest
 from omegaconf import OmegaConf
 
-from mastodon_sim.environments.backends.base import SocialMediaApp, app_action
-from mastodon_sim.environments.gm.act import SMAct
-from mastodon_sim.environments.gm.base_game_master import BaseSocialMediaGameMaster
-from mastodon_sim.runtime.action_prompts import (
+from silisocs.environments.backends.base import SocialMediaApp, app_action
+from silisocs.environments.gm.act import SMAct
+from silisocs.environments.gm.base_game_master import BaseSocialMediaGameMaster
+from silisocs.runtime.action_prompts import (
     PromptAdditions,
     build_complete_action_prompt_for_runner,
     compile_action_prompt,

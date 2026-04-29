@@ -1,4 +1,4 @@
-from mastodon_sim.runtime.telemetry.engine_metrics import (
+from silisocs.runtime.telemetry.engine_metrics import (
     _DEFAULT_COLD_START_CAP,
     compute_dynamic_worker_limit,
     update_adaptive_worker_cap,

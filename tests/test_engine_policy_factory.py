@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import json
 
-from mastodon_sim.engines.policies.action_chunk import (
+from silisocs.engines.policies.action_chunk import (
     FixedCountActionChunkPolicy,
     OpenEndedActionChunkPolicy,
     SingleActionChunkPolicy,
 )
-from mastodon_sim.engines.policies.factory import (
+from silisocs.engines.policies.factory import (
     build_action_loop_policy,
     build_probe_schedule_policy,
 )
-from mastodon_sim.engines.policies.probe_schedule import (
+from silisocs.engines.policies.probe_schedule import (
     DisabledProbeSchedulePolicy,
     FixedIntervalProbeSchedulePolicy,
     StepProbeSchedulePolicy,
@@ -44,9 +44,7 @@ def test_build_action_loop_policy_supports_fixed_count_params() -> None:
 def test_build_action_loop_policy_supports_class_path() -> None:
     policy = build_action_loop_policy(
         {
-            "class_path": (
-                "mastodon_sim.engines.policies.action_chunk.FixedCountActionChunkPolicy"
-            ),
+            "class_path": ("silisocs.engines.policies.action_chunk.FixedCountActionChunkPolicy"),
             "params": {"count": 3},
         }
     )

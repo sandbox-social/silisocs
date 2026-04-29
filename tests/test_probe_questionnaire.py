@@ -6,7 +6,7 @@ from typing import Any, cast
 
 from concordia.typing import entity
 
-from mastodon_sim.evaluations.probes.agent_speech import AgentQuery, deploy_probes_to_agent
+from silisocs.evaluations.probes.agent_speech import AgentQuery, deploy_probes_to_agent
 
 
 class _DummyProbeLogger:

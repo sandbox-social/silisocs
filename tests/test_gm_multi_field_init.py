@@ -2,8 +2,8 @@
 
 import pytest
 
-from mastodon_sim.environments.gm.components.base import FlowComponent
-from mastodon_sim.environments.gm.components.factory import initialize_component_flow_fields
+from silisocs.environments.gm.components.base import FlowComponent
+from silisocs.environments.gm.components.factory import initialize_component_flow_fields
 
 
 class MockObserveComponent(FlowComponent):

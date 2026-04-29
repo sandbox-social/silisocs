@@ -14,15 +14,15 @@ from unittest.mock import MagicMock
 import pytest
 from omegaconf import OmegaConf
 
-from mastodon_sim.environments.backends.base import PhoneApp, SocialMediaApp, app_action
-from mastodon_sim.environments.gm.components.resolve import (
+from silisocs.environments.backends.base import PhoneApp, SocialMediaApp, app_action
+from silisocs.environments.gm.components.resolve import (
     GenericActionResolveComponent,
     ParsedActionResolveComponent,
     ToolCallingResolveComponent,
 )
-from mastodon_sim.runtime.action_prompts import build_complete_action_prompt_for_runner
+from silisocs.runtime.action_prompts import build_complete_action_prompt_for_runner
 
-# from mastodon_sim.runtime.runner import _validate_action_tool_calling_contract
+# from silisocs.runtime.runner import _validate_action_tool_calling_contract
 
 
 class TestActionCallToActionBuilder:

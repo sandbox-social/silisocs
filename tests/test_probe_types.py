@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mastodon_sim.evaluations.probes.types import (
+from silisocs.evaluations.probes.types import (
     BinaryProbe,
     ChoiceProbe,
     FreeTextProbe,

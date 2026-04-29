@@ -10,7 +10,7 @@ Together they cover end-to-end usage, but they are separate applications.
 ## Streamlit Launcher
 
 ```sh
-uv run streamlit run src/mastodon_sim/dashboard/launch_app.py
+uv run streamlit run src/silisocs/dashboard/launch_app.py
 ```
 
 The launcher opens in your browser with six tabs.
@@ -147,7 +147,7 @@ Evaluation probe configuration:
 Scenarios created via the dashboard are immediately available for CLI use:
 
 ```sh
-uv run mastodon-sim --config-path scenarios/my_scenario/conf
+uv run silisocs --config-path scenarios/my_scenario/conf
 ```
 
 ---
@@ -156,10 +156,10 @@ uv run mastodon-sim --config-path scenarios/my_scenario/conf
 
 The sidebar uses a two-step loader:
 
-1. **Load scenario**: scenario names discovered from `scenarios/*/conf/sim.yaml`
+1. **Load scenario**: scenario names discovered from `scenarios/*/conf/scenario/default.yaml`
 2. **Start from**: choose one of:
 	- **Scenario definition** (the base scenario YAML)
-	- A prior run snapshot from `scenarios/<scenario>/outputs/<run>/configs/*/config.yaml`
+	- A prior run snapshot from `outputs/<scenario>/<run>/configs/*/config.yaml`
 
 This allows you to start from the latest saved run config while keeping scenario-level selection clean.
 
@@ -180,8 +180,8 @@ Notes:
 The analytics app visualizes run outputs after simulation completes.
 
 ```sh
-uv run python -m mastodon_sim.evaluations.analysis.dashboard.main \
-	--output-dir scenarios/<scenario>/outputs/<run_dir>
+uv run python -m silisocs.evaluations.analysis.dashboard.main \
+	--output-dir outputs/<scenario>/<run_dir>
 ```
 
 ### Required Inputs

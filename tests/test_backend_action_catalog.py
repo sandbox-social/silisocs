@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from mastodon_sim.environments.backends.base import SocialMediaApp, app_action
+from silisocs.environments.backends.base import SocialMediaApp, app_action
 
 
 @dataclass

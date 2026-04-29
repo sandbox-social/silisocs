@@ -5,14 +5,14 @@ Complete reference for all YAML configuration options.
 ## Config Groups
 
 Configuration is split across named groups, each with a base preset in
-`src/mastodon_sim/conf/`:
+`src/silisocs/conf/`:
 
 | Group | Base file | Controls |
 |---|---|---|
-| *(root)* | `experiment.yaml` | Run parameters, Hydra output paths |
-| `agent_situation` | `agent_situation/base.yaml` | Persona pipeline, setting, event, shared memories |
-| `llm` | `llm/base.yaml` | Model name, API endpoint, temperature |
-| `simulator` | `simulator/base.yaml` | Engine, tool-calling, memory backend, checkpoint |
+| *(root)* | `experiment.yaml` | Hydra output paths, experiment label |
+| `scenario` | `scenario/default.yaml` | Run parameters, setting, event, data |
+| `agents` | `agents/default.yaml` | Persona pipeline, shared memories, initial observations |
+| `sim` | `sim/base.yaml` | LLM (model, API, temperature), engine, tool-calling, memory backend, checkpoint |
 | `env` | `env/twitter_like.yaml` | Platform backend, GM components, social network |
 | `evals` | `evals/base.yaml` | Probes, HTML log writing |
 
@@ -22,9 +22,9 @@ Configuration is split across named groups, each with a base preset in
 
 ```yaml
 defaults:
-  - agent_situation: base
-  - llm: base
-  - simulator: base
+  - scenario: default
+  - agents: default
+  - sim: base
   - env: twitter_like
   - evals: base
   - _self_
@@ -33,31 +33,24 @@ hydra:
   job:
     name: ${scenario_name}_${now:%Y-%m-%d_%H-%M-%S}
   run:
-    dir: scenarios/${scenario_name}/outputs/${jobname_format}
+    dir: outputs/${scenario_name}/${jobname_format}
   output_subdir: configs/${jobname_format}
 
 experiment_name: independent
-
-# Run parameters — overridable per-scenario via run.yaml or CLI
-num_agents: 100
-num_steps: 50
-run_name: run1
-seed: 1
-output_rootname: ""
-scenario_name: default
-agent_situation_name: default
-jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
 ```
 
 Override from the CLI:
 
 ```sh
-uv run python -m mastodon_sim.runtime.runner env=reddit_like num_agents=500
+uv run silisocs env=reddit_like num_agents=500
 ```
 
 ---
 
-## Run Parameters (root-level)
+## Run Parameters (`scenario/default.yaml`)
+
+Run parameters live in the `scenario` config group (placed at config root via
+`@package _global_`):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -66,50 +59,49 @@ uv run python -m mastodon_sim.runtime.runner env=reddit_like num_agents=500
 | `run_name` | `run1` | Run identifier (used in output path) |
 | `seed` | `1` | Random seed |
 | `scenario_name` | `default` | Scenario identifier (used in output path) |
-| `agent_situation_name` | `default` | Selects `agent_situation/{name}.yaml` from scenario conf dir |
 | `jobname_format` | *(template)* | Output directory name template |
 | `experiment_name` | `independent` | Experiment label used in `jobname_format` |
 
 ---
 
-## LLM Parameters (`llm/base.yaml`)
+## Sim Parameters (`sim/base.yaml`)
+
+### LLM
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `llm.name` | `gpt-4o-mini` | LLM model name (passed to Concordia model factory) |
-| `llm.api_base` | `null` | Custom API base URL (for OpenAI-compatible endpoints) |
-| `llm.api_key` | `null` | API key (or set via environment variable) |
-| `llm.temperature` | `0.5` | Sampling temperature |
-| `llm.disabled` | `false` | Use a no-op model (for testing without API calls) |
+| `sim.llm.name` | `gpt-4o-mini` | LLM model name (passed to Concordia model factory) |
+| `sim.llm.api_base` | `null` | Custom API base URL (for OpenAI-compatible endpoints) |
+| `sim.llm.api_key` | `null` | API key (or set via environment variable) |
+| `sim.llm.temperature` | `0.5` | Sampling temperature |
+| `sim.llm.disabled` | `false` | Use a no-op model (for testing without API calls) |
 
----
-
-## Simulator Parameters (`simulator/base.yaml`)
+### Engine and Runtime
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `simulator.max_concurrent_actions` | `1000` | Max parallel LLM calls per step |
-| `simulator.sentence_encoder` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model for associative memory |
-| `simulator.memory_backend` | `list` | Memory type: `list` (fast) or `associative` (embedding-based) |
-| `simulator.action_mode` | `custom` | Prompt style: `custom` (scenario prompt) or `generic` (backend-generated) |
-| `simulator.tool_calling.mode` | `single` | Tool dispatch mode: `none`, `single`, or `multi` |
-| `simulator.prompt_additions.add_action_count_guidance` | `false` | Add `[ActNum]` marker and action count guidance to prompt |
-| `simulator.checkpoint.every_n_steps` | `null` | Save checkpoints every N steps when set |
-| `simulator.checkpoint.explicit_steps` | `[]` | Additional explicit checkpoint steps |
-| `simulator.checkpoint.resume_file` | `null` | Path to checkpoint JSON to resume a prior run |
-| `simulator.checkpoint.resume_step` | `null` | Step override when resuming |
-| `simulator.engine.preset` | `base` | Engine preset: `base` or `flow` |
-| `simulator.roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |
+| `sim.max_concurrent_actions` | `1000` | Max parallel LLM calls per step |
+| `sim.sentence_encoder` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model for associative memory |
+| `sim.memory_backend` | `list` | Memory type: `list` (fast) or `associative` (embedding-based) |
+| `sim.action_mode` | `custom` | Prompt style: `custom` (scenario prompt) or `generic` (backend-generated) |
+| `sim.tool_calling.mode` | `single` | Tool dispatch mode: `none`, `single`, or `multi` |
+| `sim.prompt_additions.add_action_count_guidance` | `false` | Add `[ActNum]` marker and action count guidance to prompt |
+| `sim.checkpoint.every_n_steps` | `null` | Save checkpoints every N steps when set |
+| `sim.checkpoint.explicit_steps` | `[]` | Additional explicit checkpoint steps |
+| `sim.checkpoint.resume_file` | `null` | Path to checkpoint JSON to resume a prior run |
+| `sim.checkpoint.resume_step` | `null` | Step override when resuming |
+| `sim.engine.preset` | `base` | Engine preset: `base` or `flow` |
+| `sim.roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |
 
 ---
 
 ## Running and Creating Scenarios
 
-Scenarios live in `scenarios/{name}/conf/` and selectively override package
-defaults. The run command:
+Scenarios live in `scenarios/{name}/conf/` and override package defaults.
+The run command:
 
 ```bash
-uv run python -m mastodon_sim.runtime.runner --config-path scenarios/misinformation/conf
+uv run silisocs --config-path scenarios/misinformation/conf
 ```
 
 ### Directory Structure
@@ -118,69 +110,68 @@ uv run python -m mastodon_sim.runtime.runner --config-path scenarios/misinformat
 scenarios/
 └── my_scenario/
     └── conf/
-        ├── run.yaml                     # Run parameters merged to config root
+        ├── scenario/
+        │   └── default.yaml             # Run parameters + setting/event/data
+        ├── agents/
+        │   ├── default.yaml             # Persona pipeline, shared memories
+        │   └── thin.yaml                # Lightweight variant (optional)
         ├── env.yaml                     # Platform/GM overrides (optional)
         ├── evals.yaml                   # Probe config overrides (optional)
-        ├── llm.yaml                     # LLM overrides (optional)
-        ├── simulator.yaml               # Engine overrides (optional)
-        └── agent_situation/
-            ├── default.yaml             # Default agent situation (setting, event, personas)
-            └── thin.yaml                # Alternate lightweight variant (optional)
+        └── sim.yaml                     # LLM + engine overrides (optional)
 ```
 
 ### How Config Overrides Work
 
 Two mechanisms layer on top of the package defaults:
 
-**Layer 1 — Hydra searchpath** (`--config-path`): the scenario conf dir is
-prepended to Hydra's searchpath, so any file matching a group name
-(`simulator.yaml`, `evals.yaml`, `llm.yaml`) silently replaces the
-corresponding package default at compose time.
+**Layer 1 — Hydra SearchPath Plugin**: a registered `SearchPathPlugin` prepends
+the scenario conf dir to Hydra's search path before composition. This gives
+`scenario/default.yaml` and `agents/default.yaml` from the scenario conf dir
+higher priority than the package defaults, so they replace the package
+`scenario/default.yaml` and `agents/default.yaml` entirely.
 
 **Layer 2 — Manual merge** (runs inside `main()` after Hydra composes): handles
-files that don't fit Hydra's group model:
+partial-override flat files that don't replace their group wholesale:
 
-- `run.yaml` → merged flat into the config root (`scenario_name`, `num_steps`, `seed`, …)
-- `env.yaml`, `evals.yaml`, `llm.yaml`, `simulator.yaml` → merged into their named groups
-- `agent_situation/{agent_situation_name}.yaml` → merged into the `agent_situation` group (variant selected by the `agent_situation_name` root key)
+- `env.yaml`, `evals.yaml`, `sim.yaml` → merged into their named groups
 
 **Priority order** (highest → lowest):
 
-1. CLI overrides (`num_steps=1 llm.disabled=true`)
-2. Scenario `run.yaml` / group yamls (layer 2 merge)
-3. Scenario files in Hydra searchpath (layer 1)
-4. Package defaults in `src/mastodon_sim/conf/`
+1. CLI overrides (`num_steps=1 sim.llm.disabled=true`)
+2. Scenario flat files merged in Layer 2 (`env.yaml`, `sim.yaml`, …)
+3. Scenario `scenario/default.yaml` and `agents/default.yaml` (via plugin searchpath)
+4. Package defaults in `src/silisocs/conf/`
 
-CLI overrides are re-applied at the end of the merge so they always win over
+CLI overrides are re-applied after the merge so they always win over
 scenario defaults.
 
 ### Running a Scenario
 
 ```bash
 # Run with scenario defaults
-uv run python -m mastodon_sim.runtime.runner --config-path scenarios/election/conf
+uv run silisocs --config-path scenarios/election/conf
 
 # Override specific parameters
-uv run python -m mastodon_sim.runtime.runner --config-path scenarios/election/conf \
+uv run silisocs --config-path scenarios/election/conf \
     num_agents=500 num_steps=100
 
-# Use alternate agent situation variant
-uv run python -m mastodon_sim.runtime.runner --config-path scenarios/ai_conference/conf \
-    agent_situation_name=thin
+# Use alternate agents variant
+uv run silisocs --config-path scenarios/ai_conference/conf \
+    agents=thin
 
 # Dry-run with no LLM calls (for testing)
-uv run python -m mastodon_sim.runtime.runner --config-path scenarios/misinformation/conf \
-    num_steps=1 llm.disabled=true
+uv run silisocs --config-path scenarios/misinformation/conf \
+    num_steps=1 sim.llm.disabled=true
 
 # View merged config before running
-uv run python -m mastodon_sim.runtime.runner --config-path scenarios/election/conf --cfg job
+uv run silisocs --config-path scenarios/election/conf --cfg job
 ```
 
 ### Creating a New Scenario
 
 **Option 1: Via Dashboard**
 
-1. Start the dashboard: `streamlit run src/mastodon_sim/dashboard/launch_app.py`
+1. Start the dashboard: `streamlit run src/silisocs/dashboard/launch_app.py`
 2. Modify all settings (agents, network, probes, etc.)
 3. Enter a new scenario name in the "Scenario Name" field
 4. Click "Save Scenario" — creates files under `scenarios/{name}/conf/`
@@ -189,22 +180,19 @@ uv run python -m mastodon_sim.runtime.runner --config-path scenarios/election/co
 **Option 2: Manual**
 
 ```bash
-mkdir -p scenarios/my_scenario/conf/agent_situation
+mkdir -p scenarios/my_scenario/conf/scenario scenarios/my_scenario/conf/agents
 ```
 
-**`scenarios/my_scenario/conf/run.yaml`** — run parameters:
+**`scenarios/my_scenario/conf/scenario/default.yaml`** — run parameters and narrative:
 ```yaml
+# @package _global_
 scenario_name: my_scenario
-agent_situation_name: default
 jobname_format: "N${num_agents}_T${num_steps}_${run_name}"
 num_agents: 50
 num_steps: 20
 seed: 42
 run_name: my_scenario
-```
 
-**`scenarios/my_scenario/conf/agent_situation/default.yaml`** — personas and narrative:
-```yaml
 setting:
   name: My Setting
   background:
@@ -216,18 +204,22 @@ event:
     Event description used in agent memories.
 
 data: {}
+```
 
+**`scenarios/my_scenario/conf/agents/default.yaml`** — personas:
+```yaml
+# @package agents
 persona_pipeline:
   processing_mode: raw
   defaults:
     params:
-      scenario_context: ${agent_situation.event.context}
+      scenario_context: ${event.context}
     shared_memories:
-      - ${agent_situation.event.context}
+      - ${event.context}
   classes:
     user:
       count: ${num_agents}
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       sim_role_name: user
       data:
         source: hf_dataset
@@ -237,7 +229,7 @@ persona_pipeline:
         context: persona
 
 shared_memories:
-  - ${agent_situation.event.context}
+  - ${event.context}
 
 initial_observations:
   - "{name} opens their social media feed."
@@ -257,32 +249,40 @@ social_network:
 
 ### Output Structure
 
-Simulation outputs go to: `scenarios/{scenario_name}/outputs/{jobname_format}/`
+Simulation outputs go to: `outputs/{scenario_name}/{jobname_format}/`
 
 ```
-scenarios/my_scenario/outputs/
-└── N50_T20_my_scenario/
-    ├── my_scenario_2026-01-01_12-00-00/
-    │   ├── effective_config.yaml      # Full resolved config
-    │   ├── sim_metrics.json           # Timing and run stats
-    │   ├── action_events.jsonl        # Per-step action log
-    │   ├── probe_events.jsonl         # Probe outputs
-    │   └── checkpoints/               # Step checkpoints (if enabled)
-    └── configs/N50_T20_my_scenario/
-        ├── config.yaml                # Hydra-composed config snapshot
-        └── effective_config.yaml      # Runtime-resolved config
+outputs/
+└── my_scenario/
+    └── N50_T20_my_scenario/
+        ├── my_scenario_2026-01-01_12-00-00/
+        │   ├── effective_config.yaml      # Full resolved config
+        │   ├── sim_metrics.json           # Timing and run stats
+        │   ├── action_events.jsonl        # Per-step action log
+        │   ├── probe_events.jsonl         # Probe outputs
+        │   └── checkpoints/               # Step checkpoints (if enabled)
+        └── configs/N50_T20_my_scenario/
+            ├── config.yaml                # Hydra-composed config snapshot
+            └── effective_config.yaml      # Runtime-resolved config
 ```
 
 ---
 
-## Agent Situation Config (`agent_situation/base.yaml`)
+## Scenario Config (`scenario/default.yaml`)
 
-Defines the narrative context and persona pipeline. Scenario-specific content
-lives in `scenarios/*/conf/agent_situation/default.yaml`.
-
-### Setting and Event
+Defines run parameters and the narrative context. Uses `@package _global_` so
+all keys are placed at the config root. Scenario-specific content lives in
+`scenarios/*/conf/scenario/default.yaml`.
 
 ```yaml
+# @package _global_
+scenario_name: my_scenario
+num_agents: 50
+num_steps: 20
+seed: 42
+run_name: my_scenario
+jobname_format: "N${num_agents}_T${num_steps}_${run_name}"
+
 setting:
   name: My Community
   background:
@@ -296,18 +296,27 @@ event:
 data: {}   # Scenario-specific structured data (e.g. news_file)
 ```
 
-`${agent_situation.event.context}` is available as an interpolation target
-throughout the agent situation config.
+`${event.context}` and `${setting.background}` are available as interpolation
+targets in `agents/default.yaml` and other config files.
+
+---
+
+## Agents Config (`agents/default.yaml`)
+
+Defines the persona pipeline, shared memories, and initial observations. Uses
+`@package agents` so all keys are nested under `agents.*`. Scenario-specific
+content lives in `scenarios/*/conf/agents/default.yaml`.
 
 ### Persona Pipeline
 
 ```yaml
+# @package agents
 persona_pipeline:
   processing_mode: raw          # raw | formative
 
   defaults:                     # Applied to all classes
     params:
-      scenario_context: ${agent_situation.event.context}
+      scenario_context: ${event.context}
       seed_post: ""
       bio: ""
       style: ""
@@ -320,7 +329,7 @@ persona_pipeline:
   classes:
     <class_name>:
       count: ${num_agents}              # Number of agents in this class
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       sim_role_name: user               # Role name for activity rates
       flow_tag: default                 # Optional class-level flow tag
       model: null                       # Per-class LLM override
@@ -334,6 +343,12 @@ persona_pipeline:
         goal: "Have a productive discussion."
       shared_memories:
         - "Class-specific memory."
+
+shared_memories:
+  - ${event.context}
+
+initial_observations:
+  - "{name} is at home checking their social media feed."
 ```
 
 ### Data Sources
@@ -344,21 +359,21 @@ persona_pipeline:
 | `inline` | `records` | Records defined directly in YAML |
 | `config_path` | `path` | Dot-path reference into another config section (e.g. `candidates`) |
 
-### Alternate Agent Situation Variants
+### Alternate Agents Variants
 
 Create additional files alongside `default.yaml` for lightweight or experimental
 variants:
 
 ```
-agent_situation/
+agents/
 ├── default.yaml    # Full persona set
 └── thin.yaml       # Minimal personas for fast testing
 ```
 
-Select at runtime:
+Select at runtime using the Hydra config group override syntax:
 ```bash
-uv run python -m mastodon_sim.runtime.runner --config-path scenarios/ai_conference/conf \
-    agent_situation_name=thin
+uv run silisocs --config-path scenarios/ai_conference/conf \
+    agents=thin
 ```
 
 ---
@@ -514,7 +529,7 @@ probes:
 
 | Flag | Default | Effect |
 |------|---------|--------|
-| `simulator.prompt_additions.add_action_count_guidance` | `false` | Add `[ActNum]` marker and action count guidance |
+| `sim.prompt_additions.add_action_count_guidance` | `false` | Add `[ActNum]` marker and action count guidance |
 
 ### How Action Prompts Are Constructed
 
@@ -523,7 +538,7 @@ probes:
 3. **Entity**: calls LLM in tool-calling or free-text mode based on markers
 
 Tool-calling output style is automatically stripped from the base prompt when
-`simulator.tool_calling.mode` is not `none`.
+`sim.tool_calling.mode` is not `none`.
 
 ---
 
@@ -536,7 +551,7 @@ Tool-calling output style is automatically stripped from the base prompt when
 | Open-ended | `open_ended` | Agent acts until outputting a done token |
 
 ```yaml
-simulator:
+sim:
   engine:
     preset: base
     action_loop:
@@ -548,7 +563,7 @@ simulator:
 Per-flow override (requires `engine.preset: flow`):
 
 ```yaml
-simulator:
+sim:
   engine:
     flow_routing:
       flow_order: [fixed_pre, default]
@@ -566,15 +581,15 @@ simulator:
 ## Checkpoint Resume
 
 ```bash
-uv run python -m mastodon_sim.runtime.runner \
+uv run silisocs \
   --config-path scenarios/my_scenario/conf \
   num_steps=200 \
-  simulator.checkpoint.every_n_steps=10 \
-  simulator.checkpoint.resume_file=scenarios/my_scenario/outputs/.../checkpoints/step_100_checkpoint.json
+  sim.checkpoint.every_n_steps=10 \
+  sim.checkpoint.resume_file=outputs/my_scenario/.../checkpoints/step_100_checkpoint.json
 ```
 
 Checkpoints are written to `.../outputs/.../checkpoints/step_<N>_checkpoint.json`.
-Set `simulator.checkpoint.resume_step` to force a different starting step.
+Set `sim.checkpoint.resume_step` to force a different starting step.
 
 ---
 
@@ -587,7 +602,7 @@ hydra:
   job:
     name: ${scenario_name}_${now:%Y-%m-%d_%H-%M-%S}
   run:
-    dir: scenarios/${scenario_name}/outputs/${jobname_format}
+    dir: outputs/${scenario_name}/${jobname_format}
   output_subdir: configs/${jobname_format}
 ```
 

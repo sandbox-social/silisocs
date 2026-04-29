@@ -17,7 +17,7 @@ persona_pipeline:
   classes:
     candidate:
       count: 2
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       sim_role_name: candidate
       flow_tag: default
       data:
@@ -31,7 +31,7 @@ persona_pipeline:
         goal: goal
     voter:
       count: 17
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       sim_role_name: voter
       flow_tag: default
       data:
@@ -44,7 +44,7 @@ persona_pipeline:
         goal: Their goal is to stay informed and discuss the local election.
     fixed_news:
       count: 1
-      prefab_module: mastodon_sim.agents.fixed_entity
+      prefab_module: silisocs.agents.fixed_entity
       sim_role_name: news_account
       flow_tag: fixed_pre
       data:

@@ -42,8 +42,8 @@ study:
     seed_start: 11
     seed_repeats: 3
     overrides:
-      sim.num_agents: 50
-      sim.num_steps: 10
+      num_agents: 50
+      num_steps: 10
 
 evals:
   - id: action_metrics
@@ -77,11 +77,11 @@ execution:
     - run
     - python
     - -m
-    - mastodon_sim.runtime.runner
+    - silisocs.runtime.runner
     - --config-path
     - scenarios/election_recsys_engagement/conf
-    - sim.scenario_name={scenario}
-    - sim.seed={seed}
+    - scenario_name={scenario}
+    - seed={seed}
 ```
 
 Supported placeholders:
@@ -138,7 +138,7 @@ evals:
     preset: builtin.probe_metrics_detailed
     static_args:
       - --postprocessor
-      - mastodon_sim.evaluations.postprocessors:episode_probe_volume
+      - silisocs.evaluations.postprocessors:episode_probe_volume
 ```
 
 Detailed probe evaluators use `effective_config.yaml` to map probe labels to configured probe types when available.

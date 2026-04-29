@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from mastodon_sim.environments.backends.reddit_like.app import RedditLikeApp
-from mastodon_sim.environments.backends.twitter_like.app import TwitterLikeApp
+from silisocs.environments.backends.reddit_like.app import RedditLikeApp
+from silisocs.environments.backends.twitter_like.app import TwitterLikeApp
 
 
 class _DummyActionLogger:

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from mastodon_sim.agents.fixed_entity import FixedActionEntityRuntime
+from silisocs.agents.fixed_entity import FixedActionEntityRuntime
 
 
 def test_fixed_entity_advances_episode_without_observation() -> None:

@@ -29,7 +29,7 @@ The runtime currently validates `processing_mode` to the two supported modes
 above. A custom initializer is not loadable through YAML alone at this time.
 
 If you need a custom initializer today, you must also update
-`build_game_masters()` in `src/mastodon_sim/runtime/runner.py` to register
+`build_game_masters()` in `src/silisocs/runtime/runner.py` to register
 your mode name and module path.
 
 ## How A Custom Initializer Would Look
@@ -37,9 +37,9 @@ your mode name and module path.
 One class, one method — override `generate_memories()` on `InitializerGM`:
 
 ```python
-# mastodon_sim/agents/initialization/my_init.py
+# silisocs/agents/initialization/my_init.py
 import dataclasses
-from mastodon_sim.agents.initialization.base import InitializerGM
+from silisocs.agents.initialization.base import InitializerGM
 
 @dataclasses.dataclass
 class GameMaster(InitializerGM):

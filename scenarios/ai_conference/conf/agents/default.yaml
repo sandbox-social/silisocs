@@ -16,7 +16,7 @@ persona_pipeline:
   classes:
     conference_attendee:
       count: 4
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       sim_role_name: conference_attendee
       data:
         source: inline
@@ -94,7 +94,7 @@ persona_pipeline:
         seed_post: seed_post
     protester:
       count: 3
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       sim_role_name: protester
       data:
         source: inline
@@ -159,7 +159,7 @@ persona_pipeline:
         seed_post: seed_post
     bridge:
       count: 2
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       sim_role_name: bridge
       data:
         source: inline

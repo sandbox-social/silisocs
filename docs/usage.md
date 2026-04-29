@@ -52,20 +52,20 @@ For multi-condition research orchestration (hypothesis trees, seed sweeps, and b
 
 ### CLI (Recommended)
 
-The primary entry point is the `mastodon-sim` CLI command:
+The primary entry point is the `silisocs` CLI command:
 
 ```sh
 # Run with defaults
-uv run mastodon-sim
+uv run silisocs
 
 # Override parameters via Hydra
-uv run mastodon-sim sim.num_agents=50 sim.num_steps=20 sim.llm_name=gpt-4o
+uv run silisocs num_agents=50 num_steps=20 sim.llm.name=gpt-4o
 
 # Use a different platform
-uv run mastodon-sim env=reddit_like
+uv run silisocs env=reddit_like
 
 # Run an external scenario
-uv run mastodon-sim --config-path scenarios/election/conf
+uv run silisocs --config-path scenarios/election/conf
 ```
 
 ### Hydra CLI Overrides
@@ -73,20 +73,20 @@ uv run mastodon-sim --config-path scenarios/election/conf
 Any config value can be overridden from the command line using dot notation:
 
 ```sh
-uv run mastodon-sim \
-  sim.num_agents=100 \
-  sim.num_steps=50 \
-  sim.seed=42 \
+uv run silisocs \
+  num_agents=100 \
+  num_steps=50 \
+  seed=42 \
   sim.memory_backend=associative \
   env.social_network.network_type=random
 
 # Switch GM resolve mode to tool-calling
-uv run mastodon-sim \
+uv run silisocs \
   env.gm.components.resolve.built_in=tool_calling \
   sim.tool_calling.mode=single
 
 # Override only who can act next
-uv run mastodon-sim env.gm.components.next_acting.built_in=all_entities
+uv run silisocs env.gm.components.next_acting.built_in=all_entities
 ```
 
 ### Dashboard
@@ -94,7 +94,7 @@ uv run mastodon-sim env.gm.components.next_acting.built_in=all_entities
 For a visual interface:
 
 ```sh
-uv run streamlit run src/mastodon_sim/dashboard/launch_app.py
+uv run streamlit run src/silisocs/dashboard/launch_app.py
 ```
 
 The launcher sidebar loads configs in two steps: choose a scenario first, then
@@ -121,7 +121,7 @@ defaults:
 ### Config Hierarchy
 
 ```
-src/mastodon_sim/conf/
+src/silisocs/conf/
 ├── config.yaml              # Top-level composition
 ├── sim/
 │   └── base.yaml            # LLM, agent count, steps, memory, etc.
@@ -156,10 +156,10 @@ scenarios/election/
 Run with:
 
 ```sh
-uv run mastodon-sim --config-path scenarios/election/conf
+uv run silisocs --config-path scenarios/election/conf
 ```
 
-The runner reads `sim.scenario_name` from `sim.yaml` automatically, so you do
+The runner reads `scenario_name` from `sim.yaml` automatically, so you do
 not need a manual scenario override.
 
 ---
@@ -179,7 +179,7 @@ persona_pipeline:
   classes:
     user:
       count: 100
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       data:
         source: hf_dataset
         dataset: nvidia/Nemotron-Personas-USA
@@ -193,8 +193,8 @@ persona_pipeline:
 Create a `builders.py` in your scenario directory:
 
 ```python
-from mastodon_sim.agents.builders import BaseAgentBuilder
-from mastodon_sim.runtime.dataclasses import AgentConfig
+from silisocs.agents.builders import BaseAgentBuilder
+from silisocs.runtime.dataclasses import AgentConfig
 
 class MyScenarioAgentBuilder(BaseAgentBuilder):
     def build_role_agents(self, role, count):
@@ -276,7 +276,7 @@ persona_pipeline:
   classes:
     broadcaster:
       count: 1
-      prefab_module: mastodon_sim.agents.fixed_entity
+      prefab_module: silisocs.agents.fixed_entity
       sim_role_name: broadcaster
       data:
         source: inline
@@ -377,7 +377,7 @@ See [Evaluation Probes](probes.md) for details.
 Each simulation run produces output under the Hydra-managed directory:
 
 ```
-scenarios/<scenario_name>/outputs/<jobname>/<jobname>_<timestamp>/
+outputs/<scenario_name>/<jobname>/<jobname>_<timestamp>/
 ```
 
 ### Output Files
@@ -468,12 +468,12 @@ state interactively:
 
 ```sh
 # Twitter-like
-TWITTER_LIKE_DB=scenarios/my_scenario/outputs/.../twitter_like.db \
-  python -m mastodon_sim.environments.backends.twitter_like.visualizer.server
+TWITTER_LIKE_DB=outputs/my_scenario/.../twitter_like.db \
+  python -m silisocs.environments.backends.twitter_like.visualizer.server
 
 # Reddit-like
-REDDIT_LIKE_DB=scenarios/my_scenario/outputs/.../reddit_like.db \
-  python -m mastodon_sim.environments.backends.reddit_like.visualizer.server
+REDDIT_LIKE_DB=outputs/my_scenario/.../reddit_like.db \
+  python -m silisocs.environments.backends.reddit_like.visualizer.server
 ```
 
 See [Social Media Backends](backends.md#built-in-visualizers) for full details.
@@ -518,8 +518,8 @@ persona_pipeline:
       - They are active on a tech discussion forum.
   classes:
     user:
-      count: ${sim.num_agents}
-      prefab_module: mastodon_sim.agents.entity
+      count: ${num_agents}
+      prefab_module: silisocs.agents.entity
       sim_role_name: user
       data:
         source: hf_dataset
@@ -549,12 +549,12 @@ initial_observations:
 ### 3. Run It
 
 ```sh
-uv run mastodon-sim --config-path scenarios/my_scenario/conf sim.num_agents=20 sim.num_steps=10
+uv run silisocs --config-path scenarios/my_scenario/conf num_agents=20 num_steps=10
 ```
 
 ### 4. Analyze Output
 
-Output appears in `scenarios/my_scenario/outputs/`.
+Output appears in `outputs/my_scenario/`.
 
 ### 5. (Optional) Add a Custom Builder
 
@@ -562,7 +562,7 @@ If you need programmatic control over agent construction:
 
 ```python
 # scenarios/my_scenario/builders.py
-from mastodon_sim.agents.builders import BaseAgentBuilder
+from silisocs.agents.builders import BaseAgentBuilder
 
 class MyScenarioAgentBuilder(BaseAgentBuilder):
     def build_role_agents(self, role, count):
@@ -573,7 +573,7 @@ class MyScenarioAgentBuilder(BaseAgentBuilder):
 ### 6. (Optional) Use the Dashboard
 
 ```sh
-uv run streamlit run src/mastodon_sim/dashboard/launch_app.py
+uv run streamlit run src/silisocs/dashboard/launch_app.py
 ```
 
 Create the scenario visually, configure agents, and launch. Use the sidebar
@@ -587,27 +587,27 @@ in the launch overrides (CLI-based resume).
 Enable checkpointing during a run:
 
 ```sh
-uv run mastodon-sim \
+uv run silisocs \
   --config-path scenarios/my_scenario/conf \
-  sim.num_steps=200 \
+  num_steps=200 \
   sim.checkpoint.every_n_steps=10
 ```
 
 Then resume from a snapshot file:
 
 ```sh
-uv run mastodon-sim \
+uv run silisocs \
   --config-path scenarios/my_scenario/conf \
-  sim.num_steps=200 \
-  sim.checkpoint.resume_file=scenarios/my_scenario/outputs/run1/.../checkpoints/step_100_checkpoint.json
+  num_steps=200 \
+  sim.checkpoint.resume_file=outputs/my_scenario/run1/.../checkpoints/step_100_checkpoint.json
 ```
 
 Optional override for the resume step:
 
 ```sh
-uv run mastodon-sim \
+uv run silisocs \
   --config-path scenarios/my_scenario/conf \
-  sim.num_steps=200 \
+  num_steps=200 \
   sim.checkpoint.resume_file=/abs/path/to/step_100_checkpoint.json \
   sim.checkpoint.resume_step=120
 ```
@@ -634,7 +634,7 @@ The flow engine (`FlowRuntimeEngine`) is responsible for:
 - Running entity actions concurrently and resolving them through the GM
 - Worker throttling based on retry telemetry
 
-Key implementation: `src/mastodon_sim/engines/base_engines.py`.
+Key implementation: `src/silisocs/engines/base_engines.py`.
 
 #### Current Action Semantics
 
@@ -671,9 +671,9 @@ The social media GM (`GameMaster` + `SMAct`) is responsible for:
 
 Key implementations:
 
-- `src/mastodon_sim/environments/gm/game_master.py`
-- `src/mastodon_sim/environments/gm/act.py`
-- `src/mastodon_sim/environments/gm/components/`
+- `src/silisocs/environments/gm/game_master.py`
+- `src/silisocs/environments/gm/act.py`
+- `src/silisocs/environments/gm/components/`
 
 ### What Developers Commonly Customize
 

@@ -13,7 +13,7 @@ persona_pipeline:
   classes:
     user:
       count: 6
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       sim_role_name: user
       data:
         source: inline

@@ -20,7 +20,7 @@ persona_pipeline:
   classes:
     voter:
       count: 497
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       sim_role_name: voter
       data:
         source: hf_dataset
@@ -35,7 +35,7 @@ persona_pipeline:
       specific_memories_field: specific_memories
     candidate:
       count: 2
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       sim_role_name: candidate
       data:
         source: config_path
@@ -50,7 +50,7 @@ persona_pipeline:
       - Candidates are actively campaigning in the Storhampton election.
     news_account:
       count: 1
-      prefab_module: mastodon_sim.agents.entity
+      prefab_module: silisocs.agents.entity
       sim_role_name: news_account
       data:
         source: config_path

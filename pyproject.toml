@@ -3,7 +3,7 @@ requires = ["setuptools>=69.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mastodon-sim"
+name = "silisocs"
 version = "0.1.0"
 description = "Generative Agent simulation of a Mastodon social network"
 readme = "README.md"
@@ -56,13 +56,13 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/social-sandbox/mastodon-sim"
+Repository = "https://github.com/social-sandbox/silisocs"
 
 [project.scripts]
-mastodon-sim = "mastodon_sim.runtime.runner:main"
+silisocs = "silisocs.runtime.runner:cli_main"
 
 [project.entry-points."hydra_plugins"]
-mastodon_sim = "hydra_plugins.mastodon_sim_scenario_plugin:ScenarioSearchPathPlugin"
+silisocs = "hydra_plugins.silisocs_scenario_plugin:ScenarioSearchPathPlugin"
 
 [dependency-groups]
 test = [
@@ -101,10 +101,10 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["mastodon_sim*", "hydra_plugins*"]
+include = ["silisocs*", "hydra_plugins*"]
 
 [tool.setuptools.package-data]
-mastodon_sim = ["conf/**/*.yaml"]
+silisocs = ["conf/**/*.yaml"]
 
 [tool.uv]
 default-groups = ["test"]
@@ -125,7 +125,7 @@ skip_covered = true
 branch = true
 command_line = "--module pytest -m 'not llm_e2e'"
 data_file = "reports/.coverage"
-source = ["src/mastodon_sim"]
+source = ["src/silisocs"]
 
 [tool.coverage.xml]  # https://coverage.readthedocs.io/en/latest/config.html#xml
 output = "reports/coverage.xml"
@@ -181,7 +181,7 @@ convention = "numpy"
         --host $host \
         --port $port \
         --reload \
-        mastodon_sim.api:app
+        silisocs.api:app
     } else {
       gunicorn \
         --access-logfile - \
@@ -193,7 +193,7 @@ convention = "numpy"
         --worker-class uvicorn.workers.UvicornWorker \
         --worker-tmp-dir /dev/shm \
         --workers 2 \
-        mastodon_sim.api:app
+        silisocs.api:app
     } fi
     """
 
@@ -221,7 +221,7 @@ convention = "numpy"
     pdoc
       --docformat $docformat
       --output-directory $outputdirectory
-      mastodon_sim
+      silisocs
     """
 
     [[tool.poe.tasks.docs.args]]
