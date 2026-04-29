@@ -40,7 +40,7 @@ def default_gm_module_path(cfg: DictConfig, mode: str) -> str:
 
 def build_engine(cfg: DictConfig):
     """Build runtime engine from configured preset."""
-    engine_cfg = getattr(cfg.sim, "engine", object())
+    engine_cfg = getattr(cfg.simulator, "engine", object())
     engine_preset = str(getattr(engine_cfg, "preset", "base") or "base")
     if engine_preset == "flow":
         return FlowRuntimeEngine()

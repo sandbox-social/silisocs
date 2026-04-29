@@ -1,5 +1,10 @@
 scenario_name: ai_conference
+agent_situation_name: default
 jobname_format: AIConf_N${sim.num_agents}_T${sim.num_steps}_${sim.run_name}
+num_agents: 9
+num_steps: 8
+seed: 42
+run_name: ai_conference
 setting:
   name: NeuraTech Summit 2025
   background:
@@ -41,24 +46,3 @@ event:
     and whether bridge characters transmit ideas across the divide.
 
     '
-num_agents: 9
-num_steps: 8
-seed: 42
-run_name: ai_conference
-memory_backend: list
-write_html_log: false
-action_mode: generic
-tool_calling:
-  mode: multi
-engine:
-  preset: base
-  action_loop:
-    built_in: open_ended
-    params:
-      max_actions: 10
-      finished_action_signal: FINISHED
-      done_token: FINISHED
-  flow_routing:
-    flow_order:
-    - fixed_pre
-    - default

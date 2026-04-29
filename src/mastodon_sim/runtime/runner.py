@@ -119,8 +119,8 @@ def _collect_declared_flow_tags(cfg: DictConfig) -> set[str]:
     """Collect flow tags declared at class level in the scenario config."""
     declared: set[str] = set()
     classes_cfg = (
-        getattr(getattr(cfg.agent, "persona_pipeline", object()), "classes", None)
-        if hasattr(cfg, "agent")
+        getattr(getattr(cfg.agent_situation, "persona_pipeline", object()), "classes", None)
+        if hasattr(cfg, "agent_situation")
         else None
     )
     if not isinstance(classes_cfg, Mapping):
@@ -143,7 +143,7 @@ def _build_action_prompt(
     """Build the complete action prompt payload at runner startup."""
     from mastodon_sim.runtime.action_prompts import build_action_prompt_with_app_instance
 
-    action_mode = str(getattr(cfg.sim, "action_mode", "custom") or "custom").strip().lower()
+    action_mode = str(getattr(cfg.simulator, "action_mode", "custom") or "custom").strip().lower()
     # Generic prompts are built by game masters once backend app instances are available.
     if action_mode == "generic":
         return ""
@@ -343,16 +343,18 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
     """
     # Build shared memories. Class-pipeline scenarios may define defaults under
     # persona_pipeline instead of top-level shared_memories.
-    scenario_shared = OmegaConf.select(cfg, "agent.shared_memories")
+    scenario_shared = OmegaConf.select(cfg, "agent_situation.shared_memories")
     if scenario_shared is None:
-        scenario_shared = OmegaConf.select(cfg, "agent.persona_pipeline.defaults.shared_memories")
+        scenario_shared = OmegaConf.select(
+            cfg, "agent_situation.persona_pipeline.defaults.shared_memories"
+        )
     shared_memories = list(scenario_shared or []) + [
         getattr(_env_cfg(cfg), "usage_instructions", "")
     ]
     processing_mode_raw = (
-        cfg.agent.persona_pipeline.processing_mode
-        if hasattr(cfg.agent, "persona_pipeline")
-        and hasattr(cfg.agent.persona_pipeline, "processing_mode")
+        cfg.agent_situation.persona_pipeline.processing_mode
+        if hasattr(cfg.agent_situation, "persona_pipeline")
+        and hasattr(cfg.agent_situation.persona_pipeline, "processing_mode")
         else "formative"
     )
     processing_mode = str(processing_mode_raw).strip().lower()
@@ -569,16 +571,16 @@ def _build_legacy_scenario_view(cfg: DictConfig) -> DictConfig:
         "social_network": OmegaConf.select(cfg, "env.social_network")
         or OmegaConf.select(cfg, "sim.social_network")
         or {},
-        "persona_pipeline": OmegaConf.select(cfg, "agent.persona_pipeline") or {},
-        "shared_memories": OmegaConf.select(cfg, "agent.shared_memories") or [],
-        "initial_observations": OmegaConf.select(cfg, "agent.initial_observations") or [],
+        "persona_pipeline": OmegaConf.select(cfg, "agent_situation.persona_pipeline") or {},
+        "shared_memories": OmegaConf.select(cfg, "agent_situation.shared_memories") or [],
+        "initial_observations": OmegaConf.select(cfg, "agent_situation.initial_observations") or [],
         "probes": OmegaConf.select(cfg, "evals.probes")
         or OmegaConf.select(cfg, "evaluations.probes")
         or {},
         "seed_posts": OmegaConf.select(cfg, "env.seed_posts")
         or OmegaConf.select(cfg, "sim.seed_posts")
         or {},
-        "fixed_action_sets": OmegaConf.select(cfg, "agent.fixed_action_sets")
+        "fixed_action_sets": OmegaConf.select(cfg, "agent_situation.fixed_action_sets")
         or OmegaConf.select(cfg, "sim.fixed_action_sets")
         or {},
         "candidates": OmegaConf.select(cfg, "env.candidates")
@@ -600,14 +602,17 @@ def _merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
     if not paths_csv:
         return cfg
 
+    # Disable struct mode so scenario overrides can introduce new keys not in the base schema.
+    OmegaConf.set_struct(cfg, False)
     merged_cfg: DictConfig = cfg
     for raw_dir in [p for p in paths_csv.split(":") if p]:
         conf_dir = Path(raw_dir)
         for group, aliases in (
-            ("agent", ("agent",)),
             ("sim", ("sim",)),
             ("env", ("env", "environment")),
             ("evals", ("evals", "evaluations")),
+            ("llm", ("llm",)),
+            ("simulator", ("simulator",)),
         ):
             for file_group in aliases:
                 file_path = conf_dir / f"{file_group}.yaml"
@@ -624,6 +629,22 @@ def _merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
                 )
                 break
 
+        # Merge agent_situation from subdirectory based on agent_situation_name
+        agent_situation_name = OmegaConf.select(
+            merged_cfg, "sim.agent_situation_name", default="default"
+        )
+        for sit_name in [agent_situation_name, "default"]:
+            sit_path = conf_dir / "agent_situation" / f"{sit_name}.yaml"
+            if sit_path.is_file():
+                loaded = yaml.safe_load(sit_path.read_text(encoding="utf-8")) or {}
+                if not isinstance(loaded, dict):
+                    raise ValueError(f"Expected mapping in {sit_path}, got {type(loaded).__name__}")
+                merged_cfg = cast(
+                    DictConfig,
+                    OmegaConf.merge(merged_cfg, OmegaConf.create({"agent_situation": loaded})),
+                )
+                break
+
     return merged_cfg
 
 
@@ -632,7 +653,7 @@ def _merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
 # ============================================================================
 
 
-@hydra.main(version_base=None, config_path=str(CONF_DIR), config_name="config")
+@hydra.main(version_base=None, config_path=str(CONF_DIR), config_name="experiment")
 def main(cfg: DictConfig):
     """
     Main experiment function.
@@ -756,7 +777,7 @@ def main(cfg: DictConfig):
     metrics.set_meta("num_steps", cfg.sim.num_steps)
     metrics.set_meta("seed", SEED)
     metrics.set_meta("scenario", cfg.sim.scenario_name)
-    metrics.set_meta("llm_name", cfg.sim.llm_name)
+    metrics.set_meta("llm_name", cfg.llm.name)
     metrics.set_meta("output_dir", output_dir)
     metrics.set_meta("agent_names", [inst.params["name"] for inst in agent_configs])
 
@@ -797,10 +818,10 @@ def main(cfg: DictConfig):
     ConfigStore.set_config(cfg)
 
     prompts_file = os.path.join(output_dir, "prompts_and_responses.jsonl")
-    llm_api_base = getattr(cfg.sim, "llm_api_base", None) or None
-    llm_api_key = getattr(cfg.sim, "llm_api_key", None) or None
+    llm_api_base = getattr(cfg.llm, "api_base", None) or None
+    llm_api_key = getattr(cfg.llm, "api_key", None) or None
     # Build models map and entity->model mapping for all instances.
-    # If an instance doesn't specify a model name, default to `cfg.sim.llm_name`.
+    # If an instance doesn't specify a model name, default to `cfg.llm.name`.
     t0 = time.time()
     with metrics.phase("model_creation"):
         models: dict[str, object] = {}
@@ -812,7 +833,7 @@ def main(cfg: DictConfig):
                 model_name = None
 
             if not model_name:
-                model_name = cfg.sim.llm_name
+                model_name = cfg.llm.name
 
             # map entity name to the model name
             entity_to_model[instance.params["name"]] = model_name
@@ -823,36 +844,36 @@ def main(cfg: DictConfig):
                     model_name,
                     prompts_file,
                     True,
-                    disable_language_model=getattr(cfg.sim, "disable_language_model", False),
+                    disable_language_model=getattr(cfg.llm, "disabled", False),
                     api_base=llm_api_base,
                     api_key=llm_api_key,
-                    temperature=float(getattr(cfg.sim, "llm_temperature", 0.5)),
+                    temperature=float(getattr(cfg.llm, "temperature", 0.5)),
                 )
 
         # Use the configured default model for compatibility (should be present in `models`).
-        model = models.get(cfg.sim.llm_name)
+        model = models.get(cfg.llm.name)
         if model is None:
             model = select_large_language_model(
-                cfg.sim.llm_name,
+                cfg.llm.name,
                 prompts_file,
                 True,
-                disable_language_model=getattr(cfg.sim, "disable_language_model", False),
+                disable_language_model=getattr(cfg.llm, "disabled", False),
                 api_base=llm_api_base,
                 api_key=llm_api_key,
-                temperature=float(getattr(cfg.sim, "llm_temperature", 0.5)),
+                temperature=float(getattr(cfg.llm, "temperature", 0.5)),
             )
     _log_startup_phase("model_creation", time.time() - t0, f"unique_models={len(models)}")
 
-    memory_backend = str(getattr(cfg.sim, "memory_backend", "associative")).strip().lower()
+    memory_backend = str(getattr(cfg.simulator, "memory_backend", "associative")).strip().lower()
     t0 = time.time()
     if memory_backend == "list":
         embedder = None
         _log_startup_phase("embedder_creation", time.time() - t0, "skipped_for_memory_backend=list")
     else:
         with metrics.phase("embedder_creation"):
-            embedder = get_sentence_encoder(cfg.sim.sentence_encoder)
+            embedder = get_sentence_encoder(cfg.simulator.sentence_encoder)
         _log_startup_phase(
-            "embedder_creation", time.time() - t0, f"encoder={cfg.sim.sentence_encoder}"
+            "embedder_creation", time.time() - t0, f"encoder={cfg.simulator.sentence_encoder}"
         )
 
     sim_engine = build_engine(cfg)
@@ -869,7 +890,7 @@ def main(cfg: DictConfig):
         )
     _log_startup_phase("simulation_construction", time.time() - t0)
 
-    checkpoint_cfg = getattr(cfg.sim, "checkpoint", None)
+    checkpoint_cfg = getattr(cfg.simulator, "checkpoint", None)
     resume_file = None
     resume_step_override = None
     if checkpoint_cfg is not None:
@@ -903,7 +924,7 @@ def main(cfg: DictConfig):
             start_step,
         )
 
-    write_html_log = bool(getattr(cfg.sim, "write_html_log", True))
+    write_html_log = bool(getattr(cfg.evals, "write_html_log", True))
     checkpoint_output_dir = os.path.join(output_dir, "checkpoints")
     completion_status = "success"
     completion_error = ""

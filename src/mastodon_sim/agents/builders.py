@@ -624,7 +624,11 @@ class BaseAgentBuilder:
             return []
         if raw.is_absolute():
             return [raw]
-        scenario = str(self.config.scenario_name)
+        scenario = str(
+            OmegaConf.select(self.config, "scenario_name")
+            or getattr(getattr(self.config, "sim", None), "scenario_name", None)
+            or "default"
+        )
         pkg_scenario = _PACKAGE_ROOT / "scenarios" / scenario
         top_scenario = _PROJECT_ROOT / "scenarios" / scenario
         subdirs = ["", "input", "input/personas", "input/news_data"]

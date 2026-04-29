@@ -1,4 +1,5 @@
 scenario_name: election
+agent_situation_name: default
 jobname_format: N${sim.num_agents}_T${sim.num_steps}_${experiment_name}_${sim.run_name}
 setting:
   name: Storhampton

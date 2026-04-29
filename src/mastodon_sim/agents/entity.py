@@ -63,7 +63,7 @@ class Entity(prefab_lib.Prefab):
 
         instructions = agent_components.instructions.Instructions(agent_name=agent_name)
         cfg = ConfigStore.get_config()
-        instructions._state = cfg.sim.roleplaying_instructions.format(name=agent_name)
+        instructions._state = cfg.simulator.roleplaying_instructions.format(name=agent_name)
 
         observation_to_memory = agent_components.observation.ObservationToMemory(
             memory_component_key=agent_components.memory.DEFAULT_MEMORY_COMPONENT_KEY

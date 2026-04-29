@@ -2,27 +2,8 @@ num_agents: 20
 num_steps: 15
 seed: 11
 run_name: election_recsys_engagement
-memory_backend: list
-write_html_log: false
-llm_name: qwen3.5-4b
-llm_api_base: http://localhost:30000/v1
-llm_api_key: test-key
-action_mode: generic
-tool_calling:
-  mode: multi
-engine:
-  preset: base
-  action_loop:
-    built_in: open_ended
-    params:
-      max_actions: 20
-      finished_action_signal: FINISHED
-      done_token: FINISHED
-  flow_routing:
-    flow_order:
-    - fixed_pre
-    - default
 scenario_name: election_recsys_engagement
+agent_situation_name: default
 jobname_format: ElectionRecsys_N${sim.num_agents}_T${sim.num_steps}_${experiment_name}_${sim.run_name}
 setting:
   name: Storhampton

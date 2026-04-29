@@ -94,10 +94,10 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
                 dict[str, Any],
                 OmegaConf.to_container(env_gm_cfg.components, resolve=True),
             )
-        elif hasattr(cfg.sim, "gm") and getattr(cfg.sim.gm, "components", None) is not None:
+        elif hasattr(cfg.env, "gm") and getattr(cfg.env.gm, "components", None) is not None:
             gm_components_cfg = cast(
                 dict[str, Any],
-                OmegaConf.to_container(cfg.sim.gm.components, resolve=True),
+                OmegaConf.to_container(cfg.env.gm.components, resolve=True),
             )
 
         user_data = self.params["sm_user_data"]
@@ -116,11 +116,11 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
         if not resolve_slot:
             resolve_slot = {
                 "built_in": action_mode_to_resolve_map.get(
-                    getattr(cfg.sim, "action_mode", "custom"), "parsed_action"
+                    getattr(cfg.simulator, "action_mode", "custom"), "parsed_action"
                 ),
             }
         tool_calling_mode = (
-            str(OmegaConf.select(cfg, "sim.tool_calling.mode", default="none") or "none")
+            str(OmegaConf.select(cfg, "simulator.tool_calling.mode", default="none") or "none")
             .strip()
             .lower()
         )
@@ -129,8 +129,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
         platform_type = getattr(_env_cfg(cfg), "platform_type", "twitter_like")
 
         timeline_mode = str(
-            getattr(_env_cfg(cfg), "timeline_mode", None)
-            or getattr(cfg.sim, "timeline_mode", "follower_chronological")
+            getattr(_env_cfg(cfg), "timeline_mode", None) or "follower_chronological"
         )
         supported_timeline_modes = {
             "twitter_like": {
@@ -162,13 +161,13 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
                 if isinstance(_env_cfg(cfg).timeline_config, dict)
                 else {}
             )
-        elif hasattr(cfg.sim, "timeline_config"):
+        elif hasattr(cfg.env, "timeline_config"):
             timeline_config = (
                 cast(
                     dict[str, Any],
-                    OmegaConf.to_container(cfg.sim.timeline_config, resolve=True),
+                    OmegaConf.to_container(cfg.env.timeline_config, resolve=True),
                 )
-                if isinstance(cfg.sim.timeline_config, dict)
+                if isinstance(cfg.env.timeline_config, dict)
                 else {}
             )
 
@@ -187,8 +186,6 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
         )
 
         enabled_actions_cfg = getattr(_env_cfg(cfg), "enabled_actions", None)
-        if enabled_actions_cfg is None:
-            enabled_actions_cfg = getattr(cfg.sim, "enabled_actions", None)
         if enabled_actions_cfg is not None:
             if isinstance(enabled_actions_cfg, Sequence) and not isinstance(
                 enabled_actions_cfg, (str, bytes)
@@ -198,9 +195,11 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
                 enabled_actions = [str(enabled_actions_cfg).strip()]
 
             action_loop_built_in = ""
-            if hasattr(cfg.sim, "engine") and getattr(cfg.sim.engine, "action_loop", None):
+            if hasattr(cfg.simulator, "engine") and getattr(
+                cfg.simulator.engine, "action_loop", None
+            ):
                 action_loop_built_in = str(
-                    getattr(cfg.sim.engine.action_loop, "built_in", "")
+                    getattr(cfg.simulator.engine.action_loop, "built_in", "")
                 ).strip()
             enabled_actions_upper = {name.upper() for name in enabled_actions if name}
             if action_loop_built_in == "open_ended" and "FINISHED" not in enabled_actions_upper:
@@ -208,7 +207,9 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
 
             sm_app.set_enabled_actions(enabled_actions)
 
-        action_mode = str(getattr(cfg.sim, "action_mode", "custom") or "custom").strip().lower()
+        action_mode = (
+            str(getattr(cfg.simulator, "action_mode", "custom") or "custom").strip().lower()
+        )
         if action_mode == "generic":
             call_to_sm_action = self.build_generic_prompt(
                 cfg=cfg,
@@ -340,7 +341,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
             component_order=list(components.keys()),
             call_to_action_str=call_to_sm_action,
             activity_transition_rates=activity_rates,
-            action_mode=getattr(cfg.sim, "action_mode", "custom"),
+            action_mode=getattr(cfg.simulator, "action_mode", "custom"),
             enable_tool_calling=enable_tool_calling,
         )
 

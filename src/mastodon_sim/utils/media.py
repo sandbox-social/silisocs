@@ -438,7 +438,9 @@ class GptLanguageModel(language_model.LanguageModel):
         """Resolve tool-calling mode from runtime config when available."""
         try:
             cfg = ConfigStore.get_config()
-            mode = str(OmegaConf.select(cfg, "sim.tool_calling.mode", default="single") or "single")
+            mode = str(
+                OmegaConf.select(cfg, "simulator.tool_calling.mode", default="single") or "single"
+            )
         except Exception:
             mode = "single"
         normalized = mode.strip().lower()

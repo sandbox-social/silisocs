@@ -42,7 +42,7 @@ def prompt_additions_from_cfg(cfg: Any) -> PromptAdditions:
     - output style is included for non-tool-calling modes
     - tool schemas/markers are injected by GM act component when tool-calling is enabled
     """
-    value = OmegaConf.select(cfg, "sim.prompt_additions.action_count_guidance", default=True)
+    value = OmegaConf.select(cfg, "simulator.prompt_additions.action_count_guidance", default=True)
     if isinstance(value, bool):
         action_count_guidance = value
     elif isinstance(value, Mapping):

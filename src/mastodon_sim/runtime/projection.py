@@ -24,29 +24,27 @@ class RuntimeProjection:
     def from_cfg(cls, cfg: DictConfig) -> RuntimeProjection:
         """Build a validated runtime projection from composed config."""
         action_mode = str(
-            getattr(getattr(cfg, "sim", object()), "action_mode", "custom") or "custom"
+            getattr(getattr(cfg, "simulator", object()), "action_mode", "custom") or "custom"
         )
         action_mode = action_mode.strip().lower()
         if action_mode not in _ACTION_MODES:
             raise ValueError(
-                f"Unsupported sim.action_mode='{action_mode}'. Allowed values: custom, generic."
+                f"Unsupported simulator.action_mode='{action_mode}'. Allowed values: custom, generic."
             )
 
         tool_calling_mode = (
-            str(OmegaConf.select(cfg, "sim.tool_calling.mode", default="none") or "none")
+            str(OmegaConf.select(cfg, "simulator.tool_calling.mode", default="none") or "none")
             .strip()
             .lower()
         )
         if tool_calling_mode not in _TOOL_CALLING_MODES:
             raise ValueError(
-                f"Unsupported sim.tool_calling.mode='{tool_calling_mode}'. "
+                f"Unsupported simulator.tool_calling.mode='{tool_calling_mode}'. "
                 "Allowed values: none, single, multi."
             )
 
         resolve_built_in = str(
-            OmegaConf.select(cfg, "env.gm.components.resolve.built_in")
-            or OmegaConf.select(cfg, "sim.gm.components.resolve.built_in")
-            or "parsed_action"
+            OmegaConf.select(cfg, "env.gm.components.resolve.built_in") or "parsed_action"
         ).strip()
         resolve_uses_tool_calling = resolve_built_in == "tool_calling"
         mode_uses_tool_calling = tool_calling_mode != "none"
@@ -54,17 +52,15 @@ class RuntimeProjection:
             raise ValueError(
                 "Tool-calling mode must match resolver selection: "
                 "set env.gm.components.resolve.built_in=tool_calling when "
-                "sim.tool_calling.mode is single/multi, or set "
-                "sim.tool_calling.mode=none when resolver is not tool_calling."
+                "simulator.tool_calling.mode is single/multi, or set "
+                "simulator.tool_calling.mode=none when resolver is not tool_calling."
             )
 
-        gm_preset = str(
-            OmegaConf.select(cfg, "env.gm.preset")
-            or OmegaConf.select(cfg, "sim.gm.preset")
-            or "base"
-        )
+        gm_preset = str(OmegaConf.select(cfg, "env.gm.preset") or "base")
         engine_preset = str(
-            getattr(getattr(getattr(cfg, "sim", object()), "engine", object()), "preset", "base")
+            getattr(
+                getattr(getattr(cfg, "simulator", object()), "engine", object()), "preset", "base"
+            )
             or "base"
         )
 

@@ -48,5 +48,5 @@ def _resolve_builder_class(cfg: DictConfig) -> type[Any]:
 def build_agent_configs(cfg: DictConfig):
     """Build agent configs from scenario-configured builder class."""
     builder_cls = _resolve_builder_class(cfg)
-    builder = builder_cls(cfg.agent)
+    builder = builder_cls(cfg.agent_situation)
     return builder.build_agents()

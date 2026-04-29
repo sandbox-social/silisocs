@@ -1,0 +1,14 @@
+memory_backend: list
+action_mode: generic
+tool_calling:
+  mode: multi
+engine:
+  preset: base
+  action_loop:
+    built_in: open_ended
+    params:
+      max_actions: 5
+      done_token: FINISHED
+  flow_routing:
+    flow_order:
+    - default

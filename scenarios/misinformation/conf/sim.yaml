@@ -2,22 +2,8 @@ num_agents: 6
 num_steps: 10
 seed: 7
 run_name: misinformation
-memory_backend: list
-write_html_log: false
-action_mode: generic
-tool_calling:
-  mode: multi
-engine:
-  preset: base
-  action_loop:
-    built_in: open_ended
-    params:
-      max_actions: 5
-      done_token: FINISHED
-  flow_routing:
-    flow_order:
-    - default
 scenario_name: misinformation
+agent_situation_name: default
 jobname_format: Misinfo_N${sim.num_agents}_T${sim.num_steps}_${sim.run_name}
 setting:
   name: Social Media Platform

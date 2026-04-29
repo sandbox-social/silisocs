@@ -229,9 +229,11 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
                 enabled_actions = [str(enabled_actions_cfg).strip()]
 
             action_loop_built_in = ""
-            if hasattr(cfg.sim, "engine") and getattr(cfg.sim.engine, "action_loop", None):
+            if hasattr(cfg.simulator, "engine") and getattr(
+                cfg.simulator.engine, "action_loop", None
+            ):
                 action_loop_built_in = str(
-                    getattr(cfg.sim.engine.action_loop, "built_in", "")
+                    getattr(cfg.simulator.engine.action_loop, "built_in", "")
                 ).strip()
             enabled_actions_upper = {name.upper() for name in enabled_actions if name}
             if action_loop_built_in == "open_ended" and "FINISHED" not in enabled_actions_upper:
@@ -294,11 +296,11 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
                     resolve=True,
                 ),
             )
-        elif hasattr(cfg.sim, "gm") and getattr(cfg.sim.gm, "components", None) is not None:
+        elif hasattr(cfg.env, "gm") and getattr(cfg.env.gm, "components", None) is not None:
             gm_components_cfg = cast(
                 dict[str, Any],
                 OmegaConf.to_container(
-                    cfg.sim.gm.components,
+                    cfg.env.gm.components,
                     resolve=True,
                 ),
             )
@@ -347,11 +349,13 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
 
         # Determine if tool-calling is enabled from explicit mode config.
         tool_calling_mode = (
-            str(OmegaConf.select(cfg, "sim.tool_calling.mode", default="none") or "none")
+            str(OmegaConf.select(cfg, "simulator.tool_calling.mode", default="none") or "none")
             .strip()
             .lower()
         )
-        action_mode = str(getattr(cfg.sim, "action_mode", "custom") or "custom").strip().lower()
+        action_mode = (
+            str(getattr(cfg.simulator, "action_mode", "custom") or "custom").strip().lower()
+        )
         if action_mode == "generic":
             call_to_sm_action = self.build_generic_prompt(
                 cfg=cfg,
@@ -415,13 +419,13 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
                 if isinstance(_env_cfg(cfg).timeline_config, dict)
                 else {}
             )
-        elif hasattr(cfg.sim, "timeline_config"):
+        elif hasattr(cfg.env, "timeline_config"):
             timeline_config = (
                 cast(
                     dict[str, Any],
-                    OmegaConf.to_container(cfg.sim.timeline_config, resolve=True),
+                    OmegaConf.to_container(cfg.env.timeline_config, resolve=True),
                 )
-                if isinstance(cfg.sim.timeline_config, dict)
+                if isinstance(cfg.env.timeline_config, dict)
                 else {}
             )
 

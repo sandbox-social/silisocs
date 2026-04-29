@@ -506,8 +506,10 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
         # logging setup
         cfg = ConfigStore.get_config()
         engine_cfg = {}
-        if hasattr(cfg.sim, "engine") and cfg.sim.engine is not None:
-            engine_cfg = cast(dict[str, Any], OmegaConf.to_container(cfg.sim.engine, resolve=True))
+        if hasattr(cfg.simulator, "engine") and cfg.simulator.engine is not None:
+            engine_cfg = cast(
+                dict[str, Any], OmegaConf.to_container(cfg.simulator.engine, resolve=True)
+            )
         default_action_loop_policy = build_action_loop_policy(engine_cfg.get("action_loop"))
         current_action_loop_policy = default_action_loop_policy
         flow_action_loop_policies = self._build_flow_action_loop_policies(

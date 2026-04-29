@@ -4,7 +4,9 @@
 #   python -m mastodon_sim.runtime.runner sim=oasis  # Alternative (now same as base)
 
 defaults:
-  - agent: base
+  - agent_situation: base
+  - llm: base
+  - simulator: base
   - sim: base
   - env: twitter_like
   - evals: base
@@ -18,4 +20,3 @@ hydra:
   output_subdir: configs/${sim.jobname_format}
 
 experiment_name: independent
-

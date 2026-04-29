@@ -12,7 +12,7 @@ from omegaconf import OmegaConf
 
 def resolve_configured_worker_cap(cfg: Any) -> int | None:
     """Read optional worker cap from config. `null` keeps existing behavior."""
-    raw_cap = OmegaConf.select(cfg, "sim.max_concurrent_actions")
+    raw_cap = OmegaConf.select(cfg, "simulator.max_concurrent_actions")
     if raw_cap is None:
         return None
 
@@ -20,11 +20,11 @@ def resolve_configured_worker_cap(cfg: Any) -> int | None:
         cap = int(raw_cap)
     except (TypeError, ValueError) as exc:
         raise ValueError(
-            f"sim.max_concurrent_actions must be an integer or null, got: {raw_cap!r}"
+            f"simulator.max_concurrent_actions must be an integer or null, got: {raw_cap!r}"
         ) from exc
 
     if cap <= 0:
-        raise ValueError(f"sim.max_concurrent_actions must be > 0, got: {cap}")
+        raise ValueError(f"simulator.max_concurrent_actions must be > 0, got: {cap}")
     return cap
 
 
