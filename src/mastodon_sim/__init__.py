@@ -7,7 +7,7 @@ def __getattr__(name: str):
 
         return ConfigStore
     if name == "Simulation":
-        from mastodon_sim.runtime.simulation import Simulation
+        from mastodon_sim.simulator.simulation import Simulation
 
         return Simulation
     if name in ("PhoneApp", "SocialMediaApp", "app_action"):

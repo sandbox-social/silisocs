@@ -18,8 +18,8 @@ from typing import Any
 from concordia.typing import entity as entity_lib
 from typing_extensions import override
 
-from mastodon_sim.engines.base_engines import FlowRuntimeEngine
 from mastodon_sim.runtime.config import ConfigStore
+from mastodon_sim.simulator.engines.base_engines import FlowRuntimeEngine
 
 _LOGGER = logging.getLogger(__name__)
 

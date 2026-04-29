@@ -56,7 +56,7 @@ from mastodon_sim.runtime.dataclasses import (
 )
 from mastodon_sim.runtime.factories import build_engine, default_gm_filename, default_gm_module_path
 from mastodon_sim.runtime.projection import RuntimeProjection
-from mastodon_sim.runtime.simulation import Simulation
+from mastodon_sim.simulator.simulation import Simulation
 from mastodon_sim.utils.media import select_large_language_model
 from mastodon_sim.utils.misc import (
     SimMetricsCollector,

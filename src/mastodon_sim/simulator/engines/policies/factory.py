@@ -7,12 +7,12 @@ import inspect
 from collections.abc import Mapping
 from typing import Any
 
-from mastodon_sim.engines.policies.action_chunk import (
+from mastodon_sim.simulator.engines.policies.action_chunk import (
     FixedCountActionChunkPolicy,
     OpenEndedActionChunkPolicy,
     SingleActionChunkPolicy,
 )
-from mastodon_sim.engines.policies.probe_schedule import (
+from mastodon_sim.simulator.engines.policies.probe_schedule import (
     DisabledProbeSchedulePolicy,
     FixedIntervalProbeSchedulePolicy,
     StepProbeSchedulePolicy,

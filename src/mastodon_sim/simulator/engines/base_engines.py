@@ -19,10 +19,6 @@ from concordia.typing import entity as entity_lib
 from omegaconf import DictConfig, OmegaConf
 from typing_extensions import override
 
-from mastodon_sim.engines.policies.factory import (
-    build_action_loop_policy,
-    build_probe_schedule_policy,
-)
 from mastodon_sim.evaluations.probes.deployment import ProbeDeploymentOrchestrator
 from mastodon_sim.runtime.config import ConfigStore
 from mastodon_sim.runtime.telemetry import (
@@ -35,6 +31,10 @@ from mastodon_sim.runtime.telemetry import (
     set_model_retry_phase,
     summarize_retry_delta,
     update_adaptive_worker_cap,
+)
+from mastodon_sim.simulator.engines.policies.factory import (
+    build_action_loop_policy,
+    build_probe_schedule_policy,
 )
 from mastodon_sim.utils.misc import EventLogger, SimMetricsCollector
 
