@@ -61,8 +61,6 @@ Repository = "https://github.com/social-sandbox/silisocs"
 [project.scripts]
 silisocs = "silisocs.runtime.runner:cli_main"
 
-[project.entry-points."hydra_plugins"]
-silisocs = "hydra_plugins.silisocs_scenario_plugin:ScenarioSearchPathPlugin"
 
 [dependency-groups]
 test = [
@@ -101,7 +99,7 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["silisocs*", "hydra_plugins*"]
+include = ["silisocs*"]
 
 [tool.setuptools.package-data]
 silisocs = ["conf/**/*.yaml"]

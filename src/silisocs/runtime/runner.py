@@ -1012,7 +1012,7 @@ def _inject_external_config_path() -> None:
     for overlay in overlay_dirs:
         print(f"Overlay config path: {overlay}")
 
-    # Primary dir first, then overlays — plugin reverses priority by prepending.
+    # Primary dir first, then overlays (overlays get higher priority via prepend order).
     merge_dirs: list[Path] = []
     if external_dir is not None:
         merge_dirs.append(external_dir)
@@ -1020,9 +1020,32 @@ def _inject_external_config_path() -> None:
     os.environ["SILISOCS_EXTERNAL_CONFIG_DIRS"] = ":".join(str(path) for path in merge_dirs)
 
 
+def _register_search_path_plugin() -> None:
+    """Register the scenario search-path plugin directly with Hydra's plugin registry.
+
+    This avoids needing a separate ``hydra_plugins`` namespace package.
+    Must be called before ``@hydra.main`` initialises the plugin registry.
+    """
+    import os as _os
+
+    from hydra.core.plugins import Plugins
+    from hydra.plugins.search_path_plugin import SearchPathPlugin
+
+    class _ScenarioSearchPathPlugin(SearchPathPlugin):
+        def manipulate_search_path(self, search_path: Any) -> None:  # type: ignore[override]
+            paths_csv = _os.environ.get("SILISOCS_EXTERNAL_CONFIG_DIRS", "").strip()
+            if not paths_csv:
+                return
+            for raw_dir in [p for p in paths_csv.split(":") if p]:
+                search_path.prepend("file", raw_dir)
+
+    Plugins.instance().register(_ScenarioSearchPathPlugin)
+
+
 def cli_main() -> None:
     """CLI entry point: preprocess --config-path flags then run Hydra main."""
     _inject_external_config_path()
+    _register_search_path_plugin()
     main()
 
 
