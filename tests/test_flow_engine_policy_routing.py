@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from silisocs.engines.base_engines import (
+from silisocs.simulation_engines.base_engines import (
     BaseRuntimeEngine,
     FlowRuntimeEngine,
 )
-from silisocs.engines.policies.action_chunk import (
+from silisocs.simulation_engines.policies.action_chunk import (
     FixedCountActionChunkPolicy,
     SingleActionChunkPolicy,
 )
