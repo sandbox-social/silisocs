@@ -1,0 +1,143 @@
+# @package env
+
+# src/conf/env/mastodon.yaml
+# Mastodon social media platform configuration
+
+# Platform type for the app factory
+platform_type: mastodon
+app_module_path: silisocs.environments.backends.mastodon
+
+# Server configuration
+use_server: true
+
+enabled_actions: null
+enable_gm_multi_flow: false
+timeline_posts: 10
+timeline_mode: follower_chronological
+timeline_config: {}
+observation_history: 100
+seed_posts: {}
+
+social_network:
+  activity_transition_rates:
+    user:
+      inactive_to_active: 0.3
+      active_to_inactive: 0.3
+  fully_connected_targets: []
+  base_followership_probability: 0.3
+  network_type: barabasi_albert
+  barabasi_albert_m: 10
+
+# Game master configuration
+gamemaster:
+  filename: social_media
+  name: mastodon_gm
+  sim_role:
+    name: social media game master
+    module_path: silisocs.environments.gm.game_master
+
+gm:
+  preset: base
+  components:
+    next_acting:
+      built_in: activity_probability
+      class_path: null
+      params:
+        active_probability: null
+        min_active_agents: 1
+    recommend:
+      built_in: recommendation_component
+      class_path: null
+      params:
+        default_recsys_type: null
+        update_every_n_steps: 1
+        lazy: true
+        max_posts: 10
+        user_context_recent_posts: 10
+        include_like_trace: true
+        like_trace_window: 10
+        like_trace_weight: 0.5
+        include_like_trace_in_context: false
+    observe:
+      built_in: timeline_every_turn
+      class_path: null
+      params:
+        recsys_type: null
+    resolve:
+      built_in: tool_calling
+      class_path: null
+      params: {}
+    initializer:
+      built_in: backend_default
+      class_path: null
+      params: {}
+
+gm_orchestration:
+  gms: []
+  flow_bindings:
+    flow_to_gm: {}
+    flow_to_gms: {}
+    gm_to_flows: {}
+
+# Platform instructions
+usage_instructions: |
+  Mastodon is a social media application.
+  To share content on Mastodon, users write a 'toot' (equivalent to a tweet or post).
+  Toots can be up to 500 characters long.
+  A user's home timeline shows toots from people they follow and boosted (reblogged) content.
+  Users can reply to toots, creating threaded conversations.
+  Users can like (favorite) toots to show appreciation or save them for later.
+  Users can boost (reblog) toots to share them with their followers.
+  Users can mention other users in their toots using their @username.
+  Follow other users to see their public and unlisted toots in their home timeline.
+  Users can unfollow users if they no longer wish to see their content.
+  A user's profile can be customized with a display name and bio.
+  A user can block other users to prevent them from seeing the user's content or interacting with them.
+  Unblocking a user reverses the effects of blocking.
+  Critically important: Operations such as liking, boosting, replying, etc. require a `toot_id`. To obtain a `toot_id`, you must have memory/knowledge of a real `toot_id`. If you don't know a `toot_id`, you can't perform actions that require it. `toot_id`'s can be retrieved using the `get_timeline` action.
+  - current_user is always the full display name (e.g. "Alice Smith").
+  - Only use real toot IDs from timeline/feed observations; do not fabricate IDs.
+  - For status/content fields, write in first person as the character.
+  - Omit optional parameters you do not want to use.
+
+# Action prompt template
+action_prompt: |
+  ## AVAILABLE ACTIONS
+  1. POST - Share new content by creating a new toot
+  2. REPLY - Engage existing content (positively or negatively) by responding to it (needs toot ID)
+  3. BOOST - Extend the reach of content by sharing someone's toot (needs ID)
+  4. LIKE - Show the world you appreciate content by liking a toot (needs ID)
+
+  ## INSTRUCTIONS
+  Determine what ONE action {name} would take next based on:
+  - Their character and values via self-perception and goal descriptions
+  - The current context and timeline
+  - Not repeating recent actions
+  If text-based, the text must reflect their posting style description.
+
+  [OUTPUT STYLE]
+
+# Output style: how to format the response (stripped when tool-calling is enabled)
+output_style: |
+  ## OUTPUT FORMAT
+  Answer: {name}
+  STEP 1: [Analyze {name}'s motivation based on their character]
+  STEP 2: [Consider which posts/actions align with {name}'s values]
+  STEP 3: [Determine the single most authentic action]
+
+  FINAL DECISION:
+  ACTION TYPE: [POST/REPLY/BOOST/LIKE]
+  TARGET ID: [Include toot ID if applicable]
+  CONTENT: [For posts/replies, exact text {name} would write]
+  REASONING: [Brief explanation of why this action fits {name}'s character]
+
+  ## EXAMPLE OUTPUT
+  STEP 1: {name} is motivated by her interest in educational initiatives and community engagement around the election.
+  STEP 2: Chris's post about community priorities resonates with {name}'s values. They hasn't interacted with this post yet.
+  STEP 3: Responding to Chris would allow {name} to engage meaningfully about community values.
+
+  FINAL DECISION:
+  ACTION TYPE: REPLY
+  TARGET ID: 114204813429886778
+  CONTENT: "I appreciate your focus on community priorities, Chris! As an educator, I believe our growth depends on strong educational foundations alongside economic development."
+  REASONING: This reply allows Emily to acknowledge community values while highlighting her educational perspective, which is authentic to her character.

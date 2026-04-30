@@ -77,4 +77,4 @@ repos:
         entry: mypy
         language: system
         pass_filenames: false
-        args: [src/mastodon_sim, tests]
+        args: [src/silisocs, tests]

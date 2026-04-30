@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from omegaconf import OmegaConf
 
-from mastodon_sim.evaluations.probes.deployment import ProbeDeploymentOrchestrator
+from silisocs.evaluations.probes.deployment import ProbeDeploymentOrchestrator
 
 
 class _DummyLogger:
@@ -32,9 +32,7 @@ def test_probe_orchestrator_default_schedule(monkeypatch) -> None:
             }
         )
 
-    monkeypatch.setattr(
-        "mastodon_sim.evaluations.probes.deployment.deploy_probes", _fake_deploy_probes
-    )
+    monkeypatch.setattr("silisocs.evaluations.probes.deployment.deploy_probes", _fake_deploy_probes)
 
     probes_cfg = OmegaConf.create(
         {
@@ -71,9 +69,7 @@ def test_probe_orchestrator_filters_and_cadence(monkeypatch) -> None:
     ):
         calls.append([agent._agent_name for agent in agents])
 
-    monkeypatch.setattr(
-        "mastodon_sim.evaluations.probes.deployment.deploy_probes", _fake_deploy_probes
-    )
+    monkeypatch.setattr("silisocs.evaluations.probes.deployment.deploy_probes", _fake_deploy_probes)
 
     probes_cfg = OmegaConf.create(
         {
@@ -119,9 +115,7 @@ def test_probe_orchestrator_supports_list_query_configs(monkeypatch) -> None:
             }
         )
 
-    monkeypatch.setattr(
-        "mastodon_sim.evaluations.probes.deployment.deploy_probes", _fake_deploy_probes
-    )
+    monkeypatch.setattr("silisocs.evaluations.probes.deployment.deploy_probes", _fake_deploy_probes)
 
     probes_cfg = OmegaConf.create(
         {

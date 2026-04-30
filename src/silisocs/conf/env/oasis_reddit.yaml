@@ -1,0 +1,52 @@
+# OASIS Reddit Platform Config
+# @package env
+
+defaults:
+  - reddit_like
+  - _self_
+
+platform_type: reddit_like
+app_module_path: silisocs.environments.backends.reddit_like.app
+use_server: false
+
+gamemaster:
+  filename: social_media
+  name: reddit_like_gm
+  sim_role:
+    name: social media game master
+    module_path: silisocs.environments.gm.game_master
+
+usage_instructions: |
+  # OASIS Reddit-like Platform
+
+  This is a Reddit-like social media platform supporting all OASIS-compatible actions.
+
+  Actions Available:
+  - POST: Create new posts
+  - UPVOTE/DOWNVOTE: Engage with posts
+  - COMMENT: Reply to posts
+  - COMMENT_UPVOTE/DOWNVOTE: Engage with comments
+  - FOLLOW/UNFOLLOW: Subscribe to users
+  - MUTE/UNMUTE: Hide content from users
+  - SEARCH: Find posts
+  - TRENDING: Get trending posts
+  - REPORT: Flag inappropriate content
+
+action_prompt: |
+  # Reddit-like Platform Actions
+
+  Available actions (use tool-calling format):
+  - create_post(title: str, content: str, subreddit: str) → {"success": bool, "post_id": int}
+  - like_post(post_id: int) → {"success": bool}
+  - unlike_post(post_id: int) → {"success": bool}
+  - dislike_post(post_id: int) → {"success": bool}
+  - undo_dislike_post(post_id: int) → {"success": bool}
+  - create_comment(post_id: int, content: str) → {"success": bool, "comment_id": int}
+  - follow_user(target_user: str) → {"success": bool}
+  - unfollow_user(target_user: str) → {"success": bool}
+  - mute_user(target_user: str) → {"success": bool}
+  - unmute_user(target_user: str) → {"success": bool}
+  - search_posts(query: str) → [posts...]
+  - get_trending_posts() → [posts...]
+  - report_post(post_id: int, reason: str) → {"success": bool}
+  - do_nothing() → "Did nothing"

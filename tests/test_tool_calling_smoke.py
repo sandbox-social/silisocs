@@ -2,9 +2,9 @@ import json
 
 from concordia.typing import entity as entity_lib
 
-from mastodon_sim.agents.components.concat_act import SocialConcatActComponent
-from mastodon_sim.environments.gm.act import SMAct
-from mastodon_sim.environments.gm.components.resolve import ToolCallingResolveComponent
+from silisocs.agents.components.concat_act import SocialConcatActComponent
+from silisocs.environments.gm.act import SMAct
+from silisocs.environments.gm.components.resolve import ToolCallingResolveComponent
 
 
 class _FakeModel:

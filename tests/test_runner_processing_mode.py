@@ -4,7 +4,7 @@ from omegaconf import OmegaConf
 
 pytest.importorskip("psutil")
 
-from mastodon_sim.runtime.runner import build_game_masters
+from silisocs.runtime.runner import build_game_masters
 
 
 def _base_cfg(processing_mode: str):
@@ -15,7 +15,7 @@ def _base_cfg(processing_mode: str):
                 "tool_calling": {"mode": "none"},
                 "prompt_additions": {"action_count_guidance": True},
             },
-            "agent": {
+            "agents": {
                 "shared_memories": ["shared memory"],
                 "persona_pipeline": {"processing_mode": processing_mode},
             },
@@ -38,7 +38,7 @@ def _base_cfg(processing_mode: str):
                     "filename": "social_media_game_master",
                     "sim_role": {
                         "name": "social_media_gm",
-                        "module_path": "mastodon_sim.environments.gm.game_master",
+                        "module_path": "silisocs.environments.gm.game_master",
                     },
                 },
             },
@@ -52,7 +52,7 @@ def test_build_game_masters_formative_mode() -> None:
 
     initializer = game_masters[0]
     assert initializer.prefab == "formative_memories_initializer__GameMaster"
-    assert initializer.params["module_path"] == "mastodon_sim.agents.initialization.formative"
+    assert initializer.params["module_path"] == "silisocs.agents.initialization.formative"
 
 
 def test_build_game_masters_raw_mode() -> None:
@@ -61,7 +61,7 @@ def test_build_game_masters_raw_mode() -> None:
 
     initializer = game_masters[0]
     assert initializer.prefab == "raw_memories_initializer__GameMaster"
-    assert initializer.params["module_path"] == "mastodon_sim.agents.initialization.raw"
+    assert initializer.params["module_path"] == "silisocs.agents.initialization.raw"
 
 
 def test_build_game_masters_supports_per_gm_prompt_overrides() -> None:
@@ -73,7 +73,7 @@ def test_build_game_masters_supports_per_gm_prompt_overrides() -> None:
                 "sequence": 0,
                 "sim_role": {
                     "name": "social_media_gm",
-                    "module_path": "mastodon_sim.environments.gm.game_master",
+                    "module_path": "silisocs.environments.gm.game_master",
                 },
                 "prompt": {
                     "action_prompt": "Alpha prompt body\n[OUTPUT STYLE]",
@@ -85,7 +85,7 @@ def test_build_game_masters_supports_per_gm_prompt_overrides() -> None:
                 "sequence": 1,
                 "sim_role": {
                     "name": "social_media_gm",
-                    "module_path": "mastodon_sim.environments.gm.game_master",
+                    "module_path": "silisocs.environments.gm.game_master",
                 },
                 "prompt": {
                     "action_prompt": "Beta prompt body\n[OUTPUT STYLE]",

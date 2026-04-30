@@ -34,7 +34,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
         f"""
         # @package sim
         scenario_name: {scenario_name}
-        jobname_format: "{scenario_name}_${{sim.num_steps}}"
+        jobname_format: "{scenario_name}_${{num_steps}}"
 
         setting:
           name: Recsys E2E Setting
@@ -65,7 +65,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
           classes:
             fixed_seed:
               count: 1
-              prefab_module: mastodon_sim.agents.fixed_entity
+              prefab_module: silisocs.agents.fixed_entity
               sim_role_name: fixed_seed
               flow_tag: fixed_pre
               params:
@@ -83,7 +83,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
                     - {action_type: post, content: "SeedBot update episode two"}
             llm_user:
               count: 4
-              prefab_module: mastodon_sim.agents.entity
+              prefab_module: silisocs.agents.entity
               sim_role_name: llm_user
               data:
                 source: inline
@@ -161,7 +161,7 @@ def _run_recsys_simulation(
     cmd = [
         sys.executable,
         "-m",
-        "mastodon_sim.runtime.runner",
+        "silisocs.runtime.runner",
         "--config-path",
         str(conf_dir),
         "env=twitter_like",
@@ -180,14 +180,14 @@ def _run_recsys_simulation(
         "env.gm.components.recommend.params.update_every_n_steps=1",
         "env.gm.components.recommend.params.max_posts=10",
         "sim.memory_backend=list",
-        "sim.num_agents=5",
-        "sim.num_steps=3",
-        "sim.seed=13",
-        "sim.write_html_log=false",
+        "num_agents=5",
+        "num_steps=3",
+        "seed=13",
+        "evals.write_html_log=false",
         "sim.max_concurrent_actions=8",
-        "sim.llm_name=qwen3.5-4b",
-        f"sim.llm_api_base={llm_url}",
-        "sim.llm_api_key=test-key",
+        "sim.llm.name=qwen3.5-4b",
+        f"sim.llm.api_base={llm_url}",
+        "sim.llm.api_key=test-key",
         "sim.engine.flow_routing.flow_order=[fixed_pre,default]",
         f"hydra.run.dir={hydra_dir}",
         f"hydra.job.name={job_name}",

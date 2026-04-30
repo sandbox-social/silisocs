@@ -19,11 +19,11 @@ Use this reference when you want to add new:
 
 | Layer | Primary modules |
 |---|---|
-| Agents | `src/mastodon_sim/agents/base_agent.py`, `agents/entity.py`, `agents/fixed_entity.py`, `agents/builders.py` |
-| GMs | `src/mastodon_sim/environments/gm/base_game_master.py`, `gm/game_master.py`, `gm/shared_flow_game_master.py`, `gm/act.py` |
-| GM components | `src/mastodon_sim/environments/gm/components/` |
-| Engines | `src/mastodon_sim/engines/base.py`, `engines/base_engines.py`, `engines/multi_gm.py` |
-| Engine policies | `src/mastodon_sim/engines/policies/` |
+| Agents | `src/silisocs/agents/base_agent.py`, `agents/entity.py`, `agents/fixed_entity.py`, `agents/builders.py` |
+| GMs | `src/silisocs/environments/gm/base_game_master.py`, `gm/game_master.py`, `gm/shared_flow_game_master.py`, `gm/act.py` |
+| GM components | `src/silisocs/environments/gm/components/` |
+| Engines | `src/silisocs/engines/base.py`, `engines/base_engines.py`, `engines/multi_gm.py` |
+| Engine policies | `src/silisocs/engines/policies/` |
 
 ---
 
@@ -31,9 +31,9 @@ Use this reference when you want to add new:
 
 ### 1.1 Required runtime interface
 
-All agent runtimes must implement `mastodon_sim.agents.base_agent.Agent`.
+All agent runtimes must implement `silisocs.agents.base_agent.Agent`.
 
-Module: `src/mastodon_sim/agents/base_agent.py`
+Module: `src/silisocs/agents/base_agent.py`
 
 ```python
 class Agent(ABC):
@@ -68,8 +68,8 @@ and implements `build(model, memory_bank)`.
 
 Reference implementations:
 
-- `src/mastodon_sim/agents/entity.py` (LLM-driven base entity)
-- `src/mastodon_sim/agents/fixed_entity.py` (deterministic fixed-action runtime)
+- `src/silisocs/agents/entity.py` (LLM-driven base entity)
+- `src/silisocs/agents/fixed_entity.py` (deterministic fixed-action runtime)
 
 Required behavior:
 
@@ -78,7 +78,7 @@ Required behavior:
 
 ### 1.4 Builder contract
 
-Default builder: `BaseAgentBuilder` in `src/mastodon_sim/agents/builders.py`
+Default builder: `BaseAgentBuilder` in `src/silisocs/agents/builders.py`
 
 Public API:
 
@@ -101,7 +101,7 @@ Extension points:
 ### 2.1 GM prefab base class
 
 Base class: `BaseSocialMediaGameMaster`
-Module: `src/mastodon_sim/environments/gm/base_game_master.py`
+Module: `src/silisocs/environments/gm/base_game_master.py`
 
 Primary API:
 
@@ -116,7 +116,7 @@ Concrete presets:
 
 ### 2.2 Act-layer contract (SwitchAct specializations)
 
-Module: `src/mastodon_sim/environments/gm/act.py`
+Module: `src/silisocs/environments/gm/act.py`
 
 Classes:
 
@@ -134,7 +134,7 @@ If you write a custom `SwitchAct` variant, keep these semantics (or update all d
 
 ### 2.3 Component slot factory API
 
-Module: `src/mastodon_sim/environments/gm/components/factory.py`
+Module: `src/silisocs/environments/gm/components/factory.py`
 
 Public builders:
 
@@ -157,7 +157,7 @@ Config schema pattern (per slot):
 
 ### 2.4 GM subcomponent interfaces
 
-Module: `src/mastodon_sim/environments/gm/components/base.py`
+Module: `src/silisocs/environments/gm/components/base.py`
 
 `BackendInitializer` interface:
 
@@ -197,18 +197,18 @@ When adding a new built-in, register it in the relevant `_..._BUILT_INS` map.
 
 Modules:
 
-- `src/mastodon_sim/engines/base.py`: `BaseEnvironmentEngine` marker
-- `src/mastodon_sim/engines/base_engines.py`: `BaseRuntimeEngine`, `FlowRuntimeEngine`
-- `src/mastodon_sim/engines/multi_gm.py`: `MultiGMRuntimeEngine`
+- `src/silisocs/engines/base.py`: `BaseEnvironmentEngine` marker
+- `src/silisocs/engines/base_engines.py`: `BaseRuntimeEngine`, `FlowRuntimeEngine`
+- `src/silisocs/engines/multi_gm.py`: `MultiGMRuntimeEngine`
 
 Factory entrypoint:
 
-- `build_engine(cfg)` in `src/mastodon_sim/runtime/factories.py`
+- `build_engine(cfg)` in `src/silisocs/runtime/factories.py`
 
 ### 3.2 BaseRuntimeEngine extension surface
 
 Primary class: `BaseRuntimeEngine`
-Module: `src/mastodon_sim/engines/base_engines.py`
+Module: `src/silisocs/engines/base_engines.py`
 
 Key public/override methods:
 
@@ -250,9 +250,9 @@ Additional API:
 
 Configuration fields consumed:
 
-- `sim.gm.gm_sequence`
-- `sim.gm.agent_classes`
-- `sim.gm.class_to_gms`
+- `env.gm.gm_sequence`
+- `env.gm.agent_classes`
+- `env.gm.class_to_gms`
 
 ---
 
@@ -260,7 +260,7 @@ Configuration fields consumed:
 
 ### 4.1 Action-loop policy contract
 
-Module: `src/mastodon_sim/engines/policies/action_chunk.py`
+Module: `src/silisocs/engines/policies/action_chunk.py`
 
 Policy objects must provide:
 
@@ -284,7 +284,7 @@ Built-ins:
 
 ### 4.2 Probe schedule policy contract
 
-Module: `src/mastodon_sim/engines/policies/probe_schedule.py`
+Module: `src/silisocs/engines/policies/probe_schedule.py`
 
 Policy objects must provide:
 
@@ -300,7 +300,7 @@ Built-ins:
 
 ### 4.3 Policy factories and class-path loading
 
-Module: `src/mastodon_sim/engines/policies/factory.py`
+Module: `src/silisocs/engines/policies/factory.py`
 
 Public API:
 

@@ -9,9 +9,9 @@ Set the backend in your Hydra config:
 
 ```sh
 # CLI override
-uv run mastodon-sim env=twitter_like   # default
-uv run mastodon-sim env=reddit_like
-uv run mastodon-sim env=mastodon
+uv run silisocs env=twitter_like   # default
+uv run silisocs env=reddit_like
+uv run silisocs env=mastodon
 ```
 
 Or in `config.yaml`:
@@ -97,7 +97,7 @@ EMAIL_PREFIX=user_email_prefix
 USER001_PASSWORD=password_for_user_001
 ```
 
-See the [infrastructure/](https://github.com/social-sandbox/mastodon-sim/tree/main/infrastructure)
+See the [infrastructure/](https://github.com/social-sandbox/silisocs/tree/main/infrastructure)
 directory for instructions on deploying your own Mastodon instance.
 
 ---
@@ -105,7 +105,7 @@ directory for instructions on deploying your own Mastodon instance.
 ## Backend Architecture
 
 All backends implement a common interface defined in
-`mastodon_sim.environments.backends.base`:
+`silisocs.environments.backends.base`:
 
 ```mermaid
 graph TD
@@ -151,7 +151,7 @@ inspecting simulation state during or after a run.
 
 ```sh
 TWITTER_LIKE_DB=path/to/twitter_like.db \
-  python -m mastodon_sim.environments.backends.twitter_like.visualizer.server
+  python -m silisocs.environments.backends.twitter_like.visualizer.server
 ```
 
 Opens at `http://localhost:8002`. Features:
@@ -167,7 +167,7 @@ Opens at `http://localhost:8002`. Features:
 
 ```sh
 REDDIT_LIKE_DB=path/to/reddit_like.db \
-  python -m mastodon_sim.environments.backends.reddit_like.visualizer.server
+  python -m silisocs.environments.backends.reddit_like.visualizer.server
 ```
 
 Opens at `http://localhost:8001`. Features:
@@ -189,7 +189,7 @@ To implement a new social media platform:
 2. **Subclass `SocialMediaApp`** from `environments.backends.base`:
 
     ```python
-    from mastodon_sim.environments.backends.base import SocialMediaApp, app_action
+    from silisocs.environments.backends.base import SocialMediaApp, app_action
 
     class YourPlatformApp(SocialMediaApp):
         def initialize(self, users, following_network, seed_posts, ...):

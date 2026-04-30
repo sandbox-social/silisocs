@@ -1,4 +1,4 @@
-# Mastodon-Sim Architecture: Multi-Flow & Component Routing
+# Silisocs Architecture: Multi-Flow & Component Routing
 
 **This guide is for LLM agents helping understand or extend the framework's architecture.**
 
@@ -10,7 +10,7 @@
 
 ## Overview
 
-The mastodon-sim simulator is designed as a highly configurable system with distinct abstraction layers:
+The silisocs simulator is designed as a highly configurable system with distinct abstraction layers:
 
 1. **Agent Layer**: Configurable agent designs with multiple initialization methods
 2. **Environment Layer**: Pluggable engines and game masters coordinating agent-environment interaction
@@ -27,8 +27,8 @@ This document describes how these layers work together, with special focus on th
 
 There are two separate flow switches:
 
-- `sim.enable_gm_multi_flow`: enables **component routing** inside a single GM (`gm.preset: shared_flow`).
-- `sim.enable_engine_multi_flow`: enables **flow-phase scheduling/policies** in the engine (`engine.preset: flow`).
+- `env.enable_gm_multi_flow`: enables **component routing** inside a single GM (`env.gm.preset: shared_flow`).
+- `sim.engine.preset: flow`: enables **flow-phase scheduling/policies** in the engine.
 
 They are independent. You can enable either one, both, or neither.
 
@@ -39,7 +39,7 @@ They are independent. You can enable either one, both, or neither.
 | false | true | no GM component routing, but engine schedules entities by flow with optional per-flow policies |
 | true | true | full flow mode: routed GM components + flow-aware engine scheduling/policies |
 
-### Simple GM Mode (`enable_gm_multi_flow: false`)
+### Simple GM Mode (`env.enable_gm_multi_flow: false`)
 
 By default, the simulator uses **BaseGM** with a single component instance per role:
 
@@ -66,13 +66,13 @@ Agent receives observation and acts
 
 **Configuration:**
 ```yaml
-sim:
+env:
   enable_gm_multi_flow: false  # ← or simply omit (default)
   gm:
     preset: base
 ```
 
-### Multi-Flow GM Mode (`enable_gm_multi_flow: true`)
+### Multi-Flow GM Mode (`env.enable_gm_multi_flow: true`)
 
 When multi-flow is enabled, the simulator uses **MultiFlowGM** with multiple component instances and explicit routing:
 
@@ -101,7 +101,7 @@ Agent receives flow-specific observation and acts
 
 **Configuration:**
 ```yaml
-sim:
+env:
   enable_gm_multi_flow: true  # ← Enable multi-flow mode
   gm:
     preset: shared_flow  # ← Use MultiFlowGM
@@ -170,7 +170,7 @@ flow_to_component_map = {
 **Routing config location (current):**
 
 ```yaml
-sim:
+env:
   gm:
     components:
       observe:
@@ -314,7 +314,7 @@ All algorithms are initialized and updated in every call, maximizing recommendat
 Agents can receive timelines computed with different strategies:
 
 ```yaml
-sim:
+env:
   timeline_mode: hybrid_recsys_follower
   timeline_config:
     recsys_ratio: 0.6  # (for hybrid_recsys_follower strategy)
@@ -385,7 +385,7 @@ gm:
 ### Simple Configuration (No Multi-Flow)
 
 ```yaml
-sim:
+env:
   enable_gm_multi_flow: false
   gm:
     preset: base
@@ -402,7 +402,7 @@ sim:
 ### Multi-Flow Configuration
 
 ```yaml
-sim:
+env:
   enable_gm_multi_flow: true
   gm:
     preset: shared_flow

@@ -123,8 +123,8 @@ graph TD
 ## Project Structure
 
 ```
-mastodon-sim/
-├── src/mastodon_sim/
+silisocs/
+├── src/silisocs/
 │   ├── agents/              # Agent entities, builders, memory initialization
 │   ├── conf/                # Hydra YAML config hierarchy
 │   ├── dashboard/           # Streamlit GUI

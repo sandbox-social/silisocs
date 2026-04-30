@@ -92,7 +92,7 @@ probes:
 
 ```python
 # my_scenario/probes.py
-from mastodon_sim.evaluations.probes.types import ProbeBase
+from silisocs.evaluations.probes.types import ProbeBase
 
 class Favorability(ProbeBase):
     @property

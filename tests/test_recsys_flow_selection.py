@@ -4,11 +4,11 @@ from types import SimpleNamespace
 
 from concordia.typing import entity as entity_lib
 
-from mastodon_sim.environments.backends.reddit_like.engine import RedditLikePlatform
-from mastodon_sim.environments.backends.twitter_like.engine import TwitterLikePlatform
-from mastodon_sim.environments.gm.components.observe import TimelineMakeObservation
-from mastodon_sim.environments.gm.components.recommend import RecommendationComponent
-from mastodon_sim.runtime.config import ConfigStore
+from silisocs.environments.backends.reddit_like.engine import RedditLikePlatform
+from silisocs.environments.backends.twitter_like.engine import TwitterLikePlatform
+from silisocs.environments.gm.components.observe import TimelineMakeObservation
+from silisocs.environments.gm.components.recommend import RecommendationComponent
+from silisocs.runtime.config import ConfigStore
 
 
 class _FakeApp:

@@ -20,6 +20,7 @@ outputs/
 
 # direnv
 .envrc
+store.env*
 
 # Hypothesis
 .hypothesis/
@@ -212,3 +213,4 @@ experiments/studies/**/*.png
 # SQLite transient files from local backend tests
 *.db-shm
 *.db-wal
+*.egg-info/

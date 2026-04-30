@@ -2,7 +2,7 @@
 
 import pytest
 
-from mastodon_sim.environments.gm.gm_factory import GameMasterFactory
+from silisocs.environments.gm.gm_factory import GameMasterFactory
 
 
 class MockEntity:

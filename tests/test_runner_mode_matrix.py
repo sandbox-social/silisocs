@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from omegaconf import OmegaConf
 
-from mastodon_sim.engines.base_engines import (
+from silisocs.runtime.factories import build_engine, default_gm_filename
+from silisocs.simulation_engines.base_engines import (
     BaseRuntimeEngine,
     FlowRuntimeEngine,
 )
-from mastodon_sim.runtime.factories import build_engine, default_gm_filename
 
 
 def _cfg(gm_preset: str, engine_preset: str):

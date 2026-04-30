@@ -35,10 +35,10 @@ Flow controls use two independent switches:
 
 Canonical modules:
 
-- `src/mastodon_sim/environments/gm/game_master.py`: primary GM prefab.
-- `src/mastodon_sim/environments/gm/act.py`: primary SwitchAct specialization.
-- `src/mastodon_sim/environments/gm/components/`: Concordia-native slot components.
-- `src/mastodon_sim/engines/base_engines.py`: primary runtime engine.
+- `src/silisocs/environments/gm/game_master.py`: primary GM prefab.
+- `src/silisocs/environments/gm/act.py`: primary SwitchAct specialization.
+- `src/silisocs/environments/gm/components/`: Concordia-native slot components.
+- `src/silisocs/engines/base_engines.py`: primary runtime engine.
 Import from the `environments/gm/` and `engines/` packages.
 
 Import from the `environments/gm/` and `engines/` packages.
@@ -48,7 +48,7 @@ Import from the `environments/gm/` and `engines/` packages.
 Configure GM behavior from `env.gm.components`:
 
 ```yaml
-sim:
+env:
   gm:
     preset: social_media_default
     components:
@@ -121,7 +121,7 @@ This supports both styles:
 ### 1. Switch to tool-calling without Python changes
 
 ```sh
-uv run mastodon-sim \
+uv run silisocs \
   env.gm.components.resolve.built_in=tool_calling \
   sim.tool_calling.mode=single
 ```
@@ -129,7 +129,7 @@ uv run mastodon-sim \
 ### 2. Keep defaults but override only initializer
 
 ```yaml
-sim:
+env:
   gm:
     components:
       initializer:
@@ -141,7 +141,7 @@ sim:
 ### 3. Force all entities active each step
 
 ```sh
-uv run mastodon-sim env.gm.components.next_acting.built_in=all_entities
+uv run silisocs env.gm.components.next_acting.built_in=all_entities
 ```
 
 ## Writing Custom GM Components
@@ -153,7 +153,7 @@ Each component can be swapped via `class_path`.
 - Next-acting component: subclass Concordia next-acting components (for example `NextActingAllEntities` or `NextActingInFixedOrder`) and implement/override `pre_act(...)`.
 - Backend initializer: implement `initialize(...)` (non-Concordia hook, used before simulation loop).
 
-Use built-ins under `src/mastodon_sim/environments/gm/components/` as templates.
+Use built-ins under `src/silisocs/environments/gm/components/` as templates.
 
 ### Why Concordia-native inheritance?
 
@@ -195,11 +195,11 @@ other slots at baseline defaults.
 
 Engine extensibility lives under:
 
-- `src/mastodon_sim/engines/base.py`
-- `src/mastodon_sim/engines/base_engines.py`
-- `src/mastodon_sim/engines/policies/action_chunk.py`
-- `src/mastodon_sim/engines/policies/probe_schedule.py`
-- `src/mastodon_sim/engines/policies/factory.py`
+- `src/silisocs/engines/base.py`
+- `src/silisocs/engines/base_engines.py`
+- `src/silisocs/engines/policies/action_chunk.py`
+- `src/silisocs/engines/policies/probe_schedule.py`
+- `src/silisocs/engines/policies/factory.py`
 
 Configure engine policies from `sim.engine`:
 
@@ -261,17 +261,17 @@ For detailed configuration and behavior of action prompts, see `docs/configurati
 
 The action prompt pipeline is implemented across three layers:
 
-1. **Runner-time compilation** (`src/mastodon_sim/runtime/action_prompts.py`):
+1. **Runner-time compilation** (`src/silisocs/runtime/action_prompts.py`):
    - `build_complete_action_prompt_for_runner()` — entry point, compiles prompt from config
   - `compile_action_prompt()` — core logic that applies additions (action count guidance + output style handling)
    - All prompt building happens here before GM/app instantiation
 
-2. **SMAct pass-through** (`src/mastodon_sim/environments/gm/act.py`):
+2. **SMAct pass-through** (`src/silisocs/environments/gm/act.py`):
    - `SMAct._next_entity_action_spec()` — passes through runner-compiled prompt + optional tool-calling wrapping
   - If `enable_tool_calling=True`: appends tool-calling marker + tool schemas from backend app
    - Dumb pass-through: does not modify base prompt text
 
-3. **Entity act layer** (`src/mastodon_sim/agents/components/concat_act.py`):
+3. **Entity act layer** (`src/silisocs/agents/components/concat_act.py`):
    - `SocialConcatActComponent.get_action_attempt()` — formats action spec and calls LLM
    - Detects tool-calling markers and calls model appropriately (tool-call vs free-text mode)
 
