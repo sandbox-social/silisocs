@@ -15,7 +15,7 @@ def _base_cfg(processing_mode: str):
                 "tool_calling": {"mode": "none"},
                 "prompt_additions": {"action_count_guidance": True},
             },
-            "agent": {
+            "agents": {
                 "shared_memories": ["shared memory"],
                 "persona_pipeline": {"processing_mode": processing_mode},
             },

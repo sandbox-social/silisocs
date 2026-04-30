@@ -15,11 +15,13 @@ def _cfg(*, action_mode: str = "custom", tool_mode: str = "single", resolve: str
                 "action_mode": action_mode,
                 "tool_calling": {"mode": tool_mode},
                 "engine": {"preset": "base"},
+            },
+            "env": {
                 "gm": {
                     "preset": "base",
                     "components": {"resolve": {"built_in": resolve}},
                 },
-            }
+            },
         }
     )
 
