@@ -6,7 +6,6 @@ from concordia.associative_memory import basic_associative_memory
 from concordia.components import agent as agent_components
 from concordia.language_model import language_model
 from concordia.typing import prefab as prefab_lib
-
 from mastodon_sim.agents.components.concat_act import SocialConcatActComponent
 from mastodon_sim.runtime.config import ConfigStore
 
