@@ -1,4 +1,9 @@
 # @package _global_
+description: >-
+  A small-town mayoral election (Storhampton) with two candidates on opposite
+  sides of economic vs. environmental policy. Studies partisan opinion dynamics,
+  media framing effects, and voter persuasion on social media. Includes a news
+  agent and rich external persona pipeline.
 scenario_name: election
 jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
 
