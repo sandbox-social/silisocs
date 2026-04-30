@@ -52,7 +52,7 @@ Phase 2 pending: Claude Code skill for custom scenario generation.
 - Reads `run.yaml` (falls back to `sim.yaml` for compat) to inject root-level `scenario_name=` and `jobname_format=` CLI overrides for Hydra path interpolation
 
 ## Verified
-- `uv run python -m mastodon_sim.runtime.runner --config-path scenarios/misinformation/conf num_steps=1 llm.disabled=true` → `status=success episodes=1`
+- `uv run python -m silisocs.runtime.runner --config-path scenarios/misinformation/conf num_steps=1 llm.disabled=true` → `status=success episodes=1`
 
 ## Commits
 - `7b0b387` — Phase 1: split sim into llm/simulator/agent_situation groups

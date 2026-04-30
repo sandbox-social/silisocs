@@ -5,7 +5,7 @@ run_study.py calls this as:
     uv run python run_experiment.py scenario=NAME model=gpt4omini simulation.execution.max_steps=10
 
 This translates to:
-    python -m mastodon_sim.runtime.runner \\
+    python -m silisocs.runtime.runner \\
         --config-path scenarios/NAME/conf \\
         scenario=NAME \\
         sim.llm_name=gpt-4o-mini \\
@@ -84,7 +84,7 @@ def main() -> None:
     cmd: list[str] = [
         "python",
         "-m",
-        "mastodon_sim.runtime.runner",
+        "silisocs.runtime.runner",
         "--config-path",
         str(config_path),
         f"scenario={scenario}",

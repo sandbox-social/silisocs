@@ -33,7 +33,7 @@ class RunConfig:
             "run",
             "python",
             "-m",
-            "mastodon_sim.runtime.runner",
+            "silisocs.runtime.runner",
             "--config-path",
             "scenarios/election_recsys_engagement/conf",
             "scenario=election_recsys_engagement",
