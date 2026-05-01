@@ -98,7 +98,7 @@ Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 | `sim.engine.preset` | base | `base` or `flow` (flow-aware scheduling) |
 | `sim.engine.action_loop.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended` |
 | `sim.memory_backend` | list | `list` (fast) or `associative` (embedding-based) |
-| `sim.checkpoint.every_n_steps` | null | Checkpoint frequency |
+| `sim.checkpoint.every_n_steps` | null | Checkpoint frequency (run_study.py sets 1 by default) |
 
 Key run params live in `scenario/default.yaml` (at config root via `@package _global_`):
 
@@ -341,13 +341,13 @@ For **tool-calling mode** specifically: The entity layer is responsible for call
 
 ## 6) Checkpoints and Replay
 
-- Checkpoints are saved as JSON under run output `checkpoints/`.
-- Runtime resume path uses:
+- Checkpoints are saved as JSON under run output `checkpoints/step_{N}_checkpoint.json`.
+- Runtime resume uses:
   - `sim.checkpoint.resume_file`
   - optional `sim.checkpoint.resume_step`
 - Resume restores game-master and entity component state plus raw log.
 
-Important: checkpoint saving is disabled unless `every_n_steps` or `explicit_steps` is configured.
+**Saving policy**: checkpoint saving is disabled by default when running directly via `run_experiment.py` unless `every_n_steps` or `explicit_steps` is configured. When running via `run_study.py`, checkpointing is enabled automatically (`every_n_steps=1`) so that `eval.py` can access the final checkpoint for action-type metrics. Studies can change the frequency via `run_defaults.overrides: {sim.checkpoint.every_n_steps: N}`.
 
 **For custom agents**: By default, only Concordia `EntityWithComponents` entities are checkpointed.
 If your custom agent has episodic state that needs saving, implement `get_state()` and `set_state()`

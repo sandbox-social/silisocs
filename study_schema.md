@@ -354,7 +354,7 @@ uv run python experiments/studies/{study_name}/eval.py \
 | File | Required | Purpose |
 |------|----------|---------|
 | `action_events.jsonl` | yes | Post/reply/repost content — drives all text metrics |
-| `checkpoints/step_*_checkpoint.json` | no | `raw_log` for action-type metrics (`action_entropy`, `action_diversity`, `new_post_rate`). If absent, those metrics are `null` in output. |
+| `checkpoints/step_*_checkpoint.json` | no | `raw_log` for action-type metrics (`action_entropy`, `action_diversity`, `new_post_rate`). If absent, those metrics are `null` in output. `run_study.py` injects `sim.checkpoint.every_n_steps=1` by default so new runs always produce a checkpoint. |
 | `probe_events.jsonl` | no | Free-text probe responses for `probe_diversity` section |
 
 The script finds the latest checkpoint automatically (`step_N` with largest N). It never crashes if the checkpoint directory is missing.
