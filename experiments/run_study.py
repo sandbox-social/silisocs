@@ -823,20 +823,18 @@ def _build_run_command(spec: RunSpec) -> list[str]:
     if spec.config_path:
         cmd.extend(["--config-path", spec.config_path])
 
-    cmd.append(f"scenario={spec.scenario}")
-    cmd.append(f"sim.seed={spec.seed}")
-    cmd.append(f"sim.run_name={spec.run_name}")
-    if spec.output_rootname:
-        cmd.append(f"sim.output_rootname={_normalize_override_value(spec.output_rootname)}")
+    cmd.append(f"seed={spec.seed}")
+    cmd.append(f"run_name={_normalize_override_value(spec.run_name)}")
+    # output_rootname is set by the runner from Hydra's runtime.output_dir;
+    # do not pass it as a CLI override.
     cmd.append(f"experiment_name={spec.study_name}")
 
     for key in sorted(spec.overrides):
         if key in {
-            "sim.seed",
-            "sim.run_name",
-            "sim.output_rootname",
+            "seed",
+            "run_name",
+            "output_rootname",
             "experiment_name",
-            "scenario",
         }:
             continue
         cmd.append(f"{key}={_normalize_override_value(spec.overrides[key])}")
