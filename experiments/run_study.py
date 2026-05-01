@@ -639,6 +639,9 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
     global_eval_specs = _resolve_eval_specs(study_root, study_data)
 
     default_overrides = _merge_overrides(
+        # Always write a checkpoint every step so eval.py can compute action-type
+        # metrics. Studies can override via run_defaults.overrides.
+        {"sim.checkpoint.every_n_steps": 1},
         _extract_inline_overrides(run_defaults),
         _ensure_mapping("study.run_defaults.overrides", run_defaults.get("overrides")),
     )
