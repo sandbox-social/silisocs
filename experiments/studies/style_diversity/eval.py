@@ -71,80 +71,96 @@ NEAR_DUPLICATE_THRESHOLD = 0.9  # Jaccard similarity threshold
 # ---------------------------------------------------------------------------
 
 
+def find_latest_checkpoint(run_dir: Path) -> Path | None:
+    """Return the highest-step checkpoint JSON in run_dir/checkpoints/, or None."""
+    ckpt_dir = run_dir / "checkpoints"
+    if not ckpt_dir.is_dir():
+        return None
+    candidates = sorted(ckpt_dir.glob("step_*_checkpoint.json"))
+    return candidates[-1] if candidates else None
+
+
+def _load_posts_from_events(events_file: Path) -> list[Post]:
+    """Parse action_events.jsonl and return a list of Posts."""
+    posts: list[Post] = []
+    if not events_file.is_file():
+        return posts
+    with events_file.open() as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            label = event.get("label", "")
+            episode = int(event.get("episode", 0))
+            source = str(event.get("source_user", ""))
+            ev_data = event.get("data", {}) or {}
+            if label == "post":
+                posts.append(
+                    Post(
+                        id=int(ev_data.get("post_id", 0) or 0),
+                        author=source,
+                        content=str(ev_data.get("post_text", "")),
+                        step=episode,
+                    )
+                )
+            elif label == "reply":
+                reply_to_raw = ev_data.get("reply_to_id")
+                posts.append(
+                    Post(
+                        id=int(ev_data.get("post_id", 0) or 0),
+                        author=source,
+                        content=str(ev_data.get("post_text", "")),
+                        step=episode,
+                        reply_to=int(reply_to_raw) if reply_to_raw is not None else None,
+                    )
+                )
+            elif label == "repost":
+                original_raw = ev_data.get("post_id")
+                posts.append(
+                    Post(
+                        id=-1,
+                        author=source,
+                        content="",
+                        step=episode,
+                        boost_of=int(original_raw) if original_raw is not None else None,
+                    )
+                )
+    return posts
+
+
+def load_run_dir(run_dir: Path) -> tuple[_PostStore, list[dict[str, Any]]]:
+    """Load a simulation run directory and return (post_store, raw_log).
+
+    Locates action_events.jsonl for post/text data and the latest checkpoint
+    (if present) for raw_log / action-type metrics. Degrades gracefully when
+    no checkpoint exists — action-type metrics will be None but all text-based
+    style metrics are unaffected.
+    """
+    run_dir = Path(run_dir)
+    ckpt_path = find_latest_checkpoint(run_dir)
+    raw_log: list[dict[str, Any]] = []
+    if ckpt_path is not None:
+        with ckpt_path.open() as f:
+            raw_log = json.load(f).get("raw_log", [])
+    posts = _load_posts_from_events(run_dir / "action_events.jsonl")
+    return _PostStore(posts), raw_log
+
+
 def load_checkpoint(path: str | Path) -> tuple[_PostStore, list[dict[str, Any]]]:
-    """Load a simulation run and return (post_store, raw_log).
+    """Load from a checkpoint file path (legacy interface for --compare CLI mode).
 
-    Reads:
-      - raw_log from the checkpoint JSON (concordia agent-action log)
-      - posts from mastodon_action_events.jsonl in the run output directory
-        (located at checkpoint.parent.parent relative to the checkpoint file)
-
-    Action event labels produced by TwitterLikeApp:
-      post   → original post   (data: post_id, post_text)
-      reply  → reply           (data: post_id, reply_to_id, post_text)
-      repost → boost/repost    (data: post_id = original being reposted)
+    Prefer load_run_dir() for new code.
     """
     path = Path(path)
     with path.open() as f:
-        data = json.load(f)
-
-    raw_log: list[dict[str, Any]] = data.get("raw_log", [])
-
-    # mastodon_action_events.jsonl sits two levels above the checkpoint file:
-    #   outputs/{scenario}_experiment/{run}/checkpoints/step_N_checkpoint.json
-    #                                  ↑ run dir
-    output_dir = path.parent.parent
-    events_file = output_dir / "action_events.jsonl"
-
-    posts: list[Post] = []
-    if events_file.is_file():
-        with events_file.open() as f:
-            for raw_line in f:
-                line = raw_line.strip()
-                if not line:
-                    continue
-                try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-
-                label = event.get("label", "")
-                episode = int(event.get("episode", 0))
-                source = str(event.get("source_user", ""))
-                ev_data = event.get("data", {}) or {}
-
-                if label == "post":
-                    posts.append(
-                        Post(
-                            id=int(ev_data.get("post_id", 0) or 0),
-                            author=source,
-                            content=str(ev_data.get("post_text", "")),
-                            step=episode,
-                        )
-                    )
-                elif label == "reply":
-                    reply_to_raw = ev_data.get("reply_to_id")
-                    posts.append(
-                        Post(
-                            id=int(ev_data.get("post_id", 0) or 0),
-                            author=source,
-                            content=str(ev_data.get("post_text", "")),
-                            step=episode,
-                            reply_to=int(reply_to_raw) if reply_to_raw is not None else None,
-                        )
-                    )
-                elif label == "repost":
-                    original_raw = ev_data.get("post_id")
-                    posts.append(
-                        Post(
-                            id=-1,  # new repost id not logged; -1 marks synthetic
-                            author=source,
-                            content="",
-                            step=episode,
-                            boost_of=int(original_raw) if original_raw is not None else None,
-                        )
-                    )
-
+        raw_log: list[dict[str, Any]] = json.load(f).get("raw_log", [])
+    # Posts come from action_events.jsonl two levels above the checkpoint file:
+    #   run_dir/checkpoints/step_N_checkpoint.json  →  run_dir = path.parent.parent
+    posts = _load_posts_from_events(path.parent.parent / "action_events.jsonl")
     return _PostStore(posts), raw_log
 
 
@@ -464,14 +480,13 @@ def compute_inter_agent_distinctiveness(
 # ---------------------------------------------------------------------------
 
 
-def load_probe_responses(checkpoint_path: Path) -> dict[str, dict[str, list[str]]]:
-    """Load free-text probe responses from probe_events.jsonl.
+def load_probe_responses(run_dir: Path) -> dict[str, dict[str, list[str]]]:
+    """Load free-text probe responses from probe_events.jsonl in run_dir.
 
     Returns: {probe_label: {agent_name: [response, ...]}}
     Only includes probes where raw_response is a non-empty string (i.e. FreeTextProbe).
     """
-    output_dir = checkpoint_path.parent.parent
-    probe_file = output_dir / "probe_events.jsonl"
+    probe_file = run_dir / "probe_events.jsonl"
     responses: dict[str, dict[str, list[str]]] = {}
     if not probe_file.is_file():
         return responses
@@ -524,14 +539,14 @@ def compute_text_diversity(texts: list[str]) -> dict[str, float | None]:
     return {"self_bleu": sb, "lexical_diversity": ld, "opener_variety": ov, "content_evolution": ce}
 
 
-def compute_probe_diversity(checkpoint_path: Path) -> dict[str, Any]:
+def compute_probe_diversity(run_dir: Path) -> dict[str, Any]:
     """Compute diversity of free-text probe responses.
 
     For each free-text probe label returns:
       - per_agent: within-agent diversity across steps (self-repetition in reasoning)
       - inter_agent: diversity treating each agent's concatenated responses as a document
     """
-    probe_responses = load_probe_responses(checkpoint_path)
+    probe_responses = load_probe_responses(run_dir)
     result: dict[str, Any] = {}
     for label, agent_responses in probe_responses.items():
         # Per-agent: how diverse are an agent's responses across steps?
@@ -558,19 +573,13 @@ def compute_probe_diversity(checkpoint_path: Path) -> dict[str, Any]:
     return result
 
 
-def evaluate_checkpoint(path: str | Path) -> dict[str, Any]:
-    """Run all metrics on a single checkpoint.
-
-    Returns a results dict with:
-        - checkpoint: path string
-        - agents: {name: {metric: value, ...}, ...}
-        - aggregated: {metric: mean_value, ...}
-        - corpus: {inter_agent_distinctiveness: value}
-        - summary: {total_posts, total_actions, agents, steps, ...}
-        - probe_diversity: {probe_label: {inter_agent: {...}, mean_per_agent: {...}}}
-    """
-    path = Path(path)
-    app, raw_log = load_checkpoint(path)
+def _evaluate(
+    app: _PostStore,
+    raw_log: list[dict[str, Any]],
+    run_dir: Path,
+    source_label: str,
+) -> dict[str, Any]:
+    """Core evaluation logic shared by evaluate_run_dir and evaluate_checkpoint."""
     agent_actions = extract_agent_actions(raw_log)
 
     all_posts = app.get_all_posts()
@@ -636,15 +645,33 @@ def evaluate_checkpoint(path: str | Path) -> dict[str, Any]:
         "steps": max_step,
     }
 
-    probe_diversity = compute_probe_diversity(path)
+    probe_diversity = compute_probe_diversity(run_dir / "action_events.jsonl")
 
     return {
-        "checkpoint": str(path),
+        "source": source_label,
         "agents": agent_metrics,
         "aggregated": aggregated,
         "summary": summary,
         "probe_diversity": probe_diversity,
     }
+
+
+def evaluate_run_dir(run_dir: str | Path) -> dict[str, Any]:
+    """Run all metrics on a simulation run directory.
+
+    Primary entry point for run_study.py integration. Locates the latest
+    checkpoint automatically; degrades gracefully when none exists.
+    """
+    run_dir = Path(run_dir)
+    app, raw_log = load_run_dir(run_dir)
+    return _evaluate(app, raw_log, run_dir, str(run_dir))
+
+
+def evaluate_checkpoint(path: str | Path) -> dict[str, Any]:
+    """Run all metrics on a checkpoint file (legacy interface for --compare)."""
+    path = Path(path)
+    app, raw_log = load_checkpoint(path)
+    return _evaluate(app, raw_log, path.parent.parent, str(path))
 
 
 # ---------------------------------------------------------------------------
@@ -747,11 +774,11 @@ def print_report(results: dict[str, Any]) -> None:
     summary = results["summary"]
     aggregated = results["aggregated"]
     agent_metrics = results["agents"]
-    checkpoint = results["checkpoint"]
+    source = results["source"]
 
     print(f"\n{'=' * 72}")
     print("  Style Diversity Evaluation")
-    print(f"  Checkpoint: {checkpoint}")
+    print(f"  Source: {source}")
     print(f"{'=' * 72}")
 
     print("\n  Summary:")
@@ -904,76 +931,77 @@ def print_comparison(all_results: list[dict[str, Any]]) -> None:
 
 
 def main() -> None:
-    """CLI entry point for evaluating style diversity."""
+    """CLI entry point for evaluating style diversity.
+
+    Primary interface (used by run_study.py builtin.study_eval):
+        eval.py --run-dir <run_dir> --output <eval.json>
+
+    Comparison interface (manual use across multiple runs):
+        eval.py --compare <run_dir1> <run_dir2> ...
+    """
     parser = argparse.ArgumentParser(
         description="Evaluate style diversity of social media simulation outputs.",
     )
-    parser.add_argument(
-        "checkpoints",
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--run-dir",
+        type=str,
+        help="Path to simulation run directory (primary interface)",
+    )
+    group.add_argument(
+        "--compare",
         nargs="+",
-        help="Path(s) to checkpoint JSON file(s)",
+        metavar="RUN_DIR",
+        help="Two or more run directories for side-by-side comparison",
     )
     parser.add_argument(
         "--output",
         "-o",
         type=str,
         default=None,
-        help="Directory to save JSON results",
-    )
-    parser.add_argument(
-        "--compare",
-        action="store_true",
-        help="Show side-by-side comparison table (multiple checkpoints)",
+        help="Output path: eval.json file (--run-dir) or directory (--compare)",
     )
 
     args = parser.parse_args()
 
-    # Validate checkpoint paths
-    for cp in args.checkpoints:
-        if not Path(cp).exists():
-            print(f"Error: checkpoint file not found: {cp}", file=sys.stderr)
+    if args.run_dir:
+        run_dir = Path(args.run_dir)
+        if not run_dir.is_dir():
+            print(f"Error: run directory not found: {run_dir}", file=sys.stderr)
             sys.exit(1)
-
-    # Run evaluation
-    all_results = []
-    for cp in args.checkpoints:
-        print(f"Evaluating: {cp} ...")
-        results = evaluate_checkpoint(cp)
-        all_results.append(results)
-
-    # Print reports
-    if args.compare and len(all_results) > 1:
-        print_comparison(all_results)
+        print(f"Evaluating: {run_dir} ...")
+        results = evaluate_run_dir(run_dir)
+        print_report(results)
+        if args.output:
+            out_path = Path(args.output)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            with out_path.open("w") as f:
+                json.dump(results, f, indent=2, default=str)
+            print(f"Saved: {out_path}")
     else:
-        for results in all_results:
-            print_report(results)
-
-    # Save JSON if requested
-    if args.output:
-        out_path_arg = Path(args.output)
-        # If -o ends with .json and only one checkpoint, use it as the direct file path.
-        if out_path_arg.suffix == ".json" and len(all_results) == 1:
-            out_path_arg.parent.mkdir(parents=True, exist_ok=True)
-            with out_path_arg.open("w") as f:
-                json.dump(all_results[0], f, indent=2, default=str)
-            print(f"Saved: {out_path_arg}")
-        else:
-            out_dir = out_path_arg
+        # --compare mode
+        all_results = []
+        for rd in args.compare:
+            run_dir = Path(rd)
+            if not run_dir.is_dir():
+                print(f"Error: run directory not found: {run_dir}", file=sys.stderr)
+                sys.exit(1)
+            print(f"Evaluating: {run_dir} ...")
+            all_results.append(evaluate_run_dir(run_dir))
+        print_comparison(all_results)
+        if args.output:
+            out_dir = Path(args.output)
             out_dir.mkdir(parents=True, exist_ok=True)
-
             for results in all_results:
-                cp_name = Path(results["checkpoint"]).stem
-                out_path = out_dir / f"eval_{cp_name}.json"
+                name = Path(results["source"]).name
+                out_path = out_dir / f"eval_{name}.json"
                 with out_path.open("w") as f:
                     json.dump(results, f, indent=2, default=str)
                 print(f"Saved: {out_path}")
-
-        if len(all_results) > 1:
-            # Save combined comparison
-            combined_path = out_dir / "eval_comparison.json"
-            with combined_path.open("w") as f:
+            combined = out_dir / "eval_comparison.json"
+            with combined.open("w") as f:
                 json.dump(all_results, f, indent=2, default=str)
-            print(f"Saved: {combined_path}")
+            print(f"Saved: {combined}")
 
 
 if __name__ == "__main__":

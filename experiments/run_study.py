@@ -164,6 +164,16 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
         "output_arg": "--output",
         "output_subpath": "probe_freetext_detailed.json",
     },
+    # Study-specific eval.py — command uses ./eval.py resolved relative to the
+    # study directory by _resolve_eval_spec. Requires experiments/studies/{name}/eval.py
+    # to exist and accept --run-dir / --output args.
+    "builtin.study_eval": {
+        "command": ["uv", "run", "python", "./eval.py"],
+        "input_mode": "run_dir",
+        "run_dir_arg": "--run-dir",
+        "output_arg": "--output",
+        "output_subpath": "eval.json",
+    },
 }
 
 
@@ -405,7 +415,13 @@ def _resolve_eval_spec(  # noqa: C901
     resolved_cmd: list[str] = []
     for token in command:
         if token.startswith("./"):
-            resolved_cmd.append(str((study_root / token).resolve()))
+            resolved = (study_root / token).resolve()
+            if not resolved.exists():
+                raise StudyConfigError(
+                    f"{source}: script not found: {resolved} "
+                    f"(required by preset '{preset or 'custom'}')"
+                )
+            resolved_cmd.append(str(resolved))
         else:
             resolved_cmd.append(token)
 
