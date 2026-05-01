@@ -41,7 +41,7 @@ from experiments._internal.study_artifacts import (
 )
 
 SCHEMA_VERSION = 1
-DEFAULT_RUNNER_MODULE = "mastodon_sim.runtime.runner"
+DEFAULT_RUNNER_MODULE = "silisocs.runtime.runner"
 PROCESS_TIMEOUT_RC = 124
 PLAN_PREVIEW_ROWS = 10
 
@@ -52,7 +52,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
             "run",
             "python",
             "-m",
-            "mastodon_sim.evaluations.activity_summary",
+            "silisocs.evaluations.activity_summary",
         ],
         "input_mode": "run_dir",
         "run_dir_arg": "--run-dir",
@@ -65,7 +65,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
             "run",
             "python",
             "-m",
-            "mastodon_sim.evaluations.activity_summary",
+            "silisocs.evaluations.activity_summary",
             "--mode",
             "probes",
         ],
@@ -80,7 +80,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
             "run",
             "python",
             "-m",
-            "mastodon_sim.evaluations.default_evaluators",
+            "silisocs.evaluations.default_evaluators",
             "--mode",
             "action_metrics",
         ],
@@ -95,7 +95,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
             "run",
             "python",
             "-m",
-            "mastodon_sim.evaluations.default_evaluators",
+            "silisocs.evaluations.default_evaluators",
             "--mode",
             "probe_metrics",
         ],
@@ -110,7 +110,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
             "run",
             "python",
             "-m",
-            "mastodon_sim.evaluations.default_evaluators",
+            "silisocs.evaluations.default_evaluators",
             "--mode",
             "probe_binary",
         ],
@@ -125,7 +125,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
             "run",
             "python",
             "-m",
-            "mastodon_sim.evaluations.default_evaluators",
+            "silisocs.evaluations.default_evaluators",
             "--mode",
             "probe_numeric",
         ],
@@ -140,7 +140,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
             "run",
             "python",
             "-m",
-            "mastodon_sim.evaluations.default_evaluators",
+            "silisocs.evaluations.default_evaluators",
             "--mode",
             "probe_choice",
         ],
@@ -155,7 +155,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
             "run",
             "python",
             "-m",
-            "mastodon_sim.evaluations.default_evaluators",
+            "silisocs.evaluations.default_evaluators",
             "--mode",
             "probe_freetext",
         ],
