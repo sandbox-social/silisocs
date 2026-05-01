@@ -621,12 +621,17 @@ def _merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
                 break
 
     # Re-apply Hydra task (CLI) overrides so they take precedence over scenario files.
+    # Only re-apply dotted-path value overrides (e.g. sim.llm.name=gpt-4o-mini).
+    # Config group overrides like env=cta_deliberate must be skipped — passing them
+    # through OmegaConf.from_dotlist sets cfg.env to the string "cta_deliberate",
+    # wiping the composed DictConfig.
     try:
         from hydra.core.hydra_config import HydraConfig
 
         task_overrides = list(HydraConfig.get().overrides.task)
-        if task_overrides:
-            override_cfg = OmegaConf.from_dotlist(task_overrides)
+        value_overrides = [ov for ov in task_overrides if "." in ov.lstrip("~+").split("=")[0]]
+        if value_overrides:
+            override_cfg = OmegaConf.from_dotlist(value_overrides)
             merged_cfg = cast(DictConfig, OmegaConf.merge(merged_cfg, override_cfg))
     except Exception:
         pass
