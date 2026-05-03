@@ -2,11 +2,13 @@
 
 A study is a **research question asked on top of a scenario**. It defines hypotheses,
 conditions (what you vary), evaluators (what you measure), and seed replication.
-Studies live in `experiments/studies/<study_id>/study.yaml`.
+Studies live in `experiments/studies/<study_id>/study.yaml` and are version-controlled.
 
 Scenarios are shared social worlds — reusable across studies. Multiple researchers
-can ask different questions on the same scenario. If no existing scenario fits your
-question, this skill can branch into `/new-scenario` and then return here.
+can ask different questions on the same scenario.
+
+Studies are **living documents**: they grow as hypotheses are tested, findings recorded,
+and followup hypotheses added. Design with that lifecycle in mind.
 
 Work conversationally, one section at a time.
 
@@ -53,33 +55,49 @@ Ask:
 > "What do you expect to find? State 1–2 hypotheses — what you predict will happen
 > when you change [independent variable]."
 
-For each hypothesis, expand into the study schema fields:
-- `statement`: the hypothesis as a testable claim
+For each hypothesis, expand into:
+- `id`: short snake_case identifier, format `h{N}_{short_name}` (e.g. `h1_timeline_effect`)
+- `statement`: the hypothesis as a falsifiable claim (one sentence)
 - `independent_variable`: the config key being varied (e.g. `env.timeline_mode`)
-- `prediction`: expected direction of effect
-- `status`: `testing` (default)
+- `prediction`: expected direction or outcome if hypothesis is true
+- `status`: always start as `testing`
 
 Show the expanded form and ask for confirmation.
+
+**On hypothesis status lifecycle** — explain to the user:
+> After running and analyzing, you'll update `status` to one of:
+> `testing → supported | refuted | inconclusive`
+> and record a `finding:` field with the key result in plain language.
+> This is what motivates followup hypotheses.
 
 ---
 
 ## Step 4 — Conditions
 
 For each hypothesis, ask:
-> "What are the specific conditions you want to compare? For each one, what Hydra
-> config overrides does it require?"
+> "What are the specific conditions you want to compare?"
 
-Help the user translate their intent into concrete Hydra override diffs. Reference
-the scenario's config structure (read `scenarios/<name>/conf/`) to suggest valid keys.
+**Condition naming convention**: use `{iv}={value}` format where possible
+(e.g. `timeline=chronological`, `timeline=recsys`). This makes the independent
+variable readable from directory paths alone. For content variations (e.g. news
+bias), use a descriptive label (e.g. `bill_bias`, `bradley_bias`) and set
+`sub_experiment` accordingly.
 
-Common patterns to suggest:
-- Timeline mode: `env.timeline_mode: follower_chronological` vs `pure_recsys`
+Help the user translate intent into Hydra override dicts. Reference the scenario's
+config structure (read `scenarios/<name>/conf/`) to suggest valid keys.
+
+Common patterns:
+- Timeline: `env.timeline_mode: follower_chronological` vs `pure_recsys`
 - Agent counts: `agents.persona_pipeline.classes.<role>.count: N`
 - Network: `env.social_network.base_followership_probability: 0.8`
-- Scenario content: `num_steps: 20`, `seed: 42`
+- Scale: `num_steps: 20`, `num_agents: 100`
 
-For each condition, also ask if it needs a `sub_experiment` label (useful for
-grouping conditions that share the same content variation, e.g. `bill_bias` vs `bradley_bias`).
+For each condition also ask:
+- Does it need a `sub_experiment` label for grouping/filtering?
+- Should any conditions **reuse runs from a previous hypothesis** as a baseline?
+  (If yes: note this — the condition's `execution.mode` will be `reuse_existing`
+  and it will reference the prior run's output path. Avoids redundant API costs
+  and keeps results comparable across hypotheses.)
 
 ---
 
@@ -91,19 +109,37 @@ Ask:
 **Evaluators** — suggest defaults and let user add:
 - `builtin.action_metrics_detailed` — post/reply/like/repost counts (always recommended)
 - `builtin.probe_metrics_detailed` — probe responses over time (if probes are configured)
-- `builtin.probe_binary_detailed`, `builtin.probe_numeric_detailed`, etc. — type-specific
+- `builtin.probe_binary_detailed`, `builtin.probe_numeric_detailed`,
+  `builtin.probe_choice_detailed`, `builtin.probe_freetext_detailed` — type-specific
 
-**Seeds** — suggest `seed_repeats: 3` starting from `seed_start: 42` as a reasonable default.
+Condition-local evaluators are supported — if a particular condition needs extra
+measurement, add an `evaluations:` block under that condition with
+`evaluation_mode: append`.
+
+**Seeds** — suggest `seed_repeats: 3` starting from `seed_start: 42` as a reasonable
+default. More seeds = more robust conclusions but more API cost.
 
 ---
 
-## Step 6 — Study metadata
+## Step 6 — Study metadata and notes
 
 Collect:
 - `study_id`: short snake_case identifier (e.g. `echo_chamber_timeline_v1`)
 - `study.name`: human-readable title
 - `study.question`: the confirmed research question from Step 1
 - `num_agents` and `num_steps` shared defaults (can override per condition)
+
+Ask:
+> "Any context, constraints, or objectives worth recording in the study file?
+> This is your lab notebook — future you will thank present you."
+
+Capture as `study.notes`:
+```yaml
+notes:
+  objective: ""    # what decision or insight this study informs
+  context: ""      # prior work, related studies, why now
+  constraints: ""  # time/cost/API limits affecting design choices
+```
 
 Suggest paths:
 - `study_summary_path`: `experiments/studies/<study_id>/SUMMARY.md`
@@ -112,7 +148,26 @@ Suggest paths:
 
 ---
 
-## Step 7 — Write files
+## Step 7 — Notebook
+
+Ask:
+> "Do you want a starter analysis notebook? I can create a skeleton with the
+> standard 9-section structure."
+
+If yes, create `experiments/studies/<study_id>/notebook.ipynb` with these sections:
+1. **Title + Setup** — load `study.yaml`, load eval files, set plot defaults
+2. **Study Overview** — hypothesis statements, conditions table (agents, steps, posts)
+3. **Key Metrics Explained** — plain-language definition + why it matters for each metric
+4. **Headline Comparison** — grouped bar chart of key metrics across conditions
+5. **Full Metric Profile** — radar chart, all metrics, both conditions overlaid
+6. **Scenario Consistency** — faceted figure (one panel per scenario) if multi-scenario
+7. **Per-Agent Distributions** — strip plots, each agent as a point, colored by condition
+8. **Behavioral Breakdown** — stacked bar of action type counts per condition
+9. **Takeaways** — key findings with numbers, limitations, next steps
+
+---
+
+## Step 8 — Write files
 
 Assemble the full spec as JSON (schema below) and write the study file:
 
@@ -124,15 +179,29 @@ This writes:
 ```
 experiments/studies/<study_id>/
   study.yaml
-  SUMMARY.md    # empty template ready for researcher notes
+  SUMMARY.md         # empty template ready for researcher notes
+  notebook.ipynb     # if requested in Step 7
 ```
 
-Then validate the study plan:
+Then validate the study plan expands correctly:
 ```bash
 uv run python -m experiments.run_study --study experiments/studies/<study_id> plan
 ```
 
 Report the expanded plan to the user. Fix any config key errors before finishing.
+
+---
+
+## Iterative workflow (h1 → analyze → h2)
+
+Remind the user of this pattern after writing files:
+
+> **After running H1:**
+> 1. Update `status` in `study.yaml` to `supported`, `refuted`, or `inconclusive`
+> 2. Record the key result as `finding: "gpt4o produced 3× higher diversity..."` on the hypothesis
+> 3. Append a summary note: `uv run python -m experiments.run_study --study ... summary-append --author ... --hypothesis h1_... --note "..."`
+> 4. Add H2 to `study.yaml` with `follows_from: h1_...` and `motivation:` explaining what the H1 finding raised
+> 5. Run H2 — conditions that overlap with H1 can reuse existing runs via `execution.mode: reuse_existing`
 
 ---
 
@@ -144,6 +213,11 @@ Report the expanded plan to the user. Fix any config key errors before finishing
   "name": "Human Readable Title",
   "question": "One sentence research question?",
   "scenarios": ["scenario_name"],
+  "notes": {
+    "objective": "",
+    "context": "",
+    "constraints": ""
+  },
   "run_defaults": {
     "config_path": "scenarios/<name>/conf",
     "run_name_template": "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}",
@@ -161,21 +235,26 @@ Report the expanded plan to the user. Fix any config key errors before finishing
   ],
   "hypotheses": [
     {
-      "id": "h1_short_id",
-      "statement": "Testable hypothesis statement.",
-      "independent_variable": "config_key_being_varied",
+      "id": "h1_short_name",
+      "statement": "Falsifiable hypothesis in one sentence.",
+      "independent_variable": "env.timeline_mode",
       "prediction": "Expected direction or outcome.",
       "status": "testing",
+      "follows_from": null,
+      "motivation": null,
       "conditions": [
         {
-          "id": "condition_id",
+          "id": "timeline=chronological",
           "sub_experiment": null,
           "overrides": {
             "env.timeline_mode": "follower_chronological"
-          }
+          },
+          "execution_mode": "run",
+          "reuse_source": null
         }
       ]
     }
-  ]
+  ],
+  "generate_notebook": false
 }
 ```

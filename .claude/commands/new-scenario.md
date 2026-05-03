@@ -43,10 +43,10 @@ Assess each role against the two existing agent prefabs:
 For each role the user describes:
 - If it maps cleanly to an existing prefab: confirm which one and why.
 - If it requires capabilities neither prefab has (e.g. multi-agent coordination,
-  custom tools, access to external data at runtime): say so clearly.
+  custom tools, access to external data at runtime, components that carry scenario-specific semantics): say so clearly.
   Ask: "This role would need a custom agent model. Do you want to build one?
   I can scaffold the `input/entity_lib/` stubs and explain what to implement."
-  Only proceed with custom scaffolding if the user confirms.
+  Only proceed with custom scaffolding if the user confirms. Prioritize simpler implementations, such as adding a component to the entity agent, rather than starting from scratch.
 
 ---
 
