@@ -1049,6 +1049,11 @@ def _register_search_path_plugin() -> None:
 
 def cli_main() -> None:
     """CLI entry point: preprocess --config-path flags then run Hydra main."""
+    if len(sys.argv) > 1 and sys.argv[1] in ("new-scenario", "new-study"):
+        from silisocs.scenario_gen.cli import scenario_gen_cli
+
+        scenario_gen_cli()
+        return
     _inject_external_config_path()
     _register_search_path_plugin()
     main()

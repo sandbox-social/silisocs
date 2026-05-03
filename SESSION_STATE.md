@@ -78,11 +78,29 @@ then calls `--from-spec-json` to write files.
 - `silisocs.agents.entity` — general-purpose agent (persona, goal, memory, tool-calling)
 - `silisocs.agents.fixed_entity` — scripted/deterministic sequence agent
 
+## Implementation Status
+
+### Done (committed in 4da56b4)
+- [x] `.claude/commands/new-scenario.md` skill — full 6-step conversational flow, ScenarioSpec JSON schema
+- [x] `.claude/commands/new-study.md` skill — full 8-step flow, StudySpec JSON schema, iterative h→analyze→h lifecycle
+- [x] `scenarios/*/README.md` files added (942aa9f) for scenario discovery in /new-study Step 2
+
+### Done
+- [x] `src/silisocs/scenario_gen/specs.py` — ScenarioSpec, StudySpec Pydantic models
+- [x] `src/silisocs/scenario_gen/writer.py` — write_scenario (5 YAML files) + write_study
+- [x] `src/silisocs/scenario_gen/validator.py` — validate_scenario / validate_study (subprocess dry-runs)
+- [x] `src/silisocs/scenario_gen/cli.py` — Typer app with `new-scenario` and `new-study` commands
+- [x] `src/silisocs/runtime/runner.py:cli_main` — dispatches `new-scenario`/`new-study` to scenario_gen.cli
+
+### Validation note
+`validate_scenario` runs `silisocs --config-path <conf> num_steps=1 sim.llm.disabled=true`
+as a subprocess. Output is verbose (full sim logs), which is fine for failure diagnosis.
+The validation run writes a 1-step output to `outputs/<scenario>/` — expected side effect.
+
+### Still not implemented
+- [ ] `src/silisocs/scenario_gen/expander.py` — LLM-based free-form → structured spec (for interactive CLI mode, lower priority)
+
 ## Next Steps
-- [ ] Implement `src/silisocs/scenario_gen/models.py` (ScenarioSpec, StudySpec Pydantic models)
-- [ ] Implement `src/silisocs/scenario_gen/writer.py` (file generation from spec)
-- [ ] Implement `src/silisocs/scenario_gen/expander.py` (LLM expansion)
-- [ ] Implement `src/silisocs/scenario_gen/validator.py` (dry-run check)
-- [ ] Add `new-scenario` and `new-study` CLI subcommands to runner.py
-- [ ] Write `.claude/commands/new-scenario.md` skill
-- [ ] Write `.claude/commands/new-study.md` skill
+- [ ] Commit the scenario_gen package
+- [ ] Run `/new-scenario` skill end-to-end in conversation to test dialogue → file-writing
+- [ ] Run `/new-study` skill end-to-end
