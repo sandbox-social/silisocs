@@ -42,10 +42,12 @@ If your goal is to **design and run scenarios** without writing code:
 
 1. Start with the [Quick Start](quickstart.md) to run the default scenario
 2. Read the [Usage Overview](usage.md) for the full workflow
-3. Use [Experiment Studies](experiments.md) for multi-condition hypothesis studies
-4. Use the [Dashboard](dashboard.md) to create scenarios visually
-5. See the [Election Walkthrough](tutorials/election.md) for a real-world example
-6. Check [Configuration Reference](configuration.md) for all knobs
+3. Follow the [Scenario Guide](scenario_guide.md) to build a new scenario
+4. Follow the [Study Guide](study_guide.md) to design a multi-condition study
+5. Use [Experiment Studies](experiments.md) for the study runner reference
+6. Use the [Dashboard](dashboard.md) to create scenarios visually
+7. See the [Election Walkthrough](tutorials/election.md) for a real-world example
+8. Check [Configuration Reference](configuration.md) for all knobs
 
 ## For Developers
 
@@ -65,14 +67,15 @@ If you want to **extend the framework** (new backends, entities, probes, initial
 If you're an **LLM helping with code changes or architecture**:
 
 1. **Code Extension & Architecture**: Read [AGENTS.md](../AGENTS.md) — Entry points, component system, extensibility patterns
-2. **Deep Architectural Dive**: Read [ARCHITECTURE.md](../ARCHITECTURE.md) — Multi-flow routing, component instance management, flow scheduling
+2. **Deep Architectural Dive**: Read [agent_docs/architecture.md](../agent_docs/architecture.md) — Multi-flow routing, component instance management, flow scheduling
 3. **Configuration Reference**: Check [configuration.md](configuration.md) — All knobs and their effects
-4. **Study Orchestration**: Read [EXPERIMENTS.md](../EXPERIMENTS.md) — `run_study.py` schema and evaluator presets
+4. **Study Orchestration**: Read [agent_docs/scenario_design.md](../agent_docs/scenario_design.md) — `run_study.py` schema and evaluator presets
 
 If you're an **LLM helping design experiments via configuration**:
 
-1. **Scenario Design**: Read [EXPERIMENTS.md](../EXPERIMENTS.md) — How to create `scenarios/{name}/conf/` with persona pipelines, networks, probes
-2. **Config Reference**: Check [configuration.md](configuration.md) — All config values and defaults
+1. **Scenario Design**: Read [agent_docs/scenario_design.md](../agent_docs/scenario_design.md) — How to create `scenarios/{name}/conf/` with persona pipelines, networks, probes
+2. **Guided workflows**: Use `/new-scenario` or `/new-study` (full instructions in [agent_docs/skills/](../agent_docs/skills/))
+3. **Config Reference**: Check [configuration.md](configuration.md) — All config values and defaults
 
 ## Quick Links
 
@@ -83,7 +86,10 @@ If you're an **LLM helping design experiments via configuration**:
 
 **For End Users:**
 - [Usage Overview](usage.md) — End-to-end guide to the system
-- [Experiment Studies](experiments.md) — Hypothesis trees, seed sweeps, and evaluator pipelines
+- [Scenario Guide](scenario_guide.md) — Build a new scenario from scratch
+- [Study Guide](study_guide.md) — Design and run a multi-condition study
+- [Study Schema Reference](study_schema.md) — Full study.yaml schema and file formats
+- [Experiment Studies](experiments.md) — Study runner CLI reference
 - [Dashboard Guide](dashboard.md) — GUI for scenario creation
 - [Election Walkthrough](tutorials/election.md) — Step-by-step complex scenario tutorial
 
@@ -98,8 +104,9 @@ If you're an **LLM helping design experiments via configuration**:
 
 **For AI Agents:**
 - [AGENTS.md](../AGENTS.md) — Code extension points and architecture
-- [ARCHITECTURE.md](../ARCHITECTURE.md) — Multi-flow routing deep dive
-- [EXPERIMENTS.md](../EXPERIMENTS.md) — Scenario design via configuration
+- [agent_docs/architecture.md](../agent_docs/architecture.md) — Multi-flow routing deep dive
+- [agent_docs/scenario_design.md](../agent_docs/scenario_design.md) — Scenario design via configuration
+- [agent_docs/skills/](../agent_docs/skills/) — Guided workflow instruction sets
 
 ## Architecture at a Glance
 

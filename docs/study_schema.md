@@ -11,7 +11,6 @@ outputs/                                    # Hydra output root (gitignored)
     eval.json                               # Stable copy of per-run eval (see pipeline)
 
 experiments/
-  study_schema.md                       # This document
   scripts/
     study_io.py                         # Shared I/O: load, validate, extract run metadata
     run_study.py                        # Orchestrator — runs all stages for a study
