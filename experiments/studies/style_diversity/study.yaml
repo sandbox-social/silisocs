@@ -303,15 +303,15 @@ hypotheses:
           runs:
             - scenario: misinformation
               seed: 42
-              source: outputs/misinformation/Misinfo_N6_T10_style_diversity_h6_cta_phrasing_cta=deliberate_misinformation_seed42/misinformation_2026-05-01_08-22-55
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=deliberate/misinformation/seed_42/misinformation_2026-05-01_08-22-55
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=deliberate/misinformation/seed_42/style_diversity_eval/eval.json
             - scenario: misinformation
               seed: 7
-              source: outputs/misinformation/Misinfo_N6_T10_style_diversity_h6_cta_phrasing_cta=deliberate_misinformation_seed7/misinformation_2026-05-01_08-30-48
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=deliberate/misinformation/seed_7/misinformation_2026-05-01_08-30-48
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=deliberate/misinformation/seed_7/style_diversity_eval/eval.json
             - scenario: misinformation
               seed: 123
-              source: outputs/misinformation/Misinfo_N6_T10_style_diversity_h6_cta_phrasing_cta=deliberate_misinformation_seed123/misinformation_2026-05-01_08-37-28
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=deliberate/misinformation/seed_123/misinformation_2026-05-01_08-37-28
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=deliberate/misinformation/seed_123/style_diversity_eval/eval.json
       cta=reactive:
         scenarios:
@@ -324,15 +324,15 @@ hypotheses:
           runs:
             - scenario: misinformation
               seed: 42
-              source: outputs/misinformation/Misinfo_N6_T10_style_diversity_h6_cta_phrasing_cta=reactive_misinformation_seed42/misinformation_2026-05-01_08-43-26
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=reactive/misinformation/seed_42/misinformation_2026-05-01_08-43-26
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=reactive/misinformation/seed_42/style_diversity_eval/eval.json
             - scenario: misinformation
               seed: 7
-              source: outputs/misinformation/Misinfo_N6_T10_style_diversity_h6_cta_phrasing_cta=reactive_misinformation_seed7/misinformation_2026-05-01_08-49-52
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=reactive/misinformation/seed_7/misinformation_2026-05-01_08-49-52
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=reactive/misinformation/seed_7/style_diversity_eval/eval.json
             - scenario: misinformation
               seed: 123
-              source: outputs/misinformation/Misinfo_N6_T10_style_diversity_h6_cta_phrasing_cta=reactive_misinformation_seed123/misinformation_2026-05-01_08-56-30
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=reactive/misinformation/seed_123/misinformation_2026-05-01_08-56-30
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=reactive/misinformation/seed_123/style_diversity_eval/eval.json
       cta=engagement:
         scenarios:
@@ -345,13 +345,13 @@ hypotheses:
           runs:
             - scenario: misinformation
               seed: 42
-              source: outputs/misinformation/Misinfo_N6_T10_style_diversity_h6_cta_phrasing_cta=engagement_misinformation_seed42/misinformation_2026-05-01_09-03-48
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=engagement/misinformation/seed_42/misinformation_2026-05-01_09-03-48
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=engagement/misinformation/seed_42/style_diversity_eval/eval.json
             - scenario: misinformation
               seed: 7
-              source: outputs/misinformation/Misinfo_N6_T10_style_diversity_h6_cta_phrasing_cta=engagement_misinformation_seed7/misinformation_2026-05-01_09-11-29
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=engagement/misinformation/seed_7/misinformation_2026-05-01_09-11-29
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=engagement/misinformation/seed_7/style_diversity_eval/eval.json
             - scenario: misinformation
               seed: 123
-              source: outputs/misinformation/Misinfo_N6_T10_style_diversity_h6_cta_phrasing_cta=engagement_misinformation_seed123/misinformation_2026-05-01_09-19-24
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=engagement/misinformation/seed_123/misinformation_2026-05-01_09-19-24
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=engagement/misinformation/seed_123/style_diversity_eval/eval.json

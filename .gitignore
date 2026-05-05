@@ -210,6 +210,15 @@ experiments/studies/**/*.ipynb
 experiments/studies/**/*.pdf
 experiments/studies/**/*.png
 
+# Raw simulation output files within study run dirs (too large for git)
+experiments/studies/**/prompts_and_responses.jsonl
+experiments/studies/**/action_events.jsonl
+experiments/studies/**/probe_events.jsonl
+experiments/studies/**/run_stats.log
+experiments/studies/**/*.db
+experiments/studies/**/*.db-shm
+experiments/studies/**/*.db-wal
+
 # SQLite transient files from local backend tests
 *.db-shm
 *.db-wal
