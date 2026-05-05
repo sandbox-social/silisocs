@@ -4,16 +4,21 @@ study:
   name: style_diversity
   study_id: style_diversity
   question: >-
-    Does increasing LLM capacity reduce repetitive/groupthink behavior in
-    multi-agent social media simulations?
+    What gives an agent population's language its stylistic diversity, and how
+    do LLM generation parameters (model size, temperature, persona richness,
+    CTA framing) interact with scenario structure to produce or suppress it?
   scenarios:
     - ai_conference
     - misinformation
+    - neighborhood_forum
+    - science_qa
+    - hobby_collective
+    - intergenerational_community
   study_summary_path: experiments/studies/style_diversity/SUMMARY.md
   summary_log_path: experiments/studies/style_diversity/generated/summary_log.jsonl
 
   run_defaults:
-    config_path: scenarios/misinformation/conf
+    config_path: scenarios/{scenario}/conf
     runner_module: silisocs.runtime.runner
     run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
     output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
@@ -109,6 +114,28 @@ hypotheses:
               source: outputs/misinformation_experiment/2026-03-30_01-14-59
               eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/misinformation/seed_123/eval.json
 
+      model=gpt4o-mini__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
+
+      model=gpt4o__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
+
   h2_temperature:
     follows_from: h1_model_capacity
     motivation: >-
@@ -189,6 +216,30 @@ hypotheses:
               source: outputs/misinformation_experiment/2026-03-31_11-04-12
               eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/misinformation/seed_123/eval.json
 
+      temperature=0.5__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+          sim.llm.temperature: 0.5
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
+
+      temperature=1.5__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+          sim.llm.temperature: 1.5
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
+
   h3_persona_richness:
     statement: >-
       Richer agent personas produce more diverse post behavior and reasoning,
@@ -266,6 +317,29 @@ hypotheses:
               seed: 123
               source: outputs/misinformation_thin_experiment/2026-03-31_21-06-49
               eval: outputs/eval_style_diversity/h3_persona_richness/thin/misinformation_thin/seed_123/eval.json
+
+      persona=rich__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
+
+      persona=thin__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+          agents: thin
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
 
   h6_cta_phrasing:
     statement: >-
@@ -355,3 +429,39 @@ hypotheses:
               seed: 123
               source: experiments/studies/style_diversity/h6_cta_phrasing/cta=engagement/misinformation/seed_123/misinformation_2026-05-01_09-19-24
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=engagement/misinformation/seed_123/style_diversity_eval/eval.json
+
+      cta=deliberate__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+          env: cta_deliberate
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
+
+      cta=reactive__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+          env: cta_reactive
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
+
+      cta=engagement__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+          env: cta_engagement
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community

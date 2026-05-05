@@ -803,6 +803,12 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                             template_context,
                         )
 
+                    resolved_config_path = (
+                        _format_template_token(cond_config_path, template_context)
+                        if cond_config_path
+                        else None
+                    )
+
                     run_specs.append(
                         RunSpec(
                             run_id=run_id,
@@ -816,7 +822,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                             run_name=run_name,
                             execution_mode=mode,
                             overrides=copy.deepcopy(merged),
-                            config_path=cond_config_path,
+                            config_path=resolved_config_path,
                             runner_module=runner_module,
                             re_evaluate=re_evaluate,
                             output_rootname=output_rootname,
