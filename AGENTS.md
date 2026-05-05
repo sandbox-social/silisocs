@@ -119,7 +119,7 @@ Scenario content lives under:
 - **Optional**: `scenarios/<name>/conf/env.yaml` — partial env overrides
 - **Optional**: `scenarios/<name>/conf/agents/thin.yaml` — alternate agents variant (select with `agents=thin`)
 
-**For designing experiments via config (no code changes):** See [EXPERIMENTS.md](EXPERIMENTS.md)
+**For designing experiments via config (no code changes):** See [agent_docs/scenario_design.md](agent_docs/scenario_design.md)
 
 **For understanding config structure deeply:** See [docs/configuration.md](docs/configuration.md)
 
@@ -406,15 +406,21 @@ backend action catalogs, and checkpoint policy tests.
 This guide (AGENTS.md) is for you if you're **extending the framework** — writing new components, backends, agents, or changing architecture.
 
 If instead you want to **design and run experiments via config only**:
-→ See [EXPERIMENTS.md](EXPERIMENTS.md) — Scenario design guide for config-based users
+→ See [agent_docs/scenario_design.md](agent_docs/scenario_design.md) — Scenario design guide for config-based users
 
 **Detailed architecture deep dive** (multi-flow, multi-GM, component routing):
-→ See [ARCHITECTURE.md](ARCHITECTURE.md) — Reference for complex orchestration patterns
+→ See [agent_docs/architecture.md](agent_docs/architecture.md) — Reference for complex orchestration patterns
+
+**Guided workflows** (interactive design skills — readable by any coding agent):
+→ [agent_docs/skills/new-scenario.md](agent_docs/skills/new-scenario.md) — Step-by-step scenario design assistant
+→ [agent_docs/skills/new-study.md](agent_docs/skills/new-study.md) — Step-by-step study design assistant
+_(Claude Code users: invoke as `/new-scenario` or `/new-study`)_
 
 **Public documentation** (for end users):
 - `docs/index.md` — Hub for all documentation
 - `docs/configuration.md` — Config reference (all knobs explained)
 - `docs/usage.md` — End-to-end workflow
+- `docs/study_schema.md` — Study YAML schema, directory layout, and analysis conventions
 - `docs/environment_layer.md` — Engine/GM/component extensibility patterns
 - `docs/backends.md` — Backend plugin patterns
 - `docs/building_agents.md` — Agent builder patterns

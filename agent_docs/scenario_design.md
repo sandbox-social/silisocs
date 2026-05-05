@@ -1,4 +1,4 @@
-# EXPERIMENTS.md
+# Scenario Design Guide
 
 This guide is for LLM agents helping design and create new simulation scenarios using configuration (YAML) — without modifying code.
 
@@ -529,7 +529,7 @@ This means your scenario files only need to specify what's **different** from de
 2. **Understand defaults**: check `src/silisocs/conf/sim/base.yaml`
 3. **Create your scenario**: mkdir and scaffold with the structure above
 4. **Test it**: run via CLI with `--config-path`
-5. **For complex scenarios**: consult ARCHITECTURE.md (multi-flow deep dive) and AGENTS.md (custom agents)
+5. **For complex scenarios**: consult [architecture.md](architecture.md) (multi-flow deep dive) and [AGENTS.md](../AGENTS.md) (custom agents)
 
 ---
 

@@ -11,6 +11,8 @@ Configurable generative agent simulation of social media using the [Concordia fr
 
 **[Read the full documentation](https://social-sandbox.github.io/silisocs)**
 
+**Running studies?** See [docs/study_schema.md](docs/study_schema.md) for the study YAML schema and experiment directory layout.
+
 ## Code Overview
 
 ### Runtime Entry Point
@@ -111,7 +113,6 @@ simsandbox/
   │   │   ├── run_study.py           # Orchestrator (simulate → eval → register → organize)
   │   │   ├── organize_experiments.py # Builds experiments/ tree from study.yaml
   │   │   └── study_io.py            # Shared IO utilities
-  |   ├── study_schema.md
   │   └── {study_name}/              # Study data (study.yaml, eval.py, results)
   │
   └── outputs/                       # Raw simulation outputs (gitignored)
