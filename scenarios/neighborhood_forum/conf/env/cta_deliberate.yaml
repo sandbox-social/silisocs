@@ -1,0 +1,115 @@
+# @package env
+# CTA variant: deliberate — style-diversity scenario suite
+# Complete env config: twitter_like base + neighborhood_forum overrides + variant action_prompt
+platform_type: twitter_like
+app_module_path: silisocs.environments.backends.twitter_like
+use_server: false
+enable_gm_multi_flow: false
+timeline_posts: 10
+timeline_mode: follower_chronological
+timeline_config:
+  recsys_ratio: 0.6
+  follower_ratio: 0.4
+observation_history: 100
+seed_posts:
+  type: llm
+enabled_actions:
+  - create_tweet
+  - reply_to_tweet
+  - like_tweet
+  - repost_tweet
+  - FINISHED
+gamemaster:
+  filename: social_media
+  name: twitter_like_gm
+  sim_role:
+    name: social media game master
+    module_path: silisocs.environments.gm.game_master
+gm:
+  preset: base
+  components:
+    next_acting:
+      built_in: activity_probability
+      class_path: null
+      params: {}
+    observe:
+      built_in: timeline_every_turn
+      class_path: null
+      params: {}
+    resolve:
+      built_in: tool_calling
+      class_path: null
+      params: {}
+gm_orchestration:
+  gms: []
+  flow_bindings:
+    flow_to_gm: {}
+    flow_to_gms: {}
+    gm_to_flows: {}
+social_network:
+  activity_transition_rates:
+    council_member:
+      inactive_to_active: 0.9
+      active_to_inactive: 0.1
+    longtime_resident:
+      inactive_to_active: 0.6
+      active_to_inactive: 0.3
+    renter:
+      inactive_to_active: 0.7
+      active_to_inactive: 0.2
+    business_owner:
+      inactive_to_active: 0.7
+      active_to_inactive: 0.2
+    newcomer:
+      inactive_to_active: 0.6
+      active_to_inactive: 0.3
+  fully_connected_targets:
+    - council_member
+  base_followership_probability: 0.5
+  network_type: barabasi_albert
+  barabasi_albert_m: 2
+usage_instructions: |
+  You are currently operating on a Twitter like platform.
+  You are allowed to perform the given actions, descriptions, and instructions on how to perform them will follow.
+  Generally, to share content, you can write a 'tweet' (a short post).
+  Tweets can be up to 280 characters long.
+  You can reply to tweets, creating threaded conversations., and you can
+  like (favorite) them to show appreciation, or
+  repost (retweet) tweets to share them with your followers.
+  You can mention other users in your tweets using their @username.
+  You can follow other users to see their tweets in your home timeline.
+  You can unfollow users if they no longer wish to see their content.
+  Generally, if you don't want to take actions, or are done taking actions for a given step, you can use the finished action to stop.
+  Some of the above listed actions, may not be available at thus step, or some other actions may also be available, as described below.
+  current_user is always the full display name (e.g. "Alice Smith").
+  Only use real post IDs from timeline/feed observations; do not fabricate IDs.
+  For status/content fields, write in first person as the character.
+  Omit optional parameters you do not want to use.
+  Choose actions from those that are available:
+action_prompt: |
+  ## AVAILABLE ACTIONS
+  1. POST - Share new content by creating a new tweet
+  2. REPLY - Engage existing content by responding to a tweet (needs post ID)
+  3. REPOST - Extend the reach of content by reposting someone's tweet (needs post ID)
+  4. LIKE - Show the world you appreciate content by liking a tweet (needs post ID)
+
+  ## INSTRUCTIONS
+  Determine what ONE action {name} would take next based on:
+  - Their character and values via self-perception and goal descriptions
+  - The current context and timeline
+  - Not repeating recent actions
+  If text-based, the text must reflect their posting style description.
+
+  [OUTPUT STYLE]
+output_style: |
+  ## OUTPUT FORMAT
+  Answer: {name}
+  STEP 1: [Analyze {name}'s motivation based on their character]
+  STEP 2: [Consider which posts/actions align with {name}'s values]
+  STEP 3: [Determine the single most authentic action]
+
+  FINAL DECISION:
+  ACTION TYPE: [POST/REPLY/REPOST/LIKE]
+  TARGET ID: [Include post ID if applicable]
+  CONTENT: [For posts/replies, exact text {name} would write]
+  REASONING: [Brief explanation of why this action fits {name}'s character]

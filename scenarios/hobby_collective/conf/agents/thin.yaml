@@ -1,0 +1,67 @@
+# @package agents
+persona_pipeline:
+  processing_mode: raw
+  defaults:
+    params:
+      seed_post: ''
+      bio: ''
+      style: ''
+      goal: null
+      scenario_context: ${event.context}
+    shared_memories:
+    - ${event.context}
+  classes:
+    hobbyist:
+      count: 9
+      prefab_module: silisocs.agents.entity
+      sim_role_name: hobbyist
+      data:
+        source: inline
+        records:
+        - name: Eleanor Marsh
+          username: eleanor_marsh
+          context: Eleanor Marsh is a social media user.
+          seed_post: ''
+        - name: Kai Petersen
+          username: kai_petersen
+          context: Kai Petersen is a social media user.
+          seed_post: ''
+        - name: Ananya Krishnan
+          username: ananya_krishnan
+          context: Ananya Krishnan is a social media user.
+          seed_post: ''
+        - name: Robert Finch
+          username: robert_finch
+          context: Robert Finch is a social media user.
+          seed_post: ''
+        - name: Linda Torres
+          username: linda_torres
+          context: Linda Torres is a social media user.
+          seed_post: ''
+        - name: Yusuf Al-Rashidi
+          username: yusuf_alrashidi
+          context: Yusuf Al-Rashidi is a social media user.
+          seed_post: ''
+        - name: Dr. Nadia Volkov
+          username: nadia_volkov
+          context: Dr. Nadia Volkov is a social media user.
+          seed_post: ''
+        - name: Marco Bianchi
+          username: marco_bianchi
+          context: Marco Bianchi is a social media user.
+          seed_post: ''
+        - name: Priya Desai
+          username: priya_desai_astro
+          context: Priya Desai is a social media user.
+          seed_post: ''
+      field_map:
+        name: name
+        username: username
+        context: context
+        seed_post: seed_post
+shared_memories:
+- ${event.context}
+- ${setting.background}
+initial_observations:
+- '{name} opens their social media feed and starts scrolling.'
+- '{name} notices some new posts from people they follow.'

@@ -1,0 +1,115 @@
+# @package agents
+persona_pipeline:
+  processing_mode: raw
+  defaults:
+    params:
+      seed_post: ''
+      bio: ''
+      style: ''
+      goal: null
+      scenario_context: ${event.context}
+    shared_memories:
+    - ${event.context}
+  classes:
+    council_member:
+      count: 1
+      prefab_module: silisocs.agents.entity
+      sim_role_name: council_member
+      data:
+        source: inline
+        records:
+        - name: Margaret Osei
+          username: margaret_osei
+          context: Margaret Osei is a social media user.
+          seed_post: ''
+      field_map:
+        name: name
+        username: username
+        context: context
+        seed_post: seed_post
+    longtime_resident:
+      count: 2
+      prefab_module: silisocs.agents.entity
+      sim_role_name: longtime_resident
+      data:
+        source: inline
+        records:
+        - name: Ruth Callahan
+          username: ruth_callahan
+          context: Ruth Callahan is a social media user.
+          seed_post: ''
+        - name: Dennis Kowalski
+          username: dennis_kowalski
+          context: Dennis Kowalski is a social media user.
+          seed_post: ''
+      field_map:
+        name: name
+        username: username
+        context: context
+        seed_post: seed_post
+    renter:
+      count: 2
+      prefab_module: silisocs.agents.entity
+      sim_role_name: renter
+      data:
+        source: inline
+        records:
+        - name: Jasmine Tran
+          username: jasmine_tran
+          context: Jasmine Tran is a social media user.
+          seed_post: ''
+        - name: Carlos Mendez
+          username: carlos_mendez
+          context: Carlos Mendez is a social media user.
+          seed_post: ''
+      field_map:
+        name: name
+        username: username
+        context: context
+        seed_post: seed_post
+    business_owner:
+      count: 2
+      prefab_module: silisocs.agents.entity
+      sim_role_name: business_owner
+      data:
+        source: inline
+        records:
+        - name: Sandra Park
+          username: sandra_park
+          context: Sandra Park is a social media user.
+          seed_post: ''
+        - name: Roy Belton
+          username: roy_belton
+          context: Roy Belton is a social media user.
+          seed_post: ''
+      field_map:
+        name: name
+        username: username
+        context: context
+        seed_post: seed_post
+    newcomer:
+      count: 2
+      prefab_module: silisocs.agents.entity
+      sim_role_name: newcomer
+      data:
+        source: inline
+        records:
+        - name: Aisha Williams
+          username: aisha_williams
+          context: Aisha Williams is a social media user.
+          seed_post: ''
+        - name: Tom Nguyen
+          username: tom_nguyen
+          context: Tom Nguyen is a social media user.
+          seed_post: ''
+      field_map:
+        name: name
+        username: username
+        context: context
+        seed_post: seed_post
+shared_memories:
+- ${event.context}
+- ${setting.background}
+initial_observations:
+- '{name} opens their social media feed and starts scrolling.'
+- '{name} notices some new posts from people they follow.'

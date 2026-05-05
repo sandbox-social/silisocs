@@ -10,6 +10,29 @@ all sections, write the files by calling the CLI.
 
 ---
 
+## Step 0 — Framing
+
+Ask:
+> "Are you designing this scenario for an existing study or research question, or
+> building a standalone social world?"
+
+**If study-first**: ask them to state the research question in one sentence.
+Store it as `research_question`. Then, throughout the rest of the steps, use it
+as a lens:
+- When drafting the setting and event (Step 1), check that the social dynamics
+  you propose would plausibly produce variation in whatever the study measures.
+  Flag any mismatches explicitly (e.g. "this setting might suppress the signal
+  you need because...").
+- When designing agent roles (Step 2), prioritise roles that maximise variation
+  along the dimension the study cares about.
+- After confirming the event (Step 1), add a brief note:
+  > "Signal check: here's why this scenario should produce meaningful variation
+  > for your research question — and one risk to watch for."
+
+**If standalone**: skip the signal-check notes and proceed directly to Step 1.
+
+---
+
 ## Step 1 — Phenomenon (free-form)
 
 Ask:
@@ -23,6 +46,10 @@ From their answer, use your own reasoning to draft:
   describing what's happening now and what dynamics to observe
 
 Show both to the user and ask for confirmation. Offer to revise any part.
+
+If in study-first mode, follow the confirmation with a **signal check** (2–3
+sentences): why this scenario would produce variation relevant to the research
+question, and one concrete risk (e.g. a dynamic that might suppress the signal).
 
 ---
 
