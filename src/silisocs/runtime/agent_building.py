@@ -1,4 +1,11 @@
-"""Builder resolution utilities for scenario agent construction."""
+"""Agent builder resolution utilities.
+
+This module contains helpers used by the runner to resolve and invoke a
+scenario-specific agent builder. Scenarios may provide a ``builders.py``
+module that defines a <ScenarioName>AgentBuilder class; when present that
+builder is used. Otherwise the project falls back to
+:class:`silisocs.agents.builders.BaseAgentBuilder`.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +20,27 @@ from silisocs.agents.builders import BaseAgentBuilder
 
 
 def _resolve_builder_class(cfg: DictConfig) -> type[Any]:
+    """Resolve the agent builder class for a scenario.
+
+    The function attempts the following, in order:
+
+    1. Import ``silisocs.scenarios.<scenario>.builders`` and read
+       ``<Scenario>AgentBuilder``.
+    2. Load ``scenarios/<scenario>/builders.py`` from the project root and
+       read ``<Scenario>AgentBuilder``.
+    3. Fall back to :class:`silisocs.agents.builders.BaseAgentBuilder`.
+
+    Parameters
+    ----------
+    cfg:
+        The composed Hydra config containing ``scenario_name``.
+
+    Returns
+    -------
+    type
+        The builder class to instantiate.
+    """
+
     scenario_name = cfg.scenario_name
     builder_class_name = f"{scenario_name.title()}AgentBuilder"
 
@@ -46,7 +74,20 @@ def _resolve_builder_class(cfg: DictConfig) -> type[Any]:
 
 
 def build_agent_configs(cfg: DictConfig):
-    """Build agent configs from scenario-configured builder class."""
+    """Build agent instance configurations for the scenario.
+
+    Parameters
+    ----------
+    cfg:
+        The composed Hydra config used to initialize the selected builder.
+
+    Returns
+    -------
+    list
+        A list of :class:`omegaconf.DictConfig`-like instance configurations
+        representing agents to be constructed by the simulation runtime.
+    """
+
     builder_cls = _resolve_builder_class(cfg)
     builder = builder_cls(cfg.agents)
     return builder.build_agents()

@@ -1,7 +1,12 @@
 # silisocs/runtime/config.py
-"""
-Configuration store and validation for all scenarios.
-Defines the common structure that all scenarios must conform to.
+"""Configuration helpers and validators for scenarios.
+
+This module provides a lightweight :class:`ConfigStore` for accessing the
+active Hydra configuration and several validation helpers used by the
+experiment runner to ensure scenario YAML files conform to expected shapes.
+
+The validation functions raise :class:`ValueError` or :class:`FileNotFoundError`
+when checks fail.
 """
 
 from dataclasses import dataclass, field
@@ -17,15 +22,43 @@ from omegaconf import DictConfig, OmegaConf
 
 
 class ConfigStore:
+    """Global access to the composed Hydra configuration.
+
+    The class stores the active :class:`omegaconf.DictConfig` so modules can
+    access it without requiring Hydra be imported in every file. Use
+    :meth:`set_config` from an entrypoint and :meth:`get_config` elsewhere.
+    """
+
     _config: Any = None  # DictConfig | None = None
 
     @classmethod
     def set_config(cls, cfg: DictConfig | Any) -> None:
+        """Store the active configuration.
+
+        Parameters
+        ----------
+        cfg:
+            The composed Hydra :class:`omegaconf.DictConfig` object.
+        """
+
         cls._config = cfg
 
     @classmethod
     def get_config(cls) -> Any:
-        # Try to get from local store first
+        """Retrieve the stored configuration.
+
+        Returns
+        -------
+        The composed Hydra :class:`omegaconf.DictConfig` previously stored
+        via :meth:`set_config` or the active Hydra config when running under
+        a Hydra-managed process.
+
+        Raises
+        ------
+        RuntimeError
+            If no configuration is available.
+        """
+
         if cls._config is not None:
             return cls._config
 
@@ -313,6 +346,15 @@ def validate_data_files(cfg: DictConfig, scenario_path: Path) -> None:
     class_pipeline = OmegaConf.select(cfg, "persona_pipeline.classes")
 
     def _resolve_local_path(raw_path: str) -> Path | None:
+        """_resolve_local_path.
+    
+        :param str raw_path:
+        :type raw_path: str
+    
+        :returns: Path | None
+        :rtype: Path | None
+        """
+
         if not raw_path:
             return None
         candidate_paths = [

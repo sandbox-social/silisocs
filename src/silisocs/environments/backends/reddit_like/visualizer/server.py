@@ -26,6 +26,9 @@ templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 
 @app.on_event("shutdown")
 def shutdown_event():
+    """shutdown_event.
+    """
+
     platform.shutdown()
 
 

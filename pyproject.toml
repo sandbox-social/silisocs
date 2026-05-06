@@ -53,6 +53,12 @@ dependencies = [
   "streamlit>=1.45.1,<2.0.0",
   "seaborn>=0.13.2,<0.14.0",
   "datasets>=4.5.0,<5.0.0",
+  "mkdocstrings-python>=2.0.3",
+  "mkdocs-material>=9.7.6",
+  "pymdown-extensions>=10.21.2",
+  "mkdocs-gen-files>=0.6.1",
+  "mkdocs-literate-nav>=0.6.3",
+  "mkdocs-autorefs>=1.4.4",
 ]
 
 [project.urls]

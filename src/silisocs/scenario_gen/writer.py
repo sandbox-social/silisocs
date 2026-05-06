@@ -1,3 +1,6 @@
+"""writer module. Auto-generated module docstring.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,13 +18,33 @@ _BLOCK_THRESHOLD = 80
 
 
 def _str_representer(dumper: yaml.Dumper, data: str) -> yaml.ScalarNode:
+    """_str_representer.
+    
+    :param yaml.Dumper dumper:
+    :type dumper: yaml.Dumper
+    :param str data:
+    :type data: str
+    
+    :returns: yaml.ScalarNode
+    :rtype: yaml.ScalarNode
+    """
+
     if "\n" in data or len(data) > _BLOCK_THRESHOLD:
         return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
     return dumper.represent_scalar("tag:yaml.org,2002:str", data)
 
 
 def _make_dumper() -> type[yaml.Dumper]:
+    """_make_dumper.
+    
+    :returns: type[yaml.Dumper]
+    :rtype: type[yaml.Dumper]
+    """
+
     class _Dumper(yaml.Dumper):
+        """_Dumper.
+        """
+
         pass
 
     _Dumper.add_representer(str, _str_representer)
@@ -29,6 +52,17 @@ def _make_dumper() -> type[yaml.Dumper]:
 
 
 def _dump(data: Any, header: str | None = None) -> str:
+    """_dump.
+    
+    :param Any data:
+    :type data: Any
+    :param str | None header:
+    :type header: str | None
+    
+    :returns: str
+    :rtype: str
+    """
+
     text = yaml.dump(
         data,
         Dumper=_make_dumper(),
@@ -40,6 +74,17 @@ def _dump(data: Any, header: str | None = None) -> str:
 
 
 def _write(path: Path, content: str) -> None:
+    """_write.
+    
+    :param Path path:
+    :type path: Path
+    :param str content:
+    :type content: str
+    
+    :returns: None
+    :rtype: None
+    """
+
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
@@ -50,6 +95,17 @@ def _write(path: Path, content: str) -> None:
 
 
 def write_scenario(spec: ScenarioSpec, root: Path | str) -> None:
+    """write_scenario.
+    
+    :param ScenarioSpec spec:
+    :type spec: ScenarioSpec
+    :param Path | str root:
+    :type root: Path | str
+    
+    :returns: None
+    :rtype: None
+    """
+
     root = Path(root)
     conf = root / "conf"
     _write_scenario_yaml(spec, conf)
@@ -60,6 +116,17 @@ def write_scenario(spec: ScenarioSpec, root: Path | str) -> None:
 
 
 def _write_scenario_yaml(spec: ScenarioSpec, conf: Path) -> None:
+    """_write_scenario_yaml.
+    
+    :param ScenarioSpec spec:
+    :type spec: ScenarioSpec
+    :param Path conf:
+    :type conf: Path
+    
+    :returns: None
+    :rtype: None
+    """
+
     data = {
         "scenario_name": spec.scenario_name,
         "jobname_format": spec.jobname_format,
@@ -81,6 +148,17 @@ def _write_scenario_yaml(spec: ScenarioSpec, conf: Path) -> None:
 
 
 def _write_agents_yaml(spec: ScenarioSpec, conf: Path) -> None:
+    """_write_agents_yaml.
+    
+    :param ScenarioSpec spec:
+    :type spec: ScenarioSpec
+    :param Path conf:
+    :type conf: Path
+    
+    :returns: None
+    :rtype: None
+    """
+
     classes: dict[str, Any] = {}
     for ac in spec.agent_classes:
         classes[ac.sim_role_name] = {
@@ -137,6 +215,17 @@ def _write_agents_yaml(spec: ScenarioSpec, conf: Path) -> None:
 
 
 def _write_env_yaml(spec: ScenarioSpec, conf: Path) -> None:
+    """_write_env_yaml.
+    
+    :param ScenarioSpec spec:
+    :type spec: ScenarioSpec
+    :param Path conf:
+    :type conf: Path
+    
+    :returns: None
+    :rtype: None
+    """
+
     activity_rates = {
         ac.sim_role_name: {
             "inactive_to_active": ac.activity.inactive_to_active,
@@ -182,6 +271,15 @@ def _write_env_yaml(spec: ScenarioSpec, conf: Path) -> None:
 
 
 def _write_evals_yaml(conf: Path) -> None:
+    """_write_evals_yaml.
+    
+    :param Path conf:
+    :type conf: Path
+    
+    :returns: None
+    :rtype: None
+    """
+
     data = {
         "write_html_log": False,
         "probes": {
@@ -199,6 +297,15 @@ def _write_evals_yaml(conf: Path) -> None:
 
 
 def _write_sim_yaml(conf: Path) -> None:
+    """_write_sim_yaml.
+    
+    :param Path conf:
+    :type conf: Path
+    
+    :returns: None
+    :rtype: None
+    """
+
     data = {
         "memory_backend": "list",
         "action_mode": "generic",
@@ -227,6 +334,17 @@ def _write_sim_yaml(conf: Path) -> None:
 
 
 def write_study(spec: StudySpec, root: Path | str) -> None:
+    """write_study.
+    
+    :param StudySpec spec:
+    :type spec: StudySpec
+    :param Path | str root:
+    :type root: Path | str
+    
+    :returns: None
+    :rtype: None
+    """
+
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
 

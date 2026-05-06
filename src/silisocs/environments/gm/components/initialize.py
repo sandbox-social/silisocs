@@ -23,5 +23,11 @@ class DefaultBackendInitializer(BackendInitializer):
         agent_names: Sequence[str],
         init_kwargs: Mapping[str, Any],
     ) -> None:
+        """initialize.
+
+        :returns: None
+        :rtype: None
+        """
+
         kwargs = dict(init_kwargs)
         sm_app.initialize(agent_names=list(agent_names), **kwargs)

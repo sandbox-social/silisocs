@@ -1,3 +1,13 @@
+"""Engine implementations for runtime orchestration.
+
+This module provides the :class:`BaseRuntimeEngine` used to coordinate
+episodes, parallel actor execution, probe deployment, and telemetry for
+Silisocs simulations.
+
+The engine wraps Concordia engine primitives and adds safety around
+concurrent agent execution, per-flow routing, and worker-cap adaptation.
+"""
+
 # Make sure to import the original engine and any other tools you need
 import concurrent.futures
 import functools
@@ -72,11 +82,37 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize the runtime engine.
+
+        The constructor forwards arguments to the parent Concordia engine
+        implementation and initializes internal synchronization primitives
+        used to safely run concurrent agent tasks.
+
+        :param args: Positional arguments forwarded to the parent class.
+        :type args: tuple
+        :param kwargs: Keyword arguments forwarded to the parent class.
+        :type kwargs: dict
+        :returns: None
+        :rtype: None
+        """
+
         super().__init__(*args, **kwargs)
         self._gm_action_locks: dict[int, threading.Lock] = {}
         self._gm_action_locks_guard = threading.Lock()
 
     def _gm_lock(self, game_master: entity_lib.Entity) -> threading.Lock:
+        """Return a per-game-master lock instance.
+
+        Locks are created lazily and stored in an internal map keyed by the
+        :func:`id` of the game master entity. The returned lock ensures
+        that concurrent operations touching the same GM execute in series.
+
+        :param game_master: The game master entity to lock for.
+        :type game_master: entity_lib.Entity
+        :returns: A threading.Lock dedicated to the provided game master.
+        :rtype: threading.Lock
+        """
+
         key = id(game_master)
         with self._gm_action_locks_guard:
             lock = self._gm_action_locks.get(key)
@@ -218,6 +254,18 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
 
     @staticmethod
     def _is_app_game_master(game_master: entity_lib.Entity) -> bool:
+        """Return True when the game master wraps a platform app.
+
+        An "app game master" is one whose act component exposes a
+        platform adapter (``sm_app``). Such game masters support probe
+        deployment and per-model runtime state syncing.
+
+        :param game_master: The candidate game master entity.
+        :type game_master: entity_lib.Entity
+        :returns: True if the game master exposes an application adapter.
+        :rtype: bool
+        """
+
         act_component = getattr(game_master, "_act_component", None)
         return hasattr(act_component, "sm_app")
 
@@ -244,6 +292,19 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
 
     @staticmethod
     def _entity_flow_type(game_master: entity_lib.Entity, entity_name: str, cfg: Any) -> str:
+        """_entity_flow_type.
+    
+        :param entity_lib.Entity game_master:
+        :type game_master: entity_lib.Entity
+        :param str entity_name:
+        :type entity_name: str
+        :param Any cfg:
+        :type cfg: Any
+    
+        :returns: str
+        :rtype: str
+        """
+
         act_component = getattr(game_master, "_act_component", None)
         flow_map = dict(getattr(act_component, "entity_flow_tags", {}) or {})
 
@@ -268,6 +329,14 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
         entities: Sequence[entity_lib.Entity],
         action_specs: Sequence[entity_lib.ActionSpec],
     ) -> list[tuple[str, list[tuple[entity_lib.Entity, entity_lib.ActionSpec]]]]:
+        """_group_entities_by_flow.
+
+        :param cls:
+
+        :returns: list[tuple[str, list[tuple[entity_lib.Entity, entity_lib.ActionSpec]]]]
+        :rtype: list[tuple[str, list[tuple[entity_lib.Entity, entity_lib.ActionSpec]]]]
+        """
+
         flow_groups: OrderedDict[str, list[tuple[entity_lib.Entity, entity_lib.ActionSpec]]] = (
             OrderedDict()
         )
@@ -298,6 +367,15 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
 
     @staticmethod
     def _gm_sequence(game_master: entity_lib.Entity) -> int:
+        """_gm_sequence.
+    
+        :param entity_lib.Entity game_master:
+        :type game_master: entity_lib.Entity
+    
+        :returns: int
+        :rtype: int
+        """
+
         act_component = getattr(game_master, "_act_component", None)
         orchestration = getattr(act_component, "gm_orchestration", {})
         if not isinstance(orchestration, Mapping):
@@ -309,6 +387,15 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
 
     @staticmethod
     def _gm_owned_flows(game_master: entity_lib.Entity) -> set[str]:
+        """_gm_owned_flows.
+    
+        :param entity_lib.Entity game_master:
+        :type game_master: entity_lib.Entity
+    
+        :returns: set[str]
+        :rtype: set[str]
+        """
+
         act_component = getattr(game_master, "_act_component", None)
         orchestration = getattr(act_component, "gm_orchestration", {})
         if not isinstance(orchestration, Mapping):
@@ -325,6 +412,20 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
         current_game_master: entity_lib.Entity,
         game_masters: Sequence[entity_lib.Entity],
     ) -> list[entity_lib.Entity]:
+        """Determine the ordered list of game masters for the current phase.
+
+        The base runtime engine uses only the current game master by
+        default. Subclasses may override this method to return multiple
+        game masters that participate in a single episode phase.
+
+        :param current_game_master: The primary game master for this phase.
+        :type current_game_master: entity_lib.Entity
+        :param game_masters: All configured game masters for the simulation.
+        :type game_masters: Sequence[entity_lib.Entity]
+        :returns: Ordered list of game masters that should run this phase.
+        :rtype: list[entity_lib.Entity]
+        """
+
         del game_masters
         return [current_game_master]
 
@@ -346,6 +447,12 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
             [entity_lib.Entity, entity_lib.Entity, entity_lib.ActionSpec, bool], str
         ],
     ) -> tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]:
+        """_build_flow_task_groups.
+
+        :returns: tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]
+        :rtype: tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]
+        """
+
         del cfg
         flow_task_groups: list[tuple[str, dict[str, Callable[[], str]]]] = []
         model_pool: dict[int, Any] = {}
@@ -1001,6 +1108,14 @@ class FlowRuntimeEngine(BaseRuntimeEngine):
         current_game_master: entity_lib.Entity,
         game_masters: Sequence[entity_lib.Entity],
     ) -> list[entity_lib.Entity]:
+        """_phase_game_masters.
+
+        :param cls:
+
+        :returns: list[entity_lib.Entity]
+        :rtype: list[entity_lib.Entity]
+        """
+
         sequence = cls._gm_sequence(current_game_master)
         peers = [
             gm
@@ -1030,6 +1145,12 @@ class FlowRuntimeEngine(BaseRuntimeEngine):
             [entity_lib.Entity, entity_lib.Entity, entity_lib.ActionSpec, bool], str
         ],
     ) -> tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]:
+        """_build_flow_task_groups.
+
+        :returns: tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]
+        :rtype: tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]
+        """
+
         flow_task_groups: list[tuple[str, dict[str, Callable[[], str]]]] = []
         model_pool: dict[int, Any] = {}
         if skip_actions:

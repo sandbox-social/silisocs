@@ -42,6 +42,28 @@ class SMAct(gm_components.switch_act.SwitchAct):
         action_mode: str = "custom",
         enable_tool_calling: bool = False,
     ):
+        """__init__.
+
+        :param language_model.LanguageModel model:
+        :type model: language_model.LanguageModel
+        :param Sequence[str] entity_names:
+        :type entity_names: Sequence[str]
+        :param Any sm_app:
+        :type sm_app: Any
+        :param dict[str, str] | None entity_flow_tags:
+        :type entity_flow_tags: dict[str, str] | None
+        :param Sequence[str] | None component_order:
+        :type component_order: Sequence[str] | None
+        :param str call_to_action_str:
+        :type call_to_action_str: str
+        :param dict[str, Any] | None activity_transition_rates:
+        :type activity_transition_rates: dict[str, Any] | None
+        :param str action_mode:
+        :type action_mode: str
+        :param bool enable_tool_calling:
+        :type enable_tool_calling: bool
+        """
+
         super().__init__(
             model=model,
             entity_names=entity_names,
@@ -178,6 +200,12 @@ class MultiFlowSMAct(SMAct):
         entity_name: str | None,
         role: str,
     ) -> str | None:
+        """_component_key_for_role.
+
+        :returns: str | None
+        :rtype: str | None
+        """
+
         flow_name = self.get_flow_for_entity(entity_name or "")
         component_map = self.flow_to_component_map.get(flow_name)
         if component_map is None:
@@ -207,6 +235,17 @@ class MultiFlowSMAct(SMAct):
         contexts: entity_component.ComponentContextMapping,
         action_spec: entity_lib.ActionSpec,
     ) -> str:
+        """_make_observation.
+
+        :param entity_component.ComponentContextMapping contexts:
+        :type contexts: entity_component.ComponentContextMapping
+        :param entity_lib.ActionSpec action_spec:
+        :type action_spec: entity_lib.ActionSpec
+
+        :returns: str
+        :rtype: str
+        """
+
         entity_name = self._extract_active_entity_name(action_spec)
         selected_key = self._component_key_for_role(entity_name=entity_name, role="observe")
         if selected_key and selected_key in contexts:
@@ -221,6 +260,17 @@ class MultiFlowSMAct(SMAct):
         contexts: entity_component.ComponentContextMapping,
         action_spec: entity_lib.ActionSpec,
     ) -> str:
+        """_resolve.
+
+        :param entity_component.ComponentContextMapping contexts:
+        :type contexts: entity_component.ComponentContextMapping
+        :param entity_lib.ActionSpec action_spec:
+        :type action_spec: entity_lib.ActionSpec
+
+        :returns: str
+        :rtype: str
+        """
+
         entity_name = self._extract_active_entity_name(action_spec)
         selected_key = self._component_key_for_role(entity_name=entity_name, role="resolve")
         if selected_key and selected_key in contexts:

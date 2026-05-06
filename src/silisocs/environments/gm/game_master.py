@@ -1,6 +1,8 @@
-"""Simple social-media game master prefab.
+"""Default social-media game master prefab.
 
-This is the default GM for the easy workflow.
+This module provides a lightweight single-flow game master preset used by
+the simple/easy workflow. It exposes the :class:`GameMaster` dataclass which
+extends :class:`silisocs.environments.gm.base_game_master.BaseSocialMediaGameMaster`.
 """
 
 from __future__ import annotations
@@ -12,6 +14,10 @@ from silisocs.environments.gm.base_game_master import BaseSocialMediaGameMaster
 
 @dataclasses.dataclass
 class GameMaster(BaseSocialMediaGameMaster):
-    """Default single-flow social-media GM preset."""
+    """Single-flow social-media game master preset.
+
+    The class is intentionally minimal and primarily exists to expose a
+    named prefab that can be referenced in scenario configs.
+    """
 
     description: str = "A social-media game master."

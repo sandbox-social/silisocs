@@ -1,7 +1,9 @@
 """Base social-media game master prefabs.
 
 This module centralizes shared build logic used by both the simple single-flow
-GM and the shared-flow GM variant.
+GM and the shared-flow GM variant. It exposes helpers for building backend
+components, seed-post providers and wiring Concordia components into a
+game-master prefab.
 """
 
 from __future__ import annotations
@@ -49,6 +51,15 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _env_cfg(cfg: Any) -> Any:
+    """_env_cfg.
+    
+    :param Any cfg:
+    :type cfg: Any
+    
+    :returns: Any
+    :rtype: Any
+    """
+
     return getattr(cfg, "env", getattr(cfg, "environment", object()))
 
 
@@ -156,6 +167,12 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
     entities: Sequence[entity_agent_with_logging.EntityAgentWithLogging] = ()
 
     def _is_shared_flow_mode(self) -> bool:
+        """_is_shared_flow_mode.
+    
+        :returns: bool
+        :rtype: bool
+        """
+
         return False
 
     def build_generic_prompt(

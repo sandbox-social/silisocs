@@ -17,6 +17,16 @@ import yaml
 
 
 class VotingFavorabilityAnalyzer:
+    """VotingFavorabilityAnalyzer.
+    
+    Constructor parameters:
+    
+    __init__.
+    
+    :param str probe_file_path:
+    :type probe_file_path: str
+    """
+
     def load_agent_party_map(
         self, yaml_path: str = "conf/agents/election_agents_with_partisan.yaml"
     ):
@@ -49,6 +59,12 @@ class VotingFavorabilityAnalyzer:
     """Analyzes voting and favorability differences"""
 
     def __init__(self, probe_file_path: str):
+        """__init__.
+    
+        :param str probe_file_path:
+        :type probe_file_path: str
+        """
+
         self.probe_file_path = probe_file_path
         # Typed instance attributes
         self.data: list[dict] = []
@@ -233,6 +249,11 @@ class VotingFavorabilityAnalyzer:
         # We'll forward-fill missing candidate ratings from previous episodes per agent.
         def get_favorability_differences(episode_num):
             # Build agent -> episode -> candidate -> favorability mapping
+            """get_favorability_differences.
+
+            :param episode_num:
+            """
+
             agent_episode_candidate = defaultdict(lambda: defaultdict(dict))
             for _, row in self.favorability_df.iterrows():
                 ag = row["agent"]
@@ -334,6 +355,11 @@ class VotingFavorabilityAnalyzer:
 
         # Add value labels on bars
         def add_value_labels(bars):
+            """add_value_labels.
+    
+            :param bars:
+            """
+
             for bar in bars:
                 height = bar.get_height()
                 ax.annotate(

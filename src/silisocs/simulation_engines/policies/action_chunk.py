@@ -18,6 +18,15 @@ _FINISH_ACTION_ALIASES = {
 
 
 def _extract_structured_action_names(raw_action: str) -> list[str]:
+    """_extract_structured_action_names.
+    
+    :param str raw_action:
+    :type raw_action: str
+    
+    :returns: list[str]
+    :rtype: list[str]
+    """
+
     text = str(raw_action or "").strip()
     if not text:
         return []
@@ -65,6 +74,15 @@ def _extract_structured_action_names(raw_action: str) -> list[str]:
 
 
 def _count_structured_actions(raw_action: str) -> int:
+    """_count_structured_actions.
+    
+    :param str raw_action:
+    :type raw_action: str
+    
+    :returns: int
+    :rtype: int
+    """
+
     text = str(raw_action or "").strip()
     if not text:
         return 0
@@ -92,6 +110,12 @@ def _count_structured_actions(raw_action: str) -> int:
 
 
 def _is_finished_event(*, raw_action: str, resolved_result: str, finished_signal: str) -> bool:
+    """_is_finished_event.
+    
+    :returns: bool
+    :rtype: bool
+    """
+
     signal = str(finished_signal or "").strip().upper() or "FINISHED"
     aliases = set(_FINISH_ACTION_ALIASES)
     aliases.add(signal)
@@ -218,6 +242,12 @@ class OpenEndedActionChunkPolicy:
 
     def __post_init__(self) -> None:
         # Backward compatibility for existing config/dashboard payloads.
+        """__post_init__.
+
+        :returns: None
+        :rtype: None
+        """
+
         if self.done_token:
             self.finished_action_signal = str(self.done_token)
 

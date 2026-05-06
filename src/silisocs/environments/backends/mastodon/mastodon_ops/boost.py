@@ -10,6 +10,17 @@ from silisocs.environments.backends.mastodon.mastodon_ops.login import login
 
 
 def boost_check(login_user: str, toot_id: str) -> bool:
+    """boost_check.
+    
+    :param str login_user:
+    :type login_user: str
+    :param str toot_id:
+    :type toot_id: str
+    
+    :returns: bool
+    :rtype: bool
+    """
+
     load_dotenv(find_dotenv())  # Load environment variables from .env file
 
     try:

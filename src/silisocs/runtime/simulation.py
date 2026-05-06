@@ -12,7 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""An adaptable simulation prefab that can be configured to run any simulation."""
+"""Simulation runtime utilities.
+
+This module exposes the :class:`Simulation` class which composes game masters,
+entities, memory backends and an execution engine to run social simulations.
+
+The public API is intended for use by the runner and higher-level tooling.
+"""
 
 import copy
 import json
@@ -41,7 +47,33 @@ Role = prefab_lib.Role
 
 
 class Simulation(simulation_lib.Simulation):
-    """Define the simulation API object."""
+    """Simulation orchestrator.
+
+    The :class:`Simulation` object is responsible for constructing and
+    managing game master and entity instances, wiring memory backends, and
+    delegating execution to an :class:`~concordia.environment.engine.Engine`.
+
+    Parameters
+    ----------
+    config:
+        Prefab configuration object describing instances and prefabs.
+    models:
+        Mapping from model name to language model instances used to build
+        entities and game masters.
+    entity_to_model:
+        Mapping of entity names to keys in ``models`` used when constructing
+        each entity.
+    embedder:
+        Optional callable that converts text to embeddings; used for
+        associative memory backends. When ``None`` a list-backed memory is
+        used instead.
+    engine:
+        Execution engine used to drive simulation steps. Defaults to a
+        sequential engine.
+    memory_backend:
+        Name of the memory backend to create for entities (e.g. ``associative``
+        or ``list``).
+    """
 
     def __init__(
         self,
@@ -230,26 +262,37 @@ class Simulation(simulation_lib.Simulation):
         checkpoint_path: str | None = None,
         return_html_log: bool = True,
     ) -> str | list[Mapping[str, Any]]:
-        """Run the simulation.
+        """Execute the simulation run loop and return logs.
 
-        Args:
-          premise: A string to use as the initial premise of the simulation.
-          max_steps: The maximum number of steps to run the simulation for.
-                    start_step: The initial episode index to continue from.
-          raw_log: A list to store the raw log of the simulation. This is used to
-            generate the HTML log. Data in the supplied raw_log will be appended
-            with the log from the simulation. If None, a new list is created.
-          get_state_callback: A callback to be called when saving a checkpoint. This
-            callback is called with a dictionary containing the current state of all
-            entities and game masters.
-          checkpoint_path: The path to save the checkpoints. If None, no checkpoints
-            are saved.
-          return_html_log: If True, returns the HTML log.False returns the raw log.
+        This method runs the configured engine for up to ``max_steps``
+        episodes, invoking game master logic and agent actions. It can
+        optionally save checkpoints and return either an HTML-formatted
+        browseable log or the raw event log structure.
 
-        Returns
-        -------
-          html_results_log: browseable log of the simulation in HTML format
-          raw_log: raw log of the simulation
+        :param premise: Optional initial premise to seed the simulation.
+        :type premise: Optional[str]
+        :param max_steps: Maximum number of episodes to execute. If ``None``,
+            the simulation default is used.
+        :type max_steps: Optional[int]
+        :param start_step: Episode index to start from (useful for resuming).
+        :type start_step: int
+        :param raw_log: Optional list to collect the raw simulation log. If
+            omitted, an internal buffer is used and returned/converted to HTML
+            as requested.
+        :type raw_log: Optional[list[Mapping[str, Any]]]
+        :param get_state_callback: Callback invoked when a checkpoint is saved.
+            The callback receives a mapping with the current state of entities
+            and game masters.
+        :type get_state_callback: Optional[Callable[[dict[str, Any]], None]]
+        :param checkpoint_path: Path to persist checkpoint files. If ``None``,
+            checkpoints are not written to disk.
+        :type checkpoint_path: Optional[str]
+        :param return_html_log: If True, return an HTML string suitable for
+            browser viewing; otherwise return the raw log list.
+        :type return_html_log: bool
+
+        :returns: HTML string (if ``return_html_log``) or the raw log list.
+        :rtype: Union[str, list[Mapping[str, Any]]]
         """
         if premise is None:
             premise = self._config.default_premise
@@ -264,6 +307,15 @@ class Simulation(simulation_lib.Simulation):
         self._get_state_callback = get_state_callback
 
         def checkpoint_callback(step: int) -> None:
+            """checkpoint_callback.
+    
+            :param int step:
+            :type step: int
+    
+            :returns: None
+            :rtype: None
+            """
+
             if self._should_save_checkpoint(step):
                 self.save_checkpoint(step, checkpoint_path=checkpoint_path)
 
@@ -280,6 +332,15 @@ class Simulation(simulation_lib.Simulation):
         ]
 
         def _gm_sequence(game_master: entity_lib.Entity) -> int:
+            """_gm_sequence.
+    
+            :param entity_lib.Entity game_master:
+            :type game_master: entity_lib.Entity
+    
+            :returns: int
+            :rtype: int
+            """
+
             cfg = self._entity_to_prefab_config.get(game_master.name)
             if not cfg or not isinstance(cfg.params, dict):
                 return 0
@@ -453,6 +514,15 @@ class Simulation(simulation_lib.Simulation):
             from omegaconf import DictConfig, ListConfig, OmegaConf
 
             def _to_plain(obj: Any) -> Any:
+                """_to_plain.
+    
+                :param Any obj:
+                :type obj: Any
+    
+                :returns: Any
+                :rtype: Any
+                """
+
                 if isinstance(obj, (DictConfig, ListConfig)):
                     return OmegaConf.to_container(obj, resolve=True)
                 if isinstance(obj, dict):

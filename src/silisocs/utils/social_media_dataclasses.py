@@ -1,3 +1,6 @@
+"""social_media_dataclasses module. Auto-generated module docstring.
+"""
+
 from dataclasses import dataclass, field
 
 from omegaconf import MISSING
@@ -7,6 +10,9 @@ from silisocs.runtime.dataclasses import AbstractGameMasterParams, AgentParams, 
 
 @dataclass(frozen=True)
 class SocialMediaUserParams(AgentParams):
+    """SocialMediaUserParams.
+    """
+
     seed_post: str
     bio: str
     goal: str | None
@@ -14,12 +20,18 @@ class SocialMediaUserParams(AgentParams):
 
 @dataclass(frozen=True)
 class SimRoleParameters:
+    """SimRoleParameters.
+    """
+
     activity_transition_rates: dict[str, dict[str, int]] = MISSING
     initial_follow_prob: dict[str, dict[str, float]] = MISSING
 
 
 @dataclass(frozen=True)
 class UserData:
+    """UserData.
+    """
+
     sim_role_parameters: SimRoleParameters
     sim_roles: dict[str, str] = field(default_factory=dict)
     entity_flow_tags: dict[str, str] = field(default_factory=dict)
@@ -28,6 +40,9 @@ class UserData:
 
 @dataclass(frozen=True)
 class SocialMediaParams(AbstractGameMasterParams):
+    """SocialMediaParams.
+    """
+
     name: str
     calls_to_action: dict[str, str]
     app_module_path: str = "silisocs"

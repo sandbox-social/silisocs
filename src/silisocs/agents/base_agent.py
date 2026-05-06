@@ -1,7 +1,8 @@
-"""Abstract base class for social-media agents.
+"""Agent base classes and interfaces.
 
-This module defines the minimal interface that all agents (Concordia-based or not)
-must implement to work with the social-media simulation.
+This module declares the abstract :class:`silisocs.agents.base_agent.Agent` interface used by the
+simulation runtime as well as helper classes and lightweight concrete
+implementations used by the project.
 """
 
 from __future__ import annotations

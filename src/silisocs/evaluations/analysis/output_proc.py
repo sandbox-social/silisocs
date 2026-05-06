@@ -1,3 +1,6 @@
+"""output_proc module. Auto-generated module docstring.
+"""
+
 import json
 
 import networkx as nx
@@ -5,6 +8,11 @@ import pandas as pd
 
 
 def load_data(fileroot):
+    """load_data.
+    
+    :param fileroot:
+    """
+
     with open(fileroot + ".json") as file:
         config_data = json.load(file)
     df = pd.read_json(fileroot + "_output.jsonl", lines=True)
@@ -22,6 +30,11 @@ def load_data(fileroot):
 
 
 def post_process_output(df):
+    """post_process_output.
+    
+    :param df:
+    """
+
     probe_df = df.loc[
         df.event_type == "probe", ["episode", "source_user", "label", "data"]
     ].reset_index(drop=True)
@@ -46,6 +59,11 @@ def post_process_output(df):
 
 
 def episodewise_graphbuild(edge_df):
+    """episodewise_graphbuild.
+    
+    :param edge_df:
+    """
+
     follow_graph = nx.DiGraph()
     for epi_edge_data in edge_df.groupby("episode"):
         for action, operate_on_graph in zip(

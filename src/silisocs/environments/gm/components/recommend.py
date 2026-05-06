@@ -112,9 +112,21 @@ class RecommendationComponent(FlowComponent):
     }
 
     def _supported_recsys_types(self) -> set[str]:
+        """_supported_recsys_types.
+    
+        :returns: set[str]
+        :rtype: set[str]
+        """
+
         return set(self._SUPPORTED_RECSYS_BY_PLATFORM.get(self.platform_type, set()))
 
     def _effective_default_recsys_type(self) -> str | None:
+        """_effective_default_recsys_type.
+    
+        :returns: str | None
+        :rtype: str | None
+        """
+
         if self.default_recsys_type:
             return self.default_recsys_type
         return self._DEFAULT_RECSYS_BY_PLATFORM.get(self.platform_type)

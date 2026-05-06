@@ -1,13 +1,13 @@
 """Fixed-action entity prefab with sequence support.
 
-A lightweight entity type that does not call the LLM. It executes predetermined
-actions with support for:
-- Action sequences per episode
-- Episode-keyed plan organization
+A lightweight entity type that does not call an LLM. It executes
+predetermined actions with support for:
+
+- Action sequences keyed by episode
+- Episode-ordered plan execution with cursors
 - Optional JSON/YAML plan-file loading
 
-Actions execute sequentially, with cursor tracking to ensure proper sequencing
-across multiple act() calls within the same flow.
+This prefab is useful for deterministic tests and scripted scenarios.
 """
 
 from __future__ import annotations
@@ -30,6 +30,15 @@ from silisocs.agents.base_agent import Agent
 def _parse_episode_number(observation: str) -> int | None:
     # Only treat explicit episode markers as authoritative; timeline post IDs
     # or scores should not change deterministic episode progression.
+    """_parse_episode_number.
+
+    :param str observation:
+    :type observation: str
+
+    :returns: int | None
+    :rtype: int | None
+    """
+
     match = re.search(r"\bepisode\b\s*[:#-]?\s*(\d+)\b", observation or "", re.IGNORECASE)
     if not match:
         return None
@@ -58,6 +67,12 @@ class FixedActionEntityRuntime(Agent):
     """
 
     def __init__(self, *, params: Mapping[str, Any]) -> None:
+        """__init__.
+    
+        :returns: None
+        :rtype: None
+        """
+
         self._params = dict(params)
         self._agent_name = str(params.get("name", "FixedEntity"))
         self.seed_post = str(params.get("seed_post", ""))
@@ -131,6 +146,15 @@ class FixedActionEntityRuntime(Agent):
         return self._agent_name
 
     def set_allowed_action_types(self, action_types: list[str]) -> None:
+        """set_allowed_action_types.
+    
+        :param list[str] action_types:
+        :type action_types: list[str]
+    
+        :returns: None
+        :rtype: None
+        """
+
         self._allowed_action_types = [
             str(v).strip().upper() for v in action_types if str(v).strip()
         ]
@@ -142,6 +166,15 @@ class FixedActionEntityRuntime(Agent):
             self._action_output_mode = normalized
 
     def observe(self, observation: str) -> None:
+        """observe.
+    
+        :param str observation:
+        :type observation: str
+    
+        :returns: None
+        :rtype: None
+        """
+
         parsed = _parse_episode_number(observation)
         if parsed is None:
             self._last_observation_had_episode = False
@@ -200,6 +233,15 @@ class FixedActionEntityRuntime(Agent):
         return actions_by_episode
 
     def _next_known_episode(self, current_episode: int) -> int | None:
+        """_next_known_episode.
+    
+        :param int current_episode:
+        :type current_episode: int
+    
+        :returns: int | None
+        :rtype: int | None
+        """
+
         if not self._episode_order:
             return None
         for episode in self._episode_order:
@@ -208,6 +250,15 @@ class FixedActionEntityRuntime(Agent):
         return None
 
     def _finished_action_item(self, reason: str = "Finished action episode") -> dict[str, Any]:
+        """_finished_action_item.
+    
+        :param str reason:
+        :type reason: str
+    
+        :returns: dict[str, Any]
+        :rtype: dict[str, Any]
+        """
+
         return {
             "action_type": self._finished_action_name,
             "target_id": "",
@@ -259,6 +310,15 @@ class FixedActionEntityRuntime(Agent):
         return [dict(item) for item in self._actions_by_episode.get(episode, [])]
 
     def _effective_action_output_mode(self, action_spec: Any) -> str:
+        """_effective_action_output_mode.
+    
+        :param Any action_spec:
+        :type action_spec: Any
+    
+        :returns: str
+        :rtype: str
+        """
+
         mode = str(self._action_output_mode or "auto").strip().lower()
         if mode and mode != "auto":
             return mode
@@ -271,6 +331,17 @@ class FixedActionEntityRuntime(Agent):
         return "parsed_action"
 
     def _mode_adjusted_action_name(self, action_name: str, mode: str) -> str:
+        """_mode_adjusted_action_name.
+    
+        :param str action_name:
+        :type action_name: str
+        :param str mode:
+        :type mode: str
+    
+        :returns: str
+        :rtype: str
+        """
+
         raw = str(action_name or "").strip()
         if not raw:
             raw = "POST"
@@ -288,6 +359,12 @@ class FixedActionEntityRuntime(Agent):
     def _format_action(
         self, *, mode: str, action_name: str, target_id: str, content: str, reasoning: str
     ) -> str:
+        """_format_action.
+
+        :returns: str
+        :rtype: str
+        """
+
         if mode == "tool_calling":
             payload: dict[str, Any] = {}
             normalized_name = str(action_name).strip()
@@ -325,6 +402,15 @@ class FixedActionEntityRuntime(Agent):
         )
 
     def act(self, action_spec: Any) -> str:
+        """act.
+    
+        :param Any action_spec:
+        :type action_spec: Any
+    
+        :returns: str
+        :rtype: str
+        """
+
         item = self._next_action_item()
         mode = self._effective_action_output_mode(action_spec)
 
@@ -373,6 +459,12 @@ class FixedActionEntityRuntime(Agent):
                 pass
 
     def get_last_log(self) -> dict[str, Any]:
+        """get_last_log.
+    
+        :returns: dict[str, Any]
+        :rtype: dict[str, Any]
+        """
+
         return dict(self._last_log)
 
     def get_state(self) -> dict[str, Any]:
@@ -423,5 +515,16 @@ class Entity(prefab_lib.Prefab):
         model: language_model.LanguageModel,
         memory_bank: basic_associative_memory.AssociativeMemoryBank,
     ) -> FixedActionEntityRuntime:
+        """build.
+
+        :param language_model.LanguageModel model:
+        :type model: language_model.LanguageModel
+        :param basic_associative_memory.AssociativeMemoryBank memory_bank:
+        :type memory_bank: basic_associative_memory.AssociativeMemoryBank
+
+        :returns: FixedActionEntityRuntime
+        :rtype: FixedActionEntityRuntime
+        """
+
         del model, memory_bank
         return FixedActionEntityRuntime(params=self.params)

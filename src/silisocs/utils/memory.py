@@ -3,6 +3,11 @@
 Provides a lightweight list-backed memory bank as a drop-in replacement for
 Concordia's associative memory bank when embedding/search is too expensive.
 """
+"""Memory helpers and factories.
+
+Helpers to create memory backends used by entities and game masters, plus
+utilities to serialize and restore memory state for checkpoints.
+"""
 
 from __future__ import annotations
 
@@ -27,6 +32,12 @@ class ListMemoryBank:
     """
 
     def __init__(self, sentence_embedder: Callable[[str], np.ndarray] | None = None):
+        """__init__.
+    
+        :param Callable[[str], np.ndarray] | None sentence_embedder:
+        :type sentence_embedder: Callable[[str], np.ndarray] | None
+        """
+
         self._memory_bank_lock = threading.Lock()
         self._memory_bank: list[str] = []
         self._stored_hashes: set[int] = set()
@@ -34,13 +45,37 @@ class ListMemoryBank:
 
     @staticmethod
     def _normalize(text: str) -> str:
+        """_normalize.
+    
+        :param str text:
+        :type text: str
+    
+        :returns: str
+        :rtype: str
+        """
+
         return text.replace("\n", " ").strip()
 
     @staticmethod
     def _tokenize(text: str) -> set[str]:
+        """_tokenize.
+    
+        :param str text:
+        :type text: str
+    
+        :returns: set[str]
+        :rtype: set[str]
+        """
+
         return {t.lower() for t in _TOKEN_RE.findall(text)}
 
     def get_state(self) -> dict[str, object]:
+        """get_state.
+    
+        :returns: dict[str, object]
+        :rtype: dict[str, object]
+        """
+
         with self._memory_bank_lock:
             return {
                 "stored_hashes": list(self._stored_hashes),
@@ -48,6 +83,15 @@ class ListMemoryBank:
             }
 
     def set_state(self, state: dict[str, object]) -> None:
+        """set_state.
+    
+        :param dict[str, object] state:
+        :type state: dict[str, object]
+    
+        :returns: None
+        :rtype: None
+        """
+
         with self._memory_bank_lock:
             stored_hashes = state.get("stored_hashes", [])
             memory_bank = state.get("memory_bank", [])
@@ -65,6 +109,15 @@ class ListMemoryBank:
             self._memory_bank = [str(x) for x in memory_bank]
 
     def add(self, text: str) -> None:
+        """add.
+    
+        :param str text:
+        :type text: str
+    
+        :returns: None
+        :rtype: None
+        """
+
         text = self._normalize(text)
         if not text:
             return
@@ -77,20 +130,53 @@ class ListMemoryBank:
             self._stored_hashes.add(hashed)
 
     def extend(self, texts: Iterable[str]) -> None:
+        """extend.
+    
+        :param Iterable[str] texts:
+        :type texts: Iterable[str]
+    
+        :returns: None
+        :rtype: None
+        """
+
         for text in texts:
             self.add(text)
 
     def get_data_frame(self) -> pd.DataFrame:
+        """get_data_frame.
+    
+        :returns: pd.DataFrame
+        :rtype: pd.DataFrame
+        """
+
         with self._memory_bank_lock:
             return pd.DataFrame({"text": list(self._memory_bank)})
 
     def retrieve_recent(self, k: int = 1) -> Sequence[str]:
+        """retrieve_recent.
+    
+        :param int k:
+        :type k: int
+    
+        :returns: Sequence[str]
+        :rtype: Sequence[str]
+        """
+
         if k <= 0:
             raise ValueError("Limit must be positive.")
         with self._memory_bank_lock:
             return list(self._memory_bank[-k:])
 
     def scan(self, selector_fn: Callable[[str], bool]) -> Sequence[str]:
+        """scan.
+    
+        :param Callable[[str], bool] selector_fn:
+        :type selector_fn: Callable[[str], bool]
+    
+        :returns: Sequence[str]
+        :rtype: Sequence[str]
+        """
+
         with self._memory_bank_lock:
             return [mem for mem in self._memory_bank if selector_fn(mem)]
 
@@ -126,14 +212,35 @@ class ListMemoryBank:
         return top[:k]
 
     def __len__(self) -> int:
+        """__len__.
+    
+        :returns: int
+        :rtype: int
+        """
+
         with self._memory_bank_lock:
             return len(self._memory_bank)
 
     def get_all_memories_as_text(self) -> Sequence[str]:
+        """get_all_memories_as_text.
+    
+        :returns: Sequence[str]
+        :rtype: Sequence[str]
+        """
+
         with self._memory_bank_lock:
             return list(self._memory_bank)
 
     def set_embedder(self, embedder: Callable[[str], np.ndarray]) -> None:
+        """set_embedder.
+    
+        :param Callable[[str], np.ndarray] embedder:
+        :type embedder: Callable[[str], np.ndarray]
+    
+        :returns: None
+        :rtype: None
+        """
+
         self._embedder = embedder
 
 

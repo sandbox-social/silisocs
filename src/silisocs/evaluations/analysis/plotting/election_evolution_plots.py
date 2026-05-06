@@ -22,6 +22,16 @@ sns.set_palette("husl")
 
 
 class ElectionAnalyzer:
+    """ElectionAnalyzer.
+    
+    Constructor parameters:
+    
+    __init__.
+    
+    :param str probe_file_path:
+    :type probe_file_path: str
+    """
+
     def load_agent_party_map(
         self, yaml_path: str = "conf/agents/election_agents_with_partisan.yaml"
     ):

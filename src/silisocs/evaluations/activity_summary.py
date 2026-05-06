@@ -17,6 +17,15 @@ VALID_MODES = {"activity", "probes"}
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    """_read_jsonl.
+    
+    :param Path path:
+    :type path: Path
+    
+    :returns: list[dict[str, Any]]
+    :rtype: list[dict[str, Any]]
+    """
+
     rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as f:
         for raw_line in f:
@@ -28,6 +37,17 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
+    """_safe_int.
+    
+    :param Any value:
+    :type value: Any
+    :param int default:
+    :type default: int
+    
+    :returns: int
+    :rtype: int
+    """
+
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -35,6 +55,15 @@ def _safe_int(value: Any, default: int = 0) -> int:
 
 
 def _summarize_activity(events: list[dict[str, Any]]) -> dict[str, Any]:
+    """_summarize_activity.
+    
+    :param list[dict[str, Any]] events:
+    :type events: list[dict[str, Any]]
+    
+    :returns: dict[str, Any]
+    :rtype: dict[str, Any]
+    """
+
     labels = Counter(str(e.get("label", "")) for e in events if e.get("label") is not None)
     action_like = {
         "post",
@@ -73,6 +102,15 @@ def _summarize_activity(events: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _summarize_probes(events: list[dict[str, Any]]) -> dict[str, Any]:
+    """_summarize_probes.
+    
+    :param list[dict[str, Any]] events:
+    :type events: list[dict[str, Any]]
+    
+    :returns: dict[str, Any]
+    :rtype: dict[str, Any]
+    """
+
     probe_rows = [e for e in events if str(e.get("event_type", "")).strip() == "probe"]
     probe_labels = Counter(str(e.get("label", "")) for e in probe_rows)
 

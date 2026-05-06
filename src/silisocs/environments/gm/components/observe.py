@@ -35,6 +35,9 @@ class TimelineMakeObservation(FlowComponent, make_observation_component.MakeObse
         timeline_config: dict[str, Any] | None = None,
         call_to_make_observation: str = _CALL_TO_MAKE_OBSERVATION,
     ):
+        """__init__.
+        """
+
         FlowComponent.__init__(self)
         make_observation_component.MakeObservation.__init__(
             self,
@@ -153,6 +156,9 @@ class EpisodeObservation(make_observation_component.MakeObservation):
         episode_observation_flow: str = "fixed_pre",
         call_to_make_observation: str = _CALL_TO_MAKE_OBSERVATION,
     ):
+        """__init__.
+        """
+
         super().__init__(
             model=model,
             player_names=player_names,

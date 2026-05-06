@@ -1,3 +1,6 @@
+"""specs module. Auto-generated module docstring.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Literal
@@ -10,16 +13,25 @@ from pydantic import BaseModel, Field
 
 
 class Setting(BaseModel):
+    """Setting.
+    """
+
     name: str
     background: list[str]
 
 
 class Event(BaseModel):
+    """Event.
+    """
+
     name: str
     context: str
 
 
 class AgentDetails(BaseModel):
+    """AgentDetails.
+    """
+
     name: str
     username: str
     context: str
@@ -29,11 +41,17 @@ class AgentDetails(BaseModel):
 
 
 class ActivityConfig(BaseModel):
+    """ActivityConfig.
+    """
+
     inactive_to_active: float = 0.7
     active_to_inactive: float = 0.2
 
 
 class AgentClass(BaseModel):
+    """AgentClass.
+    """
+
     role: str
     sim_role_name: str
     prefab_module: str = "silisocs.agents.entity"
@@ -43,6 +61,9 @@ class AgentClass(BaseModel):
 
 
 class NetworkConfig(BaseModel):
+    """NetworkConfig.
+    """
+
     fully_connected_targets: list[str] = Field(default_factory=list)
     base_followership_probability: float = 0.5
     network_type: Literal["barabasi_albert", "fully_connected"] = "barabasi_albert"
@@ -50,6 +71,9 @@ class NetworkConfig(BaseModel):
 
 
 class PlatformConfig(BaseModel):
+    """PlatformConfig.
+    """
+
     platform_type: str = "twitter_like"
     timeline_mode: Literal["follower_chronological", "pure_recsys"] = "follower_chronological"
     enabled_actions: list[str] = Field(
@@ -64,6 +88,9 @@ class PlatformConfig(BaseModel):
 
 
 class ScenarioSpec(BaseModel):
+    """ScenarioSpec.
+    """
+
     name: str
     scenario_name: str
     jobname_format: str
@@ -86,12 +113,18 @@ class ScenarioSpec(BaseModel):
 
 
 class StudyNotes(BaseModel):
+    """StudyNotes.
+    """
+
     objective: str = ""
     context: str = ""
     constraints: str = ""
 
 
 class RunDefaults(BaseModel):
+    """RunDefaults.
+    """
+
     config_path: str
     run_name_template: str = "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
     output_root_override: str = "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
@@ -101,11 +134,17 @@ class RunDefaults(BaseModel):
 
 
 class Evaluation(BaseModel):
+    """Evaluation.
+    """
+
     id: str
     preset: str
 
 
 class Condition(BaseModel):
+    """Condition.
+    """
+
     id: str
     sub_experiment: str | None = None
     overrides: dict[str, Any] = Field(default_factory=dict)
@@ -114,6 +153,9 @@ class Condition(BaseModel):
 
 
 class Hypothesis(BaseModel):
+    """Hypothesis.
+    """
+
     id: str
     statement: str
     independent_variable: str
@@ -125,6 +167,9 @@ class Hypothesis(BaseModel):
 
 
 class StudySpec(BaseModel):
+    """StudySpec.
+    """
+
     study_id: str
     name: str
     question: str

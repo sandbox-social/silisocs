@@ -19,6 +19,9 @@ class ActivityMarkovNextActing(next_acting_components.NextActingAllEntities):
         player_names: Sequence[str],
         activity_transition_rates: Mapping[str, Mapping[str, float]],
     ):
+        """__init__.
+        """
+
         super().__init__(player_names=player_names)
         self._activity_transition_rates = activity_transition_rates
         self._users_activity_state: dict[str, int] = dict(
@@ -67,12 +70,24 @@ class ActivityProbabilityNextActing(next_acting_components.NextActingAllEntities
         active_probability: float | None = None,
         min_active_agents: int = 0,
     ):
+        """__init__.
+        """
+
         super().__init__(player_names=player_names)
         self._activity_transition_rates = activity_transition_rates
         self._global_active_probability = active_probability
         self._min_active_agents = max(0, int(min_active_agents))
 
     def _entity_probability(self, entity_name: str) -> float:
+        """_entity_probability.
+    
+        :param str entity_name:
+        :type entity_name: str
+    
+        :returns: float
+        :rtype: float
+        """
+
         if self._global_active_probability is not None:
             return max(0.0, min(1.0, float(self._global_active_probability)))
 
@@ -85,6 +100,15 @@ class ActivityProbabilityNextActing(next_acting_components.NextActingAllEntities
         return max(0.0, min(1.0, float(p)))
 
     def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
+        """pre_act.
+    
+        :param entity_lib.ActionSpec action_spec:
+        :type action_spec: entity_lib.ActionSpec
+    
+        :returns: str
+        :rtype: str
+        """
+
         if action_spec.output_type != entity_lib.OutputType.NEXT_ACTING:
             return ""
 
@@ -104,12 +128,27 @@ class ActivityProbabilityNextActing(next_acting_components.NextActingAllEntities
         return ",".join(active)
 
     def get_state(self) -> entity_component.ComponentState:
+        """get_state.
+    
+        :returns: entity_component.ComponentState
+        :rtype: entity_component.ComponentState
+        """
+
         return {
             "global_active_probability": self._global_active_probability,
             "min_active_agents": self._min_active_agents,
         }
 
     def set_state(self, state: entity_component.ComponentState) -> None:
+        """set_state.
+    
+        :param entity_component.ComponentState state:
+        :type state: entity_component.ComponentState
+    
+        :returns: None
+        :rtype: None
+        """
+
         self._global_active_probability = state.get("global_active_probability")
         self._min_active_agents = int(state.get("min_active_agents", 0))
 

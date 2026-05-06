@@ -59,6 +59,12 @@ class SocialNetworkApp(SocialMediaApp):
     _user_mapping: dict[str, str] = dataclasses.field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:  # noqa: D105
+        """__post_init__.
+    
+        :returns: None
+        :rtype: None
+        """
+
         super().__init__()
         if self.perform_operations:
             from silisocs import mastodon_ops
@@ -208,6 +214,15 @@ class SocialNetworkApp(SocialMediaApp):
 
     # Recommendation APIs are intentionally unsupported for Mastodon.
     def init_recsys(self, recsys_type: str = "") -> None:
+        """init_recsys.
+    
+        :param str recsys_type:
+        :type recsys_type: str
+    
+        :returns: None
+        :rtype: None
+        """
+
         del recsys_type
         raise NotImplementedError(
             "Mastodon backend does not support recommendation algorithms. "
@@ -217,6 +232,17 @@ class SocialNetworkApp(SocialMediaApp):
     def update_recommendations(
         self, active_user_ids: list[int] | None = None, max_posts: int = 10
     ) -> None:
+        """update_recommendations.
+
+        :param list[int] | None active_user_ids:
+        :type active_user_ids: list[int] | None
+        :param int max_posts:
+        :type max_posts: int
+
+        :returns: None
+        :rtype: None
+        """
+
         del active_user_ids, max_posts
         raise NotImplementedError("Mastodon backend does not support recommendation updates.")
 
@@ -226,6 +252,19 @@ class SocialNetworkApp(SocialMediaApp):
         limit: int = 10,
         recsys_type: str | None = None,
     ) -> list[dict]:
+        """get_recommendations.
+
+        :param str username:
+        :type username: str
+        :param int limit:
+        :type limit: int
+        :param str | None recsys_type:
+        :type recsys_type: str | None
+
+        :returns: list[dict]
+        :rtype: list[dict]
+        """
+
         del username, limit, recsys_type
         raise NotImplementedError("Mastodon backend does not support recommendation retrieval.")
 
@@ -756,6 +795,11 @@ class SocialNetworkApp(SocialMediaApp):
         """Print the timeline in a readable format."""
 
         def _clean_html(html_string):
+            """_clean_html.
+    
+            :param html_string:
+            """
+
             clean_text = re.sub("<[^<]+?>", "", unescape(html_string))
             return re.sub(r"\s+", " ", clean_text).strip()
 
@@ -772,6 +816,11 @@ class SocialNetworkApp(SocialMediaApp):
         """Print the timeline in a readable format and return it as a string."""
 
         def _clean_html(html_string):
+            """_clean_html.
+    
+            :param html_string:
+            """
+
             clean_text = re.sub("<[^<]+?>", "", unescape(html_string))
             return re.sub(r"\s+", " ", clean_text).strip()
 

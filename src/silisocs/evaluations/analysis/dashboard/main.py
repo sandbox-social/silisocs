@@ -260,6 +260,14 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def update_data(n_clicks, contents, filenames, current_data):
+        """update_data.
+    
+        :param n_clicks:
+        :param contents:
+        :param filenames:
+        :param current_data:
+        """
+
         if n_clicks == 0 or contents is None:
             raise dash.exceptions.PreventUpdate
         for filename in filenames:

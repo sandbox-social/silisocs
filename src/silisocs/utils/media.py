@@ -1,3 +1,10 @@
+"""Utilities for language model and encoder configuration.
+
+This module implements helpers and lightweight wrappers around language
+model clients used by the simulation. It also exposes utilities to select
+and configure sentence encoders for memory backends.
+"""
+
 import json
 import os
 import random
@@ -110,6 +117,14 @@ class GptLanguageModel(language_model.LanguageModel):
 
     def _log(self, prompt: str, output: str):
         # Use thread-local agent_name if set by caller, else look up from index.
+        """_log.
+
+        :param str prompt:
+        :type prompt: str
+        :param str output:
+        :type output: str
+        """
+
         agent_name = getattr(self._local, "agent_name", None) if hasattr(self, "_local") else None
         if not agent_name:
             prefix = prompt[:110]
@@ -138,6 +153,17 @@ class GptLanguageModel(language_model.LanguageModel):
         self._agent_name_index = index
 
     def _record_retry_outcome(self, retries: int, success: bool) -> None:
+        """_record_retry_outcome.
+    
+        :param int retries:
+        :type retries: int
+        :param bool success:
+        :type success: bool
+    
+        :returns: None
+        :rtype: None
+        """
+
         with self._retry_stats_lock:
             self._retry_history.append(retries)
             self._failure_history.append(0 if success else 1)
@@ -189,6 +215,15 @@ class GptLanguageModel(language_model.LanguageModel):
         media: Sequence[str] | None = None,
         seed: int | None = 0,
     ) -> str:
+        """sample_text.
+
+        :param str prompt:
+        :type prompt: str
+
+        :returns: str
+        :rtype: str
+        """
+
         if temperature is None:
             temperature = self._temperature
         max_tokens = min(max_tokens, 4000)
@@ -293,6 +328,17 @@ class GptLanguageModel(language_model.LanguageModel):
         *,
         seed: int | None = None,
     ) -> tuple[int, str, dict[str, float]]:
+        """sample_choice.
+
+        :param str prompt:
+        :type prompt: str
+        :param Sequence[str] responses:
+        :type responses: Sequence[str]
+
+        :returns: tuple[int, str, dict[str, float]]
+        :rtype: tuple[int, str, dict[str, float]]
+        """
+
         prompt = (
             prompt
             + "\nRespond EXACTLY with one of the following strings:\n"
@@ -454,6 +500,20 @@ def select_large_language_model(
     api_key: str | None = None,
     temperature: float = 0.5,
 ):
+    """select_large_language_model.
+
+    :param model_name:
+    :param log_file:
+    :param debug_mode:
+    :param disable_language_model:
+    :param str | None api_base:
+    :type api_base: str | None
+    :param str | None api_key:
+    :type api_key: str | None
+    :param float temperature:
+    :type temperature: float
+    """
+
     if disable_language_model:
         model = no_language_model.NoLanguageModel()
     elif "sonnet" in model_name:

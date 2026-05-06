@@ -23,14 +23,39 @@ MULTI_TOOL_CALLING_PROMPT_LINE = (
 
 @dataclass(frozen=True)
 class PromptAdditions:
+    """PromptAdditions.
+    """
+
     add_action_count_guidance: bool = True
 
 
 def _cfg_bool(cfg: Any, path: str, default: bool = False) -> bool:
+    """_cfg_bool.
+    
+    :param Any cfg:
+    :type cfg: Any
+    :param str path:
+    :type path: str
+    :param bool default:
+    :type default: bool
+    
+    :returns: bool
+    :rtype: bool
+    """
+
     return bool(OmegaConf.select(cfg, path, default=default))
 
 
 def _env_cfg(cfg: Any) -> Any:
+    """_env_cfg.
+    
+    :param Any cfg:
+    :type cfg: Any
+    
+    :returns: Any
+    :rtype: Any
+    """
+
     return getattr(cfg, "env", getattr(cfg, "environment", object()))
 
 
@@ -56,6 +81,15 @@ def prompt_additions_from_cfg(cfg: Any) -> PromptAdditions:
 
 
 def split_output_style_sections(action_prompt: str) -> tuple[str, str, bool]:
+    """split_output_style_sections.
+    
+    :param str action_prompt:
+    :type action_prompt: str
+    
+    :returns: tuple[str, str, bool]
+    :rtype: tuple[str, str, bool]
+    """
+
     raw = str(action_prompt or "")
     if OUTPUT_STYLE_MARKER not in raw:
         return raw.strip(), "", False
@@ -64,6 +98,15 @@ def split_output_style_sections(action_prompt: str) -> tuple[str, str, bool]:
 
 
 def action_guidance_line(tool_calling_mode: str) -> str:
+    """action_guidance_line.
+    
+    :param str tool_calling_mode:
+    :type tool_calling_mode: str
+    
+    :returns: str
+    :rtype: str
+    """
+
     if str(tool_calling_mode or "none").strip().lower() == "multi":
         return MULTI_TOOL_CALLING_PROMPT_LINE
     return SINGLE_STEP_PROMPT_LINE

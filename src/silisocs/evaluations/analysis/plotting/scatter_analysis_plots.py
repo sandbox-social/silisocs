@@ -27,7 +27,23 @@ import yaml
 
 
 class ScatterAnalyzer:
+    """ScatterAnalyzer.
+    
+    Constructor parameters:
+    
+    __init__.
+    
+    :param str probe_file_path:
+    :type probe_file_path: str
+    """
+
     def __init__(self, probe_file_path: str):
+        """__init__.
+    
+        :param str probe_file_path:
+        :type probe_file_path: str
+        """
+
         self.probe_file_path = probe_file_path
         # Typed instance attributes
         self.data: list[dict] = []

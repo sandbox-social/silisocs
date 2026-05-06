@@ -1,5 +1,11 @@
 """Small runtime factories for GM defaults and engine selection."""
 
+"""Factory helpers for runtime components.
+
+Utilities to construct execution engines, game master prefab names and
+module paths, and other small factory helpers used by the runner.
+"""
+
 from __future__ import annotations
 
 from omegaconf import DictConfig
@@ -11,6 +17,12 @@ from silisocs.simulation_engines.base_engines import (
 
 
 def _env_cfg(cfg: DictConfig):
+    """_env_cfg.
+    
+    :param DictConfig cfg:
+    :type cfg: DictConfig
+    """
+
     return getattr(cfg, "env", getattr(cfg, "environment", object()))
 
 

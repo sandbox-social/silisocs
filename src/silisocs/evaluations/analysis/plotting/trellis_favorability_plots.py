@@ -20,7 +20,31 @@ import yaml
 
 
 class TrellisAnalyzer:
+    """TrellisAnalyzer.
+    
+    Constructor parameters:
+    
+    __init__.
+    
+    :param list probe_file_paths:
+    :type probe_file_paths: list
+    :param bool separate_runs:
+    :type separate_runs: bool
+    :param bool in_one:
+    :type in_one: bool
+    """
+
     def __init__(self, probe_file_paths: list, separate_runs: bool = False, in_one: bool = False):
+        """__init__.
+    
+        :param list probe_file_paths:
+        :type probe_file_paths: list
+        :param bool separate_runs:
+        :type separate_runs: bool
+        :param bool in_one:
+        :type in_one: bool
+        """
+
         self.probe_file_paths = (
             probe_file_paths if isinstance(probe_file_paths, list) else [probe_file_paths]
         )

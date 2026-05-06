@@ -1,20 +1,14 @@
 # src/silisocs/runtime/runner.py
-"""
-Main simulation entry point.
+"""Runtime entrypoint for experiments.
 
-Uses Hydra for configuration — works directly with YAML structure.
+This module provides the CLI entrypoint used to compose experiment
+configurations with Hydra and launch simulations. It exposes :func:`main`,
+which is decorated with :func:`hydra.main` and expects the composed
+``experiment`` configuration group.
 
-External scenarios override package defaults via ``--config-path``::
-
-    python -m silisocs.runtime.runner --config-path /abs/scenarios/election/conf
-    python -m silisocs.runtime.runner --config-path scenarios/election/conf
-
-When ``--config-path`` is given the directory is prepended to Hydra's search
-path so that any YAML files it contains override the corresponding package
-defaults.  Missing files fall back to the package ``conf/`` directory.
-
-Optional ``--overlay-config-path`` flags can be repeated to layer additional
-override config trees on top of the primary ``--config-path``.
+The CLI accepts a ``--config-path`` allowing external scenario directories to
+override package defaults. Use repeated ``--overlay-config-path`` flags to
+layer additional override trees.
 """
 
 import json
@@ -108,10 +102,28 @@ _DEFAULT_FLOW_TAG = "default"
 
 
 def _env_cfg(cfg: Any) -> Any:
+    """_env_cfg.
+    
+    :param Any cfg:
+    :type cfg: Any
+    
+    :returns: Any
+    :rtype: Any
+    """
+
     return getattr(cfg, "env", getattr(cfg, "environment", object()))
 
 
 def _evals_cfg(cfg: Any) -> Any:
+    """_evals_cfg.
+    
+    :param Any cfg:
+    :type cfg: Any
+    
+    :returns: Any
+    :rtype: Any
+    """
+
     return getattr(cfg, "evals", getattr(cfg, "evaluations", object()))
 
 
@@ -492,6 +504,15 @@ def populate_agent_data(
     """
 
     def _normalize_memories(memories: Any) -> list[str]:
+        """_normalize_memories.
+    
+        :param Any memories:
+        :type memories: Any
+    
+        :returns: list[str]
+        :rtype: list[str]
+        """
+
         if memories is None:
             return []
         if isinstance(memories, str):
@@ -646,11 +667,20 @@ def _merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
 
 @hydra.main(version_base=None, config_path=str(CONF_DIR), config_name="experiment")
 def main(cfg: DictConfig):
-    """
-    Main experiment function.
+    """Hydra entrypoint for running an experiment.
 
-    Args:
-        cfg: Hydra configuration object (composed from YAML files)
+    Parameters
+    ----------
+    cfg:
+        Composed Hydra :class:`omegaconf.DictConfig` representing the
+        experiment configuration. The config includes grouped sections such
+        as ``sim``, ``agents``, ``env`` and ``evals``.
+
+    Notes
+    -----
+    This function performs environment initialization, logging setup,
+    agent construction, and delegates execution to the configured simulation
+    engine.
     """
     print("\n" + "=" * 80)
     print("STARTING SIMULATION")
@@ -725,6 +755,19 @@ def main(cfg: DictConfig):
     logger.info("Wrote runtime-effective config snapshot to: %s", effective_cfg_snapshot_path)
 
     def _log_startup_phase(phase_name: str, duration_s: float, details: str = "") -> None:
+        """_log_startup_phase.
+    
+        :param str phase_name:
+        :type phase_name: str
+        :param float duration_s:
+        :type duration_s: float
+        :param str details:
+        :type details: str
+    
+        :returns: None
+        :rtype: None
+        """
+
         details_part = f" {details}" if details else ""
         line = f"Startup {phase_name}: {duration_s:.2f}s{details_part}"
         logger.info(line)
@@ -1037,7 +1080,19 @@ def _register_search_path_plugin() -> None:
     from hydra.plugins.search_path_plugin import SearchPathPlugin
 
     class _ScenarioSearchPathPlugin(SearchPathPlugin):
+        """_ScenarioSearchPathPlugin.
+        """
+
         def manipulate_search_path(self, search_path: Any) -> None:  # type: ignore[override]
+            """manipulate_search_path.
+    
+            :param Any search_path:
+            :type search_path: Any
+    
+            :returns: None
+            :rtype: None
+            """
+
             paths_csv = _os.environ.get("SILISOCS_EXTERNAL_CONFIG_DIRS", "").strip()
             if not paths_csv:
                 return

@@ -2,7 +2,7 @@
 
 This is the standard agent that all scenarios can use directly or extend.
 It wires: Instructions, Observation, Memory, and optional Scenario Context,
-Persona, Goal, and Tool-Calling components with ConcatActComponent.
+Persona, Goal, and Tool-Calling components with :class:`SocialConcatActComponent`.
 """
 
 import dataclasses
@@ -53,6 +53,17 @@ class Entity(prefab_lib.Prefab):
         model: language_model.LanguageModel,
         memory_bank: basic_associative_memory.AssociativeMemoryBank,
     ) -> entity_agent_with_logging.EntityAgentWithLogging:
+        """build.
+
+        :param language_model.LanguageModel model:
+        :type model: language_model.LanguageModel
+        :param basic_associative_memory.AssociativeMemoryBank memory_bank:
+        :type memory_bank: basic_associative_memory.AssociativeMemoryBank
+
+        :returns: entity_agent_with_logging.EntityAgentWithLogging
+        :rtype: entity_agent_with_logging.EntityAgentWithLogging
+        """
+
         agent_name = self.params.get("name", "Alice")
 
         # Accept both new key and legacy alias.

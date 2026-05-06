@@ -79,6 +79,15 @@ class SocialConcatActComponent(concat_act_component.ConcatActComponent):
             sampled_items = []
 
         def _normalize_call(item: object) -> tuple[str, dict] | None:
+            """_normalize_call.
+    
+            :param object item:
+            :type item: object
+    
+            :returns: tuple[str, dict] | None
+            :rtype: tuple[str, dict] | None
+            """
+
             if not isinstance(item, (tuple, list)) or len(item) != 2:
                 return None
             tool_name = str(item[0] or "").strip()
@@ -110,6 +119,17 @@ class SocialConcatActComponent(concat_act_component.ConcatActComponent):
         contexts: entity_component.ComponentContextMapping,
         action_spec: entity_lib.ActionSpec,
     ) -> str:
+        """get_action_attempt.
+
+        :param entity_component.ComponentContextMapping contexts:
+        :type contexts: entity_component.ComponentContextMapping
+        :param entity_lib.ActionSpec action_spec:
+        :type action_spec: entity_lib.ActionSpec
+
+        :returns: str
+        :rtype: str
+        """
+
         prompt = interactive_document.InteractiveDocument(self._model)
         context = self._context_for_action(contexts)
         prompt.statement(context + "\n")
