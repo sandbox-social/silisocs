@@ -16,7 +16,7 @@ study:
 
   run_defaults:
     config_path: scenarios/election_recsys_engagement/conf
-    runner_module: mastodon_sim.runtime.runner
+    runner_module: silisocs.runtime.runner
     run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
     output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
 
@@ -121,7 +121,7 @@ hypotheses:
             - run
             - python
             - -m
-            - mastodon_sim.runtime.runner
+            - silisocs.runtime.runner
             - --config-path
             - scenarios/election_recsys_engagement/conf
             - scenario={scenario}

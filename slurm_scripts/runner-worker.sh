@@ -8,7 +8,7 @@ set -euo pipefail
 REPO_ROOT="${REPO_ROOT:-$HOME/mastodon-sim}"
 UV_HOME="${UV_HOME:-$HOME}"
 UV_PROJECT_DIR="${UV_PROJECT_DIR:-${REPO_ROOT}}"
-RUNNER_MODULE="${RUNNER_MODULE:-mastodon_sim.runtime.runner}"
+RUNNER_MODULE="${RUNNER_MODULE:-silisocs.runtime.runner}"
 RUNNER_CONFIG_PATH="${RUNNER_CONFIG_PATH:-}"
 RUNNER_ARGS="${RUNNER_ARGS:-}"
 
