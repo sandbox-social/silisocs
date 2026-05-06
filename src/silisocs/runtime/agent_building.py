@@ -40,7 +40,6 @@ def _resolve_builder_class(cfg: DictConfig) -> type[Any]:
     type
         The builder class to instantiate.
     """
-
     scenario_name = cfg.scenario_name
     builder_class_name = f"{scenario_name.title()}AgentBuilder"
 
@@ -87,7 +86,6 @@ def build_agent_configs(cfg: DictConfig):
         A list of :class:`omegaconf.DictConfig`-like instance configurations
         representing agents to be constructed by the simulation runtime.
     """
-
     builder_cls = _resolve_builder_class(cfg)
     builder = builder_cls(cfg.agents)
     return builder.build_agents()

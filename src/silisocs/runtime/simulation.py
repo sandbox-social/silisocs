@@ -308,14 +308,13 @@ class Simulation(simulation_lib.Simulation):
 
         def checkpoint_callback(step: int) -> None:
             """checkpoint_callback.
-    
+
             :param int step:
             :type step: int
-    
+
             :returns: None
             :rtype: None
             """
-
             if self._should_save_checkpoint(step):
                 self.save_checkpoint(step, checkpoint_path=checkpoint_path)
 
@@ -333,14 +332,13 @@ class Simulation(simulation_lib.Simulation):
 
         def _gm_sequence(game_master: entity_lib.Entity) -> int:
             """_gm_sequence.
-    
+
             :param entity_lib.Entity game_master:
             :type game_master: entity_lib.Entity
-    
+
             :returns: int
             :rtype: int
             """
-
             cfg = self._entity_to_prefab_config.get(game_master.name)
             if not cfg or not isinstance(cfg.params, dict):
                 return 0
@@ -515,14 +513,13 @@ class Simulation(simulation_lib.Simulation):
 
             def _to_plain(obj: Any) -> Any:
                 """_to_plain.
-    
+
                 :param Any obj:
                 :type obj: Any
-    
+
                 :returns: Any
                 :rtype: Any
                 """
-
                 if isinstance(obj, (DictConfig, ListConfig)):
                     return OmegaConf.to_container(obj, resolve=True)
                 if isinstance(obj, dict):

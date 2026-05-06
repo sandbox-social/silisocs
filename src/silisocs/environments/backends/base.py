@@ -1,8 +1,7 @@
 """Base PhoneApp class and action infrastructure for simulation apps.
 
-This module provides the shared foundations used by platform backends
-(Mastodon, Twitter-like, Reddit-like). It exposes the action decorator,
-argument parsing helpers, and dataclasses used to describe backend actions.
+Extracted from silisocs/apps.py to provide a shared foundation
+for all social media platform apps (Mastodon, Twitter-like, Reddit-like, etc.).
 """
 
 import abc
@@ -64,15 +63,6 @@ def parse_literal(literal_type: type) -> ParserFunc:
     """Parse a literal type."""
 
     def _parse(value: str) -> Any:
-        """_parse.
-    
-        :param str value:
-        :type value: str
-    
-        :returns: Any
-        :rtype: Any
-        """
-
         literal_values = typing.get_args(literal_type)
         if value in literal_values:
             return value
@@ -99,40 +89,13 @@ def app_action(
     selectable_name: str | None = None,
     description: str | None = None,
 ):
-    """Decorator to mark a :class:`PhoneApp` method as a callable action.
+    """Mark PhoneApp methods as callable actions.
 
-    Methods decorated with :func:`app_action` are discovered by
-    :meth:`PhoneApp.actions` and can be invoked via
-    :meth:`PhoneApp.invoke_action` or :meth:`PhoneApp.invoke_action_by_name`.
-
-    This decorator can be used with or without arguments::
-
-        @app_action
-        def foo(self, ...): ...
-
-        @app_action(selectable_name="DoThing", description="Do a thing")
-        def bar(self, ...): ...
-
-    :param method: Optional method when decorator is used without args.
-    :type method: Optional[Callable[..., Any]]
-    :param selectable_name: Alternate human-readable name for the action.
-    :type selectable_name: Optional[str]
-    :param description: Short description of the action used for prompts.
-    :type description: Optional[str]
-    :returns: A decorator that annotates the target function.
-    :rtype: Callable[..., Any]
+    Decorated methods become discoverable via PhoneApp.actions() and can be
+    invoked through PhoneApp.invoke_action().
     """
 
     def _decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
-        """_decorate.
-    
-        :param Callable[..., Any] fn:
-        :type fn: Callable[..., Any]
-    
-        :returns: Callable[..., Any]
-        :rtype: Callable[..., Any]
-        """
-
         signature = inspect.signature(fn)
         required_params = [
             name
@@ -204,14 +167,6 @@ class Parameter:
         return f"{self.name}: {self.description or ''}, type: {self.kind}"
 
     def _parse_single_argument(self, text: str, kind: Any = None):
-        """_parse_single_argument.
-    
-        :param str text:
-        :type text: str
-        :param Any kind:
-        :type kind: Any
-        """
-
         kind = kind or self.kind
         if kind is type(None):
             return None
@@ -219,12 +174,6 @@ class Parameter:
         return parser(text)
 
     def _parse_list_argument(self, text: str):
-        """_parse_list_argument.
-    
-        :param str text:
-        :type text: str
-        """
-
         arg = typing.get_args(self.kind)
         parser = _ARGUMENT_PARSERS.get(arg, arg)  # type: ignore
         return [parser(e) for e in text.split(",")]
@@ -255,12 +204,6 @@ class ActionDescriptor:
     docstring: dataclasses.InitVar[docstring_parser.Docstring]
 
     def __post_init__(self, docstring: docstring_parser.Docstring):  # noqa: D105
-        """__post_init__.
-    
-        :param docstring_parser.Docstring docstring:
-        :type docstring: docstring_parser.Docstring
-        """
-
         pass
 
     def instructions(self):
@@ -351,32 +294,16 @@ class ActionDescriptor:
 
 
 class PhoneApp(metaclass=abc.ABCMeta):
-    """Abstract base for platform adapters used by the simulation.
+    """Base class for apps that concordia can interact with using plain English.
 
-    Subclasses implement an API surface that agents and game masters can
-    invoke using natural-language-generated calls. Methods intended to be
-    callable from LLM output or tool-calling flows must be decorated with
-    :func:`app_action`.
-
-    Typical responsibilities of a :class:`PhoneApp` subclass include:
-
-    - implementing :meth:`initialize` to set up users, follow graphs, and
-        seed posts,
-    - exposing :meth:`@app_action` methods for operations such as posting,
-        liking, boosting, or following, and
-    - providing helpers to format timelines for agent observations.
+    Extend this class and decorate any method that should be callable from the
+    simulation with @app_action.
     """
 
     action_logger: Any = None
     _log_color: COLOR_TYPE = "blue"
 
     def __init__(self) -> None:
-        """__init__.
-    
-        :returns: None
-        :rtype: None
-        """
-
         self._enabled_actions: set[str] | None = None
 
     @abc.abstractmethod
@@ -395,19 +322,6 @@ class PhoneApp(metaclass=abc.ABCMeta):
         emoji: str = "",
         color: COLOR_TYPE = None,
     ) -> None:
-        """_print.
-
-        :param str entry:
-        :type entry: str
-        :param str emoji:
-        :type emoji: str
-        :param COLOR_TYPE color:
-        :type color: COLOR_TYPE
-
-        :returns: None
-        :rtype: None
-        """
-
         formatted_entry = f"{emoji} {entry}" if emoji else entry
         print(termcolor.colored(formatted_entry, color or self._log_color))
 
@@ -515,12 +429,6 @@ class PhoneApp(metaclass=abc.ABCMeta):
             return f"Error invoking action {action.name}: {e}"
 
     def _action_lookup(self) -> dict[str, ActionDescriptor]:
-        """_action_lookup.
-    
-        :returns: dict[str, ActionDescriptor]
-        :rtype: dict[str, ActionDescriptor]
-        """
-
         lookup: dict[str, ActionDescriptor] = {}
         for action in self.actions():
             lookup[action.name] = action

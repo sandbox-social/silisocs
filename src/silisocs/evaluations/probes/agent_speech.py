@@ -1,5 +1,4 @@
-"""agent_speech module. Auto-generated module docstring.
-"""
+"""agent_speech module. Auto-generated module docstring."""
 
 import importlib
 import logging
@@ -27,10 +26,9 @@ DEFAULT_CALL_TO_SPEECH = (
 
 def write_seed_toot(agent):
     """write_seed_toot.
-    
+
     :param agent:
     """
-
     call_to_speech = DEFAULT_CALL_TO_SPEECH.format(
         name=agent._agent_name,
     )
@@ -54,11 +52,10 @@ def write_seed_toot(agent):
 
 def _build_questionnaire_prompt(agent, queries):
     """_build_questionnaire_prompt.
-    
+
     :param agent:
     :param queries:
     """
-
     lines = [
         "You are completing a survey in character.",
         "Return only answer lines in this exact style and order:",
@@ -75,16 +72,15 @@ def _build_questionnaire_prompt(agent, queries):
 
 def _parse_questionnaire_answers(raw_response: str, expected_count: int) -> dict[str, str]:
     """_parse_questionnaire_answers.
-    
+
     :param str raw_response:
     :type raw_response: str
     :param int expected_count:
     :type expected_count: int
-    
+
     :returns: dict[str, str]
     :rtype: dict[str, str]
     """
-
     parsed: dict[str, str] = {}
     # Match Q<n> anywhere on a line (not just at line start) to handle cases
     # where Concordia prepends the agent name to the first line of output.
@@ -141,14 +137,13 @@ def _recover_agent_phase(agent) -> None:
 
 def _ask_structured_questionnaire(agent, queries) -> dict[str, str]:
     """_ask_structured_questionnaire.
-    
+
     :param agent:
     :param queries:
-    
+
     :returns: dict[str, str]
     :rtype: dict[str, str]
     """
-
     questionnaire_prompt = _build_questionnaire_prompt(agent, queries)
     try:
         action_spec = entity.ActionSpec(
@@ -252,12 +247,11 @@ def _run_single_legacy_query(
 
 def deploy_probes_to_agent(agent, queries, probe_event_logger):
     """deploy_probes_to_agent.
-    
+
     :param agent:
     :param queries:
     :param probe_event_logger:
     """
-
     if not queries:
         return
 
@@ -350,7 +344,6 @@ def deploy_probes(
     :param list | None prebuilt_queries:
     :type prebuilt_queries: list | None
     """
-
     if prebuilt_queries is not None:
         queries = prebuilt_queries
     else:

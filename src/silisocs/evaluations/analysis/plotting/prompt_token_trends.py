@@ -20,11 +20,10 @@ _TOKEN_FALLBACK_RE = re.compile(r"\w+|[^\w\s]", re.UNICODE)
 
 def _build_token_counter(encoding: str):
     """_build_token_counter.
-    
+
     :param str encoding:
     :type encoding: str
     """
-
     if encoding == "word_estimate":
         return lambda text: len(_TOKEN_FALLBACK_RE.findall(text or ""))
 
@@ -40,16 +39,15 @@ def _build_token_counter(encoding: str):
 
 def _classify_phase(prompt: str, episode_idx: int) -> str:
     """_classify_phase.
-    
+
     :param str prompt:
     :type prompt: str
     :param int episode_idx:
     :type episode_idx: int
-    
+
     :returns: str
     :rtype: str
     """
-
     lower = (prompt or "").lower()
     if "you are completing a survey in character." in lower and "questions:" in lower:
         return "probe"
@@ -64,11 +62,10 @@ def _classify_phase(prompt: str, episode_idx: int) -> str:
 
 def _read_jsonl(path: Path):
     """_read_jsonl.
-    
+
     :param Path path:
     :type path: Path
     """
-
     with path.open("r", encoding="utf-8") as handle:
         for line_no, raw_line in enumerate(handle, start=1):
             raw_line = raw_line.strip()
@@ -82,16 +79,15 @@ def _read_jsonl(path: Path):
 
 def _write_csv(rows: list[dict], csv_path: Path) -> None:
     """_write_csv.
-    
+
     :param list[dict] rows:
     :type rows: list[dict]
     :param Path csv_path:
     :type csv_path: Path
-    
+
     :returns: None
     :rtype: None
     """
-
     fieldnames = [
         "episode",
         "phase",
@@ -111,18 +107,17 @@ def _write_csv(rows: list[dict], csv_path: Path) -> None:
 
 def _plot_rows(rows: list[dict], out_path: Path, phases: tuple[str, ...]) -> None:
     """_plot_rows.
-    
+
     :param list[dict] rows:
     :type rows: list[dict]
     :param Path out_path:
     :type out_path: Path
     :param tuple[str, ...] phases:
     :type phases: tuple[str, ...]
-    
+
     :returns: None
     :rtype: None
     """
-
     try:
         import matplotlib.pyplot as plt
     except Exception:
@@ -163,8 +158,8 @@ def _plot_rows(rows: list[dict], out_path: Path, phases: tuple[str, ...]) -> Non
 
 
 def analyze(input_path: Path, output_dir: Path, encoding: str, make_plot: bool) -> None:
-    """analyze.
-    
+    """Analyze.
+
     :param Path input_path:
     :type input_path: Path
     :param Path output_dir:
@@ -173,11 +168,10 @@ def analyze(input_path: Path, output_dir: Path, encoding: str, make_plot: bool) 
     :type encoding: str
     :param bool make_plot:
     :type make_plot: bool
-    
+
     :returns: None
     :rtype: None
     """
-
     token_count = _build_token_counter(encoding)
 
     agg: dict[tuple[int, str], dict[str, float]] = defaultdict(
@@ -238,12 +232,11 @@ def analyze(input_path: Path, output_dir: Path, encoding: str, make_plot: bool) 
 
 
 def main() -> None:
-    """main.
-    
+    """Main.
+
     :returns: None
     :rtype: None
     """
-
     parser = argparse.ArgumentParser(
         description=(
             "Compute episode-wise average token usage from prompts_and_responses.jsonl "

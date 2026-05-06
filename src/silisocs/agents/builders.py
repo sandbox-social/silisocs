@@ -37,11 +37,10 @@ class BaseAgentBuilder:
 
     def __init__(self, scenario_config: Any):
         """__init__.
-    
+
         :param Any scenario_config:
         :type scenario_config: Any
         """
-
         self.config = scenario_config
 
     # ------------------------------------------------------------------ #
@@ -71,11 +70,10 @@ class BaseAgentBuilder:
 
     def _build_from_classes(self) -> list[AgentConfig]:
         """_build_from_classes.
-    
+
         :returns: list[AgentConfig]
         :rtype: list[AgentConfig]
         """
-
         pipeline_cfg = self._to_plain(self.config.persona_pipeline)
         defaults = pipeline_cfg.get("defaults", {})
         classes = pipeline_cfg.get("classes", {})
@@ -131,7 +129,6 @@ class BaseAgentBuilder:
         :returns: list[AgentConfig]
         :rtype: list[AgentConfig]
         """
-
         data_cfg = class_cfg.get("data", {})
         count = class_cfg.get("count")
         records = (
@@ -266,14 +263,13 @@ class BaseAgentBuilder:
 
     def _parse_fixed_action_sets(self, data: Any) -> dict[str, list[dict[str, Any]]]:
         """_parse_fixed_action_sets.
-    
+
         :param Any data:
         :type data: Any
-    
+
         :returns: dict[str, list[dict[str, Any]]]
         :rtype: dict[str, list[dict[str, Any]]]
         """
-
         raw = self._to_plain(data) or {}
         if not isinstance(raw, Mapping):
             return {}
@@ -304,7 +300,6 @@ class BaseAgentBuilder:
         :returns: dict[str, Any] | None
         :rtype: dict[str, Any] | None
         """
-
         cfg = self._to_plain(class_cfg) or {}
         if not isinstance(cfg, Mapping):
             return None
@@ -456,7 +451,6 @@ class BaseAgentBuilder:
         :returns: dict[str, Any]
         :rtype: dict[str, Any]
         """
-
         mapped: dict[str, Any] = {}
         for target, source in field_map.items():
             value = self._resolve_source(record, source)
@@ -527,14 +521,13 @@ class BaseAgentBuilder:
     @staticmethod
     def _deduplicate(configs: list[AgentConfig]) -> list[AgentConfig]:
         """_deduplicate.
-    
+
         :param list[AgentConfig] configs:
         :type configs: list[AgentConfig]
-    
+
         :returns: list[AgentConfig]
         :rtype: list[AgentConfig]
         """
-
         result: list[AgentConfig] = []
         seen: set[str] = set()
         skipped: list[str] = []
@@ -577,7 +570,6 @@ class BaseAgentBuilder:
         :returns: list[dict[str, Any]]
         :rtype: list[dict[str, Any]]
         """
-
         source = data_cfg.get("source", "local_json")
         if source == "inline":
             records = data_cfg.get("records", [])
@@ -626,7 +618,6 @@ class BaseAgentBuilder:
         :returns: list[dict[str, Any]]
         :rtype: list[dict[str, Any]]
         """
-
         dataset_name = data_cfg.get("dataset")
         split = data_cfg.get("split", "train")
         subset = data_cfg.get("subset")
@@ -728,14 +719,13 @@ class BaseAgentBuilder:
 
     def _scenario_paths(self, path_str: str) -> list[Path]:
         """_scenario_paths.
-    
+
         :param str path_str:
         :type path_str: str
-    
+
         :returns: list[Path]
         :rtype: list[Path]
         """
-
         try:
             raw = Path(path_str)
         except (TypeError, ValueError, OSError):
@@ -758,14 +748,13 @@ class BaseAgentBuilder:
 
     def _resolve_file_path(self, path_str: str) -> Path:
         """_resolve_file_path.
-    
+
         :param str path_str:
         :type path_str: str
-    
+
         :returns: Path
         :rtype: Path
         """
-
         for c in self._scenario_paths(path_str):
             if isinstance(c, Path) and self._safe_path_exists(c):
                 return c
@@ -777,14 +766,13 @@ class BaseAgentBuilder:
 
     def _load_memories(self, value: Any) -> list[str]:
         """_load_memories.
-    
+
         :param Any value:
         :type value: Any
-    
+
         :returns: list[str]
         :rtype: list[str]
         """
-
         value = self._to_plain(value)
         if value is None:
             return []
@@ -816,14 +804,13 @@ class BaseAgentBuilder:
     @staticmethod
     def _to_plain(data: Any) -> Any:
         """_to_plain.
-    
+
         :param Any data:
         :type data: Any
-    
+
         :returns: Any
         :rtype: Any
         """
-
         if isinstance(data, (DictConfig, ListConfig)):
             try:
                 return OmegaConf.to_container(data, resolve=True)
@@ -834,14 +821,13 @@ class BaseAgentBuilder:
     @staticmethod
     def _normalize_memories(memories: Any) -> list[str]:
         """_normalize_memories.
-    
+
         :param Any memories:
         :type memories: Any
-    
+
         :returns: list[str]
         :rtype: list[str]
         """
-
         if memories is None:
             return []
         if isinstance(memories, str):
@@ -854,14 +840,13 @@ class BaseAgentBuilder:
     @staticmethod
     def _coerce_text(value: Any, *, joiner: str = "\n") -> str:
         """_coerce_text.
-    
+
         :param Any value:
         :type value: Any
-    
+
         :returns: str
         :rtype: str
         """
-
         if value is None:
             return ""
         if isinstance(value, str):
@@ -873,16 +858,15 @@ class BaseAgentBuilder:
     @staticmethod
     def _extract_path(record: Any, dotted_path: Any) -> Any:
         """_extract_path.
-    
+
         :param Any record:
         :type record: Any
         :param Any dotted_path:
         :type dotted_path: Any
-    
+
         :returns: Any
         :rtype: Any
         """
-
         if dotted_path is None:
             return None
         if not isinstance(dotted_path, str):
@@ -912,14 +896,13 @@ class BaseAgentBuilder:
 
         def _sub(m: re.Match) -> str:
             """_sub.
-    
+
             :param re.Match m:
             :type m: re.Match
-    
+
             :returns: str
             :rtype: str
             """
-
             v = self._extract_path(record, m.group(1).strip())
             if v is None:
                 return ""
@@ -930,30 +913,28 @@ class BaseAgentBuilder:
     @staticmethod
     def _derive_name(context: str, words: int = 2) -> str:
         """_derive_name.
-    
+
         :param str context:
         :type context: str
         :param int words:
         :type words: int
-    
+
         :returns: str
         :rtype: str
         """
-
         tokens = re.findall(r"[A-Za-z0-9']+", context or "")
         return " ".join(tokens[: max(1, words)]) if tokens else ""
 
     @staticmethod
     def _safe_path_exists(candidate: Any) -> bool:
         """_safe_path_exists.
-    
+
         :param Any candidate:
         :type candidate: Any
-    
+
         :returns: bool
         :rtype: bool
         """
-
         try:
             return bool(getattr(candidate, "exists", lambda: False)())
         except OSError:

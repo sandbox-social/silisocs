@@ -1,5 +1,4 @@
-"""favorability_diff_histogram module. Auto-generated module docstring.
-"""
+"""favorability_diff_histogram module. Auto-generated module docstring."""
 
 import argparse
 import json
@@ -11,7 +10,7 @@ import numpy as np
 
 def make_plot(probe_path: str, jumble_path: str | None, output_dir: Path | None = None):
     """make_plot.
-    
+
     :param str probe_path:
     :type probe_path: str
     :param str | None jumble_path:
@@ -19,7 +18,6 @@ def make_plot(probe_path: str, jumble_path: str | None, output_dir: Path | None 
     :param Path | None output_dir:
     :type output_dir: Path | None
     """
-
     probe_data: dict = {}
     with open(probe_path, encoding="utf-8") as f:
         for line in f:
@@ -83,10 +81,9 @@ def make_plot(probe_path: str, jumble_path: str | None, output_dir: Path | None 
     # --- Prepare data for plotting ---
     def safe_float(val):
         """safe_float.
-    
+
         :param val:
         """
-
         if val is None:
             return np.nan
         try:
@@ -122,9 +119,7 @@ def make_plot(probe_path: str, jumble_path: str | None, output_dir: Path | None 
 
 
 def main():
-    """main.
-    """
-
+    """Main."""
     parser = argparse.ArgumentParser(description="Plot favorability difference histogram")
     parser.add_argument("--input", "-i", required=True, help="Path to probe_events.jsonl")
     parser.add_argument(

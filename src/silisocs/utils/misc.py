@@ -23,11 +23,10 @@ import psutil
 
 def write_concordia_logs(results_log, output_rootname):
     """write_concordia_logs.
-    
+
     :param results_log:
     :param output_rootname:
     """
-
     file_path = os.path.join(output_rootname, "logs.html")
     try:
         with open(file_path, "w", encoding="utf-8") as html_file:
@@ -39,11 +38,10 @@ def write_concordia_logs(results_log, output_rootname):
 
 def get_prefab_instance(entity_prefab, module_path):
     """get_prefab_instance.
-    
+
     :param entity_prefab:
     :param module_path:
     """
-
     print(f"[Loader] Loading prefab: {entity_prefab} from {module_path}")
     entity_name, entity_type = entity_prefab.split("__", 1)
     try:
@@ -71,40 +69,35 @@ def get_prefab_instance(entity_prefab, module_path):
 # Create a custom StreamHandler that redirects stdout to the logger
 class StdoutToLogger:
     """StdoutToLogger.
-    
+
     Constructor parameters:
-    
+
     __init__.
-    
+
     :param logger:
     :param log_level:
     """
 
     def __init__(self, logger, log_level=logging.INFO):
         """__init__.
-    
+
         :param logger:
         :param log_level:
         """
-
         self.logger = logger
         self.log_level = log_level
         self.linebuf = ""
 
     def write(self, buf):
-        """write.
-    
+        """Write.
+
         :param buf:
         """
-
         for line in buf.rstrip().splitlines():
             self.logger.log(self.log_level, line.rstrip())
 
     def flush(self):
-        """flush.
-        """
-
-        pass
+        """Flush."""
 
 
 def get_sentence_encoder(model_name):
@@ -113,7 +106,6 @@ def get_sentence_encoder(model_name):
 
     :param model_name:
     """
-
     import warnings
 
     with warnings.catch_warnings():
@@ -130,13 +122,12 @@ class _AsyncJsonlWriter:
 
     def __init__(self, output_filename: str, max_queue_size: int = 200_000):
         """__init__.
-    
+
         :param str output_filename:
         :type output_filename: str
         :param int max_queue_size:
         :type max_queue_size: int
         """
-
         self._output_filename = output_filename
         self._queue: queue.Queue[dict[str, Any] | None] = queue.Queue(maxsize=max_queue_size)
         self._stop_event = threading.Event()
@@ -145,11 +136,10 @@ class _AsyncJsonlWriter:
 
     def _run(self) -> None:
         """_run.
-    
+
         :returns: None
         :rtype: None
         """
-
         os.makedirs(os.path.dirname(self._output_filename) or ".", exist_ok=True)
         with open(self._output_filename, "a", encoding="utf-8") as f:
             while not self._stop_event.is_set() or not self._queue.empty():
@@ -175,24 +165,22 @@ class _AsyncJsonlWriter:
                 f.flush()
 
     def write(self, payload: Mapping[str, Any]) -> None:
-        """write.
-    
+        """Write.
+
         :param Mapping[str, Any] payload:
         :type payload: Mapping[str, Any]
-    
+
         :returns: None
         :rtype: None
         """
-
         self._queue.put(dict(payload))
 
     def close(self) -> None:
-        """close.
-    
+        """Close.
+
         :returns: None
         :rtype: None
         """
-
         self._stop_event.set()
         self._queue.put(None)
         self._thread.join(timeout=5)
@@ -200,29 +188,26 @@ class _AsyncJsonlWriter:
 
 class _AsyncJsonlWriterRegistry:
     """_AsyncJsonlWriterRegistry.
-    
+
     Constructor parameters:
-    
+
     __init__.
     """
 
     def __init__(self):
-        """__init__.
-        """
-
+        """__init__."""
         self._writers: dict[str, _AsyncJsonlWriter] = {}
         self._lock = threading.Lock()
 
     def get(self, output_filename: str) -> _AsyncJsonlWriter:
-        """get.
-    
+        """Get.
+
         :param str output_filename:
         :type output_filename: str
-    
+
         :returns: _AsyncJsonlWriter
         :rtype: _AsyncJsonlWriter
         """
-
         with self._lock:
             writer = self._writers.get(output_filename)
             if writer is None:
@@ -232,11 +217,10 @@ class _AsyncJsonlWriterRegistry:
 
     def close_all(self) -> None:
         """close_all.
-    
+
         :returns: None
         :rtype: None
         """
-
         with self._lock:
             writers = list(self._writers.values())
             self._writers.clear()
@@ -255,22 +239,21 @@ def write_jsonl_item(out_item: Mapping[str, Any], output_filename: str) -> None:
 
 class EventLogger:
     """EventLogger.
-    
+
     Constructor parameters:
-    
+
     __init__.
-    
+
     :param event_type:
     :param output_filename:
     """
 
     def __init__(self, event_type, output_filename):
         """__init__.
-    
+
         :param event_type:
         :param output_filename:
         """
-
         self.episode_idx = None
         self.output_filename = output_filename
         self.type = event_type
@@ -280,24 +263,22 @@ class EventLogger:
 
     def _next_seq(self) -> int:
         """_next_seq.
-    
+
         :returns: int
         :rtype: int
         """
-
         with self._seq_lock:
             return next(self._sequence)
 
     def _prepare_item(self, log_item: dict[str, Any]) -> dict[str, Any]:
         """_prepare_item.
-    
+
         :param dict[str, Any] log_item:
         :type log_item: dict[str, Any]
-    
+
         :returns: dict[str, Any]
         :rtype: dict[str, Any]
         """
-
         item = dict(log_item)
         item["episode"] = self.episode_idx
         item["event_type"] = self.type
@@ -308,11 +289,10 @@ class EventLogger:
         return item
 
     def log(self, log_data):
-        """log.
-    
+        """Log.
+
         :param log_data:
         """
-
         if isinstance(log_data, list):
             for log_item in log_data:
                 prepared = self._prepare_item(log_item)
@@ -328,7 +308,6 @@ def configure_logging(logger):
 
     :param logger:
     """
-
     logging.getLogger("httpx").setLevel(logging.WARNING)
     # Redirect stdout to the logger
     sys.stdout = StdoutToLogger(logger)
@@ -388,14 +367,13 @@ class SimMetricsCollector:
 
     @classmethod
     def get(cls) -> "SimMetricsCollector":
-        """get.
-    
+        """Get.
+
         :param cls:
-    
+
         :returns: 'SimMetricsCollector'
         :rtype: 'SimMetricsCollector'
         """
-
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -404,22 +382,19 @@ class SimMetricsCollector:
 
     @classmethod
     def reset(cls) -> "SimMetricsCollector":
-        """reset.
-    
+        """Reset.
+
         :param cls:
-    
+
         :returns: 'SimMetricsCollector'
         :rtype: 'SimMetricsCollector'
         """
-
         with cls._lock:
             cls._instance = cls()
         return cls._instance
 
     def __init__(self):
-        """__init__.
-        """
-
+        """__init__."""
         self._phase_timings: list[dict[str, Any]] = []
         self._episode_metrics: list[dict[str, Any]] = []
         self._resource_snapshots: list[dict[str, Any]] = []
@@ -435,28 +410,23 @@ class SimMetricsCollector:
 
         def __init__(self, collector: "SimMetricsCollector", name: str):
             """__init__.
-    
+
             :param 'SimMetricsCollector' collector:
             :type collector: 'SimMetricsCollector'
             :param str name:
             :type name: str
             """
-
             self._collector = collector
             self._name = name
             self._start = 0.0
 
         def __enter__(self):
-            """__enter__.
-            """
-
+            """__enter__."""
             self._start = time.time()
             return self
 
         def __exit__(self, *_exc):
-            """__exit__.
-            """
-
+            """__exit__."""
             elapsed = time.time() - self._start
             with self._collector._lock_data:
                 self._collector._phase_timings.append(
@@ -473,16 +443,12 @@ class SimMetricsCollector:
     # -- sim-level bookkeeping ----------------------------------------------
 
     def mark_sim_start(self):
-        """mark_sim_start.
-        """
-
+        """mark_sim_start."""
         self._sim_start = time.time()
         self.snapshot_resources("sim_start")
 
     def mark_sim_end(self):
-        """mark_sim_end.
-        """
-
+        """mark_sim_end."""
         self._sim_end = time.time()
         self.snapshot_resources("sim_end")
 
@@ -498,11 +464,10 @@ class SimMetricsCollector:
 
     def snapshot_resources(self, label: str = ""):
         """snapshot_resources.
-    
+
         :param str label:
         :type label: str
         """
-
         snap = _snapshot_resources()
         snap["label"] = label
         snap["timestamp"] = time.time()
@@ -513,13 +478,12 @@ class SimMetricsCollector:
 
     def set_meta(self, key: str, value: Any):
         """set_meta.
-    
+
         :param str key:
         :type key: str
         :param Any value:
         :type value: Any
         """
-
         with self._lock_data:
             self._meta[key] = value
 
@@ -527,11 +491,10 @@ class SimMetricsCollector:
 
     def to_dict(self) -> dict[str, Any]:
         """to_dict.
-    
+
         :returns: dict[str, Any]
         :rtype: dict[str, Any]
         """
-
         total = None
         if self._sim_start is not None and self._sim_end is not None:
             total = round(self._sim_end - self._sim_start, 4)
@@ -552,13 +515,12 @@ class SimMetricsCollector:
 
     def write_json(self, output_dir: str, filename: str = "sim_metrics.json"):
         """write_json.
-    
+
         :param str output_dir:
         :type output_dir: str
         :param str filename:
         :type filename: str
         """
-
         path = os.path.join(output_dir, filename)
         os.makedirs(output_dir, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:

@@ -6,12 +6,11 @@ under `docs/api/` containing a `mkdocstrings` directive (e.g. "::: silisocs.modu
 It also emits `docs/api/index.md` with a literate nav of all generated pages.
 """
 
-from pathlib import Path
-import mkdocs_gen_files
-import importlib
-import sys
 import os
+import sys
+from pathlib import Path
 
+import mkdocs_gen_files
 
 PACKAGE = "silisocs"
 SRC_ROOT = Path("src") / PACKAGE
@@ -106,8 +105,8 @@ def main():
     index_file = Path("api") / "index.md"
     with mkdocs_gen_files.open(index_file, "w") as fh:
         # The title that will appear in the breadcrumbs/tab
-        fh.write("# API Reference\n\n") 
-        
+        fh.write("# API Reference\n\n")
+
         # This writes the actual navigation tree
         # MkDocs Literate Nav will consume this list for the sidebar
         fh.writelines(nav.build_literate_nav())

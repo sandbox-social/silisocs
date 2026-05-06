@@ -157,10 +157,9 @@ def load_data_from_folder(folder_contents):
     # Ensure all toot_ids are strings and episodes are ints
     def get_toot_id(data):
         """get_toot_id.
-    
+
         :param data:
         """
-
         if "toot_id" in data:
             data["toot_id"] = str(data["toot_id"])
         return data

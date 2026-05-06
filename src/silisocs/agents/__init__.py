@@ -1,3 +1,1 @@
-"""__init__ module. Auto-generated module docstring.
-"""
-
+"""__init__ module. Auto-generated module docstring."""

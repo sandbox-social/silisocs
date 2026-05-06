@@ -43,16 +43,15 @@ _TOOL_CALL_EXPR_PATTERN = re.compile(
 
 def _normalize_target_id(action_type: str, target_id: str) -> str:
     """_normalize_target_id.
-    
+
     :param str action_type:
     :type action_type: str
     :param str target_id:
     :type target_id: str
-    
+
     :returns: str
     :rtype: str
     """
-
     cleaned = target_id.strip()
     if not cleaned:
         return ""
@@ -137,12 +136,11 @@ class ParsedActionResolveComponent(_BaseResolveComponent):
     """Resolve using ACTION TYPE/TARGET ID/CONTENT parser output."""
 
     def resolve(self, *, active_entity: str, action_text: str) -> str:
-        """resolve.
-    
+        """Resolve.
+
         :returns: str
         :rtype: str
         """
-
         action_data = find_and_parse_action_data(action_text)
         if action_data is None:
             return ""
@@ -154,12 +152,11 @@ class GenericActionResolveComponent(_BaseResolveComponent):
     """Resolve generic ACTION: name / param: value format."""
 
     def resolve(self, *, active_entity: str, action_text: str) -> str:
-        """resolve.
-    
+        """Resolve.
+
         :returns: str
         :rtype: str
         """
-
         action_match = re.search(r"(?i)ACTION:\s*(\w+)", action_text)
         if not action_match:
             return ""

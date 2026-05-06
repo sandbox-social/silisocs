@@ -1,6 +1,3 @@
-"""engine module. Auto-generated module docstring.
-"""
-
 from __future__ import annotations
 
 import concurrent.futures
@@ -20,9 +17,6 @@ logger = logging.getLogger("RedditLikePlatform")
 
 @dataclass
 class Post:
-    """Post.
-    """
-
     id: int
     user_id: int
     username: str
@@ -37,9 +31,6 @@ class Post:
     formatted_date: str = ""
 
     def to_dict(self):
-        """to_dict.
-        """
-
         return {
             "id": self.id,
             "user_id": self.user_id,
@@ -59,9 +50,6 @@ class Post:
 
 @dataclass
 class Comment:
-    """Comment.
-    """
-
     id: int
     post_id: int
     parent_id: int | None
@@ -74,9 +62,6 @@ class Comment:
     formatted_date: str = ""
 
     def to_dict(self):
-        """to_dict.
-        """
-
         return {
             "id": self.id,
             "post_id": self.post_id,
@@ -93,29 +78,9 @@ class Comment:
 
 
 class RedditLikePlatform:
-    """RedditLikePlatform.
-    
-    Constructor parameters:
-    
-    __init__.
-    
-    :param str db_path:
-    :type db_path: str
-    :param bool use_queue:
-    :type use_queue: bool
-    """
-
     SUPPORTED_RECSYS_TYPES = frozenset({"reddit", "twhin"})
 
     def __init__(self, db_path: str = "reddit_like.db", use_queue: bool = True):
-        """__init__.
-    
-        :param str db_path:
-        :type db_path: str
-        :param bool use_queue:
-        :type use_queue: bool
-        """
-
         self.db_path = db_path
         self._init_db()
         self.use_queue = use_queue
@@ -412,29 +377,11 @@ class RedditLikePlatform:
     # --- Read / Helper Operations ---
 
     def get_user_id(self, username: str) -> int | None:
-        """get_user_id.
-    
-        :param str username:
-        :type username: str
-    
-        :returns: int | None
-        :rtype: int | None
-        """
-
         with self.get_connection() as conn:
             row = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
             return row["id"] if row else None
 
     def get_subreddit_id(self, name: str) -> int | None:
-        """get_subreddit_id.
-    
-        :param str name:
-        :type name: str
-    
-        :returns: int | None
-        :rtype: int | None
-        """
-
         with self.get_connection() as conn:
             row = conn.execute("SELECT id FROM subreddits WHERE name = ?", (name,)).fetchone()
             return row["id"] if row else None
@@ -442,19 +389,6 @@ class RedditLikePlatform:
     # --- Write Actions: Users & Subreddits ---
 
     def create_user(self, username: str, bio: str = "", sync: bool = True) -> Any:
-        """create_user.
-    
-        :param str username:
-        :type username: str
-        :param str bio:
-        :type bio: str
-        :param bool sync:
-        :type sync: bool
-    
-        :returns: Any
-        :rtype: Any
-        """
-
         try:
             queries = [
                 (
@@ -467,19 +401,6 @@ class RedditLikePlatform:
             return self.get_user_id(username)
 
     def update_profile(self, username: str, bio: str, sync: bool = True) -> Any:
-        """update_profile.
-    
-        :param str username:
-        :type username: str
-        :param str bio:
-        :type bio: str
-        :param bool sync:
-        :type sync: bool
-    
-        :returns: Any
-        :rtype: Any
-        """
-
         user_id = self.get_user_id(username)
         if not user_id:
             raise ValueError("User not found")
@@ -488,19 +409,6 @@ class RedditLikePlatform:
 
     def create_subreddit(self, name: str, description: str = "", sync: bool = True) -> Any:
         # Strip r/ if user provided it
-        """create_subreddit.
-
-        :param str name:
-        :type name: str
-        :param str description:
-        :type description: str
-        :param bool sync:
-        :type sync: bool
-
-        :returns: Any
-        :rtype: Any
-        """
-
         name = name.removeprefix("r/")
         try:
             queries = [
@@ -514,16 +422,6 @@ class RedditLikePlatform:
             return self.get_subreddit_id(name)
 
     def join_subreddit(self, username: str, subreddit_name: str, sync: bool = True):
-        """join_subreddit.
-    
-        :param str username:
-        :type username: str
-        :param str subreddit_name:
-        :type subreddit_name: str
-        :param bool sync:
-        :type sync: bool
-        """
-
         user_id = self.get_user_id(username)
         sub_id = self.get_subreddit_id(subreddit_name)
         if not user_id or not sub_id:
@@ -542,16 +440,6 @@ class RedditLikePlatform:
             return False  # Already joined
 
     def leave_subreddit(self, username: str, subreddit_name: str, sync: bool = True):
-        """leave_subreddit.
-    
-        :param str username:
-        :type username: str
-        :param str subreddit_name:
-        :type subreddit_name: str
-        :param bool sync:
-        :type sync: bool
-        """
-
         user_id = self.get_user_id(username)
         sub_id = self.get_subreddit_id(subreddit_name)
         if not user_id or not sub_id:
@@ -567,16 +455,6 @@ class RedditLikePlatform:
         return self._execute_write(queries, sync=sync)
 
     def block(self, username: str, target_username: str, sync: bool = True):
-        """block.
-    
-        :param str username:
-        :type username: str
-        :param str target_username:
-        :type target_username: str
-        :param bool sync:
-        :type sync: bool
-        """
-
         blocker_id = self.get_user_id(username)
         blocked_id = self.get_user_id(target_username)
         if not blocker_id or not blocked_id:
@@ -594,16 +472,6 @@ class RedditLikePlatform:
             return False
 
     def unblock(self, username: str, target_username: str, sync: bool = True):
-        """unblock.
-    
-        :param str username:
-        :type username: str
-        :param str target_username:
-        :type target_username: str
-        :param bool sync:
-        :type sync: bool
-        """
-
         blocker_id = self.get_user_id(username)
         blocked_id = self.get_user_id(target_username)
         if not blocker_id or not blocked_id:
@@ -619,23 +487,6 @@ class RedditLikePlatform:
     def create_post(
         self, username: str, subreddit_name: str, title: str, content: str = "", sync: bool = True
     ) -> Any:
-        """create_post.
-
-        :param str username:
-        :type username: str
-        :param str subreddit_name:
-        :type subreddit_name: str
-        :param str title:
-        :type title: str
-        :param str content:
-        :type content: str
-        :param bool sync:
-        :type sync: bool
-
-        :returns: Any
-        :rtype: Any
-        """
-
         user_id = self.get_user_id(username)
         subreddit_name = subreddit_name.removeprefix("r/")
         sub_id = self.get_subreddit_id(subreddit_name)
@@ -658,23 +509,6 @@ class RedditLikePlatform:
         parent_id: int | None = None,
         sync: bool = True,
     ) -> Any:
-        """create_comment.
-
-        :param str username:
-        :type username: str
-        :param int post_id:
-        :type post_id: int
-        :param str content:
-        :type content: str
-        :param int | None parent_id:
-        :type parent_id: int | None
-        :param bool sync:
-        :type sync: bool
-
-        :returns: Any
-        :rtype: Any
-        """
-
         user_id = self.get_user_id(username)
         if not user_id:
             raise ValueError(f"User {username} not found")
@@ -812,15 +646,6 @@ class RedditLikePlatform:
     # --- Read / Feed Methods ---
 
     def view_profile(self, username: str) -> dict[str, Any] | None:
-        """view_profile.
-    
-        :param str username:
-        :type username: str
-    
-        :returns: dict[str, Any] | None
-        :rtype: dict[str, Any] | None
-        """
-
         with self.get_connection() as conn:
             row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
             if row:
@@ -828,17 +653,6 @@ class RedditLikePlatform:
             return None
 
     def search_subreddits(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
-        """search_subreddits.
-    
-        :param str query:
-        :type query: str
-        :param int limit:
-        :type limit: int
-    
-        :returns: list[dict[str, Any]]
-        :rtype: list[dict[str, Any]]
-        """
-
         with self.get_connection() as conn:
             search_term = f"%{query}%"
             rows = conn.execute(
@@ -848,14 +662,6 @@ class RedditLikePlatform:
             return [dict(r) for r in rows]
 
     def _parse_posts(self, rows) -> list[dict]:
-        """_parse_posts.
-    
-        :param rows:
-    
-        :returns: list[dict]
-        :rtype: list[dict]
-        """
-
         posts = []
         for row in rows:
             post = Post(
@@ -919,19 +725,6 @@ class RedditLikePlatform:
     def get_subreddit_feed(
         self, subreddit_name: str, limit: int = 25, cursor: int | None = None
     ) -> dict[str, Any]:
-        """get_subreddit_feed.
-
-        :param str subreddit_name:
-        :type subreddit_name: str
-        :param int limit:
-        :type limit: int
-        :param int | None cursor:
-        :type cursor: int | None
-
-        :returns: dict[str, Any]
-        :rtype: dict[str, Any]
-        """
-
         subreddit_name = subreddit_name.removeprefix("r/")
         sub_id = self.get_subreddit_id(subreddit_name)
         if not sub_id:
@@ -957,17 +750,6 @@ class RedditLikePlatform:
     def _feed_popular(self, limit: int = 25, cursor: int | None = None) -> dict[str, Any]:
         # Score-based sorting (Upvotes - Downvotes). Pagination with score is harder than ID, so we'll
         # approximate "Trending" by grabbing high score posts from recent IDs.
-        """_feed_popular.
-
-        :param int limit:
-        :type limit: int
-        :param int | None cursor:
-        :type cursor: int | None
-
-        :returns: dict[str, Any]
-        :rtype: dict[str, Any]
-        """
-
         query = """
             SELECT p.*, u.username, s.name as subreddit_name
             FROM posts p
@@ -986,19 +768,6 @@ class RedditLikePlatform:
     def get_user_feed(
         self, username: str, limit: int = 25, cursor: int | None = None
     ) -> dict[str, Any]:
-        """get_user_feed.
-
-        :param str username:
-        :type username: str
-        :param int limit:
-        :type limit: int
-        :param int | None cursor:
-        :type cursor: int | None
-
-        :returns: dict[str, Any]
-        :rtype: dict[str, Any]
-        """
-
         user_id = self.get_user_id(username)
         if not user_id:
             raise ValueError("User not found")
@@ -1078,21 +847,6 @@ class RedditLikePlatform:
     # --- DMs and Activities ---
 
     def send_dm(self, username: str, target_username: str, content: str, sync: bool = True) -> Any:
-        """send_dm.
-    
-        :param str username:
-        :type username: str
-        :param str target_username:
-        :type target_username: str
-        :param str content:
-        :type content: str
-        :param bool sync:
-        :type sync: bool
-    
-        :returns: Any
-        :rtype: Any
-        """
-
         sender_id = self.get_user_id(username)
         receiver_id = self.get_user_id(target_username)
         if not sender_id or not receiver_id:
@@ -1116,19 +870,6 @@ class RedditLikePlatform:
     def view_dms_with(
         self, username: str, target_username: str, limit: int = 50
     ) -> list[dict[str, Any]]:
-        """view_dms_with.
-
-        :param str username:
-        :type username: str
-        :param str target_username:
-        :type target_username: str
-        :param int limit:
-        :type limit: int
-
-        :returns: list[dict[str, Any]]
-        :rtype: list[dict[str, Any]]
-        """
-
         user_id = self.get_user_id(username)
         target_id = self.get_user_id(target_username)
         if not user_id or not target_id:

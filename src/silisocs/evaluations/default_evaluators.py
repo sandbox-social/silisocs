@@ -44,28 +44,26 @@ _CHOICE_WORD_THRESHOLD = 4
 
 def _slug(text: str) -> str:
     """_slug.
-    
+
     :param str text:
     :type text: str
-    
+
     :returns: str
     :rtype: str
     """
-
     slug = re.sub(r"[^a-zA-Z0-9]+", "_", text.strip().lower()).strip("_")
     return slug or "unknown"
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     """_read_jsonl.
-    
+
     :param Path path:
     :type path: Path
-    
+
     :returns: list[dict[str, Any]]
     :rtype: list[dict[str, Any]]
     """
-
     rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as f:
         for raw in f:
@@ -78,16 +76,15 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def _safe_int(value: Any, default: int = 0) -> int:
     """_safe_int.
-    
+
     :param Any value:
     :type value: Any
     :param int default:
     :type default: int
-    
+
     :returns: int
     :rtype: int
     """
-
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -96,14 +93,13 @@ def _safe_int(value: Any, default: int = 0) -> int:
 
 def _safe_float(value: Any) -> float | None:
     """_safe_float.
-    
+
     :param Any value:
     :type value: Any
-    
+
     :returns: float | None
     :rtype: float | None
     """
-
     if value is None:
         return None
     if isinstance(value, (int, float)):
@@ -122,14 +118,13 @@ def _safe_float(value: Any) -> float | None:
 
 def _summary_stats(values: list[float]) -> dict[str, Any]:
     """_summary_stats.
-    
+
     :param list[float] values:
     :type values: list[float]
-    
+
     :returns: dict[str, Any]
     :rtype: dict[str, Any]
     """
-
     if not values:
         return {
             "count": 0,
@@ -151,14 +146,13 @@ def _summary_stats(values: list[float]) -> dict[str, Any]:
 
 def _normalize_binary(value: Any) -> str | None:
     """_normalize_binary.
-    
+
     :param Any value:
     :type value: Any
-    
+
     :returns: str | None
     :rtype: str | None
     """
-
     text = str(value or "").strip().lower()
     if not text:
         return None
@@ -175,14 +169,13 @@ def _normalize_binary(value: Any) -> str | None:
 
 def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
     """_load_probe_type_map.
-    
+
     :param Path run_dir:
     :type run_dir: Path
-    
+
     :returns: dict[str, str]
     :rtype: dict[str, str]
     """
-
     cfg_path = run_dir / "effective_config.yaml"
     if not cfg_path.is_file():
         return {}
@@ -230,14 +223,13 @@ def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
 
 def _load_probe_hold_last_response(run_dir: Path) -> bool:
     """_load_probe_hold_last_response.
-    
+
     :param Path run_dir:
     :type run_dir: Path
-    
+
     :returns: bool
     :rtype: bool
     """
-
     cfg_path = run_dir / "effective_config.yaml"
     if not cfg_path.is_file():
         return False
@@ -260,14 +252,13 @@ def _load_probe_hold_last_response(run_dir: Path) -> bool:
 
 def _has_probe_response(row: dict[str, Any]) -> bool:
     """_has_probe_response.
-    
+
     :param dict[str, Any] row:
     :type row: dict[str, Any]
-    
+
     :returns: bool
     :rtype: bool
     """
-
     data = row.get("data", {})
     data = data if isinstance(data, dict) else {}
     response = data.get("query_return")
@@ -276,14 +267,13 @@ def _has_probe_response(row: dict[str, Any]) -> bool:
 
 def _apply_carry_forward_probe_rows(probe_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """_apply_carry_forward_probe_rows.
-    
+
     :param list[dict[str, Any]] probe_rows:
     :type probe_rows: list[dict[str, Any]]
-    
+
     :returns: list[dict[str, Any]]
     :rtype: list[dict[str, Any]]
     """
-
     if not probe_rows:
         return probe_rows
 
@@ -352,7 +342,6 @@ def _extract_probe_records(
     :returns: dict[str, list[dict[str, Any]]]
     :rtype: dict[str, list[dict[str, Any]]]
     """
-
     probe_rows = [row for row in events if str(row.get("event_type", "")).lower() == "probe"]
     hold_last_response = _load_probe_hold_last_response(run_dir)
     if hold_last_response:
@@ -417,16 +406,15 @@ def _extract_probe_records(
 
 def _write_choice_plots(records: list[dict[str, Any]], out_dir: Path) -> list[str]:
     """_write_choice_plots.
-    
+
     :param list[dict[str, Any]] records:
     :type records: list[dict[str, Any]]
     :param Path out_dir:
     :type out_dir: Path
-    
+
     :returns: list[str]
     :rtype: list[str]
     """
-
     if not records:
         return []
 
@@ -467,16 +455,15 @@ def _write_choice_plots(records: list[dict[str, Any]], out_dir: Path) -> list[st
 
 def _write_numeric_plots(records: list[dict[str, Any]], out_dir: Path) -> list[str]:
     """_write_numeric_plots.
-    
+
     :param list[dict[str, Any]] records:
     :type records: list[dict[str, Any]]
     :param Path out_dir:
     :type out_dir: Path
-    
+
     :returns: list[str]
     :rtype: list[str]
     """
-
     if not records:
         return []
 
@@ -509,16 +496,15 @@ def _write_numeric_plots(records: list[dict[str, Any]], out_dir: Path) -> list[s
 
 def _write_freetext_plots(records: list[dict[str, Any]], out_dir: Path) -> list[str]:
     """_write_freetext_plots.
-    
+
     :param list[dict[str, Any]] records:
     :type records: list[dict[str, Any]]
     :param Path out_dir:
     :type out_dir: Path
-    
+
     :returns: list[str]
     :rtype: list[str]
     """
-
     if not records:
         return []
 
@@ -571,14 +557,13 @@ def _write_freetext_plots(records: list[dict[str, Any]], out_dir: Path) -> list[
 
 def _probe_filter_for_mode(mode: str) -> str | None:
     """_probe_filter_for_mode.
-    
+
     :param str mode:
     :type mode: str
-    
+
     :returns: str | None
     :rtype: str | None
     """
-
     if mode == "probe_binary":
         return "BinaryProbe"
     if mode == "probe_numeric":
@@ -613,7 +598,6 @@ def _build_probe_plots(
     :returns: dict[str, Any]
     :rtype: dict[str, Any]
     """
-
     if not mode.startswith("probe_"):
         return {
             "generated_files": [],
@@ -688,7 +672,6 @@ def _load_postprocessor(
     :returns: Callable[[dict[str, list[dict[str, Any]]], Path, dict[str, Any]], Any]
     :rtype: Callable[[dict[str, list[dict[str, Any]]], Path, dict[str, Any]], Any]
     """
-
     module_name, sep, attr_name = ref.partition(":")
     module_name = module_name.strip()
     attr_name = attr_name.strip() if sep else "postprocess"
@@ -719,14 +702,13 @@ def _load_postprocessor(
 
 def _extract_plugin_files(result: Any) -> list[str]:
     """_extract_plugin_files.
-    
+
     :param Any result:
     :type result: Any
-    
+
     :returns: list[str]
     :rtype: list[str]
     """
-
     if isinstance(result, list):
         return [str(item) for item in result]
     if isinstance(result, dict):
@@ -738,14 +720,13 @@ def _extract_plugin_files(result: Any) -> list[str]:
 
 def _json_safe_plugin_result(result: Any) -> Any:
     """_json_safe_plugin_result.
-    
+
     :param Any result:
     :type result: Any
-    
+
     :returns: Any
     :rtype: Any
     """
-
     if isinstance(result, (dict, list, str, int, float, bool)) or result is None:
         return result
     return str(result)
@@ -753,14 +734,13 @@ def _json_safe_plugin_result(result: Any) -> Any:
 
 def _infer_probe_type(response: Any) -> str:
     """_infer_probe_type.
-    
+
     :param Any response:
     :type response: Any
-    
+
     :returns: str
     :rtype: str
     """
-
     if _normalize_binary(response) is not None:
         return "BinaryProbe"
     if _safe_float(response) is not None:
@@ -775,14 +755,13 @@ def _infer_probe_type(response: Any) -> str:
 
 def _build_action_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
     """_build_action_metrics.
-    
+
     :param list[dict[str, Any]] events:
     :type events: list[dict[str, Any]]
-    
+
     :returns: dict[str, Any]
     :rtype: dict[str, Any]
     """
-
     action_rows = [row for row in events if str(row.get("event_type", "")).lower() == "action"]
     label_counts = Counter(str(row.get("label", "")) for row in action_rows)
 
@@ -883,7 +862,6 @@ def _build_probe_metrics_with_context(  # noqa: C901, PLR0912, PLR0915
     :returns: dict[str, Any]
     :rtype: dict[str, Any]
     """
-
     probe_rows_raw = [row for row in events if str(row.get("event_type", "")).lower() == "probe"]
     hold_last_response = _load_probe_hold_last_response(run_dir)
     probe_rows = (
@@ -1019,18 +997,17 @@ def _build_probe_metrics_with_context(  # noqa: C901, PLR0912, PLR0915
 
 def _build_payload(mode: str, events: list[dict[str, Any]], run_dir: Path) -> dict[str, Any]:
     """_build_payload.
-    
+
     :param str mode:
     :type mode: str
     :param list[dict[str, Any]] events:
     :type events: list[dict[str, Any]]
     :param Path run_dir:
     :type run_dir: Path
-    
+
     :returns: dict[str, Any]
     :rtype: dict[str, Any]
     """
-
     if mode == "action_metrics":
         return _build_action_metrics(events)
     if mode == "probe_metrics":

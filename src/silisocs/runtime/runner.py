@@ -103,27 +103,25 @@ _DEFAULT_FLOW_TAG = "default"
 
 def _env_cfg(cfg: Any) -> Any:
     """_env_cfg.
-    
+
     :param Any cfg:
     :type cfg: Any
-    
+
     :returns: Any
     :rtype: Any
     """
-
     return getattr(cfg, "env", getattr(cfg, "environment", object()))
 
 
 def _evals_cfg(cfg: Any) -> Any:
     """_evals_cfg.
-    
+
     :param Any cfg:
     :type cfg: Any
-    
+
     :returns: Any
     :rtype: Any
     """
-
     return getattr(cfg, "evals", getattr(cfg, "evaluations", object()))
 
 
@@ -505,14 +503,13 @@ def populate_agent_data(
 
     def _normalize_memories(memories: Any) -> list[str]:
         """_normalize_memories.
-    
+
         :param Any memories:
         :type memories: Any
-    
+
         :returns: list[str]
         :rtype: list[str]
         """
-
         if memories is None:
             return []
         if isinstance(memories, str):
@@ -756,18 +753,17 @@ def main(cfg: DictConfig):
 
     def _log_startup_phase(phase_name: str, duration_s: float, details: str = "") -> None:
         """_log_startup_phase.
-    
+
         :param str phase_name:
         :type phase_name: str
         :param float duration_s:
         :type duration_s: float
         :param str details:
         :type details: str
-    
+
         :returns: None
         :rtype: None
         """
-
         details_part = f" {details}" if details else ""
         line = f"Startup {phase_name}: {duration_s:.2f}s{details_part}"
         logger.info(line)
@@ -1080,19 +1076,17 @@ def _register_search_path_plugin() -> None:
     from hydra.plugins.search_path_plugin import SearchPathPlugin
 
     class _ScenarioSearchPathPlugin(SearchPathPlugin):
-        """_ScenarioSearchPathPlugin.
-        """
+        """_ScenarioSearchPathPlugin."""
 
         def manipulate_search_path(self, search_path: Any) -> None:  # type: ignore[override]
             """manipulate_search_path.
-    
+
             :param Any search_path:
             :type search_path: Any
-    
+
             :returns: None
             :rtype: None
             """
-
             paths_csv = _os.environ.get("SILISOCS_EXTERNAL_CONFIG_DIRS", "").strip()
             if not paths_csv:
                 return

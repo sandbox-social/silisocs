@@ -1,5 +1,4 @@
-"""validator module. Auto-generated module docstring.
-"""
+"""validator module. Auto-generated module docstring."""
 
 from __future__ import annotations
 
@@ -10,8 +9,7 @@ from pathlib import Path
 
 @dataclass
 class ValidationResult:
-    """ValidationResult.
-    """
+    """ValidationResult."""
 
     ok: bool
     stdout: str
@@ -19,11 +17,10 @@ class ValidationResult:
 
     def __str__(self) -> str:
         """__str__.
-    
+
         :returns: str
         :rtype: str
         """
-
         status = "PASS" if self.ok else "FAIL"
         lines = [f"[{status}]"]
         if self.stdout.strip():

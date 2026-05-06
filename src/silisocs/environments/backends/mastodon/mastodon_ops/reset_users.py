@@ -34,11 +34,6 @@ from silisocs.environments.backends.mastodon.mastodon_utils import get_users_fro
 
 
 def clear_mastodon_server(max_num_agents):
-    """clear_mastodon_server.
-    
-    :param max_num_agents:
-    """
-
     users = get_users_from_env()[: max_num_agents + 1]
     reset_users(users, skip_confirm=True, parallel=True)
     while len(get_public_timeline(limit=None)):

@@ -1,6 +1,3 @@
-"""get_users_from_env module. Auto-generated module docstring.
-"""
-
 import os
 import re
 

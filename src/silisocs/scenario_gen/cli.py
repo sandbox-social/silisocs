@@ -1,5 +1,4 @@
-"""cli module. Auto-generated module docstring.
-"""
+"""cli module. Auto-generated module docstring."""
 
 from __future__ import annotations
 

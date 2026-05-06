@@ -95,7 +95,6 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
         :returns: None
         :rtype: None
         """
-
         super().__init__(*args, **kwargs)
         self._gm_action_locks: dict[int, threading.Lock] = {}
         self._gm_action_locks_guard = threading.Lock()
@@ -112,7 +111,6 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
         :returns: A threading.Lock dedicated to the provided game master.
         :rtype: threading.Lock
         """
-
         key = id(game_master)
         with self._gm_action_locks_guard:
             lock = self._gm_action_locks.get(key)
@@ -265,7 +263,6 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
         :returns: True if the game master exposes an application adapter.
         :rtype: bool
         """
-
         act_component = getattr(game_master, "_act_component", None)
         return hasattr(act_component, "sm_app")
 
@@ -293,18 +290,17 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
     @staticmethod
     def _entity_flow_type(game_master: entity_lib.Entity, entity_name: str, cfg: Any) -> str:
         """_entity_flow_type.
-    
+
         :param entity_lib.Entity game_master:
         :type game_master: entity_lib.Entity
         :param str entity_name:
         :type entity_name: str
         :param Any cfg:
         :type cfg: Any
-    
+
         :returns: str
         :rtype: str
         """
-
         act_component = getattr(game_master, "_act_component", None)
         flow_map = dict(getattr(act_component, "entity_flow_tags", {}) or {})
 
@@ -336,7 +332,6 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
         :returns: list[tuple[str, list[tuple[entity_lib.Entity, entity_lib.ActionSpec]]]]
         :rtype: list[tuple[str, list[tuple[entity_lib.Entity, entity_lib.ActionSpec]]]]
         """
-
         flow_groups: OrderedDict[str, list[tuple[entity_lib.Entity, entity_lib.ActionSpec]]] = (
             OrderedDict()
         )
@@ -368,14 +363,13 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
     @staticmethod
     def _gm_sequence(game_master: entity_lib.Entity) -> int:
         """_gm_sequence.
-    
+
         :param entity_lib.Entity game_master:
         :type game_master: entity_lib.Entity
-    
+
         :returns: int
         :rtype: int
         """
-
         act_component = getattr(game_master, "_act_component", None)
         orchestration = getattr(act_component, "gm_orchestration", {})
         if not isinstance(orchestration, Mapping):
@@ -388,14 +382,13 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
     @staticmethod
     def _gm_owned_flows(game_master: entity_lib.Entity) -> set[str]:
         """_gm_owned_flows.
-    
+
         :param entity_lib.Entity game_master:
         :type game_master: entity_lib.Entity
-    
+
         :returns: set[str]
         :rtype: set[str]
         """
-
         act_component = getattr(game_master, "_act_component", None)
         orchestration = getattr(act_component, "gm_orchestration", {})
         if not isinstance(orchestration, Mapping):
@@ -425,7 +418,6 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
         :returns: Ordered list of game masters that should run this phase.
         :rtype: list[entity_lib.Entity]
         """
-
         del game_masters
         return [current_game_master]
 
@@ -452,7 +444,6 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
         :returns: tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]
         :rtype: tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]
         """
-
         del cfg
         flow_task_groups: list[tuple[str, dict[str, Callable[[], str]]]] = []
         model_pool: dict[int, Any] = {}
@@ -1115,7 +1106,6 @@ class FlowRuntimeEngine(BaseRuntimeEngine):
         :returns: list[entity_lib.Entity]
         :rtype: list[entity_lib.Entity]
         """
-
         sequence = cls._gm_sequence(current_game_master)
         peers = [
             gm
@@ -1150,7 +1140,6 @@ class FlowRuntimeEngine(BaseRuntimeEngine):
         :returns: tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]
         :rtype: tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]
         """
-
         flow_task_groups: list[tuple[str, dict[str, Callable[[], str]]]] = []
         model_pool: dict[int, Any] = {}
         if skip_actions:

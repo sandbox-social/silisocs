@@ -31,12 +31,6 @@ class RedditLikeApp(SocialMediaApp):
     _user_mapping: dict[str, str] = dataclasses.field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
-        """__post_init__.
-    
-        :returns: None
-        :rtype: None
-        """
-
         super().__init__()
         # Ensure the directory for the DB file exists (for output folder paths)
         db_dir = os.path.dirname(self.db_path)
@@ -57,19 +51,6 @@ class RedditLikeApp(SocialMediaApp):
         return self.app_description
 
     def _log_action_event(self, source_user: str, label: str, data: dict[str, Any]) -> None:
-        """_log_action_event.
-    
-        :param str source_user:
-        :type source_user: str
-        :param str label:
-        :type label: str
-        :param dict[str, Any] data:
-        :type data: dict[str, Any]
-    
-        :returns: None
-        :rtype: None
-        """
-
         if self.action_logger:
             self.action_logger.log(
                 {

@@ -1,5 +1,4 @@
-"""dataclasses module. Auto-generated module docstring.
-"""
+"""dataclasses module. Auto-generated module docstring."""
 
 # src/sim/config_utils/abstract_scenario.py
 
@@ -57,8 +56,7 @@ class SimRole:
 
 @dataclass(frozen=True)
 class AgentParams:
-    """AgentParams.
-    """
+    """AgentParams."""
 
     name: str
     context: (
@@ -71,8 +69,7 @@ class AgentParams:
 
 @dataclass(kw_only=True)
 class AgentConfig(prefab_lib.InstanceConfig):
-    """AgentConfig.
-    """
+    """AgentConfig."""
 
     params: dict[str, Any] = field()  # AgentParams = field()
     prefab: str = ""
@@ -81,8 +78,7 @@ class AgentConfig(prefab_lib.InstanceConfig):
 
 @dataclass(frozen=True)
 class SettingInfo:
-    """SettingInfo.
-    """
+    """SettingInfo."""
 
     description: str
     details: Any
@@ -90,8 +86,7 @@ class SettingInfo:
 
 @dataclass(frozen=True)
 class InitializerParams:
-    """InitializerParams.
-    """
+    """InitializerParams."""
 
     next_game_master_name: str
     shared_memories: list[str]
@@ -103,8 +98,7 @@ class InitializerParams:
 
 @dataclass(kw_only=True)
 class InitializerConfig(prefab_lib.InstanceConfig):
-    """InitializerConfig.
-    """
+    """InitializerConfig."""
 
     prefab: str
     params: dict[str, Any]  # InitializerParams
@@ -113,8 +107,7 @@ class InitializerConfig(prefab_lib.InstanceConfig):
 
 @dataclass(frozen=True)
 class AbstractGameMasterParams:
-    """AbstractGameMasterParams.
-    """
+    """AbstractGameMasterParams."""
 
     name: str
     calls_to_action: dict[str, str]
@@ -123,8 +116,7 @@ class AbstractGameMasterParams:
 
 @dataclass(kw_only=True)
 class GameMasterConfig(prefab_lib.InstanceConfig):
-    """GameMasterConfig.
-    """
+    """GameMasterConfig."""
 
     prefab: str
     params: Any  # Will be concrete type in implementation
@@ -136,8 +128,7 @@ class GameMasterConfig(prefab_lib.InstanceConfig):
 
 @dataclass(frozen=True)
 class QueryData:
-    """QueryData.
-    """
+    """QueryData."""
 
     query_type: str
     interaction_premise_template: Any = None
@@ -145,8 +136,7 @@ class QueryData:
 
 @dataclass()
 class AgentsConfig:
-    """AgentsConfig.
-    """
+    """AgentsConfig."""
 
     inputs: Any = MISSING
     directory: list[prefab_lib.InstanceConfig] = field(default_factory=list)

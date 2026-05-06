@@ -63,7 +63,6 @@ class SMAct(gm_components.switch_act.SwitchAct):
         :param bool enable_tool_calling:
         :type enable_tool_calling: bool
         """
-
         super().__init__(
             model=model,
             entity_names=entity_names,
@@ -205,7 +204,6 @@ class MultiFlowSMAct(SMAct):
         :returns: str | None
         :rtype: str | None
         """
-
         flow_name = self.get_flow_for_entity(entity_name or "")
         component_map = self.flow_to_component_map.get(flow_name)
         if component_map is None:
@@ -245,7 +243,6 @@ class MultiFlowSMAct(SMAct):
         :returns: str
         :rtype: str
         """
-
         entity_name = self._extract_active_entity_name(action_spec)
         selected_key = self._component_key_for_role(entity_name=entity_name, role="observe")
         if selected_key and selected_key in contexts:
@@ -270,7 +267,6 @@ class MultiFlowSMAct(SMAct):
         :returns: str
         :rtype: str
         """
-
         entity_name = self._extract_active_entity_name(action_spec)
         selected_key = self._component_key_for_role(entity_name=entity_name, role="resolve")
         if selected_key and selected_key in contexts:

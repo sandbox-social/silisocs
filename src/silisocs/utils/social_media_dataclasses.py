@@ -1,5 +1,4 @@
-"""social_media_dataclasses module. Auto-generated module docstring.
-"""
+"""social_media_dataclasses module. Auto-generated module docstring."""
 
 from dataclasses import dataclass, field
 
@@ -10,8 +9,7 @@ from silisocs.runtime.dataclasses import AbstractGameMasterParams, AgentParams, 
 
 @dataclass(frozen=True)
 class SocialMediaUserParams(AgentParams):
-    """SocialMediaUserParams.
-    """
+    """SocialMediaUserParams."""
 
     seed_post: str
     bio: str
@@ -20,8 +18,7 @@ class SocialMediaUserParams(AgentParams):
 
 @dataclass(frozen=True)
 class SimRoleParameters:
-    """SimRoleParameters.
-    """
+    """SimRoleParameters."""
 
     activity_transition_rates: dict[str, dict[str, int]] = MISSING
     initial_follow_prob: dict[str, dict[str, float]] = MISSING
@@ -29,8 +26,7 @@ class SimRoleParameters:
 
 @dataclass(frozen=True)
 class UserData:
-    """UserData.
-    """
+    """UserData."""
 
     sim_role_parameters: SimRoleParameters
     sim_roles: dict[str, str] = field(default_factory=dict)
@@ -40,8 +36,7 @@ class UserData:
 
 @dataclass(frozen=True)
 class SocialMediaParams(AbstractGameMasterParams):
-    """SocialMediaParams.
-    """
+    """SocialMediaParams."""
 
     name: str
     calls_to_action: dict[str, str]

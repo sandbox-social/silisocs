@@ -103,7 +103,7 @@ class InitializerGM(prefab_lib.Prefab):
         model: language_model.LanguageModel,
         memory_bank: basic_associative_memory.AssociativeMemoryBank,
     ) -> entity_agent_with_logging.EntityAgentWithLogging:
-        """build.
+        """Build.
 
         :param language_model.LanguageModel model:
         :type model: language_model.LanguageModel
@@ -113,7 +113,6 @@ class InitializerGM(prefab_lib.Prefab):
         :returns: entity_agent_with_logging.EntityAgentWithLogging
         :rtype: entity_agent_with_logging.EntityAgentWithLogging
         """
-
         name = str(self.params.get("name", "initial setup rules"))
         player_names = [e.name for e in self.entities]
         shared_memories = _normalize_memories(self.params.get("shared_memories", []))
@@ -205,7 +204,6 @@ class _MemoryInitComponent(
         :param Callable[[str], list[str]] generate_fn:
         :type generate_fn: Callable[[str], list[str]]
         """
-
         super().__init__()
         self._next_gm_name = next_game_master_name
         self._player_names = list(player_names)
@@ -216,14 +214,13 @@ class _MemoryInitComponent(
 
     def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
         """pre_act.
-    
+
         :param entity_lib.ActionSpec action_spec:
         :type action_spec: entity_lib.ActionSpec
-    
+
         :returns: str
         :rtype: str
         """
-
         if action_spec.output_type != entity_lib.OutputType.NEXT_GAME_MASTER:
             return ""
         if self._initialized:
@@ -243,14 +240,13 @@ class _MemoryInitComponent(
 
         def _init_player(name: str) -> None:
             """_init_player.
-    
+
             :param str name:
             :type name: str
-    
+
             :returns: None
             :rtype: None
             """
-
             for m in self._shared_memories:
                 observe.add_to_queue(name, m)
             for m in self._generate_fn(name):
@@ -273,23 +269,21 @@ class _MemoryInitComponent(
 
     def get_state(self) -> entity_component.ComponentState:
         """get_state.
-    
+
         :returns: entity_component.ComponentState
         :rtype: entity_component.ComponentState
         """
-
         return {"initialized": self._initialized}
 
     def set_state(self, state: entity_component.ComponentState) -> None:
         """set_state.
-    
+
         :param entity_component.ComponentState state:
         :type state: entity_component.ComponentState
-    
+
         :returns: None
         :rtype: None
         """
-
         self._initialized = bool(state.get("initialized", self._initialized))
 
 

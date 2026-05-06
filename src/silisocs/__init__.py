@@ -3,11 +3,10 @@
 
 def __getattr__(name: str):
     """__getattr__.
-    
+
     :param str name:
     :type name: str
     """
-
     if name == "ConfigStore":
         from silisocs.runtime.config import ConfigStore
 

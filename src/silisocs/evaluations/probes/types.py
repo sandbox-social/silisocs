@@ -47,14 +47,13 @@ class ProbeBase(ABC):
 
     def _make_action_spec(self, prompt: str) -> entity.ActionSpec:
         """_make_action_spec.
-    
+
         :param str prompt:
         :type prompt: str
-    
+
         :returns: entity.ActionSpec
         :rtype: entity.ActionSpec
         """
-
         try:
             return entity.ActionSpec(
                 call_to_action=prompt,
@@ -77,14 +76,13 @@ class ProbeBase(ABC):
 
     def form_query_for_agent(self, agent: Any) -> str:
         """form_query_for_agent.
-    
+
         :param Any agent:
         :type agent: Any
-    
+
         :returns: str
         :rtype: str
         """
-
         agent_name = _get_agent_name(agent)
         question = self.form_question_for_agent(agent)
         return "Context: " + question + self._CALL_TO_SPEECH.format(name=agent_name)
@@ -93,15 +91,14 @@ class ProbeBase(ABC):
     # Execution
     # ------------------------------------------------------------------
     def ask(self, agent: Any) -> str:
-        """ask.
-    
+        """Ask.
+
         :param Any agent:
         :type agent: Any
-    
+
         :returns: str
         :rtype: str
         """
-
         prompt = self.form_query_for_agent(agent)
         return agent.act(action_spec=self._make_action_spec(prompt))
 
@@ -110,27 +107,25 @@ class ProbeBase(ABC):
         """Extract the structured answer from raw LLM text."""
 
     def submit(self, agent: Any) -> dict[str, Any]:
-        """submit.
-    
+        """Submit.
+
         :param Any agent:
         :type agent: Any
-    
+
         :returns: dict[str, Any]
         :rtype: dict[str, Any]
         """
-
         return self.submit_with_raw_response(self.ask(agent))
 
     def submit_with_raw_response(self, raw: str) -> dict[str, Any]:
         """submit_with_raw_response.
-    
+
         :param str raw:
         :type raw: str
-    
+
         :returns: dict[str, Any]
         :rtype: dict[str, Any]
         """
-
         return {
             "query_type": self.name,
             "raw_response": raw,
@@ -161,11 +156,10 @@ class NumericRatingProbe(ProbeBase):
 
     def __init__(self, query_data: dict[str, Any] | None = None):
         """__init__.
-    
+
         :param dict[str, Any] | None query_data:
         :type query_data: dict[str, Any] | None
         """
-
         cfg = query_data or {}
         self.name = cfg.get("name", "NumericRating")
         self._question = cfg.get("question", "Return a single numeric value from {lo} to {hi}.")
@@ -176,14 +170,13 @@ class NumericRatingProbe(ProbeBase):
 
     def form_question_for_agent(self, agent: Any) -> str:
         """form_question_for_agent.
-    
+
         :param Any agent:
         :type agent: Any
-    
+
         :returns: str
         :rtype: str
         """
-
         agent_name = _get_agent_name(agent)
         subs = {**self._labels, "agentname": agent_name, "lo": self._lo, "hi": self._hi}
         parts = []
@@ -202,7 +195,6 @@ class NumericRatingProbe(ProbeBase):
         :returns: str | None
         :rtype: str | None
         """
-
         for m in re.finditer(r"\b(\d+)\b", raw):
             val = int(m.group(1))
             if self._lo <= val <= self._hi:
@@ -224,11 +216,10 @@ class BinaryProbe(ProbeBase):
 
     def __init__(self, query_data: dict[str, Any] | None = None):
         """__init__.
-    
+
         :param dict[str, Any] | None query_data:
         :type query_data: dict[str, Any] | None
         """
-
         cfg = query_data or {}
         self.name = cfg.get("name", "Binary")
         self._question = cfg.get("question", "Reply yes or no.")
@@ -237,14 +228,13 @@ class BinaryProbe(ProbeBase):
 
     def form_question_for_agent(self, agent: Any) -> str:
         """form_question_for_agent.
-    
+
         :param Any agent:
         :type agent: Any
-    
+
         :returns: str
         :rtype: str
         """
-
         agent_name = _get_agent_name(agent)
         subs = {**self._labels, "agentname": agent_name}
         parts = []
@@ -255,14 +245,13 @@ class BinaryProbe(ProbeBase):
 
     def parse_answer(self, raw: str) -> str | None:
         """parse_answer.
-    
+
         :param str raw:
         :type raw: str
-    
+
         :returns: str | None
         :rtype: str | None
         """
-
         lower = raw.lower()
         if "yes" in lower:
             return "Yes"
@@ -291,11 +280,10 @@ class ChoiceProbe(ProbeBase):
 
     def __init__(self, query_data: dict[str, Any] | None = None):
         """__init__.
-    
+
         :param dict[str, Any] | None query_data:
         :type query_data: dict[str, Any] | None
         """
-
         cfg = query_data or {}
         self.name = cfg.get("name", "Choice")
         self._question = cfg.get("question", "Pick one of the choices.")
@@ -305,14 +293,13 @@ class ChoiceProbe(ProbeBase):
 
     def form_question_for_agent(self, agent: Any) -> str:
         """form_question_for_agent.
-    
+
         :param Any agent:
         :type agent: Any
-    
+
         :returns: str
         :rtype: str
         """
-
         agent_name = _get_agent_name(agent)
         subs = {**self._labels, "agentname": agent_name}
         parts = []
@@ -323,14 +310,13 @@ class ChoiceProbe(ProbeBase):
 
     def parse_answer(self, raw: str) -> str | None:
         """parse_answer.
-    
+
         :param str raw:
         :type raw: str
-    
+
         :returns: str | None
         :rtype: str | None
         """
-
         lower = raw.lower()
         # Check each choice's full name and individual tokens.
         for choice in self._choices:
@@ -356,11 +342,10 @@ class FreeTextProbe(ProbeBase):
 
     def __init__(self, query_data: dict[str, Any] | None = None):
         """__init__.
-    
+
         :param dict[str, Any] | None query_data:
         :type query_data: dict[str, Any] | None
         """
-
         cfg = query_data or {}
         self.name = cfg.get("name", "FreeText")
         self._question = cfg.get("question", "Share your thoughts.")
@@ -369,14 +354,13 @@ class FreeTextProbe(ProbeBase):
 
     def form_question_for_agent(self, agent: Any) -> str:
         """form_question_for_agent.
-    
+
         :param Any agent:
         :type agent: Any
-    
+
         :returns: str
         :rtype: str
         """
-
         agent_name = _get_agent_name(agent)
         subs = {**self._labels, "agentname": agent_name}
         parts = []
@@ -387,14 +371,13 @@ class FreeTextProbe(ProbeBase):
 
     def parse_answer(self, raw: str) -> str | None:
         """parse_answer.
-    
+
         :param str raw:
         :type raw: str
-    
+
         :returns: str | None
         :rtype: str | None
         """
-
         text = raw.strip() if raw else None
         return text or None
 
@@ -417,11 +400,10 @@ class TemplateProbe(ProbeBase):
 
     def __init__(self, query_data: dict[str, Any] | None = None):
         """__init__.
-    
+
         :param dict[str, Any] | None query_data:
         :type query_data: dict[str, Any] | None
         """
-
         self.query_data = query_data or {}
         self.question_template = ""
         for component_name, component in self.query_text.items():
@@ -442,40 +424,37 @@ class TemplateProbe(ProbeBase):
 
     def form_question_for_agent(self, agent: Any) -> str:
         """form_question_for_agent.
-    
+
         :param Any agent:
         :type agent: Any
-    
+
         :returns: str
         :rtype: str
         """
-
         agent_name = _get_agent_name(agent)
         return self.question_template.format(agentname=agent_name)
 
     def parse_answer(self, raw: str) -> str | None:
         """parse_answer.
-    
+
         :param str raw:
         :type raw: str
-    
+
         :returns: str | None
         :rtype: str | None
         """
-
         text = raw.strip() if raw else None
         return text or None
 
     def submit_with_raw_response(self, raw: str) -> dict[str, Any]:
         """submit_with_raw_response.
-    
+
         :param str raw:
         :type raw: str
-    
+
         :returns: dict[str, Any]
         :rtype: dict[str, Any]
         """
-
         query_return = dict(self.query_data) if self.query_data else {}
         query_return.setdefault("query_type", self.name)
         query_return["raw_response"] = raw

@@ -124,7 +124,6 @@ class GptLanguageModel(language_model.LanguageModel):
         :param str output:
         :type output: str
         """
-
         agent_name = getattr(self._local, "agent_name", None) if hasattr(self, "_local") else None
         if not agent_name:
             prefix = prompt[:110]
@@ -154,16 +153,15 @@ class GptLanguageModel(language_model.LanguageModel):
 
     def _record_retry_outcome(self, retries: int, success: bool) -> None:
         """_record_retry_outcome.
-    
+
         :param int retries:
         :type retries: int
         :param bool success:
         :type success: bool
-    
+
         :returns: None
         :rtype: None
         """
-
         with self._retry_stats_lock:
             self._retry_history.append(retries)
             self._failure_history.append(0 if success else 1)
@@ -223,7 +221,6 @@ class GptLanguageModel(language_model.LanguageModel):
         :returns: str
         :rtype: str
         """
-
         if temperature is None:
             temperature = self._temperature
         max_tokens = min(max_tokens, 4000)
@@ -338,7 +335,6 @@ class GptLanguageModel(language_model.LanguageModel):
         :returns: tuple[int, str, dict[str, float]]
         :rtype: tuple[int, str, dict[str, float]]
         """
-
         prompt = (
             prompt
             + "\nRespond EXACTLY with one of the following strings:\n"
@@ -513,7 +509,6 @@ def select_large_language_model(
     :param float temperature:
     :type temperature: float
     """
-
     if disable_language_model:
         model = no_language_model.NoLanguageModel()
     elif "sonnet" in model_name:

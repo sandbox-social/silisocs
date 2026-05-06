@@ -67,14 +67,13 @@ _MULTI_INSTANCE_RESERVED_KEYS = {
 
 def _load_class(class_path: str) -> type[Any]:
     """_load_class.
-    
+
     :param str class_path:
     :type class_path: str
-    
+
     :returns: type[Any]
     :rtype: type[Any]
     """
-
     module_path, class_name = class_path.rsplit(".", 1)
     module = importlib.import_module(module_path)
     return getattr(module, class_name)
@@ -95,7 +94,6 @@ def _build_from_slot(
     :returns: Any
     :rtype: Any
     """
-
     cfg = dict(slot_cfg or {})
     class_path = cfg.get("class_path")
     params = dict(cfg.get("params") or {})
@@ -281,14 +279,13 @@ def build_next_acting_component(
 
 def build_backend_initializer(slot_cfg: Mapping[str, Any] | None = None) -> BackendInitializer:
     """build_backend_initializer.
-    
+
     :param Mapping[str, Any] | None slot_cfg:
     :type slot_cfg: Mapping[str, Any] | None
-    
+
     :returns: BackendInitializer
     :rtype: BackendInitializer
     """
-
     return _build_from_slot(
         slot_cfg,
         built_ins=_INITIALIZER_BUILT_INS,

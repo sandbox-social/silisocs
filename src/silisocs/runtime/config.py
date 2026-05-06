@@ -40,7 +40,6 @@ class ConfigStore:
         cfg:
             The composed Hydra :class:`omegaconf.DictConfig` object.
         """
-
         cls._config = cfg
 
     @classmethod
@@ -58,7 +57,6 @@ class ConfigStore:
         RuntimeError
             If no configuration is available.
         """
-
         if cls._config is not None:
             return cls._config
 
@@ -347,14 +345,13 @@ def validate_data_files(cfg: DictConfig, scenario_path: Path) -> None:
 
     def _resolve_local_path(raw_path: str) -> Path | None:
         """_resolve_local_path.
-    
+
         :param str raw_path:
         :type raw_path: str
-    
+
         :returns: Path | None
         :rtype: Path | None
         """
-
         if not raw_path:
             return None
         candidate_paths = [

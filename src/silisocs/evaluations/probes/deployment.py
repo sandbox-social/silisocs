@@ -30,15 +30,14 @@ class ProbeDeploymentPolicy:
     @classmethod
     def from_probes_config(cls, probes_config: Mapping[str, Any] | None) -> ProbeDeploymentPolicy:
         """from_probes_config.
-    
+
         :param cls:
         :param Mapping[str, Any] | None probes_config:
         :type probes_config: Mapping[str, Any] | None
-    
+
         :returns: ProbeDeploymentPolicy
         :rtype: ProbeDeploymentPolicy
         """
-
         deployment_cfg = dict((probes_config or {}).get("deployment", {}) or {})
         every_n_steps = int(deployment_cfg.get("every_n_steps", 1))
         if every_n_steps <= 0:
@@ -78,7 +77,6 @@ class ProbeDeploymentOrchestrator:
         :param ProbeDeploymentPolicy | None policy:
         :type policy: ProbeDeploymentPolicy | None
         """
-
         self._probes_config = dict(probes_config or {})
         self._probe_event_logger = probe_event_logger
         self._policy = policy or ProbeDeploymentPolicy.from_probes_config(self._probes_config)
@@ -114,23 +112,21 @@ class ProbeDeploymentOrchestrator:
 
     def is_configured(self) -> bool:
         """is_configured.
-    
+
         :returns: bool
         :rtype: bool
         """
-
         return bool(self._probes_config.get("queries"))
 
     def should_deploy(self, step: int) -> bool:
         """should_deploy.
-    
+
         :param int step:
         :type step: int
-    
+
         :returns: bool
         :rtype: bool
         """
-
         if not self._policy.enabled:
             return False
         if not self.is_configured():
@@ -141,24 +137,23 @@ class ProbeDeploymentOrchestrator:
 
     def _select_agents(self, agents: Sequence[Any]) -> list[Any]:
         """_select_agents.
-    
+
         :param Sequence[Any] agents:
         :type agents: Sequence[Any]
-    
+
         :returns: list[Any]
         :rtype: list[Any]
         """
 
         def _entity_classes(agent: Any) -> set[str]:
             """_entity_classes.
-    
+
             :param Any agent:
             :type agent: Any
-    
+
             :returns: set[str]
             :rtype: set[str]
             """
-
             out: set[str] = set()
 
             for attr in ("sim_role_name", "sim_role", "role", "class_name", "entity_class"):

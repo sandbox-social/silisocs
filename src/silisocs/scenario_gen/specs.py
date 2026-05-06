@@ -1,5 +1,4 @@
-"""specs module. Auto-generated module docstring.
-"""
+"""specs module. Auto-generated module docstring."""
 
 from __future__ import annotations
 
@@ -13,24 +12,21 @@ from pydantic import BaseModel, Field
 
 
 class Setting(BaseModel):
-    """Setting.
-    """
+    """Setting."""
 
     name: str
     background: list[str]
 
 
 class Event(BaseModel):
-    """Event.
-    """
+    """Event."""
 
     name: str
     context: str
 
 
 class AgentDetails(BaseModel):
-    """AgentDetails.
-    """
+    """AgentDetails."""
 
     name: str
     username: str
@@ -41,16 +37,14 @@ class AgentDetails(BaseModel):
 
 
 class ActivityConfig(BaseModel):
-    """ActivityConfig.
-    """
+    """ActivityConfig."""
 
     inactive_to_active: float = 0.7
     active_to_inactive: float = 0.2
 
 
 class AgentClass(BaseModel):
-    """AgentClass.
-    """
+    """AgentClass."""
 
     role: str
     sim_role_name: str
@@ -61,8 +55,7 @@ class AgentClass(BaseModel):
 
 
 class NetworkConfig(BaseModel):
-    """NetworkConfig.
-    """
+    """NetworkConfig."""
 
     fully_connected_targets: list[str] = Field(default_factory=list)
     base_followership_probability: float = 0.5
@@ -71,8 +64,7 @@ class NetworkConfig(BaseModel):
 
 
 class PlatformConfig(BaseModel):
-    """PlatformConfig.
-    """
+    """PlatformConfig."""
 
     platform_type: str = "twitter_like"
     timeline_mode: Literal["follower_chronological", "pure_recsys"] = "follower_chronological"
@@ -88,8 +80,7 @@ class PlatformConfig(BaseModel):
 
 
 class ScenarioSpec(BaseModel):
-    """ScenarioSpec.
-    """
+    """ScenarioSpec."""
 
     name: str
     scenario_name: str
@@ -113,8 +104,7 @@ class ScenarioSpec(BaseModel):
 
 
 class StudyNotes(BaseModel):
-    """StudyNotes.
-    """
+    """StudyNotes."""
 
     objective: str = ""
     context: str = ""
@@ -122,8 +112,7 @@ class StudyNotes(BaseModel):
 
 
 class RunDefaults(BaseModel):
-    """RunDefaults.
-    """
+    """RunDefaults."""
 
     config_path: str
     run_name_template: str = "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
@@ -134,16 +123,14 @@ class RunDefaults(BaseModel):
 
 
 class Evaluation(BaseModel):
-    """Evaluation.
-    """
+    """Evaluation."""
 
     id: str
     preset: str
 
 
 class Condition(BaseModel):
-    """Condition.
-    """
+    """Condition."""
 
     id: str
     sub_experiment: str | None = None
@@ -153,8 +140,7 @@ class Condition(BaseModel):
 
 
 class Hypothesis(BaseModel):
-    """Hypothesis.
-    """
+    """Hypothesis."""
 
     id: str
     statement: str
@@ -167,8 +153,7 @@ class Hypothesis(BaseModel):
 
 
 class StudySpec(BaseModel):
-    """StudySpec.
-    """
+    """StudySpec."""
 
     study_id: str
     name: str

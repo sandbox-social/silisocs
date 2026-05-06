@@ -40,14 +40,13 @@ logger = logging.getLogger(__name__)
 
 def _env_cfg(cfg: Any) -> Any:
     """_env_cfg.
-    
+
     :param Any cfg:
     :type cfg: Any
-    
+
     :returns: Any
     :rtype: Any
     """
-
     return getattr(cfg, "env", getattr(cfg, "environment", object()))
 
 

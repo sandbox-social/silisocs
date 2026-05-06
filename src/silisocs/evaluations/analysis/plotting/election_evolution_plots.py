@@ -23,11 +23,11 @@ sns.set_palette("husl")
 
 class ElectionAnalyzer:
     """ElectionAnalyzer.
-    
+
     Constructor parameters:
-    
+
     __init__.
-    
+
     :param str probe_file_path:
     :type probe_file_path: str
     """

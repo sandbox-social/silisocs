@@ -71,14 +71,13 @@ st.markdown(
 # ---------------------------------------------------------------------------
 def _load_yaml(path: Path) -> dict:
     """_load_yaml.
-    
+
     :param Path path:
     :type path: Path
-    
+
     :returns: dict
     :rtype: dict
     """
-
     try:
         return yaml.safe_load(path.read_text()) or {}
     except Exception:
@@ -332,11 +331,10 @@ def _set_nested_value(payload: dict, dotted_key: str, value: object) -> None:
 
 def _backend_app_class(platform_type: str):
     """_backend_app_class.
-    
+
     :param str platform_type:
     :type platform_type: str
     """
-
     if platform_type == "twitter_like":
         from silisocs.environments.backends.twitter_like.app import TwitterLikeApp
 
@@ -613,7 +611,7 @@ def _build_scenario_config() -> dict:
 
 def _build_hydra_overrides(sim: dict, env: dict, platform: str, scenario: dict) -> list[str]:
     """_build_hydra_overrides.
-    
+
     :param dict sim:
     :type sim: dict
     :param dict env:
@@ -622,11 +620,10 @@ def _build_hydra_overrides(sim: dict, env: dict, platform: str, scenario: dict) 
     :type platform: str
     :param dict scenario:
     :type scenario: dict
-    
+
     :returns: list[str]
     :rtype: list[str]
     """
-
     overrides: list[str] = []
     for key, val in sim.items():
         if val is None:

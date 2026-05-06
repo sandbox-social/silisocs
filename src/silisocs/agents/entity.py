@@ -53,7 +53,7 @@ class Entity(prefab_lib.Prefab):
         model: language_model.LanguageModel,
         memory_bank: basic_associative_memory.AssociativeMemoryBank,
     ) -> entity_agent_with_logging.EntityAgentWithLogging:
-        """build.
+        """Build.
 
         :param language_model.LanguageModel model:
         :type model: language_model.LanguageModel
@@ -63,7 +63,6 @@ class Entity(prefab_lib.Prefab):
         :returns: entity_agent_with_logging.EntityAgentWithLogging
         :rtype: entity_agent_with_logging.EntityAgentWithLogging
         """
-
         agent_name = self.params.get("name", "Alice")
 
         # Accept both new key and legacy alias.

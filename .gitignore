@@ -224,3 +224,5 @@ experiments/studies/**/*.db-wal
 *.db-wal
 *.egg-info/
 SESSION_STATE.md
+
+refactor_notes.md

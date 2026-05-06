@@ -1,6 +1,3 @@
-"""engine module. Auto-generated module docstring.
-"""
-
 from __future__ import annotations
 
 import concurrent.futures
@@ -21,9 +18,6 @@ logger = logging.getLogger("TwitterLikePlatform")
 
 @dataclass
 class Post:
-    """Post.
-    """
-
     id: int
     user_id: int
     username: str
@@ -38,9 +32,6 @@ class Post:
     formatted_date: str = ""
 
     def to_dict(self):
-        """to_dict.
-        """
-
         return {
             "id": self.id,
             "user_id": self.user_id,
@@ -58,29 +49,9 @@ class Post:
 
 
 class TwitterLikePlatform:
-    """TwitterLikePlatform.
-    
-    Constructor parameters:
-    
-    __init__.
-    
-    :param str db_path:
-    :type db_path: str
-    :param bool use_queue:
-    :type use_queue: bool
-    """
-
     SUPPORTED_RECSYS_TYPES = frozenset({"twitter", "twitter_tfidf", "twhin"})
 
     def __init__(self, db_path: str = "twitter_like.db", use_queue: bool = True):
-        """__init__.
-    
-        :param str db_path:
-        :type db_path: str
-        :param bool use_queue:
-        :type use_queue: bool
-        """
-
         self.db_path = db_path
         self._init_db()
         self.use_queue = use_queue
@@ -359,15 +330,6 @@ class TwitterLikePlatform:
             return self.get_user_id(username)
 
     def get_user_id(self, username: str) -> int | None:
-        """get_user_id.
-    
-        :param str username:
-        :type username: str
-    
-        :returns: int | None
-        :rtype: int | None
-        """
-
         with self.get_connection() as conn:
             row = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
             return row["id"] if row else None
@@ -413,21 +375,6 @@ class TwitterLikePlatform:
     def create_post(
         self, username: str, content: str, reply_to_id: int | None = None, sync: bool = True
     ) -> Any:
-        """create_post.
-
-        :param str username:
-        :type username: str
-        :param str content:
-        :type content: str
-        :param int | None reply_to_id:
-        :type reply_to_id: int | None
-        :param bool sync:
-        :type sync: bool
-
-        :returns: Any
-        :rtype: Any
-        """
-
         user_id = self.get_user_id(username)
         if not user_id:
             raise ValueError(f"User {username} not found")
@@ -459,19 +406,6 @@ class TwitterLikePlatform:
         return self._execute_write(queries, sync=sync)
 
     def repost(self, username: str, post_id: int, sync: bool = True) -> Any:
-        """repost.
-    
-        :param str username:
-        :type username: str
-        :param int post_id:
-        :type post_id: int
-        :param bool sync:
-        :type sync: bool
-    
-        :returns: Any
-        :rtype: Any
-        """
-
         user_id = self.get_user_id(username)
         if not user_id:
             raise ValueError(f"User {username} not found")
@@ -502,21 +436,6 @@ class TwitterLikePlatform:
         return self._execute_write(queries, sync=sync)
 
     def quote_repost(self, username: str, post_id: int, content: str, sync: bool = True) -> Any:
-        """quote_repost.
-    
-        :param str username:
-        :type username: str
-        :param int post_id:
-        :type post_id: int
-        :param str content:
-        :type content: str
-        :param bool sync:
-        :type sync: bool
-    
-        :returns: Any
-        :rtype: Any
-        """
-
         user_id = self.get_user_id(username)
         if not user_id:
             raise ValueError(f"User {username} not found")
@@ -546,16 +465,6 @@ class TwitterLikePlatform:
         return self._execute_write(queries, sync=sync)
 
     def like(self, username: str, post_id: int, sync: bool = True):
-        """like.
-    
-        :param str username:
-        :type username: str
-        :param int post_id:
-        :type post_id: int
-        :param bool sync:
-        :type sync: bool
-        """
-
         user_id = self.get_user_id(username)
         if not user_id:
             raise ValueError(f"User {username} not found")
@@ -587,16 +496,6 @@ class TwitterLikePlatform:
             return False  # Already liked
 
     def unlike(self, username: str, post_id: int, sync: bool = True):
-        """unlike.
-    
-        :param str username:
-        :type username: str
-        :param int post_id:
-        :type post_id: int
-        :param bool sync:
-        :type sync: bool
-        """
-
         user_id = self.get_user_id(username)
         if not user_id:
             raise ValueError(f"User {username} not found")
@@ -609,16 +508,6 @@ class TwitterLikePlatform:
         return self._execute_write(queries, sync=sync)
 
     def follow(self, username: str, target_username: str, sync: bool = True):
-        """follow.
-    
-        :param str username:
-        :type username: str
-        :param str target_username:
-        :type target_username: str
-        :param bool sync:
-        :type sync: bool
-        """
-
         follower_id = self.get_user_id(username)
         followee_id = self.get_user_id(target_username)
         if not follower_id or not followee_id:
@@ -645,16 +534,6 @@ class TwitterLikePlatform:
             return False
 
     def unfollow(self, username: str, target_username: str, sync: bool = True):
-        """unfollow.
-    
-        :param str username:
-        :type username: str
-        :param str target_username:
-        :type target_username: str
-        :param bool sync:
-        :type sync: bool
-        """
-
         follower_id = self.get_user_id(username)
         followee_id = self.get_user_id(target_username)
         if not follower_id or not followee_id:
@@ -671,16 +550,6 @@ class TwitterLikePlatform:
         return self._execute_write(queries, sync=sync)
 
     def block(self, username: str, target_username: str, sync: bool = True):
-        """block.
-    
-        :param str username:
-        :type username: str
-        :param str target_username:
-        :type target_username: str
-        :param bool sync:
-        :type sync: bool
-        """
-
         blocker_id = self.get_user_id(username)
         blocked_id = self.get_user_id(target_username)
         if not blocker_id or not blocked_id:
@@ -708,16 +577,6 @@ class TwitterLikePlatform:
             return False
 
     def unblock(self, username: str, target_username: str, sync: bool = True):
-        """unblock.
-    
-        :param str username:
-        :type username: str
-        :param str target_username:
-        :type target_username: str
-        :param bool sync:
-        :type sync: bool
-        """
-
         blocker_id = self.get_user_id(username)
         blocked_id = self.get_user_id(target_username)
         if not blocker_id or not blocked_id:
@@ -732,21 +591,6 @@ class TwitterLikePlatform:
 
     def send_dm(self, username: str, target_username: str, content: str, sync: bool = True) -> Any:
         # Prevent blocked DMs
-        """send_dm.
-
-        :param str username:
-        :type username: str
-        :param str target_username:
-        :type target_username: str
-        :param str content:
-        :type content: str
-        :param bool sync:
-        :type sync: bool
-
-        :returns: Any
-        :rtype: Any
-        """
-
         sender_id = self.get_user_id(username)
         receiver_id = self.get_user_id(target_username)
         if not sender_id or not receiver_id:
@@ -770,19 +614,6 @@ class TwitterLikePlatform:
     def view_dms_with(
         self, username: str, target_username: str, limit: int = 50
     ) -> list[dict[str, Any]]:
-        """view_dms_with.
-
-        :param str username:
-        :type username: str
-        :param str target_username:
-        :type target_username: str
-        :param int limit:
-        :type limit: int
-
-        :returns: list[dict[str, Any]]
-        :rtype: list[dict[str, Any]]
-        """
-
         user_id = self.get_user_id(username)
         target_id = self.get_user_id(target_username)
         if not user_id or not target_id:
@@ -817,17 +648,6 @@ class TwitterLikePlatform:
     # --- Notifications / Activities ---
 
     def view_activities(self, username: str, limit: int = 50) -> list[dict[str, Any]]:
-        """view_activities.
-    
-        :param str username:
-        :type username: str
-        :param int limit:
-        :type limit: int
-    
-        :returns: list[dict[str, Any]]
-        :rtype: list[dict[str, Any]]
-        """
-
         user_id = self.get_user_id(username)
         if not user_id:
             raise ValueError("User not found")
@@ -860,14 +680,6 @@ class TwitterLikePlatform:
     # --- Timelines and Feeds ---
 
     def _parse_posts(self, rows) -> list[dict]:
-        """_parse_posts.
-    
-        :param rows:
-    
-        :returns: list[dict]
-        :rtype: list[dict]
-        """
-
         posts = []
         for row in rows:
             post = Post(
@@ -1624,17 +1436,6 @@ class TwitterLikePlatform:
         model_name: str,
         recsys_type: str,
     ) -> Any | None:
-        """_load_sentence_transformer_model.
-
-        :param str model_name:
-        :type model_name: str
-        :param str recsys_type:
-        :type recsys_type: str
-
-        :returns: Any | None
-        :rtype: Any | None
-        """
-
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError:
@@ -1662,12 +1463,6 @@ class TwitterLikePlatform:
             return None
 
     def _load_twhin_transformers_model(self) -> tuple[Any, Any]:
-        """_load_twhin_transformers_model.
-    
-        :returns: tuple[Any, Any]
-        :rtype: tuple[Any, Any]
-        """
-
         try:
             import torch
             from transformers import AutoModel, AutoTokenizer
@@ -2005,17 +1800,6 @@ class TwitterLikePlatform:
             device = next(model.parameters()).device
 
             def _encode_texts(texts: list[str], batch_size: int = 32) -> torch.Tensor:
-                """_encode_texts.
-    
-                :param list[str] texts:
-                :type texts: list[str]
-                :param int batch_size:
-                :type batch_size: int
-    
-                :returns: torch.Tensor
-                :rtype: torch.Tensor
-                """
-
                 batches: list[torch.Tensor] = []
                 for start in range(0, len(texts), batch_size):
                     batch_texts = texts[start : start + batch_size]
