@@ -4,13 +4,51 @@ A scenario is a **shared social world**: a setting, a cast of agents, and a plat
 configuration. It lives in `scenarios/<name>/` and can be used as the substrate for
 many different research studies. Think of it as community-owned common ground.
 
-You are guiding the user through designing one. Work conversationally — one section
-at a time. Never ask for more than 2–3 things at once. After collecting and confirming
-all sections, write the files by calling the CLI.
+You are guiding the user through designing one. There are two paths — ask which they prefer before proceeding:
+
+> "Would you like to **walk through the design step by step** (I'll ask about setting,
+> agents, network, etc. one section at a time), or give me a **high-level description**
+> and have me derive the design decisions for you to review and confirm?"
+
+Then follow the appropriate path below.
 
 ---
 
-## Step 0 — Framing
+## Fast path — derive from description
+
+If the user chooses the high-level description path:
+
+1. Ask for a single paragraph describing the scenario: what social world, who's in it,
+   what dynamics they want to observe, and any study or research question it's for.
+
+2. From that description, draft a complete `ScenarioSpec` yourself. Apply these defaults
+   for anything not mentioned:
+   - `network_type`: `barabasi_albert`, `base_followership_probability`: 0.5
+   - `timeline_mode`: `follower_chronological`
+   - All actions enabled
+   - `num_steps`: 8–12 depending on agent count
+   - `seed`: 42
+   - Activity rates: 0.7 / 0.2 for active roles, 0.4 / 0.4 for passive roles
+
+3. Present the full drafted spec as a readable summary (not raw JSON) — setting, event,
+   agent roster with roles and counts, network topology, run defaults. Flag every design
+   decision you had to guess at:
+   > "Assumed: barabasi_albert topology — change if you need a hub agent."
+   > "Assumed: 8 steps — increase if you want more interaction rounds."
+
+4. If the description implies a research question, add a **signal check** (2–3 sentences):
+   why this scenario would produce variation relevant to the question, and one concrete risk.
+
+5. Ask: "Does this look right, or would you like to change anything before I write the files?"
+   Iterate on feedback, then proceed to **Step 6 — Write files** once confirmed.
+
+---
+
+## Guided path — step by step
+
+Work conversationally — one section at a time. Never ask for more than 2–3 things at once.
+
+### Step 0 — Framing
 
 Ask:
 > "Are you designing this scenario for an existing study or research question, or
@@ -31,9 +69,7 @@ as a lens:
 
 **If standalone**: skip the signal-check notes and proceed directly to Step 1.
 
----
-
-## Step 1 — Phenomenon (free-form)
+### Step 1 — Phenomenon (free-form)
 
 Ask:
 > "What social phenomenon does this scenario capture? Describe it in a sentence or two —
@@ -53,7 +89,7 @@ question, and one concrete risk (e.g. a dynamic that might suppress the signal).
 
 ---
 
-## Step 2 — Agent roles and behavior
+### Step 2 — Agent roles and behavior
 
 Ask:
 > "What do you want your agents to DO on this platform? Describe the different kinds
@@ -77,7 +113,7 @@ For each role the user describes:
 
 ---
 
-## Step 3 — Agent details
+### Step 3 — Agent details
 
 For each role, collect (can be done as a group if roles are similar):
 - `count`: how many agents of this type
@@ -94,7 +130,7 @@ them into concrete agents yourself and ask for confirmation.
 
 ---
 
-## Step 4 — Network and platform
+### Step 4 — Network and platform
 
 Ask:
 > "What actions can agents take, and how should they be connected to each other?"
@@ -112,7 +148,7 @@ Collect or confirm:
 
 ---
 
-## Step 5 — Scenario slug and run defaults
+### Step 5 — Scenario slug and run defaults
 
 Ask:
 > "What should this scenario be called? (short, snake_case slug — e.g. `vaccine_debate`)"
@@ -125,7 +161,7 @@ Then confirm or suggest:
 
 ---
 
-## Step 6 — Write files
+### Step 6 — Write files
 
 Once all sections are confirmed, assemble the full spec as a JSON object matching
 the `ScenarioSpec` schema (see below) and write the files by running:
