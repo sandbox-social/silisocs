@@ -223,3 +223,4 @@ experiments/studies/**/*.db-wal
 *.db-shm
 *.db-wal
 *.egg-info/
+SESSION_STATE.md
