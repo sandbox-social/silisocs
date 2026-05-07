@@ -244,6 +244,7 @@ def build_resolve_component(
     sm_app: Any,
     model: Any,
     call_to_action_str: str,
+    entities_by_name: Mapping[str, Any] | None = None,
 ) -> entity_component.ContextComponent:
     """Build resolve component from slot config."""
     return _build_from_slot(
@@ -254,6 +255,7 @@ def build_resolve_component(
             "sm_app": sm_app,
             "model": model,
             "call_to_action_str": call_to_action_str,
+            "entities_by_name": entities_by_name or {},
         },
     )
 

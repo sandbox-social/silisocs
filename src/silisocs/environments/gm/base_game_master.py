@@ -230,6 +230,8 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
             perform_operations=getattr(_env_cfg(cfg), "use_server", False),
             app_description=self.params.get("app_description", ""),
             db_path=db_path,
+            app_class_path=OmegaConf.select(cfg, "env.app.class_path", default=None),
+            app_params=OmegaConf.select(cfg, "env.app.params", default={}) or {},
         )
 
         enabled_actions_cfg = getattr(_env_cfg(cfg), "enabled_actions", None)
@@ -452,6 +454,7 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
             sm_app=sm_app,
             model=model,
             call_to_action_str=call_to_sm_action,
+            entities_by_name={entity.name: entity for entity in self.entities},
         )
         recommend_slot = dict(gm_components_cfg.get("recommend", {}))
         recommend_component = build_recommendation_component(

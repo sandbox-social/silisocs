@@ -294,6 +294,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
             sm_app=sm_app,
             model=model,
             call_to_action_str=call_to_sm_action,
+            entities_by_name={entity.name: entity for entity in self.entities},
         )
 
         # Build recommendation component

@@ -1,0 +1,48 @@
+# @package _global_
+
+scenario_name: echo_chambers
+jobname_format: "N${num_agents}_T${replication_days}_${experiment_name}_${run_name}"
+num_agents: 50
+replication_days: 30
+# The silisocs runtime spends episode 0 on the initializer game master; the
+# echo-chamber social process starts at engine episode 1.
+num_steps: 31
+run_name: scale_free_similarity_seed50
+seed: 50
+output_rootname: ""
+echo_network_type: scale_free
+echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+echo_recommendation: similarity
+echo_max_interactions: -1
+echo_agent_records_path: replications/echo_chambers/input/agent_records.json
+echo_belief_keywords_path: replications/echo_chambers/input/belief_keywords.json
+echo_opinions_path: replications/echo_chambers/input/opinions.json
+echo_topic_key: euthanasia
+echo_similarity_threshold: 2
+echo_mitigation_step: 1000
+echo_mitigation_perspectives_path: null
+echo_mitigation_perspectives_only: false
+echo_with_long_memory: true
+echo_leaders: [10, 30]
+echo_llm_response_mode: json_object
+echo_prompt_variant: compat
+echo_include_self_state_feedback: true
+echo_agent_prefab_module: replications.echo_chambers.components.agent
+echo_concordia_short_memory_processor_class: replications.echo_chambers.components.agent_concordia.ShortMemoryProcessor
+echo_concordia_long_memory_processor_class: replications.echo_chambers.components.agent_concordia.LongMemoryProcessor
+echo_concordia_belief_update_processor_class: replications.echo_chambers.components.agent_concordia.BeliefUpdateProcessor
+
+setting:
+  name: Echo Chamber Opinion Network
+  background:
+    - Agents discuss a controversial social issue over a fixed social graph.
+    - Each agent has an initial belief, natural-language opinion, short-term memory, and long-term memory.
+
+event:
+  name: Daily euthanasia discussion
+  context: |
+    Agents are discussing the topic: Should we use euthanasia?
+    Each day, they hear opinions from selected neighboring agents and then update their own opinion and belief.
+
+data:
+  replication: echo_chambers

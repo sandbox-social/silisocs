@@ -1,0 +1,58 @@
+# @package _global_
+
+scenario_name: echo_chambers_loose_social
+jobname_format: "N${num_agents}_T${replication_days}_${experiment_name}_${run_name}"
+num_agents: 50
+replication_days: 30
+num_steps: 31
+run_name: loose_social_scale_free_similarity_seed50
+seed: 50
+output_rootname: ""
+
+echo_network_type: scale_free
+echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+echo_recommendation: similarity
+echo_observation_policy: similarity
+echo_max_interactions: -1
+echo_agent_records_path: replications/echo_chambers/input/agent_records.json
+echo_belief_keywords_path: replications/echo_chambers/input/belief_keywords.json
+echo_opinions_path: replications/echo_chambers/input/opinions.json
+echo_topic_key: euthanasia
+echo_similarity_threshold: 2
+echo_mitigation_step: 1000
+echo_mitigation_perspectives_path: null
+echo_mitigation_perspectives_only: false
+echo_with_long_memory: true
+echo_leaders: [10, 30]
+echo_llm_response_mode: json_object
+echo_prompt_variant: compat
+echo_include_self_state_feedback: true
+echo_timeline_mode: follower_chronological
+echo_timeline_recsys_type: null
+echo_timeline_config: {}
+echo_observation_max_posts: 20
+echo_observation_fetch_multiplier: 3
+echo_recommend_component_built_in: null
+echo_recommend_component_class_path: replications.echo_chambers.components.recommend.NoOpRecommendation
+echo_recommend_default_recsys_type: twitter
+echo_recommend_update_every_n_steps: 1
+echo_recommend_max_posts: 50
+echo_agent_prefab_module: replications.echo_chambers.components.agent_concordia.EchoSocialToolEntity
+echo_concordia_short_memory_processor_class: replications.echo_chambers.components.agent_concordia.ShortMemoryProcessor
+echo_concordia_long_memory_processor_class: replications.echo_chambers.components.agent_concordia.LongMemoryProcessor
+echo_concordia_belief_update_processor_class: replications.echo_chambers.components.agent_concordia.BeliefUpdateProcessor
+
+setting:
+  name: Echo Chamber Social-Media Network
+  background:
+    - Agents discuss a controversial social issue over a fixed social graph.
+    - Unlike the exact reproduction, agents can post, reply, and repost in a twitter-like app.
+
+event:
+  name: Daily euthanasia discussion
+  context: |
+    Agents are discussing the topic: Should we use euthanasia?
+    They browse a social-media timeline, may post/reply/repost, and their latent belief is measured after each action window.
+
+data:
+  replication: echo_chambers_loose_social

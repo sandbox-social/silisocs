@@ -8,16 +8,25 @@ Supported types
 - ``NumericRatingProbe``  – expects a number in a user-defined range
 - ``BinaryProbe``         – expects yes/no
 - ``ChoiceProbe``         – expects one of a fixed set of choices
+- ``StructuredProbe``     – expects a JSON object matching a schema
 - ``FreeTextProbe``       – accepts any text answer
 """
 
 from __future__ import annotations
 
+import json
 import re
 from abc import ABC, abstractmethod
 from typing import Any
 
 from concordia.typing import entity
+
+from silisocs.agents.components.concat_act import (
+    STRUCTURED_RESPONSE_MARKER,
+    STRUCTURED_SCHEMA_END,
+    STRUCTURED_SCHEMA_START,
+    extract_structured_response,
+)
 
 
 def _get_agent_name(agent: Any) -> str:
@@ -382,6 +391,52 @@ class FreeTextProbe(ProbeBase):
         return text or None
 
 
+class StructuredProbe(ProbeBase):
+    """Probe that asks for one JSON object through structured-response mode."""
+
+    def __init__(self, query_data: dict[str, Any] | None = None):
+        cfg = query_data or {}
+        self.name = cfg.get("name", "Structured")
+        self._question = cfg.get("question", "Return a JSON object.")
+        self._context = cfg.get("context", "")
+        self._labels: dict[str, str] = dict(cfg.get("labels", {}))
+        self._schema: dict[str, Any] = dict(
+            cfg.get("schema", {"type": "object", "additionalProperties": True})
+        )
+
+    def _make_action_spec(self, prompt: str) -> entity.ActionSpec:
+        structured_prompt = (
+            f"{STRUCTURED_RESPONSE_MARKER}\n"
+            f"{prompt}\n"
+            f"{STRUCTURED_SCHEMA_START}\n"
+            f"{json.dumps(self._schema, ensure_ascii=True)}\n"
+            f"{STRUCTURED_SCHEMA_END}"
+        )
+        try:
+            return entity.ActionSpec(
+                call_to_action=structured_prompt,
+                output_type=entity.OutputType.FREE,
+                tag="structured_probe",
+            )
+        except TypeError:
+            return entity.ActionSpec(
+                call_to_action=structured_prompt,
+                output_type=entity.OutputType.FREE,
+            )
+
+    def form_question_for_agent(self, agent: Any) -> str:
+        agent_name = _get_agent_name(agent)
+        subs = {**self._labels, "agentname": agent_name}
+        parts = []
+        if self._context:
+            parts.append(self._context.format(**subs))
+        parts.append(self._question.format(**subs))
+        return " ".join(parts)
+
+    def parse_answer(self, raw: str) -> dict[str, Any] | None:  # type: ignore[override]
+        return extract_structured_response(raw)
+
+
 class TemplateProbe(ProbeBase):
     """Probe built from a ``query_text`` template dict (legacy format).
 
@@ -471,6 +526,7 @@ PROBE_TYPES: dict[str, type[ProbeBase]] = {
     "NumericRatingProbe": NumericRatingProbe,
     "BinaryProbe": BinaryProbe,
     "ChoiceProbe": ChoiceProbe,
+    "StructuredProbe": StructuredProbe,
     "FreeTextProbe": FreeTextProbe,
     "TemplateProbe": TemplateProbe,
 }

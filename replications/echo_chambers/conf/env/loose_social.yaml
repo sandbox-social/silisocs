@@ -1,0 +1,92 @@
+platform_type: twitter_like
+use_server: false
+enabled_actions: [create_tweet, reply_to_tweet, repost_tweet]
+timeline_posts: 10
+timeline_mode: ${echo_timeline_mode}
+timeline_config: ${echo_timeline_config}
+observation_history: 20
+
+app:
+  class_path: replications.echo_chambers.components.app.EchoChamberSocialApp
+  params:
+    agent_records_path: ${echo_agent_records_path}
+    belief_keywords_path: ${echo_belief_keywords_path}
+    opinions_path: ${echo_opinions_path}
+    topic_key: ${echo_topic_key}
+    network_path: ${echo_network_path}
+    recommendation: ${echo_recommendation}
+    max_interactions: ${echo_max_interactions}
+    similarity_threshold: ${echo_similarity_threshold}
+    mitigation_step: ${echo_mitigation_step}
+    mitigation_perspectives_path: ${echo_mitigation_perspectives_path}
+    mitigation_perspectives_only: ${echo_mitigation_perspectives_only}
+    with_long_memory: ${echo_with_long_memory}
+    expected_updates_per_agent_per_episode: 1
+    leaders: ${echo_leaders}
+    llm_response_mode: ${echo_llm_response_mode}
+    prompt_variant: ${echo_prompt_variant}
+    seed: ${seed}
+    seed_initial_opinion_posts: true
+
+seed_posts:
+  type: none
+
+social_network:
+  activity_transition_rates:
+    echo_user:
+      inactive_to_active: 1.0
+      active_to_inactive: 0.0
+  fully_connected_targets: []
+  base_followership_probability: 0.0
+  network_type: predefined
+  predefined_graph: {}
+  predefined_graph_path: ${env.app.params.network_path}
+
+gm:
+  preset: base
+  components:
+    next_acting:
+      built_in: all_entities
+      class_path: null
+      params: {}
+    recommend:
+      built_in: ${echo_recommend_component_built_in}
+      class_path: ${echo_recommend_component_class_path}
+      params:
+        default_recsys_type: ${echo_recommend_default_recsys_type}
+        update_every_n_steps: ${echo_recommend_update_every_n_steps}
+        max_posts: ${echo_recommend_max_posts}
+    observe:
+      built_in: null
+      class_path: replications.echo_chambers.components.social_observe.EchoBeliefFilteredTimelineObservation
+      params:
+        timeline_mode: ${echo_timeline_mode}
+        recsys_type: ${echo_timeline_recsys_type}
+        timeline_config: ${echo_timeline_config}
+        policy: ${echo_observation_policy}
+        threshold: ${echo_similarity_threshold}
+        max_posts: ${echo_observation_max_posts}
+        fetch_multiplier: ${echo_observation_fetch_multiplier}
+        include_unclassified_posts: false
+    resolve:
+      built_in: tool_calling
+      class_path: replications.echo_chambers.components.social_resolve.EchoSocialToolResolve
+      params:
+        probe_belief: false
+        belief_options: ["-2", "-1", "0", "1", "2"]
+        belief_probe_tag: echo_belief_probe
+    initializer:
+      built_in: backend_default
+      class_path: null
+      params: {}
+
+usage_instructions: |
+  You are currently operating on a Twitter-like platform in an opinion discussion study.
+  Use only the available app actions. Do not invent post IDs; reply or repost only posts that appear in your timeline.
+
+action_prompt: |
+  Decide the single social-media action {name} would take now.
+  The topic is euthanasia. Stay in character and write content in first person.
+  You may post a new tweet, reply to a visible tweet, or repost a visible tweet.
+
+output_style: ""

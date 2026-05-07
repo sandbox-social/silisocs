@@ -1,0 +1,31 @@
+llm:
+  # EchoChamberSim maps CLI `gpt-4o-mini` to this dated snapshot.
+  name: gpt-4o-mini-2024-07-18
+  temperature: 1.0
+  disabled: false
+
+max_concurrent_actions: 12
+memory_backend: list
+action_mode: custom
+tool_calling:
+  mode: none
+prompt_additions:
+  action_count_guidance: false
+
+checkpoint:
+  every_n_steps: null
+  explicit_steps: [30]
+
+engine:
+  preset: base
+  action_loop:
+    built_in: null
+    class_path: replications.echo_chambers.components.action_policy.EchoChamberSingleActionPolicy
+    params: {}
+  probe_schedule:
+    built_in: disabled
+    class_path: null
+    params: {}
+
+roleplaying_instructions: |
+  You are simulating {name}, a person in an opinion dynamics experiment.
