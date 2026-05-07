@@ -4,9 +4,19 @@ Provides a single entry point for the game master to instantiate the
 correct platform-specific ``SocialMediaApp`` based on configuration.
 """
 
+import importlib
 from typing import Any
 
 from silisocs.environments.backends.base import SocialMediaApp
+
+
+def _load_app_class(class_path: str) -> type[SocialMediaApp]:
+    module_path, class_name = class_path.rsplit(".", 1)
+    module = importlib.import_module(module_path)
+    cls = getattr(module, class_name)
+    if not issubclass(cls, SocialMediaApp):
+        raise TypeError(f"Configured app class is not a SocialMediaApp: {class_path}")
+    return cls
 
 
 def create_social_media_app(platform_type: str, **kwargs: Any) -> SocialMediaApp:
@@ -30,6 +40,18 @@ def create_social_media_app(platform_type: str, **kwargs: Any) -> SocialMediaApp
     """
     action_logger = kwargs.get("action_logger")
     app_description = kwargs.get("app_description", "")
+    app_class_path = str(kwargs.get("app_class_path") or "").strip()
+    app_params = dict(kwargs.get("app_params") or {})
+
+    if app_class_path:
+        cls = _load_app_class(app_class_path)
+        init_kwargs = {
+            "action_logger": action_logger,
+            "app_description": app_description,
+            "db_path": kwargs.get("db_path", "twitter_like.db"),
+        }
+        init_kwargs.update(app_params)
+        return cls(**init_kwargs)
 
     if platform_type == "mastodon":
         from silisocs.environments.backends.mastodon.apps import SocialNetworkApp

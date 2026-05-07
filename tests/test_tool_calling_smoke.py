@@ -2,9 +2,16 @@ import json
 
 from concordia.typing import entity as entity_lib
 
-from silisocs.agents.components.concat_act import SocialConcatActComponent
+from silisocs.agents.components.concat_act import (
+    STRUCTURED_RESPONSE_MARKER,
+    STRUCTURED_SCHEMA_END,
+    STRUCTURED_SCHEMA_START,
+    SocialConcatActComponent,
+    extract_structured_response,
+)
 from silisocs.environments.gm.act import SMAct
 from silisocs.environments.gm.components.resolve import ToolCallingResolveComponent
+from silisocs.evaluations.probes.types import StructuredProbe
 
 
 class _FakeModel:
@@ -21,6 +28,10 @@ class _FakeModel:
         if self.mode == "multi_single":
             return [("toot", {"status": "Only one but list-shaped"})]
         return [("toot", {"status": "Hello from tool mode"})]
+
+    def sample_structured_response(self, prompt: str, schema: dict):
+        del prompt, schema
+        return {"belief": 1, "opinion": "I somewhat support this.", "reasoning": "Because."}
 
 
 class _FakeEntity:
@@ -144,6 +155,63 @@ def test_social_concat_act_emits_tool_calls_when_model_returns_single_item_list(
 
     assert "tool_calls" in parsed
     assert parsed["tool_calls"][0]["name"] == "toot"
+
+
+def test_social_concat_act_emits_structured_response_json() -> None:
+    component = SocialConcatActComponent(model=_FakeModel(), randomize_choices=False)
+    component.set_entity(_FakeEntity())
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "belief": {"type": "integer"},
+            "opinion": {"type": "string"},
+            "reasoning": {"type": "string"},
+        },
+        "required": ["belief", "opinion", "reasoning"],
+    }
+    action_spec = entity_lib.ActionSpec(
+        call_to_action=(
+            f"{STRUCTURED_RESPONSE_MARKER}\n"
+            "Update {name}'s stance.\n"
+            f"{STRUCTURED_SCHEMA_START}\n"
+            f"{json.dumps(schema)}\n"
+            f"{STRUCTURED_SCHEMA_END}"
+        ),
+        output_type=entity_lib.OutputType.FREE,
+    )
+
+    result = component.get_action_attempt({"Memory": "prior context"}, action_spec)
+    parsed = json.loads(result)
+
+    assert parsed["structured_response"]["belief"] == 1
+    assert parsed["structured_response"]["opinion"] == "I somewhat support this."
+
+
+def test_extract_structured_response_accepts_wrapped_and_plain_json() -> None:
+    wrapped = json.dumps({"structured_response": {"belief": -1}})
+    plain = json.dumps({"belief": 2})
+
+    assert extract_structured_response(wrapped) == {"belief": -1}
+    assert extract_structured_response(plain) == {"belief": 2}
+
+
+def test_structured_probe_builds_marker_prompt_and_parses_payload() -> None:
+    probe = StructuredProbe(
+        {
+            "name": "BeliefState",
+            "question": "Return belief for {agentname}.",
+            "schema": {
+                "type": "object",
+                "properties": {"belief": {"type": "integer"}},
+                "required": ["belief"],
+            },
+        }
+    )
+    spec = probe._make_action_spec("Return belief for Alice.")
+
+    assert STRUCTURED_RESPONSE_MARKER in spec.call_to_action
+    assert probe.parse_answer(json.dumps({"structured_response": {"belief": 0}})) == {"belief": 0}
 
 
 def test_tool_calling_resolve_executes_tool_kwargs() -> None:

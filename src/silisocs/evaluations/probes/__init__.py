@@ -8,6 +8,7 @@ from silisocs.evaluations.probes.types import (
     FreeTextProbe,
     NumericRatingProbe,
     ProbeBase,
+    StructuredProbe,
     TemplateProbe,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     "FreeTextProbe",
     "NumericRatingProbe",
     "ProbeBase",
+    "StructuredProbe",
     "TemplateProbe",
 ]

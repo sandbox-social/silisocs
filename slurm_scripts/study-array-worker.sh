@@ -8,7 +8,8 @@ REPO_ROOT="${REPO_ROOT:-$HOME/mastodon-sim}"
 UV_HOME="${UV_HOME:-$HOME}"
 STUDY_FILE="${STUDY_FILE:-experiments/studies/election_opinion_program_v1}"
 UV_PROJECT_DIR="${UV_PROJECT_DIR:-${REPO_ROOT}}"
-VLLM_BIN="${VLLM_BIN:-$HOME/.venvs/vllm-home/bin/vllm}"
+RUNNER_PYTHON="${RUNNER_PYTHON:-${REPO_ROOT}/.venv/bin/python}"
+VLLM_BIN="${VLLM_BIN:-$HOME/.venvs/vllm/bin/vllm}"
 HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-0}"
 HF_DATASETS_OFFLINE="${HF_DATASETS_OFFLINE:-0}"
 
@@ -19,7 +20,7 @@ VLLM_SERVED_NAME="${VLLM_SERVED_NAME:-qwen3.5-9b}"
 VLLM_TP="${VLLM_TP:-1}"
 VLLM_DP="${VLLM_DP:-4}"
 VLLM_GPU_MEM_UTIL="${VLLM_GPU_MEM_UTIL:-0.92}"
-VLLM_MAX_LEN="${VLLM_MAX_LEN:-30000}"
+VLLM_MAX_LEN="${VLLM_MAX_LEN:-50000}"
 VLLM_GDN_PREFILL_BACKEND="${VLLM_GDN_PREFILL_BACKEND:-flashinfer}"
 
 HYPOTHESIS_IDS="${HYPOTHESIS_IDS:-h1_initial_news_bias_shift}"
@@ -36,6 +37,12 @@ fi
 
 if [[ ! -f "${REPO_ROOT}/${STUDY_FILE}" && ! -d "${REPO_ROOT}/${STUDY_FILE}" ]]; then
   echo "Study path not found: ${REPO_ROOT}/${STUDY_FILE}" >&2
+  exit 1
+fi
+
+if [[ ! -x "${RUNNER_PYTHON}" ]]; then
+  echo "RUNNER_PYTHON is not executable: ${RUNNER_PYTHON}" >&2
+  echo "Set RUNNER_PYTHON to a prepared environment; compute jobs should not build one from scratch." >&2
   exit 1
 fi
 
@@ -75,6 +82,9 @@ echo "VLLM_DP=${VLLM_DP}"
 echo "VLLM_GPU_MEM_UTIL=${VLLM_GPU_MEM_UTIL}"
 echo "VLLM_GDN_PREFILL_BACKEND=${VLLM_GDN_PREFILL_BACKEND}"
 echo "VLLM_STARTUP_TIMEOUT_SECONDS=${VLLM_STARTUP_TIMEOUT_SECONDS}"
+echo "RUNNER_PYTHON=${RUNNER_PYTHON}"
+echo "VLLM_BIN=${VLLM_BIN}"
+export RUN_STUDY_PYTHON="${RUNNER_PYTHON}"
 
 mkdir -p "${REPO_ROOT}/logs"
 
@@ -112,7 +122,7 @@ if [[ ! -f "${PLAN_JSON}" ]]; then
   echo "Building expanded plan for this job"
   (
     cd "${REPO_ROOT}"
-    uv run python -m experiments.run_study "${PLAN_ARGS[@]}"
+    "${RUNNER_PYTHON}" -m experiments.run_study "${PLAN_ARGS[@]}"
   )
 else
   echo "Using existing PLAN_JSON: ${PLAN_JSON}"
@@ -120,7 +130,7 @@ fi
 
 mapfile -t RUN_MATRIX < <(
   cd "${REPO_ROOT}"
-  uv run python - <<'PY'
+  "${RUNNER_PYTHON}" - <<'PY'
 import json
 import os
 from pathlib import Path
@@ -215,6 +225,7 @@ esac
 
 echo "[1/4] Starting vLLM server from ${UV_HOME}"
 cd "${UV_HOME}"
+VLLM_LOG_PATH="${REPO_ROOT}/logs/vllm_${VLLM_SERVED_NAME}_${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-job}}_array${TASK_ID}.log"
 VLLM_FLAGS=(
   --served-model-name "${VLLM_SERVED_NAME}"
   --host "${VLLM_HOST}"
@@ -232,9 +243,11 @@ VLLM_FLAGS=(
   --gdn-prefill-backend "${VLLM_GDN_PREFILL_BACKEND}"
 )
 if [[ -x "${VLLM_BIN}" ]]; then
-  "${VLLM_BIN}" serve "${VLLM_MODEL}" "${VLLM_FLAGS[@]}" > "${REPO_ROOT}/logs/vllm_${VLLM_SERVED_NAME}_array${TASK_ID}.log" 2>&1 &
+  "${VLLM_BIN}" serve "${VLLM_MODEL}" "${VLLM_FLAGS[@]}" > "${VLLM_LOG_PATH}" 2>&1 &
 else
-  uv run --project "${UV_PROJECT_DIR}" vllm serve "${VLLM_MODEL}" "${VLLM_FLAGS[@]}" > "${REPO_ROOT}/logs/vllm_${VLLM_SERVED_NAME}_array${TASK_ID}.log" 2>&1 &
+  echo "VLLM_BIN is not executable: ${VLLM_BIN}" >&2
+  echo "Set VLLM_BIN to a prepared vLLM executable; compute jobs should not build vLLM from scratch." >&2
+  exit 1
 fi
 VLLM_PID=$!
 
@@ -256,7 +269,7 @@ done
 if [[ "${VLLM_READY}" -ne 1 ]]; then
   echo "vLLM failed to become healthy on ${VLLM_HOST}:${VLLM_PORT}" >&2
   echo "Tail of vLLM log:" >&2
-  tail -n 120 "${REPO_ROOT}/logs/vllm_${VLLM_SERVED_NAME}_array${TASK_ID}.log" >&2 || true
+  tail -n 120 "${VLLM_LOG_PATH}" >&2 || true
   exit 1
 fi
 
@@ -315,9 +328,9 @@ if [[ -n "${SEED_IDS}" && "${ARRAY_MODE}" != "seed" && "${ARRAY_MODE}" != "run" 
 fi
 
 echo "[3/4] Plan selected run group"
-uv run python -m experiments.run_study "${PLAN_RUN_ARGS[@]}"
+"${RUNNER_PYTHON}" -m experiments.run_study "${PLAN_RUN_ARGS[@]}"
 
 echo "[4/4] Run selected run group with max_concurrent=${MAX_CONCURRENT}"
-uv run python -m experiments.run_study "${RUN_ARGS[@]}"
+"${RUNNER_PYTHON}" -m experiments.run_study "${RUN_ARGS[@]}"
 
 echo "Completed array task ${TASK_ID} in mode ${ARRAY_MODE}"

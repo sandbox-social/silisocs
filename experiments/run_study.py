@@ -32,6 +32,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+# Support both:
+#   python -m experiments.run_study
+# and:
+#   python experiments/run_study.py
+# In the second form Python puts experiments/ on sys.path, not the repo root,
+# so absolute imports like experiments._internal would otherwise fail.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 import yaml
 
 from experiments._internal.study_artifacts import (
@@ -838,24 +848,30 @@ def _build_run_command(spec: RunSpec) -> list[str]:
     if spec.command_override:
         return list(spec.command_override)
 
-    cmd = [
-        "uv",
-        "run",
-        "python",
-        "-m",
-        spec.runner_module,
-    ]
+    runner_python = os.environ.get("RUN_STUDY_PYTHON", "").strip()
+    if runner_python:
+        cmd = [runner_python, "-m", spec.runner_module]
+    else:
+        cmd = [
+            "uv",
+            "run",
+            "python",
+            "-m",
+            spec.runner_module,
+        ]
     if spec.config_path:
         cmd.extend(["--config-path", spec.config_path])
 
+    cmd.append(f"scenario={spec.scenario}")
     cmd.append(f"seed={spec.seed}")
     cmd.append(f"run_name={_normalize_override_value(spec.run_name)}")
-    # output_rootname is set by the runner from Hydra's runtime.output_dir;
-    # do not pass it as a CLI override.
+    if spec.output_rootname:
+        cmd.append(f"output_rootname={_normalize_override_value(spec.output_rootname)}")
     cmd.append(f"experiment_name={spec.study_name}")
 
     for key in sorted(spec.overrides):
         if key in {
+            "scenario",
             "seed",
             "run_name",
             "output_rootname",

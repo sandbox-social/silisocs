@@ -1,0 +1,41 @@
+# @package agents
+
+shared_memories:
+  - Agents are participating in a social-media opinion simulation.
+  - ${event.context}
+
+persona_pipeline:
+  processing_mode: raw
+  defaults:
+    params:
+      scenario_context: ${event.context}
+      goal: "Participate naturally in the discussion while staying faithful to your persona and current stance."
+      llm_response_mode: ${echo_llm_response_mode}
+      prompt_variant: ${echo_prompt_variant}
+    shared_memories:
+      - Agents are participating in a social-media opinion simulation.
+      - ${event.context}
+  classes:
+    echo_user:
+      count: ${num_agents}
+      prefab_module: replications.echo_chambers.components.agent_concordia
+      prefab: agent_concordia__EchoSocialToolEntity
+      sim_role_name: echo_user
+      data:
+        source: local_json
+        path: ${echo_agent_records_path}
+      field_map:
+        name: name
+        context: context
+        system_prompt: system_prompt
+        agent_id: agent_id
+        initial_belief: initial_belief
+        initial_opinion: initial_opinion
+        initial_reasoning: initial_reasoning
+        traits: traits
+        age: age
+        gender: gender
+        education_level: education_level
+
+initial_observations:
+  - "{name} opens their social-media feed for the daily discussion."
