@@ -433,6 +433,116 @@ class GptLanguageModel(language_model.LanguageModel):
 
         return []
 
+    def sample_structured_response(
+        self,
+        prompt: str,
+        schema: dict[str, Any],
+        *,
+        max_tokens: int = 1200,
+        temperature: float | None = None,
+    ) -> dict[str, Any]:
+        """Call the LLM and parse one JSON object matching the requested schema."""
+        if temperature is None:
+            temperature = self._temperature
+        schema_name = str(schema.get("title") or "structured_response")
+        safe_schema_name = (
+            "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in schema_name)[:64]
+            or "structured_response"
+        )
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a helpful assistant. Return exactly one JSON object "
+                    "matching the requested schema and no surrounding text."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ]
+
+        def _parse_content(content: str | None) -> dict[str, Any]:
+            raw = str(content or "").strip()
+            if raw.startswith("```"):
+                raw = raw.removeprefix("```json").removeprefix("```").strip()
+                raw = raw.removesuffix("```").strip()
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+
+        for attempt in range(self._max_retries + 1):
+            try:
+                kwargs: dict[str, Any] = {
+                    "model": self._model_name,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": min(max_tokens, 4000),
+                    "timeout": 120,
+                    "response_format": {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": safe_schema_name,
+                            "schema": schema,
+                            "strict": False,
+                        },
+                    },
+                }
+                if self._use_qwen_extra_body:
+                    kwargs["extra_body"] = {
+                        "top_k": 20,
+                        "chat_template_kwargs": {"enable_thinking": False},
+                    }
+                    kwargs["response_format"] = {"type": "json_object"}
+
+                response = self._client.chat.completions.create(**kwargs)  # type: ignore[call-overload]
+                parsed = _parse_content(response.choices[0].message.content)
+                self._record_retry_outcome(attempt, success=True)
+                if self.debug:
+                    self._log(prompt, json.dumps(parsed, ensure_ascii=True))
+                return parsed
+            except openai.BadRequestError as e:
+                if attempt == 0:
+                    try:
+                        kwargs = {
+                            "model": self._model_name,
+                            "messages": messages,
+                            "temperature": temperature,
+                            "max_tokens": min(max_tokens, 4000),
+                            "timeout": 120,
+                            "response_format": {"type": "json_object"},
+                        }
+                        response = self._client.chat.completions.create(**kwargs)  # type: ignore[call-overload]
+                        parsed = _parse_content(response.choices[0].message.content)
+                        self._record_retry_outcome(attempt, success=True)
+                        if self.debug:
+                            self._log(prompt, json.dumps(parsed, ensure_ascii=True))
+                        return parsed
+                    except Exception:
+                        print(f"Structured response fallback failed: {e}")
+                else:
+                    print(f"Structured response API error (attempt {attempt + 1}): {e}")
+            except (json.JSONDecodeError, TypeError, ValueError) as e:
+                print(f"Structured response parse error (attempt {attempt + 1}): {e}")
+            except openai.APIError as e:
+                print(f"Structured response API error (attempt {attempt + 1}): {e}")
+            except openai.APIConnectionError as e:
+                print(f"Structured response connection error (attempt {attempt + 1}): {e}")
+            except openai.RateLimitError as e:
+                print(f"Structured response rate limit (attempt {attempt + 1}): {e}")
+            except Exception as e:
+                print(f"Structured response unexpected error (attempt {attempt + 1}): {e}")
+
+            if attempt >= self._max_retries:
+                self._record_retry_outcome(attempt, success=False)
+                return {}
+
+            sleep_seconds = min(
+                self._backoff_base_seconds * (2**attempt),
+                self._backoff_max_seconds,
+            )
+            sleep_seconds += random.uniform(0, self._backoff_base_seconds)
+            time.sleep(sleep_seconds)
+
+        return {}
+
     @staticmethod
     def _resolve_tool_calling_mode() -> str:
         """Resolve tool-calling mode from runtime config when available."""

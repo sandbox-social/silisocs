@@ -1,0 +1,432 @@
+schema_version: 1
+
+study:
+  name: echo_chambers_replication
+  study_id: echo_chambers_replication
+  study_version: v1
+  question: "Can silisocs reproduce EchoChamberSim's graph/recommendation polarization results?"
+  scenarios:
+    - default
+  study_summary_path: replications/echo_chambers/SUMMARY.md
+  summary_log_path: replications/echo_chambers/generated/summary_log.jsonl
+  run_defaults:
+    config_path: replications/echo_chambers/conf
+    runner_module: silisocs.runtime.runner
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
+    output_root_override: "replications/echo_chambers/generated/runs/{hypothesis_id}/{condition_id}/seed_{seed}/run"
+    seed_start: 50
+    seed_repeats: 1
+    overrides:
+      num_agents: 50
+      replication_days: 30
+      num_steps: 31
+      sim.llm.name: gpt-4o-mini-2024-07-18
+      sim.llm.temperature: 1.0
+
+evaluations:
+  - id: echo_metrics
+    command:
+      - uv
+      - run
+      - python
+      - -m
+      - replications.echo_chambers.evaluators.metrics
+    input_mode: run_dir
+    run_dir_arg: --run-dir
+    output_arg: --output
+    output_subpath: echo_metrics_summary.json
+  - id: hypothesis_condition_plot
+    command:
+      - uv
+      - run
+      - python
+      - -m
+      - replications.echo_chambers.evaluators.plot_hypothesis_conditions
+    input_mode: run_dir
+    run_dir_arg: --run-dir
+    output_arg: --output
+    output_subpath: hypothesis_condition_plot.json
+
+hypotheses:
+  h1_opposite_exposure:
+    statement: "Opposite-belief exposure reduces local echo-chamber alignment relative to similarity recommendation on a fixed scale-free graph."
+    independent_variable: recommendation
+    prediction: "Opposite exposure should reduce NCI and/or polarization relative to the scale-free similarity baseline, but may increase local disagreement or trigger defensive extremity."
+    status: ready
+    conditions:
+      scale_free_similarity_reference:
+        execution:
+          mode: reuse_existing
+        reuse:
+          runs:
+            - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_01/run
+              seed: 50
+            - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_02/run
+              seed: 50
+            - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_03/run
+              seed: 50
+            - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_04/run
+              seed: 50
+            - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_05/run
+              seed: 50
+      scale_free_opposite_5seed:
+        seeds: [5001, 5002, 5003, 5004, 5005]
+        overrides:
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: opposite
+          echo_max_interactions: -1
+          echo_mitigation_step: 1000
+
+  h1_random_exposure:
+    statement: "Random-belief exposure reduces local echo-chamber alignment relative to similarity recommendation on a fixed scale-free graph."
+    independent_variable: recommendation
+    prediction: "Random exposure should reduce NCI and/or polarization relative to the scale-free similarity baseline, but may increase local disagreement or trigger defensive extremity."
+    status: testing
+    conditions:
+      scale_free_similarity_reference:
+        execution:
+          mode: reuse_existing
+        reuse:
+          runs:
+            - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_01/run
+              seed: 50
+            - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_02/run
+              seed: 50
+            - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_03/run
+              seed: 50
+            - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_04/run
+              seed: 50
+            - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_05/run
+              seed: 50
+      scale_free_random_5seed:
+        seeds: [5001, 5002, 5003, 5004, 5005]
+        overrides:
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: random
+          echo_max_interactions: -1
+          echo_mitigation_step: 1000
+
+  h1_graph_structure:
+    statement: "Small-world and scale-free graphs show echo chamber formation more clearly than random graphs."
+    independent_variable: network_type
+    prediction: "Small-world and scale-free runs increase NCI while reducing global disagreement; random does not reduce disagreement."
+    status: testing
+    conditions:
+      small_world_similarity:
+        overrides:
+          echo_network_type: small_world
+          echo_network_path: replications/echo_chambers/input/networks/small_world_network_num_agents_50_seed_50.json
+          echo_recommendation: similarity
+      scale_free_similarity:
+        overrides:
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: similarity
+      random_similarity:
+        overrides:
+          echo_network_type: random
+          echo_network_path: replications/echo_chambers/input/networks/random_network_num_agents_50_seed_50.json
+          echo_recommendation: similarity
+
+  h2_recommendation:
+    statement: "Similarity recommendation increases local opinion agreement relative to random or opposite-belief exposure."
+    independent_variable: recommendation
+    prediction: "Similarity recommendation yields higher NCI increase than random or opposite-belief recommendation."
+    status: testing
+    conditions:
+      scale_free_random:
+        overrides:
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: random
+          echo_max_interactions: 5
+      scale_free_similarity:
+        overrides:
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: similarity
+          echo_max_interactions: -1
+      scale_free_opposite:
+        overrides:
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: opposite
+          echo_max_interactions: -1
+
+  h3_loose_action_structure:
+    statement: "Echo-chamber behavior remains visible after replacing the exact one-belief-update action with twitter-like post/reply/repost actions plus a structured end-of-window opinion/belief update."
+    independent_variable: action_structure
+    prediction: "The loose social-media structure should preserve the qualitative similarity-exposure pattern: NCI should increase and global disagreement should decrease over time, even if magnitudes differ from exact reproduction."
+    status: ready
+    conditions:
+      exact_similarity_reference:
+        execution:
+          mode: reuse_existing
+        reuse:
+          runs:
+            - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_01/run
+              seed: 50
+            - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_02/run
+              seed: 50
+            - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_03/run
+              seed: 50
+            - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_04/run
+              seed: 50
+            - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_05/run
+              seed: 50
+      loose_social_similarity_5seed:
+        scenarios: [loose_social]
+        seeds: [6001, 6002, 6003, 6004, 6005]
+        overrides:
+          agents: loose_social
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: similarity
+          echo_observation_policy: similarity
+          echo_max_interactions: -1
+          echo_mitigation_step: 1000
+          echo_include_self_state_feedback: true
+          echo_observation_max_posts: 10
+      loose_social_follower_chronological_5seed:
+        scenarios: [loose_social]
+        seeds: [6201, 6202, 6203, 6204, 6205]
+        overrides:
+          agents: loose_social
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: similarity
+          echo_observation_policy: none
+          echo_max_interactions: -1
+          echo_mitigation_step: 1000
+          echo_include_self_state_feedback: true
+          echo_timeline_mode: follower_chronological
+          echo_timeline_recsys_type: null
+          echo_observation_max_posts: 10
+          echo_recommend_component_built_in: null
+          echo_recommend_component_class_path: replications.echo_chambers.components.recommend.NoOpRecommendation
+      loose_social_twhin_recsys_5seed:
+        scenarios: [loose_social]
+        seeds: [6301, 6302, 6303, 6304, 6305]
+        overrides:
+          agents: loose_social
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: similarity
+          echo_max_interactions: -1
+          echo_mitigation_step: 1000
+          echo_include_self_state_feedback: true
+          echo_timeline_mode: pure_recsys
+          echo_timeline_recsys_type: twhin
+          echo_observation_max_posts: 10
+          echo_recommend_component_built_in: recommendation_component
+          echo_recommend_component_class_path: null
+          echo_recommend_default_recsys_type: twhin
+          echo_recommend_update_every_n_steps: 1
+          echo_recommend_max_posts: 50
+
+  h4_self_state_feedback:
+    statement: "Echo-chamber dynamics depend on whether agents are reminded of their own previously reported belief and opinion during the terminal belief probe."
+    independent_variable: self_state_feedback
+    prediction: "Removing explicit self-state feedback should weaken anchoring to prior stance and may reduce polarization/NCI or increase volatility, while preserving the same feed, memory, and action structure."
+    status: ready
+    conditions:
+      loose_social_with_self_state_reference:
+        execution:
+          mode: reuse_existing
+        reuse:
+          runs:
+            - source: replications/echo_chambers/generated/runs/h3_loose_action_structure/loose_social_follower_chronological_5seed/seed_6201/run
+              seed: 6201
+            - source: replications/echo_chambers/generated/runs/h3_loose_action_structure/loose_social_follower_chronological_5seed/seed_6202/run
+              seed: 6202
+            - source: replications/echo_chambers/generated/runs/h3_loose_action_structure/loose_social_follower_chronological_5seed/seed_6203/run
+              seed: 6203
+            - source: replications/echo_chambers/generated/runs/h3_loose_action_structure/loose_social_follower_chronological_5seed/seed_6204/run
+              seed: 6204
+            - source: replications/echo_chambers/generated/runs/h3_loose_action_structure/loose_social_follower_chronological_5seed/seed_6205/run
+              seed: 6205
+      loose_social_without_self_state_5seed:
+        scenarios: [loose_social]
+        seeds: [6201, 6202, 6203, 6204, 6205]
+        overrides:
+          agents: loose_social
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: similarity
+          echo_observation_policy: none
+          echo_max_interactions: -1
+          echo_mitigation_step: 1000
+          echo_include_self_state_feedback: false
+          echo_timeline_mode: follower_chronological
+          echo_timeline_recsys_type: null
+          echo_observation_max_posts: 10
+
+  h5_simple_social_agents:
+    statement: "A simpler observe-memory-act agent still shows echo-chamber behavior in the loose twitter-like environment when belief/opinion is measured through the same structured end-of-window probe."
+    independent_variable: agent_cognitive_architecture
+    prediction: "Replacing the Echo-specific long/short-memory agent with the default social agent should still produce an increase in NCI and decrease in global disagreement under similarity-filtered exposure."
+    status: ready
+    conditions:
+      loose_social_concordia_reference:
+        execution:
+          mode: reuse_existing
+        reuse:
+          runs:
+            - source: replications/echo_chambers/generated/runs/h3_loose_action_structure/loose_social_follower_chronological_5seed/seed_6201/run
+              seed: 6201
+            - source: replications/echo_chambers/generated/runs/h3_loose_action_structure/loose_social_follower_chronological_5seed/seed_6202/run
+              seed: 6202
+            - source: replications/echo_chambers/generated/runs/h3_loose_action_structure/loose_social_follower_chronological_5seed/seed_6203/run
+              seed: 6203
+            - source: replications/echo_chambers/generated/runs/h3_loose_action_structure/loose_social_follower_chronological_5seed/seed_6204/run
+              seed: 6204
+            - source: replications/echo_chambers/generated/runs/h3_loose_action_structure/loose_social_follower_chronological_5seed/seed_6205/run
+              seed: 6205
+      loose_social_simple_agent_5seed:
+        scenarios: [loose_social]
+        seeds: [6201, 6202, 6203, 6204, 6205]
+        overrides:
+          agents: simple_social
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: similarity
+          echo_observation_policy: none
+          echo_max_interactions: -1
+          echo_mitigation_step: 1000
+          echo_include_self_state_feedback: true
+          echo_timeline_mode: follower_chronological
+          echo_timeline_recsys_type: null
+          echo_observation_max_posts: 10
+      loose_social_simple_agent_without_self_state_5seed:
+        scenarios: [loose_social]
+        seeds: [6201, 6202, 6203, 6204, 6205]
+        overrides:
+          agents: simple_social
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: similarity
+          echo_observation_policy: none
+          echo_max_interactions: -1
+          echo_mitigation_step: 1000
+          echo_include_self_state_feedback: false
+          echo_timeline_mode: follower_chronological
+          echo_timeline_recsys_type: null
+          echo_observation_max_posts: 10
+
+  h6_qwen35_4b_self_state_feedback:
+    statement: "Qwen3.5-4B should reproduce the qualitative self-state feedback effect in the loose follower-chronological setting."
+    independent_variable: self_state_feedback
+    prediction: "With the Echo memory agent, removing self-state feedback should reduce anchoring/polarization and increase belief volatility, directionally matching the gpt-4o-mini H4 result."
+    status: ready
+    conditions:
+      qwen_echo_with_self_state_5seed:
+        scenarios: [loose_social]
+        seeds: [6201, 6202, 6203, 6204, 6205]
+        overrides:
+          agents: loose_social
+          sim.llm.name: qwen3.5-4b
+          sim.llm.api_base: http://127.0.0.1:30000/v1
+          sim.llm.api_key: local-api-key
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: similarity
+          echo_observation_policy: none
+          echo_max_interactions: -1
+          echo_mitigation_step: 1000
+          echo_include_self_state_feedback: true
+          echo_timeline_mode: follower_chronological
+          echo_timeline_recsys_type: null
+          echo_observation_max_posts: 10
+      qwen_echo_without_self_state_5seed:
+        scenarios: [loose_social]
+        seeds: [6201, 6202, 6203, 6204, 6205]
+        overrides:
+          agents: loose_social
+          sim.llm.name: qwen3.5-4b
+          sim.llm.api_base: http://127.0.0.1:30000/v1
+          sim.llm.api_key: local-api-key
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: similarity
+          echo_observation_policy: none
+          echo_max_interactions: -1
+          echo_mitigation_step: 1000
+          echo_include_self_state_feedback: false
+          echo_timeline_mode: follower_chronological
+          echo_timeline_recsys_type: null
+          echo_observation_max_posts: 10
+
+  h7_qwen35_4b_simple_agent_architecture:
+    statement: "Qwen3.5-4B should preserve the qualitative agent-architecture effect when replacing the Echo memory agent with a simple social agent."
+    independent_variable: agent_cognitive_architecture
+    prediction: "Simple agents should form weaker echo-chamber structure than Echo memory agents under matched follower-chronological exposure, with both self-state feedback settings checked."
+    status: ready
+    conditions:
+      qwen_echo_with_self_state_reference:
+        execution:
+          mode: reuse_existing
+        reuse:
+          runs:
+            - source: replications/echo_chambers/generated/runs/h6_qwen35_4b_self_state_feedback/qwen_echo_with_self_state_5seed/seed_6201/run
+              seed: 6201
+            - source: replications/echo_chambers/generated/runs/h6_qwen35_4b_self_state_feedback/qwen_echo_with_self_state_5seed/seed_6202/run
+              seed: 6202
+            - source: replications/echo_chambers/generated/runs/h6_qwen35_4b_self_state_feedback/qwen_echo_with_self_state_5seed/seed_6203/run
+              seed: 6203
+            - source: replications/echo_chambers/generated/runs/h6_qwen35_4b_self_state_feedback/qwen_echo_with_self_state_5seed/seed_6204/run
+              seed: 6204
+            - source: replications/echo_chambers/generated/runs/h6_qwen35_4b_self_state_feedback/qwen_echo_with_self_state_5seed/seed_6205/run
+              seed: 6205
+      qwen_simple_with_self_state_5seed:
+        scenarios: [loose_social]
+        seeds: [6201, 6202, 6203, 6204, 6205]
+        overrides:
+          agents: simple_social
+          sim.llm.name: qwen3.5-4b
+          sim.llm.api_base: http://127.0.0.1:30000/v1
+          sim.llm.api_key: local-api-key
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: similarity
+          echo_observation_policy: none
+          echo_max_interactions: -1
+          echo_mitigation_step: 1000
+          echo_include_self_state_feedback: true
+          echo_timeline_mode: follower_chronological
+          echo_timeline_recsys_type: null
+          echo_observation_max_posts: 10
+      qwen_echo_without_self_state_reference:
+        execution:
+          mode: reuse_existing
+        reuse:
+          runs:
+            - source: replications/echo_chambers/generated/runs/h6_qwen35_4b_self_state_feedback/qwen_echo_without_self_state_5seed/seed_6201/run
+              seed: 6201
+            - source: replications/echo_chambers/generated/runs/h6_qwen35_4b_self_state_feedback/qwen_echo_without_self_state_5seed/seed_6202/run
+              seed: 6202
+            - source: replications/echo_chambers/generated/runs/h6_qwen35_4b_self_state_feedback/qwen_echo_without_self_state_5seed/seed_6203/run
+              seed: 6203
+            - source: replications/echo_chambers/generated/runs/h6_qwen35_4b_self_state_feedback/qwen_echo_without_self_state_5seed/seed_6204/run
+              seed: 6204
+            - source: replications/echo_chambers/generated/runs/h6_qwen35_4b_self_state_feedback/qwen_echo_without_self_state_5seed/seed_6205/run
+              seed: 6205
+      qwen_simple_without_self_state_5seed:
+        scenarios: [loose_social]
+        seeds: [6201, 6202, 6203, 6204, 6205]
+        overrides:
+          agents: simple_social
+          sim.llm.name: qwen3.5-4b
+          sim.llm.api_base: http://127.0.0.1:30000/v1
+          sim.llm.api_key: local-api-key
+          echo_network_type: scale_free
+          echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
+          echo_recommendation: similarity
+          echo_observation_policy: none
+          echo_max_interactions: -1
+          echo_mitigation_step: 1000
+          echo_include_self_state_feedback: false
+          echo_timeline_mode: follower_chronological
+          echo_timeline_recsys_type: null
+          echo_observation_max_posts: 10

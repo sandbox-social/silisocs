@@ -1,0 +1,7 @@
+{
+  "-2": ["Firmly reject", "Strongly disagree", "Completely oppose"],
+  "-1": ["Mildly reject", "Somewhat disagree", "Gently oppose"],
+  "0": ["Objectively consider", "Impartially acknowledge", "Undecidedly weigh"],
+  "1": ["Somewhat agree", "Mildly support", "Generally favor"],
+  "2": ["Strongly agree", "Fully support", "Wholeheartedly favor"]
+}

@@ -205,6 +205,16 @@ site/
 experiments/*/generated/
 experiments/studies/*/generated/
 
+# Replication outputs and local run artifacts
+replications/**/generated/
+replications/**/runs/
+replications/**/plots/
+replications/**/graph_experiments/
+replications/**/original_runs/
+replications/**/studies/
+replications/**/running_plan.MD
+slurm-*.out
+
 # Large generated study analysis artifacts
 experiments/studies/**/*.ipynb
 experiments/studies/**/*.pdf

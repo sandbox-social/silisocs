@@ -1,0 +1,6 @@
+write_html_log: false
+probes:
+  deployment:
+    enabled: false
+  queries: {}
+

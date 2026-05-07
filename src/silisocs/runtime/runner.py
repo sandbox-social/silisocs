@@ -580,6 +580,10 @@ def _build_legacy_scenario_view(cfg: DictConfig) -> DictConfig:
         "news_account": OmegaConf.select(cfg, "env.news_account") or {},
         "partisan_types": OmegaConf.select(cfg, "env.partisan_types") or [],
     }
+    for key in cfg.keys():
+        key_str = str(key)
+        if key_str not in payload:
+            payload[key_str] = OmegaConf.select(cfg, key_str)
     return OmegaConf.create(payload)
 
 
@@ -594,6 +598,17 @@ def _merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
     paths_csv = os.environ.get("SILISOCS_EXTERNAL_CONFIG_DIRS", "").strip()
     if not paths_csv:
         return cfg
+
+    scenario_variant = ""
+    try:
+        from hydra.core.hydra_config import HydraConfig
+
+        for item in HydraConfig.get().overrides.task:
+            if str(item).startswith("scenario="):
+                scenario_variant = str(item).split("=", 1)[1].strip()
+                break
+    except Exception:
+        scenario_variant = ""
 
     OmegaConf.set_struct(cfg, False)
     merged_cfg: DictConfig = cfg
@@ -620,13 +635,39 @@ def _merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
                 )
                 break
 
+        if scenario_variant:
+            for group in ("env", "sim", "evals"):
+                variant_path = conf_dir / group / f"{scenario_variant}.yaml"
+                if not variant_path.is_file():
+                    continue
+                loaded = yaml.safe_load(variant_path.read_text(encoding="utf-8")) or {}
+                if not isinstance(loaded, dict):
+                    raise ValueError(
+                        f"Expected mapping in {variant_path}, got {type(loaded).__name__}"
+                    )
+                merged_cfg = cast(
+                    DictConfig,
+                    OmegaConf.merge(merged_cfg, OmegaConf.create({group: loaded})),
+                )
+
     # Re-apply Hydra task (CLI) overrides so they take precedence over scenario files.
     try:
         from hydra.core.hydra_config import HydraConfig
 
         task_overrides = list(HydraConfig.get().overrides.task)
         if task_overrides:
-            override_cfg = OmegaConf.from_dotlist(task_overrides)
+            external_group_overrides = {"scenario", "agents", "env", "evals", "sim"}
+            value_overrides = []
+            for item in task_overrides:
+                text = str(item)
+                if "=" not in text or text.startswith(("+", "~")):
+                    value_overrides.append(text)
+                    continue
+                key = text.split("=", 1)[0].strip()
+                if key in external_group_overrides:
+                    continue
+                value_overrides.append(text)
+            override_cfg = OmegaConf.from_dotlist(value_overrides)
             merged_cfg = cast(DictConfig, OmegaConf.merge(merged_cfg, override_cfg))
     except Exception:
         pass
@@ -684,11 +725,19 @@ def main(cfg: DictConfig):
             logger.error(f"Configuration validation failed: {e}")
             raise
 
-    # Add hydra-generated output path
-    output_dir = os.path.join(
-        HydraConfig.get().runtime.output_dir,
-        HydraConfig.get().job.name,
-    )
+    configured_output_rootname = str(
+        OmegaConf.select(cfg, "output_rootname", default="") or ""
+    ).strip()
+    if configured_output_rootname:
+        output_dir = configured_output_rootname
+        if not os.path.isabs(output_dir):
+            output_dir = os.path.abspath(output_dir)
+    else:
+        # Add hydra-generated output path
+        output_dir = os.path.join(
+            HydraConfig.get().runtime.output_dir,
+            HydraConfig.get().job.name,
+        )
 
     # Update config with output directory
     # Disable struct mode to allow setting new keys

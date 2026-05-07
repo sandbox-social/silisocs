@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import re
+from typing import Any
 
 from concordia.components.agent import concat_act_component
 from concordia.document import interactive_document
@@ -13,6 +16,32 @@ from typing_extensions import override
 _TOOL_CALLING_MARKER = "### TOOL_CALLING_MODE ###"
 _TOOL_SCHEMAS_START = "### TOOL_SCHEMAS_JSON ###"
 _TOOL_SCHEMAS_END = "### END_TOOL_SCHEMAS_JSON ###"
+STRUCTURED_RESPONSE_MARKER = "### STRUCTURED_RESPONSE_MODE ###"
+STRUCTURED_SCHEMA_START = "### STRUCTURED_SCHEMA_JSON ###"
+STRUCTURED_SCHEMA_END = "### END_STRUCTURED_SCHEMA_JSON ###"
+
+
+def extract_structured_response(text: str) -> dict[str, Any] | None:
+    """Extract a structured-response payload from an agent action string."""
+    raw = str(text or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", raw, flags=re.DOTALL)
+        if not match:
+            return None
+        try:
+            parsed = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(parsed, dict):
+        return None
+    nested = parsed.get("structured_response")
+    if isinstance(nested, dict):
+        return nested
+    return parsed
 
 
 class SocialConcatActComponent(concat_act_component.ConcatActComponent):
@@ -104,6 +133,77 @@ class SocialConcatActComponent(concat_act_component.ConcatActComponent):
             }
         )
 
+    @staticmethod
+    def _extract_structured_schema(
+        call_to_action: str,
+    ) -> tuple[str, dict[str, Any]]:
+        if STRUCTURED_RESPONSE_MARKER not in call_to_action:
+            return call_to_action, {}
+        cleaned = call_to_action
+        schema: dict[str, Any] | None = None
+        if STRUCTURED_SCHEMA_START in cleaned and STRUCTURED_SCHEMA_END in cleaned:
+            before, remainder = cleaned.split(STRUCTURED_SCHEMA_START, 1)
+            schema_json, after = remainder.split(STRUCTURED_SCHEMA_END, 1)
+            try:
+                parsed = json.loads(schema_json.strip())
+                if isinstance(parsed, dict):
+                    schema = parsed
+            except (json.JSONDecodeError, TypeError, ValueError):
+                schema = None
+            cleaned = f"{before.strip()}\n{after.strip()}".strip()
+        cleaned = cleaned.replace(STRUCTURED_RESPONSE_MARKER, "").strip()
+        return cleaned, schema or {}
+
+    @staticmethod
+    def _format_call_to_action(call_to_action: str, name: str) -> str:
+        # Escape braces to prevent format() from interpreting JSON as placeholders
+        escaped = call_to_action.replace("{", "{{").replace("}", "}}")
+        escaped = escaped.replace("{{name}}", "{name}")
+        try:
+            return escaped.format(name=name)
+        except (KeyError, ValueError):
+            return escaped.replace("{{", "{").replace("}}", "}")
+
+    def _sample_structured_response(
+        self,
+        prompt_text: str,
+        schema: dict[str, Any],
+    ) -> dict[str, Any]:
+        if hasattr(self._model, "sample_structured_response"):
+            sampled = self._model.sample_structured_response(prompt_text, schema)
+            return sampled if isinstance(sampled, dict) else {}
+
+        prompt = interactive_document.InteractiveDocument(self._model)
+        prompt.statement(prompt_text + "\n")
+        raw = prompt.open_question(
+            "Return only one JSON object matching the schema.",
+            max_tokens=1200,
+            terminators=(),
+            question_label="Structured response",
+        )
+        return extract_structured_response(raw) or {}
+
+    def _structured_action_attempt(
+        self,
+        contexts: entity_component.ComponentContextMapping,
+        action_spec: entity_lib.ActionSpec,
+    ) -> str:
+        prompt = interactive_document.InteractiveDocument(self._model)
+        context = self._context_for_action(contexts)
+        prompt.statement(context + "\n")
+        call_to_action, schema = self._extract_structured_schema(action_spec.call_to_action)
+        call_to_action = self._format_call_to_action(call_to_action, self.get_entity().name)
+        schema_text = json.dumps(schema, ensure_ascii=True)
+        prompt_text = (
+            f"{context}\n\n{call_to_action}\n\n"
+            "Return exactly one JSON object matching this schema:\n"
+            f"{schema_text}"
+        )
+        payload = self._sample_structured_response(prompt_text, schema)
+        result = json.dumps({"structured_response": payload}, ensure_ascii=True)
+        self._log(result, prompt)
+        return result
+
     @override
     def get_action_attempt(
         self,
@@ -115,37 +215,39 @@ class SocialConcatActComponent(concat_act_component.ConcatActComponent):
         prompt.statement(context + "\n")
 
         call_to_action, tools = self._extract_tooling(action_spec.call_to_action)
-        # Escape braces to prevent format() from interpreting JSON as placeholders
-        # e.g., {"success": bool} → {{success}}: bool
-        call_to_action = call_to_action.replace("{", "{{").replace("}", "}}")
-        call_to_action = call_to_action.replace("{{name}}", "{name}")
-        try:
-            call_to_action = call_to_action.format(name=self.get_entity().name)
-        except (KeyError, ValueError):
-            # If formatting still fails, use the escaped version as-is
-            call_to_action = call_to_action.replace("{{", "{").replace("}}", "}")
+        call_to_action = self._format_call_to_action(call_to_action, self.get_entity().name)
 
-        # DEBUG: Log full prompt for all agents
-        import logging
+        debug_enabled = os.environ.get("SILISOCS_DEBUG_CONCAT_ACT", "").lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        debug_logger = None
+        if debug_enabled:
+            import logging
 
-        debug_logger = logging.getLogger("CONCAT_ACT_DEBUG")
-        debug_logger.warning(f"\n{'=' * 80}")
-        debug_logger.warning(f"AGENT: {self.get_entity().name}")
-        debug_logger.warning(f"ACTION_SPEC_TYPE: {action_spec.output_type}")
-        debug_logger.warning(f"HAS_TOOLS: {tools is not None}")
-        debug_logger.warning(f"CONTEXT_LENGTH: {len(context)} chars")
-        debug_logger.warning(f"CONTEXT_PREVIEW: {context[:200].strip()}...")
-        debug_logger.warning(f"CALL_TO_ACTION_LENGTH: {len(call_to_action)} chars")
-        debug_logger.warning(f"CALL_TO_ACTION: {call_to_action[:300]}")
-        debug_logger.warning(f"{'=' * 80}\n")
+            debug_logger = logging.getLogger("CONCAT_ACT_DEBUG")
+            debug_logger.warning(f"\n{'=' * 80}")
+            debug_logger.warning(f"AGENT: {self.get_entity().name}")
+            debug_logger.warning(f"ACTION_SPEC_TYPE: {action_spec.output_type}")
+            debug_logger.warning(f"HAS_TOOLS: {tools is not None}")
+            debug_logger.warning(f"CONTEXT_LENGTH: {len(context)} chars")
+            debug_logger.warning(f"CONTEXT_PREVIEW: {context[:200].strip()}...")
+            debug_logger.warning(f"CALL_TO_ACTION_LENGTH: {len(call_to_action)} chars")
+            debug_logger.warning(f"CALL_TO_ACTION: {call_to_action[:300]}")
+            debug_logger.warning(f"{'=' * 80}\n")
 
         if action_spec.output_type in entity_lib.FREE_ACTION_TYPES:
+            if STRUCTURED_RESPONSE_MARKER in action_spec.call_to_action:
+                return self._structured_action_attempt(contexts, action_spec)
+
             if tools is not None:
                 # Include context with call_to_action for tool-calling
                 prompt_with_context = context + "\n" + call_to_action
-                debug_logger.warning(
-                    f"TOOL_CALLING_PROMPT_LENGTH: {len(prompt_with_context)} chars"
-                )
+                if debug_logger is not None:
+                    debug_logger.warning(
+                        f"TOOL_CALLING_PROMPT_LENGTH: {len(prompt_with_context)} chars"
+                    )
                 result = self._sample_tool_call(prompt_with_context, tools)
                 if result:
                     self._log(result, prompt)

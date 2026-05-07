@@ -1,0 +1,34 @@
+llm:
+  name: gpt-4o-mini-2024-07-18
+  temperature: 1.0
+  disabled: false
+
+max_concurrent_actions: 100
+memory_backend: list
+action_mode: generic
+tool_calling:
+  mode: single
+prompt_additions:
+  action_count_guidance: false
+
+checkpoint:
+  every_n_steps: null
+  explicit_steps: [30]
+
+engine:
+  preset: base
+  action_loop:
+    built_in: null
+    class_path: replications.echo_chambers.components.action_loop.FixedActionsThenBeliefProbePolicy
+    params:
+      count: 5
+      belief_options: ["-2", "-1", "0", "1", "2"]
+      belief_probe_tag: echo_belief_probe
+      include_self_state: ${echo_include_self_state_feedback}
+  probe_schedule:
+    built_in: disabled
+    class_path: null
+    params: {}
+
+roleplaying_instructions: |
+  You are simulating {name}, a person participating in a social-media opinion discussion.

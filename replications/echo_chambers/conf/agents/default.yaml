@@ -1,0 +1,43 @@
+# @package agents
+
+shared_memories:
+  - Agents are participating in a language-based social opinion simulation.
+  - ${event.context}
+
+persona_pipeline:
+  processing_mode: raw
+  defaults:
+    params:
+      scenario_context: ${event.context}
+      goal: "Reflect on opinions heard from close contacts and update your belief honestly."
+      llm_response_mode: ${echo_llm_response_mode}
+      prompt_variant: ${echo_prompt_variant}
+      short_memory_processor_class: ${echo_concordia_short_memory_processor_class}
+      long_memory_processor_class: ${echo_concordia_long_memory_processor_class}
+      belief_update_processor_class: ${echo_concordia_belief_update_processor_class}
+    shared_memories:
+      - Agents are participating in a language-based social opinion simulation.
+      - ${event.context}
+  classes:
+    echo_user:
+      count: ${num_agents}
+      prefab_module: ${echo_agent_prefab_module}
+      sim_role_name: echo_user
+      data:
+        source: local_json
+        path: ${echo_agent_records_path}
+      field_map:
+        name: name
+        context: context
+        system_prompt: system_prompt
+        agent_id: agent_id
+        initial_belief: initial_belief
+        initial_opinion: initial_opinion
+        initial_reasoning: initial_reasoning
+        traits: traits
+        age: age
+        gender: gender
+        education_level: education_level
+
+initial_observations:
+  - "{name} is ready to hear from close contacts."

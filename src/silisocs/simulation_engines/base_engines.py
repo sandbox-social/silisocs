@@ -177,44 +177,45 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
         return_raw_action: bool = False,
     ) -> str | dict[str, str]:
         """Execute one observe/act/resolve cycle for a single entity."""
-        with self._gm_lock(game_master):
-            if observe_before_action:
+        if observe_before_action:
+            with self._gm_lock(game_master):
                 observation = self.make_observation(game_master, entity)
-                if observation and observation.strip():
-                    if verbose:
-                        print(
-                            termcolor.colored(
-                                f"Entity {entity.name} observed: {observation}",
-                                _PRINT_COLOR,
-                            )
+            if observation and observation.strip():
+                if verbose:
+                    print(
+                        termcolor.colored(
+                            f"Entity {entity.name} observed: {observation}",
+                            _PRINT_COLOR,
                         )
-                    entity.observe(observation)
-
-            if skip_actions:
-                return {"raw": "", "rendered": "", "resolved": ""} if return_raw_action else ""
-
-            if verbose:
-                print(
-                    termcolor.colored(
-                        f"Entity {entity.name} is next to act. They must respond"
-                        f' in the format: "{action_spec}".',
-                        _PRINT_COLOR,
                     )
-                )
+                entity.observe(observation)
 
-            raw_action = entity.act(action_spec)
-            raw_text = str(raw_action)
-            action = f"{entity.name}: {raw_text}"
-            if verbose:
-                print(
-                    termcolor.colored(f"Entity {entity.name} chose action: {action}", _PRINT_COLOR)
-                )
+        if skip_actions:
+            return {"raw": "", "rendered": "", "resolved": ""} if return_raw_action else ""
 
+        if verbose:
+            print(
+                termcolor.colored(
+                    f"Entity {entity.name} is next to act. They must respond"
+                    f' in the format: "{action_spec}".',
+                    _PRINT_COLOR,
+                )
+            )
+
+        # Keep the expensive model call outside the GM/app lock so entity actions
+        # can execute in parallel while observation/resolve stay serialized.
+        raw_action = entity.act(action_spec)
+        raw_text = str(raw_action)
+        action = f"{entity.name}: {raw_text}"
+        if verbose:
+            print(termcolor.colored(f"Entity {entity.name} chose action: {action}", _PRINT_COLOR))
+
+        with self._gm_lock(game_master):
             result = self.agent_resolve(game_master, action, verbose=verbose)
-            entity.observe(result)
-            if return_raw_action:
-                return {"raw": raw_text, "rendered": action, "resolved": str(result)}
-            return action
+        entity.observe(result)
+        if return_raw_action:
+            return {"raw": raw_text, "rendered": action, "resolved": str(result)}
+        return action
 
     @staticmethod
     def _is_app_game_master(game_master: entity_lib.Entity) -> bool:

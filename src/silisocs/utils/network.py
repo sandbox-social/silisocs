@@ -7,6 +7,7 @@ Updated to work with YAML-based configuration.
 import json
 import random
 from pathlib import Path
+from typing import Any
 
 try:
     import networkx as nx
@@ -14,6 +15,118 @@ except ImportError:
     nx = None
 
 from silisocs.utils.social_media_dataclasses import SimRoleParameters
+
+
+def _coerce_predefined_node(
+    value: Any,
+    *,
+    agent_names: list[str],
+    node_to_agent: dict[Any, str],
+) -> str | None:
+    """Map a predefined graph node identifier onto a configured agent name."""
+    if value in node_to_agent:
+        return node_to_agent[value]
+
+    value_str = str(value)
+    if value_str in node_to_agent:
+        return node_to_agent[value_str]
+    if value_str in agent_names:
+        return value_str
+
+    try:
+        value_int = int(value)
+    except (TypeError, ValueError):
+        value_int = None
+
+    if value_int is not None:
+        if value_int in node_to_agent:
+            return node_to_agent[value_int]
+        if 0 <= value_int < len(agent_names):
+            return agent_names[value_int]
+
+    return None
+
+
+def _normalize_predefined_graph_payload(
+    payload: Any,
+    agent_names: list[str],
+) -> dict[str, list[str]]:
+    """Normalize supported predefined graph JSON shapes to follower -> followees.
+
+    Supported inputs are:
+      * ``{"nodes": [...], "edges": [[u, v], ...]}``, as emitted by
+        EchoChamberSim. Edges are treated as undirected follow ties.
+      * ``{"Agent_0": ["Agent_1"]}`` or ``{"0": [1]}`` adjacency maps.
+      * Wrappers such as ``{"adjacency": {...}}`` or ``{"graph": {...}}``.
+    """
+    following_sets: dict[str, set[str]] = {name: set() for name in agent_names}
+
+    if not isinstance(payload, dict):
+        return {name: [] for name in agent_names}
+
+    for wrapper_key in ("adjacency", "following", "follow_graph", "graph"):
+        wrapped = payload.get(wrapper_key)
+        if isinstance(wrapped, dict):
+            return _normalize_predefined_graph_payload(wrapped, agent_names)
+
+    node_to_agent: dict[Any, str] = {}
+    nodes = payload.get("nodes")
+    if isinstance(nodes, list):
+        for idx, node in enumerate(nodes):
+            if idx >= len(agent_names):
+                break
+            node_to_agent[node] = agent_names[idx]
+            node_to_agent[str(node)] = agent_names[idx]
+
+    edges = payload.get("edges")
+    if isinstance(edges, list):
+        for edge in edges:
+            if not isinstance(edge, (list, tuple)) or len(edge) < 2:
+                continue
+            source = _coerce_predefined_node(
+                edge[0], agent_names=agent_names, node_to_agent=node_to_agent
+            )
+            target = _coerce_predefined_node(
+                edge[1], agent_names=agent_names, node_to_agent=node_to_agent
+            )
+            if source and target and source != target:
+                following_sets[source].add(target)
+                following_sets[target].add(source)
+        return {name: sorted(following_sets[name]) for name in agent_names}
+
+    adjacency_like = {
+        key: value
+        for key, value in payload.items()
+        if key
+        not in {
+            "nodes",
+            "edges",
+            "clustering_coefficient",
+            "average_path_length",
+            "density",
+            "diameter",
+        }
+    }
+    for raw_source, raw_targets in adjacency_like.items():
+        source = _coerce_predefined_node(
+            raw_source, agent_names=agent_names, node_to_agent=node_to_agent
+        )
+        if not source:
+            continue
+        if isinstance(raw_targets, dict):
+            target_iterable = list(raw_targets.keys())
+        elif isinstance(raw_targets, (list, tuple, set)):
+            target_iterable = list(raw_targets)
+        else:
+            continue
+        for raw_target in target_iterable:
+            target = _coerce_predefined_node(
+                raw_target, agent_names=agent_names, node_to_agent=node_to_agent
+            )
+            if target and target != source:
+                following_sets[source].add(target)
+
+    return {name: sorted(following_sets[name]) for name in agent_names}
 
 
 def get_followership_connection_stats(
@@ -298,12 +411,13 @@ def generate_follow_network(
             try:
                 with Path(predefined_path).open(encoding="utf-8") as f:
                     payload = json.load(f)
-                if isinstance(payload, dict):
-                    loaded = {str(k): list(v or []) for k, v in payload.items()}
+                loaded = _normalize_predefined_graph_payload(payload, agent_names)
             except Exception as e:
                 print(f"Failed to load predefined graph from '{predefined_path}': {e}")
             if loaded:
                 predefined = loaded
+        else:
+            predefined = _normalize_predefined_graph_payload(predefined, agent_names)
         return {name: list(predefined.get(name, [])) for name in agent_names}
 
     print(f"Unknown network type '{network_type}', falling back to barabasi_albert.")
