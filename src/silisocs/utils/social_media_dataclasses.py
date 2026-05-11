@@ -1,4 +1,4 @@
-"""social_media_dataclasses module. Auto-generated module docstring."""
+"""Environment runtime dataclasses with social-media compatibility aliases."""
 
 from dataclasses import dataclass, field
 
@@ -35,8 +35,30 @@ class UserData:
 
 
 @dataclass(frozen=True)
+class EnvironmentParams(AbstractGameMasterParams):
+    """Generic environment game-master parameters."""
+
+    name: str
+    calls_to_action: dict[str, str]
+    app_module_path: str = "silisocs"
+    sim_role: SimRole
+    environment_data: UserData = field(
+        default_factory=lambda: UserData(sim_role_parameters=SimRoleParameters(), sim_roles={})
+    )
+    app_description: str = "Social media platform simulation"
+
+    @property
+    def sm_user_data(self) -> UserData:
+        """Compatibility accessor for existing social-media call sites."""
+        return self.environment_data
+
+
+EnvironmentRuntimeData = UserData
+
+
+@dataclass(frozen=True)
 class SocialMediaParams(AbstractGameMasterParams):
-    """SocialMediaParams."""
+    """Compatibility dataclass for social-media game-master parameters."""
 
     name: str
     calls_to_action: dict[str, str]
@@ -46,3 +68,8 @@ class SocialMediaParams(AbstractGameMasterParams):
         default_factory=lambda: UserData(sim_role_parameters=SimRoleParameters(), sim_roles={})
     )
     app_description: str = "Social media platform simulation"
+
+    @property
+    def environment_data(self) -> UserData:
+        """Expose social-media params through the generic field name."""
+        return self.sm_user_data

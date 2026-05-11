@@ -265,7 +265,7 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
         :rtype: bool
         """
         act_component = getattr(game_master, "_act_component", None)
-        return hasattr(act_component, "sm_app")
+        return hasattr(act_component, "env_app") or hasattr(act_component, "sm_app")
 
     @staticmethod
     def _sync_app_game_master_runtime_state(
@@ -275,7 +275,7 @@ class BaseRuntimeEngine(simultaneous.Simultaneous):
     ) -> None:
         """Keep GM-side runtime metadata in sync with current episode state."""
         act_component = getattr(game_master, "_act_component", None)
-        sm_app = getattr(act_component, "sm_app", None)
+        sm_app = getattr(act_component, "env_app", getattr(act_component, "sm_app", None))
         action_logger = getattr(sm_app, "action_logger", None)
         model = getattr(act_component, "_model", None)
 

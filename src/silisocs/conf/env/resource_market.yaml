@@ -1,0 +1,74 @@
+# @package env
+
+platform_type: resource_market
+app_module_path: silisocs.environments.backends.resource_market
+use_server: false
+
+enabled_actions: null
+enable_gm_multi_flow: false
+observation_history: 100
+
+app:
+  class_path: null
+  params:
+    initial_cash: 20
+    initial_inventory:
+      food: 1
+      wood: 0
+      ore: 0
+    resources: [food, wood, ore]
+
+gamemaster:
+  filename: environment
+  name: resource_market_gm
+  sim_role:
+    name: resource market game master
+    module_path: silisocs.environments.gm.game_master
+
+gm:
+  preset: base
+  components:
+    next_acting:
+      built_in: fixed_order
+      class_path: null
+      params: {}
+    recommend:
+      built_in: disabled
+      class_path: null
+      params: {}
+    observe:
+      built_in: app_observation
+      class_path: null
+      params:
+        limit: 8
+    resolve:
+      built_in: tool_calling
+      class_path: null
+      params: {}
+    initializer:
+      built_in: backend_default
+      class_path: null
+      params: {}
+
+gm_orchestration:
+  gms: []
+  flow_bindings:
+    flow_to_gm: {}
+    flow_to_gms: {}
+    gm_to_flows: {}
+
+usage_instructions: |
+  You are operating in a resource market environment. Agents can inspect the
+  market, produce resources, list resources for sale, buy open listings, consume
+  inventory, or finish the current action episode.
+
+action_prompt: |
+  ## AVAILABLE ACTIONS
+  Choose one available market action based on the current resource market state.
+
+  [OUTPUT STYLE]
+
+output_style: |
+  ## OUTPUT FORMAT
+  ACTION: <action_name>
+  <param_name>: <value>

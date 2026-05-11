@@ -22,6 +22,36 @@ class BackendInitializer(ABC):
         raise NotImplementedError
 
 
+class NoOpComponent:
+    """Passive component for optional GM slots that are disabled."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        """Accept and ignore runtime kwargs from component factories."""
+        del kwargs
+        self._entity: Any | None = None
+
+    def set_entity(self, entity: Any) -> None:
+        """Attach owning entity for Concordia compatibility."""
+        self._entity = entity
+
+    def get_entity(self) -> Any:
+        """Return owning entity for Concordia compatibility."""
+        return self._entity
+
+    def pre_act(self, action_spec: Any) -> str:
+        """Return no context contribution."""
+        del action_spec
+        return ""
+
+    def get_state(self) -> dict[str, Any]:
+        """Return serializable component state."""
+        return {}
+
+    def set_state(self, state: Mapping[str, Any]) -> None:
+        """Restore component state."""
+        del state
+
+
 class FlowComponent:
     """Mixin for flow-aware components with flow-field routing support.
 

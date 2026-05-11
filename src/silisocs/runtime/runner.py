@@ -60,7 +60,7 @@ from silisocs.utils.misc import (
     write_concordia_logs,
 )
 from silisocs.utils.network import get_simrole_parameters
-from silisocs.utils.social_media_dataclasses import SocialMediaParams, UserData
+from silisocs.utils.social_media_dataclasses import EnvironmentParams, UserData
 
 # Package root (src/silisocs)
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -461,10 +461,18 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
             GameMasterConfig(
                 prefab=f"{spec['filename']}__GameMaster",
                 params=asdict(
-                    SocialMediaParams(
+                    EnvironmentParams(
                         name=gm_name,
                         # Determine if tool-calling is enabled
                         calls_to_action={
+                            "environment_action": _build_action_prompt(
+                                cfg,
+                                tool_calling_mode=projection.tool_calling_mode,
+                                gm_prompt_cfg=cast(
+                                    Mapping[str, Any] | None,
+                                    spec.get("prompt"),
+                                ),
+                            ),
                             "social_media_action": _build_action_prompt(
                                 cfg,
                                 tool_calling_mode=projection.tool_calling_mode,
@@ -476,7 +484,7 @@ def build_game_masters(cfg: DictConfig) -> list[prefab_lib.InstanceConfig]:
                         },
                         sim_role=sim_role,
                         app_module_path=getattr(_env_cfg(cfg), "app_module_path", ""),
-                        sm_user_data=gm_user_data,
+                        environment_data=gm_user_data,
                         app_description=getattr(_env_cfg(cfg), "usage_instructions", ""),
                     )
                 ),
@@ -560,9 +568,13 @@ def populate_agent_data(
 
     social_media_gms = [gm for gm in game_masters if gm.role == prefab_lib.Role.GAME_MASTER]
     if not social_media_gms:
-        raise ValueError("No social media game master found.")
+        raise ValueError("No environment game master found.")
     for social_media_gm in social_media_gms:
-        user_data = social_media_gm.params.setdefault("sm_user_data", {})
+        user_data = social_media_gm.params.setdefault(
+            "environment_data",
+            social_media_gm.params.setdefault("sm_user_data", {}),
+        )
+        social_media_gm.params["sm_user_data"] = user_data
         user_data.setdefault("sim_roles", {}).update(sim_roles)
         user_data["entity_flow_tags"] = dict(entity_flow_tags)
 

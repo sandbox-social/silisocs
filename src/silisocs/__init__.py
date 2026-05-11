@@ -27,7 +27,7 @@ def __getattr__(name: str):
         from silisocs.runtime.simulation import Simulation
 
         return Simulation
-    if name in ("PhoneApp", "SocialMediaApp", "app_action"):
+    if name in ("EnvironmentApp", "PhoneApp", "SocialMediaApp", "app_action"):
         from silisocs.environments.backends import base
 
         return getattr(base, name)
@@ -36,6 +36,7 @@ def __getattr__(name: str):
 
 __all__ = [
     "ConfigStore",
+    "EnvironmentApp",
     "PhoneApp",
     "Simulation",
     "SocialMediaApp",

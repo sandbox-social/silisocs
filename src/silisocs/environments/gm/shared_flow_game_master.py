@@ -266,7 +266,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
         init_elapsed = time.time() - init_t0
 
         startup_line = (
-            f"Startup social_init: seed_posts={seed_elapsed:.2f}s "
+            f"Startup environment_init: seed_posts={seed_elapsed:.2f}s "
             f"seed_provider={type(seed_post_provider).__name__} "
             f"app_initialize={init_elapsed:.2f}s "
             f"initializer={type(backend_initializer).__name__} "
@@ -412,6 +412,9 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
             act_component=act_component,
             context_components=components,
         )
+
+
+MultiFlowEnvironmentGameMaster = MultiFlowSocialMediaGameMaster
 
 
 def _class_to_kebab_case(class_name: str) -> str:

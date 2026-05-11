@@ -70,6 +70,7 @@ class SMAct(gm_components.switch_act.SwitchAct):
         )
         self.call_to_action_str = call_to_action_str
         self.sm_app = sm_app
+        self.env_app = sm_app
         self.entity_flow_tags = dict(entity_flow_tags or {})
         self.activity_transition_rates = activity_transition_rates or {}
         self.action_mode = action_mode
@@ -274,3 +275,7 @@ class MultiFlowSMAct(SMAct):
             self._log(result, result, action_spec)
             return result
         return super()._resolve(contexts, action_spec)
+
+
+EnvironmentAct = SMAct
+MultiFlowEnvironmentAct = MultiFlowSMAct

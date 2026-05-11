@@ -9,7 +9,7 @@ from typing import Any
 
 from concordia.typing import entity_component
 
-from silisocs.environments.gm.components.base import BackendInitializer, FlowComponent
+from silisocs.environments.gm.components.base import BackendInitializer, FlowComponent, NoOpComponent
 from silisocs.environments.gm.components.initialize import DefaultBackendInitializer
 from silisocs.environments.gm.components.next_acting import (
     ActivityMarkovNextActing,
@@ -18,6 +18,7 @@ from silisocs.environments.gm.components.next_acting import (
     FixedOrderNextActing,
 )
 from silisocs.environments.gm.components.observe import (
+    AppObservationComponent,
     EpisodeObservation,
     TimelineMakeObservation,
 )
@@ -29,6 +30,7 @@ from silisocs.environments.gm.components.resolve import (
 )
 
 _OBSERVE_BUILT_INS = {
+    "app_observation": AppObservationComponent,
     "timeline_every_turn": TimelineMakeObservation,
     "episode_only": EpisodeObservation,
 }
@@ -51,6 +53,8 @@ _INITIALIZER_BUILT_INS = {
 }
 
 _RECOMMENDATION_BUILT_INS = {
+    "disabled": NoOpComponent,
+    "none": NoOpComponent,
     "recommendation_component": RecommendationComponent,
 }
 
@@ -152,6 +156,7 @@ def build_observe_components(
     model: Any,
     player_names: list[str],
     sm_app: Any,
+    env_app: Any | None = None,
     entity_flow_tags: dict[str, str] | None = None,
     episode_observation_flow: str = "fixed_pre",
     timeline_mode: str | None = None,
@@ -188,6 +193,7 @@ def build_observe_components(
             model=model,
             player_names=player_names,
             sm_app=sm_app,
+            env_app=env_app if env_app is not None else sm_app,
             entity_flow_tags=entity_flow_tags,
             episode_observation_flow=episode_observation_flow,
             timeline_mode=timeline_mode,
@@ -210,6 +216,7 @@ def build_observe_component(
     model: Any,
     player_names: list[str],
     sm_app: Any,
+    env_app: Any | None = None,
     entity_flow_tags: dict[str, str] | None = None,
     episode_observation_flow: str = "fixed_pre",
     timeline_mode: str | None = None,
@@ -229,11 +236,15 @@ def build_observe_component(
             "model": model,
             "player_names": player_names,
             "sm_app": sm_app,
+            "env_app": env_app if env_app is not None else sm_app,
             "entity_flow_tags": entity_flow_tags,
             "episode_observation_flow": episode_observation_flow,
             "episode_observation_flows": episode_observation_flows,
             "timeline_mode": timeline_mode,
             "timeline_config": dict(timeline_config or {}),
+            "observation_params": dict(
+                (slot_cfg or {}).get("params", {}) if isinstance(slot_cfg, Mapping) else {}
+            ),
         },
     )
 

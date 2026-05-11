@@ -22,7 +22,7 @@ from concordia.language_model import language_model
 from concordia.typing import prefab as prefab_lib
 from omegaconf import OmegaConf
 
-from silisocs.environments.backends.factory import create_social_media_app
+from silisocs.environments.backends.factory import create_environment_app
 from silisocs.environments.gm import act as gm_social_act
 from silisocs.environments.gm.components.factory import (
     build_backend_initializer,
@@ -86,9 +86,18 @@ def _compute_activity_rates(
 ) -> dict[str, dict[str, float]]:
     """Map each agent to its role's activity transition rates."""
     rates: dict[str, dict[str, float]] = {}
-    transition_rates = user_data["sim_role_parameters"]["activity_transition_rates"]
+    sim_role_parameters = user_data.get("sim_role_parameters", {}) or {}
+    transition_rates = dict(sim_role_parameters.get("activity_transition_rates", {}) or {})
     for agent, role in user_data["sim_roles"].items():
-        rates[agent] = transition_rates[role]
+        rates[agent] = dict(
+            transition_rates.get(
+                role,
+                {
+                    "inactive_to_active": 1.0,
+                    "active_to_inactive": 0.0,
+                },
+            )
+        )
     return rates
 
 
@@ -149,16 +158,17 @@ def _build_seed_post_provider(seed_post_cfg: dict[str, Any] | None = None) -> Se
 
 
 @dataclasses.dataclass
-class BaseSocialMediaGameMaster(prefab_lib.Prefab):
-    """Base social-media GM with configurable component slots."""
+class BaseEnvironmentGameMaster(prefab_lib.Prefab):
+    """Base environment GM with configurable component slots."""
 
-    description: str = "A social-media game master."
+    description: str = "An environment game master."
     params: Mapping[str, Any] = dataclasses.field(
         default_factory=lambda: {
-            "name": "social-media_game-master",
+            "name": "environment_game-master",
             "calls_to_action": {},
             "app_module_path": "",
             "sim_role": {},
+            "environment_data": {},
             "sm_user_data": {},
             "app_description": "",
         }
@@ -207,12 +217,15 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
         model: language_model.LanguageModel,
         memory_bank: basic_associative_memory.AssociativeMemoryBank,
     ) -> entity_agent_with_logging.EntityAgentWithLogging:
-        """Build and return the configured social-media game master entity."""
+        """Build and return the configured environment game master entity."""
         del memory_bank
         name = str(self.params.get("name"))
         calls_to_action = self.params.get("calls_to_action", {})
-        user_data = self.params["sm_user_data"]
-        call_to_sm_action = calls_to_action.get("social_media_action", "")
+        user_data = self.params.get("environment_data") or self.params["sm_user_data"]
+        call_to_sm_action = calls_to_action.get(
+            "environment_action",
+            calls_to_action.get("social_media_action", ""),
+        )
 
         cfg = ConfigStore.get_config()
         action_logger = EventLogger(
@@ -224,7 +237,7 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
         platform_type = getattr(_env_cfg(cfg), "platform_type", "twitter_like")
         print(f"[DEBUG] Using platform_type: {platform_type}")
         db_path = os.path.join(cfg.output_rootname, f"{platform_type}.db")
-        sm_app = create_social_media_app(
+        sm_app = create_environment_app(
             platform_type=platform_type,
             action_logger=action_logger,
             perform_operations=getattr(_env_cfg(cfg), "use_server", False),
@@ -269,11 +282,15 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
         else:
             _LOGGER.info("No env.seed_posts found in composed config; proceeding without it.")
 
-        seed_post_provider = _build_seed_post_provider(seed_post_cfg)
-        _LOGGER.info(f"Using seed post provider: {type(seed_post_provider).__name__}")
-
         seed_t0 = time.time()
-        seed_posts = _collect_seed_posts(self.entities, provider=seed_post_provider)
+        if hasattr(env_cfg, "seed_posts"):
+            seed_post_provider = _build_seed_post_provider(seed_post_cfg)
+            _LOGGER.info(f"Using seed post provider: {type(seed_post_provider).__name__}")
+            seed_posts = _collect_seed_posts(self.entities, provider=seed_post_provider)
+        else:
+            seed_post_provider = DisabledSeedPostProvider()
+            seed_posts = {entity.name: "" for entity in self.entities}
+            _LOGGER.info("No env.seed_posts found; seed post generation disabled.")
         seed_elapsed = time.time() - seed_t0
 
         activity_rates = _compute_activity_rates(user_data)
@@ -333,7 +350,7 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
         init_elapsed = time.time() - init_t0
 
         startup_line = (
-            f"Startup social_init: seed_posts={seed_elapsed:.2f}s "
+            f"Startup environment_init: seed_posts={seed_elapsed:.2f}s "
             f"seed_provider={type(seed_post_provider).__name__} "
             f"app_initialize={init_elapsed:.2f}s "
             f"initializer={type(backend_initializer).__name__} "
@@ -501,3 +518,6 @@ class BaseSocialMediaGameMaster(prefab_lib.Prefab):
             act_component=act_component,
             context_components=components,
         )
+
+
+BaseSocialMediaGameMaster = BaseEnvironmentGameMaster

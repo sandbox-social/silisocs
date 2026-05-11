@@ -1,0 +1,36 @@
+# @package agents
+
+persona_pipeline:
+  processing_mode: raw
+  defaults:
+    params:
+      seed_post: ""
+      bio: ""
+      style: ""
+      goal: null
+      scenario_context: ${event.context}
+    shared_memories:
+      - They are participating in a local resource market.
+      - ${event.context}
+  classes:
+    trader:
+      count: ${num_agents}
+      prefab_module: silisocs.agents.entity
+      sim_role_name: trader
+      data:
+        source: inline
+        records:
+          - persona: Alex is careful with cash and prefers to build a reserve before buying.
+          - persona: Blair looks for useful trades and is willing to sell surplus inventory.
+          - persona: Casey tries to keep enough food on hand while producing extra resources.
+          - persona: Devon watches prices closely and avoids overpaying for scarce goods.
+      field_map:
+        context: persona
+
+shared_memories:
+  - They are participating in a local resource market.
+  - ${event.context}
+
+initial_observations:
+  - "{name} reviews their current cash and inventory."
+  - "{name} considers whether to produce, sell, buy, consume, or wait."

@@ -606,23 +606,21 @@ def _param_to_json_schema(param: "Parameter") -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# SocialMediaApp - abstract base for all social media platform apps
+# EnvironmentApp - abstract base for all environment backend apps
 # --------------------------------------------------------------------------- #
 
 
-class SocialMediaApp(PhoneApp, abc.ABC):
-    """Base class for all social media platform apps used in the simulation.
+class EnvironmentApp(PhoneApp, abc.ABC):
+    """Base class for all environment backend apps used in the simulation.
 
-    Subclasses wrap a platform engine (e.g. Mastodon API, TwitterLikePlatform,
-    RedditLikePlatform) and expose ``@app_action`` decorated methods that agents
-    can invoke.
+    Subclasses expose ``@app_action`` decorated methods that agents can invoke.
+    The base contract is intentionally domain-neutral: initialize the runtime,
+    provide an observation string for an actor, and expose callable actions.
 
     The only **required** method is ``initialize()``, which sets up platform
-    state (users, follow networks, seed posts, etc.) at the start of a
-    simulation run.  Everything else (``get_timeline``,
-    ``format_timeline_for_observation``, ``parse_and_resolve_action``) has a
-    default no-op implementation so simple subclasses can start minimal and
-    grow.
+    state at the start of a simulation run. Capability-specific methods such as
+    social timelines, parsed social action resolution, or recommendation updates
+    are optional and should be consumed only by domain-specific GM components.
     """
 
     # ---------------------------------------------------------------------- #
@@ -631,11 +629,10 @@ class SocialMediaApp(PhoneApp, abc.ABC):
 
     @abc.abstractmethod
     def initialize(self, agent_names: list[str], **kwargs: Any) -> None:
-        """Set up the platform state for a simulation run.
+        """Set up environment state for a simulation run.
 
-        The game master calls this once with all agents and config.  Each
-        platform is responsible for its own network generation strategy
-        (e.g. Barabasi-Albert for Twitter/Mastodon, subreddit-based for Reddit).
+        The game master calls this once with all agents and config. Each
+        environment is responsible for interpreting its own configuration.
 
         Args:
             agent_names: List of agent display names.
@@ -649,6 +646,16 @@ class SocialMediaApp(PhoneApp, abc.ABC):
                   like ``subreddits`` for Reddit.
         """
         ...
+
+    def observe(self, actor_name: str, **kwargs: Any) -> str:
+        """Return a domain-specific observation string for an actor.
+
+        Generic game-master observation components call this method. Domain
+        backends can override it directly; social feed backends can instead use
+        social-specific observation components that depend on timeline methods.
+        """
+        del actor_name, kwargs
+        return ""
 
     # ---------------------------------------------------------------------- #
     # Optional interface (override per platform)
@@ -734,3 +741,12 @@ class SocialMediaApp(PhoneApp, abc.ABC):
         for custom prompt formatting.
         """
         return self.full_description()
+
+
+class SocialMediaApp(EnvironmentApp):
+    """Compatibility base for social-media backends.
+
+    Social media apps are environment apps with optional feed/timeline and
+    recommendation capabilities. New generic backends should subclass
+    :class:`EnvironmentApp` directly.
+    """

@@ -14,6 +14,90 @@ from silisocs.runtime.config import ConfigStore
 _CALL_TO_MAKE_OBSERVATION = "{name}"
 
 
+def _active_entity_from_call_to_action(call_to_action: str, fallback: Any = None) -> str:
+    """Extract active entity name from Concordia observation call text."""
+    import re
+
+    match = re.search(r"What is the current situation faced by (.+?)\?", call_to_action)
+    if match:
+        return match.group(1).strip()
+
+    if fallback is not None:
+        try:
+            return str(fallback(call_to_action)).strip()
+        except Exception:
+            pass
+    return call_to_action.strip()
+
+
+class AppObservationComponent(FlowComponent, make_observation_component.MakeObservation):
+    """Generic observation component that delegates to ``EnvironmentApp.observe``."""
+
+    def __init__(
+        self,
+        *,
+        model: Any,
+        player_names: Sequence[str],
+        env_app: Any | None = None,
+        sm_app: Any | None = None,
+        entity_flow_tags: dict[str, str] | None = None,
+        observation_params: dict[str, Any] | None = None,
+        call_to_make_observation: str = _CALL_TO_MAKE_OBSERVATION,
+    ):
+        """Initialize a generic app-backed observation component."""
+        FlowComponent.__init__(self)
+        make_observation_component.MakeObservation.__init__(
+            self,
+            model=model,
+            player_names=player_names,
+            components=(),
+            call_to_make_observation=call_to_make_observation,
+        )
+        self._env_app = env_app if env_app is not None else sm_app
+        self._entity_flow_tags = dict(entity_flow_tags or {})
+        self._observation_params = dict(observation_params or {})
+
+    def _get_active_entity_name_from_call_to_action(self, call_to_action: str) -> str:
+        """Extract active entity name from action spec text."""
+        return _active_entity_from_call_to_action(
+            call_to_action,
+            fallback=super()._get_active_entity_name_from_call_to_action,
+        )
+
+    def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
+        """Return the environment app observation for the active entity."""
+        if action_spec.output_type != entity_lib.OutputType.MAKE_OBSERVATION:
+            return ""
+
+        active_entity_name = self._get_active_entity_name_from_call_to_action(
+            action_spec.call_to_action
+        )
+        flow_tag = self._entity_flow_tags.get(active_entity_name, "default")
+        current_episode = getattr(getattr(self._env_app, "action_logger", None), "episode_idx", 0)
+        observe = getattr(self._env_app, "observe", None)
+        if not callable(observe):
+            result = ""
+        else:
+            result = str(
+                observe(
+                    active_entity_name,
+                    step=current_episode,
+                    flow_tag=flow_tag,
+                    **self._observation_params,
+                )
+            )
+
+        self._logging_channel(
+            {
+                "Key": self._pre_act_label,
+                "Summary": result[:100] + "..." if len(result) > 100 else result,
+                "Value": result,
+                "Active Entity": active_entity_name,
+            }
+        )
+        return result
+
+
 class TimelineMakeObservation(FlowComponent, make_observation_component.MakeObservation):
     """Always fetch timeline when MAKE_OBSERVATION is requested."""
 
@@ -60,19 +144,10 @@ class TimelineMakeObservation(FlowComponent, make_observation_component.MakeObse
         1. Simple: "{name}" (our template)
         2. Full question: "What is the current situation faced by {name}?..." (Concordia template)
         """
-        import re
-
-        # Try to extract from full question template: "What is the current situation faced by NAME?"
-        match = re.search(r"What is the current situation faced by (.+?)\?", call_to_action)
-        if match:
-            return match.group(1).strip()
-
-        # Fallback to parent implementation for simple "{name}" template
-        try:
-            return super()._get_active_entity_name_from_call_to_action(call_to_action)
-        except Exception:
-            # Last resort: return the call_to_action as-is
-            return call_to_action.strip()
+        return _active_entity_from_call_to_action(
+            call_to_action,
+            fallback=super()._get_active_entity_name_from_call_to_action,
+        )
 
     def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
         """Return formatted timeline observation for the active entity."""
@@ -172,19 +247,10 @@ class EpisodeObservation(make_observation_component.MakeObservation):
         1. Simple: "{name}" (our template)
         2. Full question: "What is the current situation faced by {name}?..." (Concordia template)
         """
-        import re
-
-        # Try to extract from full question template: "What is the current situation faced by NAME?"
-        match = re.search(r"What is the current situation faced by (.+?)\?", call_to_action)
-        if match:
-            return match.group(1).strip()
-
-        # Fallback to parent implementation for simple "{name}" template
-        try:
-            return super()._get_active_entity_name_from_call_to_action(call_to_action)
-        except Exception:
-            # Last resort: return the call_to_action as-is
-            return call_to_action.strip()
+        return _active_entity_from_call_to_action(
+            call_to_action,
+            fallback=super()._get_active_entity_name_from_call_to_action,
+        )
 
     def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
         """Return episode number if entity is in episode observation flow."""

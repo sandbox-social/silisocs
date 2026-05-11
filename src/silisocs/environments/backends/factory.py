@@ -1,26 +1,26 @@
-"""Factory function for creating social media app instances.
+"""Factory functions for creating environment app instances.
 
 Provides a single entry point for the game master to instantiate the
-correct platform-specific ``SocialMediaApp`` based on configuration.
+correct backend ``EnvironmentApp`` based on configuration.
 """
 
 import importlib
 from typing import Any
 
-from silisocs.environments.backends.base import SocialMediaApp
+from silisocs.environments.backends.base import EnvironmentApp
 
 
-def _load_app_class(class_path: str) -> type[SocialMediaApp]:
+def _load_app_class(class_path: str) -> type[EnvironmentApp]:
     module_path, class_name = class_path.rsplit(".", 1)
     module = importlib.import_module(module_path)
     cls = getattr(module, class_name)
-    if not issubclass(cls, SocialMediaApp):
-        raise TypeError(f"Configured app class is not a SocialMediaApp: {class_path}")
+    if not issubclass(cls, EnvironmentApp):
+        raise TypeError(f"Configured app class is not an EnvironmentApp: {class_path}")
     return cls
 
 
-def create_social_media_app(platform_type: str, **kwargs: Any) -> SocialMediaApp:
-    """Create and return a SocialMediaApp for the given platform type.
+def create_environment_app(platform_type: str, **kwargs: Any) -> EnvironmentApp:
+    """Create and return an EnvironmentApp for the given platform type.
 
     Args:
         platform_type: One of ``"mastodon"``, ``"twitter_like"``, ``"reddit_like"``.
@@ -80,7 +80,18 @@ def create_social_media_app(platform_type: str, **kwargs: Any) -> SocialMediaApp
             app_description=app_description,
             db_path=db_path,
         )
+    if platform_type == "resource_market":
+        from silisocs.environments.backends.resource_market.app import ResourceMarketApp
+
+        init_kwargs = {"action_logger": action_logger, "app_description": app_description}
+        init_kwargs.update(app_params)
+        return ResourceMarketApp(**init_kwargs)
     raise ValueError(
-        f"Unknown social media platform type: '{platform_type}'. "
-        f"Supported types: 'mastodon', 'twitter_like', 'reddit_like'."
+        f"Unknown environment platform type: '{platform_type}'. "
+        f"Supported types: 'mastodon', 'twitter_like', 'reddit_like', 'resource_market'."
     )
+
+
+def create_social_media_app(platform_type: str, **kwargs: Any) -> EnvironmentApp:
+    """Compatibility wrapper for existing social-media call sites."""
+    return create_environment_app(platform_type=platform_type, **kwargs)

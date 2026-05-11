@@ -342,7 +342,7 @@ class Simulation(simulation_lib.Simulation):
             cfg = self._entity_to_prefab_config.get(game_master.name)
             if not cfg or not isinstance(cfg.params, dict):
                 return 0
-            user_data = cfg.params.get("sm_user_data", {})
+            user_data = cfg.params.get("environment_data", cfg.params.get("sm_user_data", {}))
             if not isinstance(user_data, dict):
                 return 0
             orchestration = user_data.get("gm_orchestration", {})
