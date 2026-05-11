@@ -5,6 +5,8 @@ correct backend ``EnvironmentApp`` based on configuration.
 """
 
 import importlib
+import inspect
+from collections.abc import Mapping
 from typing import Any
 
 from silisocs.environments.backends.base import EnvironmentApp
@@ -19,11 +21,39 @@ def _load_app_class(class_path: str) -> type[EnvironmentApp]:
     return cls
 
 
+def _instantiate_app_with_supported_kwargs(
+    cls: type[EnvironmentApp],
+    kwargs: Mapping[str, Any],
+    *,
+    config_param_keys: Any = (),
+) -> EnvironmentApp:
+    """Instantiate an app while validating user-supplied config params."""
+    params = inspect.signature(cls.__init__).parameters
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return cls(**dict(kwargs))
+
+    supported = {
+        name
+        for name, param in params.items()
+        if name != "self"
+        and param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+    }
+    unsupported_config = sorted(set(config_param_keys) - supported)
+    if unsupported_config:
+        raise ValueError(
+            f"Unsupported config param(s) for {cls.__module__}.{cls.__name__}: "
+            f"{unsupported_config}. Supported params: {sorted(supported)}"
+        )
+    filtered = {k: v for k, v in kwargs.items() if k in supported}
+    return cls(**filtered)
+
+
 def create_environment_app(platform_type: str, **kwargs: Any) -> EnvironmentApp:
     """Create and return an EnvironmentApp for the given platform type.
 
     Args:
-        platform_type: One of ``"mastodon"``, ``"twitter_like"``, ``"reddit_like"``.
+        platform_type: Built-in environment selector such as ``"mastodon"``,
+            ``"twitter_like"``, ``"reddit_like"``, or ``"resource_market"``.
         **kwargs: Common keys:
             - ``action_logger``: Logger for recording actions.
             - ``app_description`` (str): Description of the app.
@@ -32,7 +62,7 @@ def create_environment_app(platform_type: str, **kwargs: Any) -> EnvironmentApp:
 
     Returns
     -------
-        A configured ``SocialMediaApp`` instance.
+        A configured ``EnvironmentApp`` instance.
 
     Raises
     ------
@@ -51,7 +81,11 @@ def create_environment_app(platform_type: str, **kwargs: Any) -> EnvironmentApp:
             "db_path": kwargs.get("db_path", "twitter_like.db"),
         }
         init_kwargs.update(app_params)
-        return cls(**init_kwargs)
+        return _instantiate_app_with_supported_kwargs(
+            cls,
+            init_kwargs,
+            config_param_keys=app_params.keys(),
+        )
 
     if platform_type == "mastodon":
         from silisocs.environments.backends.mastodon.apps import SocialNetworkApp
@@ -85,7 +119,11 @@ def create_environment_app(platform_type: str, **kwargs: Any) -> EnvironmentApp:
 
         init_kwargs = {"action_logger": action_logger, "app_description": app_description}
         init_kwargs.update(app_params)
-        return ResourceMarketApp(**init_kwargs)
+        return _instantiate_app_with_supported_kwargs(
+            ResourceMarketApp,
+            init_kwargs,
+            config_param_keys=app_params.keys(),
+        )
     raise ValueError(
         f"Unknown environment platform type: '{platform_type}'. "
         f"Supported types: 'mastodon', 'twitter_like', 'reddit_like', 'resource_market'."

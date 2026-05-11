@@ -7,7 +7,8 @@ The environment layer is composed of three parts:
 
 1. **Engine**: step loop, concurrency, probe timing, and action execution orchestration.
 2. **Game Master (GM)**: who acts next, what agents observe, and how action text is resolved.
-3. **Social Media Backend**: platform state and executable actions (`@app_action` methods).
+3. **Environment Backend**: platform or domain state and executable actions
+   (`@app_action` methods).
 
 This page focuses on end-user and developer configurability for Engine/GM/backends.
 
@@ -29,7 +30,7 @@ This page focuses on end-user and developer configurability for Engine/GM/backen
 Flow controls use two independent switches:
 
 - `env.enable_gm_multi_flow`: enables GM-side component routing (`env.gm.preset: shared_flow`).
-- `sim.enable_engine_multi_flow`: enables engine-side flow scheduling/policies (`engine.preset: flow`).
+- `sim.engine.preset: flow`: enables engine-side flow scheduling/policies.
 
 ## Canonical Structure
 
@@ -38,8 +39,8 @@ Canonical modules:
 - `src/silisocs/environments/gm/game_master.py`: primary GM prefab.
 - `src/silisocs/environments/gm/act.py`: primary SwitchAct specialization.
 - `src/silisocs/environments/gm/components/`: Concordia-native slot components.
-- `src/silisocs/engines/base_engines.py`: primary runtime engine.
-Import from the `environments/gm/` and `engines/` packages.
+- `src/silisocs/simulation_engines/base_engines.py`: primary runtime engine.
+Import from the `environments/gm/` and `simulation_engines/` packages.
 
 ## GM Component Slots (YAML)
 
@@ -48,7 +49,7 @@ Configure GM behavior from `env.gm.components`:
 ```yaml
 env:
   gm:
-    preset: social_media_default
+    preset: base
     components:
       next_acting:
         built_in: activity_markov
@@ -71,6 +72,11 @@ env:
         params: {}
 ```
 
+Configured `params` are strict constructor arguments. Unknown keys fail before
+the simulation starts unless the target class accepts `**kwargs`. Observe
+components that explicitly accept `observation_params` may use `params` as a
+forwarded observation-settings bag.
+
 ### Built-in Next-Acting Components
 
 - `activity_markov`: role-conditioned active/inactive transitions (baseline behavior).
@@ -79,6 +85,7 @@ env:
 
 ### Built-in Observe Components
 
+- `app_observation`: call `EnvironmentApp.observe(...)` for generic backends.
 - `timeline_every_turn`: fetch timeline whenever observation is requested.
 - `episode_only`: return episode-only observations (for fixed/pre-scripted flows).
 
@@ -99,6 +106,11 @@ Fixed-action directive handling:
 ### Built-in Initializer Components
 
 - `backend_default`: standard `sm_app.initialize(...)` call.
+
+### Built-in Recommendation Components
+
+- `recommendation_component`: update social recommendation state.
+- `disabled` / `none`: no-op component for generic or non-recsys environments.
 
 ## Tool-Calling Resolve Mode
 
@@ -193,11 +205,11 @@ other slots at baseline defaults.
 
 Engine extensibility lives under:
 
-- `src/silisocs/engines/base.py`
-- `src/silisocs/engines/base_engines.py`
-- `src/silisocs/engines/policies/action_chunk.py`
-- `src/silisocs/engines/policies/probe_schedule.py`
-- `src/silisocs/engines/policies/factory.py`
+- `src/silisocs/simulation_engines/base.py`
+- `src/silisocs/simulation_engines/base_engines.py`
+- `src/silisocs/simulation_engines/policies/action_chunk.py`
+- `src/silisocs/simulation_engines/policies/probe_schedule.py`
+- `src/silisocs/simulation_engines/policies/factory.py`
 
 Configure engine policies from `sim.engine`:
 
@@ -230,6 +242,9 @@ Built-in probe schedule policies:
 - `step_schedule`: defer to probe orchestrator schedule.
 - `fixed_interval`: trigger on `start_step` + every `every_n_steps`.
 - `disabled`: never run probe phase.
+
+Policy `params` are strict constructor arguments, matching the GM component
+contract.
 
 Engine remains separate from GM component routing by design.
 
@@ -267,6 +282,11 @@ not bypass backend initialization or logging.
 - Put **phase scheduling and chunk semantics** in Engine policies.
 - Put **next actor, observe, resolve, initializer behavior** in GM components.
 - Put **platform action semantics** in backend `@app_action` methods.
+
+For non-social domains, subclass `EnvironmentApp`, provide generic
+`observe(...)`, use `app_observation`, and disable recommendation scheduling.
+Use `SocialMediaApp` only when the backend needs social timeline, feed, or
+recommendation capabilities.
 
 ## Action Prompt Pipeline Implementation
 

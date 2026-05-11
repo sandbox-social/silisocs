@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from silisocs.simulation_engines.policies.action_chunk import (
     FixedCountActionChunkPolicy,
     OpenEndedActionChunkPolicy,
@@ -52,6 +54,18 @@ def test_build_action_loop_policy_supports_class_path() -> None:
     )
     assert isinstance(policy, FixedCountActionChunkPolicy)
     assert policy.count == 3
+
+
+def test_build_action_loop_policy_rejects_unknown_params() -> None:
+    with pytest.raises(ValueError, match="Unsupported config param"):
+        build_action_loop_policy(
+            {
+                "class_path": (
+                    "silisocs.simulation_engines.policies.action_chunk.FixedCountActionChunkPolicy"
+                ),
+                "params": {"count": 3, "typo_count": 9},
+            }
+        )
 
 
 def test_build_probe_schedule_policy_defaults_and_fixed_interval() -> None:

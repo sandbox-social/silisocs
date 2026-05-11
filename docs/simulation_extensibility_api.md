@@ -1,39 +1,26 @@
 # Simulation Extensibility API Reference
 
-This page is a **developer-facing API reference** for extending simulation
-structure in code. It is intentionally separate from workflow guides such as
+This page is a developer-facing API reference for extending simulation
+structure in code. It is separate from workflow guides such as
 [Environment Layer](environment_layer.md) and [Building Agents](building_agents.md).
 
-Use this reference when you want to add new:
-
-- Agent runtime implementations
-- Agent prefab modules
-- Game master prefabs
-- GM components (`observe`, `resolve`, `next_acting`, etc.)
-- Engine implementations
-- Engine policies (action loop and probe schedule)
-
----
+Use this reference when adding new agent runtimes, backend apps, game masters,
+GM components, engines, engine policies, or probe/evaluator code.
 
 ## Reference Map
 
 | Layer | Primary modules |
 |---|---|
 | Agents | `src/silisocs/agents/base_agent.py`, `agents/entity.py`, `agents/fixed_entity.py`, `agents/builders.py` |
+| Environment apps | `src/silisocs/environments/backends/base.py`, `environments/backends/factory.py` |
 | GMs | `src/silisocs/environments/gm/base_game_master.py`, `gm/game_master.py`, `gm/shared_flow_game_master.py`, `gm/act.py` |
 | GM components | `src/silisocs/environments/gm/components/` |
-| Engines | `src/silisocs/engines/base.py`, `engines/base_engines.py`, `engines/multi_gm.py` |
-| Engine policies | `src/silisocs/engines/policies/` |
-
----
+| Engines | `src/silisocs/simulation_engines/base.py`, `simulation_engines/base_engines.py`, `simulation_engines/multi_gm.py` |
+| Engine policies | `src/silisocs/simulation_engines/policies/` |
 
 ## 1) Agents API
 
-### 1.1 Required runtime interface
-
-All agent runtimes must implement `silisocs.agents.base_agent.Agent`.
-
-Module: `src/silisocs/agents/base_agent.py`
+All agent runtimes must implement `silisocs.agents.base_agent.Agent`:
 
 ```python
 class Agent(ABC):
@@ -45,62 +32,59 @@ class Agent(ABC):
     def act(self, action_spec: Any) -> str: ...
 ```
 
-Contract notes:
+`act()` returns a string. Parsing and execution are performed by GM resolve
+components, so the expected output format is determined by the configured
+resolve mode. Non-Concordia runtimes with internal state should also implement
+`get_state()` and `set_state(state)` for checkpoint resume.
 
-- `observe()` is called before an action chunk and should update local state.
-- `act()` returns a string. Parsing/execution is performed by GM resolve components.
-- Output format must match the configured resolve mode (`parsed_action`, `generic_action`, `tool_calling`), but that policy lives outside the agent.
+Prefabs must expose a class named `Entity` that subclasses
+`concordia.typing.prefab.Prefab` and implements `build(model, memory_bank)`.
+Reference implementations live in `src/silisocs/agents/entity.py` and
+`src/silisocs/agents/fixed_entity.py`.
 
-### 1.2 Optional checkpoint interface
+## 2) Environment App API
 
-If your runtime is not a Concordia entity-with-components but has internal state,
-implement:
+The core backend contract is `EnvironmentApp` in
+`src/silisocs/environments/backends/base.py`.
 
-- `get_state() -> dict[str, Any]`
-- `set_state(state: dict[str, Any]) -> None`
+Required method:
 
-The simulation runner restores these during resume operations.
+```python
+def initialize(self, agent_names: list[str], **kwargs: Any) -> None: ...
+```
 
-### 1.3 Prefab contract (what the builder loads)
+Common optional methods:
 
-Prefabs must expose a class named `Entity` that subclasses `concordia.typing.prefab.Prefab`
-and implements `build(model, memory_bank)`.
+- `observe(actor_name: str, **kwargs) -> str`
+- `get_timeline(user_name: str, limit: int = 10) -> list[dict]`
+- `get_timeline_mode(...) -> list[dict]`
+- `format_timeline_for_observation(timeline: list[dict]) -> str`
+- `parse_and_resolve_action(user_name: str, action_data: dict) -> str`
 
-Reference implementations:
+Expose executable actions with `@app_action`. `generic_action` and
+`tool_calling` resolve modes discover those actions automatically.
 
-- `src/silisocs/agents/entity.py` (LLM-driven base entity)
-- `src/silisocs/agents/fixed_entity.py` (deterministic fixed-action runtime)
+`SocialMediaApp` subclasses `EnvironmentApp` for backends with social timelines,
+feeds, social action parsing, or recommendation updates. Generic environments
+should subclass `EnvironmentApp` directly.
 
-Required behavior:
+Custom app config:
 
-- Accepts config parameters via `params`
-- Returns an agent runtime implementing the interface above
+```yaml
+env:
+  platform_type: custom
+  app:
+    class_path: my_pkg.apps.MyEnvironmentApp
+    params:
+      initial_cash: 20
+```
 
-### 1.4 Builder contract
+`params` are strict constructor arguments. Unknown keys fail before simulation
+startup unless the target class accepts `**kwargs`.
 
-Default builder: `BaseAgentBuilder` in `src/silisocs/agents/builders.py`
+## 3) Game Master API
 
-Public API:
-
-- `build_agents(roles: dict[str, int] | None = None) -> list[AgentConfig]`
-
-Expected config structure:
-
-- `persona_pipeline.defaults`
-- `persona_pipeline.classes.<class_name>`
-
-Extension points:
-
-- Subclass `BaseAgentBuilder` for scenario-specific record loading, naming, or class composition
-- Keep return type as `list[AgentConfig]` for runner compatibility
-
----
-
-## 2) Game Master API
-
-### 2.1 GM prefab base class
-
-Base class: `BaseSocialMediaGameMaster`
+Base class: `BaseEnvironmentGameMaster`
 Module: `src/silisocs/environments/gm/base_game_master.py`
 
 Primary API:
@@ -109,32 +93,24 @@ Primary API:
 - `_is_shared_flow_mode() -> bool`
 - `build_generic_prompt(...) -> str`
 
-Concrete presets:
+Compatibility names such as `BaseSocialMediaGameMaster` remain available for
+social backend call sites.
 
-- `GameMaster` (`gm/game_master.py`): single-flow default
-- `MultiFlowSocialMediaGameMaster` (`gm/shared_flow_game_master.py`): multi-flow routing
+Act-layer classes live in `src/silisocs/environments/gm/act.py`:
 
-### 2.2 Act-layer contract (SwitchAct specializations)
-
-Module: `src/silisocs/environments/gm/act.py`
-
-Classes:
-
-- `SMAct`: default routing behavior
-- `MultiFlowSMAct`: routes `observe`/`resolve` by flow tag
+- `SMAct`: default routing behavior.
+- `MultiFlowSMAct`: routes observe/resolve outputs by flow tag.
 
 Important integration fields used by engines/components:
 
 - `sm_app`
 - `entity_flow_tags`
 - `gm_orchestration`
-- `flow_to_component_map` (multi-flow mode)
+- `flow_to_component_map`
 
-If you write a custom `SwitchAct` variant, keep these semantics (or update all dependent code paths that currently rely on them).
+## 4) GM Component API
 
-### 2.3 Component slot factory API
-
-Module: `src/silisocs/environments/gm/components/factory.py`
+Factory module: `src/silisocs/environments/gm/components/factory.py`
 
 Public builders:
 
@@ -146,123 +122,57 @@ Public builders:
 - `build_backend_initializer(...)`
 - `initialize_component_flow_fields(component, component_config)`
 
-Config schema pattern (per slot):
+Config schema pattern:
 
 ```yaml
 <slot_name>:
   built_in: <registered_name>
-  class_path: <optional python path>
+  class_path: <optional.module.Class>
   params: {}
+  flows: {}
 ```
 
-### 2.4 GM subcomponent interfaces
+`params` are strict constructor arguments. Unknown keys fail early unless the
+target component accepts `**kwargs`. Runtime-injected values such as `model`,
+`player_names`, and app handles may still be filtered when a constructor does
+not accept them. Observe components that explicitly accept `observation_params`
+may use `params` as a forwarded observation-settings bag.
 
-Module: `src/silisocs/environments/gm/components/base.py`
+Built-in component names:
 
-`BackendInitializer` interface:
-
-```python
-class BackendInitializer(ABC):
-    def initialize(
-        *,
-        sm_app: Any,
-        agent_names: Sequence[str],
-        init_kwargs: Mapping[str, Any],
-    ) -> None: ...
-```
-
-`FlowComponent` mixin:
-
-- Declare flow-tunable fields via `FLOW_FIELDS`
-- Initialize per-flow values via `set_flow_field_values(...)`
-- Read current value via `get_flow_field(field_name, flow_tag, default=...)`
-
-### 2.5 Built-in component registry (factory names)
-
-From `components/factory.py`:
-
-- `observe`: `timeline_every_turn`, `episode_only`
+- `observe`: `app_observation`, `timeline_every_turn`, `episode_only`
 - `resolve`: `parsed_action`, `generic_action`, `tool_calling`
 - `next_acting`: `activity_markov`, `activity_probability`, `all_entities`, `fixed_order`
 - `initializer`: `backend_default`
-- `recommend`: `recommendation_component`
+- `recommend`: `recommendation_component`, `disabled`, `none`
 
-When adding a new built-in, register it in the relevant `_..._BUILT_INS` map.
+Subcomponent interfaces in `components/base.py`:
 
----
+- `BackendInitializer.initialize(...)`
+- `FlowComponent.FLOW_FIELDS`
+- `FlowComponent.set_flow_field_values(...)`
+- `FlowComponent.get_flow_field(...)`
 
-## 3) Engine API
-
-### 3.1 Engine classes
+## 5) Engine API
 
 Modules:
 
-- `src/silisocs/engines/base.py`: `BaseEnvironmentEngine` marker
-- `src/silisocs/engines/base_engines.py`: `BaseRuntimeEngine`, `FlowRuntimeEngine`
-- `src/silisocs/engines/multi_gm.py`: `MultiGMRuntimeEngine`
+- `src/silisocs/simulation_engines/base.py`: `BaseEnvironmentEngine` marker.
+- `src/silisocs/simulation_engines/base_engines.py`: `BaseRuntimeEngine`,
+  `FlowRuntimeEngine`.
+- `src/silisocs/simulation_engines/multi_gm.py`: `MultiGMRuntimeEngine`.
 
-Factory entrypoint:
+Factory entrypoint: `build_engine(cfg)` in `src/silisocs/runtime/factories.py`.
 
-- `build_engine(cfg)` in `src/silisocs/runtime/factories.py`
+`BaseRuntimeEngine` provides the standard episode loop, actor concurrency, and
+probe phase orchestration. `FlowRuntimeEngine` adds flow grouping and per-flow
+action-loop policy selection. `MultiGMRuntimeEngine` adds explicit GM
+orchestration.
 
-### 3.2 BaseRuntimeEngine extension surface
+## 6) Engine Policy API
 
-Primary class: `BaseRuntimeEngine`
-Module: `src/silisocs/engines/base_engines.py`
-
-Key public/override methods:
-
-- `next_acting(...)`
-- `run_loop(...)`
-
-Important protected hooks you can override in custom engines:
-
-- `_phase_game_masters(...)`
-- `_build_flow_task_groups(...)`
-- `_build_flow_action_loop_policies(...)`
-- `_action_loop_policy_for_group(...)`
-
-App-coupled helpers currently used by default engine:
-
-- `_is_app_game_master(...)`
-- `_sync_app_game_master_runtime_state(...)`
-
-If you design a non-social backend pipeline, these are usually the first methods to adapt.
-
-### 3.3 FlowRuntimeEngine contract
-
-`FlowRuntimeEngine` extends `BaseRuntimeEngine` and adds:
-
-- multi-GM phase grouping by sequence
-- flow-group task construction
-- per-flow action-loop policy selection (`engine.flow_policies`)
-
-### 3.4 MultiGMRuntimeEngine contract
-
-`MultiGMRuntimeEngine` extends `FlowRuntimeEngine` with explicit GM orchestration.
-
-Additional API:
-
-- `get_agent_gms(agent_name)`
-- `detect_gm_conflicts()`
-- `validate_gm_sequence()`
-- `log_orchestration_info()`
-
-Configuration fields consumed:
-
-- `env.gm.gm_sequence`
-- `env.gm.agent_classes`
-- `env.gm.class_to_gms`
-
----
-
-## 4) Engine Policy API
-
-### 4.1 Action-loop policy contract
-
-Module: `src/silisocs/engines/policies/action_chunk.py`
-
-Policy objects must provide:
+Action-loop policies live in
+`src/silisocs/simulation_engines/policies/action_chunk.py` and implement:
 
 ```python
 def run(
@@ -276,17 +186,8 @@ def run(
 ) -> str: ...
 ```
 
-Built-ins:
-
-- `SingleActionChunkPolicy` (`single_action`)
-- `FixedCountActionChunkPolicy` (`fixed_count`)
-- `OpenEndedActionChunkPolicy` (`open_ended`)
-
-### 4.2 Probe schedule policy contract
-
-Module: `src/silisocs/engines/policies/probe_schedule.py`
-
-Policy objects must provide:
+Probe-schedule policies live in
+`src/silisocs/simulation_engines/policies/probe_schedule.py` and implement:
 
 ```python
 def should_run_probe_phase(self, *, step: int, orchestrator: Any) -> bool: ...
@@ -294,45 +195,28 @@ def should_run_probe_phase(self, *, step: int, orchestrator: Any) -> bool: ...
 
 Built-ins:
 
-- `StepProbeSchedulePolicy` (`step_schedule`)
-- `FixedIntervalProbeSchedulePolicy` (`fixed_interval`)
-- `DisabledProbeSchedulePolicy` (`disabled`)
+- Action loop: `single_action`, `fixed_count`, `open_ended`
+- Probe schedule: `step_schedule`, `fixed_interval`, `disabled`
 
-### 4.3 Policy factories and class-path loading
+Policy factories support `built_in`, optional `class_path`, and strict
+constructor validation for configured `params`.
 
-Module: `src/silisocs/engines/policies/factory.py`
+## 7) Extension Recipes
 
-Public API:
+Add a custom backend app:
 
-- `build_action_loop_policy(slot_cfg)`
-- `build_probe_schedule_policy(slot_cfg)`
+1. Subclass `EnvironmentApp`.
+2. Implement `initialize(...)`.
+3. Add `@app_action` methods.
+4. Configure `env.app.class_path` and `env.app.params`.
 
-Features:
+Add a custom GM component:
 
-- `built_in` selector
-- optional `class_path`
-- constructor kwarg filtering to supported `__init__` params
+1. Implement a Concordia-compatible context component or initializer hook.
+2. Point `env.gm.components.<slot>.class_path` to the class.
+3. Put public constructor settings under `params`.
 
----
-
-## 5) Extension Recipes
-
-### 5.1 Add a custom agent runtime
-
-1. Implement `Agent` interface in a runtime class.
-2. Add `Entity(prefab_lib.Prefab)` in your prefab module and return runtime in `build()`.
-3. Reference prefab in `persona_pipeline.classes.<class>.prefab_module`.
-
-### 5.2 Add a custom GM resolve component
-
-1. Implement a Concordia-compatible context component class.
-2. Point `env.gm.components.resolve.class_path` to your class.
-3. Keep input/output compatible with your selected `sim.action_mode` and tool-calling mode.
-
-### 5.3 Add a custom action-loop policy
-
-1. Implement `run(...)` contract in a policy class.
-2. Configure:
+Add a custom action-loop policy:
 
 ```yaml
 sim:
@@ -340,28 +224,25 @@ sim:
     action_loop:
       class_path: my_pkg.policies.MyActionLoopPolicy
       params:
-        ...
+        max_actions: 5
 ```
 
-### 5.4 Add a custom probe schedule policy
+Add a custom probe schedule policy by implementing `should_run_probe_phase(...)`
+and configuring `sim.engine.probe_schedule.class_path`.
 
-1. Implement `should_run_probe_phase(...)`.
-2. Configure under `sim.engine.probe_schedule.class_path`.
-
----
-
-## 6) Compatibility Checklist for New Components
+## 8) Compatibility Checklist
 
 - Keep method signatures aligned with factory call sites.
-- Accept unknown config fields defensively where possible.
+- Treat `params` as strict public API; add `**kwargs` only when intentionally
+  accepting arbitrary config keys.
 - Preserve checkpoint state contracts (`get_state`/`set_state`) when stateful.
-- Add targeted tests for factory construction + runtime behavior.
+- Add targeted tests for factory construction and runtime behavior.
 - Update this page when adding new built-ins or extension hooks.
-
----
 
 ## Related Docs
 
+- [Documentation Coverage](documentation_coverage.md): coverage and staleness tracker
+- [Framework Roadmap](framework_roadmap.md): near-term framework priorities
 - [Environment Layer](environment_layer.md): architecture and design patterns
 - [Building Agents](building_agents.md): scenario and builder workflows
 - [Configuration Reference](configuration.md): full config keys

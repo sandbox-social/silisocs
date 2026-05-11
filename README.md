@@ -3,9 +3,9 @@
 
 # Silisocs
 
-Silisocs is a Concordia-based social simulation framework for configurable
-social-media experiments. It adds a YAML-first scenario layer, social-media
-game masters, local platform backends, evaluation probes, runtime telemetry,
+Silisocs is a Concordia-based simulation framework for configurable social and
+agent-environment experiments. It adds a YAML-first scenario layer, environment
+game masters, local and live backends, evaluation probes, runtime telemetry,
 and study tooling on top of Concordia's agent/runtime abstractions.
 
 - 2024 NeurIPS Workshop Paper: [arXiv:2410.13915](http://arxiv.org/abs/2410.13915)
@@ -65,6 +65,12 @@ Run a bundled external scenario:
 uv run silisocs --config-path scenarios/election/conf
 ```
 
+Run the generic non-social sample backend:
+
+```sh
+uv run silisocs scenario=resource_market agents=resource_market env=resource_market
+```
+
 Outputs are written under `outputs/<scenario_name>/<jobname>/` and include
 `action_events.jsonl`, `probe_events.jsonl`, `prompts_and_responses.jsonl`,
 `sim_metrics.json`, `logs.html`, a resolved Hydra config snapshot, and a local
@@ -74,7 +80,7 @@ SQLite backend database for local platforms.
 
 The canonical runtime entry point is `src/silisocs/runtime/runner.py`. It
 composes Hydra configuration, builds agents, initializes memory, constructs the
-social-media backend and game master, runs the simulation engine, and writes
+environment backend and game master, runs the simulation engine, and writes
 artifacts.
 
 ```text
@@ -83,7 +89,7 @@ silisocs/
 │   ├── agents/              # Concordia-compatible and custom agent builders
 │   ├── conf/                # Packaged Hydra defaults
 │   ├── dashboard/           # Optional Streamlit scenario launcher
-│   ├── environments/        # Game masters and social-media backends
+│   ├── environments/        # Game masters and environment backends
 │   ├── evaluations/         # Probes, telemetry, and optional analysis tools
 │   ├── runtime/             # Runner, config projection, and orchestration
 │   └── simulation_engines/  # Action-loop and probe scheduling policies
@@ -102,7 +108,7 @@ runtime substrate, then adds social-simulation conventions around it:
   `silisocs.agents.base_agent.Agent` interface.
 - Silisocs prefabs build either Concordia-compatible agents or simpler custom
   agents that implement `name`, `observe(...)`, and `act(...)`.
-- Game-master components translate social-media observations and actions into
+- Game-master components translate environment observations and actions into
   Concordia-compatible action specs.
 - Scenario YAML selects builders, backends, policies, probes, and prompts so
   most experiment design does not require Python edits.

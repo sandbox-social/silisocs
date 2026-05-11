@@ -65,6 +65,12 @@ def _instantiate_with_supported_kwargs(cls: type[Any], kwargs: Mapping[str, Any]
         if name != "self"
         and param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
     }
+    unsupported = sorted(set(kwargs) - supported)
+    if unsupported:
+        raise ValueError(
+            f"Unsupported config param(s) for {cls.__module__}.{cls.__name__}: "
+            f"{unsupported}. Supported params: {sorted(supported)}"
+        )
     filtered = {k: v for k, v in kwargs.items() if k in supported}
     return cls(**filtered)
 

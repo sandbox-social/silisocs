@@ -85,7 +85,7 @@ Run parameters live in the `scenario` config group (placed at config root via
 | `sim.memory_backend` | `list` | Memory type: `list` (fast) or `associative` (embedding-based) |
 | `sim.action_mode` | `custom` | Prompt style: `custom` (scenario prompt) or `generic` (backend-generated) |
 | `sim.tool_calling.mode` | `single` | Tool dispatch mode: `none`, `single`, or `multi` |
-| `sim.prompt_additions.add_action_count_guidance` | `false` | Add `[ActNum]` marker and action count guidance to prompt |
+| `sim.prompt_additions.action_count_guidance` | `true` | Add `[ActNum]` marker and action count guidance to prompt |
 | `sim.checkpoint.every_n_steps` | `null` | Save checkpoints every N steps when set |
 | `sim.checkpoint.explicit_steps` | `[]` | Additional explicit checkpoint steps |
 | `sim.checkpoint.resume_file` | `null` | Path to checkpoint JSON to resume a prior run |
@@ -404,6 +404,31 @@ use_server: true   # Requires a running Mastodon server
 Requires environment variables for server URL and API credentials.
 See [Installation](installation.md) for `.env` setup.
 
+**Resource market (generic non-social)**
+```yaml
+platform_type: resource_market
+app:
+  params:
+    initial_cash: 20
+    initial_inventory:
+      food: 1
+      wood: 0
+      ore: 0
+```
+
+Custom backend apps can be loaded without editing the factory:
+
+```yaml
+platform_type: custom
+app:
+  class_path: my_pkg.apps.MyEnvironmentApp
+  params:
+    custom_setting: value
+```
+
+`app.params` are strict constructor arguments. Unknown keys fail before the
+simulation starts unless the app constructor accepts `**kwargs`.
+
 ### Enabled Actions
 
 By default agents can use all backend actions. Restrict to a subset:
@@ -452,12 +477,17 @@ gm:
     next_acting:
       built_in: activity_probability  # activity_markov | activity_probability | all_entities | fixed_order
     observe:
-      built_in: timeline_every_turn   # timeline_every_turn | episode_only
+      built_in: timeline_every_turn   # app_observation | timeline_every_turn | episode_only
       params:
         episode_observation_flow: fixed_pre
     resolve:
       built_in: tool_calling          # parsed_action | generic_action | tool_calling
 ```
+
+Component `params` are strict constructor arguments. Unknown keys fail before
+the simulation starts unless the target component accepts `**kwargs`. Observe
+components that explicitly accept `observation_params` can use `params` as
+forwarded observation settings.
 
 ### Social Network
 
@@ -530,7 +560,7 @@ probes:
 
 | Flag | Default | Effect |
 |------|---------|--------|
-| `sim.prompt_additions.add_action_count_guidance` | `false` | Add `[ActNum]` marker and action count guidance |
+| `sim.prompt_additions.action_count_guidance` | `true` | Add `[ActNum]` marker and action count guidance |
 
 ### How Action Prompts Are Constructed
 
@@ -560,6 +590,9 @@ sim:
       params:
         count: 3
 ```
+
+Policy `params` are strict constructor arguments. Unknown keys fail before the
+simulation starts unless the target policy accepts `**kwargs`.
 
 Per-flow override (requires `engine.preset: flow`):
 
@@ -624,6 +657,6 @@ game masters, flow-based scheduling, and per-flow component routing.
 
 - [Usage Overview](usage.md) — End-to-end workflow and output format
 - [Building Agents](building_agents.md) — Persona pipeline details
-- [Social Media Backends](backends.md) — Platform config and visualizers
+- [Environment Backends](backends.md) — Generic apps, social platforms, and visualizers
 - [Evaluation Probes](probes.md) — Probe type reference
 - [Multi-GM Architecture](multi_gm_architecture.md) — Advanced GM orchestration

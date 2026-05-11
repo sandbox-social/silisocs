@@ -1,6 +1,6 @@
 # Usage Overview
 
-This guide covers the complete workflow for running social media simulations —
+This guide covers the complete workflow for running Silisocs simulations —
 from configuration to output analysis.
 
 ## How It Works
@@ -14,17 +14,17 @@ sequenceDiagram
     participant Builder as Agent Builder
     participant Init as Memory Initializer
     participant GM as Game Master
-    participant Backend as Social Media Backend
+    participant Backend as Environment Backend
 
     Config->>Runner: Load & compose YAML configs
     Runner->>Builder: Build agent entities
     Runner->>Init: Initialize memories
     Init->>Runner: Agents have starting knowledge
-    Runner->>Backend: Initialize platform (follow network, etc.)
+    Runner->>Backend: Initialize environment state
     Runner->>GM: Start simulation loop
     loop Each step
-        GM->>Backend: Observe (fetch timelines)
-        GM->>Backend: Act (post, reply, like, repost)
+        GM->>Backend: Observe environment state
+        GM->>Backend: Execute @app_action
         GM->>Runner: Log events + deploy probes
     end
 ```
@@ -40,9 +40,11 @@ and goals.
 generates per-agent memories (raw or formative mode), and hands control to the
 main game master.
 
-**Phase 4 — Simulation loop**: Each step, agents observe their timeline, decide
-on an action, and the game master executes it against the social media backend.
-Probes are deployed on schedule.
+**Phase 4 — Simulation loop**: Each step, agents observe environment state,
+decide on an action, and the game master executes it against the configured
+backend. Social backends provide timelines; generic backends can provide any
+domain observation through `EnvironmentApp.observe(...)`. Probes are deployed
+on schedule.
 
 ---
 
@@ -63,6 +65,9 @@ uv run silisocs num_agents=10 num_steps=5 sim.llm.name=gpt-4o
 
 # Use a different platform
 uv run silisocs env=reddit_like
+
+# Run the generic non-social sample backend
+uv run silisocs scenario=resource_market agents=resource_market env=resource_market
 
 # Run an external scenario
 uv run silisocs --config-path scenarios/election/conf
@@ -499,7 +504,7 @@ REDDIT_LIKE_DB=outputs/my_scenario/.../reddit_like.db \
   python -m silisocs.environments.backends.reddit_like.visualizer.server
 ```
 
-See [Social Media Backends](backends.md#built-in-visualizers) for full details.
+See [Environment Backends](backends.md#built-in-visualizers) for full details.
 
 ---
 
@@ -667,7 +672,7 @@ The flow engine (`FlowRuntimeEngine`) is responsible for:
 - Running entity actions concurrently and resolving them through the GM
 - Worker throttling based on retry telemetry
 
-Key implementation: `src/silisocs/engines/base_engines.py`.
+Key implementation: `src/silisocs/simulation_engines/base_engines.py`.
 
 #### Current Action Semantics
 
@@ -694,10 +699,10 @@ and it generalizes to any future specialized class.
 
 ### Game Master Responsibilities
 
-The social media GM (`GameMaster` + `SMAct`) is responsible for:
+The environment GM (`GameMaster` + `SMAct`) is responsible for:
 
-- Initializing the active backend app and seed content
-- Building timeline observations for each acting entity
+- Initializing the active backend app and any seed content
+- Building generic or timeline observations for each acting entity
 - Parsing and dispatching actions (`custom`, `generic`) and tool calls (`none`, `single`, `multi`)
 - Applying action effects through the backend app contract
 - Managing activity-state-based actor gating
@@ -721,16 +726,16 @@ Key implementations:
 
 - Action grammar and parsing (`find_and_parse_action_data`)
 - Action dispatch strategy by mode (`_resolve`, `_resolve_generic`, `_resolve_tool_calling`)
-- Timeline observation shaping (`_make_observation`)
+- Observation shaping (`app_observation`, `timeline_every_turn`, or custom component)
 - Activity transition behavior (`update_user_activity_state`)
 - Seed post generation strategy (`_collect_seed_posts`)
 
 ### Backend Contract Tasks
 
-For platform extensions, backend classes implement the environment contract and
-are selected by `platform_type` through the backend factory. Typical developer
-tasks include adding new action methods, timeline semantics, and storage/query
-behavior.
+For platform extensions, backend classes implement `EnvironmentApp` and are
+selected by `platform_type` or `env.app.class_path` through the backend factory.
+Typical developer tasks include adding new `@app_action` methods, observations,
+optional timeline semantics, and storage/query behavior.
 
 ---
 
@@ -739,7 +744,7 @@ behavior.
 - [Configuration Reference](configuration.md) — Every config option explained
 - [Building Agents](building_agents.md) — YAML pipeline and custom builders
 - [Memory Initialization](memory_initialization.md) — Raw, formative, and custom modes
-- [Social Media Backends](backends.md) — Twitter-like, Reddit-like, Mastodon
+- [Environment Backends](backends.md) — Generic apps, Twitter-like, Reddit-like, Mastodon
 - [Evaluation Probes](probes.md) — Probe types and deployment
 - [Dashboard](dashboard.md) — Streamlit GUI guide
 - [Election Walkthrough](tutorials/election.md) — Complex real-world scenario

@@ -12,8 +12,9 @@
 
 Social Simulation Sandbox lets you spin up large-scale social media simulations
 populated by LLM-powered generative agents. Each agent has a unique persona,
-memories, and goals — and they interact on a simulated social media platform
-(Twitter-like, Reddit-like, or a real Mastodon instance).
+memories, and goals, and they interact through a configurable environment
+backend such as a Twitter-like app, Reddit-like app, real Mastodon instance, or
+generic non-social environment.
 
 You configure everything in YAML: the scenario setting, agent populations,
 social network topology, evaluation probes, and platform type. The framework
@@ -25,7 +26,7 @@ and structured output logging.
 | Feature | Description |
 |---------|-------------|
 | **Declarative scenarios** | Define agents, settings, and networks in YAML — no Python needed for most use cases |
-| **Multiple platforms** | Local Twitter-like and Reddit-like backends (SQLite), or a real Mastodon server |
+| **Multiple backends** | Local Twitter-like and Reddit-like backends (SQLite), a real Mastodon server, or generic `EnvironmentApp` domains |
 | **Scalable** | Tested with 5000+ concurrent agents using adaptive concurrency control |
 | **Persona pipeline** | Source agent personas from HuggingFace datasets, local JSON, inline YAML, or config references |
 | **Memory initialization** | Raw (config-only) or formative (LLM-generated backstories) modes, with custom initializers |
@@ -58,7 +59,7 @@ If you want to **extend the framework** (new backends, entities, probes, initial
 3. See [Concordia Bridge](concordia_bridge.md) for how Silisocs maps Concordia agents and action specs to social-media simulations
 4. See [Memory Initialization](memory_initialization.md) for custom initializers
 5. See [Environment Layer](environment_layer.md) for Engine/GM/component configurability
-6. See [Social Media Backends](backends.md#adding-a-new-backend-developer-guide) for new platform backends
+6. See [Environment Backends](backends.md#adding-a-new-backend-developer-guide) for new platform backends
 7. See [Evaluation Probes](probes.md#custom-probe-types) for custom probe types
 8. See [Simulation Extensibility API](simulation_extensibility_api.md) for class/method contracts and extension hooks
 9. Check [Contributing](contributing.md) for code standards and workflows
@@ -97,10 +98,12 @@ If you're an **LLM helping design experiments via configuration**:
 **For Code Developers:**
 - [Environment Layer](environment_layer.md) — Engine/GM/backend extensibility
 - [Simulation Extensibility API](simulation_extensibility_api.md) — API-style contracts for extending agents, GMs, engines, and policies
+- [Documentation Coverage](documentation_coverage.md) — Coverage matrix and stale-doc register
+- [Framework Roadmap](framework_roadmap.md) — Near-term framework priorities
 - [Concordia Bridge](concordia_bridge.md) — How Concordia concepts map into Silisocs runtime layers
 - [Building Agents](building_agents.md) — YAML pipeline and custom builders
 - [Memory Initialization](memory_initialization.md) — Custom initializers
-- [Social Media Backends](backends.md) — Backend plugin guide
+- [Environment Backends](backends.md) — Backend plugin guide
 - [Evaluation Probes](probes.md) — Custom probe types
 - [Contributing](contributing.md) — Code standards
 
@@ -118,7 +121,7 @@ graph TD
     B --> C[Runner]
     C --> D[Agent Builder]
     C --> E[Memory Initializer]
-    C --> F[Social Media Backend]
+    C --> F[Environment Backend]
     D --> G[Agent Entities]
     E --> G
     F --> H[Game Master]

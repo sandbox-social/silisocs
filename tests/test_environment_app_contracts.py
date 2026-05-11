@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from concordia.typing import entity as entity_lib
 
 from silisocs.environments.backends.base import EnvironmentApp, app_action
+from silisocs.environments.backends.factory import create_environment_app
 from silisocs.environments.gm.components.observe import AppObservationComponent
 
 
@@ -72,3 +74,12 @@ def test_app_observation_component_delegates_to_environment_observe() -> None:
             "limit": 4,
         }
     ]
+
+
+def test_custom_environment_app_rejects_unknown_params() -> None:
+    with pytest.raises(ValueError, match="Unsupported config param"):
+        create_environment_app(
+            "custom",
+            app_class_path="tests.test_environment_app_contracts._GenericTestApp",
+            app_params={"unknown_param": True},
+        )

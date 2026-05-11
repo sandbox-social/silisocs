@@ -240,7 +240,7 @@ gm_instances = factory.build(model, memory_bank, entities)
 
 ### MultiGMRuntimeEngine
 
-Located: `src/silisocs/engines/multi_gm.py`
+Located: `src/silisocs/simulation_engines/multi_gm.py`
 
 Orchestrates multiple GMs:
 

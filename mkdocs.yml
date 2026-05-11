@@ -83,13 +83,15 @@ nav:
     - Study Schema: study_schema.md
     - Experiment Studies: experiments.md
     - Configuration: configuration.md
+    - Documentation Coverage: documentation_coverage.md
+    - Framework Roadmap: framework_roadmap.md
     - Simulation Extensibility API: simulation_extensibility_api.md
     - Concordia Bridge: concordia_bridge.md
     - Environment Layer: environment_layer.md
     - Multi-GM Architecture: multi_gm_architecture.md
     - Building Agents: building_agents.md
     - Memory Initialization: memory_initialization.md
-    - Social Media Backends: backends.md
+    - Environment Backends: backends.md
     - Evaluation Probes: probes.md
     - Dashboard: dashboard.md
   - Tutorials:

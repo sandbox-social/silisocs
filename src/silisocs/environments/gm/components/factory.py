@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import re
 from collections.abc import Mapping
 from typing import Any
 
 from concordia.typing import entity_component
 
-from silisocs.environments.gm.components.base import BackendInitializer, FlowComponent, NoOpComponent
+from silisocs.environments.gm.components.base import (
+    BackendInitializer,
+    FlowComponent,
+    NoOpComponent,
+)
 from silisocs.environments.gm.components.initialize import DefaultBackendInitializer
 from silisocs.environments.gm.components.next_acting import (
     ActivityMarkovNextActing,
@@ -106,7 +111,7 @@ def _build_from_slot(
         cls = _load_class(str(class_path))
         all_kwargs = dict(runtime_kwargs or {})
         all_kwargs.update(params)
-        return _instantiate_with_supported_kwargs(cls, all_kwargs)
+        return _instantiate_with_supported_kwargs(cls, all_kwargs, config_param_keys=params.keys())
 
     built_in = str(cfg.get("built_in") or default_built_in)
     if built_in not in built_ins:
@@ -115,10 +120,15 @@ def _build_from_slot(
     cls = built_ins[built_in]
     all_kwargs = dict(runtime_kwargs or {})
     all_kwargs.update(params)
-    return _instantiate_with_supported_kwargs(cls, all_kwargs)
+    return _instantiate_with_supported_kwargs(cls, all_kwargs, config_param_keys=params.keys())
 
 
-def _instantiate_with_supported_kwargs(cls: type[Any], kwargs: Mapping[str, Any]) -> Any:
+def _instantiate_with_supported_kwargs(
+    cls: type[Any],
+    kwargs: Mapping[str, Any],
+    *,
+    config_param_keys: Any = (),
+) -> Any:
     """Instantiate a class using only kwargs supported by its constructor."""
     params = inspect.signature(cls.__init__).parameters
     if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
@@ -130,6 +140,16 @@ def _instantiate_with_supported_kwargs(cls: type[Any], kwargs: Mapping[str, Any]
         if name != "self"
         and param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
     }
+    if "observation_params" in supported:
+        filtered = {k: v for k, v in kwargs.items() if k in supported}
+        return cls(**filtered)
+
+    unsupported_config = sorted(set(config_param_keys) - supported)
+    if unsupported_config:
+        raise ValueError(
+            f"Unsupported config param(s) for {cls.__module__}.{cls.__name__}: "
+            f"{unsupported_config}. Supported params: {sorted(supported)}"
+        )
     filtered = {k: v for k, v in kwargs.items() if k in supported}
     return cls(**filtered)
 
@@ -143,8 +163,6 @@ def _class_to_kebab_case(class_name: str) -> str:
         EpisodeObservation -> episode_observation
         ParsedActionResolveComponent -> parsed_action_resolve_component
     """
-    import re
-
     # Insert underscore before uppercase letters (except first)
     kebab = re.sub(r"(?<!^)(?=[A-Z])", "_", class_name)
     return kebab.lower()
