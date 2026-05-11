@@ -8,19 +8,24 @@ Make sure you have completed the [Installation](installation.md) steps.
 
 ## 1. Run the Default Scenario
 
-The default scenario simulates a generic social media community with agents
-sourced from the [Nemotron Personas](https://huggingface.co/datasets/nvidia/Nemotron-Personas-USA)
-dataset.
+The default scenario simulates a small generic social media community using
+packaged inline personas. It does not require optional Hugging Face dependencies.
 
 ```sh
 uv run silisocs
 ```
 
-This uses the built-in `default` preset with 500 agents for 200 steps. For a quick test, override the
-scale:
+For a smoke test without model API calls, disable the LLM:
 
 ```sh
-uv run silisocs num_agents=10 num_steps=5
+uv run silisocs sim.llm.disabled=true
+```
+
+This uses the built-in `default` preset with 10 agents for 5 steps. Override the
+scale when you want a larger run:
+
+```sh
+uv run silisocs num_agents=25 num_steps=10
 ```
 
 ### Try the OASIS Preset
@@ -34,7 +39,7 @@ uv run silisocs sim=oasis env=reddit_like num_agents=10 num_steps=5
 This uses the `oasis` preset configuration with 100 agents, hybrid timeline feeds (mixing recommendations
 and follower posts), and built-in recommendation system updates.
 
-See [Preset Configurations](PRESETS.md) for detailed comparison of preset options.
+See [Configuration Reference](configuration.md) for detailed configuration options.
 
 ## 2. Check the Output
 
@@ -64,6 +69,7 @@ uv run silisocs sim.llm.name=gpt-4o num_agents=10 num_steps=5
 Launch the Streamlit dashboard for a visual interface:
 
 ```sh
+uv sync --extra dashboard
 uv run streamlit run src/silisocs/dashboard/launch_app.py
 ```
 
@@ -75,6 +81,7 @@ and probes — then launch simulations with one click.
 Launch the analysis dashboard against a run output directory:
 
 ```sh
+uv sync --extra analysis
 uv run python -m silisocs.evaluations.analysis.dashboard.main \
 	--output-dir outputs/default/<jobname>/<timestamp>
 ```

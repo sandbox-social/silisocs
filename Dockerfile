@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-ARG PYTHON_VERSION=3.10
+ARG PYTHON_VERSION=3.11
 FROM python:$PYTHON_VERSION-slim AS base
 
 # Remove docker-clean so we can keep the apt cache in Docker build cache.
@@ -15,13 +15,13 @@ RUN groupadd --gid $GID user && \
 USER user
 
 # Create and activate a virtual environment.
-ENV VIRTUAL_ENV /opt/mastodon-sim-env
+ENV VIRTUAL_ENV /opt/silisocs-env
 ENV PATH $VIRTUAL_ENV/bin:$PATH
 ENV UV_PROJECT_ENVIRONMENT $VIRTUAL_ENV
 RUN python -m venv $VIRTUAL_ENV
 
 # Set the working directory.
-WORKDIR /workspaces/mastodon-sim/
+WORKDIR /workspaces/silisocs/
 
 
 
@@ -42,9 +42,9 @@ RUN --mount=type=cache,target=/var/cache/apt/ \
 USER user
 
 # Install the run time Python dependencies in the virtual environment.
-COPY --chown=user:user uv.lock pyproject.toml /workspaces/mastodon-sim/
+COPY --chown=user:user uv.lock pyproject.toml /workspaces/silisocs/
 RUN mkdir -p /home/user/.cache/uv/ && \
-    mkdir -p src/mastodon_sim/ && touch src/mastodon_sim/__init__.py && touch README.md
+    mkdir -p src/silisocs/ && touch src/silisocs/__init__.py && touch README.md
 RUN --mount=type=cache,uid=$UID,gid=$GID,target=/home/user/.cache/uv/ \
     uv sync --frozen --no-default-groups
 
@@ -66,10 +66,10 @@ USER user
 
 # Install the development Python dependencies in the virtual environment.
 RUN --mount=type=cache,uid=$UID,gid=$GID,target=/home/user/.cache/uv/ \
-    uv sync --frozen --group dev --group docs
+    uv sync --frozen --all-extras --group dev --group docs
 
 # Persist output generated during docker build so that we can restore it in the dev container.
-COPY --chown=user:user .pre-commit-config.yaml /workspaces/mastodon-sim/
+COPY --chown=user:user .pre-commit-config.yaml /workspaces/silisocs/
 RUN mkdir -p /opt/build/uv/ && cp uv.lock /opt/build/uv/ && \
     git init && pre-commit install --install-hooks && \
     mkdir -p /opt/build/git/ && cp .git/hooks/commit-msg .git/hooks/pre-commit /opt/build/git/
@@ -102,5 +102,5 @@ COPY --from=uv $VIRTUAL_ENV $VIRTUAL_ENV
 COPY --chown=user:user . .
 
 # Expose the app.
-ENTRYPOINT ["/opt/mastodon-sim-env/bin/mastodon-sim"]
+ENTRYPOINT ["/opt/silisocs-env/bin/silisocs"]
 CMD []

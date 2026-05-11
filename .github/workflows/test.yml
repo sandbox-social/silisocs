@@ -38,7 +38,7 @@ jobs:
          cache-dependency-glob: uv.lock
 
      - name: Install dependencies
-       run: uv sync --frozen --group dev --group docs
+       run: uv sync --frozen --all-extras --group dev --group docs
        env:
          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
 
@@ -60,3 +60,11 @@ jobs:
        env:
          PYTHONPATH: ${{ github.workspace }}
          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+
+     - name: Build package
+       run: uv build --sdist --wheel
+       env:
+         UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+
+     - name: Check wheel contents
+       run: uv run python -m zipfile -l dist/silisocs-*.whl

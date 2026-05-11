@@ -222,9 +222,10 @@ persona_pipeline:
       prefab_module: silisocs.agents.entity
       sim_role_name: user
       data:
-        source: hf_dataset
-        dataset: nvidia/Nemotron-Personas-USA
-        split: train
+        source: inline
+        records:
+          - persona: Alex follows local policy and posts practical updates.
+          - persona: Blair follows technology news and likes concise debates.
       field_map:
         context: persona
 
@@ -334,9 +335,9 @@ persona_pipeline:
       flow_tag: default                 # Optional class-level flow tag
       model: null                       # Per-class LLM override
       data:
-        source: hf_dataset             # hf_dataset | inline | config_path
-        dataset: nvidia/Nemotron-Personas-USA
-        split: train
+        source: inline                 # inline | config_path | local_json | hf_dataset
+        records:
+          - persona: Alex follows local policy and posts practical updates.
       field_map:
         context: persona
       params:

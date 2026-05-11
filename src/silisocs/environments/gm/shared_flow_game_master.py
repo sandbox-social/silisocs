@@ -14,6 +14,7 @@ import dataclasses
 import logging
 import os
 import re
+import time
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
@@ -24,8 +25,14 @@ from concordia.language_model import language_model
 from omegaconf import OmegaConf
 
 from silisocs.environments.gm import act as gm_social_act
-from silisocs.environments.gm.base_game_master import BaseSocialMediaGameMaster
+from silisocs.environments.gm.base_game_master import (
+    BaseSocialMediaGameMaster,
+    _build_seed_post_provider,
+    _collect_seed_posts,
+    _compute_activity_rates,
+)
 from silisocs.environments.gm.components.factory import (
+    build_backend_initializer,
     build_next_acting_component,
     build_observe_component,
     build_observe_components,
@@ -34,6 +41,7 @@ from silisocs.environments.gm.components.factory import (
     initialize_component_flow_fields,
 )
 from silisocs.runtime.config import ConfigStore
+from silisocs.utils.misc import EventLogger
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +90,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
 
         Overrides base build to handle multiple component instances per role.
         """
+        del memory_bank
         cfg = ConfigStore.get_config()
         name = str(self.params.get("name"))
         calls_to_action = self.params.get("calls_to_action", {})
@@ -109,7 +118,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
             )
 
         user_data = self.params["sm_user_data"]
-        activity_rates = dict(user_data.get("activity_transition_rates", {}))
+        activity_rates = _compute_activity_rates(user_data)
         entity_flow_tags = dict(user_data.get("entity_flow_tags", {}))
         gm_orchestration = dict(user_data.get("gm_orchestration", {}) or {})
         gm_prompt_cfg = dict(gm_orchestration.get("prompt", {}) or {})
@@ -182,8 +191,12 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
         # Build the social media app (same as base)
         from silisocs.environments.backends.factory import create_social_media_app
 
-        action_logger = None  # Would need to build this from config
-        db_path = os.path.join(cfg.output_rootname, "multiflow.db")
+        action_logger = EventLogger(
+            "action",
+            os.path.join(cfg.output_rootname, "action_events.jsonl"),
+        )
+        action_logger.episode_idx = 0
+        db_path = os.path.join(cfg.output_rootname, f"{platform_type}.db")
 
         sm_app = create_social_media_app(
             platform_type=platform_type,
@@ -191,6 +204,8 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
             perform_operations=getattr(_env_cfg(cfg), "use_server", False),
             app_description=self.params.get("app_description", ""),
             db_path=db_path,
+            app_class_path=OmegaConf.select(cfg, "env.app.class_path", default=None),
+            app_params=OmegaConf.select(cfg, "env.app.params", default={}) or {},
         )
 
         enabled_actions_cfg = getattr(_env_cfg(cfg), "enabled_actions", None)
@@ -221,6 +236,46 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
                 tool_calling_mode=tool_calling_mode,
                 gm_prompt_cfg=gm_prompt_cfg,
             )
+
+        seed_post_cfg = {}
+        env_cfg = _env_cfg(cfg)
+        if hasattr(env_cfg, "seed_posts"):
+            seed_post_cfg = cast(
+                dict[str, Any],
+                OmegaConf.to_container(env_cfg.seed_posts, resolve=True),
+            )
+        seed_post_provider = _build_seed_post_provider(seed_post_cfg)
+        seed_t0 = time.time()
+        seed_posts = _collect_seed_posts(self.entities, provider=seed_post_provider)
+        seed_elapsed = time.time() - seed_t0
+
+        social_network_cfg = (
+            dict(env_cfg.social_network) if hasattr(env_cfg, "social_network") else {}
+        )
+        backend_initializer = build_backend_initializer(gm_components_cfg.get("initializer"))
+        init_t0 = time.time()
+        backend_initializer.initialize(
+            sm_app=sm_app,
+            agent_names=player_names,
+            init_kwargs={
+                "sim_roles": user_data.get("sim_roles", {}),
+                "seed_posts": seed_posts,
+                "social_network": social_network_cfg,
+            },
+        )
+        init_elapsed = time.time() - init_t0
+
+        startup_line = (
+            f"Startup social_init: seed_posts={seed_elapsed:.2f}s "
+            f"seed_provider={type(seed_post_provider).__name__} "
+            f"app_initialize={init_elapsed:.2f}s "
+            f"initializer={type(backend_initializer).__name__} "
+            f"agents={len(player_names)} seed_count={sum(1 for t in seed_posts.values() if t)}"
+        )
+        logger.info(startup_line)
+        stats_path = os.path.join(cfg.output_rootname, "run_stats.log")
+        with open(stats_path, "a", encoding="utf-8") as f:
+            f.write(startup_line + "\n")
 
         catalog = sm_app.action_catalog()
         allowed_action_types = sorted(
@@ -349,6 +404,8 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
             action_mode=getattr(cfg.sim, "action_mode", "custom"),
             enable_tool_calling=enable_tool_calling,
         )
+        act_component.gm_orchestration = gm_orchestration
+        act_component.shared_flow_mode = self._is_shared_flow_mode()
 
         return entity_agent_with_logging.EntityAgentWithLogging(
             agent_name=name,

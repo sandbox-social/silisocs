@@ -3,8 +3,8 @@
 # Generic scenario defaults — overridden by scenario-specific scenario/default.yaml
 scenario_name: default
 jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
-num_agents: 100
-num_steps: 50
+num_agents: 10
+num_steps: 5
 run_name: run1
 seed: 1
 output_rootname: ""

@@ -1,4 +1,16 @@
-"""Mastodon Sim - Generative Agent simulation of social media networks."""
+"""Silisocs public Python API.
+
+Silisocs builds on Concordia's agent/runtime abstractions and adds a
+configuration-first social simulation layer with social-media backends,
+game-master components, probes, and study tooling.
+"""
+
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("silisocs")
+except PackageNotFoundError:  # pragma: no cover
+    __version__ = "0.0.0"
 
 
 def __getattr__(name: str):
@@ -27,5 +39,6 @@ __all__ = [
     "PhoneApp",
     "Simulation",
     "SocialMediaApp",
+    "__version__",
     "app_action",
 ]

@@ -59,7 +59,7 @@ The primary entry point is the `silisocs` CLI command:
 uv run silisocs
 
 # Override parameters via Hydra
-uv run silisocs num_agents=50 num_steps=20 sim.llm.name=gpt-4o
+uv run silisocs num_agents=10 num_steps=5 sim.llm.name=gpt-4o
 
 # Use a different platform
 uv run silisocs env=reddit_like
@@ -107,12 +107,14 @@ See [Dashboard](dashboard.md) for details.
 ## Configuration System
 
 The project uses [Hydra](https://hydra.cc/) for hierarchical YAML configuration
-with composition. The top-level config composes four sub-configs:
+with composition. The top-level package config is
+`src/silisocs/conf/experiment.yaml` and composes these groups:
 
 ```yaml
-# config.yaml
+# experiment.yaml
 defaults:
-  - agent: base            # Agent construction and personas
+  - scenario: default      # Root run params, setting, event, and scenario data
+  - agents: default        # Agent construction and personas
   - sim: base              # Simulation parameters
   - env: twitter_like      # Platform backend
   - evals: base            # Probes and evaluation config
@@ -122,15 +124,19 @@ defaults:
 
 ```
 src/silisocs/conf/
-├── config.yaml              # Top-level composition
+├── experiment.yaml          # Top-level composition
+├── agents/
+│   └── default.yaml         # Persona pipeline defaults
+├── scenario/
+│   └── default.yaml         # Root run params and default scenario
 ├── sim/
-│   └── base.yaml            # LLM, agent count, steps, memory, etc.
+│   └── base.yaml            # LLM, engine, tool-calling, memory, checkpoints
 ├── env/
 │   ├── twitter_like.yaml    # Local Twitter-like backend
 │   ├── reddit_like.yaml     # Local Reddit-like backend
 │   └── mastodon.yaml        # Remote Mastodon server
-└── scenario/
-    └── default.yaml         # Default generic scenario
+└── evals/
+    └── base.yaml            # Probe and logging defaults
 ```
 
 See [Configuration Reference](configuration.md) for all options.
@@ -145,10 +151,11 @@ Scenarios can live outside the package in `scenarios/<name>/conf/`:
 ```
 scenarios/election/
 ├── conf/
-│   ├── agent.yaml           # @package agent
-│   ├── sim.yaml             # @package sim
-│   ├── env.yaml           # @package env (optional)
-│   └── evals.yaml         # @package evals (optional)
+│   ├── scenario/default.yaml # @package _global_
+│   ├── agents/default.yaml   # @package agents
+│   ├── sim.yaml              # Optional partial sim override
+│   ├── env.yaml              # Optional partial env override
+│   └── evals.yaml            # Optional partial evals override
 ├── builders.py              # Optional custom agent builder
 └── outputs/                 # Simulation output (auto-created)
 ```
@@ -159,8 +166,8 @@ Run with:
 uv run silisocs --config-path scenarios/election/conf
 ```
 
-The runner reads `scenario_name` from `sim.yaml` automatically, so you do
-not need a manual scenario override.
+The runner reads `scenario_name` from the scenario config automatically, so you
+usually do not need a manual scenario override.
 
 ---
 
@@ -181,11 +188,24 @@ persona_pipeline:
       count: 100
       prefab_module: silisocs.agents.entity
       data:
-        source: hf_dataset
-        dataset: nvidia/Nemotron-Personas-USA
-        split: train
+        source: inline
+        records:
+          - persona: Alex is a local organizer who posts about public services.
       field_map:
         context: persona
+```
+
+Hugging Face datasets are available with the `hf` extra:
+
+```sh
+pip install "silisocs[hf]"
+```
+
+```yaml
+data:
+  source: hf_dataset
+  dataset: nvidia/Nemotron-Personas-USA
+  split: train
 ```
 
 ### Method 2: Custom Builder (Programmatic)
@@ -211,7 +231,8 @@ You can assign different LLM models at three levels:
 
 **Global default** — in `sim/base.yaml`:
 ```yaml
-llm_name: gpt-4o
+llm:
+  name: gpt-4o
 ```
 
 **Per-class** — in the persona pipeline:
@@ -438,10 +459,10 @@ Each line in `probe_events.jsonl`:
 ```json
 {
   "metadata": {
-    "num_agents": 500,
-    "num_steps": 200,
+    "num_agents": 10,
+    "num_steps": 5,
     "scenario": "election",
-    "llm_name": "gpt-4o",
+    "llm": {"name": "gpt-4o"},
     "agent_names": ["Alice Smith", "Bob Jones", "..."]
   },
   "total_duration_s": 1234.5,
@@ -467,6 +488,8 @@ Point the built-in visualizer at the SQLite database to browse the simulation
 state interactively:
 
 ```sh
+uv sync --extra viz
+
 # Twitter-like
 TWITTER_LIKE_DB=outputs/my_scenario/.../twitter_like.db \
   python -m silisocs.environments.backends.twitter_like.visualizer.server
@@ -487,16 +510,17 @@ Here is the complete workflow for creating and running a custom scenario:
 ### 1. Create the Scenario Directory
 
 ```sh
-mkdir -p scenarios/my_scenario/conf
+mkdir -p scenarios/my_scenario/conf/scenario scenarios/my_scenario/conf/agents
 ```
 
-### 2. Write the Scenario Config
+### 2. Write the Scenario Configs
 
 ```yaml
-# scenarios/my_scenario/conf/sim.yaml
-# @package sim
-
+# scenarios/my_scenario/conf/scenario/default.yaml
+# @package _global_
 scenario_name: my_scenario
+num_agents: 2
+num_steps: 5
 
 setting:
   name: My Community
@@ -508,26 +532,43 @@ event:
   context: |
     A new product has been announced and community members
     are discussing its merits and drawbacks.
+```
 
+```yaml
+# scenarios/my_scenario/conf/agents/default.yaml
+# @package agents
 persona_pipeline:
   processing_mode: raw
   defaults:
     params:
-      scenario_context: ${sim.event.context}
+      scenario_context: ${event.context}
     shared_memories:
       - They are active on a tech discussion forum.
+      - ${event.context}
   classes:
     user:
       count: ${num_agents}
       prefab_module: silisocs.agents.entity
       sim_role_name: user
       data:
-        source: hf_dataset
-        dataset: nvidia/Nemotron-Personas-USA
-        split: train
+        source: inline
+        records:
+          - persona: Alex follows product launches and asks practical questions.
+          - persona: Blair studies developer tools and compares alternatives.
       field_map:
         context: persona
 
+shared_memories:
+  - They are active on a tech discussion forum.
+  - ${event.context}
+
+initial_observations:
+  - "{name} is browsing the forum."
+  - "{name} sees the latest announcement about the product launch."
+```
+
+```yaml
+# scenarios/my_scenario/conf/env.yaml
 social_network:
   network_type: barabasi_albert
   barabasi_albert_m: 10
@@ -536,14 +577,6 @@ social_network:
     user:
       inactive_to_active: 0.3
       active_to_inactive: 0.3
-
-shared_memories:
-  - They are active on a tech discussion forum.
-  - ${sim.event.context}
-
-initial_observations:
-  - "{name} is browsing the forum."
-  - "{name} sees the latest announcement about the product launch."
 ```
 
 ### 3. Run It

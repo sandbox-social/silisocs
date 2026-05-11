@@ -4860,21 +4860,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pyproject-toml"
-version = "0.0.12"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "jsonschema" },
-    { name = "setuptools" },
-    { name = "toml" },
-    { name = "wheel" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/e8/6e/c5b294673621fa5cd0d55a72730038e22b0962cf9d85f7f0eb891b09c114/pyproject_toml-0.0.12.tar.gz", hash = "sha256:2cb3b0045c38d92368be98cd81182ce7281fbfb38da9170ac339701ef20c662a", size = 8974, upload-time = "2024-11-12T02:36:39.415Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/60/66/ddd00b2cae033afa65b27ed861c1518e398b8595a88ebc619a01c1683c8c/pyproject_toml-0.0.12-py3-none-any.whl", hash = "sha256:d0a934ad69c4a82abf887b4f58f0d5a44b0cc5ffa406e3dacd39dbbb7cf5d791", size = 7006, upload-time = "2024-11-12T02:36:37.659Z" },
-]
-
-[[package]]
 name = "pyreadline3"
 version = "3.5.4"
 source = { registry = "https://pypi.org/simple" }
@@ -5845,14 +5830,31 @@ source = { editable = "." }
 dependencies = [
     { name = "boto3" },
     { name = "coloredlogs" },
+    { name = "docstring-parser" },
+    { name = "gdm-concordia" },
+    { name = "hydra-core" },
+    { name = "networkx" },
+    { name = "numpy" },
+    { name = "omegaconf" },
+    { name = "openai" },
+    { name = "pandas" },
+    { name = "portalocker" },
+    { name = "psutil" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "termcolor" },
+    { name = "tqdm" },
+    { name = "typer" },
+]
+
+[package.optional-dependencies]
+all = [
     { name = "dash" },
     { name = "dash-cytoscape" },
     { name = "datasets" },
-    { name = "docstring-parser" },
     { name = "fastapi", extra = ["all"] },
-    { name = "gdm-concordia" },
     { name = "gunicorn" },
-    { name = "hydra-core" },
     { name = "ipympl" },
     { name = "jinja2" },
     { name = "loguru" },
@@ -5864,30 +5866,60 @@ dependencies = [
     { name = "mkdocs-material" },
     { name = "mkdocstrings-python" },
     { name = "nbformat" },
-    { name = "networkx" },
-    { name = "numpy" },
-    { name = "omegaconf" },
-    { name = "openai" },
-    { name = "pandas" },
-    { name = "pathspec" },
     { name = "plotly" },
-    { name = "portalocker" },
     { name = "powerlaw" },
-    { name = "psutil" },
     { name = "pymdown-extensions" },
-    { name = "pyproject-toml" },
     { name = "python-louvain" },
     { name = "pyvis" },
-    { name = "pyyaml" },
-    { name = "requests" },
+    { name = "scikit-learn" },
     { name = "scipy" },
     { name = "seaborn" },
     { name = "sentence-transformers" },
     { name = "streamlit" },
-    { name = "termcolor" },
     { name = "tiktoken" },
-    { name = "tqdm" },
-    { name = "typer" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+analysis = [
+    { name = "dash" },
+    { name = "dash-cytoscape" },
+    { name = "ipympl" },
+    { name = "matplotlib" },
+    { name = "nbformat" },
+    { name = "plotly" },
+    { name = "powerlaw" },
+    { name = "python-louvain" },
+    { name = "scipy" },
+    { name = "seaborn" },
+    { name = "tiktoken" },
+]
+dashboard = [
+    { name = "streamlit" },
+]
+docs = [
+    { name = "mkdocs-autorefs" },
+    { name = "mkdocs-gen-files" },
+    { name = "mkdocs-literate-nav" },
+    { name = "mkdocs-material" },
+    { name = "mkdocstrings-python" },
+    { name = "pymdown-extensions" },
+]
+hf = [
+    { name = "datasets" },
+]
+mastodon = [
+    { name = "loguru" },
+    { name = "mastodon-py" },
+    { name = "pyvis" },
+]
+recsys = [
+    { name = "scikit-learn" },
+    { name = "scipy" },
+    { name = "sentence-transformers" },
+]
+viz = [
+    { name = "fastapi", extra = ["all"] },
+    { name = "gunicorn" },
+    { name = "jinja2" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -5924,52 +5956,54 @@ test = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.34.139,<2.0.0" },
     { name = "coloredlogs", specifier = ">=15.0.1" },
-    { name = "dash", specifier = ">=2.18.2,<3.0.0" },
-    { name = "dash-cytoscape", specifier = ">=1.0.2,<2.0.0" },
-    { name = "datasets", specifier = ">=4.5.0,<5.0.0" },
+    { name = "dash", marker = "extra == 'analysis'", specifier = ">=2.18.2,<3.0.0" },
+    { name = "dash-cytoscape", marker = "extra == 'analysis'", specifier = ">=1.0.2,<2.0.0" },
+    { name = "datasets", marker = "extra == 'hf'", specifier = ">=4.5.0,<5.0.0" },
     { name = "docstring-parser", specifier = ">=0.16,<0.17" },
-    { name = "fastapi", extras = ["all"], specifier = ">=0.110.1" },
+    { name = "fastapi", extras = ["all"], marker = "extra == 'viz'", specifier = ">=0.110.1" },
     { name = "gdm-concordia", specifier = ">=2.1.0,<2.2.0" },
-    { name = "gunicorn", specifier = ">=21.2.0" },
+    { name = "gunicorn", marker = "extra == 'viz'", specifier = ">=21.2.0" },
     { name = "hydra-core", specifier = ">=1.3.2,<2.0.0" },
-    { name = "ipympl", specifier = ">=0.9.4,<0.10.0" },
-    { name = "jinja2", specifier = ">=3.1.4,<4.0.0" },
-    { name = "loguru", specifier = ">=0.7.2,<0.8.0" },
-    { name = "mastodon-py", specifier = ">=1.8.1,<2.0.0" },
-    { name = "matplotlib", specifier = ">=3.9.1,<4.0.0" },
-    { name = "mkdocs-autorefs", specifier = ">=1.4.4" },
-    { name = "mkdocs-gen-files", specifier = ">=0.6.1" },
-    { name = "mkdocs-literate-nav", specifier = ">=0.6.3" },
-    { name = "mkdocs-material", specifier = ">=9.7.6" },
-    { name = "mkdocstrings-python", specifier = ">=2.0.3" },
-    { name = "nbformat", specifier = ">=5.10.4,<6.0.0" },
+    { name = "ipympl", marker = "extra == 'analysis'", specifier = ">=0.9.4,<0.10.0" },
+    { name = "jinja2", marker = "extra == 'viz'", specifier = ">=3.1.4,<4.0.0" },
+    { name = "loguru", marker = "extra == 'mastodon'", specifier = ">=0.7.2,<0.8.0" },
+    { name = "mastodon-py", marker = "extra == 'mastodon'", specifier = ">=1.8.1,<2.0.0" },
+    { name = "matplotlib", marker = "extra == 'analysis'", specifier = ">=3.9.1,<4.0.0" },
+    { name = "mkdocs-autorefs", marker = "extra == 'docs'", specifier = ">=1.4.4" },
+    { name = "mkdocs-gen-files", marker = "extra == 'docs'", specifier = ">=0.6.1" },
+    { name = "mkdocs-literate-nav", marker = "extra == 'docs'", specifier = ">=0.6.3" },
+    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.7.6" },
+    { name = "mkdocstrings-python", marker = "extra == 'docs'", specifier = ">=2.0.3" },
+    { name = "nbformat", marker = "extra == 'analysis'", specifier = ">=5.10.4,<6.0.0" },
     { name = "networkx", specifier = ">=3.3,<4.0.0" },
     { name = "numpy", specifier = "==1.26.4" },
     { name = "omegaconf", specifier = ">=2.3.0,<3.0.0" },
     { name = "openai", specifier = ">=1.35.9,<2.0.0" },
     { name = "pandas", specifier = ">=2.2" },
-    { name = "pathspec", specifier = ">=0.12.1,<0.13.0" },
-    { name = "plotly", specifier = ">=5.22.0,<6.0.0" },
+    { name = "plotly", marker = "extra == 'analysis'", specifier = ">=5.22.0,<6.0.0" },
     { name = "portalocker", specifier = ">=3.1.1,<4.0.0" },
-    { name = "powerlaw", specifier = ">=1.5,<2.0.0" },
-    { name = "psutil", specifier = ">=5.9.0" },
+    { name = "powerlaw", marker = "extra == 'analysis'", specifier = ">=1.5,<2.0.0" },
     { name = "psutil", specifier = ">=7.2.2,<8.0.0" },
-    { name = "pymdown-extensions", specifier = ">=10.21.2" },
-    { name = "pyproject-toml", specifier = ">=0.0.10,<0.1.0" },
-    { name = "python-louvain", specifier = ">=0.16,<0.17" },
-    { name = "pyvis", specifier = "==0.3.1" },
+    { name = "pymdown-extensions", marker = "extra == 'docs'", specifier = ">=10.21.2" },
+    { name = "python-dotenv", specifier = ">=1.0.1,<2.0.0" },
+    { name = "python-louvain", marker = "extra == 'analysis'", specifier = ">=0.16,<0.17" },
+    { name = "pyvis", marker = "extra == 'mastodon'", specifier = "==0.3.1" },
     { name = "pyyaml", specifier = ">=6.0.2,<7.0.0" },
     { name = "requests", specifier = ">=2.32.3,<3.0.0" },
-    { name = "scipy", specifier = ">=1.14.1,<2.0.0" },
-    { name = "seaborn", specifier = ">=0.13.2,<0.14.0" },
-    { name = "sentence-transformers", specifier = ">=3.0.1,<4.0.0" },
-    { name = "streamlit", specifier = ">=1.45.1,<2.0.0" },
+    { name = "scikit-learn", marker = "extra == 'recsys'", specifier = ">=1.5.0,<2.0.0" },
+    { name = "scipy", marker = "extra == 'analysis'", specifier = ">=1.14.1,<2.0.0" },
+    { name = "scipy", marker = "extra == 'recsys'", specifier = ">=1.14.1,<2.0.0" },
+    { name = "seaborn", marker = "extra == 'analysis'", specifier = ">=0.13.2,<0.14.0" },
+    { name = "sentence-transformers", marker = "extra == 'recsys'", specifier = ">=3.0.1,<4.0.0" },
+    { name = "silisocs", extras = ["analysis", "dashboard", "docs", "hf", "mastodon", "recsys", "viz"], marker = "extra == 'all'" },
+    { name = "streamlit", marker = "extra == 'dashboard'", specifier = ">=1.45.1,<2.0.0" },
     { name = "termcolor", specifier = ">=2.4.0,<3.0.0" },
-    { name = "tiktoken", specifier = ">=0.7.0,<0.8.0" },
+    { name = "tiktoken", marker = "extra == 'analysis'", specifier = ">=0.7.0,<0.8.0" },
     { name = "tqdm", specifier = ">=4.66.4,<5.0.0" },
     { name = "typer", specifier = ">=0.12.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.29.0" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'viz'", specifier = ">=0.29.0" },
 ]
+provides-extras = ["analysis", "dashboard", "docs", "hf", "mastodon", "recsys", "viz", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -6868,19 +6902,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d4/f9/0ba83eaa0df9b9e9d1efeb2ea351d0677c37d41ee5d0f91e98423c7281c9/werkzeug-3.0.6.tar.gz", hash = "sha256:a8dd59d4de28ca70471a34cba79bed5f7ef2e036a76b3ab0835474246eb41f8d", size = 805170, upload-time = "2024-10-25T18:52:31.688Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/6c/69/05837f91dfe42109203ffa3e488214ff86a6d68b2ed6c167da6cdc42349b/werkzeug-3.0.6-py3-none-any.whl", hash = "sha256:1bc0c2310d2fbb07b1dd1105eba2f7af72f322e1e455f2f93c993bee8c8a5f17", size = 227979, upload-time = "2024-10-25T18:52:30.129Z" },
-]
-
-[[package]]
-name = "wheel"
-version = "0.47.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "packaging", version = "25.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.15' and sys_platform == 'win32'" },
-    { name = "packaging", version = "26.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.15' or sys_platform != 'win32'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/39/62/75f18a0f03b4219c456652c7780e4d749b929eb605c098ce3a5b6b6bc081/wheel-0.47.0.tar.gz", hash = "sha256:cc72bd1009ba0cf63922e28f94d9d83b920aa2bb28f798a31d0691b02fa3c9b3", size = 63854, upload-time = "2026-04-22T15:51:27.727Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/87/1b/9e33c09813d65e248f7f773119148a612516a4bea93e9c6f545f78455b7c/wheel-0.47.0-py3-none-any.whl", hash = "sha256:212281cab4dff978f6cedd499cd893e1f620791ca6ff7107cf270781e587eced", size = 32218, upload-time = "2026-04-22T15:51:26.296Z" },
 ]
 
 [[package]]

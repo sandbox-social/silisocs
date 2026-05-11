@@ -2,13 +2,33 @@
 
 ## Prerequisites
 
-- Python 3.10 or newer
+- Python 3.11 or newer
 - `uv` 0.10 or newer
 
 If `uv` is not installed yet, use one of the installation methods from the
 [uv documentation](https://docs.astral.sh/uv/getting-started/installation/).
 
-## Project Setup
+## Installing the Library
+
+The default PyPI package is a lean runtime install. It includes the core
+configuration system, agent interfaces, runtime engine, game-master components,
+local backends, and evaluation probes.
+
+```sh
+pip install silisocs
+```
+
+Install optional integrations only when needed:
+
+```sh
+pip install "silisocs[hf]"        # Hugging Face persona datasets
+pip install "silisocs[mastodon]"  # real Mastodon server integration
+pip install "silisocs[dashboard]" # Streamlit scenario launcher
+pip install "silisocs[analysis]"  # plotting and analysis dashboards
+pip install "silisocs[viz]"       # local backend web visualizers
+```
+
+## Contributor Setup
 
 1. Clone the repository:
 
@@ -20,22 +40,23 @@ If `uv` is not installed yet, use one of the installation methods from the
 2. Sync the default environment:
 
    ```sh
-   uv sync
+   uv sync --all-extras
    ```
 
-   This installs the project and the default `test` dependency group used by CI.
+   The default package is lean, while the repository test suite exercises
+   optional integrations. `--all-extras` mirrors CI's full test environment.
 
 3. For the full contributor environment, including local tooling such as
    `poethepoet`, `commitizen`, notebooks, and documentation helpers, run:
 
    ```sh
-   uv sync --group dev
+   uv sync --all-extras --group dev
    ```
 
 4. If you need the documentation toolchain (MkDocs) as well, include the docs group:
 
    ```sh
-   uv sync --group dev --group docs
+   uv sync --all-extras --group dev --group docs
    ```
 
 ## Common uv Workflows
@@ -56,24 +77,21 @@ If `uv` is not installed yet, use one of the installation methods from the
 
 ## Environment Variables
 
-The application relies on a `.env` file to manage sensitive information and configuration settings. This file should be placed in the root directory of the project and contain the key-value pairs required by your chosen backend.
+Silisocs reads `.env` files through `python-dotenv`, but only integrations that
+talk to external services require secrets. Keep `.env` local and never commit it.
 
 ### Example `.env` File
 
 ```dotenv
-# Mastodon API base URL
-API_BASE_URL=https://<domain_name>
+OPENAI_API_KEY=<your_openai_key>
 
-# Mastodon client credentials
-MASTODON_CLIENT_ID=*************************0
-MASTODON_CLIENT_SECRET=*********************************o
-
-# Email prefix for user accounts
+# Only needed with silisocs[mastodon]
+API_BASE_URL=https://<mastodon-domain>
+MASTODON_CLIENT_ID=<client_id>
+MASTODON_CLIENT_SECRET=<client_secret>
 EMAIL_PREFIX=<email_prefix>
-
-# Bot user passwords
-USER001_PASSWORD=***************************5
-USER002_PASSWORD=***************************8
+USER001_PASSWORD=<user001_password>
+USER002_PASSWORD=<user002_password>
 ```
 
 ## Next Steps

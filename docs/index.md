@@ -55,26 +55,27 @@ If you want to **extend the framework** (new backends, entities, probes, initial
 
 1. Read the [Usage Overview](usage.md) to understand the pipeline
 2. See [Building Agents](building_agents.md) for custom builder classes
-3. See [Memory Initialization](memory_initialization.md) for custom initializers
-4. See [Environment Layer](environment_layer.md) for Engine/GM/component configurability
-5. See [Social Media Backends](backends.md#adding-a-new-backend-developer-guide) for new platform backends
-6. See [Evaluation Probes](probes.md#custom-probe-types) for custom probe types
-7. See [Simulation Extensibility API](simulation_extensibility_api.md) for class/method contracts and extension hooks
-8. Check [Contributing](contributing.md) for code standards and workflows
+3. See [Concordia Bridge](concordia_bridge.md) for how Silisocs maps Concordia agents and action specs to social-media simulations
+4. See [Memory Initialization](memory_initialization.md) for custom initializers
+5. See [Environment Layer](environment_layer.md) for Engine/GM/component configurability
+6. See [Social Media Backends](backends.md#adding-a-new-backend-developer-guide) for new platform backends
+7. See [Evaluation Probes](probes.md#custom-probe-types) for custom probe types
+8. See [Simulation Extensibility API](simulation_extensibility_api.md) for class/method contracts and extension hooks
+9. Check [Contributing](contributing.md) for code standards and workflows
 
 ## For AI Coding Agents
 
 If you're an **LLM helping with code changes or architecture**:
 
-1. **Code Extension & Architecture**: Read [AGENTS.md](../AGENTS.md) — Entry points, component system, extensibility patterns
-2. **Deep Architectural Dive**: Read [agent_docs/architecture.md](../agent_docs/architecture.md) — Multi-flow routing, component instance management, flow scheduling
+1. **Code Extension & Architecture**: Read `AGENTS.md` in the repository root — entry points, component system, extensibility patterns
+2. **Deep Architectural Dive**: Read `agent_docs/architecture.md` in the repository root — multi-flow routing, component instance management, flow scheduling
 3. **Configuration Reference**: Check [configuration.md](configuration.md) — All knobs and their effects
-4. **Study Orchestration**: Read [agent_docs/scenario_design.md](../agent_docs/scenario_design.md) — `run_study.py` schema and evaluator presets
+4. **Study Orchestration**: Read `agent_docs/scenario_design.md` in the repository root — `run_study.py` schema and evaluator presets
 
 If you're an **LLM helping design experiments via configuration**:
 
-1. **Scenario Design**: Read [agent_docs/scenario_design.md](../agent_docs/scenario_design.md) — How to create `scenarios/{name}/conf/` with persona pipelines, networks, probes
-2. **Guided workflows**: Use `/new-scenario` or `/new-study` (full instructions in [agent_docs/skills/](../agent_docs/skills/))
+1. **Scenario Design**: Read `agent_docs/scenario_design.md` in the repository root — How to create `scenarios/{name}/conf/` with persona pipelines, networks, probes
+2. **Guided workflows**: Use `/new-scenario` or `/new-study` with the instruction files in `agent_docs/skills/`
 3. **Config Reference**: Check [configuration.md](configuration.md) — All config values and defaults
 
 ## Quick Links
@@ -96,6 +97,7 @@ If you're an **LLM helping design experiments via configuration**:
 **For Code Developers:**
 - [Environment Layer](environment_layer.md) — Engine/GM/backend extensibility
 - [Simulation Extensibility API](simulation_extensibility_api.md) — API-style contracts for extending agents, GMs, engines, and policies
+- [Concordia Bridge](concordia_bridge.md) — How Concordia concepts map into Silisocs runtime layers
 - [Building Agents](building_agents.md) — YAML pipeline and custom builders
 - [Memory Initialization](memory_initialization.md) — Custom initializers
 - [Social Media Backends](backends.md) — Backend plugin guide
@@ -103,10 +105,10 @@ If you're an **LLM helping design experiments via configuration**:
 - [Contributing](contributing.md) — Code standards
 
 **For AI Agents:**
-- [AGENTS.md](../AGENTS.md) — Code extension points and architecture
-- [agent_docs/architecture.md](../agent_docs/architecture.md) — Multi-flow routing deep dive
-- [agent_docs/scenario_design.md](../agent_docs/scenario_design.md) — Scenario design via configuration
-- [agent_docs/skills/](../agent_docs/skills/) — Guided workflow instruction sets
+- `AGENTS.md` in the repository root — Code extension points and architecture
+- `agent_docs/architecture.md` — Multi-flow routing deep dive
+- `agent_docs/scenario_design.md` — Scenario design via configuration
+- `agent_docs/skills/` — Guided workflow instruction sets
 
 ## Architecture at a Glance
 

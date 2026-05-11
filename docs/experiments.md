@@ -256,4 +256,4 @@ Array modes:
 - `hypothesis`: one task per hypothesis.
 - `run`: one task per expanded run row.
 
-For full schema details, see [EXPERIMENTS.md](../EXPERIMENTS.md).
+For full schema details, see [Study Schema Reference](study_schema.md).

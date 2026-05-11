@@ -1,217 +1,126 @@
 [![CI](https://github.com/social-sandbox/silisocs/actions/workflows/test.yml/badge.svg)](https://github.com/social-sandbox/silisocs/actions/workflows/test.yml)
 [![Docs](https://github.com/social-sandbox/silisocs/actions/workflows/docs.yml/badge.svg)](https://social-sandbox.github.io/silisocs)
-[![Open in Dev Containers](https://img.shields.io/static/v1?label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/social-sandbox/silisocs)
 
-# Social Simulation Sandbox for Social Media Scenarios
+# Silisocs
 
-Configurable generative agent simulation of social media using the [Concordia framework](https://github.com/google-deepmind/concordia).
-- 2024 NeurIPS Workshop Paper: [http://arxiv.org/abs/2410.13915](http://arxiv.org/abs/2410.13915).
-- 2025 Version 1 demo paper: [https://www.ijcai.org/proceedings/2025/1271](https://www.ijcai.org/proceedings/2025/1271).
-- Version 2 complete (structured scenario configuration compatible with Concordia v.2)
+Silisocs is a Concordia-based social simulation framework for configurable
+social-media experiments. It adds a YAML-first scenario layer, social-media
+game masters, local platform backends, evaluation probes, runtime telemetry,
+and study tooling on top of Concordia's agent/runtime abstractions.
 
-**[Read the full documentation](https://social-sandbox.github.io/silisocs)**
+- 2024 NeurIPS Workshop Paper: [arXiv:2410.13915](http://arxiv.org/abs/2410.13915)
+- 2025 IJCAI Demo Paper: [IJCAI 2025](https://www.ijcai.org/proceedings/2025/1271)
+- Documentation: [social-sandbox.github.io/silisocs](https://social-sandbox.github.io/silisocs)
 
-**Running studies?** See [docs/study_schema.md](docs/study_schema.md) for the study YAML schema and experiment directory layout.
+## Install
 
-## Code Overview
-
-### Runtime Entry Point
-
-The canonical runtime entry point is:
-
-- `src/silisocs/runtime/runner.py`
-
-It composes Hydra config, builds agents + game masters, initializes memory,
-runs the simulation engine, and writes outputs.
-
-### Config Layout
-
-Hydra composes these config groups:
-
-- `src/silisocs/conf/sim/base.yaml`
-- `src/silisocs/conf/social_media/{twitter_like|reddit_like|mastodon}.yaml`
-- `src/silisocs/conf/scenario/{name}.yaml`
-
-External scenarios can be placed at:
-
-- `scenarios/<name>/conf/scenario/<name>.yaml`
-
-and launched with `--config-path`.
-
-### Output Artifacts
-
-Simulation output is written under:
-
-- `outputs/<scenario_name>/<jobname>/...`
-
-Key files:
-
-| Output file | Description |
-| ----------- | ----------- |
-| `action_events.jsonl` | Social-media actions with episode, source user, label, and data |
-| `probe_events.jsonl` | Probe responses by episode and source user |
-| `prompts_and_responses.jsonl` | LLM prompts and responses |
-| `run_stats.log` | Startup and per-episode runtime statistics |
-| `sim_metrics.json` | Structured metrics summary |
-| `logs.html` | Concordia HTML logs |
-| `<platform>.db` | SQLite platform state for local backends |
-| `.hydra/config.yaml` | Resolved config snapshot |
-
-### Dashboards
-
-The project currently has two dashboard apps:
-
-- Streamlit launcher: `src/silisocs/dashboard/launch_app.py`
-- Dash analytics app: `src/silisocs/evaluations/analysis/dashboard/main.py`
-
-The Streamlit app is for scenario authoring and run launch. The Dash app is
-for post-run analysis of `action_events.jsonl` and `probe_events.jsonl`.
-
-Here is a snapshot:
-
-![alt text](https://github.com/social-sandbox/silisocs/blob/main/docs/img/dashboard_screenshot.png?raw=true)
-
-## High-Level Structure
-
-```text
-silisocs/
-├── src/silisocs/
-│   ├── runtime/            # runner, simulation composition, config validation
-│   ├── environments/       # engine, game master, backend implementations
-│   ├── agents/             # entities, builders, initialization
-│   ├── evaluations/        # probes, plotting, analytics dashboard
-│   └── dashboard/          # streamlit launcher
-├── src/silisocs/conf/  # Hydra config groups (sim/social_media/scenario)
-├── scenarios/              # external scenarios and outputs
-├── docs/                   # mkdocs user/developer documentation
-└── tests/                  # unit and integration tests
-```
-```text
-simsandbox/
-  ├── src/
-  │   └── EASE/              # Main package
-  │       ├── agents/
-  │       │   ├── components/        # Agent action/reasoning components
-  │       │   └── initialization/    # Agent setup
-  │       ├── environments/
-  │       │   ├── backends/          # Mastodon/Twitter-like app backend
-  │       │   └── gm/                # Game master (observe, recommend, etc.)
-  │       ├── evaluations/
-  │       │   ├── probes/            # Probe types and deployment
-  │       │   └── analysis/          # Post-hoc analysis utilities
-  │       ├── simulation/            # Simulation runner and telemetry
-  │       |   ├── runner.py          # Probe types and deployment
-  │       |   ├── simulators/        # wrapper object
-  │       │   └── engines/           # simulation engine object
-  │       └── conf/                  # Base Hydra config (sim, scenario, social_media)
-  │
-  ├── scenarios/                     # Per-scenario configs and inputs
-  │   └── {scenario_name}
-  │
-  ├── studies/                       # Study orchestration
-  │   ├── scripts/
-  │   │   ├── run_study.py           # Orchestrator (simulate → eval → register → organize)
-  │   │   ├── organize_experiments.py # Builds experiments/ tree from study.yaml
-  │   │   └── study_io.py            # Shared IO utilities
-  │   └── {study_name}/              # Study data (study.yaml, eval.py, results)
-  │
-  └── outputs/                       # Raw simulation outputs (gitignored)
-      ├── {scenario}_experiment/{timestamp}/
-      └── eval_{study}/
-```
-<!--
-## Hidden Section
-
-## Installing
-
-To install this package, run:
+The default package is intentionally lean and supports local simulations without
+dashboard, Mastodon, Hugging Face, or analysis dependencies:
 
 ```sh
 pip install silisocs
 ```
 
--->
-
-## Development Installation
-
-1. Clone the repository:
-
-    ```sh
-    git clone https://github.com/social-sandbox/silisocs.git
-    cd silisocs
-    ```
-
-2. Install `uv`:
-
-    ```sh
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    ```
-
-    See the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/) for alternative installation methods.
-
-3. Sync the default project environment:
-
-    ```sh
-    uv sync
-    ```
-
-    This installs the project together with the default `test` group used by CI.
-
-4. Install the contributor environment (required for committing):
-
-    ```sh
-    uv sync --group dev
-    ```
-
-    This adds `commitizen`, which is required by the pre-commit hooks that
-    run on every commit. Skipping this step causes all commits to fail.
-
-5. If you need the Sphinx docs toolchain too:
-
-    ```sh
-    uv sync --group dev --group docs
-    ```
-
-6. Run project commands inside the uv-managed environment:
-
-    ```sh
-    uv run poe lint
-    uv run poe test
-    ```
-
-## Environment Variables
-
-The application relies on a `.env` file to manage sensitive information and configuration settings. This file should be placed in the root directory of your project (`silisocs/`) and contain key-value pairs for required environment variables. The `dotenv` library is used to load these variables into the environment.
-
-### Example `.env` File
-
-Below is an scenario of what your `.env` file might look like. Make sure to replace the placeholder values with your actual configuration. Remember not to add this file to the project so as not to expose this sensitive information like client IDs, secrets, and passwords.
-
-```dotenv
-# Mastodon API base URL
-API_BASE_URL=https://<domain_name>
-
-# Mastodon client credentials
-MASTODON_CLIENT_ID=*************************0
-MASTODON_CLIENT_SECRET=*********************************o
-
-# Email prefix for user accounts
-EMAIL_PREFIX=<email_prefix>
-
-# Bot user passwords
-USER001_PASSWORD=***************************5
-USER002_PASSWORD=***************************8
-```
-
-<!--
-## Hidden Section
-
-## Using
-
-To view the CLI help information, run:
+Optional integrations are exposed as extras:
 
 ```sh
-silisocs --help
+pip install "silisocs[hf]"        # Hugging Face persona sources
+pip install "silisocs[mastodon]"  # real Mastodon backend
+pip install "silisocs[dashboard]" # Streamlit launcher
+pip install "silisocs[analysis]"  # plotting and analysis dashboards
+pip install "silisocs[viz]"       # local backend web visualizers
 ```
 
--->
+For contributor work from a checkout:
+
+```sh
+git clone https://github.com/social-sandbox/silisocs.git
+cd silisocs
+uv sync --all-extras --group dev --group docs
+```
+
+## Quick Start
+
+Run the built-in package default scenario:
+
+```sh
+uv run silisocs
+```
+
+For a local smoke test without model API calls:
+
+```sh
+uv run silisocs sim.llm.disabled=true
+```
+
+Override scale or model settings with Hydra dot notation:
+
+```sh
+uv run silisocs num_agents=10 num_steps=5 sim.llm.name=gpt-4o
+```
+
+Run a bundled external scenario:
+
+```sh
+uv run silisocs --config-path scenarios/election/conf
+```
+
+Outputs are written under `outputs/<scenario_name>/<jobname>/` and include
+`action_events.jsonl`, `probe_events.jsonl`, `prompts_and_responses.jsonl`,
+`sim_metrics.json`, `logs.html`, a resolved Hydra config snapshot, and a local
+SQLite backend database for local platforms.
+
+## Architecture
+
+The canonical runtime entry point is `src/silisocs/runtime/runner.py`. It
+composes Hydra configuration, builds agents, initializes memory, constructs the
+social-media backend and game master, runs the simulation engine, and writes
+artifacts.
+
+```text
+silisocs/
+├── src/silisocs/
+│   ├── agents/              # Concordia-compatible and custom agent builders
+│   ├── conf/                # Packaged Hydra defaults
+│   ├── dashboard/           # Optional Streamlit scenario launcher
+│   ├── environments/        # Game masters and social-media backends
+│   ├── evaluations/         # Probes, telemetry, and optional analysis tools
+│   ├── runtime/             # Runner, config projection, and orchestration
+│   └── simulation_engines/  # Action-loop and probe scheduling policies
+├── scenarios/               # Scenario configs and curated inputs
+├── experiments/             # Study orchestration and generated study outputs
+├── docs/                    # MkDocs documentation
+└── tests/                   # Unit and integration tests
+```
+
+## Concordia Bridge
+
+Silisocs does not replace Concordia. It uses Concordia as the agent and game
+runtime substrate, then adds social-simulation conventions around it:
+
+- Concordia entity agents are wrapped behind the common
+  `silisocs.agents.base_agent.Agent` interface.
+- Silisocs prefabs build either Concordia-compatible agents or simpler custom
+  agents that implement `name`, `observe(...)`, and `act(...)`.
+- Game-master components translate social-media observations and actions into
+  Concordia-compatible action specs.
+- Scenario YAML selects builders, backends, policies, probes, and prompts so
+  most experiment design does not require Python edits.
+
+See [docs/concordia_bridge.md](docs/concordia_bridge.md) and
+[docs/building_agents.md](docs/building_agents.md) for the extension contracts.
+
+## Development
+
+Common commands:
+
+```sh
+uv run pytest
+uv run poe lint
+uv build --sdist --wheel
+uv run mkdocs build --strict
+```
+
+Do not commit `.env` files, credentials, live-service tokens, or generated
+secrets. Mastodon credentials should be provided only through local environment
+variables when using the optional `mastodon` extra.

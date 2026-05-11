@@ -1,4 +1,4 @@
-# Top-level Hydra configuration for mastodon-sim
+# Top-level Hydra configuration for Silisocs
 # Choose between preset configurations using Hydra overrides:
 #   python -m silisocs.runtime.runner --config-path scenarios/misinformation/conf
 #   python -m silisocs.runtime.runner --config-path scenarios/misinformation/conf agents=thin

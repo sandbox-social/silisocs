@@ -3,7 +3,7 @@
 Advanced composition model for routing agents to multiple game masters with explicit flow sequencing and per-entity component field customization.
 
 **For**: Developers extending the framework with complex orchestration needs.
-**See also**: [Environment Layer](environment_layer.md), [Configuration Reference](configuration.md#engine-and-gm-configuration)
+**See also**: [Environment Layer](environment_layer.md), [Configuration Reference](configuration.md#gm-components)
 
 ---
 
@@ -434,5 +434,5 @@ A: No. Multi-GM and multi-field systems are purely opt-in. Existing components w
 ## See Also
 
 - [Environment Layer](environment_layer.md) — GM and engine extensibility
-- [Configuration Reference](configuration.md#engine-and-gm-configuration) — Full config schema
+- [Configuration Reference](configuration.md#gm-components) — Full config schema
 - Test files: `tests/test_*.py` for examples

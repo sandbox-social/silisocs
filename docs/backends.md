@@ -14,11 +14,17 @@ uv run silisocs env=reddit_like
 uv run silisocs env=mastodon
 ```
 
-Or in `config.yaml`:
+Or in the top-level Hydra defaults:
 
 ```yaml
 defaults:
     - env: reddit_like
+```
+
+The Mastodon backend requires the optional dependency extra:
+
+```sh
+pip install "silisocs[mastodon]"
 ```
 
 ---
@@ -87,7 +93,7 @@ platform_type: mastodon
 use_server: true
 ```
 
-Requires environment variables in `.env`:
+Live server operations require environment variables in `.env`:
 
 ```dotenv
 API_BASE_URL=https://your-mastodon-instance.social
@@ -96,6 +102,13 @@ MASTODON_CLIENT_SECRET=your_client_secret
 EMAIL_PREFIX=user_email_prefix
 USER001_PASSWORD=password_for_user_001
 ```
+
+For public-package and CI usage, `use_server: false` constructs the Mastodon
+backend in dry-run mode. Dry-run mode is non-interactive, does not clear or
+mutate a Mastodon server, and returns empty/mock timeline data while still
+exercising the same `SocialMediaApp` action interface. Use this mode for tests,
+documentation examples, and local development that should not require Mastodon
+credentials.
 
 See the [infrastructure/](https://github.com/social-sandbox/silisocs/tree/main/infrastructure)
 directory for instructions on deploying your own Mastodon instance.

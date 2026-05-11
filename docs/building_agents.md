@@ -24,7 +24,7 @@ to agent parameters — no Python code needed.
 ### Minimal Example
 
 ```yaml
-# scenario/my_scenario.yaml
+# scenarios/my_scenario/conf/agents/default.yaml
 persona_pipeline:
   processing_mode: raw
   defaults:
@@ -34,12 +34,13 @@ persona_pipeline:
       - "Users are active on a social media platform."
   classes:
     user:
-      count: 100
+      count: 2
       prefab_module: silisocs.agents.entity
       data:
-        source: hf_dataset
-        dataset: nvidia/Nemotron-Personas-USA
-        split: train
+        source: inline
+        records:
+          - persona: Alex follows local policy and posts practical updates.
+          - persona: Blair follows technology news and likes concise debates.
       field_map:
         context: persona
 ```
@@ -48,10 +49,10 @@ persona_pipeline:
 
 | Source | Config keys | Description |
 |--------|------------|-------------|
-| `hf_dataset` | `dataset`, `split`, `subset` | HuggingFace dataset (cached locally after first download) |
 | `local_json` | `path` | Local JSON file (array of objects) |
 | `inline` | `records` | Records defined directly in YAML |
 | `config_path` | `path` | Dot-path into another config section (e.g. `candidates`) |
+| `hf_dataset` | `dataset`, `split`, `subset` | Hugging Face dataset; requires `silisocs[hf]` |
 
 ### Field Mapping
 

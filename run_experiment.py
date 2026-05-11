@@ -8,8 +8,8 @@ This translates to:
     python -m silisocs.runtime.runner \\
         --config-path scenarios/NAME/conf \\
         scenario=NAME \\
-        sim.llm_name=gpt-4o-mini \\
-        sim.num_steps=10 \\
+        sim.llm.name=gpt-4o-mini \\
+        num_steps=10 \\
         sim.checkpoint.explicit_steps=[10] \\
         hydra.run.dir=outputs/NAME_experiment/TIMESTAMP
 
@@ -29,7 +29,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent
 
-# Map study-convention model names to sim.llm_name values used by this codebase.
+# Map study-convention model names to current sim.llm.name values.
 MODEL_MAP: dict[str, str] = {
     "gpt4omini": "gpt-4o-mini",
     "gpt4o": "gpt-4o",
@@ -94,14 +94,14 @@ def main() -> None:
     ]
 
     if llm_name:
-        cmd.append(f"sim.llm_name={llm_name}")
+        cmd.append(f"sim.llm.name={llm_name}")
     if disable_lm:
-        cmd.append("sim.disable_language_model=true")
+        cmd.append("sim.llm.disabled=true")
     if num_steps:
-        cmd.append(f"sim.num_steps={num_steps}")
+        cmd.append(f"num_steps={num_steps}")
         cmd.append(f"sim.checkpoint.explicit_steps=[{num_steps}]")
     if temperature:
-        cmd.append(f"sim.llm_temperature={temperature}")
+        cmd.append(f"sim.llm.temperature={temperature}")
 
     cmd.extend(passthrough)
 

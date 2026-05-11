@@ -61,14 +61,9 @@ class SocialNetworkApp(SocialMediaApp):
     def __post_init__(self) -> None:  # noqa: D105
         super().__init__()
         if self.perform_operations:
-            from silisocs import mastodon_ops
+            from silisocs.environments.backends.mastodon import mastodon_ops
 
             self._mastodon_ops = mastodon_ops
-
-        else:
-            input(
-                "Sim will not use the deployed Mastodon server. Confirm by pressing any key to continue."
-            )
 
     def name(self) -> str:
         """Define the name of the app."""
@@ -77,6 +72,11 @@ class SocialNetworkApp(SocialMediaApp):
     def description(self) -> str:
         """Define the description of the app."""
         return self.app_description
+
+    def _log_action_event(self, event: dict[str, Any]) -> None:
+        """Write an action event when the runtime provided an action logger."""
+        if self.action_logger is not None and hasattr(self.action_logger, "log"):
+            self.action_logger.log(event)
 
     # ------------------------------------------------------------------ #
     # SocialMediaApp interface
@@ -287,9 +287,9 @@ class SocialNetworkApp(SocialMediaApp):
         """Set the mapping of display names to usernames."""
         self._user_mapping = mapping
         self._print(f"Updated user mapping with {len(mapping)} entries", emoji="🔄")
-        # server state
-        check_env()
-        clear_mastodon_server(len(self._user_mapping) + 1)
+        if self.perform_operations:
+            check_env()
+            clear_mastodon_server(len(self._user_mapping) + 1)
 
     def get_user_mapping(self) -> dict[str, str]:
         """Get the mapping of display names to usernames."""
@@ -325,7 +325,7 @@ class SocialNetworkApp(SocialMediaApp):
             )
         bio_message = f'Profile updated successfully: "{bio}"'
         self._print(bio_message, emoji="✅")
-        self.action_logger.log(
+        self._log_action_event(
             {"source_user": current_user_full, "label": "update_profile", "data": {"new_bio": bio}}
         )
 
@@ -356,7 +356,7 @@ class SocialNetworkApp(SocialMediaApp):
             )
         self._print(f"Profile: {display_name} - {bio}", emoji="📄")
 
-        self.action_logger.log(
+        self._log_action_event(
             {
                 "source_user": current_user_full,
                 "label": "read_profile",
@@ -385,7 +385,7 @@ class SocialNetworkApp(SocialMediaApp):
             f"current_user (@{current_username}) followed target_user (@{target_username})"
         )
         self._print(follow_message, emoji="➕")  # noqa: RUF001
-        self.action_logger.log(
+        self._log_action_event(
             {
                 "source_user": current_user_full,
                 "label": "follow",
@@ -418,7 +418,7 @@ class SocialNetworkApp(SocialMediaApp):
             f"current_user (@{current_username}) unfollowed target_user (@{target_username})"
         )
         self._print(unfollow_message, emoji="✅")
-        self.action_logger.log(
+        self._log_action_event(
             {
                 "source_user": current_user_full,
                 "label": "unfollow",
@@ -584,7 +584,7 @@ class SocialNetworkApp(SocialMediaApp):
             toot_id = return_val["id"]
         else:
             return_msg = f'{current_user} posted a toot!: "{status}"\n'
-        self.action_logger.log(
+        self._log_action_event(
             {
                 "source_user": current_user_full,
                 "label": "post",
@@ -706,7 +706,7 @@ class SocialNetworkApp(SocialMediaApp):
             return_msg = (
                 f"{current_user} replied to a toot with toot id {in_reply_to_id} : {status}"
             )
-            self.action_logger.log(
+            self._log_action_event(
                 {
                     "source_user": current_user_full,
                     "label": "reply",
@@ -720,7 +720,11 @@ class SocialNetworkApp(SocialMediaApp):
         except ValueError as e:
             self._print(f"Invalid input, regular toot posted: {e!s}", emoji="❌")
             return_msg = f'''There was an error in posting {current_user}'s reply, response was posted as a new toot!: "{status}"'''
-            if "username" in locals():
+            if (
+                self.perform_operations
+                and self._mastodon_ops is not None
+                and "username" in locals()
+            ):
                 self._mastodon_ops.post_status(
                     login_user=username,
                     status=status,
@@ -729,7 +733,11 @@ class SocialNetworkApp(SocialMediaApp):
         except Exception as e:
             self._print(f"An unexpected error occurred, regular toot posted: {e!s}", emoji="❌")
             return_msg = f'''There was an error in posting {current_user}'s reply, response was posted as a new toot!: "{status}"'''
-            if "username" in locals():
+            if (
+                self.perform_operations
+                and self._mastodon_ops is not None
+                and "username" in locals()
+            ):
                 self._mastodon_ops.post_status(
                     login_user=username,
                     status=status,
@@ -822,7 +830,7 @@ class SocialNetworkApp(SocialMediaApp):
             emoji="📊",
         )
 
-        self.action_logger.log(
+        self._log_action_event(
             {
                 "source_user": current_user_full,
                 "label": "get_own_timeline",
@@ -917,7 +925,7 @@ class SocialNetworkApp(SocialMediaApp):
         notifications_string = self.print_notifications(notifications)
         full_output = f"{retrieval_message}\n{notifications_string}"
         self._print(full_output)
-        self.action_logger.log(
+        self._log_action_event(
             {
                 "source_user": current_user_full,
                 "label": "read_notification",
@@ -953,7 +961,7 @@ class SocialNetworkApp(SocialMediaApp):
                     color="light_grey",
                 )
             self._print(like_message, emoji="✅")
-            self.action_logger.log(
+            self._log_action_event(
                 {
                     "source_user": current_user_full,
                     "label": "like_toot",
@@ -994,7 +1002,7 @@ class SocialNetworkApp(SocialMediaApp):
                 f"@{current_username} boosted post {toot_id}",
                 emoji="✅",
             )
-            self.action_logger.log(
+            self._log_action_event(
                 {
                     "source_user": current_user_full,
                     "label": "boost_toot",

@@ -41,8 +41,6 @@ Canonical modules:
 - `src/silisocs/engines/base_engines.py`: primary runtime engine.
 Import from the `environments/gm/` and `engines/` packages.
 
-Import from the `environments/gm/` and `engines/` packages.
-
 ## GM Component Slots (YAML)
 
 Configure GM behavior from `env.gm.components`:
@@ -246,6 +244,23 @@ Flow routing notes:
   specific entity should move to a different phase.
 - Use `env.gm.components.observe.params.episode_observation_flows` for flows
   that should receive episode-index observations instead of timeline content.
+
+## Shared-Flow GM Contract
+
+`env.gm.preset: shared_flow` is an advanced GM preset for routing multiple
+component instances by flow. It uses the same runtime contracts as the baseline
+GM:
+
+- Backend apps are created through the backend factory with the configured
+  `env.app.class_path` and `env.app.params`.
+- Action events are written through the standard action event logger.
+- Backend initialization receives agent names, simulation roles, seed posts,
+  and social-network config through the configured initializer component.
+- Open-ended action loops expose `FINISHED` as an enabled backend action.
+
+This keeps simple and shared-flow runs interchangeable from the backend and
+artifact perspective. Custom shared-flow components should specialize routing,
+not bypass backend initialization or logging.
 
 ## Recommended Boundary
 
