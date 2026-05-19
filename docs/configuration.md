@@ -12,7 +12,7 @@ Configuration is split across named groups, each with a base preset in
 | *(root)* | `experiment.yaml` | Hydra output paths, experiment label |
 | `scenario` | `scenario/default.yaml` | Run parameters, setting, event, data |
 | `agents` | `agents/default.yaml` | Persona pipeline, shared memories, initial observations |
-| `sim` | `sim/base.yaml` | LLM (model, API, temperature), engine, tool-calling, memory backend, checkpoint |
+| `sim` | `sim/base.yaml` | LLM (model, API, temperature), engine, tool-calling, checkpoint |
 | `env` | `env/twitter_like.yaml` | Platform backend, GM components, social network |
 | `evals` | `evals/base.yaml` | Probes, HTML log writing |
 
@@ -70,27 +70,27 @@ Run parameters live in the `scenario` config group (placed at config root via
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `sim.llm.name` | `gpt-4o-mini` | LLM model name (passed to Concordia model factory) |
-| `sim.llm.api_base` | `null` | Custom API base URL (for OpenAI-compatible endpoints) |
+| `sim.llm.provider` | `openai` | Model provider: `openai`, `local`, or `disabled` |
+| `sim.llm.name` | `gpt-4o-mini` | LLM model name (passed to the model factory) |
+| `sim.llm.api_base` | `null` | Required base URL when `provider: local` |
 | `sim.llm.api_key` | `null` | API key (or set via environment variable) |
 | `sim.llm.temperature` | `0.5` | Sampling temperature |
 | `sim.llm.disabled` | `false` | Use a no-op model (for testing without API calls) |
+| `sim.llm.extra_kwargs` | `{}` | Provider request kwargs such as local `extra_body` settings |
 
 ### Engine and Runtime
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `sim.max_concurrent_actions` | `1000` | Max parallel LLM calls per step |
-| `sim.sentence_encoder` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model for associative memory |
-| `sim.memory_backend` | `list` | Memory type: `list` (fast) or `associative` (embedding-based) |
 | `sim.action_mode` | `custom` | Prompt style: `custom` (scenario prompt) or `generic` (backend-generated) |
 | `sim.tool_calling.mode` | `single` | Tool dispatch mode: `none`, `single`, or `multi` |
 | `sim.prompt_additions.action_count_guidance` | `true` | Add `[ActNum]` marker and action count guidance to prompt |
 | `sim.checkpoint.every_n_steps` | `null` | Save checkpoints every N steps when set |
 | `sim.checkpoint.explicit_steps` | `[]` | Additional explicit checkpoint steps |
-| `sim.checkpoint.resume_file` | `null` | Path to checkpoint JSON to resume a prior run |
-| `sim.checkpoint.resume_step` | `null` | Step override when resuming |
-| `sim.engine.preset` | `base` | Engine preset: `base` or `flow` |
+| `sim.checkpoint.source_run` | `null` | Previous output directory to restore from |
+| `sim.checkpoint.restore.built_in` | `social_action_event_replay` | Checkpoint restore strategy when `source_run` is set |
+| `sim.engine.step.built_in` | `base` | Engine step strategy: `base`, `flow`, or `multi_gm` |
 | `sim.roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |
 
 ---
@@ -210,7 +210,6 @@ data: {}
 ```yaml
 # @package agents
 persona_pipeline:
-  processing_mode: raw
   defaults:
     params:
       scenario_context: ${event.context}
@@ -219,7 +218,7 @@ persona_pipeline:
   classes:
     user:
       count: ${num_agents}
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: user
       data:
         source: inline
@@ -313,7 +312,6 @@ content lives in `scenarios/*/conf/agents/default.yaml`.
 ```yaml
 # @package agents
 persona_pipeline:
-  processing_mode: raw          # raw | formative
 
   defaults:                     # Applied to all classes
     params:
@@ -330,7 +328,7 @@ persona_pipeline:
   classes:
     <class_name>:
       count: ${num_agents}              # Number of agents in this class
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: user               # Role name for activity rates
       flow_tag: default                 # Optional class-level flow tag
       model: null                       # Per-class LLM override
@@ -416,12 +414,21 @@ app:
       ore: 0
 ```
 
+**Virtual space (generic non-social)**
+```yaml
+platform_type: virtual_space
+app:
+  params:
+    rooms: [atrium, garden, workshop]
+    starting_room: atrium
+```
+
 Custom backend apps can be loaded without editing the factory:
 
 ```yaml
 platform_type: custom
 app:
-  class_path: my_pkg.apps.MyEnvironmentApp
+  class_path: my_pkg.apps.MyBackendApp
   params:
     custom_setting: value
 ```
@@ -455,17 +462,48 @@ Initialize agent feeds with background posts before the simulation starts:
 
 | Type | Description |
 |------|-------------|
-| `llm` (default) | LLM-generated context-aware posts |
+| `agent` | Ask agents for starting posts through their normal act path |
 | `csv` | Pre-written posts from a CSV file (`agent_name,post_text`) |
 | `json` | Pre-written posts from a JSON file (`{"agent_name": "post_text"}`) |
 | `none` | Disable seed posts (organic growth only) |
-| `fallback` | CSV when available, LLM for missing agents |
+| `fallback` | File values first, agent-generated posts for missing agents |
 
 ```yaml
-seed_posts:
-  type: llm
-  params:
-    file_path: null   # Path to CSV/JSON file when type is csv/json/fallback
+sim:
+  initialization:
+    simulation:
+      built_in: seed_posts
+      class_path: null
+      params:
+        type: agent
+        params:
+          file_path: null   # Path to CSV/JSON file when type is csv/json/fallback
+```
+
+Agent and Game Master initialization are configured separately:
+
+```yaml
+sim:
+  initialization:
+    agents:
+      built_in: raw_memory
+      class_path: null
+      params: {}
+    game_masters:
+      built_in: default
+      class_path: null
+      params: {}
+```
+
+Each native Game Master spec also has its own initializer slot:
+
+```yaml
+env:
+  gm:
+    initializer:
+      built_in: social_media   # social_media | app_initialize | none
+      class_path: null
+      params: {}
 ```
 
 ### GM Components
@@ -475,7 +513,7 @@ gm:
   preset: base
   components:
     next_acting:
-      built_in: activity_probability  # activity_markov | activity_probability | all_entities | fixed_order
+      built_in: activity_probability  # activity_markov | activity_probability | all_agents | fixed_order
     observe:
       built_in: timeline_every_turn   # app_observation | timeline_every_turn | episode_only
       params:
@@ -522,8 +560,6 @@ timeline_mode: follower_chronological  # follower_chronological | pure_recsys | 
 ## Evals Config (`evals/base.yaml`)
 
 ```yaml
-write_html_log: true    # Generate Concordia HTML logs (slow; set false for batch runs)
-
 probes: {}              # See Probes section below
 ```
 
@@ -537,14 +573,14 @@ probes:
     enabled: true
     start_step: 1
     every_n_steps: 1
-    include_entities: []   # Empty = all agents
-    exclude_entities: []
+    include_agents: []   # Empty = all agents
+    exclude_agents: []
 
-  queries:
+  probes:
     favorability:
       probe_name: favorability
-      query_type: NumericRatingProbe
-      query_data:
+      probe_type: NumericRatingProbe
+      probe_data:
         name: Favorability
         question: "Return a single rating from {lo} to {hi}."
         context: "{agentname} rates favorability toward the current event."
@@ -565,8 +601,8 @@ probes:
 ### How Action Prompts Are Constructed
 
 1. **Runner startup**: `build_action_prompt_with_app_instance()` compiles the base prompt from the scenario config or backend action catalog (`action_mode: custom` vs `generic`)
-2. **GM (SMAct)**: wraps the compiled prompt; if `tool_calling.mode != none`, appends tool schemas
-3. **Entity**: calls LLM in tool-calling or free-text mode based on markers
+2. **GM (`GameMaster.action_prompt`)**: returns a typed `ActionSpec` and includes tool schemas in `extra_args` when `tool_calling.mode != none`
+3. **Agent**: calls the LLM in tool-calling or free-text mode from typed `ActionSpec.output_type` and `extra_args`
 
 Tool-calling output style is automatically stripped from the base prompt when
 `sim.tool_calling.mode` is not `none`.
@@ -584,8 +620,12 @@ Tool-calling output style is automatically stripped from the base prompt when
 ```yaml
 sim:
   engine:
-    preset: base
-    action_loop:
+    step:
+      built_in: base
+      params:
+        flow_order: [fixed_pre, default]
+        agent_to_flow: {}
+    turn_policy:
       built_in: fixed_count
       params:
         count: 3
@@ -594,36 +634,36 @@ sim:
 Policy `params` are strict constructor arguments. Unknown keys fail before the
 simulation starts unless the target policy accepts `**kwargs`.
 
-Per-flow override (requires `engine.preset: flow`):
+Flow scheduling (requires `engine.step.built_in: flow`):
 
 ```yaml
 sim:
   engine:
-    flow_routing:
-      flow_order: [fixed_pre, default]
-    flow_policies:
-      fixed_pre:
-        built_in: fixed_count
-        params:
-          count: 1
-      default:
-        built_in: single_action
+    step:
+      built_in: flow
+      params:
+        flow_order: [fixed_pre, default]
+        agent_to_flow: {}
 ```
+
+The turn policy is global for the engine. Flow mode only controls which
+agent groups act together and in what order.
 
 ---
 
-## Checkpoint Resume
+## Checkpoint Restore
 
 ```bash
 uv run silisocs \
   --config-path scenarios/my_scenario/conf \
   num_steps=200 \
   sim.checkpoint.every_n_steps=10 \
-  sim.checkpoint.resume_file=outputs/my_scenario/.../checkpoints/step_100_checkpoint.json
+  sim.checkpoint.source_run=outputs/my_scenario/run1
 ```
 
 Checkpoints are written to `.../outputs/.../checkpoints/step_<N>_checkpoint.json`.
-Set `sim.checkpoint.resume_step` to force a different starting step.
+Restore selects the latest checkpoint in the source run and replays backend
+action events through `sim.checkpoint.restore`.
 
 ---
 

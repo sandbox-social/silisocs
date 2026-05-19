@@ -1,4 +1,7 @@
 # @package evals
 
-write_html_log: true
-probes: {}
+probes:
+  schedule:
+    built_in: step_schedule
+    class_path: null
+    params: {}

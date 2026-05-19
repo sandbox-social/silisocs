@@ -7,7 +7,6 @@ from pathlib import Path
 
 import yaml
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -44,3 +43,13 @@ def test_default_config_does_not_require_optional_hf_dependency() -> None:
     user_data = agents_cfg["persona_pipeline"]["classes"]["user"]["data"]
 
     assert user_data["source"] == "inline"
+
+
+def test_concordia_is_optional_extra_not_default_dependency() -> None:
+    """Native Silisocs installs should not pull Concordia by default."""
+    data = _pyproject()
+    dependencies = data["project"]["dependencies"]
+    optional = data["project"]["optional-dependencies"]
+
+    assert not any("concordia" in dependency.lower() for dependency in dependencies)
+    assert optional["concordia"] == ["gdm-concordia>=2.1.0,<2.2.0"]

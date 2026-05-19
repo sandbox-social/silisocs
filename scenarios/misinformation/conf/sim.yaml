@@ -1,14 +1,17 @@
-memory_backend: list
 action_mode: generic
 tool_calling:
   mode: multi
 engine:
-  preset: base
-  action_loop:
+  step:
+    built_in: base
+    class_path: null
+    params:
+      flow_order:
+      - default
+      agent_to_flow: {}
+  turn_policy:
     built_in: open_ended
+    class_path: null
     params:
       max_actions: 5
-      done_token: FINISHED
-  flow_routing:
-    flow_order:
-    - default
+      finished_action_signal: FINISHED

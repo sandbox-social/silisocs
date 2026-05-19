@@ -1,5 +1,6 @@
 """Runtime telemetry helpers for simulation engine instrumentation."""
 
+from silisocs.runtime.telemetry.collector import SimMetricsCollector
 from silisocs.runtime.telemetry.engine_metrics import (
     append_episode_run_stats,
     capture_retry_counters,
@@ -13,6 +14,7 @@ from silisocs.runtime.telemetry.engine_metrics import (
 )
 
 __all__ = [
+    "SimMetricsCollector",
     "append_episode_run_stats",
     "capture_retry_counters",
     "collect_retry_telemetry",

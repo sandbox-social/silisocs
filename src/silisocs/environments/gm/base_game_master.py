@@ -1,53 +1,79 @@
-"""Base social-media game master prefabs.
-
-This module centralizes shared build logic used by both the simple single-flow
-GM and the shared-flow GM variant. It exposes helpers for building backend
-components, seed-post providers and wiring Concordia components into a
-game-master prefab.
-"""
+"""Shared native game-master construction helpers."""
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 import os
-import time
+from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, cast
 
-from concordia.agents import entity_agent_with_logging
-from concordia.associative_memory import basic_associative_memory
-from concordia.components import game_master as gm_components  # type: ignore[attr-defined]
-from concordia.language_model import language_model
-from concordia.typing import prefab as prefab_lib
 from omegaconf import OmegaConf
 
 from silisocs.environments.backends.factory import create_environment_app
-from silisocs.environments.gm import act as gm_social_act
 from silisocs.environments.gm.components.factory import (
-    build_backend_initializer,
+    build_action_prompt_component,
+    build_initialize_component,
     build_next_acting_component,
     build_observe_component,
-    build_recommendation_component,
     build_resolve_component,
-    initialize_component_flow_fields,
+    build_update_component,
 )
-from silisocs.environments.gm.components.seed_post_provider import (
-    CSVSeedPostProvider,
-    DisabledSeedPostProvider,
-    FallbackSeedPostProvider,
-    LLMSeedPostProvider,
-    SeedPostProvider,
-)
-from silisocs.runtime.action_prompts import (
+from silisocs.runtime.io import EventLogger
+from silisocs.runtime.prompts.action_prompts import (
     PromptAdditions,
     compile_action_prompt,
     prompt_additions_from_cfg,
 )
-from silisocs.runtime.config import ConfigStore
-from silisocs.utils.misc import EventLogger
+from silisocs.runtime.types import ActionOutput, ActionSpec
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class GameMasterComponentSlots:
+    """Typed native component slots owned by a game master."""
+
+    initialize: Any
+    next_acting: Any
+    action_prompt: Any
+    observe: Any
+    resolve: Any
+    update: Any
+
+
+class BaseGameMaster(ABC):
+    """Base native game-master surface shared by concrete GMs."""
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Return this game master's stable runtime name."""
+
+    @abstractmethod
+    def initialize(self, *, agents: Sequence[Any], context: Any) -> None:
+        """Initialize backend/environment state before the simulation loop."""
+
+    @abstractmethod
+    def update(self, *, step: int, agents: Sequence[Any], context: Any | None = None) -> None:
+        """Run one pre-turn update for this game master."""
+
+    @abstractmethod
+    def acting_agents(self, candidate_agents: Sequence[Any]) -> list[str]:
+        """Return selected agent names for this turn."""
+
+    @abstractmethod
+    def action_prompt(self, agent_name: str) -> ActionSpec:
+        """Return the action prompt for one agent."""
+
+    @abstractmethod
+    def make_observation(self, agent_name: str) -> str:
+        """Build an observation for one agent."""
+
+    @abstractmethod
+    def resolve_action(self, agent_name: str, action: ActionOutput) -> str:
+        """Resolve one agent action through the backend."""
 
 
 def _env_cfg(cfg: Any) -> Any:
@@ -62,23 +88,17 @@ def _env_cfg(cfg: Any) -> Any:
     return getattr(cfg, "env", getattr(cfg, "environment", object()))
 
 
-def _collect_seed_posts(
-    entities: Sequence[entity_agent_with_logging.EntityAgentWithLogging],
-    provider: SeedPostProvider | None = None,
-) -> dict[str, str]:
-    """Collect seed posts using a configurable provider strategy.
-
-    Args:
-        entities: List of agent entities.
-        provider: SeedPostProvider instance. Defaults to LLMSeedPostProvider if None.
-
-    Returns
-    -------
-        Dict mapping agent name -> seed post text.
-    """
-    if provider is None:
-        provider = LLMSeedPostProvider()
-    return provider.get_seed_posts(entities)
+def _runtime_cfg(params: Mapping[str, Any]) -> Any:
+    """Return the explicit runner-provided config view for GM construction."""
+    raw = params.get("runtime_config")
+    if raw is None:
+        raise ValueError(
+            "GameMaster requires `runtime_config` in params. Runtime construction must pass "
+            "the runner-built config view explicitly."
+        )
+    if isinstance(raw, Mapping):
+        return OmegaConf.create(dict(raw))
+    return raw
 
 
 def _compute_activity_rates(
@@ -101,69 +121,284 @@ def _compute_activity_rates(
     return rates
 
 
-def _build_seed_post_provider(seed_post_cfg: dict[str, Any] | None = None) -> SeedPostProvider:
-    """Build a seed post provider from configuration.
+def build_generic_action_prompt(
+    *,
+    cfg: Any,
+    sm_app: Any,
+    tool_calling_mode: str,
+    gm_prompt_cfg: Mapping[str, Any] | None = None,
+) -> str:
+    """Build a generic action prompt from a backend action catalog."""
+    gm_prompt_cfg = dict(gm_prompt_cfg or {})
+    output_style = str(gm_prompt_cfg.get("output_style", "") or "").strip()
+    if not output_style:
+        output_style = str(getattr(_env_cfg(cfg), "output_style", "") or "")
 
-    Config format (optional):
-        seed_posts:
-          type: "llm"  # Options: "llm", "csv", "json", "fallback", "none"
-          params:
-            file_path: "/path/to/agents.csv"  # For CSV/JSON
-            max_workers: 64  # For LLM (optional)
-            llm_fallback: true  # For fallback mode
+    additions = prompt_additions_from_cfg(cfg)
+    base_prompt = str(sm_app.generate_generic_action_prompt() or "").strip()
+    return compile_action_prompt(
+        base_prompt=base_prompt,
+        output_style=output_style,
+        tool_calling_mode=tool_calling_mode,
+        additions=PromptAdditions(
+            add_action_count_guidance=additions.add_action_count_guidance,
+        ),
+    )
 
-    Args:
-        seed_post_cfg: Configuration dict for seed post provider.
 
-    Returns
-    -------
-        Initialized SeedPostProvider instance (defaults to LLMSeedPostProvider).
-    """
-    _LOGGER.info(f"Building seed post provider with config: {seed_post_cfg}")
-    if not seed_post_cfg:
-        _LOGGER.info("No seed_post_cfg provided, using LLMSeedPostProvider")
-        return LLMSeedPostProvider()
+class EnvironmentGameMaster(BaseGameMaster):
+    """Direct native game master coordinating one backend and component set."""
 
-    provider_type = seed_post_cfg.get("type", "llm").lower()
-    params = dict(seed_post_cfg.get("params", {}))
+    def __init__(
+        self,
+        *,
+        name: str,
+        model: Any,
+        app: Any,
+        component_slots: GameMasterComponentSlots,
+        component_registry: Mapping[str, Any] | None = None,
+        user_data: Mapping[str, Any],
+        action_prompt_template: str,
+        action_output_mode: str,
+        activity_transition_rates: Mapping[str, Any],
+        agent_flow_tags: Mapping[str, str],
+        gm_orchestration: Mapping[str, Any],
+        flow_to_component_map: Mapping[str, Mapping[str, str]] | None = None,
+        shared_flow_mode: bool = False,
+        enable_tool_calling: bool = False,
+    ) -> None:
+        self._name = str(name)
+        self.model = model
+        self.app = app
+        self.sm_app = app
+        self.env_app = app
+        self.initialize_component = component_slots.initialize
+        self.next_acting = component_slots.next_acting
+        self.action_prompt_component = component_slots.action_prompt
+        self.observe_component = component_slots.observe
+        self.resolve_component = component_slots.resolve
+        self.update_component = component_slots.update
+        self._component_registry = {
+            "initialize": self.initialize_component,
+            "next_acting": self.next_acting,
+            "action_prompt": self.action_prompt_component,
+            "observe": self.observe_component,
+            "resolve": self.resolve_component,
+            "update": self.update_component,
+            **dict(component_registry or {}),
+        }
+        self.user_data = dict(user_data or {})
+        self.action_prompt_template = str(action_prompt_template or "")
+        self.action_output_mode = str(action_output_mode or "parsed_action")
+        self.activity_transition_rates = dict(activity_transition_rates or {})
+        self.agent_flow_tags = dict(agent_flow_tags or {})
+        self.gm_orchestration = dict(gm_orchestration or {})
+        self.flow_to_component_map = {
+            str(flow): {str(role): str(key) for role, key in mapping.items()}
+            for flow, mapping in dict(flow_to_component_map or {}).items()
+        }
+        self.shared_flow_mode = bool(shared_flow_mode)
+        self.enable_tool_calling = bool(enable_tool_calling)
+        self._initialized = False
 
-    _LOGGER.info(f"Seed post provider type: {provider_type}, params: {params}")
+    @property
+    def name(self) -> str:
+        """Return this game master's name."""
+        return self._name
 
-    if provider_type == "none":
-        _LOGGER.info("No seed posts configured (organic growth)")
-        return DisabledSeedPostProvider()
+    @property
+    def components(self) -> Mapping[str, Any]:
+        """Return configured GM components."""
+        return dict(self._component_registry)
 
-    if provider_type in ("csv", "json"):
-        file_path = params.get("file_path")
-        if not file_path:
-            _LOGGER.warning(
-                f"{provider_type.upper()} seed post provider requires 'file_path' parameter. Using LLM instead."
+    def get_component(self, key: str, type_: Any | None = None) -> Any:
+        """Return a configured component by key."""
+        component = self._component_registry[key]
+        if type_ is not None and not isinstance(component, type_):
+            raise TypeError(f"Component {key!r} is not {type_!r}")
+        return component
+
+    def initialize(self, *, agents: Sequence[Any], context: Any) -> None:
+        """Initialize this GM's backend/environment state before the simulation loop."""
+        for component in self._components_for_role(role="initialize", default_key="initialize"):
+            initializer = getattr(component, "initialize", None)
+            if not callable(initializer):
+                raise TypeError(
+                    "Initialize component must expose initialize(agents, game_master, context)."
+                )
+            initializer(
+                agents=agents,
+                game_master=self,
+                context=context,
             )
-            return LLMSeedPostProvider()
-        _LOGGER.info(f"Creating CSVSeedPostProvider with path: {file_path}")
-        return CSVSeedPostProvider(file_path)
+        self._initialized = True
 
-    if provider_type == "fallback":
-        file_path = params.get("file_path")
-        llm_fallback = params.get("llm_fallback", True)
-        _LOGGER.info(
-            f"Creating FallbackSeedPostProvider with file_path: {file_path}, llm_fallback: {llm_fallback}"
+    def _flow_for_agent(self, agent_name: str) -> str:
+        return str(self.agent_flow_tags.get(agent_name, "default") or "default")
+
+    def update(self, *, step: int, agents: Sequence[Any], context: Any | None = None) -> None:
+        """Run this GM's pre-turn update slot."""
+        for component in self._components_for_role(role="update", default_key="update"):
+            updater = getattr(component, "update", None)
+            if not callable(updater):
+                raise TypeError("Update component must expose update(step, agents, context).")
+            updater(step=step, agents=agents, context=context)
+
+    def _component_key_for_role(self, *, agent_name: str, role: str, default_key: str) -> str:
+        flow = self._flow_for_agent(agent_name)
+        component_map = self.flow_to_component_map.get(flow) or self.flow_to_component_map.get(
+            "default", {}
         )
-        return FallbackSeedPostProvider(file_path=file_path, llm_fallback=llm_fallback)
+        return str(component_map.get(role, default_key) or default_key)
 
-    # Default to "llm"
-    max_workers = params.get("max_workers", 64)
-    _LOGGER.info(f"Creating LLMSeedPostProvider with max_workers: {max_workers}")
-    return LLMSeedPostProvider(max_workers=max_workers)
+    def _component_for_role(self, *, agent_name: str, role: str, default_key: str) -> Any:
+        return self._component_registry[
+            self._component_key_for_role(agent_name=agent_name, role=role, default_key=default_key)
+        ]
+
+    def _components_for_role(self, *, role: str, default_key: str) -> list[Any]:
+        keys: list[str] = []
+        for component_map in self.flow_to_component_map.values():
+            key = str(component_map.get(role, "") or "").strip()
+            if key:
+                keys.append(key)
+        if not keys:
+            keys.append(default_key)
+        seen: set[str] = set()
+        components: list[Any] = []
+        for key in keys:
+            if key in seen:
+                continue
+            if key not in self._component_registry:
+                raise KeyError(f"Unknown {role} component key {key!r}.")
+            seen.add(key)
+            components.append(self._component_registry[key])
+        return components
+
+    def _flow_for_candidates(self, candidate_agents: Sequence[Any]) -> str:
+        flows = {
+            self._flow_for_agent(str(getattr(agent, "name", "") or ""))
+            for agent in candidate_agents
+            if str(getattr(agent, "name", "") or "").strip()
+        }
+        if len(flows) == 1:
+            return next(iter(flows))
+        return "default"
+
+    def action_prompt(self, agent_name: str) -> ActionSpec:
+        """Return the direct action prompt for one agent."""
+        component = self._component_for_role(
+            agent_name=agent_name,
+            role="action_prompt",
+            default_key="action_prompt",
+        )
+        direct = getattr(component, "action_prompt", None)
+        if not callable(direct):
+            raise TypeError(
+                "Action-prompt component must expose action_prompt(agent_name) in the native runtime."
+            )
+        return cast(ActionSpec, direct(agent_name))
+
+    def acting_agents(self, candidate_agents: Sequence[Any]) -> list[str]:
+        """Return selected agents for this turn."""
+        candidates = {agent.name: agent for agent in candidate_agents}
+        flow = self._flow_for_candidates(candidate_agents)
+        component_key = str(
+            (
+                self.flow_to_component_map.get(flow)
+                or self.flow_to_component_map.get("default", {})
+            ).get("next_acting", "next_acting")
+            or "next_acting"
+        )
+        component = self._component_registry[component_key]
+        direct = getattr(component, "acting_agent_names", None)
+        if not callable(direct):
+            raise TypeError(
+                "Next-acting component must expose acting_agent_names() in the native runtime."
+            )
+        names: list[str] = []
+        for agent_name in [str(name).strip() for name in direct() if str(name).strip()]:
+            if agent_name not in candidates:
+                _LOGGER.warning(
+                    "Ignoring unknown next_acting agent '%s' from game master '%s'.",
+                    agent_name,
+                    self.name,
+                )
+                continue
+            names.append(agent_name)
+        return names
+
+    def make_observation(self, agent_name: str) -> str:
+        """Build an observation for one agent."""
+        component = self._component_for_role(
+            agent_name=agent_name,
+            role="observe",
+            default_key="observe",
+        )
+        direct = getattr(component, "make_observation", None)
+        if not callable(direct):
+            raise TypeError(
+                "Observation component must expose make_observation(agent_name) in the native runtime."
+            )
+        result = str(direct(agent_name))
+        return result
+
+    def resolve_action(self, agent_name: str, action: ActionOutput) -> str:
+        """Resolve one agent's raw action text against the backend."""
+        component = self._component_for_role(
+            agent_name=agent_name,
+            role="resolve",
+            default_key="resolve",
+        )
+        direct = getattr(component, "resolve_action", None)
+        if not callable(direct):
+            raise TypeError(
+                "Resolve component must expose resolve_action(agent_name, action) in the native runtime."
+            )
+        result = str(direct(agent_name, action))
+        return result
+
+    def get_state(self) -> dict[str, Any]:
+        """Return serializable component state for checkpoints."""
+        state: dict[str, Any] = {"initialized": self._initialized, "components": {}}
+        component_state = state["components"]
+        for key, component in self._component_registry.items():
+            getter = getattr(component, "get_state", None)
+            if callable(getter):
+                component_state[key] = getter()
+        return state
+
+    def set_state(self, state: Mapping[str, Any]) -> None:
+        """Restore component state from checkpoints."""
+        state = dict(state or {})
+        component_states = state.get("components", {})
+        if not isinstance(component_states, Mapping):
+            return
+        for key, value in component_states.items():
+            component = self._component_registry.get(str(key))
+            setter = getattr(component, "set_state", None)
+            if callable(setter):
+                setter(value)
 
 
-@dataclasses.dataclass
-class BaseEnvironmentGameMaster(prefab_lib.Prefab):
-    """Base environment GM with configurable component slots."""
+class _GameMasterWiring:
+    """Internal single-flow GM wiring helper."""
 
-    description: str = "An environment game master."
-    params: Mapping[str, Any] = dataclasses.field(
-        default_factory=lambda: {
+    def __init__(
+        self,
+        *,
+        model: Any | None = None,
+        agents: Sequence[Any] = (),
+        **params: Any,
+    ) -> None:
+        if "entities" in params:
+            raise ValueError("GameMaster params use removed `entities`; pass `agents` instead.")
+        nested_params = params.pop("params", None)
+        if isinstance(nested_params, Mapping):
+            params = {**dict(nested_params), **params}
+        self.model = model
+        self.agents = tuple(agents)
+        self.params = {
             "name": "environment_game-master",
             "calls_to_action": {},
             "app_module_path": "",
@@ -171,9 +406,8 @@ class BaseEnvironmentGameMaster(prefab_lib.Prefab):
             "environment_data": {},
             "sm_user_data": {},
             "app_description": "",
+            **dict(params),
         }
-    )
-    entities: Sequence[entity_agent_with_logging.EntityAgentWithLogging] = ()
 
     def _is_shared_flow_mode(self) -> bool:
         """_is_shared_flow_mode.
@@ -196,29 +430,19 @@ class BaseEnvironmentGameMaster(prefab_lib.Prefab):
         Generic prompts are generated at GM runtime so they reflect the current backend
         instance and enabled action set.
         """
-        gm_prompt_cfg = dict(gm_prompt_cfg or {})
-        output_style = str(gm_prompt_cfg.get("output_style", "") or "").strip()
-        if not output_style:
-            output_style = str(getattr(_env_cfg(cfg), "output_style", "") or "")
-
-        additions = prompt_additions_from_cfg(cfg)
-        base_prompt = str(sm_app.generate_generic_action_prompt() or "").strip()
-        return compile_action_prompt(
-            base_prompt=base_prompt,
-            output_style=output_style,
+        return build_generic_action_prompt(
+            cfg=cfg,
+            sm_app=sm_app,
             tool_calling_mode=tool_calling_mode,
-            additions=PromptAdditions(
-                add_action_count_guidance=additions.add_action_count_guidance,
-            ),
+            gm_prompt_cfg=gm_prompt_cfg,
         )
 
-    def build(
+    def build_runtime_kwargs(
         self,
-        model: language_model.LanguageModel,
-        memory_bank: basic_associative_memory.AssociativeMemoryBank,
-    ) -> entity_agent_with_logging.EntityAgentWithLogging:
-        """Build and return the configured environment game master entity."""
-        del memory_bank
+        model: Any | None = None,
+    ) -> dict[str, Any]:
+        """Build keyword arguments for the native game-master runtime."""
+        model = model or self.model
         name = str(self.params.get("name"))
         calls_to_action = self.params.get("calls_to_action", {})
         user_data = self.params.get("environment_data") or self.params["sm_user_data"]
@@ -227,7 +451,7 @@ class BaseEnvironmentGameMaster(prefab_lib.Prefab):
             calls_to_action.get("social_media_action", ""),
         )
 
-        cfg = ConfigStore.get_config()
+        cfg = _runtime_cfg(self.params)
         action_logger = EventLogger(
             "action",
             os.path.join(cfg.output_rootname, "action_events.jsonl"),
@@ -235,7 +459,6 @@ class BaseEnvironmentGameMaster(prefab_lib.Prefab):
         action_logger.episode_idx = 0
 
         platform_type = getattr(_env_cfg(cfg), "platform_type", "twitter_like")
-        print(f"[DEBUG] Using platform_type: {platform_type}")
         db_path = os.path.join(cfg.output_rootname, f"{platform_type}.db")
         sm_app = create_environment_app(
             platform_type=platform_type,
@@ -246,6 +469,7 @@ class BaseEnvironmentGameMaster(prefab_lib.Prefab):
             app_class_path=OmegaConf.select(cfg, "env.app.class_path", default=None),
             app_params=OmegaConf.select(cfg, "env.app.params", default={}) or {},
         )
+        sm_app.platform_type = platform_type  # type: ignore[attr-defined]
 
         enabled_actions_cfg = getattr(_env_cfg(cfg), "enabled_actions", None)
         if enabled_actions_cfg is not None:
@@ -256,66 +480,22 @@ class BaseEnvironmentGameMaster(prefab_lib.Prefab):
             else:
                 enabled_actions = [str(enabled_actions_cfg).strip()]
 
-            action_loop_built_in = ""
-            if hasattr(cfg.sim, "engine") and getattr(cfg.sim.engine, "action_loop", None):
-                action_loop_built_in = str(
-                    getattr(cfg.sim.engine.action_loop, "built_in", "")
-                ).strip()
+            turn_policy_built_in = str(
+                OmegaConf.select(cfg, "sim.engine.turn_policy.built_in", default="") or ""
+            ).strip()
             enabled_actions_upper = {name.upper() for name in enabled_actions if name}
-            if action_loop_built_in == "open_ended" and "FINISHED" not in enabled_actions_upper:
+            if turn_policy_built_in == "open_ended" and "FINISHED" not in enabled_actions_upper:
                 enabled_actions.append("FINISHED")
 
             sm_app.set_enabled_actions(enabled_actions)
 
-        agent_names = [e.name for e in self.entities]
+        agent_names = [agent.name for agent in self.agents]
 
-        # Build and apply seed post provider
-        seed_post_cfg = {}
-
-        # Seed posts come from composed scenario config when configured.
         env_cfg = _env_cfg(cfg)
-        if hasattr(env_cfg, "seed_posts"):
-            seed_post_cfg = cast(
-                dict[str, Any],
-                OmegaConf.to_container(env_cfg.seed_posts, resolve=True),
-            )
-        else:
-            _LOGGER.info("No env.seed_posts found in composed config; proceeding without it.")
-
-        seed_t0 = time.time()
-        if hasattr(env_cfg, "seed_posts"):
-            seed_post_provider = _build_seed_post_provider(seed_post_cfg)
-            _LOGGER.info(f"Using seed post provider: {type(seed_post_provider).__name__}")
-            seed_posts = _collect_seed_posts(self.entities, provider=seed_post_provider)
-        else:
-            seed_post_provider = DisabledSeedPostProvider()
-            seed_posts = {entity.name: "" for entity in self.entities}
-            _LOGGER.info("No env.seed_posts found; seed post generation disabled.")
-        seed_elapsed = time.time() - seed_t0
-
         activity_rates = _compute_activity_rates(user_data)
-        entity_flow_tags = dict(user_data.get("entity_flow_tags", {}) or {})
+        agent_flow_tags = dict(user_data.get("agent_flow_tags", {}) or {})
         gm_orchestration = dict(user_data.get("gm_orchestration", {}) or {})
         gm_prompt_cfg = dict(gm_orchestration.get("prompt", {}) or {})
-
-        catalog = sm_app.action_catalog()
-        allowed_action_types = sorted(
-            {
-                str(item.get("selectable_name", "")).strip().upper()
-                for item in catalog
-                if str(item.get("selectable_name", "")).strip()
-            }
-        )
-        for entity in self.entities:
-            setter = getattr(entity, "set_allowed_action_types", None)
-            existing = getattr(entity, "_allowed_action_types", None)
-            if callable(setter) and not existing:
-                setter(allowed_action_types)
-
-        social_network_cfg = (
-            dict(env_cfg.social_network) if hasattr(env_cfg, "social_network") else {}
-        )
-
         gm_components_cfg: dict[str, Any] = {}
         env_gm_cfg = getattr(_env_cfg(cfg), "gm", None)
         if env_gm_cfg is not None and getattr(env_gm_cfg, "components", None) is not None:
@@ -334,34 +514,20 @@ class BaseEnvironmentGameMaster(prefab_lib.Prefab):
                     resolve=True,
                 ),
             )
-
-        backend_initializer = build_backend_initializer(gm_components_cfg.get("initializer"))
-
-        init_t0 = time.time()
-        backend_initializer.initialize(
-            sm_app=sm_app,
-            agent_names=agent_names,
-            init_kwargs={
-                "sim_roles": user_data.get("sim_roles", {}),
-                "seed_posts": seed_posts,
-                "social_network": social_network_cfg,
-            },
+        if "recommend" in gm_components_cfg:
+            raise ValueError(
+                "`env.gm.components.recommend` has been removed. "
+                "Use `env.gm.components.update` with built_in='social_recommendation'."
+            )
+        initializer_cfg = dict(
+            gm_components_cfg.get("initialize") or self.params.get("initializer") or {}
         )
-        init_elapsed = time.time() - init_t0
+        if not initializer_cfg:
+            raise ValueError(
+                "Native GameMaster requires `env.gm.components.initialize` "
+                "(or a runner-provided initializer during migration)."
+            )
 
-        startup_line = (
-            f"Startup environment_init: seed_posts={seed_elapsed:.2f}s "
-            f"seed_provider={type(seed_post_provider).__name__} "
-            f"app_initialize={init_elapsed:.2f}s "
-            f"initializer={type(backend_initializer).__name__} "
-            f"agents={len(agent_names)} seed_count={sum(1 for t in seed_posts.values() if t)}"
-        )
-        _LOGGER.info(startup_line)
-        stats_path = os.path.join(cfg.output_rootname, "run_stats.log")
-        with open(stats_path, "a", encoding="utf-8") as f:
-            f.write(startup_line + "\n")
-
-        player_names = agent_names
         # Map action_mode to default resolve component
         # Note: tool_calling is NOT an action_mode, only a resolve component option
         action_mode_to_resolve_map = {
@@ -395,15 +561,17 @@ class BaseEnvironmentGameMaster(prefab_lib.Prefab):
         enable_tool_calling = tool_calling_mode in {"single", "multi"}
         action_output_mode = str(resolve_slot.get("built_in", "parsed_action") or "parsed_action")
 
-        for entity in self.entities:
-            mode_setter = getattr(entity, "set_action_output_mode", None)
-            if callable(mode_setter):
-                mode_setter(action_output_mode)
-
+        initialize_component = build_initialize_component(initializer_cfg)
         next_actor = build_next_acting_component(
             gm_components_cfg.get("next_acting"),
-            player_names=player_names,
+            agent_names=agent_names,
             activity_transition_rates=activity_rates,
+        )
+        action_prompt_component = build_action_prompt_component(
+            gm_components_cfg.get("action_prompt"),
+            app=sm_app,
+            action_prompt_template=call_to_sm_action,
+            enable_tool_calling=enable_tool_calling,
         )
         observe_slot = dict(gm_components_cfg.get("observe", {}))
         observe_params = dict(observe_slot.get("params") or {})
@@ -416,6 +584,7 @@ class BaseEnvironmentGameMaster(prefab_lib.Prefab):
         timeline_mode = str(
             getattr(_env_cfg(cfg), "timeline_mode", None) or "follower_chronological"
         )
+        timeline_posts = int(getattr(_env_cfg(cfg), "timeline_posts", 10) or 10)
         supported_timeline_modes = {
             "twitter_like": {
                 "follower_chronological",
@@ -459,65 +628,61 @@ class BaseEnvironmentGameMaster(prefab_lib.Prefab):
         make_observation = build_observe_component(
             observe_slot,
             model=model,
-            player_names=player_names,
+            agent_names=agent_names,
             sm_app=sm_app,
-            entity_flow_tags=entity_flow_tags,
+            agent_flow_tags=agent_flow_tags,
             episode_observation_flow=str(episode_observation_flow),
             timeline_mode=timeline_mode,
+            timeline_posts=timeline_posts,
             timeline_config=timeline_config,
         )
         resolve_component = build_resolve_component(
             resolve_slot,
             sm_app=sm_app,
             model=model,
-            call_to_action_str=call_to_sm_action,
-            entities_by_name={entity.name: entity for entity in self.entities},
+            action_prompt_template=call_to_sm_action,
+            agents_by_name={agent.name: agent for agent in self.agents},
         )
-        recommend_slot = dict(gm_components_cfg.get("recommend", {}))
-        recommend_component = build_recommendation_component(
-            recommend_slot,
+        update_slot = dict(gm_components_cfg.get("update", {}))
+        update_component = build_update_component(
+            update_slot,
             sm_app=sm_app,
             platform_type=platform_type,
             timeline_mode=timeline_mode,
         )
 
-        # Initialize multi-field values if component supports them
-        initialize_component_flow_fields(make_observation, observe_slot)
-        initialize_component_flow_fields(resolve_component, resolve_slot)
-        initialize_component_flow_fields(recommend_component, recommend_slot)
-        if hasattr(recommend_component, "validate_recsys_types") and callable(
-            recommend_component.validate_recsys_types
+        if hasattr(update_component, "validate_recsys_types") and callable(
+            update_component.validate_recsys_types
         ):
-            recommend_component.validate_recsys_types()
+            update_component.validate_recsys_types()
 
-        components = {
-            gm_components.next_acting.DEFAULT_NEXT_ACTING_COMPONENT_KEY: next_actor,
-            gm_components.make_observation.DEFAULT_MAKE_OBSERVATION_COMPONENT_KEY: make_observation,
-            gm_components.event_resolution.DEFAULT_RESOLUTION_COMPONENT_KEY: resolve_component,
-            "recommendation": recommend_component,
+        component_slots = GameMasterComponentSlots(
+            initialize=initialize_component,
+            next_acting=next_actor,
+            action_prompt=action_prompt_component,
+            observe=make_observation,
+            resolve=resolve_component,
+            update=update_component,
+        )
+
+        return {
+            "name": name,
+            "model": model,
+            "app": sm_app,
+            "component_slots": component_slots,
+            "user_data": user_data,
+            "action_prompt_template": call_to_sm_action,
+            "action_output_mode": action_output_mode,
+            "activity_transition_rates": activity_rates,
+            "agent_flow_tags": agent_flow_tags,
+            "gm_orchestration": gm_orchestration,
+            "shared_flow_mode": self._is_shared_flow_mode(),
+            "enable_tool_calling": enable_tool_calling,
         }
 
-        act_component = gm_social_act.SMAct(
-            model=model,
-            entity_names=player_names,
-            component_order=list(components.keys()),
-            call_to_action_str=call_to_sm_action,
-            sm_app=sm_app,
-            entity_flow_tags=entity_flow_tags,
-            activity_transition_rates=activity_rates,
-            action_mode=getattr(cfg.sim, "action_mode", "custom"),
-            enable_tool_calling=enable_tool_calling,
-        )
-
-        # Stash orchestration metadata on the act component for engine-level schedulers.
-        act_component.gm_orchestration = gm_orchestration
-        act_component.shared_flow_mode = self._is_shared_flow_mode()
-
-        return entity_agent_with_logging.EntityAgentWithLogging(
-            agent_name=name,
-            act_component=act_component,
-            context_components=components,
-        )
-
-
-BaseSocialMediaGameMaster = BaseEnvironmentGameMaster
+    def build(
+        self,
+        model: Any | None = None,
+    ) -> EnvironmentGameMaster:
+        """Build and return the configured environment game master."""
+        return EnvironmentGameMaster(**self.build_runtime_kwargs(model=model))

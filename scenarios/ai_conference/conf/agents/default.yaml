@@ -3,7 +3,6 @@ shared_memories:
 - ${event.context}
 - ${setting.background}
 persona_pipeline:
-  processing_mode: raw
   defaults:
     params:
       seed_post: ''
@@ -16,7 +15,7 @@ persona_pipeline:
   classes:
     conference_attendee:
       count: 4
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: conference_attendee
       data:
         source: inline
@@ -94,7 +93,7 @@ persona_pipeline:
         seed_post: seed_post
     protester:
       count: 3
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: protester
       data:
         source: inline
@@ -159,7 +158,7 @@ persona_pipeline:
         seed_post: seed_post
     bridge:
       count: 2
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: bridge
       data:
         source: inline

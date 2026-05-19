@@ -11,8 +11,6 @@ timeline_config:
   recsys_ratio: 0.6
   follower_ratio: 0.4
 observation_history: 100
-seed_posts:
-  type: llm
 enabled_actions:
   - create_tweet
   - reply_to_tweet
@@ -28,6 +26,10 @@ gamemaster:
 gm:
   preset: base
   components:
+    initialize:
+      built_in: social_media
+      class_path: null
+      params: {}
     next_acting:
       built_in: activity_probability
       class_path: null
@@ -43,9 +45,7 @@ gm:
 gm_orchestration:
   gms: []
   flow_bindings:
-    flow_to_gm: {}
     flow_to_gms: {}
-    gm_to_flows: {}
 social_network:
   activity_transition_rates:
     hobbyist:

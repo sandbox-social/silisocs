@@ -1,38 +1,21 @@
-"""Engine implementations for runtime orchestration.
+"""Native runtime engine and built-in strategies."""
 
-This module provides the :class:`BaseRuntimeEngine` used to coordinate
-episodes, parallel actor execution, probe deployment, and telemetry for
-Silisocs simulations.
+from __future__ import annotations
 
-The engine wraps Concordia engine primitives and adds safety around
-concurrent agent execution, per-flow routing, and worker-cap adaptation.
-"""
-
-# Make sure to import the original engine and any other tools you need
 import concurrent.futures
 import functools
 import logging
-import os
 import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, Literal, cast
+from dataclasses import dataclass
+from typing import Any, cast
 
-import termcolor
-from concordia.components.game_master import event_resolution as event_resolution_components
-from concordia.components.game_master import next_acting as next_acting_components
-from concordia.components.game_master import switch_act as switch_act_component
-from concordia.environment import engine as engine_lib
-from concordia.environment.engines import simultaneous
-from concordia.typing import entity as entity_lib
-from omegaconf import DictConfig, OmegaConf
-from typing_extensions import override
+from omegaconf import OmegaConf
 
-from silisocs.evaluations.probes.deployment import ProbeDeploymentOrchestrator
-from silisocs.runtime.config import ConfigStore
+from silisocs.agents.base_agent import Agent
 from silisocs.runtime.telemetry import (
-    append_episode_run_stats,
     capture_retry_counters,
     collect_retry_telemetry,
     collect_unique_models,
@@ -42,1173 +25,612 @@ from silisocs.runtime.telemetry import (
     summarize_retry_delta,
     update_adaptive_worker_cap,
 )
-from silisocs.simulation_engines.policies.factory import (
-    build_action_loop_policy,
-    build_probe_schedule_policy,
+from silisocs.runtime.types import ActionOutput, ActionSpec
+from silisocs.simulation_engines.policies.factory import build_turn_policy
+from silisocs.simulation_engines.recorders import DefaultEngineRecorder, probe_empty, retry_empty
+from silisocs.simulation_engines.runtime_base import (
+    AgentStepResult,
+    EngineRecorder,
+    LoopStrategy,
+    ProbeRunner,
+    RuntimeEngineBase,
+    StepResult,
+    StepStrategy,
+    TurnPolicy,
 )
-from silisocs.utils.misc import EventLogger, SimMetricsCollector
 
-DEFAULT_CALL_TO_MAKE_OBSERVATION = "{name}"
-DEFAULT_CALL_TO_NEXT_ACTING = "Which entities act next?"
-DEFAULT_CALL_TO_NEXT_ACTION_SPEC = next_acting_components.DEFAULT_CALL_TO_NEXT_ACTION_SPEC
-DEFAULT_CALL_TO_RESOLVE = "Because of all that came before, what happens next?"
-DEFAULT_CALL_TO_CHECK_TERMINATION = "Is the game/simulation finished?"
-DEFAULT_CALL_TO_NEXT_GAME_MASTER = "Which rule set should we use for the next step?"
-
-DEFAULT_ACT_COMPONENT_KEY = switch_act_component.DEFAULT_ACT_COMPONENT_KEY
-
-PUTATIVE_EVENT_TAG = event_resolution_components.PUTATIVE_EVENT_TAG
-EVENT_TAG = event_resolution_components.EVENT_TAG
-
-_PRINT_COLOR: Literal["cyan"] = "cyan"
 _LOGGER = logging.getLogger(__name__)
 
 
-def _get_empty_log_entry() -> dict[str, dict[str, Any]]:
-    """Returns a dictionary to store a single log entry."""
-    return {
-        "terminate": {},
-        "next_game_master": {},
-        "make_observation": {},
-        "next_acting": {},
-        "next_action_spec": {},
-        "resolve": {},
-    }
+def _ensure_gm_method(game_master: Any, method: str) -> Callable[..., Any]:
+    fn = getattr(game_master, method, None)
+    if not callable(fn):
+        raise TypeError(f"Runtime game masters must expose {method}(...).")
+    return fn
 
 
-class BaseRuntimeEngine(simultaneous.Simultaneous):
-    """
-    A runtime engine that coordinates parallel agent actions across episodes.
-    """
+def _set_gm_episode_index(game_master: Any, step_index: int) -> None:
+    app = getattr(game_master, "app", None)
+    action_logger = getattr(app, "action_logger", None)
+    if action_logger is not None and hasattr(action_logger, "episode_idx"):
+        action_logger.episode_idx = int(step_index)
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initialize the runtime engine.
 
-        The constructor forwards arguments to the parent Concordia engine
-        implementation and initializes internal synchronization primitives
-        used to safely run concurrent agent tasks.
+def _gm_episode_index(game_master: Any) -> int:
+    app = getattr(game_master, "app", None)
+    action_logger = getattr(app, "action_logger", None)
+    raw = getattr(action_logger, "episode_idx", -1)
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return -1
 
-        :param args: Positional arguments forwarded to the parent class.
-        :type args: tuple
-        :param kwargs: Keyword arguments forwarded to the parent class.
-        :type kwargs: dict
-        :returns: None
-        :rtype: None
-        """
-        super().__init__(*args, **kwargs)
-        self._gm_action_locks: dict[int, threading.Lock] = {}
-        self._gm_action_locks_guard = threading.Lock()
 
-    def _gm_lock(self, game_master: entity_lib.Entity) -> threading.Lock:
-        """Return a per-game-master lock instance.
+@dataclass
+class _StepBatch:
+    flow_name: str
+    game_master: Any
+    turns: list[tuple[Agent, ActionSpec]]
 
-        Locks are created lazily and stored in an internal map keyed by the
-        :func:`id` of the game master entity. The returned lock ensures
-        that concurrent operations touching the same GM execute in series.
 
-        :param game_master: The game master entity to lock for.
-        :type game_master: entity_lib.Entity
-        :returns: A threading.Lock dedicated to the provided game master.
-        :rtype: threading.Lock
-        """
-        key = id(game_master)
-        with self._gm_action_locks_guard:
-            lock = self._gm_action_locks.get(key)
-            if lock is None:
-                lock = threading.Lock()
-                self._gm_action_locks[key] = lock
-        return lock
+class RuntimeEngine(RuntimeEngineBase):
+    """Strategy-driven runtime engine."""
 
-    def agent_resolve(
-        self,
-        game_master: entity_lib.Entity,
-        action: str,
-        verbose: bool = False,
-    ) -> str:
-        """Resolve an entity's action."""
-        # SwitchAct formats call_to_action with `.format(name=...)`; raw braces
-        # from model text (e.g. JSON-like `{id: ...}`) must be escaped first.
-        safe_action = action.replace("{", "{{").replace("}", "}}")
-        result = game_master.act(
-            action_spec=entity_lib.ActionSpec(
-                call_to_action=safe_action,
-                output_type=entity_lib.OutputType.RESOLVE,
-            )
-        )
-        if verbose:
-            print(termcolor.colored(f"The resolved event was: {result}", _PRINT_COLOR))
-        return str(result)
-
-    @override
-    def next_acting(
-        self,
-        game_master: entity_lib.Entity,
-        entities: Sequence[entity_lib.Entity],
-        log_entry: Mapping[str, Any] | None = None,
-        log: list[Mapping[str, Any]] | None = None,
-    ) -> tuple[Sequence[entity_lib.Entity], Sequence[entity_lib.ActionSpec]]:
-        """Return action specs for next actors while tolerating malformed name lists."""
-        entities_by_name = {entity.name: entity for entity in entities}
-        next_object_names_string = game_master.act(
-            action_spec=entity_lib.ActionSpec(
-                call_to_action=self._call_to_next_acting,
-                output_type=entity_lib.OutputType.NEXT_ACTING,
-                options=tuple(entities_by_name.keys()),
-            )
-        )
-        raw_names = [name.strip() for name in str(next_object_names_string).split(",")]
-        next_entity_names: list[str] = []
-        for name in raw_names:
-            if not name:
-                continue
-            if name not in entities_by_name:
-                _LOGGER.warning(
-                    "Ignoring unknown next_acting entity '%s' from game master '%s'.",
-                    name,
-                    game_master.name,
-                )
-                continue
-            next_entity_names.append(name)
-
-        if log is not None and isinstance(log_entry, dict) and hasattr(game_master, "get_last_log"):
-            assert hasattr(game_master, "get_last_log")
-            log_entry["next_acting"] = game_master.get_last_log()
-
-        action_spec_by_name: dict[str, entity_lib.ActionSpec] = {}
-        for next_entity_name in next_entity_names:
-            next_action_spec_string = game_master.act(
-                action_spec=entity_lib.ActionSpec(
-                    call_to_action=self._call_to_next_action_spec.format(name=next_entity_name),
-                    output_type=entity_lib.OutputType.NEXT_ACTION_SPEC,
-                )
-            )
-            action_spec_by_name[next_entity_name] = engine_lib.action_spec_parser(
-                next_action_spec_string
-            )
-
-            if (
-                log is not None
-                and isinstance(log_entry, dict)
-                and hasattr(game_master, "get_last_log")
-            ):
-                assert hasattr(game_master, "get_last_log")
-                log_entry["next_action_spec"] = game_master.get_last_log()
-
-        return (
-            [entities_by_name[entity_name] for entity_name in next_entity_names],
-            [action_spec_by_name[entity_name] for entity_name in next_entity_names],
-        )
-
-    def _run_single_entity_action(
+    def __init__(
         self,
         *,
-        game_master: entity_lib.Entity,
-        entity: entity_lib.Entity,
-        action_spec: entity_lib.ActionSpec,
+        config: Any | None = None,
+        loop_strategy: LoopStrategy | None = None,
+        step_strategy: StepStrategy | None = None,
+        turn_policy: TurnPolicy | None = None,
+        probe_runner: ProbeRunner | None = None,
+        recorder: EngineRecorder | None = None,
+    ) -> None:
+        self.config = config
+        self.loop_strategy = loop_strategy or FixedStepsLoopStrategy()
+        self.step_strategy = step_strategy or BaseStepStrategy()
+        self.turn_policy = turn_policy or build_turn_policy(
+            {"built_in": "single_action", "params": {}}
+        )
+        self.probe_runner = probe_runner
+        output_rootname = ""
+        if config is not None:
+            output_rootname = str(getattr(config, "output_rootname", "") or "")
+        self.recorder = recorder or DefaultEngineRecorder(output_rootname=output_rootname)
+        self._configured_worker_cap = (
+            resolve_configured_worker_cap(config) if config is not None else None
+        )
+        self._action_phase_cap: int | None = None
+        self._gm_locks: dict[int, threading.Lock] = {}
+        self._gm_locks_guard = threading.Lock()
+        self._initialization_context: Any | None = None
+
+    def _gm_lock(self, game_master: Any) -> threading.Lock:
+        key = id(game_master)
+        with self._gm_locks_guard:
+            lock = self._gm_locks.get(key)
+            if lock is None:
+                lock = threading.Lock()
+                self._gm_locks[key] = lock
+        return lock
+
+    def initialize(
+        self,
+        *,
+        agents: list[Any],
+        game_masters: list[Any],
+        agent_initializer: Any | None,
+        game_master_initializer: Any | None,
+        simulation_initializer: Any | None,
+        initialization_context: Any | None,
+        initializer_model: Any | None,
+    ) -> None:
+        self._initialization_context = initialization_context
+        if agent_initializer is not None:
+            agent_initializer.initialize(
+                agents=agents,
+                model=initializer_model,
+                context=initialization_context,
+            )
+        if game_master_initializer is not None:
+            game_master_initializer.initialize(
+                agents=agents,
+                game_masters=game_masters,
+                context=initialization_context,
+            )
+        if simulation_initializer is not None:
+            simulation_initializer.initialize(
+                agents=agents,
+                game_masters=game_masters,
+                model=initializer_model,
+                context=initialization_context,
+            )
+
+    def run_agent_step(
+        self,
+        *,
+        game_master: Any,
+        agent: Any,
+        action_spec: ActionSpec,
         skip_actions: bool,
         verbose: bool,
         observe_before_action: bool = True,
-        return_raw_action: bool = False,
-    ) -> str | dict[str, str]:
-        """Execute one observe/act/resolve cycle for a single entity."""
-        if observe_before_action:
-            with self._gm_lock(game_master):
-                observation = self.make_observation(game_master, entity)
-            if observation and observation.strip():
-                if verbose:
-                    print(
-                        termcolor.colored(
-                            f"Entity {entity.name} observed: {observation}",
-                            _PRINT_COLOR,
-                        )
-                    )
-                entity.observe(observation)
-
-        if skip_actions:
-            return {"raw": "", "rendered": "", "resolved": ""} if return_raw_action else ""
-
-        if verbose:
-            print(
-                termcolor.colored(
-                    f"Entity {entity.name} is next to act. They must respond"
-                    f' in the format: "{action_spec}".',
-                    _PRINT_COLOR,
-                )
+    ) -> AgentStepResult:
+        del verbose
+        episode_idx = _gm_episode_index(game_master)
+        model = getattr(agent, "model", None)
+        set_ctx = getattr(model, "set_runtime_context", None)
+        clear_ctx = getattr(model, "clear_runtime_context", None)
+        if callable(set_ctx):
+            set_ctx(
+                agent_name=agent.name,
+                episode_idx=episode_idx,
+                phase="action",
+                action_tag=action_spec.tag,
             )
-
-        # Keep the expensive model call outside the GM/app lock so entity actions
-        # can execute in parallel while observation/resolve stay serialized.
-        raw_action = entity.act(action_spec)
-        raw_text = str(raw_action)
-        action = f"{entity.name}: {raw_text}"
-        if verbose:
-            print(termcolor.colored(f"Entity {entity.name} chose action: {action}", _PRINT_COLOR))
-
-        with self._gm_lock(game_master):
-            result = self.agent_resolve(game_master, action, verbose=verbose)
-        entity.observe(result)
-        if return_raw_action:
-            return {"raw": raw_text, "rendered": action, "resolved": str(result)}
-        return action
-
-    @staticmethod
-    def _is_app_game_master(game_master: entity_lib.Entity) -> bool:
-        """Return True when the game master wraps a platform app.
-
-        An "app game master" is one whose act component exposes a
-        platform adapter (``sm_app``). Such game masters support probe
-        deployment and per-model runtime state syncing.
-
-        :param game_master: The candidate game master entity.
-        :type game_master: entity_lib.Entity
-        :returns: True if the game master exposes an application adapter.
-        :rtype: bool
-        """
-        act_component = getattr(game_master, "_act_component", None)
-        return hasattr(act_component, "env_app") or hasattr(act_component, "sm_app")
-
-    @staticmethod
-    def _sync_app_game_master_runtime_state(
-        game_master: entity_lib.Entity,
-        entities: Sequence[entity_lib.Entity],
-        step: int,
-    ) -> None:
-        """Keep GM-side runtime metadata in sync with current episode state."""
-        act_component = getattr(game_master, "_act_component", None)
-        sm_app = getattr(act_component, "env_app", getattr(act_component, "sm_app", None))
-        action_logger = getattr(sm_app, "action_logger", None)
-        model = getattr(act_component, "_model", None)
-
-        if action_logger is not None:
-            action_logger.episode_idx = step
-        if model is not None:
-            model.agent_names = [getattr(agent, "_agent_name", agent.name) for agent in entities]
-            if callable(getattr(model, "_rebuild_agent_name_index", None)):
-                model._rebuild_agent_name_index()
-            if isinstance(getattr(model, "meta_data", None), dict):
-                model.meta_data["episode_idx"] = step
-
-    @staticmethod
-    def _entity_flow_type(game_master: entity_lib.Entity, entity_name: str, cfg: Any) -> str:
-        """_entity_flow_type.
-
-        :param entity_lib.Entity game_master:
-        :type game_master: entity_lib.Entity
-        :param str entity_name:
-        :type entity_name: str
-        :param Any cfg:
-        :type cfg: Any
-
-        :returns: str
-        :rtype: str
-        """
-        act_component = getattr(game_master, "_act_component", None)
-        flow_map = dict(getattr(act_component, "entity_flow_tags", {}) or {})
-
-        configured_map = getattr(
-            getattr(getattr(cfg.sim, "engine", object()), "flow_routing", object()),
-            "entity_to_flow",
-            None,
-        )
-        if isinstance(configured_map, Mapping):
-            for key, value in configured_map.items():
-                if str(key).strip():
-                    flow_map[str(key).strip()] = str(value).strip() or "default"
-
-        return str(flow_map.get(entity_name, "default")).strip() or "default"
-
-    @classmethod
-    def _group_entities_by_flow(
-        cls,
-        *,
-        cfg: Any,
-        game_master: entity_lib.Entity,
-        entities: Sequence[entity_lib.Entity],
-        action_specs: Sequence[entity_lib.ActionSpec],
-    ) -> list[tuple[str, list[tuple[entity_lib.Entity, entity_lib.ActionSpec]]]]:
-        """_group_entities_by_flow.
-
-        :param cls:
-
-        :returns: list[tuple[str, list[tuple[entity_lib.Entity, entity_lib.ActionSpec]]]]
-        :rtype: list[tuple[str, list[tuple[entity_lib.Entity, entity_lib.ActionSpec]]]]
-        """
-        flow_groups: OrderedDict[str, list[tuple[entity_lib.Entity, entity_lib.ActionSpec]]] = (
-            OrderedDict()
-        )
-        for entity, spec in zip(entities, action_specs, strict=False):
-            flow = cls._entity_flow_type(game_master, entity.name, cfg)
-            flow_groups.setdefault(flow, []).append((entity, spec))
-
-        configured_order = getattr(
-            getattr(getattr(cfg.sim, "engine", object()), "flow_routing", object()),
-            "flow_order",
-            [],
-        )
-        if not configured_order:
-            return list(flow_groups.items())
-
-        ordered: list[tuple[str, list[tuple[entity_lib.Entity, entity_lib.ActionSpec]]]] = []
-        used: set[str] = set()
-        for flow in configured_order:
-            name = str(flow).strip()
-            if name and name in flow_groups and name not in used:
-                ordered.append((name, flow_groups[name]))
-                used.add(name)
-
-        for name, members in flow_groups.items():
-            if name not in used:
-                ordered.append((name, members))
-        return ordered
-
-    @staticmethod
-    def _gm_sequence(game_master: entity_lib.Entity) -> int:
-        """_gm_sequence.
-
-        :param entity_lib.Entity game_master:
-        :type game_master: entity_lib.Entity
-
-        :returns: int
-        :rtype: int
-        """
-        act_component = getattr(game_master, "_act_component", None)
-        orchestration = getattr(act_component, "gm_orchestration", {})
-        if not isinstance(orchestration, Mapping):
-            return 0
         try:
-            return int(orchestration.get("sequence", 0))
-        except (TypeError, ValueError):
-            return 0
+            if observe_before_action:
+                with self._gm_lock(game_master):
+                    observe_fn = _ensure_gm_method(game_master, "make_observation")
+                    observation = str(observe_fn(agent.name))
+                if observation.strip():
+                    agent.observe(observation)
 
-    @staticmethod
-    def _gm_owned_flows(game_master: entity_lib.Entity) -> set[str]:
-        """_gm_owned_flows.
-
-        :param entity_lib.Entity game_master:
-        :type game_master: entity_lib.Entity
-
-        :returns: set[str]
-        :rtype: set[str]
-        """
-        act_component = getattr(game_master, "_act_component", None)
-        orchestration = getattr(act_component, "gm_orchestration", {})
-        if not isinstance(orchestration, Mapping):
-            return set()
-        flows = orchestration.get("owned_flows", [])
-        if not isinstance(flows, Sequence):
-            return set()
-        return {str(flow).strip() for flow in flows if str(flow).strip()}
-
-    @classmethod
-    def _phase_game_masters(
-        cls,
-        *,
-        current_game_master: entity_lib.Entity,
-        game_masters: Sequence[entity_lib.Entity],
-    ) -> list[entity_lib.Entity]:
-        """Determine the ordered list of game masters for the current phase.
-
-        The base runtime engine uses only the current game master by
-        default. Subclasses may override this method to return multiple
-        game masters that participate in a single episode phase.
-
-        :param current_game_master: The primary game master for this phase.
-        :type current_game_master: entity_lib.Entity
-        :param game_masters: All configured game masters for the simulation.
-        :type game_masters: Sequence[entity_lib.Entity]
-        :returns: Ordered list of game masters that should run this phase.
-        :rtype: list[entity_lib.Entity]
-        """
-        del game_masters
-        return [current_game_master]
-
-    def _build_flow_task_groups(
-        self,
-        *,
-        cfg: Any,
-        phase_batches: Sequence[
-            tuple[
-                entity_lib.Entity,
-                Sequence[entity_lib.Entity],
-                Sequence[entity_lib.ActionSpec],
-                bool,
-            ]
-        ],
-        entities: Sequence[entity_lib.Entity],
-        skip_actions: bool,
-        entity_act_fn: Callable[
-            [entity_lib.Entity, entity_lib.Entity, entity_lib.ActionSpec, bool], str
-        ],
-    ) -> tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]:
-        """_build_flow_task_groups.
-
-        :returns: tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]
-        :rtype: tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]
-        """
-        del cfg
-        flow_task_groups: list[tuple[str, dict[str, Callable[[], str]]]] = []
-        model_pool: dict[int, Any] = {}
-        if skip_actions:
-            for phase_gm, _, _, _ in phase_batches:
-                skip_tasks: dict[str, Callable[[], str]] = {}
-                for entity in entities:
-                    action_spec = entity_lib.ActionSpec(
-                        call_to_action="",
-                        output_type=entity_lib.OutputType.SKIP_THIS_STEP,
-                    )
-                    task_name = f"{phase_gm.name}::{entity.name}"
-                    skip_tasks[task_name] = functools.partial(
-                        entity_act_fn, phase_gm, entity, action_spec, True
-                    )
-                flow_task_groups.append((f"{phase_gm.name}:default", skip_tasks))
-                for model_obj in collect_unique_models(phase_gm, entities):
-                    model_pool[id(model_obj)] = model_obj
-            return flow_task_groups, model_pool
-
-        for phase_gm, gm_entities, gm_action_specs, gm_skip in phase_batches:
-            entities_to_process = entities if gm_skip else gm_entities
-            tasks: dict[str, Callable[[], str]] = {}
-            if gm_skip:
-                action_iter = [
-                    entity_lib.ActionSpec(
-                        call_to_action="",
-                        output_type=entity_lib.OutputType.SKIP_THIS_STEP,
-                    )
-                    for _ in entities_to_process
-                ]
-            else:
-                action_iter = list(gm_action_specs)
-            for entity, action_spec in zip(entities_to_process, action_iter, strict=False):
-                task_name = f"{phase_gm.name}::{entity.name}"
-                tasks[task_name] = functools.partial(
-                    entity_act_fn, phase_gm, entity, action_spec, False
+            if skip_actions:
+                return AgentStepResult(
+                    agent_name=agent.name,
+                    rendered_action="",
+                    raw_action=ActionOutput.skip(),
+                    resolved_result="",
                 )
-            flow_task_groups.append((f"{phase_gm.name}:default", tasks))
-            for model_obj in collect_unique_models(phase_gm, entities_to_process):
-                model_pool[id(model_obj)] = model_obj
-        return flow_task_groups, model_pool
 
-    def _build_flow_action_loop_policies(
-        self,
-        *,
-        engine_cfg: Mapping[str, Any],
-        default_policy: Any,
-    ) -> dict[str, Any]:
-        """Build per-flow action-loop policy overrides.
-
-        Base engine intentionally ignores flow-level overrides and uses a single
-        global action_loop policy.
-        """
-        del default_policy
-        flow_policies = engine_cfg.get("flow_policies")
-        if isinstance(flow_policies, Mapping) and flow_policies:
-            _LOGGER.warning(
-                "engine.flow_policies is configured but engine preset is base; "
-                "per-flow policy overrides are ignored."
+            raw_action = agent.act(action_spec)
+            action_output = (
+                raw_action
+                if isinstance(raw_action, ActionOutput)
+                else ActionOutput.from_text(str(raw_action or ""))
             )
-        return {}
+            rendered = str(action_output)
+            with self._gm_lock(game_master):
+                resolve_fn = _ensure_gm_method(game_master, "resolve_action")
+                resolved = str(resolve_fn(agent.name, action_output))
+            if resolved.strip():
+                agent.observe(resolved)
+            return AgentStepResult(
+                agent_name=agent.name,
+                rendered_action=rendered,
+                raw_action=action_output,
+                resolved_result=resolved,
+            )
+        finally:
+            if callable(clear_ctx):
+                clear_ctx()
 
-    @staticmethod
-    def _flow_name_for_group(group_name: str) -> str:
-        """Extract flow tag from a task-group label."""
-        label = str(group_name or "").strip()
-        if not label:
-            return "default"
-        if ":" in label:
-            _, flow = label.rsplit(":", 1)
-            flow_name = flow.strip()
-            return flow_name or "default"
-        return label
+    def _agent_flow_tag(self, game_master: Any, agent_name: str) -> str:
+        flow_map = dict(getattr(game_master, "agent_flow_tags", {}) or {})
+        engine_map: Mapping[str, Any] = {}
+        if self.config is not None:
+            selected = OmegaConf.select(
+                self.config,
+                "sim.engine.step.params.agent_to_flow",
+                default={},
+            )
+            if isinstance(selected, Mapping):
+                engine_map = cast(Mapping[str, Any], selected)
+        if isinstance(engine_map, Mapping):
+            for key, value in engine_map.items():
+                key_name = str(key).strip()
+                if key_name:
+                    flow_map[key_name] = str(value).strip() or "default"
+        return str(flow_map.get(agent_name, "default") or "default")
 
-    def _action_loop_policy_for_group(
+    def _selected_turns(
         self,
         *,
-        group_name: str,
-        default_policy: Any,
-        flow_policies: Mapping[str, Any],
-    ) -> Any:
-        """Resolve action-loop policy for a flow task-group label."""
-        flow_name = self._flow_name_for_group(group_name)
-        return flow_policies.get(flow_name, flow_policies.get("default", default_policy))
+        game_master: Any,
+        candidate_agents: Sequence[Agent],
+    ) -> list[tuple[Agent, ActionSpec]]:
+        by_name = {agent.name: agent for agent in candidate_agents}
+        acting_fn = _ensure_gm_method(game_master, "acting_agents")
+        prompt_fn = _ensure_gm_method(game_master, "action_prompt")
+        selected: list[tuple[Agent, ActionSpec]] = []
+        for raw_name in acting_fn(candidate_agents):
+            name = str(raw_name).strip()
+            if name not in by_name:
+                _LOGGER.warning(
+                    "Ignoring unknown acting agent '%s' from game master '%s'.",
+                    name,
+                    getattr(game_master, "name", "<unknown>"),
+                )
+                continue
+            selected.append((by_name[name], cast(ActionSpec, prompt_fn(name))))
+        return selected
 
     @staticmethod
     def _run_tasks_with_limit(
         tasks: Mapping[str, Callable[[], str]],
         worker_limit: int,
     ) -> dict[str, str]:
-        """Run tasks with a bounded thread pool.
-
-        Individual task failures are logged and skipped rather than crashing
-        the entire episode — this prevents one agent exhausting its retry
-        budget from killing all other in-flight agents.
-        """
-        if worker_limit >= len(tasks):
-            # Fast path: no throttling needed, but still catch per-task errors.
-            results: dict[str, str] = {}
-            with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)) as executor:
-                future_to_name = {
-                    executor.submit(task_fn): task_name for task_name, task_fn in tasks.items()
-                }
-                for future in concurrent.futures.as_completed(future_to_name):
-                    task_name = future_to_name[future]
-                    try:
-                        results[task_name] = future.result()
-                    except Exception:
-                        _LOGGER.exception(
-                            "Agent task failed (isolated): agent=%s",
-                            task_name,
-                        )
-                        results[task_name] = ""
-            return results
-
-        results = {}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=worker_limit) as executor:
+        if not tasks:
+            return {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, worker_limit)) as executor:
             future_to_name = {
                 executor.submit(task_fn): task_name for task_name, task_fn in tasks.items()
             }
+            results: dict[str, str] = {}
             for future in concurrent.futures.as_completed(future_to_name):
                 task_name = future_to_name[future]
                 try:
-                    results[task_name] = future.result()
+                    results[task_name] = str(future.result() or "")
                 except Exception:
-                    _LOGGER.exception(
-                        "Agent task failed (isolated): agent=%s",
-                        task_name,
-                    )
+                    _LOGGER.exception("Agent turn failed (isolated): %s", task_name)
                     results[task_name] = ""
+            return results
 
-        return results
-
-    @override
-    def run_loop(  # type: ignore[misc]
-        self,
-        game_masters: Sequence[entity_lib.Entity],
-        entities: Sequence[entity_lib.Entity],
-        premise: str = "",
-        max_steps: int = 100,
-        start_step: int = 0,
-        verbose: bool = False,
-        log: list[Mapping[str, Any]] | None = None,
-        checkpoint_callback: Callable[[int], None] | None = None,
-    ) -> None:
-        """Run a game loop."""
-        if not game_masters:
-            raise ValueError("No game masters provided.")
-
-        log_entry = _get_empty_log_entry()
-        game_master = game_masters[0]
-        steps = max(0, int(start_step))
-        if premise:
-            premise = f"{EVENT_TAG} {premise}"
-            game_master.observe(premise)
-
-        # logging setup
-        cfg = ConfigStore.get_config()
-        engine_cfg = {}
-        if hasattr(cfg.sim, "engine") and cfg.sim.engine is not None:
-            engine_cfg = cast(dict[str, Any], OmegaConf.to_container(cfg.sim.engine, resolve=True))
-        default_action_loop_policy = build_action_loop_policy(engine_cfg.get("action_loop"))
-        current_action_loop_policy = default_action_loop_policy
-        flow_action_loop_policies = self._build_flow_action_loop_policies(
-            engine_cfg=engine_cfg,
-            default_policy=default_action_loop_policy,
-        )
-        probe_schedule_policy = build_probe_schedule_policy(engine_cfg.get("probe_schedule"))
-        configured_worker_cap = resolve_configured_worker_cap(cfg)
-        probe_event_logger = EventLogger(
-            "probe", os.path.join(cfg.output_rootname, "probe_events.jsonl")
-        )
-        probes_config: Mapping[str, Any] | None = None
-        evals_cfg = getattr(cfg, "evals", getattr(cfg, "evaluations", object()))
-        if isinstance(evals_cfg, DictConfig):
-            scenario_probes = OmegaConf.select(evals_cfg, "probes")
-        else:
-            scenario_probes = None
-        if scenario_probes is not None:
-            probes_config = cast(
-                Mapping[str, Any],
-                OmegaConf.to_container(scenario_probes, resolve=True),
-            )
-        probe_orchestrator = ProbeDeploymentOrchestrator(probes_config, probe_event_logger)
-        _LOGGER.info(
-            "Engine run initialized: max_steps=%d total_agents=%d configured_worker_cap=%s",
-            max_steps,
-            len(entities),
-            configured_worker_cap if configured_worker_cap is not None else "none",
-        )
-        phase_worker_caps: dict[str, int | None] = {"probe": None, "action": None}
-
-        # while not self.terminate(game_master, verbose) and steps < max_steps:
-        while steps < max_steps:
-            start_time = time.time()
-            metrics = SimMetricsCollector.get()
-            ep_timings: dict[str, float] = {}
-            probe_phase = {
-                "deployed": False,
-                "total_agents": len(entities),
-                "selected_agents": 0,
-                "duration_s": 0.0,
-                "retry": {
-                    "calls": 0,
-                    "failed_calls": 0,
-                    "retries": 0,
-                    "retry_per_call": 0.0,
-                    "failure_ratio": 0.0,
-                    "models_with_activity": 0,
-                },
-            }
-            _LOGGER.info(
-                "Episode %d start: total_agents=%d game_master=%s",
-                steps,
-                len(entities),
-                game_master.name,
-            )
-
-            if log is not None and hasattr(game_master, "get_last_log"):
-                assert hasattr(game_master, "get_last_log")  # Assertion for pytype
-                if (
-                    log is not None
-                    and log_entry is not None
-                    and hasattr(game_master, "get_last_log")
-                ):
-                    log_entry["next_acting"] = game_master.get_last_log()
-
-            t0 = time.time()
-            game_master = self.next_game_master(game_master, game_masters, verbose)
-            ep_timings["next_game_master"] = time.time() - t0
-
-            if log is not None and hasattr(game_master, "get_last_log"):
-                assert hasattr(game_master, "get_last_log")  # Assertion for pytype
-                if (
-                    log is not None
-                    and log_entry is not None
-                    and hasattr(game_master, "get_last_log")
-                ):
-                    log_entry["next_acting"] = game_master.get_last_log()
-            if self._is_app_game_master(game_master):
-                self._sync_app_game_master_runtime_state(game_master, entities, steps)
-                run_probe_phase = probe_schedule_policy.should_run_probe_phase(
-                    step=steps,
-                    orchestrator=probe_orchestrator,
-                )
-                if run_probe_phase:
-                    probe_models = collect_unique_models(game_master, entities)
-                    probe_requested_workers = len(entities)
-                    probe_dynamic_cap, probe_worker_limit = compute_dynamic_worker_limit(
-                        requested_workers=probe_requested_workers,
-                        phase_cap=phase_worker_caps["probe"],
-                        configured_worker_cap=configured_worker_cap,
-                    )
-                    probe_before = capture_retry_counters(probe_models)
-                    set_model_retry_phase(probe_models, "probe")
-                    _LOGGER.info("Episode %d probe phase start", steps)
-                    t0 = time.time()
-                    try:
-                        deployed, selected_probe_agents = probe_orchestrator.maybe_deploy(
-                            step=steps,
-                            agents=entities,
-                            worker_limit=probe_worker_limit,
-                        )
-                    finally:
-                        set_model_retry_phase(probe_models, "other")
-                    probe_duration = time.time() - t0
-                    ep_timings["probe_deployment"] = probe_duration
-                    probe_after = capture_retry_counters(probe_models)
-                    probe_retry = summarize_retry_delta(probe_before, probe_after)
-                    probe_phase = {
-                        "deployed": deployed,
-                        "total_agents": len(entities),
-                        "selected_agents": selected_probe_agents,
-                        "requested_workers": probe_requested_workers,
-                        "dynamic_worker_cap": probe_dynamic_cap,
-                        "worker_limit": probe_worker_limit,
-                        "duration_s": round(probe_duration, 4),
-                        "retry": probe_retry,
-                    }
-                    _LOGGER.info(
-                        (
-                            "Episode %d probe phase: deployed=%s selected_agents=%d dynamic_cap=%d effective_workers=%d duration=%.2fs "
-                            "calls=%d retries=%d retry_per_call=%.3f failures=%d"
-                        ),
-                        steps,
-                        deployed,
-                        selected_probe_agents,
-                        probe_dynamic_cap,
-                        probe_worker_limit,
-                        probe_duration,
-                        probe_retry["calls"],
-                        probe_retry["retries"],
-                        probe_retry["retry_per_call"],
-                        probe_retry["failed_calls"],
-                    )
-                    phase_worker_caps["probe"] = update_adaptive_worker_cap(
-                        previous_cap=phase_worker_caps["probe"],
-                        requested_workers=max(1, selected_probe_agents),
-                        calls=probe_retry["calls"],
-                        retry_per_call=probe_retry["retry_per_call"],
-                        failure_ratio=probe_retry["failure_ratio"],
-                    )
-                    if deployed:
-                        print(f"Episode: {steps}. Probe deployment complete")
-                        _LOGGER.info("Episode %d probe deployment complete", steps)
-                else:
-                    ep_timings["probe_deployment"] = 0.0
-                    probe_phase["deployed"] = False
-                    probe_phase["selected_agents"] = 0
-                    probe_phase["duration_s"] = 0.0
-
-            phase_game_masters = [game_master]
-            if self._is_app_game_master(game_master):
-                phase_game_masters = self._phase_game_masters(
-                    current_game_master=game_master,
-                    game_masters=game_masters,
-                )
-
-            t0 = time.time()
-            phase_batches: list[
-                tuple[
-                    entity_lib.Entity,
-                    Sequence[entity_lib.Entity],
-                    Sequence[entity_lib.ActionSpec],
-                    bool,
-                ]
-            ] = []
-            for phase_gm in phase_game_masters:
-                if phase_gm is not game_master and self._is_app_game_master(phase_gm):
-                    self._sync_app_game_master_runtime_state(phase_gm, entities, steps)
-                gm_entities, gm_action_specs = self.next_acting(
-                    phase_gm, entities, log_entry=log_entry, log=log
-                )
-                gm_skip = bool(gm_action_specs) and (
-                    gm_action_specs[0].output_type == entity_lib.OutputType.SKIP_THIS_STEP
-                )
-                phase_batches.append((phase_gm, gm_entities, gm_action_specs, gm_skip))
-            ep_timings["next_acting"] = time.time() - t0
-
-            skip_actions = any(batch[3] for batch in phase_batches)
-            active_agents = sum(len(batch[1]) for batch in phase_batches if not batch[3])
-            _LOGGER.info(
-                "Episode %d actor selection: active_agents=%d skip_actions=%s phase_gms=%d",
-                steps,
-                active_agents,
-                skip_actions,
-                len(phase_game_masters),
-            )
-
-            def _entity_act(
-                target_game_master: entity_lib.Entity,
-                entity: entity_lib.Entity,
-                action_spec: entity_lib.ActionSpec,
-                skip_actions: bool = False,
-            ) -> str:
-                """Execute entity action chunk via configured action-loop policy."""
-                if log is not None and hasattr(target_game_master, "get_last_log"):
-                    assert hasattr(target_game_master, "get_last_log")  # Assertion for pytype
-                    log_entry["make_observation"][entity.name] = target_game_master.get_last_log()
-
-                return cast(
-                    str,
-                    current_action_loop_policy.run(
-                        engine=self,
-                        game_master=target_game_master,
-                        entity=entity,
-                        action_spec=action_spec,
-                        skip_actions=skip_actions,
-                        verbose=verbose,
-                    ),
-                )
-
-            flow_task_groups, model_pool = self._build_flow_task_groups(
-                cfg=cfg,
-                phase_batches=phase_batches,
-                entities=entities,
-                skip_actions=skip_actions,
-                entity_act_fn=_entity_act,
-            )
-
-            # Run entity actions concurrently with adaptive worker throttling.
-            requested_workers = max(1, sum(len(tasks) for _, tasks in flow_task_groups))
-            models = list(model_pool.values())
-            dynamic_worker_limit, worker_limit = compute_dynamic_worker_limit(
-                requested_workers=requested_workers,
-                phase_cap=phase_worker_caps["action"],
-                configured_worker_cap=configured_worker_cap,
-            )
-
-            retry_telemetry = collect_retry_telemetry(
-                models,
-                requested_workers,
-                phase="action",
-            )
-            _LOGGER.info(
-                (
-                    "Episode %d workers: requested=%d dynamic_cap=%d configured_cap=%s "
-                    "effective=%d model_count=%d retry_avg=%.3f failure_ratio=%.3f"
-                ),
-                steps,
-                requested_workers,
-                dynamic_worker_limit,
-                configured_worker_cap if configured_worker_cap is not None else "none",
-                worker_limit,
-                retry_telemetry["model_count"],
-                retry_telemetry["retry_avg"],
-                retry_telemetry["failure_ratio"],
-            )
-            top_models = sorted(
-                retry_telemetry["per_model"],
-                key=lambda item: (item["failure_ratio"], item["retry_avg"]),
-                reverse=True,
-            )[:3]
-            for model_snapshot in top_models:
-                _LOGGER.info(
-                    (
-                        "Episode %d retry_model: model=%s samples=%d retry_avg=%.3f "
-                        "failure_ratio=%.3f max_retries=%s"
-                    ),
-                    steps,
-                    model_snapshot["model"],
-                    model_snapshot["retry_samples"],
-                    model_snapshot["retry_avg"],
-                    model_snapshot["failure_ratio"],
-                    model_snapshot["max_retries"]
-                    if model_snapshot["max_retries"] is not None
-                    else "n/a",
-                )
-
-            action_before = capture_retry_counters(models)
-            set_model_retry_phase(models, "action")
-            _LOGGER.info("Episode %d action phase start", steps)
-            t0 = time.time()
-            try:
-                actions: dict[str, str] = {}
-                for flow_name, tasks in flow_task_groups:
-                    if not tasks:
-                        continue
-                    current_action_loop_policy = self._action_loop_policy_for_group(
-                        group_name=flow_name,
-                        default_policy=default_action_loop_policy,
-                        flow_policies=flow_action_loop_policies,
-                    )
-                    policy_name = getattr(
-                        current_action_loop_policy,
-                        "name",
-                        current_action_loop_policy.__class__.__name__,
-                    )
-                    _LOGGER.info(
-                        "Episode %d flow '%s': executing %d entities (policy=%s)",
-                        steps,
-                        flow_name,
-                        len(tasks),
-                        policy_name,
-                    )
-                    actions.update(self._run_tasks_with_limit(tasks, worker_limit))
-            finally:
-                set_model_retry_phase(models, "other")
-            action_duration = time.time() - t0
-            ep_timings["entity_actions"] = action_duration
-            action_after = capture_retry_counters(models)
-            action_retry = summarize_retry_delta(action_before, action_after)
-            action_phase = {
-                "active_agents": 0 if skip_actions else active_agents,
-                "duration_s": round(action_duration, 4),
-                "retry": action_retry,
-            }
-            retry_telemetry = collect_retry_telemetry(
-                models,
-                requested_workers,
-                phase="action",
-            )
-            _LOGGER.info(
-                (
-                    "Episode %d action phase: duration=%.2fs active_agents=%d "
-                    "calls=%d retries=%d retry_per_call=%.3f failures=%d"
-                ),
-                steps,
-                action_duration,
-                action_phase["active_agents"],
-                action_retry["calls"],
-                action_retry["retries"],
-                action_retry["retry_per_call"],
-                action_retry["failed_calls"],
-            )
-            phase_worker_caps["action"] = update_adaptive_worker_cap(
-                previous_cap=phase_worker_caps["action"],
-                requested_workers=requested_workers,
-                calls=action_retry["calls"],
-                retry_per_call=action_retry["retry_per_call"],
-                failure_ratio=action_retry["failure_ratio"],
-            )
-            _LOGGER.info(
-                "Episode %d action dynamic worker cap updated: %s",
-                steps,
-                phase_worker_caps["action"] if phase_worker_caps["action"] is not None else "none",
-            )
-
-            if worker_limit != requested_workers:
-                print(f"Dynamic worker throttle active: {worker_limit}/{requested_workers} workers")
-                _LOGGER.info(
-                    "Episode %d worker throttle active: %d/%d",
-                    steps,
-                    worker_limit,
-                    requested_workers,
-                )
-
-            if skip_actions:
-                steps += 1
-                duration = time.time() - start_time
-                print(f"Episode {steps - 1} finished in {duration:.2f}s")
-                append_episode_run_stats(
-                    output_rootname=cfg.output_rootname,
-                    episode=steps - 1,
-                    duration_s=duration,
-                    requested_workers=requested_workers,
-                    dynamic_worker_cap=dynamic_worker_limit,
-                    configured_worker_cap=configured_worker_cap,
-                    worker_limit=worker_limit,
-                    probe_dynamic_worker_cap=int(
-                        cast(Any, probe_phase.get("dynamic_worker_cap", 0))
-                    ),
-                    probe_worker_limit=int(cast(Any, probe_phase.get("worker_limit", 0))),
-                    retry_telemetry=retry_telemetry,
-                    phase_timings=ep_timings,
-                    probe_phase=probe_phase,
-                    action_phase=action_phase,
-                )
-                # Log metrics for skip episode
-                metrics.log_episode(
-                    episode=steps - 1,
-                    duration_s=round(duration, 4),
-                    total_agents=len(entities),
-                    active_agents=0,
-                    skipped=True,
-                    game_master=game_master.name,
-                    worker_limit=worker_limit,
-                    requested_workers=requested_workers,
-                    phase_timings=ep_timings,
-                    configured_worker_cap=configured_worker_cap,
-                    retry_telemetry=retry_telemetry,
-                    probe_phase=probe_phase,
-                    action_phase=action_phase,
-                )
-                phase_summary = ", ".join(
-                    f"{phase}={elapsed:.2f}s" for phase, elapsed in sorted(ep_timings.items())
-                )
-                _LOGGER.info(
-                    (
-                        "Episode %d complete (skip): duration=%.2fs total_agents=%d "
-                        "active_agents=0 timings=[%s]"
-                    ),
-                    steps - 1,
-                    duration,
-                    len(entities),
-                    phase_summary,
-                )
-                metrics.snapshot_resources(label=f"episode_{steps - 1}_end")
-                continue
-
-            entity_logs = {}
-            entity_by_name = {e.name: e for e in entities}
-            for entity_name in actions:
-                raw_entity_name = entity_name.split("::", 1)[-1]
-                entity = entity_by_name.get(raw_entity_name)
-                if entity is not None and hasattr(entity, "get_last_log"):
-                    entity_logs[entity.name] = entity.get_last_log()
-
-            steps += 1
-            if log is not None:
-                game_master_key = "+".join(gm.name for gm in phase_game_masters)
-                self._log(
-                    log=log,
-                    steps=steps,
-                    entity_logs=entity_logs,
-                    game_master_key=game_master_key,
-                    game_master_log=log_entry,
-                )
-                log_entry = _get_empty_log_entry()
-
-            t0 = time.time()
-            if checkpoint_callback is not None:
-                checkpoint_callback(steps)
-            ep_timings["checkpoint"] = time.time() - t0
-
-            duration = time.time() - start_time
-            print(f"Episode {steps - 1} finished in {duration:.2f}s")
-            append_episode_run_stats(
-                output_rootname=cfg.output_rootname,
-                episode=steps - 1,
-                duration_s=duration,
-                requested_workers=requested_workers,
-                dynamic_worker_cap=dynamic_worker_limit,
-                configured_worker_cap=configured_worker_cap,
-                worker_limit=worker_limit,
-                probe_dynamic_worker_cap=int(cast(Any, probe_phase.get("dynamic_worker_cap", 0))),
-                probe_worker_limit=int(cast(Any, probe_phase.get("worker_limit", 0))),
-                retry_telemetry=retry_telemetry,
-                phase_timings=ep_timings,
-                probe_phase=probe_phase,
-                action_phase=action_phase,
-            )
-
-            # Log comprehensive per-episode metrics
-            active_name_set: set[str] = set()
-            for _phase_gm, gm_entities, _gm_action_specs, gm_skip in phase_batches:
-                if gm_skip:
-                    continue
-                for entity in gm_entities:
-                    active_name_set.add(entity.name)
-            active_names = sorted(active_name_set)
-            metrics.log_episode(
-                episode=steps - 1,
-                duration_s=round(duration, 4),
-                total_agents=len(entities),
-                active_agents=len(active_names),
-                active_agent_names=active_names,
-                skipped=False,
-                game_master=game_master.name,
-                worker_limit=worker_limit,
-                requested_workers=requested_workers,
-                phase_timings=ep_timings,
-                configured_worker_cap=configured_worker_cap,
-                retry_telemetry=retry_telemetry,
-                probe_phase=probe_phase,
-                action_phase=action_phase,
-            )
-            phase_summary = ", ".join(
-                f"{phase}={elapsed:.2f}s" for phase, elapsed in sorted(ep_timings.items())
-            )
-            _LOGGER.info(
-                (
-                    "Episode %d complete: duration=%.2fs total_agents=%d active_agents=%d "
-                    "timings=[%s]"
-                ),
-                steps - 1,
-                duration,
-                len(entities),
-                len(active_names),
-                phase_summary,
-            )
-            metrics.snapshot_resources(label=f"episode_{steps - 1}_end")
-
-
-class FlowRuntimeEngine(BaseRuntimeEngine):
-    """Flow-enabled runtime engine with multi-GM phase orchestration."""
-
-    @classmethod
-    def _phase_game_masters(
-        cls,
-        *,
-        current_game_master: entity_lib.Entity,
-        game_masters: Sequence[entity_lib.Entity],
-    ) -> list[entity_lib.Entity]:
-        """_phase_game_masters.
-
-        :param cls:
-
-        :returns: list[entity_lib.Entity]
-        :rtype: list[entity_lib.Entity]
-        """
-        sequence = cls._gm_sequence(current_game_master)
-        peers = [
-            gm
-            for gm in game_masters
-            if cls._gm_sequence(gm) == sequence and cls._is_app_game_master(gm)
-        ]
-        if not peers:
-            return [current_game_master]
-        peers.sort(key=lambda gm: gm.name)
-        return peers
-
-    def _build_flow_task_groups(
+    def _execute_batches(
         self,
         *,
-        cfg: Any,
-        phase_batches: Sequence[
-            tuple[
-                entity_lib.Entity,
-                Sequence[entity_lib.Entity],
-                Sequence[entity_lib.ActionSpec],
-                bool,
-            ]
-        ],
-        entities: Sequence[entity_lib.Entity],
-        skip_actions: bool,
-        entity_act_fn: Callable[
-            [entity_lib.Entity, entity_lib.Entity, entity_lib.ActionSpec, bool], str
-        ],
-    ) -> tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]:
-        """_build_flow_task_groups.
+        step_index: int,
+        batches: Sequence[_StepBatch],
+        verbose: bool,
+    ) -> StepResult:
+        del verbose
+        if not batches:
+            return StepResult(
+                skipped=True,
+                primary_game_master="",
+                probe_phase=probe_empty(0),
+                action_phase={"active_agents": 0, "duration_s": 0.0, "retry": retry_empty()},
+            )
 
-        :returns: tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]
-        :rtype: tuple[list[tuple[str, dict[str, Callable[[], str]]]], dict[int, Any]]
-        """
-        flow_task_groups: list[tuple[str, dict[str, Callable[[], str]]]] = []
+        tasks_by_flow: list[tuple[str, dict[str, Callable[[], str]]]] = []
         model_pool: dict[int, Any] = {}
-        if skip_actions:
-            return super()._build_flow_task_groups(
-                cfg=cfg,
-                phase_batches=phase_batches,
-                entities=entities,
-                skip_actions=skip_actions,
-                entity_act_fn=entity_act_fn,
-            )
-
-        for phase_gm, gm_entities, gm_action_specs, gm_skip in phase_batches:
-            entities_to_process = entities if gm_skip else gm_entities
-            owned_flows = self._gm_owned_flows(phase_gm)
-            grouped_entities = self._group_entities_by_flow(
-                cfg=cfg,
-                game_master=phase_gm,
-                entities=entities_to_process,
-                action_specs=gm_action_specs,
-            )
-            for flow_name, members in grouped_entities:
-                if owned_flows and flow_name not in owned_flows:
-                    continue
-                flow_tasks: dict[str, Callable[[], str]] = {}
-                for entity, action_spec in members:
-                    task_name = f"{phase_gm.name}::{entity.name}"
-                    flow_tasks[task_name] = functools.partial(
-                        entity_act_fn,
-                        phase_gm,
-                        entity,
-                        action_spec,
-                        False,
-                    )
-                flow_task_groups.append((f"{phase_gm.name}:{flow_name}", flow_tasks))
-            for model_obj in collect_unique_models(phase_gm, entities_to_process):
+        active_names: set[str] = set()
+        for batch in batches:
+            flow_tasks: dict[str, Callable[[], str]] = {}
+            for agent, spec in batch.turns:
+                active_names.add(agent.name)
+                task_name = f"{batch.game_master.name}::{agent.name}"
+                flow_tasks[task_name] = functools.partial(
+                    self.turn_policy.run,
+                    engine=self,
+                    game_master=batch.game_master,
+                    agent=agent,
+                    action_spec=spec,
+                    skip_actions=False,
+                    verbose=False,
+                )
+            tasks_by_flow.append((f"{batch.game_master.name}:{batch.flow_name}", flow_tasks))
+            for model_obj in collect_unique_models(
+                batch.game_master, [agent for agent, _ in batch.turns]
+            ):
                 model_pool[id(model_obj)] = model_obj
-        return flow_task_groups, model_pool
 
-    @override
-    def _build_flow_action_loop_policies(
+        requested_workers = max(1, sum(len(tasks) for _, tasks in tasks_by_flow))
+        dynamic_cap, worker_limit = compute_dynamic_worker_limit(
+            requested_workers=requested_workers,
+            phase_cap=self._action_phase_cap,
+            configured_worker_cap=self._configured_worker_cap,
+        )
+        models = list(model_pool.values())
+        before = capture_retry_counters(models)
+        set_model_retry_phase(models, "action")
+        action_start = time.time()
+        try:
+            for _flow_name, tasks in tasks_by_flow:
+                self._run_tasks_with_limit(tasks, worker_limit)
+        finally:
+            set_model_retry_phase(models, "other")
+        action_duration = time.time() - action_start
+        after = capture_retry_counters(models)
+        retry_delta = summarize_retry_delta(before, after)
+        self._action_phase_cap = update_adaptive_worker_cap(
+            previous_cap=self._action_phase_cap,
+            requested_workers=requested_workers,
+            calls=retry_delta["calls"],
+            retry_per_call=retry_delta["retry_per_call"],
+            failure_ratio=retry_delta["failure_ratio"],
+        )
+        retry_telemetry = collect_retry_telemetry(models, requested_workers, phase="action")
+        return StepResult(
+            active_agent_names=tuple(sorted(active_names)),
+            skipped=not bool(active_names),
+            requested_workers=requested_workers,
+            worker_limit=worker_limit,
+            dynamic_worker_cap=dynamic_cap,
+            configured_worker_cap=self._configured_worker_cap,
+            phase_timings={"step_action": action_duration},
+            retry_telemetry=retry_telemetry,
+            action_phase={
+                "active_agents": len(active_names),
+                "duration_s": round(action_duration, 4),
+                "retry": retry_delta,
+            },
+            probe_phase=probe_empty(len(active_names)),
+            primary_game_master=batches[0].game_master.name if batches else "",
+        )
+
+    def run_step(
         self,
         *,
-        engine_cfg: Mapping[str, Any],
-        default_policy: Any,
-    ) -> dict[str, Any]:
-        """Build per-flow action-loop policies from engine.flow_policies."""
-        del default_policy
-        flow_policies_cfg = engine_cfg.get("flow_policies")
-        if not isinstance(flow_policies_cfg, Mapping) or not flow_policies_cfg:
-            return {}
+        step_index: int,
+        game_masters: list[Any],
+        agents: list[Any],
+        verbose: bool,
+    ) -> StepResult:
+        for game_master in game_masters:
+            _set_gm_episode_index(game_master, step_index)
+        for game_master in game_masters:
+            update_fn = _ensure_gm_method(game_master, "update")
+            with self._gm_lock(game_master):
+                update_fn(step=step_index, agents=agents, context=self._initialization_context)
+        return self.step_strategy.run(
+            engine=self,
+            step_index=step_index,
+            game_masters=game_masters,
+            agents=agents,
+            verbose=verbose,
+        )
 
-        policies: dict[str, Any] = {}
-        for flow_name, slot_cfg in flow_policies_cfg.items():
-            key = str(flow_name).strip()
-            if not key:
-                continue
-            if not isinstance(slot_cfg, Mapping):
-                _LOGGER.warning(
-                    "Skipping engine.flow_policies['%s']: expected mapping, got %s.",
-                    key,
-                    type(slot_cfg).__name__,
+    def run_loop(
+        self,
+        *,
+        game_masters: list[Any],
+        agents: list[Any],
+        max_steps: int,
+        start_step: int,
+        verbose: bool,
+        checkpoint_callback: Any | None,
+    ) -> None:
+        self.loop_strategy.run(
+            engine=self,
+            game_masters=game_masters,
+            agents=agents,
+            max_steps=max_steps,
+            start_step=start_step,
+            verbose=verbose,
+            checkpoint_callback=checkpoint_callback,
+        )
+
+
+class FixedStepsLoopStrategy(LoopStrategy):
+    """Default loop strategy: run episodes from start_step up to max_steps."""
+
+    name = "fixed_steps"
+
+    def run(
+        self,
+        *,
+        engine: RuntimeEngine,
+        game_masters: list[Any],
+        agents: list[Any],
+        max_steps: int,
+        start_step: int,
+        verbose: bool,
+        checkpoint_callback: Any | None,
+    ) -> None:
+        step = max(0, int(start_step))
+        while step < int(max_steps):
+            t0 = time.time()
+            probe_phase = probe_empty(len(agents))
+            if engine.probe_runner is not None:
+                deployed, selected = engine.probe_runner.maybe_run(
+                    step=step,
+                    agents=agents,
+                    worker_limit=None,
                 )
-                continue
-            try:
-                policies[key] = build_action_loop_policy(cast(Mapping[str, Any], slot_cfg))
-            except Exception:
-                _LOGGER.exception(
-                    "Failed building engine.flow_policies['%s']; default action_loop will be used.",
-                    key,
+                probe_phase["deployed"] = deployed
+                probe_phase["selected_agents"] = selected
+            step_result = engine.run_step(
+                step_index=step,
+                game_masters=game_masters,
+                agents=agents,
+                verbose=verbose,
+            )
+            step_result.probe_phase = probe_phase
+            duration = time.time() - t0
+            engine.recorder.record_episode(
+                episode=step,
+                duration_s=duration,
+                total_agents=len(agents),
+                step_result=step_result,
+            )
+            if checkpoint_callback is not None:
+                checkpoint_callback(step + 1)
+            if verbose:
+                print(f"Episode {step} finished in {duration:.2f}s")
+            step += 1
+
+
+class BaseStepStrategy(StepStrategy):
+    """Single-GM, no flow grouping."""
+
+    name = "base"
+
+    def run(
+        self,
+        *,
+        engine: RuntimeEngine,
+        step_index: int,
+        game_masters: list[Any],
+        agents: list[Any],
+        verbose: bool,
+    ) -> StepResult:
+        del step_index, verbose
+        if not game_masters:
+            raise ValueError("No game masters configured.")
+        gm = game_masters[0]
+        turns = engine._selected_turns(game_master=gm, candidate_agents=cast(list[Agent], agents))
+        return engine._execute_batches(
+            step_index=0,
+            batches=[_StepBatch(flow_name="default", game_master=gm, turns=turns)],
+            verbose=False,
+        )
+
+
+@dataclass
+class FlowStepStrategy(StepStrategy):
+    """Flow-aware step scheduling for a single game master."""
+
+    flow_order: tuple[str, ...] = ("fixed_pre", "default")
+    name: str = "flow"
+
+    def run(
+        self,
+        *,
+        engine: RuntimeEngine,
+        step_index: int,
+        game_masters: list[Any],
+        agents: list[Any],
+        verbose: bool,
+    ) -> StepResult:
+        del step_index, verbose
+        if not game_masters:
+            raise ValueError("No game masters configured.")
+        groups: OrderedDict[str, list[tuple[Agent, ActionSpec]]] = OrderedDict()
+        gm = game_masters[0]
+        agents_by_flow: OrderedDict[str, list[Agent]] = OrderedDict()
+        for agent in cast(list[Agent], agents):
+            flow = engine._agent_flow_tag(gm, agent.name)
+            agents_by_flow.setdefault(flow, []).append(agent)
+        for flow, flow_agents in agents_by_flow.items():
+            turns = engine._selected_turns(game_master=gm, candidate_agents=flow_agents)
+            groups.setdefault(flow, []).extend(turns)
+        batches: list[_StepBatch] = []
+        used: set[str] = set()
+        for flow in self.flow_order:
+            flow_name = str(flow).strip()
+            if flow_name and flow_name in groups:
+                batches.append(
+                    _StepBatch(flow_name=flow_name, game_master=gm, turns=groups[flow_name])
                 )
-        return policies
+                used.add(flow_name)
+        for flow_name, flow_turns in groups.items():
+            if flow_name not in used:
+                batches.append(_StepBatch(flow_name=flow_name, game_master=gm, turns=flow_turns))
+        return engine._execute_batches(step_index=0, batches=batches, verbose=False)
+
+
+@dataclass
+class MultiGMStepStrategy(StepStrategy):
+    """Flow-first multi-GM routing strategy using flow_to_gms chains."""
+
+    flow_order: tuple[str, ...] = ("fixed_pre", "default")
+    name: str = "multi_gm"
+
+    def run(
+        self,
+        *,
+        engine: RuntimeEngine,
+        step_index: int,
+        game_masters: list[Any],
+        agents: list[Any],
+        verbose: bool,
+    ) -> StepResult:
+        del step_index, verbose
+        if not game_masters:
+            raise ValueError("No game masters configured.")
+        gm_by_name = {str(gm.name): gm for gm in game_masters}
+        flow_to_agents: OrderedDict[str, list[Agent]] = OrderedDict()
+        default_gm = game_masters[0]
+        for agent in cast(list[Agent], agents):
+            flow = engine._agent_flow_tag(default_gm, agent.name)
+            flow_to_agents.setdefault(flow, []).append(agent)
+        flow_chains = {}
+        gm_orchestration = getattr(default_gm, "gm_orchestration", {}) or {}
+        if isinstance(gm_orchestration, Mapping):
+            flow_chains = dict(gm_orchestration.get("flow_chains", {}) or {})
+
+        batches: list[_StepBatch] = []
+        ordered_flows: list[str] = []
+        seen: set[str] = set()
+        for flow in self.flow_order:
+            name = str(flow).strip()
+            if name and name in flow_to_agents:
+                ordered_flows.append(name)
+                seen.add(name)
+        for flow_name in flow_to_agents:
+            if flow_name not in seen:
+                ordered_flows.append(flow_name)
+        for flow_name in ordered_flows:
+            candidates = flow_to_agents.get(flow_name, [])
+            if not candidates:
+                continue
+            chain = flow_chains.get(flow_name) or [default_gm.name]
+            chain_names = [str(name).strip() for name in chain if str(name).strip()]
+            for gm_name in chain_names:
+                gm = gm_by_name.get(gm_name)
+                if gm is None:
+                    raise ValueError(
+                        f"Unknown GM '{gm_name}' in flow chain for flow '{flow_name}'."
+                    )
+                turns = engine._selected_turns(game_master=gm, candidate_agents=candidates)
+                batches.append(_StepBatch(flow_name=flow_name, game_master=gm, turns=turns))
+        return engine._execute_batches(step_index=0, batches=batches, verbose=False)
+
+
+class BaseRuntimeEngine(RuntimeEngine):
+    """Runtime engine preset wrapper using base step strategy."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        cfg = kwargs.get("config")
+        step_cfg = (
+            OmegaConf.select(
+                cfg, "sim.engine.step.params.flow_order", default=["fixed_pre", "default"]
+            )
+            if cfg is not None
+            else ["fixed_pre", "default"]
+        )
+        flow_order = tuple(str(item) for item in (step_cfg or ["fixed_pre", "default"]))
+        kwargs.setdefault("loop_strategy", FixedStepsLoopStrategy())
+        kwargs.setdefault("step_strategy", BaseStepStrategy())
+        kwargs.setdefault("turn_policy", build_turn_policy(_engine_turn_policy_cfg(cfg)))
+        super().__init__(*args, **kwargs)
+        self._flow_order = flow_order
+
+
+class FlowRuntimeEngine(RuntimeEngine):
+    """Runtime engine preset wrapper using flow step strategy."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        cfg = kwargs.get("config")
+        flow_order_cfg = (
+            OmegaConf.select(
+                cfg, "sim.engine.step.params.flow_order", default=["fixed_pre", "default"]
+            )
+            if cfg is not None
+            else ["fixed_pre", "default"]
+        )
+        flow_order = tuple(str(item) for item in (flow_order_cfg or ["fixed_pre", "default"]))
+        kwargs.setdefault("loop_strategy", FixedStepsLoopStrategy())
+        kwargs.setdefault("step_strategy", FlowStepStrategy(flow_order=flow_order))
+        kwargs.setdefault("turn_policy", build_turn_policy(_engine_turn_policy_cfg(cfg)))
+        super().__init__(*args, **kwargs)
+
+
+class MultiGMRuntimeEngine(FlowRuntimeEngine):
+    """Runtime engine preset wrapper using flow-first multi-GM step strategy."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        cfg = kwargs.get("config")
+        flow_order_cfg = (
+            OmegaConf.select(
+                cfg, "sim.engine.step.params.flow_order", default=["fixed_pre", "default"]
+            )
+            if cfg is not None
+            else ["fixed_pre", "default"]
+        )
+        flow_order = tuple(str(item) for item in (flow_order_cfg or ["fixed_pre", "default"]))
+        kwargs.setdefault("loop_strategy", FixedStepsLoopStrategy())
+        kwargs.setdefault("step_strategy", MultiGMStepStrategy(flow_order=flow_order))
+        kwargs.setdefault("turn_policy", build_turn_policy(_engine_turn_policy_cfg(cfg)))
+        super().__init__(*args, **kwargs)
+
+
+def _engine_turn_policy_cfg(cfg: Any | None) -> Mapping[str, Any] | None:
+    if cfg is None:
+        return {"built_in": "single_action", "params": {}}
+    slot = OmegaConf.select(cfg, "sim.engine.turn_policy", default=None)
+    if slot is None:
+        return {"built_in": "single_action", "params": {}}
+    return cast(Mapping[str, Any], OmegaConf.to_container(slot, resolve=True))

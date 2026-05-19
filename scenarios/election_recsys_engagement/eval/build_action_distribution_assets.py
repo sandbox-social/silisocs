@@ -78,7 +78,7 @@ def _extract_fixed_users(cfg: dict[str, Any]) -> set[str]:
     for class_cfg in classes.values():
         if not isinstance(class_cfg, dict):
             continue
-        if "fixed_entity" not in str(class_cfg.get("prefab_module", "")):
+        if "FixedAgent" not in str(class_cfg.get("class_path", "")):
             continue
         data_cfg = class_cfg.get("data", {})
         if not isinstance(data_cfg, dict):

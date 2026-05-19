@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from omegaconf import OmegaConf
 
-from silisocs.runtime.projection import RuntimeProjection
+from silisocs.runtime.configuration.projection import RuntimeProjection
 
 
 def _cfg(*, action_mode: str = "custom", tool_mode: str = "single", resolve: str = "tool_calling"):
@@ -14,7 +14,7 @@ def _cfg(*, action_mode: str = "custom", tool_mode: str = "single", resolve: str
             "sim": {
                 "action_mode": action_mode,
                 "tool_calling": {"mode": tool_mode},
-                "engine": {"preset": "base"},
+                "engine": {"step": {"built_in": "base"}},
             },
             "env": {
                 "gm": {

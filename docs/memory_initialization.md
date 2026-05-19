@@ -1,93 +1,55 @@
-# Memory Initialization
+# Agent Initialization
 
-The initializer game master runs once at the start of a simulation,
-before the main social-media loop begins. Its job is to populate each
-agent's observation stream and the GM memory bank with initial memories.
+The Engine runs agent initialization before Game Master and simulation
+initialization. This phase prepares agent-owned state such as configured raw
+memories or formative memories, then calls each agent's `initialize(...)` hook
+with a typed `AgentInitializationContext`.
 
-## What the Initializer Does
+There is no initializer Game Master and no GM memory bank in the native runtime.
 
-1. **Shared memories** (from config) are added to the GM memory bank and
-   queued as observations for every agent.
-2. **Generated memories** (from `generate_memories()`) are produced
-   per-agent and injected as observations + GM memories.
-3. **Specific memories** (per-agent, from config) are injected last.
-4. Control is handed to the main simulation game master.
+## Built-Ins
 
-Steps 1–4 run concurrently across all players. After initialization,
-agents have their starting knowledge and the simulation loop begins.
+| Built-in | Config | Behavior |
+|----------|--------|----------|
+| `default` / `raw_memory` | `sim.initialization.agents.built_in: raw_memory` | Inject configured shared and per-agent memories. |
+| `formative_memory` | `sim.initialization.agents.built_in: formative_memory` | Generate per-agent formative memories with the configured model, then inject them. |
+| `none` | `sim.initialization.agents.built_in: none` | Skip agent initialization. |
 
-## Supported Modes
+```yaml
+sim:
+  initialization:
+    agents:
+      built_in: raw_memory
+      class_path: null
+      params: {}
+```
 
-| Mode | Config | What it does |
-|------|--------|-------------|
-| **Raw** | `processing_mode: raw` | No LLM calls. Only config memories are injected. |
-| **Formative** | `processing_mode: formative` | Uses the LLM to generate a multi-episode backstory per agent. |
+## Custom Initializers
 
-## Current Extensibility Boundary
-
-The runtime currently validates `processing_mode` to the two supported modes
-above. A custom initializer is not loadable through YAML alone at this time.
-
-If you need a custom initializer today, you must also update
-`build_game_masters()` in `src/silisocs/runtime/runner.py` to register
-your mode name and module path.
-
-## How A Custom Initializer Would Look
-
-One class, one method — override `generate_memories()` on `InitializerGM`:
+Subclass `AgentInitializer` and implement `initialize(...)`:
 
 ```python
-# silisocs/agents/initialization/my_init.py
-import dataclasses
-from silisocs.agents.initialization.base import InitializerGM
+from silisocs.initialization.agents import AgentInitializer
 
-@dataclasses.dataclass
-class GameMaster(InitializerGM):
-    def generate_memories(self, model, player_name, shared_memories, player_context):
-        # `model` — the LLM (call model.sample_text() etc.)
-        # `player_name` — e.g. "Alice Smith"
-        # `shared_memories` — list of shared memory strings from config
-        # `player_context` — per-player context string from config
-        return [
-            f"{player_name} grew up in a small town.",
-            f"{player_name} has always been passionate about gardening.",
-        ]
+
+class MyAgentInitializer(AgentInitializer):
+    def initialize(self, *, agents, model, context):
+        for agent in agents:
+            agent.initialize({"memories": [f"Welcome, {agent.name}."]})
 ```
 
-After adding runtime registration in `runner.py`, set
-`processing_mode: my_init` in your scenario YAML.
+Then configure it:
 
-The base class handles everything else:
-- Concordia GM component wiring
-- Injecting shared memories into the GM memory bank
-- Queuing shared memories as observations for every agent
-- Calling your `generate_memories()` for each agent (concurrently)
-- Injecting player-specific memories from config
-- Handing off to the main simulation GM
-
-## Runtime Architecture
-
+```yaml
+sim:
+  initialization:
+    agents:
+      class_path: my_package.my_module.MyAgentInitializer
+      params: {}
 ```
-InitializerGM (Prefab — you subclass this)
-│
-├── generate_memories(model, name, shared, ctx)  ← OVERRIDE THIS
-│   ├── Raw:       returns []
-│   └── Formative: returns LLM-generated episodes
-│
-└── build() → creates Concordia GM entity with:
-    ├── Instructions, Examples, PlayerCharacters
-    ├── Observation, Memory, ObservationToMemory
-    ├── _MemoryInitComponent (internal — calls generate_memories)
-    ├── SimpleMakeObservation
-    └── NextActingAllEntities, FixedActionSpec
-```
-
-Everything below `build()` is internal. You never need to touch it.
-
----
 
 ## Related
 
-- [Building Agents](building_agents.md) — How agent entities are constructed
-- [Configuration Reference](configuration.md) — `processing_mode` and memory config options
-- [Usage Overview](usage.md#memory-initialization) — Memory initialization in context
+- [Building Agents](building_agents.md)
+- [Configuration Reference](configuration.md)
+- [Usage Overview](usage.md#memory-initialization)

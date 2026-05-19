@@ -48,7 +48,7 @@ class AgentClass(BaseModel):
 
     role: str
     sim_role_name: str
-    prefab_module: str = "silisocs.agents.entity"
+    class_path: str = "silisocs.agents.native.NativeAgent"
     count: int
     agents: list[AgentDetails]
     activity: ActivityConfig = Field(default_factory=ActivityConfig)

@@ -13,9 +13,9 @@ both groups active on the same platform.
 
 | Role | Count | Prefab |
 |---|---|---|
-| `conference_attendee` | 4 | `silisocs.agents.entity` |
-| `protester` | 3 | `silisocs.agents.entity` |
-| `bridge` | 2 | `silisocs.agents.entity` |
+| `conference_attendee` | 4 | `silisocs.agents.native` |
+| `protester` | 3 | `silisocs.agents.native` |
+| `bridge` | 2 | `silisocs.agents.native` |
 
 Bridge characters (tech journalist, conflicted ML engineer) follow both communities
 and are the only cross-cutting information conduits.

@@ -10,12 +10,12 @@ Silisocs should make each simulator layer replaceable through a defined shape:
 | Layer | Stable shape | Extension path |
 |---|---|---|
 | Scenario | Hydra config groups plus scenario-local overrides | Add scenario files, agent variants, study overrides |
-| Agent | `Agent` runtime plus optional prefab wrapper | Custom prefab module or custom builder |
-| Environment app | `EnvironmentApp` plus `@app_action` methods | Built-in `platform_type` or `env.app.class_path` |
+| Agent | `Agent` runtime plus optional compatibility adapter | Custom agent module or custom builder |
+| Environment app | `BackendApp` plus `@app_action` methods | Built-in `platform_type` or `env.app.class_path` |
 | Social app | `SocialMediaApp` optional timeline/recsys capabilities | Twitter-like, Reddit-like, Mastodon, or custom social backend |
 | GM | Component-slotted game master | Override component slots before replacing the full GM |
-| GM component | Slot config with `built_in`, `class_path`, `params`, optional `flows` | Custom observe, resolve, next-acting, recommend, initializer |
-| Engine | Runtime loop plus policy objects | Custom action-loop or probe-schedule policy first; custom engine only when needed |
+| GM component | Slot config with `built_in`, `class_path`, `params`, optional `flows` | Custom initialize, next-acting, action_prompt, observe, resolve, update |
+| Engine | Runtime loop plus policy objects | Custom turn-policy or probe-schedule policy first; custom engine only when needed |
 | Evaluation | Probe deployment plus postprocessors/evaluators | Custom probe types and study evaluators |
 
 ## V1 Priorities
@@ -35,7 +35,7 @@ Silisocs should make each simulator layer replaceable through a defined shape:
      environment apps.
 
 3. **Generic simulator boundary**
-   - Keep `EnvironmentApp` domain-neutral.
+   - Keep `BackendApp` domain-neutral.
    - Keep social-media-only assumptions inside `SocialMediaApp`, social observe
      components, social resolve components, and recommendation components.
    - Use `resource_market` as the minimal non-social reference backend.

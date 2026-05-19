@@ -1,16 +1,15 @@
-write_html_log: false
 probes:
   deployment:
     enabled: true
     start_step: 1
     every_n_steps: 1
-    include_entities: []
-    exclude_entities: []
-  queries:
+    include_agents: []
+    exclude_agents: []
+  probes:
     vote_pref:
       probe_name: vote_pref
-      query_type: ChoiceProbe
-      query_data:
+      probe_type: ChoiceProbe
+      probe_data:
         name: VotePref
         question: In one word, name the candidate you want to vote for.
         context: '{agentname} is going to cast a vote for either Bill Fredrickson
@@ -20,8 +19,8 @@ probes:
         - Bradley Carter
     favorability_bill:
       probe_name: favorability_bill
-      query_type: NumericRatingProbe
-      query_data:
+      probe_type: NumericRatingProbe
+      probe_data:
         name: FavorabilityBill
         question: Return a single numeric value ranging from {lo} to {hi} for Bill
           Fredrickson.
@@ -32,8 +31,8 @@ probes:
         hi: 10
     favorability_bradley:
       probe_name: favorability_bradley
-      query_type: NumericRatingProbe
-      query_data:
+      probe_type: NumericRatingProbe
+      probe_data:
         name: FavorabilityBradley
         question: Return a single numeric value ranging from {lo} to {hi} for Bradley
           Carter.
@@ -44,7 +43,7 @@ probes:
         hi: 10
     vote_intent:
       probe_name: vote_intent
-      query_type: BinaryProbe
-      query_data:
+      probe_type: BinaryProbe
+      probe_data:
         name: VoteIntent
         question: In one word, will you cast a vote? (reply yes, or no.)

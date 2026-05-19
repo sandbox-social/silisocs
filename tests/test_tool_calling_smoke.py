@@ -1,41 +1,44 @@
-import json
+from typing import Any
 
-from concordia.typing import entity as entity_lib
-
-from silisocs.agents.components.concat_act import (
-    STRUCTURED_RESPONSE_MARKER,
-    STRUCTURED_SCHEMA_END,
-    STRUCTURED_SCHEMA_START,
-    SocialConcatActComponent,
-    extract_structured_response,
-)
-from silisocs.environments.gm.act import SMAct
+from silisocs.agents.native import NativeAgent
 from silisocs.environments.gm.components.resolve import ToolCallingResolveComponent
 from silisocs.evaluations.probes.types import StructuredProbe
+from silisocs.runtime import types as entity_lib
+from silisocs.runtime.language_models import LanguageModel
 
 
-class _FakeModel:
+class _FakeModel(LanguageModel):
     def __init__(self, mode: str = "single") -> None:
         self.mode = mode
 
-    def sample_tool_call(self, prompt: str, tools: list[dict]):
+    def sample_tool_calls(
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        *,
+        mode: str = "single",
+        **kwargs: Any,
+    ) -> list[entity_lib.ToolCall]:
+        del kwargs
         del prompt, tools
         if self.mode == "multi":
             return [
-                ("toot", {"status": "Hello from tool mode"}),
-                ("like", {"post_id": "1"}),
+                entity_lib.ToolCall("toot", {"status": "Hello from tool mode"}),
+                entity_lib.ToolCall("like", {"post_id": "1"}),
             ]
         if self.mode == "multi_single":
-            return [("toot", {"status": "Only one but list-shaped"})]
-        return [("toot", {"status": "Hello from tool mode"})]
+            return [entity_lib.ToolCall("toot", {"status": "Only one but list-shaped"})]
+        return [entity_lib.ToolCall("toot", {"status": "Hello from tool mode"})]
 
-    def sample_structured_response(self, prompt: str, schema: dict):
+    def sample_structured(
+        self,
+        prompt: str,
+        schema: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        del kwargs
         del prompt, schema
         return {"belief": 1, "opinion": "I somewhat support this.", "reasoning": "Because."}
-
-
-class _FakeEntity:
-    name = "Alice"
 
 
 class _FakeApp:
@@ -62,104 +65,53 @@ class _FakeApp:
         return f"{name}:{payload.get('current_user')}:{payload.get('status')}"
 
 
-def test_social_concat_act_emits_tool_call_json_when_marker_present() -> None:
-    component = SocialConcatActComponent(model=_FakeModel(), randomize_choices=False)
-    component.set_entity(_FakeEntity())
+def test_native_agent_returns_typed_tool_calls_from_extra_args() -> None:
+    agent = NativeAgent(name="Alice", model=_FakeModel())
 
-    tools = json.dumps(_FakeApp().generate_tool_schemas())
     action_spec = entity_lib.ActionSpec(
-        call_to_action=(
-            "### TOOL_CALLING_MODE ###\n"
-            "Pick one action for {name}.\n"
-            "### TOOL_SCHEMAS_JSON ###\n"
-            f"{tools}\n"
-            "### END_TOOL_SCHEMAS_JSON ###"
-        ),
-        output_type=entity_lib.OutputType.FREE,
+        prompt="Pick one action for {name}.",
+        output_type=entity_lib.OutputType.TOOL_CALLS,
+        extra_args={"tools": _FakeApp().generate_tool_schemas(), "tool_mode": "single"},
     )
 
-    result = component.get_action_attempt({"Observation": "timeline"}, action_spec)
-    parsed = json.loads(result)
+    result = agent.act(action_spec)
 
-    assert parsed["tool_calls"][0]["name"] == "toot"
-    assert parsed["tool_calls"][0]["arguments"]["status"] == "Hello from tool mode"
-    assert parsed["tool_calls"][0]["arguments"]["current_user"] == "Alice"
-
-
-def test_smact_embeds_tool_schemas_for_custom_prompt_when_enabled() -> None:
-    act = SMAct(
-        model=_FakeModel(),
-        entity_names=["Alice"],
-        sm_app=_FakeApp(),
-        call_to_action_str="Custom action prompt for {name}",
-        action_mode="custom",
-        enable_tool_calling=True,
-    )
-
-    result = act._next_entity_action_spec(
-        contexts={},
-        action_spec=entity_lib.ActionSpec(
-            call_to_action="", output_type=entity_lib.OutputType.FREE
-        ),
-    )
-
-    assert "### TOOL_CALLING_MODE ###" in result
-    assert "### TOOL_SCHEMAS_JSON ###" in result
-    assert "Custom action prompt for {name}" in result
+    assert result.output_type == entity_lib.OutputType.TOOL_CALLS
+    assert result.tool_calls[0].name == "toot"
+    assert result.tool_calls[0].arguments["status"] == "Hello from tool mode"
 
 
-def test_social_concat_act_emits_multi_tool_call_json_when_model_returns_multiple() -> None:
-    component = SocialConcatActComponent(model=_FakeModel(mode="multi"), randomize_choices=False)
-    component.set_entity(_FakeEntity())
+def test_native_agent_returns_multiple_typed_tool_calls() -> None:
+    agent = NativeAgent(name="Alice", model=_FakeModel(mode="multi"))
 
-    tools = json.dumps(_FakeApp().generate_tool_schemas())
     action_spec = entity_lib.ActionSpec(
-        call_to_action=(
-            "### TOOL_CALLING_MODE ###\n"
-            "Pick one action for {name}.\n"
-            "### TOOL_SCHEMAS_JSON ###\n"
-            f"{tools}\n"
-            "### END_TOOL_SCHEMAS_JSON ###"
-        ),
-        output_type=entity_lib.OutputType.FREE,
+        prompt="Pick actions for {name}.",
+        output_type=entity_lib.OutputType.TOOL_CALLS,
+        extra_args={"tools": _FakeApp().generate_tool_schemas(), "tool_mode": "multi"},
     )
 
-    result = component.get_action_attempt({"Observation": "timeline"}, action_spec)
-    parsed = json.loads(result)
+    result = agent.act(action_spec)
 
-    assert len(parsed["tool_calls"]) == 2
-    assert parsed["tool_calls"][0]["name"] == "toot"
-    assert parsed["tool_calls"][0]["arguments"]["current_user"] == "Alice"
+    assert len(result.tool_calls) == 2
+    assert result.tool_calls[0].name == "toot"
 
 
-def test_social_concat_act_emits_tool_calls_when_model_returns_single_item_list() -> None:
-    component = SocialConcatActComponent(
-        model=_FakeModel(mode="multi_single"), randomize_choices=False
-    )
-    component.set_entity(_FakeEntity())
+def test_native_agent_returns_single_item_list_as_typed_tool_call() -> None:
+    agent = NativeAgent(name="Alice", model=_FakeModel(mode="multi_single"))
 
-    tools = json.dumps(_FakeApp().generate_tool_schemas())
     action_spec = entity_lib.ActionSpec(
-        call_to_action=(
-            "### TOOL_CALLING_MODE ###\n"
-            "Pick one action for {name}.\n"
-            "### TOOL_SCHEMAS_JSON ###\n"
-            f"{tools}\n"
-            "### END_TOOL_SCHEMAS_JSON ###"
-        ),
-        output_type=entity_lib.OutputType.FREE,
+        prompt="Pick one action for {name}.",
+        output_type=entity_lib.OutputType.TOOL_CALLS,
+        extra_args={"tools": _FakeApp().generate_tool_schemas(), "tool_mode": "multi"},
     )
 
-    result = component.get_action_attempt({"Observation": "timeline"}, action_spec)
-    parsed = json.loads(result)
+    result = agent.act(action_spec)
 
-    assert "tool_calls" in parsed
-    assert parsed["tool_calls"][0]["name"] == "toot"
+    assert result.tool_calls[0].name == "toot"
 
 
-def test_social_concat_act_emits_structured_response_json() -> None:
-    component = SocialConcatActComponent(model=_FakeModel(), randomize_choices=False)
-    component.set_entity(_FakeEntity())
+def test_native_agent_returns_typed_structured_response() -> None:
+    agent = NativeAgent(name="Alice", model=_FakeModel())
 
     schema = {
         "type": "object",
@@ -171,29 +123,17 @@ def test_social_concat_act_emits_structured_response_json() -> None:
         "required": ["belief", "opinion", "reasoning"],
     }
     action_spec = entity_lib.ActionSpec(
-        call_to_action=(
-            f"{STRUCTURED_RESPONSE_MARKER}\n"
-            "Update {name}'s stance.\n"
-            f"{STRUCTURED_SCHEMA_START}\n"
-            f"{json.dumps(schema)}\n"
-            f"{STRUCTURED_SCHEMA_END}"
-        ),
-        output_type=entity_lib.OutputType.FREE,
+        prompt="Update {name}'s stance.",
+        output_type=entity_lib.OutputType.STRUCTURED,
+        extra_args={"schema": schema},
     )
 
-    result = component.get_action_attempt({"Memory": "prior context"}, action_spec)
-    parsed = json.loads(result)
+    result = agent.act(action_spec)
 
-    assert parsed["structured_response"]["belief"] == 1
-    assert parsed["structured_response"]["opinion"] == "I somewhat support this."
-
-
-def test_extract_structured_response_accepts_wrapped_and_plain_json() -> None:
-    wrapped = json.dumps({"structured_response": {"belief": -1}})
-    plain = json.dumps({"belief": 2})
-
-    assert extract_structured_response(wrapped) == {"belief": -1}
-    assert extract_structured_response(plain) == {"belief": 2}
+    assert result.output_type == entity_lib.OutputType.STRUCTURED
+    assert result.structured is not None
+    assert result.structured["belief"] == 1
+    assert result.structured["opinion"] == "I somewhat support this."
 
 
 def test_structured_probe_builds_marker_prompt_and_parses_payload() -> None:
@@ -210,86 +150,45 @@ def test_structured_probe_builds_marker_prompt_and_parses_payload() -> None:
     )
     spec = probe._make_action_spec("Return belief for Alice.")
 
-    assert STRUCTURED_RESPONSE_MARKER in spec.call_to_action
-    assert probe.parse_answer(json.dumps({"structured_response": {"belief": 0}})) == {"belief": 0}
+    assert spec.output_type == entity_lib.OutputType.STRUCTURED
+    assert spec.extra_args["schema"]["properties"]["belief"]["type"] == "integer"
+    assert probe.parse_answer({"belief": 0}) == {"belief": 0}
 
 
 def test_tool_calling_resolve_executes_tool_kwargs() -> None:
     resolve = ToolCallingResolveComponent(sm_app=_FakeApp())
 
-    action_text = json.dumps(
-        {
-            "tool_call": {
-                "name": "toot",
-                "arguments": {
-                    "current_user": "Alice",
-                    "status": "Hello from tool mode",
-                },
-            }
-        }
+    action = entity_lib.ActionOutput.from_tool_calls(
+        [
+            entity_lib.ToolCall(
+                "toot",
+                {"current_user": "Alice", "status": "Hello from tool mode"},
+            )
+        ]
     )
 
-    result = resolve.resolve(active_entity="Alice", action_text=action_text)
+    result = resolve.resolve(active_agent="Alice", action=action)
     assert result == "toot:Alice:Hello from tool mode"
-
-
-def test_tool_calling_resolve_executes_function_style_tool_call() -> None:
-    resolve = ToolCallingResolveComponent(sm_app=_FakeApp())
-
-    action_text = 'tool_call:toot({"current_user": "Alice", "status": "Function format"})'
-
-    result = resolve.resolve(active_entity="Alice", action_text=action_text)
-    assert result == "toot:Alice:Function format"
-
-
-def test_tool_calling_resolve_executes_escaped_brace_tool_call() -> None:
-    resolve = ToolCallingResolveComponent(sm_app=_FakeApp())
-
-    action_text = "tool_call:toot({{'current_user': 'Alice', 'status': 'Escaped format'}})"
-
-    result = resolve.resolve(active_entity="Alice", action_text=action_text)
-    assert result == "toot:Alice:Escaped format"
 
 
 def test_tool_calling_resolve_allows_finished_tool_call() -> None:
     resolve = ToolCallingResolveComponent(sm_app=_FakeApp())
 
-    action_text = json.dumps(
-        {
-            "tool_call": {
-                "name": "FINISHED",
-                "arguments": {},
-            }
-        }
-    )
+    action = entity_lib.ActionOutput.from_tool_calls([entity_lib.ToolCall("FINISHED", {})])
 
-    result = resolve.resolve(active_entity="Alice", action_text=action_text)
+    result = resolve.resolve(active_agent="Alice", action=action)
     assert result == "FINISHED:None:None"
 
 
 def test_tool_calling_resolve_executes_multi_tool_calls_in_order() -> None:
     resolve = ToolCallingResolveComponent(sm_app=_FakeApp())
 
-    action_text = json.dumps(
-        {
-            "tool_calls": [
-                {
-                    "name": "toot",
-                    "arguments": {
-                        "current_user": "Alice",
-                        "status": "First",
-                    },
-                },
-                {
-                    "name": "toot",
-                    "arguments": {
-                        "current_user": "Alice",
-                        "status": "Second",
-                    },
-                },
-            ]
-        }
+    action = entity_lib.ActionOutput.from_tool_calls(
+        [
+            entity_lib.ToolCall("toot", {"current_user": "Alice", "status": "First"}),
+            entity_lib.ToolCall("toot", {"current_user": "Alice", "status": "Second"}),
+        ]
     )
 
-    result = resolve.resolve(active_entity="Alice", action_text=action_text)
+    result = resolve.resolve(active_agent="Alice", action=action)
     assert result == "toot:Alice:First\ntoot:Alice:Second"

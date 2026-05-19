@@ -5,7 +5,6 @@ shared_memories:
   - ${event.context}
 
 persona_pipeline:
-  processing_mode: raw
   defaults:
     params:
       scenario_context: ${event.context}
@@ -18,8 +17,8 @@ persona_pipeline:
   classes:
     echo_user:
       count: ${num_agents}
-      prefab_module: replications.echo_chambers.components.agent_concordia
-      prefab: agent_concordia__EchoSocialToolEntity
+      class_path: replications.echo_chambers.components.agent_concordia.EchoSocialToolEntity
+      compat: concordia
       sim_role_name: echo_user
       data:
         source: local_json

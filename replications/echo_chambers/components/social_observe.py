@@ -2,22 +2,20 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from typing import Any
 
-from concordia.components.game_master import make_observation as make_observation_component
-from concordia.typing import entity as entity_lib
+from silisocs.environments.gm.components.observe import ObservationComponent
 
 
-class EchoBeliefFilteredTimelineObservation(make_observation_component.MakeObservation):
+class EchoBeliefFilteredTimelineObservation(ObservationComponent):
     """Return a real timeline filtered by EchoChamber belief-distance policy."""
 
     def __init__(
         self,
         *,
         model: Any,
-        player_names: Sequence[str],
+        agent_names: Sequence[str],
         sm_app: Any,
         timeline_mode: str | None = None,
         recsys_type: str | None = None,
@@ -29,12 +27,8 @@ class EchoBeliefFilteredTimelineObservation(make_observation_component.MakeObser
         fetch_multiplier: int = 3,
         include_unclassified_posts: bool = False,
     ) -> None:
-        super().__init__(
-            model=model,
-            player_names=player_names,
-            components=(),
-            call_to_make_observation=call_to_make_observation,
-        )
+        del call_to_make_observation
+        super().__init__(model=model, agent_names=agent_names, components=())
         self._sm_app = sm_app
         self._timeline_mode = str(timeline_mode or "follower_chronological")
         self._recsys_type = str(recsys_type or "").strip() or None
@@ -44,12 +38,6 @@ class EchoBeliefFilteredTimelineObservation(make_observation_component.MakeObser
         self._max_posts = int(max_posts) if max_posts is not None else None
         self._fetch_multiplier = max(1, int(fetch_multiplier))
         self._include_unclassified_posts = bool(include_unclassified_posts)
-
-    def _active_name(self, call_to_action: str) -> str:
-        match = re.search(r"What is the current situation faced by (.+?)\?", call_to_action)
-        if match:
-            return match.group(1).strip()
-        return str(call_to_action or "").strip()
 
     def _keep_post(self, *, active_name: str, post: dict[str, Any]) -> bool:
         echo_state = getattr(self._sm_app, "echo_state", None)
@@ -71,11 +59,8 @@ class EchoBeliefFilteredTimelineObservation(make_observation_component.MakeObser
             return distance >= self._threshold
         return distance <= self._threshold
 
-    def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
-        if action_spec.output_type != entity_lib.OutputType.MAKE_OBSERVATION:
-            return ""
-
-        active_name = self._active_name(action_spec.call_to_action)
+    def make_observation(self, agent_name: str) -> str:
+        active_name = self._agent_name(agent_name)
         limit = self._max_posts or 10
         raw_limit = max(limit, limit * self._fetch_multiplier)
         raw_timeline = self._sm_app.get_timeline_mode(
@@ -100,17 +85,4 @@ class EchoBeliefFilteredTimelineObservation(make_observation_component.MakeObser
 
         echo_state = getattr(self._sm_app, "echo_state", None)
         topic = str(getattr(echo_state, "topic", "the discussion topic")) if echo_state else ""
-        result = f"STARTING SOCIAL MEDIA SESSION\n\nTopic: {topic}\nTIMELINE:\n{timeline_text}"
-        self._logging_channel(
-            {
-                "Key": self._pre_act_label,
-                "Summary": (
-                    f"Belief-filtered timeline for {active_name}: "
-                    f"{len(filtered)}/{len(raw_timeline)} posts"
-                ),
-                "Value": result,
-                "Active Entity": active_name,
-                "Policy": self._policy,
-            }
-        )
-        return result
+        return f"STARTING SOCIAL MEDIA SESSION\n\nTopic: {topic}\nTIMELINE:\n{timeline_text}"

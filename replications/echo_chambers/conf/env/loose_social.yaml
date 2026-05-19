@@ -28,9 +28,6 @@ app:
     seed: ${seed}
     seed_initial_opinion_posts: true
 
-seed_posts:
-  type: none
-
 social_network:
   activity_transition_rates:
     echo_user:
@@ -45,13 +42,17 @@ social_network:
 gm:
   preset: base
   components:
-    next_acting:
-      built_in: all_entities
+    initialize:
+      built_in: social_media
       class_path: null
       params: {}
-    recommend:
-      built_in: ${echo_recommend_component_built_in}
-      class_path: ${echo_recommend_component_class_path}
+    next_acting:
+      built_in: all_agents
+      class_path: null
+      params: {}
+    update:
+      built_in: ${echo_update_component_built_in}
+      class_path: ${echo_update_component_class_path}
       params:
         default_recsys_type: ${echo_recommend_default_recsys_type}
         update_every_n_steps: ${echo_recommend_update_every_n_steps}
@@ -75,10 +76,6 @@ gm:
         probe_belief: false
         belief_options: ["-2", "-1", "0", "1", "2"]
         belief_probe_tag: echo_belief_probe
-    initializer:
-      built_in: backend_default
-      class_path: null
-      params: {}
 
 usage_instructions: |
   You are currently operating on a Twitter-like platform in an opinion discussion study.

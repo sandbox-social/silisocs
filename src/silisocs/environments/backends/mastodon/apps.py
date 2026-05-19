@@ -5,9 +5,9 @@ the ``SocialMediaApp`` interface.  It wraps the Mastodon API via
 ``mastodon_ops`` and exposes ``@app_action`` decorated methods for the
 simulation game master.
 
-The generic ``PhoneApp`` base class, ``SocialMediaApp`` ABC, and supporting
-utilities (``app_action``, ``Parameter``, ``ActionDescriptor``, etc.) are
-imported from ``sim.core``.
+The generic ``BackendApp`` base class, ``SocialMediaApp`` ABC, and supporting
+utilities (``app_action``, ``Parameter``, ``ActionDescriptor``, etc.) come
+from ``silisocs.environments.backends.base``.
 """
 
 import dataclasses
@@ -15,14 +15,13 @@ import re
 from html import unescape
 from typing import Any
 
-# All shared base-class machinery is now in sim.core
-# Re-export COLOR_TYPE for any downstream code that imported it from here
-from silisocs.environments.backends.base import (  # noqa: F401 – re-exported for backward compat
+# Re-export COLOR_TYPE and action descriptors for downstream backend modules.
+from silisocs.environments.backends.base import (  # noqa: F401
     COLOR_TYPE,
     ActionArgumentError,
     ActionDescriptor,
+    BackendApp,
     Parameter,
-    PhoneApp,
     SocialMediaApp,
     app_action,
 )
@@ -83,23 +82,22 @@ class SocialNetworkApp(SocialMediaApp):
     # ------------------------------------------------------------------ #
 
     def initialize(self, agent_names: list[str], **kwargs: Any) -> None:
-        """Set up Mastodon users, generate follow network, and create seed posts.
+        """Compatibility no-op; runtime initializers own Mastodon setup."""
+        del agent_names, kwargs
 
-        Uses ``social_network`` config to generate a follow graph (same as
-        Twitter-like), then establishes follows and seed posts via the
-        Mastodon API.
-
-        Args:
-            agent_names: Agent display names.
-            **kwargs: ``sim_roles``, ``seed_posts``, ``social_network``,
-                ``agent_bios``.
-        """
-        from silisocs.utils.network import generate_follow_network
-
-        sim_roles = kwargs.get("sim_roles", {})
-        seed_posts = kwargs.get("seed_posts", {})
-        social_network = kwargs.get("social_network", {})
-        agent_bios = kwargs.get("agent_bios", {})
+    def setup_social_state(
+        self,
+        *,
+        agent_names: list[str],
+        sim_roles: dict[str, str] | None = None,
+        social_network: dict[str, Any] | None = None,
+        following_graph: dict[str, list[str]] | None = None,
+        agent_bios: dict[str, str] | None = None,
+    ) -> None:
+        """Set up Mastodon user mapping, bios, and initializer-provided follows."""
+        del sim_roles, social_network
+        following = dict(following_graph or {})
+        agent_bios = dict(agent_bios or {})
 
         # Build user mapping.
         user_mapping = {}
@@ -120,8 +118,6 @@ class SocialNetworkApp(SocialMediaApp):
                 except Exception as e:
                     self._print(f"Error setting bio for {display_name}: {e}", color="red")
 
-        # Generate and establish follow network (graph-based).
-        following = generate_follow_network(agent_names, sim_roles, social_network)
         for display_name, followees in following.items():
             for followee in followees:
                 try:
@@ -129,15 +125,12 @@ class SocialNetworkApp(SocialMediaApp):
                 except Exception as e:
                     self._print(f"Follow error ({display_name}->{followee}): {e}", color="red")
 
-        # Seed posts.
-        for display_name, post_text in seed_posts.items():
-            if post_text:
-                try:
-                    self.post_toot(display_name, post_text)
-                except Exception as e:
-                    self._print(f"Seed post error for {display_name}: {e}", color="red")
-
         follow_edges = sum(len(v) for v in following.values())
+        self._last_initialization_stats = {
+            "platform": "mastodon",
+            "num_users": len(agent_names),
+            "num_follow_edges": follow_edges,
+        }
         self._print(
             f"Initialized {len(agent_names)} users on Mastodon ({follow_edges} follow edges)",
         )

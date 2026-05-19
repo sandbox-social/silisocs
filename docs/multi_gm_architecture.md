@@ -1,6 +1,6 @@
 # Multi-Flow & Multi-GM Architecture
 
-Advanced composition model for routing agents to multiple game masters with explicit flow sequencing and per-entity component field customization.
+Advanced composition model for routing agents to multiple game masters with explicit flow sequencing and per-agent component field customization.
 
 **For**: Developers extending the framework with complex orchestration needs.
 **See also**: [Environment Layer](environment_layer.md), [Configuration Reference](configuration.md#gm-components)
@@ -13,7 +13,7 @@ The multi-GM architecture provides:
 
 1. **Many-to-Many Agent-to-GM Routing**: Agents belong to multiple classes; classes route to multiple GMs
 2. **Separate Flow Layers**: Agent flow sequencing (within each GM) distinct from GM sequencing (orchestration)
-3. **Per-Entity Component Configuration**: Component field values customized per agent via YAML
+3. **Per-Agent Component Configuration**: Component field values customized per agent via YAML
 4. **Sequential GM Execution**: GMs execute one at a time (safe for shared agents); flows within each GM still run in parallel
 
 ### When to Use
@@ -42,7 +42,7 @@ The multi-GM architecture provides:
 │ Agent → Classes → GMs (agent_classes, class_to_gms)│ ← Flexible many-to-many routing
 │ Agents assigned to one or more GMs via classes     │
 ├─────────────────────────────────────────────────────┤
-│ Agent Flow Sequencing (flow_order, entity_to_flow)  │ ← Agent grouping within GM
+│ Agent Flow Sequencing (flow_order, agent_to_flow)   │ ← Agent grouping within GM
 │ Groups agents by flow, executes sequentially        │
 ├─────────────────────────────────────────────────────┤
 │ Component Field Values (flows.<flow>.<field>)       │ ← Per-flow component config
@@ -159,12 +159,14 @@ gm:
 Within each GM:
 ```yaml
 engine:
-  flow_routing:
-    flow_order: [pre_analysis, default, post_analysis]
-    entity_to_flow:
-      alice: "pre_analysis"
-      bob: "default"
-      charlie: "post_analysis"
+  step:
+    built_in: multi_gm
+    params:
+      flow_order: [pre_analysis, default, post_analysis]
+      agent_to_flow:
+        alice: "pre_analysis"
+        bob: "default"
+        charlie: "post_analysis"
 ```
 
 ### Per-Flow Component Configuration
@@ -175,41 +177,39 @@ Configure different component behavior per flow:
 gm:
   components:
     observe:
-      built_in: timeline_every_turn
-      flows:
-        active:
-          timeline_filter: "trusted_only"
-          timeline_depth: 10
-        default:
-          timeline_filter: "all"
-          timeline_depth: 20
-        fixed_pre:
-          timeline_filter: "trending"
-          timeline_depth: 15
+      instances:
+        active_feed:
+          built_in: timeline_every_turn
+          params:
+            timeline_mode: pure_recsys
+        default_feed:
+          built_in: timeline_every_turn
+          params:
+            timeline_mode: follower_chronological
+        fixed_pre_episode:
+          built_in: episode_only
+      flow_map:
+        active: active_feed
+        default: default_feed
+        fixed_pre: fixed_pre_episode
 ```
 
 **Implementation:**
-1. Component declares fields in `FLOW_FIELDS`
-2. GM initialization parses `flows.*` config and calls `set_flow_field_values(...)`
-3. At runtime, component calls `get_flow_field(field_name, flow_tag)`
+1. Each component instance is a normal slot component.
+2. The GM parses `flow_map` and chooses the component instance for the agent's flow.
+3. Custom components do not need flow-aware code.
 
 Example component:
 
 ```python
-from silisocs.environments.gm.components.base import FlowComponent
+from silisocs.environments.gm.components.base import ObservationComponent
 
-class CustomObserve(FlowComponent, MakeObservation):
-  FLOW_FIELDS = {"timeline_filter": str}
+class CustomObserve(ObservationComponent):
+  def __init__(self, *, source: str):
+    self.source = source
 
-  def __init__(self, ...):
-    FlowComponent.__init__(self)
-    MakeObservation.__init__(self, ...)
-    self.current_flow_tag = "default"
-
-  def pre_act(self, action_spec):
-    # Use the field
-    filter_value = self.get_flow_field("timeline_filter", self.current_flow_tag, "all")
-    # ... rest of logic
+  def make_observation(self, agent_name: str) -> str:
+    return f"{agent_name} sees {self.source}"
 ```
 
 ---
@@ -218,7 +218,7 @@ class CustomObserve(FlowComponent, MakeObservation):
 
 ### GameMasterFactory
 
-Located: `src/silisocs/environments/gm/gm_factory.py`
+Located: `src/silisocs/environments/gm/direct GM construction.py`
 
 Routes agents to GM instances:
 
@@ -254,33 +254,18 @@ engine = MultiGMRuntimeEngine(...)
 ```
 
 **Methods:**
-- `run_episode(environment, agents, game_masters, ...)` → episode transcript
+- `run_loop(game_masters, agents, ...)` → native episode execution
 - `get_agent_gms(agent_name)` → GMs for this agent
 - `detect_gm_conflicts()` → agents in multiple GMs
 - `validate_gm_sequence()` → check config validity
 
-### FlowComponent Base Class
+### Routed Slot Components
 
 Located: `src/silisocs/environments/gm/components/base.py`
 
-Mixin for per-flow field routing:
-
-```python
-class FlowComponent:
-    def set_flow_field_values(self, flow_field_map: dict):
-        """Initialize flow->field->value mapping."""
-
-    def get_flow_field(self, field_name: str,
-                       flow_tag: str | None = None,
-                       default=None):
-        """Retrieve field value for flow."""
-
-    def has_flow_fields(self) -> bool:
-        """Check if component declares any flow fields."""
-
-    def get_flow_fields(self) -> dict:
-        """Return metadata about flow-field declarations."""
-```
+Flow-routed GMs can route every slot: `initialize`, `next_acting`,
+`action_prompt`, `observe`, `resolve`, and `update`. The component APIs remain
+the same as the single-flow APIs; routing is a GM responsibility.
 
 ---
 
@@ -359,12 +344,12 @@ gm:
 
 ## Testing
 
-Located: `tests/test_gm_factory.py`, `tests/test_multi_gm_runtime_engine.py`, `tests/test_e2e_multi_gm.py`
+Located: `tests/test_direct GM construction.py`, `tests/test_multi_gm_runtime_engine.py`, `tests/test_e2e_multi_gm.py`
 
 ### Unit Tests
 
 ```bash
-uv run pytest tests/test_gm_factory.py -v
+uv run pytest tests/test_direct GM construction.py -v
 uv run pytest tests/test_multi_gm_runtime_engine.py -v
 ```
 

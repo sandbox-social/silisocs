@@ -1,4 +1,4 @@
-"""Base interfaces for configurable game-master components."""
+"""Base interfaces for native game-master components."""
 
 from __future__ import annotations
 
@@ -6,138 +6,87 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from silisocs.runtime.types import ActionOutput, ActionSpec
 
-class BackendInitializer(ABC):
-    """Initialize backend app state for a simulation run."""
-
-    @abstractmethod
-    def initialize(
-        self,
-        *,
-        sm_app: Any,
-        agent_names: Sequence[str],
-        init_kwargs: Mapping[str, Any],
-    ) -> None:
-        """Initialize backend runtime state for the provided agent set."""
-        raise NotImplementedError
+ComponentState = Mapping[str, Any]
 
 
-class NoOpComponent:
+class BaseComponent:
+    """Small native component base with optional checkpoint hooks."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+
+    def get_state(self) -> ComponentState:
+        return {}
+
+    def set_state(self, state: Mapping[str, Any]) -> None:
+        del state
+
+
+class NoOpComponent(BaseComponent):
     """Passive component for optional GM slots that are disabled."""
 
     def __init__(self, **kwargs: Any) -> None:
         """Accept and ignore runtime kwargs from component factories."""
         del kwargs
-        self._entity: Any | None = None
-
-    def set_entity(self, entity: Any) -> None:
-        """Attach owning entity for Concordia compatibility."""
-        self._entity = entity
-
-    def get_entity(self) -> Any:
-        """Return owning entity for Concordia compatibility."""
-        return self._entity
-
-    def pre_act(self, action_spec: Any) -> str:
-        """Return no context contribution."""
-        del action_spec
-        return ""
-
-    def get_state(self) -> dict[str, Any]:
-        """Return serializable component state."""
-        return {}
-
-    def set_state(self, state: Mapping[str, Any]) -> None:
-        """Restore component state."""
-        del state
+        super().__init__()
 
 
-class FlowComponent:
-    """Mixin for flow-aware components with flow-field routing support.
+class InitializeComponent(BaseComponent, ABC):
+    """Base class for components that initialize one game master."""
 
-    Components can declare supported flow-tunable fields by defining `FLOW_FIELDS`:
+    @abstractmethod
+    def initialize(self, *, agents: Sequence[Any], game_master: Any, context: Any) -> None:
+        """Initialize backend/environment state for one game master."""
 
-        class MyComponent(FlowComponent):
-            FLOW_FIELDS = {
-                "timeline_mode": str,
-                "recsys_type": str,
-            }
 
-    At GM initialization time, flow overrides are provided as:
+class NextActingComponent(BaseComponent, ABC):
+    """Base class for components that select acting agents."""
 
-        {
-            "default": {"timeline_mode": "follower_chronological"},
-            "active": {"timeline_mode": "pure_recsys", "recsys_type": "twitter"},
-        }
+    @abstractmethod
+    def acting_agent_names(self) -> list[str]:
+        """Return selected agent names for the current turn."""
 
-    Values can then be retrieved with:
 
-        value = self.get_flow_field("timeline_mode", flow_tag, default="follower_chronological")
-    """
+class ActionPromptComponent(BaseComponent, ABC):
+    """Base class for components that build one agent action prompt."""
 
-    FLOW_FIELDS: dict[str, type] = {}
+    @abstractmethod
+    def action_prompt(self, agent_name: str) -> ActionSpec:
+        """Return an action spec for one agent."""
 
-    def __init__(self) -> None:
-        """Initialize component with empty flow field mapping."""
-        self._flow_field_values: dict[str, dict[str, Any]] = {}
 
-    def __init_subclass__(cls, **kwargs):
-        """Build merged FLOW_FIELDS metadata for subclasses."""
-        super().__init_subclass__(**kwargs)
+class ObservationComponent(BaseComponent, ABC):
+    """Base class for components that build one agent observation."""
 
-        merged_fields: dict[str, type] = {}
-        for base in cls.__bases__:
-            base_fields = getattr(base, "FLOW_FIELDS", None)
-            if isinstance(base_fields, Mapping):
-                merged_fields.update({str(k): v for k, v in base_fields.items()})
+    @abstractmethod
+    def make_observation(self, agent_name: str) -> str:
+        """Return an observation for one agent."""
 
-        explicit_fields = cls.__dict__.get("FLOW_FIELDS", None)
-        if isinstance(explicit_fields, Mapping):
-            merged_fields.update({str(k): v for k, v in explicit_fields.items()})
-        cls.FLOW_FIELDS = merged_fields
 
-    def set_flow_field_values(self, flow_field_map: dict[str, dict[str, Any]] | None) -> None:
-        """Set flow field values for routing.
+class ResolveComponent(BaseComponent, ABC):
+    """Base class for components that resolve one agent action."""
 
-        Args:
-            flow_field_map: Mapping of flow_tag -> {field_name: field_value}
-        """
-        normalized: dict[str, dict[str, Any]] = {}
-        raw_map = dict(flow_field_map or {})
-        for flow_tag, field_config in raw_map.items():
-            flow_key = str(flow_tag).strip()
-            if not flow_key:
-                continue
-            normalized[flow_key] = dict(field_config or {})
+    @abstractmethod
+    def resolve_action(self, agent_name: str, action: ActionOutput) -> str:
+        """Resolve one action through the backend."""
 
-        declared_fields = set(self.FLOW_FIELDS.keys())
-        if declared_fields:
-            for flow_key, fields in normalized.items():
-                unknown = sorted(set(fields.keys()) - declared_fields)
-                if unknown:
-                    raise ValueError(
-                        f"Unsupported flow field(s) for {self.__class__.__name__} on flow "
-                        f"'{flow_key}': {unknown}. Supported: {sorted(declared_fields)}"
-                    )
 
-        self._flow_field_values = normalized
+class UpdateComponent(BaseComponent, ABC):
+    """Base class for per-step GM update components."""
 
-    def get_flow_field(
-        self, field_name: str, flow_tag: str | None = None, default: Any = None
-    ) -> Any:
-        """Get a flow field value for the provided flow tag."""
-        if not flow_tag:
-            return default
+    @abstractmethod
+    def update(self, *, step: int, agents: Sequence[Any], context: Any | None = None) -> None:
+        """Run one per-step update before actor selection."""
 
-        if self.FLOW_FIELDS and field_name not in self.FLOW_FIELDS:
-            return default
 
-        return self._flow_field_values.get(flow_tag, {}).get(field_name, default)
+class NoOpUpdateComponent(UpdateComponent):
+    """Update component that intentionally does nothing."""
 
-    def has_flow_fields(self) -> bool:
-        """Check whether this component declares flow-tunable fields."""
-        return bool(self.FLOW_FIELDS)
+    def __init__(self, **kwargs: Any) -> None:
+        del kwargs
+        super().__init__()
 
-    def get_flow_fields(self) -> dict[str, type]:
-        """Get all declared flow fields and their types."""
-        return dict(self.FLOW_FIELDS)
+    def update(self, *, step: int, agents: Sequence[Any], context: Any | None = None) -> None:
+        del step, agents, context

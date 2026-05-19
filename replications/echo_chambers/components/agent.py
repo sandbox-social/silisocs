@@ -2,20 +2,16 @@
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import re
 import time
-from collections.abc import Mapping
 from typing import Any
 
-from concordia.associative_memory import basic_associative_memory
-from concordia.language_model import language_model
-from concordia.typing import prefab as prefab_lib
 from pydantic import BaseModel
 
 from replications.echo_chambers.components.app import extract_observation
 from silisocs.agents.base_agent import Agent
+from silisocs.runtime import language_models as language_model
 
 
 def _extract_json_object(text: str) -> dict[str, Any] | None:
@@ -70,11 +66,11 @@ class EchoChamberAgentRuntime(Agent):
     def __init__(
         self,
         *,
-        params: Mapping[str, Any],
         model: language_model.LanguageModel,
+        **params: Any,
     ) -> None:
+        super().__init__(model)
         self._params = dict(params)
-        self._model = model
         self._agent_name = str(params.get("name", "Agent"))
         self._system_prompt = str(
             params.get("system_prompt") or params.get("context") or "Imagine you are a human."
@@ -350,19 +346,3 @@ class EchoChamberAgentRuntime(Agent):
         self._last_observation = str(state.get("last_observation", "") or "")
         payload = state.get("last_payload")
         self._last_payload = payload if isinstance(payload, dict) else None
-
-
-@dataclasses.dataclass
-class Entity(prefab_lib.Prefab):
-    """Prefab wrapper loaded by the existing persona pipeline."""
-
-    description: str = "EchoChamberSim replication agent"
-    params: Mapping[str, Any] = dataclasses.field(default_factory=dict)
-
-    def build(
-        self,
-        model: language_model.LanguageModel,
-        memory_bank: basic_associative_memory.AssociativeMemoryBank,
-    ) -> EchoChamberAgentRuntime:
-        del memory_bank
-        return EchoChamberAgentRuntime(params=self.params, model=model)

@@ -1,56 +1,72 @@
 from __future__ import annotations
 
 import json
+import random
 from types import SimpleNamespace
-from typing import Any, cast
 
-from silisocs.runtime.config import ConfigStore
-from silisocs.runtime.simulation import Simulation
+from silisocs.runtime.checkpointing import (
+    CHECKPOINT_SCHEMA_VERSION,
+    restore_rng_state_from_metadata,
+    save_checkpoint,
+    should_save_checkpoint,
+)
+from silisocs.runtime.construction.assembly import RuntimeObjects
 
 
-def _set_checkpoint_config(*, every_n_steps: int | None, explicit_steps: list[int]) -> None:
-    ConfigStore.set_config(
-        SimpleNamespace(
-            sim=SimpleNamespace(
-                checkpoint=SimpleNamespace(
-                    every_n_steps=every_n_steps,
-                    explicit_steps=explicit_steps,
-                )
-            )
-        )
+def _checkpoint_config(*, every_n_steps: int | None, explicit_steps: list[int]) -> SimpleNamespace:
+    return SimpleNamespace(
+        every_n_steps=every_n_steps,
+        explicit_steps=explicit_steps,
     )
 
 
 def test_checkpoint_policy_disabled_by_default() -> None:
-    sim = Simulation.__new__(Simulation)
-    _set_checkpoint_config(every_n_steps=None, explicit_steps=[])
-
-    assert sim._should_save_checkpoint(3) is False
+    assert (
+        should_save_checkpoint(
+            3,
+            _checkpoint_config(every_n_steps=None, explicit_steps=[]),
+        )
+        is False
+    )
 
 
 def test_checkpoint_policy_supports_every_n_and_explicit_steps() -> None:
-    sim = Simulation.__new__(Simulation)
-    _set_checkpoint_config(every_n_steps=5, explicit_steps=[7, 11])
+    checkpoint_cfg = _checkpoint_config(every_n_steps=5, explicit_steps=[7, 11])
 
-    assert sim._should_save_checkpoint(5) is True
-    assert sim._should_save_checkpoint(7) is True
-    assert sim._should_save_checkpoint(10) is True
-    assert sim._should_save_checkpoint(8) is False
+    assert should_save_checkpoint(5, checkpoint_cfg) is True
+    assert should_save_checkpoint(7, checkpoint_cfg) is True
+    assert should_save_checkpoint(10, checkpoint_cfg) is True
+    assert should_save_checkpoint(8, checkpoint_cfg) is False
 
 
 def test_save_checkpoint_writes_step_metadata(tmp_path) -> None:
-    sim = Simulation.__new__(Simulation)
-    sim._get_state_callback = None
-    sim_any = cast(Any, sim)
-    sim_any.make_checkpoint_data = lambda: {
-        "entities": {},
-        "game_masters": {},
-        "raw_log": [],
-        "checkpoint_counter": 0,
-    }
+    runtime = RuntimeObjects()
 
-    sim.save_checkpoint(step=12, checkpoint_path=str(tmp_path))
+    save_checkpoint(runtime, step=12, checkpoint_path=str(tmp_path))
 
     checkpoint_file = tmp_path / "step_12_checkpoint.json"
     payload = json.loads(checkpoint_file.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == CHECKPOINT_SCHEMA_VERSION
     assert payload["step"] == 12
+    assert "runtime_metadata" in payload
+    assert "rng_state_b64" in payload["runtime_metadata"]
+
+
+def test_restore_rng_state_from_metadata_restores_python_random() -> None:
+    random.seed(1234)
+    baseline = random.random()
+    random.seed(1234)
+    expected_first = random.random()
+    assert baseline == expected_first
+
+    random.seed(1234)
+    checkpoint_state = random.getstate()
+    random.random()
+    random.random()
+    import base64
+    import pickle
+
+    payload = {"rng_state_b64": base64.b64encode(pickle.dumps(checkpoint_state)).decode("ascii")}
+    restore_rng_state_from_metadata(payload)
+
+    assert random.random() == expected_first

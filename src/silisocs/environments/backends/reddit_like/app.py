@@ -61,7 +61,19 @@ class RedditLikeApp(SocialMediaApp):
             )
 
     def initialize(self, agent_names: list[str], **kwargs: Any) -> None:
-        """Set up users, subreddits, role-based memberships, and seed posts.
+        """Compatibility no-op; runtime initializers own forum setup."""
+        del agent_names, kwargs
+
+    def setup_social_state(
+        self,
+        *,
+        agent_names: list[str],
+        sim_roles: dict[str, str] | None = None,
+        social_network: dict[str, Any] | None = None,
+        following_graph: dict[str, list[str]] | None = None,
+        agent_bios: dict[str, str] | None = None,
+    ) -> None:
+        """Set up users, subreddits, and role-based memberships.
 
         Reddit uses **subreddit membership** instead of a follow graph.
         Configure subreddits and which roles subscribe to them via
@@ -77,13 +89,11 @@ class RedditLikeApp(SocialMediaApp):
                   roles: [voter, candidate]
               default_subreddit: general
 
-        Args:
-            agent_names: Agent display names.
-            **kwargs: ``sim_roles``, ``seed_posts``, ``social_network``.
         """
-        sim_roles = kwargs.get("sim_roles", {})
-        seed_posts = kwargs.get("seed_posts", {})
-        social_network = kwargs.get("social_network", {})
+        del following_graph
+        sim_roles = dict(sim_roles or {})
+        social_network = dict(social_network or {})
+        agent_bios = dict(agent_bios or {})
 
         subreddit_configs = social_network.get(
             "subreddits",
@@ -109,7 +119,7 @@ class RedditLikeApp(SocialMediaApp):
         for display_name in agent_names:
             username = self._display_name_to_username(display_name)
             self._user_mapping[display_name] = username
-            self._platform.create_user(username, bio="")
+            self._platform.create_user(username, bio=str(agent_bios.get(display_name, "")))
             self._log_action_event(display_name, "init_create_user", {"username": username})
 
         # Subscribe agents to subreddits based on role.
@@ -130,31 +140,13 @@ class RedditLikeApp(SocialMediaApp):
                     except Exception as e:
                         self._print(f"Join error ({username}->{sub_name}): {e}", color="red")
 
-        # Seed posts in default subreddit.
-        for display_name, post_text in seed_posts.items():
-            if post_text:
-                username = self._get_username(display_name)
-                try:
-                    self._platform.create_post(
-                        username,
-                        default_subreddit,
-                        title=post_text[:100],
-                        content=post_text,
-                    )
-                except Exception as e:
-                    self._print(f"Seed post error for {username}: {e}", color="red")
-
-        self._log_action_event(
-            "system",
-            "initialize",
-            {
-                "platform": "reddit_like",
-                "num_users": len(agent_names),
-                "num_subreddits": len(subreddit_configs),
-                "num_subscriptions": sub_count,
-                "num_seed_posts": sum(1 for t in seed_posts.values() if t),
-            },
-        )
+        self._last_initialization_stats = {
+            "platform": "reddit_like",
+            "num_users": len(agent_names),
+            "num_subreddits": len(subreddit_configs),
+            "num_subscriptions": sub_count,
+        }
+        self._default_subreddit = str(default_subreddit)
         self._print(
             f"Initialized {len(agent_names)} users, "
             f"{len(subreddit_configs)} subreddits, {sub_count} subscriptions",

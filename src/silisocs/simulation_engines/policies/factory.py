@@ -103,8 +103,8 @@ def _build_policy(
     return _instantiate_with_supported_kwargs(built_ins[built_in], params)
 
 
-def build_action_loop_policy(slot_cfg: Mapping[str, Any] | None = None) -> Any:
-    """Build action-loop policy from YAML config."""
+def build_turn_policy(slot_cfg: Mapping[str, Any] | None = None) -> Any:
+    """Build turn policy from YAML config."""
     return _build_policy(slot_cfg, built_ins=_ACTION_BUILT_INS, default_built_in="single_action")
 
 

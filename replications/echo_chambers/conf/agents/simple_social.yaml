@@ -5,7 +5,6 @@ shared_memories:
   - ${event.context}
 
 persona_pipeline:
-  processing_mode: raw
   defaults:
     params:
       scenario_context: ${event.context}
@@ -16,7 +15,7 @@ persona_pipeline:
   classes:
     echo_user:
       count: ${num_agents}
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: echo_user
       data:
         source: local_json

@@ -1,13 +1,13 @@
 import dataclasses
 from collections.abc import Mapping
 
-from concordia.agents import entity_agent_with_logging
-from concordia.associative_memory import basic_associative_memory
+from concordia.agents.entity_agent_with_logging import EntityAgentWithLogging as ComponentEntity
+from concordia.associative_memory.basic_associative_memory import AssociativeMemoryBank
 from concordia.components import agent as agent_components
-from concordia.language_model import language_model
-from concordia.typing import prefab as prefab_lib
-from mastodon_sim.agents.components.concat_act import SocialConcatActComponent
-from mastodon_sim.runtime.config import ConfigStore
+from concordia.typing.prefab import Prefab
+
+from silisocs.adapters.concordia import SocialConcatActComponent
+from silisocs.runtime.language_models import LanguageModel
 
 from .mastodon_action_suggester import (
     MastodonActionSuggester,
@@ -16,6 +16,9 @@ from .mastodon_action_suggester import (
 OBSERVATION_TO_MEMORY_KEY = "__observation_to_memory__"
 ELECTION_INFO_KEY = "__Election Information__"
 INSTRUCTIONS_COMPONENT_KEY = "__Roleplaying Instructions__"
+DEFAULT_ROLEPLAYING_INSTRUCTIONS = (
+    "You are {name}. Act naturally and stay consistent with your persona and current goal."
+)
 
 
 def _get_component_name(object_: object) -> str:
@@ -58,7 +61,7 @@ class PublicOpinionOpponent(agent_components.question_of_recent_memories.Questio
 
 
 @dataclasses.dataclass
-class Entity(prefab_lib.Prefab):
+class Entity(Prefab):
     """A prefab implementing an entity with a minimal set of components."""
 
     description: str = "An entity that simulates a malicious social media user who attempts to sway opinion towards a preferred candidate"
@@ -75,9 +78,9 @@ class Entity(prefab_lib.Prefab):
 
 def build(
     self,
-    model: language_model.LanguageModel,
-    memory_bank: basic_associative_memory.AssociativeMemoryBank,
-) -> entity_agent_with_logging.EntityAgentWithLogging:
+    model: LanguageModel,
+    memory_bank: AssociativeMemoryBank,
+) -> ComponentEntity:
     """Build an agent.
 
     Args:
@@ -94,13 +97,15 @@ def build(
     randomize_choices = self.params.get("randomize_choices", True)
     goal = self.params.get("goal", "")
     election_info = self.params.get("election_info", "")
-    cfg = ConfigStore.get_config()
-
     instructions_key = "Instructions"
+    roleplaying = str(
+        self.params.get("roleplaying_instructions", DEFAULT_ROLEPLAYING_INSTRUCTIONS)
+        or DEFAULT_ROLEPLAYING_INSTRUCTIONS
+    )
     instructions = agent_components.instructions.Instructions(
         agent_name=agent_name,
         pre_act_label="\nInstructions",
-        state=cfg.sim.roleplaying_instructions.format(name=agent_name),
+        state=roleplaying.format(name=agent_name),
     )
 
     election_info_key = "Election Information"
@@ -222,7 +227,7 @@ def build(
         randomize_choices=randomize_choices,
     )
 
-    agent = entity_agent_with_logging.EntityAgentWithLogging(
+    agent = ComponentEntity(
         agent_name=agent_name,
         act_component=act_component,
         context_components=components_of_agent,

@@ -1,4 +1,4 @@
-"""Base PhoneApp class and action infrastructure for simulation apps.
+"""Backend app base class and action infrastructure for simulations.
 
 Extracted from silisocs/apps.py to provide a shared foundation
 for all social media platform apps (Mastodon, Twitter-like, Reddit-like, etc.).
@@ -89,10 +89,10 @@ def app_action(
     selectable_name: str | None = None,
     description: str | None = None,
 ):
-    """Mark PhoneApp methods as callable actions.
+    """Mark BackendApp methods as callable actions.
 
-    Decorated methods become discoverable via PhoneApp.actions() and can be
-    invoked through PhoneApp.invoke_action().
+    Decorated methods become discoverable via BackendApp.actions() and can be
+    invoked through BackendApp.invoke_action().
     """
 
     def _decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -195,7 +195,7 @@ class Parameter:
 
 @dataclasses.dataclass(frozen=True)
 class ActionDescriptor:
-    """Represents an action that can be invoked on a PhoneApp."""
+    """Represents an action that can be invoked on a backend app."""
 
     name: str
     selectable_name: str
@@ -289,15 +289,18 @@ class ActionDescriptor:
 
 
 # --------------------------------------------------------------------------- #
-# PhoneApp Base Class
+# BackendApp Base Class
 # --------------------------------------------------------------------------- #
 
 
-class PhoneApp(metaclass=abc.ABCMeta):
-    """Base class for apps that concordia can interact with using plain English.
+class BackendApp(metaclass=abc.ABCMeta):
+    """Base class for environment backends that agents can interact with.
 
     Extend this class and decorate any method that should be callable from the
-    simulation with @app_action.
+    simulation with ``@app_action``. The base contract is intentionally
+    domain-neutral: apps expose callable actions, can provide observations, and
+    may opt into a generic initialization hook. Social backends layer timeline
+    behavior on top through :class:`SocialMediaApp`.
     """
 
     action_logger: Any = None
@@ -315,6 +318,21 @@ class PhoneApp(metaclass=abc.ABCMeta):
     def description(self) -> str:
         """Return a description of the app."""
         raise NotImplementedError
+
+    def initialize(self, agent_names: list[str], **kwargs: Any) -> None:
+        """Optional generic app setup hook.
+
+        Game-master-owned backend initializers call this only for backends that
+        opt into the generic ``app_initialize`` path. Social backends should
+        prefer explicit setup helpers consumed by the social backend
+        initializer.
+        """
+        del agent_names, kwargs
+
+    def observe(self, actor_name: str, **kwargs: Any) -> str:
+        """Return a domain-specific observation string for an actor."""
+        del actor_name, kwargs
+        return ""
 
     def _print(
         self,
@@ -556,6 +574,43 @@ class PhoneApp(metaclass=abc.ABCMeta):
             )
         return schemas
 
+    def get_timeline(self, user_name: str, limit: int = 10) -> list[dict]:
+        """Return raw timeline data for a user."""
+        return []
+
+    def get_timeline_mode(
+        self,
+        timeline_mode: str,
+        user_name: str,
+        limit: int = 10,
+        recsys_type: str | None = None,
+        **timeline_config: dict,
+    ) -> list[dict]:
+        """Return timeline data for a specific mode."""
+        del timeline_mode, recsys_type, timeline_config
+        return self.get_timeline(user_name, limit)
+
+    def format_timeline_for_observation(self, timeline: list[dict]) -> str:
+        """Convert raw timeline data into text for an agent observation."""
+        return ""
+
+    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
+        """Dispatch a parsed action to the correct app method."""
+        del user_name, action_data
+        return ""
+
+    @app_action(
+        selectable_name="FINISHED",
+        description="To be used when desirable actions for current timestep have been conducted.",
+    )
+    def finish_action_episode(self) -> str:
+        """No-op terminal action for open-ended loops and constrained action sets."""
+        return "Finished action episode"
+
+    def generate_action_prompt(self) -> str:
+        """Generate the call-to-action prompt listing all available actions."""
+        return self.full_description()
+
 
 # --------------------------------------------------------------------------- #
 # Argument Text Parser
@@ -606,147 +661,14 @@ def _param_to_json_schema(param: "Parameter") -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# EnvironmentApp - abstract base for all environment backend apps
+# SocialMediaApp - social-specific backend base
 # --------------------------------------------------------------------------- #
 
 
-class EnvironmentApp(PhoneApp, abc.ABC):
-    """Base class for all environment backend apps used in the simulation.
-
-    Subclasses expose ``@app_action`` decorated methods that agents can invoke.
-    The base contract is intentionally domain-neutral: initialize the runtime,
-    provide an observation string for an actor, and expose callable actions.
-
-    The only **required** method is ``initialize()``, which sets up platform
-    state at the start of a simulation run. Capability-specific methods such as
-    social timelines, parsed social action resolution, or recommendation updates
-    are optional and should be consumed only by domain-specific GM components.
-    """
-
-    # ---------------------------------------------------------------------- #
-    # Required interface
-    # ---------------------------------------------------------------------- #
-
-    @abc.abstractmethod
-    def initialize(self, agent_names: list[str], **kwargs: Any) -> None:
-        """Set up environment state for a simulation run.
-
-        The game master calls this once with all agents and config. Each
-        environment is responsible for interpreting its own configuration.
-
-        Args:
-            agent_names: List of agent display names.
-            **kwargs: Common keys:
-                - ``sim_roles`` (dict[str, str]): Agent name -> role.
-                - ``seed_posts`` (dict[str, str]): Agent name -> initial post.
-                - ``social_network`` (dict): Network config from scenario YAML.
-                  Keys include ``network_type``, ``barabasi_albert_m``,
-                  ``fully_connected_targets``, ``base_followership_probability``,
-                  ``activity_transition_rates``, and platform-specific keys
-                  like ``subreddits`` for Reddit.
-        """
-        ...
-
-    def observe(self, actor_name: str, **kwargs: Any) -> str:
-        """Return a domain-specific observation string for an actor.
-
-        Generic game-master observation components call this method. Domain
-        backends can override it directly; social feed backends can instead use
-        social-specific observation components that depend on timeline methods.
-        """
-        del actor_name, kwargs
-        return ""
-
-    # ---------------------------------------------------------------------- #
-    # Optional interface (override per platform)
-    # ---------------------------------------------------------------------- #
-
-    def get_timeline(self, user_name: str, limit: int = 10) -> list[dict]:
-        """Return raw timeline data for a user.
-
-        Args:
-            user_name: The display name of the user whose timeline to fetch.
-            limit: Maximum number of posts to return.
-
-        Returns
-        -------
-            A list of dicts, each representing a post in platform-native format.
-        """
-        return []
-
-    def get_timeline_mode(
-        self,
-        timeline_mode: str,
-        user_name: str,
-        limit: int = 10,
-        recsys_type: str | None = None,
-        **timeline_config: dict,
-    ) -> list[dict]:
-        """Return timeline data for a specific mode.
-
-        Default implementation ignores mode/config and falls back to `get_timeline`.
-
-        Args:
-            timeline_mode: Timeline mode (e.g. follower_chronological).
-            user_name: The display name of the user whose timeline to fetch.
-            limit: Maximum number of posts to return.
-            recsys_type: Optional recommendation algorithm selector.
-            **timeline_config: Mode-specific tuning parameters.
-
-        Returns
-        -------
-            A list of dicts, each representing a post in platform-native format.
-        """
-        del timeline_mode, recsys_type, timeline_config
-        return self.get_timeline(user_name, limit)
-
-    def format_timeline_for_observation(self, timeline: list[dict]) -> str:
-        """Convert raw timeline data into a human-readable string for the LLM prompt.
-
-        Args:
-            timeline: List of post dicts as returned by ``get_timeline()``.
-
-        Returns
-        -------
-            A formatted string suitable for inclusion in an agent observation.
-        """
-        return ""
-
-    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
-        """Dispatch a parsed action to the correct ``@app_action`` method.
-
-        Args:
-            user_name: The display name of the acting agent.
-            action_data: Dict with keys ``action_type``, ``target_id``,
-                ``content``, ``reasoning`` as parsed from the LLM output.
-
-        Returns
-        -------
-            A result string describing the outcome of the action.
-        """
-        return ""
-
-    @app_action(
-        selectable_name="FINISHED",
-        description="To be used when desirable actions for current timestep have been conducted.",
-    )
-    def finish_action_episode(self) -> str:
-        """No-op terminal action for open-ended loops and constrained action sets."""
-        return "Finished action episode"
-
-    def generate_action_prompt(self) -> str:
-        """Generate the call-to-action prompt listing all available actions.
-
-        Uses ``self.full_description()`` by default; subclasses can override
-        for custom prompt formatting.
-        """
-        return self.full_description()
-
-
-class SocialMediaApp(EnvironmentApp):
-    """Compatibility base for social-media backends.
+class SocialMediaApp(BackendApp):
+    """Base class for social-media backends.
 
     Social media apps are environment apps with optional feed/timeline and
     recommendation capabilities. New generic backends should subclass
-    :class:`EnvironmentApp` directly.
+    :class:`BackendApp` directly.
     """

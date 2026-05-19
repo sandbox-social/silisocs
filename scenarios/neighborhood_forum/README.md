@@ -14,11 +14,11 @@ on redeveloping the old Hendricks Mill site into mixed-use housing.
 
 | Role | Count | Prefab |
 |---|---|---|
-| `council_member` | 1 | `silisocs.agents.entity` |
-| `longtime_resident` | 2 | `silisocs.agents.entity` |
-| `renter` | 2 | `silisocs.agents.entity` |
-| `business_owner` | 2 | `silisocs.agents.entity` |
-| `newcomer` | 2 | `silisocs.agents.entity` |
+| `council_member` | 1 | `silisocs.agents.native` |
+| `longtime_resident` | 2 | `silisocs.agents.native` |
+| `renter` | 2 | `silisocs.agents.native` |
+| `business_owner` | 2 | `silisocs.agents.native` |
+| `newcomer` | 2 | `silisocs.agents.native` |
 
 The council member is fully-connected (followed by everyone) as a bridge/authority
 node. Remaining agents use a Barabási-Albert topology.

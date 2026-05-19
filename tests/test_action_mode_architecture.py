@@ -8,19 +8,19 @@ This module verifies:
 4. Resolve component expectations match prompt format
 """
 
-import json
 from unittest.mock import MagicMock
 
 import pytest
 from omegaconf import OmegaConf
 
-from silisocs.environments.backends.base import PhoneApp, SocialMediaApp, app_action
+from silisocs.environments.backends.base import BackendApp, SocialMediaApp, app_action
 from silisocs.environments.gm.components.resolve import (
     GenericActionResolveComponent,
     ParsedActionResolveComponent,
     ToolCallingResolveComponent,
 )
-from silisocs.runtime.action_prompts import build_complete_action_prompt_for_runner
+from silisocs.runtime.prompts.action_prompts import build_complete_action_prompt_for_runner
+from silisocs.runtime.types import ActionOutput, ToolCall
 
 # from silisocs.runtime.runner import _validate_action_tool_calling_contract
 
@@ -254,7 +254,7 @@ def test_validate_action_tool_calling_contract_requires_resolve_match() -> None:
         pass  # _validate_action_tool_calling_contract(cfg)
 
 
-class MockBackend(PhoneApp):
+class MockBackend(BackendApp):
     """Mock backend for testing."""
 
     def name(self) -> str:
@@ -319,14 +319,16 @@ class TestResolveComponentFormatMatching:
 
         # Should match ACTION: format
         result = component.resolve(
-            active_entity="Alice", action_text="ACTION: post\ncontent: Hello"
+            active_agent="Alice", action=ActionOutput.from_text("ACTION: post\ncontent: Hello")
         )
         assert result == "success"
         mock_app.invoke_action_by_name.assert_called_once()
 
         # Should not match other formats
         mock_app.reset_mock()
-        result = component.resolve(active_entity="Alice", action_text="Not a valid format")
+        result = component.resolve(
+            active_agent="Alice", action=ActionOutput.from_text("Not a valid format")
+        )
         assert result == ""
         mock_app.invoke_action_by_name.assert_not_called()
 
@@ -342,13 +344,13 @@ class TestResolveComponentFormatMatching:
 
         # Should match ACTION TYPE: format
         result = component.resolve(
-            active_entity="Alice",
-            action_text="ACTION TYPE: POST\nTARGET ID: 5\nCONTENT: Hello",
+            active_agent="Alice",
+            action=ActionOutput.from_text("ACTION TYPE: POST\nTARGET ID: 5\nCONTENT: Hello"),
         )
         assert result == "success"
 
-    def test_tool_calling_expects_json_format(self):
-        """ToolCallingResolveComponent expects JSON tool call format."""
+    def test_tool_calling_expects_typed_tool_calls(self):
+        """ToolCallingResolveComponent expects typed tool calls."""
         mock_app = MagicMock()
         mock_app.invoke_action_with_kwargs.return_value = "success"
 
@@ -357,26 +359,22 @@ class TestResolveComponentFormatMatching:
             model=MagicMock(),
         )
 
-        # Should parse JSON tool calls
-        tool_call_json = json.dumps(
-            {
-                "tool_call": {
-                    "name": "post",
-                    "arguments": {"content": "Hello", "current_user": "Alice"},
-                }
-            }
+        result = component.resolve(
+            active_agent="Alice",
+            action=ActionOutput.from_tool_calls(
+                [ToolCall("post", {"content": "Hello", "current_user": "Alice"})]
+            ),
         )
-        result = component.resolve(active_entity="Alice", action_text=tool_call_json)
         assert result == "success"
         mock_app.invoke_action_with_kwargs.assert_called_once_with(
             "post",
             {"content": "Hello", "current_user": "Alice"},
         )
 
-        # Should not match other formats
+        # Should fail loudly on other formats
         mock_app.reset_mock()
-        result = component.resolve(active_entity="Alice", action_text="Not JSON")
-        assert result != "success"
+        with pytest.raises(TypeError, match="ActionOutput.TOOL_CALLS"):
+            component.resolve(active_agent="Alice", action=ActionOutput.from_text("Not JSON"))
         mock_app.invoke_action_with_kwargs.assert_not_called()
 
 
@@ -388,41 +386,21 @@ def test_finished_routes_through_backend_across_all_resolve_modes() -> None:
     tool = ToolCallingResolveComponent(sm_app=app, model=MagicMock())
 
     parsed_result = parsed.resolve(
-        active_entity="Alice",
-        action_text="ACTION TYPE: FINISHED\nTARGET ID: \nCONTENT: \nREASONING: done",
+        active_agent="Alice",
+        action=ActionOutput.from_text(
+            "ACTION TYPE: FINISHED\nTARGET ID: \nCONTENT: \nREASONING: done"
+        ),
     )
-    generic_result = generic.resolve(active_entity="Alice", action_text="ACTION: FINISHED")
+    generic_result = generic.resolve(
+        active_agent="Alice", action=ActionOutput.from_text("ACTION: FINISHED")
+    )
     tool_result = tool.resolve(
-        active_entity="Alice",
-        action_text=json.dumps({"tool_call": {"name": "FINISHED", "arguments": {}}}),
+        active_agent="Alice",
+        action=ActionOutput.from_tool_calls([ToolCall("FINISHED", {})]),
     )
 
     assert parsed_result == "Finished action episode"
     assert generic_result == "Finished action episode"
-    assert tool_result == "Finished action episode"
-
-
-def test_tool_calling_resolve_accepts_function_style_tool_call() -> None:
-    app = _FinishedIntegrationApp()
-    tool = ToolCallingResolveComponent(sm_app=app, model=MagicMock())
-
-    tool_result = tool.resolve(
-        active_entity="Alice",
-        action_text="tool_call:FINISHED({})",
-    )
-
-    assert tool_result == "Finished action episode"
-
-
-def test_tool_calling_resolve_accepts_escaped_brace_tool_call() -> None:
-    app = _FinishedIntegrationApp()
-    tool = ToolCallingResolveComponent(sm_app=app, model=MagicMock())
-
-    tool_result = tool.resolve(
-        active_entity="Alice",
-        action_text="tool_call:FINISHED({{}})",
-    )
-
     assert tool_result == "Finished action episode"
 
 
@@ -432,14 +410,12 @@ def test_tool_calling_resolve_supports_multi_tool_payload() -> None:
     tool = ToolCallingResolveComponent(sm_app=mock_app, model=MagicMock())
 
     tool_result = tool.resolve(
-        active_entity="Alice",
-        action_text=json.dumps(
-            {
-                "tool_calls": [
-                    {"name": "post", "arguments": {"content": "hello"}},
-                    {"name": "like", "arguments": {"post_id": "1"}},
-                ]
-            }
+        active_agent="Alice",
+        action=ActionOutput.from_tool_calls(
+            [
+                ToolCall("post", {"content": "hello"}),
+                ToolCall("like", {"post_id": "1"}),
+            ]
         ),
     )
 

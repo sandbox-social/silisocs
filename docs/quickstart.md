@@ -52,7 +52,7 @@ Simulation output is saved to `outputs/default/<jobname>/<timestamp>/`:
 | `prompts_and_responses.jsonl` | Raw LLM prompts and responses |
 | `run_stats.log` | Per-episode timing and worker telemetry |
 | `sim_metrics.json` | Structured metrics summary (durations, resource usage) |
-| `logs.html` | Browseable Concordia HTML log |
+| `logs.html` | Browseable simulation HTML log |
 | `twitter_like.db` | SQLite database with full social media state |
 | `.hydra/config.yaml` | Resolved Hydra config snapshot |
 

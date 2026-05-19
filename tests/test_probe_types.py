@@ -80,6 +80,6 @@ def test_probe_form_question_substitutes_agent_name() -> None:
 def test_probe_submit_with_raw_response() -> None:
     probe = BinaryProbe({"name": "VoteIntent"})
     result = probe.submit_with_raw_response("Yes I will definitely vote")
-    assert result["query_type"] == "VoteIntent"
-    assert result["query_return"] == "Yes"
+    assert result["probe_type"] == "VoteIntent"
+    assert result["probe_return"] == "Yes"
     assert result["raw_response"] == "Yes I will definitely vote"

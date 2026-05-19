@@ -1,304 +1,110 @@
-"""Unit tests for MultiGMRuntimeEngine."""
+"""Tests for the native multi-GM engine preset."""
 
-from unittest.mock import patch
+from __future__ import annotations
 
-import pytest
 from omegaconf import OmegaConf
 
-from silisocs.simulation_engines.multi_gm import MultiGMRuntimeEngine
+from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType
+from silisocs.simulation_engines.base_engines import MultiGMRuntimeEngine
 
 
-class MockGameMaster:
-    """Mock game master for testing."""
-
-    def __init__(self, name: str):
+class _Agent:
+    def __init__(self, name: str) -> None:
         self.name = name
+        self.observations: list[str] = []
+        self.actions: list[str] = []
+
+    def observe(self, observation: str) -> None:
+        self.observations.append(observation)
+
+    def act(self, action_spec: ActionSpec) -> ActionOutput:
+        self.actions.append(action_spec.prompt)
+        return ActionOutput.from_text(f"{self.name}:{action_spec.prompt}")
 
 
-class TestMultiGMRuntimeEngineInit:
-    """Test MultiGMRuntimeEngine initialization."""
+class _GameMaster:
+    def __init__(
+        self,
+        *,
+        name: str,
+        selected: list[str],
+        agent_flow_tags: dict[str, str] | None = None,
+        gm_orchestration: dict[str, object] | None = None,
+    ) -> None:
+        self.name = name
+        self.selected = selected
+        self.agent_flow_tags = agent_flow_tags or {}
+        self.gm_orchestration = gm_orchestration or {}
+        self.resolved: list[tuple[str, ActionOutput]] = []
+        self.events: list[str] = []
 
-    def test_engine_initializes(self):
-        """Test engine can be initialized."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
-            assert engine._gm_sequence_names is None
-            assert engine._gm_instances == {}
-            assert engine._agent_gm_map == {}
+    def update(self, *, step: int, agents: list[_Agent], context: object | None = None) -> None:
+        del context
+        self.events.append(f"update:{step}:{','.join(agent.name for agent in agents)}")
 
-    def test_engine_has_required_methods(self):
-        """Test engine has all required methods."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
-            assert hasattr(engine, "get_agent_gms")
-            assert hasattr(engine, "detect_gm_conflicts")
-            assert hasattr(engine, "log_orchestration_info")
-            assert hasattr(engine, "validate_gm_sequence")
+    def acting_agents(self, candidate_agents: list[_Agent]) -> list[str]:
+        available = {agent.name for agent in candidate_agents}
+        return [name for name in self.selected if name in available]
+
+    def action_prompt(self, agent_name: str) -> ActionSpec:
+        return ActionSpec(prompt=f"{self.name}:{agent_name}", output_type=OutputType.TEXT)
+
+    def make_observation(self, agent_name: str) -> str:
+        return f"obs:{self.name}:{agent_name}"
+
+    def resolve_action(self, agent_name: str, action: ActionOutput) -> str:
+        self.resolved.append((agent_name, action))
+        return f"resolved:{self.name}:{agent_name}"
 
 
-class TestAgentToGMMapping:
-    """Test agent-to-GM mapping functionality."""
+def test_multi_gm_runtime_engine_initializes_without_legacy_introspection() -> None:
+    engine = MultiGMRuntimeEngine()
 
-    def test_build_simple_mapping(self):
-        """Test building agent to GM mapping with single class."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
+    assert not hasattr(engine, "_gm_sequence_names")
+    assert not hasattr(engine, "_agent_gm_map")
+    assert not hasattr(engine, "get_agent_gms")
+    assert not hasattr(engine, "detect_gm_conflicts")
 
-            gm_config = OmegaConf.create(
-                {
-                    "agent_classes": {
-                        "alice": "human",
-                        "bob": "bot",
-                    },
-                    "class_to_gms": {
-                        "human": "gm1",
-                        "bot": "gm2",
-                    },
-                }
-            )
 
-            engine._build_agent_to_gm_mapping(None, gm_config)
-
-            assert engine._agent_gm_map["alice"] == ["gm1"]
-            assert engine._agent_gm_map["bob"] == ["gm2"]
-
-    def test_build_mapping_with_multiple_classes(self):
-        """Test building mapping when agent has multiple classes."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
-
-            gm_config = OmegaConf.create(
-                {
-                    "agent_classes": {
-                        "alice": ["human", "verified"],
-                        "bob": "bot",
-                    },
-                    "class_to_gms": {
-                        "human": ["gm1", "gm2"],
-                        "verified": ["gm2", "gm3"],
-                        "bot": ["gm4"],
+def test_multi_gm_step_strategy_routes_agents_through_flow_chains() -> None:
+    cfg = OmegaConf.create(
+        {
+            "sim": {
+                "engine": {
+                    "turn_policy": {"built_in": "single_action"},
+                    "step": {
+                        "built_in": "multi_gm",
+                        "params": {"flow_order": ["pre", "default"]},
                     },
                 }
-            )
-
-            engine._build_agent_to_gm_mapping(None, gm_config)
-
-            # alice should be in gm1, gm2, gm3 (union of human + verified)
-            assert sorted(engine._agent_gm_map["alice"]) == ["gm1", "gm2", "gm3"]
-            assert engine._agent_gm_map["bob"] == ["gm4"]
-
-    def test_build_mapping_with_gm_lists(self):
-        """Test building mapping when classes route to multiple GMs."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
-
-            gm_config = OmegaConf.create(
-                {
-                    "agent_classes": {
-                        "alice": ["human"],
-                        "bob": ["bot"],
-                    },
-                    "class_to_gms": {
-                        "human": ["gm1", "gm2", "gm3"],
-                        "bot": ["gm4"],
-                    },
-                }
-            )
-
-            engine._build_agent_to_gm_mapping(None, gm_config)
-
-            assert sorted(engine._agent_gm_map["alice"]) == ["gm1", "gm2", "gm3"]
-            assert engine._agent_gm_map["bob"] == ["gm4"]
-
-    def test_get_agent_gms(self):
-        """Test getting GMs for a specific agent."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
-            engine._agent_gm_map = {
-                "alice": ["gm1", "gm2"],
-                "bob": ["gm3"],
             }
+        }
+    )
+    engine = MultiGMRuntimeEngine(config=cfg)
+    alice = _Agent("Alice")
+    bob = _Agent("Bob")
+    primary = _GameMaster(
+        name="primary",
+        selected=["Alice", "Bob"],
+        agent_flow_tags={"Alice": "pre", "Bob": "default"},
+        gm_orchestration={"flow_chains": {"pre": ["pre_gm"], "default": ["main_gm"]}},
+    )
+    pre_gm = _GameMaster(name="pre_gm", selected=["Alice"])
+    main_gm = _GameMaster(name="main_gm", selected=["Bob"])
 
-            assert engine.get_agent_gms("alice") == ["gm1", "gm2"]
-            assert engine.get_agent_gms("bob") == ["gm3"]
-            assert engine.get_agent_gms("charlie") == []
+    result = engine.run_step(
+        step_index=0,
+        game_masters=[primary, pre_gm, main_gm],
+        agents=[alice, bob],
+        verbose=False,
+    )
 
-    def test_detect_no_conflicts(self):
-        """Test detecting when no agent conflicts exist."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
-            engine._agent_gm_map = {
-                "alice": ["gm1"],
-                "bob": ["gm2"],
-            }
-
-            conflicts = engine.detect_gm_conflicts()
-            assert conflicts == {}
-
-    def test_detect_conflicts(self):
-        """Test detecting when agents are in multiple GMs."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
-            engine._agent_gm_map = {
-                "alice": ["gm1", "gm2"],  # Conflict
-                "bob": ["gm2"],
-                "charlie": ["gm1", "gm2", "gm3"],  # Conflict
-            }
-
-            conflicts = engine.detect_gm_conflicts()
-            assert "alice" in conflicts
-            assert "charlie" in conflicts
-            assert "bob" not in conflicts
-            assert conflicts["alice"] == ["gm1", "gm2"]
-            assert conflicts["charlie"] == ["gm1", "gm2", "gm3"]
-
-    def test_no_duplicates_in_gm_mapping(self):
-        """Test that duplicate GMs are removed from agent's GM list."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
-
-            gm_config = OmegaConf.create(
-                {
-                    "agent_classes": {
-                        "alice": ["human", "verified"],
-                    },
-                    "class_to_gms": {
-                        "human": ["gm1", "gm2"],
-                        "verified": ["gm2", "gm3"],  # gm2 appears in both
-                    },
-                }
-            )
-
-            engine._build_agent_to_gm_mapping(None, gm_config)
-
-            # gm2 should only appear once
-            assert engine._agent_gm_map["alice"] == ["gm1", "gm2", "gm3"]
-
-
-class TestGMSequenceValidation:
-    """Test GM sequence validation."""
-
-    def test_validate_none_sequence(self):
-        """Test validating None sequence (single-GM mode)."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
-            engine._gm_sequence_names = None
-
-            assert engine.validate_gm_sequence() is True
-
-    def test_validate_empty_sequence(self):
-        """Test validating empty sequence."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
-            engine._gm_sequence_names = []
-
-            assert engine.validate_gm_sequence() is False
-
-    def test_validate_valid_sequence(self):
-        """Test validating valid sequence."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
-            engine._gm_sequence_names = ["gm1", "gm2", "gm3"]
-
-            assert engine.validate_gm_sequence() is True
-
-    def test_validate_invalid_type(self):
-        """Test validating invalid sequence type."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
-            engine._gm_sequence_names = "gm1,gm2"  # type: ignore[assignment]
-
-            assert engine.validate_gm_sequence() is False
-
-
-class TestOrchestrationLogging:
-    """Test orchestration logging."""
-
-    def test_log_single_gm_mode(self):
-        """Test logging in single-GM mode."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
-            engine._gm_sequence_names = None
-            engine._agent_gm_map = {}
-
-            # Should not raise
-            engine.log_orchestration_info()
-
-    def test_log_multi_gm_mode(self):
-        """Test logging in multi-GM mode."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
-            engine._gm_sequence_names = ["gm1", "gm2"]
-            engine._agent_gm_map = {
-                "alice": ["gm1"],
-                "bob": ["gm2"],
-                "charlie": ["gm1", "gm2"],
-            }
-
-            # Should not raise
-            engine.log_orchestration_info()
-
-    def test_log_with_conflicts(self):
-        """Test logging when agents are in multiple GMs."""
-        with patch(
-            "silisocs.simulation_engines.base_engines.FlowRuntimeEngine.__init__",
-            return_value=None,
-        ):
-            engine = MultiGMRuntimeEngine()
-            engine._gm_sequence_names = ["gm1", "gm2", "gm3"]
-            engine._agent_gm_map = {
-                "alice": ["gm1", "gm2"],
-                "bob": ["gm2", "gm3"],
-            }
-
-            # Should not raise, should log warnings
-            engine.log_orchestration_info()
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    assert result.active_agent_names == ("Alice", "Bob")
+    assert [name for name, _ in pre_gm.resolved] == ["Alice"]
+    assert [name for name, _ in main_gm.resolved] == ["Bob"]
+    assert primary.events == ["update:0:Alice,Bob"]
+    assert pre_gm.events == ["update:0:Alice,Bob"]
+    assert main_gm.events == ["update:0:Alice,Bob"]
+    assert primary.resolved == []
+    assert alice.observations == ["obs:pre_gm:Alice", "resolved:pre_gm:Alice"]
+    assert bob.observations == ["obs:main_gm:Bob", "resolved:main_gm:Bob"]

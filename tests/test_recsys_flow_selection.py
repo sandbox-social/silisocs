@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
-from concordia.typing import entity as entity_lib
-
 from silisocs.environments.backends.reddit_like.engine import RedditLikePlatform
 from silisocs.environments.backends.twitter_like.engine import TwitterLikePlatform
 from silisocs.environments.gm.components.observe import TimelineMakeObservation
-from silisocs.environments.gm.components.recommend import RecommendationComponent
-from silisocs.runtime.config import ConfigStore
+from silisocs.environments.gm.components.update import SocialRecommendationUpdateComponent
 
 
 class _FakeApp:
@@ -38,28 +33,18 @@ class _FakeApp:
         return ""
 
 
-def test_timeline_observe_passes_flow_specific_recsys_type() -> None:
+def test_timeline_observe_passes_configured_recsys_type() -> None:
     app = _FakeApp()
-    previous_config = ConfigStore._config
-    ConfigStore._config = SimpleNamespace(sim=SimpleNamespace(timeline_posts=10))
     component = TimelineMakeObservation(
         model=object(),
-        player_names=("alice",),
+        agent_names=("alice",),
         sm_app=app,
-        entity_flow_tags={"alice": "active"},
+        agent_flow_tags={"alice": "active"},
         timeline_mode="pure_recsys",
-    )
-    component.set_flow_field_values({"active": {"recsys_type": "twitter"}})
-
-    action_spec = SimpleNamespace(
-        output_type=entity_lib.OutputType.MAKE_OBSERVATION,
-        call_to_action="alice",
+        recsys_type="twitter",
     )
 
-    try:
-        component.pre_act(action_spec)
-    finally:
-        ConfigStore._config = previous_config
+    component.make_observation("alice")
 
     assert app.calls
     assert app.calls[0]["recsys_type"] == "twitter"
@@ -280,10 +265,8 @@ def test_reddit_platform_rejects_twitter_algorithm(tmp_path) -> None:
     raise AssertionError("Expected ValueError for unsupported twitter algorithm on reddit_like")
 
 
-def test_recommendation_component_supports_entity_binding() -> None:
-    component = RecommendationComponent(sm_app=object())
-    entity = object()
+def test_social_recommendation_has_no_native_owner_binding() -> None:
+    component = SocialRecommendationUpdateComponent(sm_app=object())
 
-    component.set_entity(entity)
-
-    assert component.get_entity() is entity
+    assert not hasattr(component, "set_entity")
+    assert not hasattr(component, "get_entity")

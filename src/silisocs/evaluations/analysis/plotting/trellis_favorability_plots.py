@@ -127,7 +127,7 @@ class TrellisAnalyzer:
                 if label == "Favorability":
                     candidate = data.get("interaction_premise_template", {}).get("candidate")
                     # Accept null/non-numeric favorability values (store as None) so we can forward-fill later
-                    raw_score = data.get("query_return")
+                    raw_score = data.get("probe_return")
                     favorability = None
                     if raw_score is not None:
                         try:

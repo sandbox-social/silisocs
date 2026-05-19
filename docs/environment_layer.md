@@ -22,23 +22,22 @@ This page focuses on end-user and developer configurability for Engine/GM/backen
 ## Current Runtime Model
 
 - Engine remains policy-oriented (loop and scheduling concerns).
-- GM follows a **Concordia-native component-routing** style around SwitchAct.
+- GM follows a native component-routing style with direct typed methods.
 - Backend actions are exposed as callable tools through `@app_action` methods.
-- Specialized entity classes can define distinct runtime behavior (for example,
-  fixed-action entities) while still using the same GM resolve components.
+- Specialized agent classes can define distinct runtime behavior (for example,
+  fixed-action agents) while still using the same GM resolve components.
 
 Flow controls use two independent switches:
 
 - `env.enable_gm_multi_flow`: enables GM-side component routing (`env.gm.preset: shared_flow`).
-- `sim.engine.preset: flow`: enables engine-side flow scheduling/policies.
+- `sim.engine.step.built_in: flow`: enables engine-side flow scheduling.
 
 ## Canonical Structure
 
 Canonical modules:
 
-- `src/silisocs/environments/gm/game_master.py`: primary GM prefab.
-- `src/silisocs/environments/gm/act.py`: primary SwitchAct specialization.
-- `src/silisocs/environments/gm/components/`: Concordia-native slot components.
+- `src/silisocs/environments/gm/game_master.py`: primary GM builder/runtime entry.
+- `src/silisocs/environments/gm/components/`: native slot components.
 - `src/silisocs/simulation_engines/base_engines.py`: primary runtime engine.
 Import from the `environments/gm/` and `simulation_engines/` packages.
 
@@ -65,11 +64,6 @@ env:
         built_in: parsed_action
         class_path: null
         params: {}
-
-      initializer:
-        built_in: backend_default
-        class_path: null
-        params: {}
 ```
 
 Configured `params` are strict constructor arguments. Unknown keys fail before
@@ -80,12 +74,12 @@ forwarded observation-settings bag.
 ### Built-in Next-Acting Components
 
 - `activity_markov`: role-conditioned active/inactive transitions (baseline behavior).
-- `all_entities`: all entities are active each step.
-- `fixed_order`: one active entity in cyclic order.
+- `all_agents`: all agents are active each step.
+- `fixed_order`: one active agent in cyclic order.
 
 ### Built-in Observe Components
 
-- `app_observation`: call `EnvironmentApp.observe(...)` for generic backends.
+- `app_observation`: call `BackendApp.observe(...)` for generic backends.
 - `timeline_every_turn`: fetch timeline whenever observation is requested.
 - `episode_only`: return episode-only observations (for fixed/pre-scripted flows).
 
@@ -100,16 +94,25 @@ Fixed-action directive handling:
 - Fixed-action entities should emit standard action text directly (for example,
   the existing `ACTION TYPE / TARGET ID / CONTENT / REASONING` format), so
   no resolve-component modification is required.
-- GM observe components can branch by entity flow type and return specialized
+- GM observe components can branch by agent flow type and return specialized
   observations (for example `EPISODE: <n>`).
 
-### Built-in Initializer Components
+### Runtime Initializers
 
-- `backend_default`: standard `sm_app.initialize(...)` call.
+Backend setup is owned by each runtime game master. The default runtime
+initializer runs agent memory setup, asks each GM to initialize its backend app
+and graph state, then posts seed content before the episode loop starts.
+
+Built-in backend initializer slots:
+
+- `social_media`: create users, wire follow/subreddit graphs, and bind social
+  action metadata.
+- `app_initialize`: call `app.initialize(...)` for generic non-social backends.
+- `none`: skip backend setup.
 
 ### Built-in Recommendation Components
 
-- `recommendation_component`: update social recommendation state.
+- `social_recommendation`: update social recommendation state.
 - `disabled` / `none`: no-op component for generic or non-recsys environments.
 
 ## Tool-Calling Resolve Mode
@@ -136,56 +139,57 @@ uv run silisocs \
   sim.tool_calling.mode=single
 ```
 
-### 2. Keep defaults but override only initializer
+### 2. Keep defaults but override only Game Master initialization
 
 ```yaml
 env:
   gm:
-    components:
-      initializer:
-        class_path: my_scenario.gm.CustomInitializer
-        params:
-          seed_strategy: role_weighted
+    initializer:
+      class_path: my_scenario.gm.CustomInitializer
+      params:
+        graph_strategy: role_weighted
 ```
 
-### 3. Force all entities active each step
+### 3. Force all agents active each step
 
 ```sh
-uv run silisocs env.gm.components.next_acting.built_in=all_entities
+uv run silisocs env.gm.components.next_acting.built_in=all_agents
 ```
 
 ## Writing Custom GM Components
 
 Each component can be swapped via `class_path`.
 
-- Observe component: subclass Concordia `MakeObservation` and implement `pre_act(...)`.
-- Resolve component: subclass Concordia `ContextComponent` (and usually `ComponentWithLogging`) and implement `pre_act(...)`.
-- Next-acting component: subclass Concordia next-acting components (for example `NextActingAllEntities` or `NextActingInFixedOrder`) and implement/override `pre_act(...)`.
-- Backend initializer: implement `initialize(...)` (non-Concordia hook, used before simulation loop).
+- Observe component: subclass the native observation component base and implement `make_observation(agent_name)`.
+- Resolve component: use the native GM helper bases in `silisocs.environments.gm.components.base` and implement `resolve_action(agent_name, action)`.
+- Next-acting component: subclass the native next-acting component bases and implement `acting_agent_names()`.
+- Game Master initializer: implement `initialize(...)` (used during the
+  Engine's Game Master initialization phase).
 
 Use built-ins under `src/silisocs/environments/gm/components/` as templates.
 
-### Why Concordia-native inheritance?
+### Why native component inheritance?
 
 Pros:
 
-- Components fit directly into SwitchAct routing via context keys.
-- You get Concordia lifecycle/state behavior (`pre_act`, `get_state`, `set_state`).
-- Easier interoperability with other Concordia components.
+- Components fit directly into native GM routing through explicit slot methods.
+- You get consistent checkpoint state behavior (`get_state`, `set_state`).
+- Easier interoperability with other Silisocs components.
 
 Tradeoffs:
 
 - Slightly more boilerplate than plain strategy objects.
-- You need to follow Concordia component contracts carefully.
+- You need to follow the component contracts carefully.
 
 This is not a meaningful runtime-overhead concern; the main tradeoff is API discipline and code structure.
 
 ## Building a Full Custom GM
 
-YAML slot switching is ideal for most use cases, but you can still replace the entire GM prefab.
+YAML slot switching is ideal for most use cases, but you can still replace the entire GM runtime.
 
-1. Implement a new prefab class (typically by inheriting from `gm.game_master.GameMaster` and overriding `build(...)`, or by implementing a fresh Concordia prefab).
-2. Point scenario/social config to your module path and prefab name.
+1. Implement a native GM class exposing `initialize`, `acting_agents`,
+   `action_prompt`, `make_observation`, and `resolve_action`.
+2. Point config to the GM `class_path` and constructor `params`.
 
 Typical configuration path:
 
@@ -211,31 +215,35 @@ Engine extensibility lives under:
 - `src/silisocs/simulation_engines/policies/probe_schedule.py`
 - `src/silisocs/simulation_engines/policies/factory.py`
 
-Configure engine policies from `sim.engine`:
+Configure engine turn policy from `sim.engine` and probe timing from `evals`:
 
 ```yaml
 sim:
   engine:
-    action_loop:
+    step:
+      built_in: flow
+      params:
+        flow_order: [fixed_pre, default]
+        agent_to_flow: {}
+
+    turn_policy:
       built_in: single_action   # single_action | fixed_count | open_ended
       class_path: null
       params: {}
 
-    probe_schedule:
+evals:
+  probes:
+    schedule:
       built_in: step_schedule   # step_schedule | fixed_interval | disabled
       class_path: null
       params: {}
-
-    flow_routing:
-      flow_order: [fixed_pre, default]
-      entity_to_flow: {}
 ```
 
-Built-in action loop policies:
+Built-in turn policies:
 
-- `single_action`: one observe/act/resolve cycle per active entity.
-- `fixed_count`: exactly `count` cycles per active entity.
-- `open_ended`: keep acting until `done_token` or `max_actions` is reached.
+- `single_action`: one observe/act/resolve cycle per active agent.
+- `fixed_count`: exactly `count` cycles per active agent.
+- `open_ended`: keep acting until `finished_action_signal` or `max_actions` is reached.
 
 Built-in probe schedule policies:
 
@@ -253,10 +261,10 @@ Flow routing notes:
 - `flow_order` defines execution buckets per episode.
 - Agents in each flow bucket still execute in parallel.
 - Flow buckets execute sequentially, enabling deterministic pre/post phases
-  for specialized entity classes without sacrificing per-bucket parallelism.
+  for specialized agent classes without sacrificing per-bucket parallelism.
 - Assign classes to buckets using `persona_pipeline.classes.<name>.flow_tag`.
-- Add one-off overrides with `sim.engine.flow_routing.entity_to_flow` when a
-  specific entity should move to a different phase.
+- Add one-off overrides with `sim.engine.step.params.agent_to_flow` when a
+  specific agent should move to a different phase.
 - Use `env.gm.components.observe.params.episode_observation_flows` for flows
   that should receive episode-index observations instead of timeline content.
 
@@ -269,9 +277,9 @@ GM:
 - Backend apps are created through the backend factory with the configured
   `env.app.class_path` and `env.app.params`.
 - Action events are written through the standard action event logger.
-- Backend initialization receives agent names, simulation roles, seed posts,
-  and social-network config through the configured initializer component.
-- Open-ended action loops expose `FINISHED` as an enabled backend action.
+- Game Master initialization receives agent names, simulation roles, and
+  social-network config through the configured initializer component.
+- Open-ended turn policies expose `FINISHED` as an enabled backend action.
 
 This keeps simple and shared-flow runs interchangeable from the backend and
 artifact perspective. Custom shared-flow components should specialize routing,
@@ -280,10 +288,10 @@ not bypass backend initialization or logging.
 ## Recommended Boundary
 
 - Put **phase scheduling and chunk semantics** in Engine policies.
-- Put **next actor, observe, resolve, initializer behavior** in GM components.
+- Put **next actor, observe, resolve, update, and initializer behavior** in GM components.
 - Put **platform action semantics** in backend `@app_action` methods.
 
-For non-social domains, subclass `EnvironmentApp`, provide generic
+For non-social domains, subclass `BackendApp`, provide generic
 `observe(...)`, use `app_observation`, and disable recommendation scheduling.
 Use `SocialMediaApp` only when the backend needs social timeline, feed, or
 recommendation capabilities.
@@ -301,14 +309,14 @@ The action prompt pipeline is implemented across three layers:
   - `compile_action_prompt()` — core logic that applies additions (action count guidance + output style handling)
    - All prompt building happens here before GM/app instantiation
 
-2. **SMAct pass-through** (`src/silisocs/environments/gm/act.py`):
-   - `SMAct._next_entity_action_spec()` — passes through runner-compiled prompt + optional tool-calling wrapping
-  - If `enable_tool_calling=True`: appends tool-calling marker + tool schemas from backend app
-   - Dumb pass-through: does not modify base prompt text
+2. **Game master prompt assembly** (`src/silisocs/environments/gm/base_game_master.py`):
+   - `GameMaster.action_prompt()` returns typed `ActionSpec`
+   - If `enable_tool_calling=True`: returns `OutputType.TOOL_CALLS` with schemas in `extra_args["tools"]`
+   - Keeps base prompt text unchanged
 
-3. **Entity act layer** (`src/silisocs/agents/components/concat_act.py`):
-   - `SocialConcatActComponent.get_action_attempt()` — formats action spec and calls LLM
-   - Detects tool-calling markers and calls model appropriately (tool-call vs free-text mode)
+3. **Agent act layer** (`src/silisocs/agents/base_agent.py` and `src/silisocs/agents/native.py`):
+    - Native agents build context in `act(...)`
+    - `Agent._call_model(context, action_spec)` routes typed `ActionSpec.output_type` and `extra_args` to the language model
 
 ### Key Architectural Property
 

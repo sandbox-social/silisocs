@@ -1,529 +1,139 @@
-# Silisocs Architecture: Multi-Flow & Component Routing
+# Silisocs Architecture: Native Runtime, Flows, and Component Routing
 
-**This guide is for LLM agents helping understand or extend the framework's architecture.**
+This guide is for LLM agents and contributors helping understand or extend the
+framework's architecture. For designing experiments via configuration, see
+[scenario_design.md](scenario_design.md). For custom code extension points, see
+[AGENTS.md](../AGENTS.md).
 
-**For designing experiments via configuration:** See [scenario_design.md](scenario_design.md)
+Silisocs is designed as a configurable social simulation system with clean,
+native extension surfaces. Concordia-shaped code is legacy compatibility only
+and belongs behind `compat: concordia`.
 
-**For understanding code extension points:** See [AGENTS.md](../AGENTS.md)
+## Four Pillars
 
----
+Silisocs is organized around four core surfaces:
 
-## Overview
+1. **Agents** decide what to do. Native agents subclass `silisocs.agents.base_agent.Agent`
+   and usually use `NativeAgent` or `FixedAgent`.
+2. **Environment** owns game masters and backends. A game master observes backend
+   state, prompts agents, resolves typed actions, and runs update components.
+3. **Evaluations** run probes and postprocessors over the native runtime surface.
+4. **Engine** owns startup phases and the simulation loop.
 
-The silisocs simulator is designed as a highly configurable system with distinct abstraction layers:
+## Config To Execution
 
-1. **Agent Layer**: Configurable agent designs with multiple initialization methods
-2. **Environment Layer**: Pluggable engines and game masters coordinating agent-environment interaction
-3. **Backend Layer**: Pluggable social media platform implementations (Mastodon, Twitter-like, Reddit-like)
-4. **Component Layer**: Fine-grained observation, resolution, and scheduling components with optional multi-flow routing
+Runtime startup follows this path:
 
-This document describes how these layers work together, with special focus on the multi-flow architecture for component routing.
+1. Hydra composes config groups.
+2. `runtime.execution.session` validates migrated config keys.
+3. Construction helpers create models, agents, game masters, initializers, probes,
+   and an engine from direct `class_path` + `params` specs.
+4. The engine initializes agents, then game masters, then simulation setup such as
+   seed posts.
+5. The engine loop runs step strategies, turn policies, probes, logging, metrics,
+   and checkpoint policy.
 
----
+`runtime.runner` is only the CLI entrypoint. Most construction and validation
+logic lives under focused runtime subpackages.
 
-## Part 1: Core Execution Model
+## Agents
 
-### Two Independent Flow Switches
-
-There are two separate flow switches:
-
-- `env.enable_gm_multi_flow`: enables **component routing** inside a single GM (`env.gm.preset: shared_flow`).
-- `sim.engine.preset: flow`: enables **flow-phase scheduling/policies** in the engine.
-
-They are independent. You can enable either one, both, or neither.
-
-| GM switch | Engine switch | Effect |
-|-----------|---------------|--------|
-| false | false | simplest mode (single GM components + single global action loop) |
-| true | false | flow-routed GM components, but engine still uses one global scheduling/policy path |
-| false | true | no GM component routing, but engine schedules entities by flow with optional per-flow policies |
-| true | true | full flow mode: routed GM components + flow-aware engine scheduling/policies |
-
-### Simple GM Mode (`env.enable_gm_multi_flow: false`)
-
-By default, the simulator uses **BaseGM** with a single component instance per role:
-
-```
-Engine schedules agents
-  ↓
-BaseGM.SMAct selects active entity
-  ↓
-Context components execute in order:
-  - NextActing: Who acts next?
-  - Observe: What does active entity see? (single TimelineObservation)
-  - Resolve: How is action executed?
-  - Recommendation: Update recommendations
-  ↓
-Agent receives observation and acts
-```
-
-**Characteristics:**
-- All agents see same type of observation (timeline)
-- All agents use same action resolution logic
-- All agents get same recommendation algorithm
-- No per-flow customization
-- Simplest, most efficient path
-
-**Configuration:**
-```yaml
-env:
-  enable_gm_multi_flow: false  # ← or simply omit (default)
-  gm:
-    preset: base
-```
-
-### Multi-Flow GM Mode (`env.enable_gm_multi_flow: true`)
-
-When multi-flow is enabled, the simulator uses **MultiFlowGM** with multiple component instances and explicit routing:
-
-```
-Engine schedules agents
-  ↓
-MultiFlowGM.MultiFlowSMAct selects active entity
-  ↓
-1. Determine entity's flow (from entity_flow_tags map)
-2. Look up flow → {role → component_key} mapping
-3. Route output selection to flow-selected components:
-  - NextActing: (shared)
-  - Observe: [timeline_make_observation | episode_observation] ← flow-specific
-  - Resolve: currently single resolve component in this preset
-  - Recommendation: (shared, but multi-algorithm)
-  ↓
-Agent receives flow-specific observation and acts
-```
-
-**Characteristics:**
-- Different agents can receive different observation types
-- Fixed agents see episode summaries; active agents see timelines
-- Per-flow customization of component behavior via multi-fields
-- Different recommendation algorithms for different flows
-- More flexible, slight overhead
-
-**Configuration:**
-```yaml
-env:
-  enable_gm_multi_flow: true  # ← Enable multi-flow mode
-  gm:
-    preset: shared_flow  # ← Use MultiFlowGM
-    components:
-      observe:
-        # Multi-instance config: each nested dict is a component instance
-        timeline:
-          built_in: timeline_every_turn
-          params: {}
-        episode:
-          built_in: episode_only
-          params: {}
-       # Now agents can be routed to timeline OR episode based on flow
-```
-
----
-
-## Part 2: Agent Flows & Component Routing
-
-### Entity Action Flows
-
-Agents are assigned to flows, which determine their component routing:
-
-```yaml
-persona_pipeline:
-  classes:
-    ActiveAgent:
-      flow_tag: active
-    Sentinel:
-      flow_tag: fixed_pre
-```
-
-Multiple agents can share the same flow. All agents in a flow use the same components.
-
-### Flow-to-Component Mapping
-
-MultiFlowGM builds an explicit mapping from flows to component instances:
+Native agents expose:
 
 ```python
-flow_to_component_map = {
-    "active": {
-        "observe": "observe__timeline_make_observation",   # Active agents see timelines
-        "resolve": "__resolution__"                        # Shared resolve component key
-    },
-    "fixed_pre": {
-        "observe": "observe__episode_observation",        # Fixed agents see episodes
-        "resolve": "__resolution__"
-    }
-}
+initialize(context) -> None
+observe(observation: str) -> None
+act(action_spec: ActionSpec) -> ActionOutput
+get_state() -> dict
+set_state(state: Mapping[str, Any]) -> None
 ```
 
-**How it's built:**
-1. Detect multi-instance component config (nested dicts in YAML)
-2. Build each component instance
-3. Auto-key by class name (TimelineObservation → observe__timeline_make_observation)
-4. Extract unique flows from entity_flow_tags
-5. Map each flow to component instances
+`Agent._call_model(context, action_spec)` is the native model-routing helper. Agent
+implementations build their own context in `act()` and call `_call_model`.
 
-**How it's used:**
-1. Concordia calls MultiFlowSMAct.pre_act() for active entity
-2. MultiFlowSMAct looks up entity's flow
-3. MultiFlowSMAct gets component keys for that flow
-4. MultiFlowSMAct selects flow-routed observe/resolve outputs from context
-5. Next entity is processed, potentially with different components
+Use:
 
-**Routing config location (current):**
+- `silisocs.agents.native.NativeAgent` for persona/goal/context driven agents.
+- `silisocs.agents.fixed.FixedAgent` for scripted action plans.
+- `compat: concordia` only for legacy Concordia prefabs.
+
+## Game Masters
+
+The native game master public surface is intentionally flat:
+
+```python
+initialize(agents, context) -> None
+update(step, agents, context) -> None
+acting_agents(candidate_agents) -> list[str]
+action_prompt(agent_name: str) -> ActionSpec
+make_observation(agent_name: str) -> str
+resolve_action(agent_name: str, action: ActionOutput | str) -> str
+```
+
+`env.gm.components` contains typed native slots:
+
+- `initialize`: backend/user/social graph setup.
+- `next_acting`: actor selection.
+- `action_prompt`: typed prompt and output specification.
+- `observe`: per-agent observation.
+- `resolve`: typed backend action execution.
+- `update`: per-step backend updates such as recommendations.
+
+Components are plain Silisocs helper objects. They do not expose Concordia
+lifecycle hooks such as `pre_act`, `post_act`, `set_entity`, or `get_entity`.
+
+## Flow Scheduling and Component Routing
+
+There are two separate flow mechanisms. They can be used together, but they
+solve different problems:
+
+- **Engine flow scheduling** controls which groups of agents act in which sequence
+  during a step. Configure this under `sim.engine.step`.
+- **GM component routing** selects per-flow component instances inside a
+  `FlowRoutedGameMaster`. Configure this with `instances + flow_map` inside each
+  GM component slot.
+
+Example routed observation slot:
 
 ```yaml
 env:
   gm:
+    class_path: silisocs.environments.gm.game_master.FlowRoutedGameMaster
     components:
       observe:
         instances:
-          timeline:
-            built_in: timeline_every_turn
-          episode:
-            built_in: episode_only
+          active:
+            built_in: timeline
+            params: {}
+          summary:
+            built_in: episode_summary
+            params: {}
         flow_map:
-          active: observe__timeline_make_observation
-          fixed_pre: observe__episode_observation
-          default: observe__timeline_make_observation
+          default: active
+          fixed_pre: summary
 ```
 
----
+Custom components stay flow-unaware; the GM routes the call.
 
-## Part 3: Multi-Field Component Configuration
+Use simple mode for most scenarios. Use flow scheduling when groups of agents
+need a meaningful order inside each step. Use routed components when different
+groups need different observations, prompts, action resolution, or update
+behavior.
 
-### What are Multi-Fields?
+## Engine
 
-Multi-fields allow a **single component instance** to behave differently per entity, based on flow-to-field mapping.
+The base engine is flow-free. It owns:
 
-**Example:** RecommendationComponent with different algorithms per flow:
+- `initialize(...)`
+- `run_loop(...)`
+- `run_step(...)`
+- `run_agent_step(...)`
 
-```yaml
-gm:
-  components:
-    recommend:
-      flows:              # ← Flow-to-field mapping
-        active:
-          recsys_type: "twitter"      # Active agents get embedding-based recommendations
-        lurker:
-          recsys_type: "reddit"       # Lurkers get hot-score recommendations
-```
+Scheduling behavior lives in strategies:
 
-At runtime:
-1. RecommendationComponent extracts unique recsys_types: {"twitter", "reddit"}
-2. Initializes backend with all types: backend.init_recsys("twitter"); backend.init_recsys("reddit")
-3. Updates backend once per episode, backend generates recommendations for all types
-4. Each agent sees recommendations computed with their flow's algorithm
+- single-step strategies for simple runs;
+- flow strategies for ordered flow phases;
+- multi-GM strategies for routing agents to assigned game masters.
 
-### How Multi-Fields Work
-
-**Component-side (declare fields):**
-```python
-class TimelineObservation(FlowComponent):
-  FLOW_FIELDS = {"timeline_mode": str, "recsys_type": str}
-
-  def get_timeline(self, flow_tag):
-    # Get timeline mode for this flow
-    mode = self.get_flow_field("timeline_mode", flow_tag, default="follower_chronological")
-    # Use mode to fetch timeline
-    return backend.get_timeline_mode(mode, ...)
-```
-
-**GM-side (initialize values):**
-```python
-# In MultiFlowGM.build():
-observe_component = build_observe_component(...)
-initialize_component_flow_fields(observe_component, {
-  "active": {"timeline_mode": "pure_recsys"},
-  "lurker": {"timeline_mode": "follower_chronological"}
-})
-```
-
-**Data structure passed:**
-```python
-entity_field_map = {
-    "active": {       # flow name (not entity name!)
-    "timeline_mode": "pure_recsys",
-        "recsys_type": "twitter"
-    },
-    "lurker": {
-    "timeline_mode": "follower_chronological",
-        "recsys_type": "reddit"
-    }
-}
-```
-
-### Which Components Support Multi-Fields?
-
-- ✅ **Observe components** (TimelineObservation): timeline_mode, recsys_type
-- ✅ **RecommendationComponent**: recsys_type (extracts unique types, initializes all)
-- ⏳ **Resolve components**: Can add if needed (e.g., action_parser_style)
-- ⏳ **Next-acting components**: Can add if needed
-
----
-
-## Part 4: Recommendation System (Multi-Algorithm Support)
-
-### Architecture
-
-Recommendations now work with multiple algorithms simultaneously:
-
-**Step 1: Initialization (MultiFlowGM.build())**
-```python
-recommend_component = build_recommendation_component(...)
-initialize_component_flow_fields(recommend_component, {
-    "active": {"recsys_type": "twitter"},
-    "lurker": {"recsys_type": "reddit"}
-})
-```
-
-**Step 2: First pre_act() call (RecommendationComponent)**
-- Extracts unique recsys_types from multi-field mapping
-- Calls backend.init_recsys("twitter") and backend.init_recsys("reddit")
-- Each call adds to backend's _recsys_types dict (cumulative, not overwriting)
-
-**Step 3: Every N steps (RecommendationComponent)**
-- Calls backend.update_recommendations() once
-- Backend iterates all initialized types, generates recommendations for each
-- Stores recommendations with recsys_type column in database
-
-**Step 4: Agent sees recommendation**
-- When TimelineObservation fetches timeline, it includes recommendations
-- Recommendations are for agent's configured algorithm type
-
-### Backend Multi-Algorithm State
-
-**Old (single type):**
-```python
-self.recsys_type = "reddit"  # One type at a time
-```
-
-**New (multi-type):**
-```python
-self._recsys_types = {
-    "twitter": {"type": "twitter", "model": SentenceTransformer(...), "embeddings_cache": {}},
-    "reddit": {"type": "reddit", "model": None, "embeddings_cache": {}}
-}
-```
-
-All algorithms are initialized and updated in every call, maximizing recommendation freshness.
-
----
-
-## Part 5: Timeline Observations
-
-### Timeline Strategy Configuration
-
-Agents can receive timelines computed with different strategies:
-
-```yaml
-env:
-  timeline_mode: hybrid_recsys_follower
-  timeline_config:
-    recsys_ratio: 0.6  # (for hybrid_recsys_follower strategy)
-```
-
-**Available strategies:**
-- `follower_chronological`: Posts from followed users, chronologically ordered
-- `pure_recsys`: Only recommendations from configured algorithm
-- `hybrid_recsys_follower`: Mix of recommendations and follower posts
-- `curated_global`: Trending/curated posts (if implemented in backend)
-
-Mastodon backend supports only `follower_chronological`.
-
-### Per-Flow Timeline Configuration
-
-With multi-fields, different flows can see different timelines:
-
-```yaml
-gm:
-  components:
-    observe:
-      instances:
-        timeline:
-          built_in: timeline_every_turn
-      flows:
-        active:
-          timeline_mode: "pure_recsys"        # Recommendations only
-        lurker:
-          timeline_mode: "follower_chronological"  # Followers only
-```
-
----
-
-## Part 6: Component Architecture
-
-### Component Types
-
-**1. NextActing Component** (role: next_acting)
-- Determines random order or policy
-- Decides which agent acts next
-- Built-in: activity_markov, activity_probability, all_entities, fixed_order
-
-**2. Observe Component** (role: observe)
-- Generates observation text for active entity
-- Built-in: TimelineObservation, EpisodeObservation, ChunkStartMakeObservation
-- Multi-instance support: Can have both Timeline and Episode simultaneously
-- Multi-field support: timeline_mode, recsys_type
-
-**3. Resolve Component** (role: resolve)
-- Parses LLM output into backend-executable actions
-- Built-in: ParsedActionResolve, GenericActionResolve, ToolCallingResolve
-- Single instance per GM (could extend with multi-instance if needed)
-
-**4. Recommendation Component** (role: recommendation)
-- Updates backend recommendations on schedule
-- Responsible for initializing multiple algorithms
-- Multi-field support: Extracts unique recsys_type, initializes all, updates all
-
-**5. Backend Initializer** (role: initializer)
-- Calls backend.initialize() with seed posts, social network, etc.
-- Built-in: DefaultBackendInitializer
-- Usually single for a GM
-
----
-
-## Part 7: Configuration Examples
-
-### Simple Configuration (No Multi-Flow)
-
-```yaml
-env:
-  enable_gm_multi_flow: false
-  gm:
-    preset: base
-    components:
-      observe:
-        built_in: timeline_every_turn
-      resolve:
-        built_in: parsed_action
-
-  # All agents see same timeline, use same resolution
-  # Simplest, most efficient path
-```
-
-### Multi-Flow Configuration
-
-```yaml
-env:
-  enable_gm_multi_flow: true
-  gm:
-    preset: shared_flow
-    components:
-      observe:
-        instances:
-          timeline:
-            built_in: timeline_every_turn
-            params: {}
-          episode:
-            built_in: episode_only
-            params: {}
-        flows:
-          active:
-            timeline_mode: "pure_recsys"
-            recsys_type: "twitter"
-          fixed_pre:
-            timeline_mode: "follower_chronological"
-            recsys_type: "reddit"
-
-      resolve:
-        built_in: parsed_action
-        flows:
-          active:
-            action_parser: "strict"
-          fixed_pre:
-            action_parser: "lenient"
-
-      recommend:
-        flows:
-          active:
-            recsys_type: "twitter"
-          fixed_pre:
-            recsys_type: "reddit"
-
-persona_pipeline:
-  classes:
-    ActiveAgent:
-      flow_tag: active      # Uses active flow components
-    Sentinel:
-      flow_tag: fixed_pre   # Uses fixed_pre flow components
-```
-
-### Advanced: Multiple Component Instances
-
-```yaml
-gm:
-  components:
-    observe:
-      instances:
-        timeline_active:
-          built_in: timeline_every_turn
-          params:
-            history_size: 50
-        timeline_passive:
-          built_in: timeline_every_turn
-          params:
-            history_size: 10
-        episode:
-          built_in: episode_only
-      flows:
-        active:
-          timeline_mode: "pure_recsys"
-        lurker:
-          timeline_mode: "follower_chronological"
-        fixed_observer:
-          # fixed_observer gets episode observation instead
-          # (handled by explicit mapping in MultiFlowSMAct)
-```
-
----
-
-## Part 8: Data Flow
-
-### Pre_act Execution Sequence
-
-1. **Engine schedules entity**
-   - Calls flow_engine or base_engine step()
-
-2. **Engine calls GM.pre_act(action_spec)**
-   - action_spec.output_type = MAKE_OBSERVATION
-
-3. **SMAct (or MultiFlowSMAct) routes to components**
-   - Simple: Call all components in order
-   - Multi-flow: Determine entity's flow, call only flow-specific components
-
-4. **Components execute in order:**
-   - NextActing.pre_act(action_spec)
-   - Observe.pre_act(action_spec) ← Returns observation text
-   - Resolve.pre_act(action_spec) ← Prepared for next action parsing
-   - Recommend.pre_act(action_spec) ← Updates backend
-
-5. **Observation returned to agent**
-   - Agent uses observation in LLM context
-
----
-
-## Part 9: Future Extensions
-
-### Possible Enhancements
-
-1. **Per-flow next-acting policies**: Different flows might use different activity dynamics
-2. **Per-flow resolve policies**: Different parsing strategies for different agent types
-3. **Explicit component routing in config**: Instead of auto-detection, allow explicit flow → component mapping
-4. **Recommendation federation**: Chain multiple recommendation components or systems
-5. **Component inheritance**: Templates for component configs shared across flows
-
----
-
-## Summary
-
-The multi-flow architecture provides:
-
-| Feature | Simple Mode | Multi-Flow Mode |
-|---------|-------------|-----------------|
-| Components per role | 1 | 1+ (with routing) |
-| Per-flow customization | ❌ | ✅ (via multi-fields) |
-| Multi-algorithm recommendations | ❌ | ✅ |
-| Different observation types | ❌ | ✅ |
-| Configuration complexity | Low | Medium |
-| Execution overhead | Minimal | Low |
-| Canonical flow-field API | ✅ | ✅ |
-
-Choose **simple mode** for most scenarios. Use **multi-flow** when agents need substantially different behaviors (e.g., active vs passive, fixed vs variable) or when running multi-algorithm recommendation experiments.
+Turn policy is configured under `sim.engine.turn_policy`; probe timing under
+`evals.probes.schedule`.

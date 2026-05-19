@@ -86,7 +86,7 @@ def cross_seed_case_ci(
             data = row.get("data", {})
             if not isinstance(data, dict):
                 continue
-            response = data.get("query_return")
+            response = data.get("probe_return")
 
             if label == "vote_choice":
                 choice = str(response or "").strip()

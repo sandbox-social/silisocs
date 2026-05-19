@@ -1,5 +1,8 @@
-write_html_log: false
 probes:
+  schedule:
+    built_in: disabled
+    class_path: null
+    params: {}
   deployment:
     enabled: false
-  queries: {}
+  probes: {}

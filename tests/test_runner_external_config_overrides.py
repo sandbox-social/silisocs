@@ -3,7 +3,7 @@
 import os
 import sys
 
-from silisocs.runtime.runner import _inject_external_config_path
+from silisocs.runtime.execution.session import _inject_external_config_path
 
 
 def test_config_path_sets_env_var_and_strips_flag(tmp_path, monkeypatch) -> None:

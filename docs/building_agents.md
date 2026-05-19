@@ -1,6 +1,6 @@
 # Building Agents
 
-For API-level contracts for runtime agents and prefab/build hooks, see
+For API-level contracts for runtime agents and builder hooks, see
 [Simulation Extensibility API](simulation_extensibility_api.md).
 
 There are two ways to build agents for your simulation:
@@ -26,7 +26,6 @@ to agent parameters — no Python code needed.
 ```yaml
 # scenarios/my_scenario/conf/agents/default.yaml
 persona_pipeline:
-  processing_mode: raw
   defaults:
     params:
       scenario_context: "A community discussion platform."
@@ -35,7 +34,7 @@ persona_pipeline:
   classes:
     user:
       count: 2
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       data:
         source: inline
         records:
@@ -119,21 +118,18 @@ Your builder class must be named `<ScenarioName>AgentBuilder`:
 ```python
 # scenarios/my_scenario/builders.py
 from silisocs.agents.builders import BaseAgentBuilder
-from silisocs.runtime.dataclasses import AgentConfig
+from silisocs.runtime.construction.specs import AgentConfig
 
 class MyScenarioAgentBuilder(BaseAgentBuilder):
     def build_role_agents(self, role: str, count: int) -> list[AgentConfig]:
         agents = []
         for i in range(count):
             agents.append(AgentConfig(
-                prefab="entity__Entity",
+                class_path="silisocs.agents.native.NativeAgent",
                 params={
                     "name": f"Agent_{role}_{i}",
                     "context": f"A {role} in the simulation.",
-                    "sim_role": {
-                        "name": role,
-                        "module_path": "silisocs.agents.entity",
-                    },
+                    "sim_role_name": role,
                     "style": "",
                     "seed_post": "",
                     "bio": "",
@@ -173,6 +169,50 @@ can subclass `BaseAgentBuilder`, add custom logic in
 
 ---
 
+## Custom Agent Runtime Shape
+
+All runtime agents are constructed with a `LanguageModel`. Custom agents should
+keep `act()` responsible for deciding what context the agent needs, then use the
+protected `_call_model(context, action_spec)` helper to route the requested
+output type to the correct model method.
+
+```python
+from silisocs.agents.base_agent import Agent
+from silisocs.runtime.language_models import LanguageModel
+from silisocs.runtime.types import ActionOutput, ActionSpec
+
+
+class JournalAgent(Agent):
+    def __init__(self, *, name: str, model: LanguageModel, persona: str) -> None:
+        super().__init__(model)
+        self._name = name
+        self._persona = persona
+        self._observations: list[str] = []
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def observe(self, observation: str) -> None:
+        if observation.strip():
+            self._observations.append(observation.strip())
+
+    def act(self, action_spec: ActionSpec) -> ActionOutput:
+        context = "\n\n".join(
+            [
+                f"Persona: {self._persona}",
+                "Recent observations:",
+                "\n".join(self._observations[-5:]),
+            ]
+        )
+        return self._call_model(context, action_spec)
+```
+
+`_call_model()` handles text, choices, floats, tool calls, structured outputs,
+and skip actions. It fails loudly when a spec is missing required typed data,
+such as `extra_args["tools"]` for tool calls or `extra_args["schema"]` for
+structured outputs.
+
 ## Per-Class LLM Models
 
 Assign different LLM models per agent class:
@@ -181,7 +221,7 @@ Assign different LLM models per agent class:
 classes:
   voter:
     count: 100
-    model: qwen3.5-4b       # Cheaper model for background agents
+    model: gpt-4o-mini      # Cheaper model for background agents
   candidate:
     count: 2
     model: gpt-4o            # Better model for key agents

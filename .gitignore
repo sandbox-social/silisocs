@@ -236,3 +236,8 @@ experiments/studies/**/*.db-wal
 SESSION_STATE.md
 
 refactor_notes.md
+
+#LLM-Coding files
+.claude
+.codex
+.agents

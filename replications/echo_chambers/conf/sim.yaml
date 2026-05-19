@@ -1,30 +1,46 @@
 llm:
+  provider: openai
   # EchoChamberSim maps CLI `gpt-4o-mini` to this dated snapshot.
   name: gpt-4o-mini-2024-07-18
   temperature: 1.0
   disabled: false
+  extra_kwargs: {}
 
 max_concurrent_actions: 12
-memory_backend: list
 action_mode: custom
 tool_calling:
   mode: none
 prompt_additions:
   action_count_guidance: false
 
+initialization:
+  agents:
+    built_in: default
+    class_path: null
+    params: {}
+  game_masters:
+    built_in: default
+    class_path: null
+    params: {}
+  simulation:
+    built_in: none
+    class_path: null
+    params: {}
+
 checkpoint:
   every_n_steps: null
   explicit_steps: [30]
 
 engine:
-  preset: base
-  action_loop:
+  step:
+    built_in: base
+    class_path: null
+    params:
+      flow_order: [fixed_pre, default]
+      agent_to_flow: {}
+  turn_policy:
     built_in: null
     class_path: replications.echo_chambers.components.action_policy.EchoChamberSingleActionPolicy
-    params: {}
-  probe_schedule:
-    built_in: disabled
-    class_path: null
     params: {}
 
 roleplaying_instructions: |

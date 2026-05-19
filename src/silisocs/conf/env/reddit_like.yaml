@@ -18,7 +18,6 @@ timeline_config:
   recsys_ratio: 0.6
   follower_ratio: 0.4
 observation_history: 100
-seed_posts: {}
 
 social_network:
   activity_transition_rates:
@@ -41,14 +40,18 @@ gamemaster:
 gm:
   preset: base
   components:
+    initialize:
+      built_in: social_media
+      class_path: null
+      params: {}
     next_acting:
       built_in: activity_probability
       class_path: null
       params:
         active_probability: null
         min_active_agents: 1
-    recommend:
-      built_in: recommendation_component
+    update:
+      built_in: social_recommendation
       class_path: null
       params:
         default_recsys_type: null
@@ -69,17 +72,11 @@ gm:
       built_in: tool_calling
       class_path: null
       params: {}
-    initializer:
-      built_in: backend_default
-      class_path: null
-      params: {}
 
 gm_orchestration:
   gms: []
   flow_bindings:
-    flow_to_gm: {}
     flow_to_gms: {}
-    gm_to_flows: {}
 
 # Platform instructions
 usage_instructions: |

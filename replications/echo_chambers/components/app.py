@@ -489,6 +489,41 @@ class EchoChamberApp(TwitterLikeApp):
             },
         )
 
+    def setup_social_state(
+        self,
+        *,
+        agent_names: list[str],
+        sim_roles: dict[str, str] | None = None,
+        social_network: dict[str, Any] | None = None,
+        agent_bios: dict[str, str] | None = None,
+    ) -> None:
+        super().setup_social_state(
+            agent_names=agent_names,
+            sim_roles=sim_roles,
+            social_network=social_network,
+            agent_bios=agent_bios,
+        )
+        self.echo_state = self._build_world()
+        expected = set(self.echo_state.agent_names)
+        actual = {str(name) for name in agent_names}
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        if missing or extra:
+            raise ValueError(
+                "EchoChamber agent mismatch. "
+                f"missing_from_runtime={missing[:5]} extra_runtime={extra[:5]}"
+            )
+        self._log_action_event(
+            "system",
+            "echo_chamber_state_init",
+            {
+                "num_agents": len(self.echo_state.agent_names),
+                "num_edges": len(self.echo_state.graph_edges),
+                "recommendation": self.echo_state.recommendation,
+                "state_owner": self.__class__.__name__,
+            },
+        )
+
     def echo_observation_for(self, name: str, episode: int) -> dict[str, Any]:
         if self.echo_state is None:
             raise RuntimeError("EchoChamberApp used before initialize(); echo_state missing.")

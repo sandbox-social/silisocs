@@ -191,11 +191,11 @@ def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
     if not isinstance(probes, dict):
         return {}
 
-    raw_queries = probes.get("queries", {})
-    if isinstance(raw_queries, dict):
-        query_items = list(raw_queries.values())
-    elif isinstance(raw_queries, list):
-        query_items = [item for item in raw_queries if isinstance(item, dict)]
+    raw_probes = probes.get("probes", {})
+    if isinstance(raw_probes, dict):
+        query_items = list(raw_probes.values())
+    elif isinstance(raw_probes, list):
+        query_items = [item for item in raw_probes if isinstance(item, dict)]
     else:
         query_items = []
 
@@ -203,20 +203,20 @@ def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
     for item in query_items:
         if not isinstance(item, dict):
             continue
-        query_type = str(item.get("query_type") or "Unknown")
-        query_data = item.get("query_data", {})
-        query_data = query_data if isinstance(query_data, dict) else {}
+        probe_type = str(item.get("probe_type") or "Unknown")
+        probe_data = item.get("probe_data", {})
+        probe_data = probe_data if isinstance(probe_data, dict) else {}
 
         names: list[str] = []
         probe_name = item.get("probe_name")
-        query_name = query_data.get("name")
+        query_name = probe_data.get("name")
         if probe_name:
             names.append(str(probe_name))
         if query_name:
             names.append(str(query_name))
 
         for name in names:
-            out[name] = query_type
+            out[name] = probe_type
 
     return out
 
@@ -261,7 +261,7 @@ def _has_probe_response(row: dict[str, Any]) -> bool:
     """
     data = row.get("data", {})
     data = data if isinstance(data, dict) else {}
-    response = data.get("query_return")
+    response = data.get("probe_return")
     return response is not None and str(response).strip() != ""
 
 
@@ -298,7 +298,7 @@ def _apply_carry_forward_probe_rows(probe_rows: list[dict[str, Any]]) -> list[di
                 if _has_probe_response(existing):
                     data = existing.get("data", {})
                     data = data if isinstance(data, dict) else {}
-                    last_response = data.get("query_return")
+                    last_response = data.get("probe_return")
                 continue
 
             if last_response is None:
@@ -309,8 +309,8 @@ def _apply_carry_forward_probe_rows(probe_rows: list[dict[str, Any]]) -> list[di
                     "source_user": source_user,
                     "label": label,
                     "data": {
-                        "query_return": last_response,
-                        "query_mode": "carry_forward_imputed",
+                        "probe_return": last_response,
+                        "probe_mode": "carry_forward_imputed",
                     },
                     "episode": episode,
                     "event_type": "probe",
@@ -358,7 +358,7 @@ def _extract_probe_records(
 
         data = row.get("data", {})
         data = data if isinstance(data, dict) else {}
-        response = data.get("query_return")
+        response = data.get("probe_return")
         if response is None or str(response).strip() == "":
             continue
 
@@ -892,7 +892,7 @@ def _build_probe_metrics_with_context(  # noqa: C901, PLR0912, PLR0915
 
         data = row.get("data", {})
         data = data if isinstance(data, dict) else {}
-        response = data.get("query_return")
+        response = data.get("probe_return")
         has_response = response is not None and str(response).strip() != ""
 
         mapped_type = type_map.get(label)
@@ -912,8 +912,8 @@ def _build_probe_metrics_with_context(  # noqa: C901, PLR0912, PLR0915
         per_label_counts[label]["total_events"] += 1
         per_label_counts[label]["responses_present" if has_response else "responses_missing"] += 1
 
-        query_mode = str(data.get("query_mode", "")).strip() or "unknown"
-        per_label_modes[label][query_mode] += 1
+        probe_mode = str(data.get("probe_mode", "")).strip() or "unknown"
+        per_label_modes[label][probe_mode] += 1
 
         per_episode_counts[episode] += 1
         per_agent_counts[agent] += 1
@@ -958,7 +958,7 @@ def _build_probe_metrics_with_context(  # noqa: C901, PLR0912, PLR0915
             "total_events": int(counts.get("total_events", 0)),
             "responses_present": int(counts.get("responses_present", 0)),
             "responses_missing": int(counts.get("responses_missing", 0)),
-            "query_mode_counts": dict(per_label_modes[label]),
+            "probe_mode_counts": dict(per_label_modes[label]),
         }
 
         if numeric_values.get(label):

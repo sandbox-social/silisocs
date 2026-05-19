@@ -1,23 +1,29 @@
 from __future__ import annotations
 
-import json
+from pathlib import Path
+from typing import Any, cast
 
 import pytest
+from omegaconf import OmegaConf
 
+from silisocs.agents.base_agent import Agent
+from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType, ToolCall
+from silisocs.simulation_engines.base_engines import BaseRuntimeEngine
 from silisocs.simulation_engines.policies.action_chunk import (
     FixedCountActionChunkPolicy,
     OpenEndedActionChunkPolicy,
     SingleActionChunkPolicy,
 )
 from silisocs.simulation_engines.policies.factory import (
-    build_action_loop_policy,
     build_probe_schedule_policy,
+    build_turn_policy,
 )
 from silisocs.simulation_engines.policies.probe_schedule import (
     DisabledProbeSchedulePolicy,
     FixedIntervalProbeSchedulePolicy,
     StepProbeSchedulePolicy,
 )
+from silisocs.simulation_engines.runtime_base import AgentStepResult
 
 
 class _FakeEngine:
@@ -25,26 +31,77 @@ class _FakeEngine:
         self.calls: list[dict[str, object]] = []
         self._responses = list(responses or [])
 
-    def _run_single_entity_action(self, **kwargs):
+    def run_agent_step(self, **kwargs):
         self.calls.append(kwargs)
         if self._responses:
-            return self._responses.pop(0)
-        return "rendered"
+            response = self._responses.pop(0)
+            if isinstance(response, AgentStepResult):
+                return response
+            if isinstance(response, dict):
+                raw = response.get("raw", ActionOutput.from_text(str(response.get("rendered", ""))))
+                raw_output = (
+                    raw if isinstance(raw, ActionOutput) else ActionOutput.from_text(str(raw))
+                )
+                return AgentStepResult(
+                    agent_name="agent",
+                    rendered_action=str(response.get("rendered", "")),
+                    raw_action=raw_output,
+                    resolved_result=str(response.get("resolved", "")),
+                )
+            return AgentStepResult(
+                agent_name="agent",
+                rendered_action=str(response),
+                raw_action=ActionOutput.from_text(str(response)),
+                resolved_result="",
+            )
+        return AgentStepResult(
+            agent_name="agent",
+            rendered_action="rendered",
+            raw_action=ActionOutput.from_text("rendered"),
+            resolved_result="",
+        )
 
 
-def test_build_action_loop_policy_defaults_to_single_action() -> None:
-    policy = build_action_loop_policy(None)
+class _AgentForEngine:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def observe(self, observation: str) -> None:
+        del observation
+
+    def act(self, action_spec: ActionSpec) -> ActionOutput:
+        del action_spec
+        return ActionOutput.from_text("")
+
+
+def test_build_turn_policy_defaults_to_single_action() -> None:
+    policy = build_turn_policy(None)
     assert isinstance(policy, SingleActionChunkPolicy)
 
 
-def test_build_action_loop_policy_supports_fixed_count_params() -> None:
-    policy = build_action_loop_policy({"built_in": "fixed_count", "params": {"count": 4}})
+def test_packaged_base_turn_policy_policy_builds() -> None:
+    sim_cfg_path = Path("src/silisocs/conf/sim/base.yaml")
+    evals_cfg_path = Path("src/silisocs/conf/evals/base.yaml")
+    sim_cfg = OmegaConf.load(sim_cfg_path)
+    evals_cfg = OmegaConf.load(evals_cfg_path)
+    turn_policy = cast(dict[str, Any], OmegaConf.to_container(sim_cfg.engine.turn_policy))
+    probe_schedule = cast(dict[str, Any], OmegaConf.to_container(evals_cfg.probes.schedule))
+
+    action_policy = build_turn_policy(turn_policy)
+    probe_policy = build_probe_schedule_policy(probe_schedule)
+
+    assert isinstance(action_policy, SingleActionChunkPolicy)
+    assert isinstance(probe_policy, StepProbeSchedulePolicy)
+
+
+def test_build_turn_policy_supports_fixed_count_params() -> None:
+    policy = build_turn_policy({"built_in": "fixed_count", "params": {"count": 4}})
     assert isinstance(policy, FixedCountActionChunkPolicy)
     assert policy.count == 4
 
 
-def test_build_action_loop_policy_supports_class_path() -> None:
-    policy = build_action_loop_policy(
+def test_build_turn_policy_supports_class_path() -> None:
+    policy = build_turn_policy(
         {
             "class_path": (
                 "silisocs.simulation_engines.policies.action_chunk.FixedCountActionChunkPolicy"
@@ -56,9 +113,9 @@ def test_build_action_loop_policy_supports_class_path() -> None:
     assert policy.count == 3
 
 
-def test_build_action_loop_policy_rejects_unknown_params() -> None:
+def test_build_turn_policy_rejects_unknown_params() -> None:
     with pytest.raises(ValueError, match="Unsupported config param"):
-        build_action_loop_policy(
+        build_turn_policy(
             {
                 "class_path": (
                     "silisocs.simulation_engines.policies.action_chunk.FixedCountActionChunkPolicy"
@@ -90,13 +147,193 @@ def test_build_probe_schedule_policy_supports_disabled() -> None:
     assert policy.should_run_probe_phase(step=99, orchestrator=None) is False
 
 
+def test_engine_single_action_uses_direct_gm_methods_without_name_prefix() -> None:
+    class _Agent:
+        name = "Alice"
+
+        def __init__(self) -> None:
+            self.observations: list[str] = []
+
+        def observe(self, observation: str) -> None:
+            self.observations.append(observation)
+
+        def act(self, action_spec: ActionSpec) -> ActionOutput:
+            assert action_spec.prompt == "Do it"
+            return ActionOutput.from_text('raw {"id": 1}')
+
+    class _GameMaster:
+        name = "gm"
+
+        def __init__(self) -> None:
+            self.resolved_with: tuple[str, ActionOutput] | None = None
+
+        def make_observation(self, agent_name: str) -> str:
+            return f"obs:{agent_name}"
+
+        def resolve_action(self, agent_name: str, action: ActionOutput) -> str:
+            self.resolved_with = (agent_name, action)
+            return f"resolved:{agent_name}"
+
+    agent = _Agent()
+    gm = _GameMaster()
+    engine = BaseRuntimeEngine()
+
+    result = engine.run_agent_step(
+        game_master=cast(Agent, gm),
+        agent=cast(Agent, agent),
+        action_spec=ActionSpec("Do it", OutputType.TEXT),
+        skip_actions=False,
+        verbose=False,
+    )
+
+    assert result.rendered_action == 'raw {"id": 1}'
+    assert gm.resolved_with is not None
+    assert gm.resolved_with[0] == "Alice"
+    assert gm.resolved_with[1].text == 'raw {"id": 1}'
+    assert agent.observations == ["obs:Alice", "resolved:Alice"]
+
+
+def test_action_policies_count_typed_tool_calls_toward_budget() -> None:
+    engine = _FakeEngine(
+        [
+            {
+                "raw": ActionOutput.from_tool_calls(
+                    [
+                        ToolCall("post", {"content": "a"}),
+                        ToolCall("like", {"post_id": "1"}),
+                    ]
+                ),
+                "rendered": "agent: multi-1",
+                "resolved": "posted\nliked",
+            },
+            "SHOULD_NOT_RUN",
+        ]
+    )
+
+    policy = FixedCountActionChunkPolicy(count=2)
+    result = policy.run(
+        engine=engine,
+        game_master=object(),
+        agent=object(),
+        action_spec=object(),
+        skip_actions=False,
+        verbose=False,
+    )
+
+    assert result == "agent: multi-1"
+    assert len(engine.calls) == 1
+
+
+def test_engine_runs_three_initialization_phases_once_before_loop(tmp_path) -> None:
+    cfg = OmegaConf.create(
+        {
+            "output_rootname": str(tmp_path),
+            "sim": {
+                "engine": {
+                    "turn_policy": {"built_in": "single_action"},
+                    "step": {"built_in": "base", "params": {}},
+                }
+            },
+            "evals": {"probes": {}},
+        }
+    )
+
+    events: list[str] = []
+
+    class _AgentInitializer:
+        def initialize(self, **kwargs: Any) -> None:
+            events.append("agents")
+            assert [agent.name for agent in kwargs["agents"]] == ["Alice"]
+
+    class _GameMasterInitializer:
+        def initialize(self, **kwargs: Any) -> None:
+            events.append("game_masters")
+            assert [agent.name for agent in kwargs["agents"]] == ["Alice"]
+            assert [gm.name for gm in kwargs["game_masters"]] == ["gm"]
+
+    class _SimulationInitializer:
+        def initialize(self, **kwargs: Any) -> None:
+            events.append("simulation")
+            assert [agent.name for agent in kwargs["agents"]] == ["Alice"]
+            assert [gm.name for gm in kwargs["game_masters"]] == ["gm"]
+
+    engine = BaseRuntimeEngine(config=cfg)
+    game_masters = [cast(Agent, type("_GM", (), {"name": "gm"})())]
+    agents = [cast(Agent, _AgentForEngine("Alice"))]
+    engine.initialize(
+        agents=agents,
+        game_masters=game_masters,
+        agent_initializer=_AgentInitializer(),
+        game_master_initializer=_GameMasterInitializer(),
+        simulation_initializer=_SimulationInitializer(),
+        initialization_context=object(),
+        initializer_model=object(),
+    )
+    engine.run_loop(
+        game_masters=game_masters,
+        agents=agents,
+        max_steps=0,
+        start_step=0,
+        verbose=False,
+        checkpoint_callback=None,
+    )
+
+    assert events == ["agents", "game_masters", "simulation"]
+
+
+def test_engine_calls_gm_update_before_actor_selection() -> None:
+    events: list[str] = []
+
+    class _Agent:
+        name = "Alice"
+
+        def observe(self, observation: str) -> None:
+            events.append(f"observe:{observation}")
+
+        def act(self, action_spec: ActionSpec) -> ActionOutput:
+            events.append(f"act:{action_spec.prompt}")
+            return ActionOutput.from_text("hello")
+
+    class _GameMaster:
+        name = "gm"
+
+        def update(self, *, step: int, agents: list[Any], context: Any | None = None) -> None:
+            del agents, context
+            events.append(f"update:{step}")
+
+        def acting_agents(self, candidate_agents: list[Any]) -> list[str]:
+            events.append("acting_agents")
+            return [candidate_agents[0].name]
+
+        def action_prompt(self, agent_name: str) -> ActionSpec:
+            events.append(f"action_prompt:{agent_name}")
+            return ActionSpec("Do it", OutputType.TEXT)
+
+        def make_observation(self, agent_name: str) -> str:
+            return f"obs:{agent_name}"
+
+        def resolve_action(self, agent_name: str, action: ActionOutput) -> str:
+            return f"resolved:{agent_name}:{action.text}"
+
+    engine = BaseRuntimeEngine()
+    result = engine.run_step(
+        step_index=7,
+        game_masters=[_GameMaster()],
+        agents=[_Agent()],
+        verbose=False,
+    )
+
+    assert result.active_agent_names == ("Alice",)
+    assert events[:3] == ["update:7", "acting_agents", "action_prompt:Alice"]
+
+
 def test_fixed_count_policy_runs_exact_number_of_actions() -> None:
     engine = _FakeEngine(["a1", "a2", "a3"])
     policy = FixedCountActionChunkPolicy(count=3)
     result = policy.run(
         engine=engine,
         game_master=object(),
-        entity=object(),
+        agent=object(),
         action_spec=object(),
         skip_actions=False,
         verbose=False,
@@ -127,7 +364,7 @@ def test_open_ended_policy_stops_on_finished_action() -> None:
     result = policy.run(
         engine=engine,
         game_master=object(),
-        entity=object(),
+        agent=object(),
         action_spec=object(),
         skip_actions=False,
         verbose=False,
@@ -167,7 +404,7 @@ def test_open_ended_policy_does_not_stop_on_finish_word_in_content() -> None:
     result = policy.run(
         engine=engine,
         game_master=object(),
-        entity=object(),
+        agent=object(),
         action_spec=object(),
         skip_actions=False,
         verbose=False,
@@ -177,39 +414,21 @@ def test_open_ended_policy_does_not_stop_on_finish_word_in_content() -> None:
     assert len(engine.calls) == 3
 
 
-def test_open_ended_policy_accepts_legacy_done_token() -> None:
-    policy = build_action_loop_policy(
-        {
-            "built_in": "open_ended",
-            "params": {"max_actions": 4, "done_token": "FINISHED"},
-        }
-    )
-
-    assert isinstance(policy, OpenEndedActionChunkPolicy)
-    assert policy.finished_action_signal == "FINISHED"
-
-
 def test_open_ended_policy_counts_multi_tool_calls_toward_cap() -> None:
     engine = _FakeEngine(
         [
             {
-                "raw": json.dumps(
-                    {
-                        "tool_calls": [
-                            {"name": "post", "arguments": {"content": "a"}},
-                            {"name": "like", "arguments": {"post_id": "1"}},
-                        ]
-                    }
+                "raw": ActionOutput.from_tool_calls(
+                    [
+                        ToolCall("post", {"content": "a"}),
+                        ToolCall("like", {"post_id": "1"}),
+                    ]
                 ),
                 "rendered": "agent: multi-1",
                 "resolved": "posted\nliked",
             },
             {
-                "raw": json.dumps(
-                    {
-                        "tool_call": {"name": "post", "arguments": {"content": "b"}},
-                    }
-                ),
+                "raw": ActionOutput.from_tool_calls([ToolCall("post", {"content": "b"})]),
                 "rendered": "agent: single-2",
                 "resolved": "posted",
             },
@@ -221,7 +440,7 @@ def test_open_ended_policy_counts_multi_tool_calls_toward_cap() -> None:
     result = policy.run(
         engine=engine,
         game_master=object(),
-        entity=object(),
+        agent=object(),
         action_spec=object(),
         skip_actions=False,
         verbose=False,
@@ -235,13 +454,11 @@ def test_fixed_count_policy_counts_multi_tool_calls_toward_budget() -> None:
     engine = _FakeEngine(
         [
             {
-                "raw": json.dumps(
-                    {
-                        "tool_calls": [
-                            {"name": "post", "arguments": {"content": "a"}},
-                            {"name": "like", "arguments": {"post_id": "1"}},
-                        ]
-                    }
+                "raw": ActionOutput.from_tool_calls(
+                    [
+                        ToolCall("post", {"content": "a"}),
+                        ToolCall("like", {"post_id": "1"}),
+                    ]
                 ),
                 "rendered": "agent: multi-1",
                 "resolved": "posted\nliked",
@@ -254,7 +471,7 @@ def test_fixed_count_policy_counts_multi_tool_calls_toward_budget() -> None:
     result = policy.run(
         engine=engine,
         game_master=object(),
-        entity=object(),
+        agent=object(),
         action_spec=object(),
         skip_actions=False,
         verbose=False,

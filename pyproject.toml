@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "silisocs"
 version = "0.1.0"
-description = "A Concordia-based social simulation framework for configurable social-media experiments"
+description = "A native social simulation framework for configurable social-media experiments"
 readme = "README.md"
 requires-python = ">=3.11,<4.0"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "Austin Welch", email = "austinmw89@gmail.com"}]
-keywords = ["agent-based simulation", "social simulation", "concordia", "llm", "social media"]
+keywords = ["agent-based simulation", "social simulation", "llm", "social media"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
@@ -25,7 +25,6 @@ classifiers = [
 
 dependencies = [
   "coloredlogs>=15.0.1",
-  "gdm-concordia>=2.1.0,<2.2.0",
   "openai>=1.35.9,<2.0.0",
   "boto3>=1.34.139,<2.0.0",
   "tqdm>=4.66.4,<5.0.0",
@@ -45,6 +44,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+concordia = [
+  "gdm-concordia>=2.1.0,<2.2.0",
+]
 analysis = [
   "dash>=2.18.2,<3.0.0",
   "dash-cytoscape>=1.0.2,<2.0.0",
@@ -89,7 +91,7 @@ viz = [
   "uvicorn[standard]>=0.29.0",
 ]
 all = [
-  "silisocs[analysis,dashboard,docs,hf,mastodon,recsys,viz]",
+  "silisocs[analysis,concordia,dashboard,docs,hf,mastodon,recsys,viz]",
 ]
 
 [project.urls]

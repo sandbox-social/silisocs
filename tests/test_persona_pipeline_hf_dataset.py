@@ -40,7 +40,6 @@ def test_hf_dataset_builds_expected_agent_params(monkeypatch) -> None:
         {
             "scenario_name": "election",
             "persona_pipeline": {
-                "processing_mode": "raw",
                 "defaults": {
                     "params": {
                         "election_info": "Storhampton election context",
@@ -51,7 +50,7 @@ def test_hf_dataset_builds_expected_agent_params(monkeypatch) -> None:
                 "classes": {
                     "voter": {
                         "count": 1,
-                        "prefab_module": "scenarios.election.entity_lib.simple",
+                        "class_path": "silisocs.agents.native.NativeAgent",
                         "data": {
                             "source": "hf_dataset",
                             "dataset": "Tianyi-Lab/Personas",
@@ -76,7 +75,7 @@ def test_hf_dataset_builds_expected_agent_params(monkeypatch) -> None:
 
     assert len(agents) == 1
     built = agents[0]
-    assert built.prefab == "simple__Entity"
+    assert built.class_path == "silisocs.agents.native.NativeAgent"
     assert built.params["name"] == "Ava Stone"
     assert built.params["context"] == "Follows local politics closely.\nValues practical policies."
     assert built.params["style"] == "concise\nfriendly"
@@ -87,7 +86,7 @@ def test_hf_dataset_builds_expected_agent_params(monkeypatch) -> None:
     ]
     assert built.params["sim_role"] == {
         "name": "voter",
-        "module_path": "scenarios.election.entity_lib.simple",
+        "module_path": "silisocs.agents.native.NativeAgent",
     }
     assert built.params["election_info"] == "Storhampton election context"
     assert built.params["shared_memories"] == [
@@ -116,11 +115,10 @@ def test_hf_dataset_preserves_explicit_specific_memories(monkeypatch) -> None:
         {
             "scenario_name": "election",
             "persona_pipeline": {
-                "processing_mode": "raw",
                 "classes": {
                     "voter": {
                         "count": 1,
-                        "prefab_module": "scenarios.election.entity_lib.simple",
+                        "class_path": "silisocs.agents.native.NativeAgent",
                         "data": {
                             "source": "hf_dataset",
                             "dataset": "proj-persona/PersonaHub",
@@ -153,11 +151,10 @@ def test_field_map_template_combines_multiple_fields() -> None:
         {
             "scenario_name": "election",
             "persona_pipeline": {
-                "processing_mode": "raw",
                 "classes": {
                     "voter": {
                         "count": 1,
-                        "prefab_module": "scenarios.election.entity_lib.simple",
+                        "class_path": "silisocs.agents.native.NativeAgent",
                         "data": {
                             "source": "inline",
                             "records": [
@@ -205,11 +202,10 @@ def test_hf_dataset_derives_name_from_context(monkeypatch) -> None:
         {
             "scenario_name": "election",
             "persona_pipeline": {
-                "processing_mode": "raw",
                 "classes": {
                     "voter": {
                         "count": 1,
-                        "prefab_module": "scenarios.election.entity_lib.simple",
+                        "class_path": "silisocs.agents.native.NativeAgent",
                         "data": {
                             "source": "hf_dataset",
                             "dataset": "nvidia/Nemotron-Personas-USA",
@@ -263,11 +259,10 @@ def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
         {
             "scenario_name": "election",
             "persona_pipeline": {
-                "processing_mode": "raw",
                 "classes": {
                     "nemotron_voter": {
                         "count": 1,
-                        "prefab_module": "scenarios.election.entity_lib.simple",
+                        "class_path": "silisocs.agents.native.NativeAgent",
                         "data": {
                             "source": "hf_dataset",
                             "dataset": "nvidia/Nemotron-Personas-USA",
@@ -279,7 +274,7 @@ def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
                     },
                     "scope_voter": {
                         "count": 1,
-                        "prefab_module": "scenarios.election.entity_lib.simple",
+                        "class_path": "silisocs.agents.native.NativeAgent",
                         "data": {
                             "source": "hf_dataset",
                             "dataset": "Salesforce/SCOPE-Persona",
@@ -348,11 +343,10 @@ def test_hf_dataset_materializes_only_requested_count(monkeypatch) -> None:
         {
             "scenario_name": "election",
             "persona_pipeline": {
-                "processing_mode": "raw",
                 "classes": {
                     "voter": {
                         "count": 3,
-                        "prefab_module": "scenarios.election.entity_lib.simple",
+                        "class_path": "silisocs.agents.native.NativeAgent",
                         "data": {
                             "source": "hf_dataset",
                             "dataset": "nvidia/Nemotron-Personas-USA",
@@ -387,11 +381,10 @@ def test_jsonl_source_builds_agents_with_name_and_context(tmp_path: Path) -> Non
         {
             "scenario_name": "election",
             "persona_pipeline": {
-                "processing_mode": "raw",
                 "classes": {
                     "voter": {
                         "count": 2,
-                        "prefab_module": "scenarios.election.entity_lib.simple",
+                        "class_path": "silisocs.agents.native.NativeAgent",
                         "data": {
                             "source": "jsonl",
                             "path": str(jsonl_path),
@@ -429,14 +422,13 @@ def test_shared_memories_inline_multiline_text_is_not_treated_as_path() -> None:
         {
             "scenario_name": "election",
             "persona_pipeline": {
-                "processing_mode": "raw",
                 "defaults": {
                     "shared_memories": [shared_memory_block],
                 },
                 "classes": {
                     "voter": {
                         "count": 1,
-                        "prefab_module": "scenarios.election.entity_lib.simple",
+                        "class_path": "silisocs.agents.native.NativeAgent",
                         "data": {
                             "source": "inline",
                             "records": [{"name": "Alex", "persona": "Cares about local policy."}],
@@ -464,11 +456,10 @@ def test_field_map_case_mismatch_still_resolves_context() -> None:
         {
             "scenario_name": "election",
             "persona_pipeline": {
-                "processing_mode": "raw",
                 "classes": {
                     "voter": {
                         "count": 1,
-                        "prefab_module": "scenarios.election.entity_lib.simple",
+                        "class_path": "silisocs.agents.native.NativeAgent",
                         "data": {
                             "source": "inline",
                             "records": [
@@ -497,11 +488,10 @@ def test_class_pipeline_duplicate_names_are_skipped() -> None:
         {
             "scenario_name": "election",
             "persona_pipeline": {
-                "processing_mode": "raw",
                 "classes": {
                     "voter": {
                         "count": 3,
-                        "prefab_module": "scenarios.election.entity_lib.simple",
+                        "class_path": "silisocs.agents.native.NativeAgent",
                         "data": {
                             "source": "inline",
                             "records": [

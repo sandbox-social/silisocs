@@ -5,7 +5,7 @@ and produces agent instance configurations. It supports loading data from
 local JSON/JSONL files, HuggingFace datasets, and inline records, and handles
 field mapping, shared/specific memory loading, and name derivation.
 
-Builders should return a list of [silisocs.runtime.dataclasses.AgentConfig][].
+Builders should return a list of [silisocs.runtime.construction.specs.AgentConfig][].
 """
 
 import csv
@@ -19,7 +19,7 @@ from typing import Any
 import yaml
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
-from silisocs.runtime.dataclasses import AgentConfig
+from silisocs.runtime.construction.specs import AgentConfig
 
 logger = logging.getLogger(__name__)
 
@@ -139,14 +139,24 @@ class BaseAgentBuilder:
         if count is not None:
             records = records[: int(count)]
 
-        prefab_module = class_cfg.get("prefab_module")
-        if not prefab_module:
-            raise ValueError(f"Class `{class_name}` must define `prefab_module`")
-        prefab_name = class_cfg.get("prefab", prefab_module.split(".")[-1] + "__Entity")
+        if "prefab_module" in class_cfg or "prefab" in class_cfg:
+            raise ValueError(
+                f"Class `{class_name}` uses removed prefab config. Use `class_path` instead."
+            )
+        class_path = str(class_cfg.get("class_path", "") or "").strip()
+        if not class_path:
+            raise ValueError(f"Class `{class_name}` must define `class_path`")
         sim_role = class_cfg.get("sim_role_name", class_name)
 
         field_map = {**default_field_map, **(class_cfg.get("field_map", {}) or {})}
         class_params = dict(class_cfg.get("params", {}) or {})
+        class_compat = str(class_cfg.get("compat", "") or "").strip().lower()
+        if class_compat:
+            if class_compat != "concordia":
+                raise ValueError(
+                    f"Class `{class_name}` has unsupported compat value `{class_compat}`. "
+                    "Supported value: concordia."
+                )
         class_flow_tag = str(class_cfg.get("flow_tag", "") or "").strip()
         if class_flow_tag:
             class_params.setdefault("flow_tag", class_flow_tag)
@@ -197,7 +207,7 @@ class BaseAgentBuilder:
                 class_params,
                 mem_field,
                 sim_role,
-                prefab_module,
+                class_path,
                 shared,
                 derive_name,
                 name_words,
@@ -216,8 +226,8 @@ class BaseAgentBuilder:
                 },
             )
             if resolved_fixed_action is not None:
-                if str(prefab_module).strip().endswith("fixed_entity"):
-                    params["fixed_action_plan"] = self._normalize_fixed_entity_action_plan(
+                if class_path == "silisocs.agents.fixed.FixedAgent":
+                    params["fixed_action_plan"] = self._normalize_fixed_action_plan(
                         resolved_fixed_action.get("actions", [])
                     )
                     exhaustion = str(resolved_fixed_action.get("on_exhaustion", "")).strip().lower()
@@ -226,7 +236,9 @@ class BaseAgentBuilder:
                 else:
                     params["fixed_action"] = resolved_fixed_action
 
-            agents.append(AgentConfig(prefab=prefab_name, params=params))
+            agents.append(
+                AgentConfig(class_path=class_path, params=params, compat=class_compat or None)
+            )
         return agents
 
     def _load_fixed_action_sets(self) -> dict[str, list[dict[str, Any]]]:
@@ -342,8 +354,8 @@ class BaseAgentBuilder:
             "actions": rendered_actions,
         }
 
-    def _normalize_fixed_entity_action_plan(self, actions: Any) -> dict[int, list[dict[str, Any]]]:
-        """Convert fixed action-set items into fixed_entity episode-keyed action plan."""
+    def _normalize_fixed_action_plan(self, actions: Any) -> dict[int, list[dict[str, Any]]]:
+        """Convert fixed action-set items into fixed episode-keyed action plan."""
         if not isinstance(actions, list):
             return {}
 
@@ -352,7 +364,7 @@ class BaseAgentBuilder:
             if not isinstance(item, Mapping):
                 continue
 
-            # Already in fixed_entity format.
+            # Already in fixed format.
             if "action_type" in item:
                 try:
                     episode = int(item.get("episode", 0))
@@ -409,7 +421,7 @@ class BaseAgentBuilder:
         class_params: dict,
         mem_field: str | None,
         sim_role: str,
-        prefab_module: str,
+        class_path: str,
         shared: list[str],
         derive_name: bool,
         name_words: int,
@@ -435,8 +447,8 @@ class BaseAgentBuilder:
         :type mem_field: str | None
         :param str sim_role:
         :type sim_role: str
-        :param str prefab_module:
-        :type prefab_module: str
+        :param str class_path:
+        :type class_path: str
         :param list[str] shared:
         :type shared: list[str]
         :param bool derive_name:
@@ -490,7 +502,7 @@ class BaseAgentBuilder:
 
         params["name"] = name
         params["context"] = context
-        params["sim_role"] = {"name": sim_role, "module_path": prefab_module}
+        params["sim_role"] = {"name": sim_role, "module_path": class_path}
         params["style"] = self._coerce_text(params.get("style", ""))
         params["seed_post"] = self._coerce_text(params.get("seed_post", ""))
         params["bio"] = self._coerce_text(params.get("bio", ""))

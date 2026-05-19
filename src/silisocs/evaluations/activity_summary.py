@@ -113,7 +113,7 @@ def _summarize_probes(events: list[dict[str, Any]]) -> dict[str, Any]:
     responses_present = 0
     for row in probe_rows:
         data = row.get("data")
-        if isinstance(data, dict) and "query_return" in data:
+        if isinstance(data, dict) and "probe_return" in data:
             responses_present += 1
 
     episodes = sorted(

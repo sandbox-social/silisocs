@@ -6,8 +6,8 @@ from silisocs.simulation_engines.policies.action_chunk import (
     SingleActionChunkPolicy,
 )
 from silisocs.simulation_engines.policies.factory import (
-    build_action_loop_policy,
     build_probe_schedule_policy,
+    build_turn_policy,
 )
 from silisocs.simulation_engines.policies.probe_schedule import (
     DisabledProbeSchedulePolicy,
@@ -22,6 +22,6 @@ __all__ = [
     "OpenEndedActionChunkPolicy",
     "SingleActionChunkPolicy",
     "StepProbeSchedulePolicy",
-    "build_action_loop_policy",
     "build_probe_schedule_policy",
+    "build_turn_policy",
 ]

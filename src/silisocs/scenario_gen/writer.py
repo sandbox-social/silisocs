@@ -153,7 +153,7 @@ def _write_agents_yaml(spec: ScenarioSpec, conf: Path) -> None:
     for ac in spec.agent_classes:
         classes[ac.sim_role_name] = {
             "count": ac.count,
-            "prefab_module": ac.prefab_module,
+            "class_path": ac.class_path,
             "sim_role_name": ac.sim_role_name,
             "data": {
                 "source": "inline",
@@ -182,7 +182,6 @@ def _write_agents_yaml(spec: ScenarioSpec, conf: Path) -> None:
     data = {
         "shared_memories": ["${event.context}", "${setting.background}"],
         "persona_pipeline": {
-            "processing_mode": "raw",
             "defaults": {
                 "params": {
                     "seed_post": "",
@@ -225,7 +224,6 @@ def _write_env_yaml(spec: ScenarioSpec, conf: Path) -> None:
 
     data = {
         "platform_type": spec.platform.platform_type,
-        "seed_posts": {"type": "llm"},
         "enabled_actions": spec.platform.enabled_actions,
         "timeline_mode": spec.platform.timeline_mode,
         "gm": {
@@ -269,16 +267,15 @@ def _write_evals_yaml(conf: Path) -> None:
     :rtype: None
     """
     data = {
-        "write_html_log": False,
         "probes": {
             "deployment": {
                 "enabled": True,
                 "start_step": 1,
                 "every_n_steps": 1,
-                "include_entities": [],
-                "exclude_entities": [],
+                "include_agents": [],
+                "exclude_agents": [],
             },
-            "queries": {},
+            "probes": {},
         },
     }
     _write(conf / "evals.yaml", _dump(data))
@@ -294,21 +291,31 @@ def _write_sim_yaml(conf: Path) -> None:
     :rtype: None
     """
     data = {
-        "memory_backend": "list",
         "action_mode": "generic",
         "tool_calling": {"mode": "multi"},
+        "initialization": {
+            "agents": {"built_in": "raw_memory", "class_path": None, "params": {}},
+            "game_masters": {"built_in": "default", "class_path": None, "params": {}},
+            "simulation": {
+                "built_in": "seed_posts",
+                "class_path": None,
+                "params": {"type": "llm", "params": {}},
+            },
+        },
         "engine": {
-            "preset": "base",
-            "action_loop": {
+            "step": {
+                "built_in": "base",
+                "params": {
+                    "flow_order": ["fixed_pre", "default"],
+                    "agent_to_flow": {},
+                },
+            },
+            "turn_policy": {
                 "built_in": "open_ended",
                 "params": {
                     "max_actions": 10,
                     "finished_action_signal": "FINISHED",
-                    "done_token": "FINISHED",
                 },
-            },
-            "flow_routing": {
-                "flow_order": ["fixed_pre", "default"],
             },
         },
     }

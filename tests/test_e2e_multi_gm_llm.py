@@ -62,7 +62,6 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
                 # @package agent
 
                 persona_pipeline:
-                    processing_mode: raw
                     defaults:
                         params:
                             scenario_context: Agents act in a compact social simulation.
@@ -70,7 +69,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
                     classes:
                         fixed_seed:
                             count: 1
-                            prefab_module: silisocs.agents.fixed_entity
+                            class_path: silisocs.agents.fixed.FixedAgent
                             sim_role_name: fixed_seed
                             flow_tag: fixed_pre
                             params:
@@ -87,7 +86,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
                                         - {action_type: post, content: "SeedBot episode one broadcast"}
                         llm_user:
                             count: 2
-                            prefab_module: silisocs.agents.entity
+                            class_path: silisocs.agents.native.NativeAgent
                             sim_role_name: llm_user
                             data:
                                 source: inline
@@ -122,8 +121,6 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
                 # @package env
 
                 platform_type: twitter_like
-                seed_posts:
-                    type: llm
                 social_network:
                     activity_transition_rates:
                         fixed_seed:
@@ -183,25 +180,24 @@ def _run_simulation(
         f"env={backend}",
         "env.gm.preset=base",
         "env.enable_gm_multi_flow=false",
-        f"sim.engine.preset={engine_preset}",
-        "sim.engine.action_loop.built_in=single_action",
-        "env.gm.components.next_acting.built_in=all_entities",
+        f"sim.engine.step.built_in={engine_preset}",
+        "sim.engine.turn_policy.built_in=single_action",
+        "env.gm.components.next_acting.built_in=all_agents",
         f"env.gm.components.resolve.built_in={resolve_built_in}",
         f"sim.tool_calling.mode={resolved_tool_mode}",
         f"env.timeline_mode={timeline_mode}",
         "env.timeline_posts=5",
-        f"env.gm.components.recommend.params.default_recsys_type={recsys_type}",
+        f"env.gm.components.update.params.default_recsys_type={recsys_type}",
         f"env.gm.components.observe.params.recsys_type={recsys_type}",
         f"sim.action_mode={action_mode}",
-        "sim.memory_backend=list",
         f"num_steps={num_steps}",
         "seed=11",
-        "evals.write_html_log=false",
         "sim.max_concurrent_actions=8",
+        "sim.llm.provider=local",
         "sim.llm.name=qwen3.5-4b",
         f"sim.llm.api_base={llm_url}",
         "sim.llm.api_key=test-key",
-        "sim.engine.flow_routing.flow_order=[fixed_pre,default]",
+        "sim.engine.step.params.flow_order=[fixed_pre,default]",
         f"hydra.run.dir={hydra_dir}",
         f"hydra.job.name={job_name}",
         "experiment_name=llm_e2e_test",

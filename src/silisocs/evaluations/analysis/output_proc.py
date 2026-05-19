@@ -35,7 +35,7 @@ def post_process_output(df):
     probe_df = df.loc[
         df.event_type == "probe", ["episode", "source_user", "label", "data"]
     ].reset_index(drop=True)
-    probe_df["response"] = probe_df.data.apply(lambda x: x["query_return"])
+    probe_df["response"] = probe_df.data.apply(lambda x: x["probe_return"])
     probe_df = probe_df.drop("data", axis=1)
 
     edge_df = df.loc[

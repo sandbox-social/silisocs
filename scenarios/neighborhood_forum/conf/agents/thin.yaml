@@ -1,6 +1,5 @@
 # @package agents
 persona_pipeline:
-  processing_mode: raw
   defaults:
     params:
       seed_post: ''
@@ -13,7 +12,7 @@ persona_pipeline:
   classes:
     council_member:
       count: 1
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: council_member
       data:
         source: inline
@@ -29,7 +28,7 @@ persona_pipeline:
         seed_post: seed_post
     longtime_resident:
       count: 2
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: longtime_resident
       data:
         source: inline
@@ -49,7 +48,7 @@ persona_pipeline:
         seed_post: seed_post
     renter:
       count: 2
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: renter
       data:
         source: inline
@@ -69,7 +68,7 @@ persona_pipeline:
         seed_post: seed_post
     business_owner:
       count: 2
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: business_owner
       data:
         source: inline
@@ -89,7 +88,7 @@ persona_pipeline:
         seed_post: seed_post
     newcomer:
       count: 2
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: newcomer
       data:
         source: inline

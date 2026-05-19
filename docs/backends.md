@@ -1,7 +1,7 @@
 # Environment Backends
 
 The simulation supports generic environment backends plus social-media
-specializations. Each backend implements `EnvironmentApp`, so agent logic stays
+specializations. Each backend implements `BackendApp`, so agent logic stays
 platform-agnostic and executable actions are discovered from `@app_action`
 methods.
 
@@ -15,6 +15,7 @@ uv run silisocs env=twitter_like   # default
 uv run silisocs env=reddit_like
 uv run silisocs env=mastodon
 uv run silisocs scenario=resource_market agents=resource_market env=resource_market
+uv run silisocs scenario=virtual_space agents=virtual_space env=virtual_space
 ```
 
 Or in the top-level Hydra defaults:
@@ -35,7 +36,7 @@ pip install "silisocs[mastodon]"
 ## Generic Resource Market (Local)
 
 A minimal in-memory non-social backend that demonstrates the generic
-`EnvironmentApp` contract.
+`BackendApp` contract.
 
 **Actions**: `INSPECT_MARKET`, `PRODUCE_RESOURCE`, `LIST_RESOURCE`,
 `BUY_LISTING`, `CONSUME_RESOURCE`, `FINISHED`
@@ -56,8 +57,39 @@ app:
 Features:
 
 - Cash, inventory, open listings, and recent market events
-- Generic observations through `EnvironmentApp.observe(...)`
+- Generic observations through `BackendApp.observe(...)`
 - Tool-calling and generic-action resolution through `@app_action`
+- No social network, timeline, feed, or recommendation requirement
+
+---
+
+## Virtual Space (Local)
+
+A minimal in-memory non-social backend where agents occupy rooms, move between
+rooms, and talk only to agents present in the same room.
+
+**Actions**: `LOOK`, `MOVE`, `TALK`, `FINISHED`
+
+**Config**: `env/virtual_space.yaml`
+
+```yaml
+platform_type: virtual_space
+app:
+  params:
+    rooms: [atrium, garden, workshop]
+    starting_room: atrium
+    room_descriptions:
+      atrium: A bright central hall with paths to every other room.
+      garden: A quiet garden for private conversations.
+      workshop: A practical room filled with tools and shared projects.
+```
+
+Features:
+
+- Per-agent room location
+- Co-location-aware observations
+- Movement validation through configured rooms or explicit connections
+- Talk actions that require both agents to be in the same room
 - No social network, timeline, feed, or recommendation requirement
 
 ---
@@ -167,7 +199,7 @@ graph TD
     M --> N[In-memory state]
 ```
 
-The GM translates between Concordia's action/observation model and the
+The GM translates between the native action/observation model and the
 environment-specific API. Each backend handles:
 
 - **`initialize()`**: Create runtime state for the agent set
@@ -179,8 +211,8 @@ environment-specific API. Each backend handles:
 ### Responsibility Boundary
 
 - Engine (`BaseRuntimeEngine` / `FlowRuntimeEngine`): episode loop, actor concurrency, probe timing
-- GM (`GameMaster` + `SMAct`): timeline observation, action parsing, dispatch
-- Backend app (`EnvironmentApp` implementation): environment state transitions,
+- GM (`GameMaster` + native GM components): timeline observation, action parsing, dispatch
+- Backend app (`BackendApp` implementation): environment state transitions,
   action execution, optional timeline retrieval/formatting, persistence
 
 When changing platform behavior (feeds, post/reply semantics, vote rules), make
@@ -233,12 +265,12 @@ Opens at `http://localhost:8001`. Features:
 To implement a new generic environment:
 
 1. **Create a package** under `environments/backends/your_platform/`
-2. **Subclass `EnvironmentApp`** from `environments.backends.base`:
+2. **Subclass `BackendApp`** from `environments.backends.base`:
 
     ```python
-    from silisocs.environments.backends.base import EnvironmentApp, app_action
+    from silisocs.environments.backends.base import BackendApp, app_action
 
-    class YourPlatformApp(EnvironmentApp):
+    class YourPlatformApp(BackendApp):
         def initialize(self, agent_names: list[str], **kwargs):
             # Set up domain state
             ...
@@ -299,7 +331,7 @@ Action metadata notes:
     via `@app_action(...)` to expose more LLM-friendly names/descriptions.
 - Simulation-level action filtering (`env.enabled_actions`) accepts either the
     canonical function name or the selectable alias.
-- Fixed-action entity sets can also reference either canonical names or aliases.
+- Fixed-action agent sets can also reference either canonical names or aliases.
 
 ### High-Value Customization Tasks
 

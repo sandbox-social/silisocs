@@ -1,8 +1,8 @@
-from silisocs.utils.media import GptLanguageModel
+from silisocs.runtime.language_models import LocalLanguageModel
 
 
-def _make_model() -> GptLanguageModel:
-    return GptLanguageModel(
+def _make_model() -> LocalLanguageModel:
+    return LocalLanguageModel(
         model_name="qwen3-4b",
         api_key="test-key",
         api_base="http://localhost:8000/v1",

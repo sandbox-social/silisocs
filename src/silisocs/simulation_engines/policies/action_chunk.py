@@ -1,14 +1,15 @@
-"""Engine action-loop policies.
+"""Engine turn policies.
 
-These policies control how many actions an entity may execute per engine step.
+These policies control how many actions an agent may execute per engine step.
 """
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from typing import Any
+
+from silisocs.runtime.types import ActionOutput, OutputType
 
 _FINISH_ACTION_ALIASES = {
     "FINISHED",
@@ -17,7 +18,7 @@ _FINISH_ACTION_ALIASES = {
 }
 
 
-def _extract_structured_action_names(raw_action: str) -> list[str]:
+def _extract_structured_action_names(raw_action: ActionOutput | str) -> list[str]:
     """_extract_structured_action_names.
 
     :param str raw_action:
@@ -26,38 +27,15 @@ def _extract_structured_action_names(raw_action: str) -> list[str]:
     :returns: list[str]
     :rtype: list[str]
     """
-    text = str(raw_action or "").strip()
+    if isinstance(raw_action, ActionOutput) and raw_action.output_type == OutputType.TOOL_CALLS:
+        return [call.name for call in raw_action.tool_calls]
+    text = (
+        raw_action.text.strip()
+        if isinstance(raw_action, ActionOutput)
+        else str(raw_action or "").strip()
+    )
     if not text:
         return []
-
-    # Tool-calling mode payload.
-    try:
-        payload = json.loads(text)
-    except (TypeError, ValueError, json.JSONDecodeError):
-        payload = None
-
-    if isinstance(payload, dict):
-        tool_calls = payload.get("tool_calls")
-        if isinstance(tool_calls, list):
-            names = [
-                str(item.get("name", "")).strip()
-                for item in tool_calls
-                if isinstance(item, dict) and str(item.get("name", "")).strip()
-            ]
-            if names:
-                return names
-
-        tool_call = payload.get("tool_call")
-        if isinstance(tool_call, dict):
-            name = tool_call.get("name")
-            if isinstance(name, str):
-                stripped = name.strip()
-                return [stripped] if stripped else []
-
-        for key in ("action_type", "action", "name"):
-            value = payload.get(key)
-            if isinstance(value, str) and value.strip():
-                return [value.strip()]
 
     # Parsed-action mode payload.
     action_type_match = re.search(r"(?im)^\s*ACTION TYPE\s*:\s*(.+?)\s*$", text)
@@ -72,7 +50,7 @@ def _extract_structured_action_names(raw_action: str) -> list[str]:
     return []
 
 
-def _count_structured_actions(raw_action: str) -> int:
+def _count_structured_actions(raw_action: ActionOutput | str) -> int:
     """_count_structured_actions.
 
     :param str raw_action:
@@ -81,33 +59,18 @@ def _count_structured_actions(raw_action: str) -> int:
     :returns: int
     :rtype: int
     """
-    text = str(raw_action or "").strip()
-    if not text:
-        return 0
-
-    try:
-        payload = json.loads(text)
-    except (TypeError, ValueError, json.JSONDecodeError):
-        payload = None
-
-    if isinstance(payload, dict):
-        tool_calls = payload.get("tool_calls")
-        if isinstance(tool_calls, list):
-            return max(
-                1,
-                sum(
-                    1
-                    for item in tool_calls
-                    if isinstance(item, dict) and str(item.get("name", "")).strip()
-                ),
-            )
-        if isinstance(payload.get("tool_call"), dict):
-            return 1
-
-    return 1
+    if isinstance(raw_action, ActionOutput):
+        if raw_action.output_type == OutputType.TOOL_CALLS:
+            return max(1, len(raw_action.tool_calls))
+        if raw_action.output_type == OutputType.SKIP:
+            return 0
+        return 1 if raw_action.text.strip() else 0
+    return 1 if str(raw_action or "").strip() else 0
 
 
-def _is_finished_event(*, raw_action: str, resolved_result: str, finished_signal: str) -> bool:
+def _is_finished_event(
+    *, raw_action: ActionOutput | str, resolved_result: str, finished_signal: str
+) -> bool:
     """_is_finished_event.
 
     :returns: bool
@@ -140,7 +103,7 @@ def _is_finished_event(*, raw_action: str, resolved_result: str, finished_signal
 
 @dataclass
 class SingleActionChunkPolicy:
-    """Default policy: one action per active entity per step."""
+    """Default policy: one action per active agent per step."""
 
     name: str = "single_action"
 
@@ -149,24 +112,24 @@ class SingleActionChunkPolicy:
         *,
         engine: Any,
         game_master: Any,
-        entity: Any,
+        agent: Any,
         action_spec: Any,
         skip_actions: bool,
         verbose: bool,
     ) -> str:
         """Execute a single observe -> act -> resolve cycle."""
-        return engine._run_single_entity_action(
+        return engine.run_agent_step(
             game_master=game_master,
-            entity=entity,
+            agent=agent,
             action_spec=action_spec,
             skip_actions=skip_actions,
             verbose=verbose,
-        )
+        ).rendered_action
 
 
 @dataclass
 class FixedCountActionChunkPolicy:
-    """Execute exactly N actions per active entity each step."""
+    """Execute exactly N actions per active agent each step."""
 
     count: int = 2
     name: str = "fixed_count"
@@ -176,7 +139,7 @@ class FixedCountActionChunkPolicy:
         *,
         engine: Any,
         game_master: Any,
-        entity: Any,
+        agent: Any,
         action_spec: Any,
         skip_actions: bool,
         verbose: bool,
@@ -189,24 +152,16 @@ class FixedCountActionChunkPolicy:
         remaining_actions = max(1, self.count)
 
         while remaining_actions > 0:
-            action_result = engine._run_single_entity_action(
+            action_result = engine.run_agent_step(
                 game_master=game_master,
-                entity=entity,
+                agent=agent,
                 action_spec=action_spec,
                 skip_actions=False,
                 verbose=verbose,
                 observe_before_action=not bool(last_action),
-                return_raw_action=True,
             )
-            raw_action = ""
-            rendered_action = ""
-
-            if isinstance(action_result, dict):
-                raw_action = str(action_result.get("raw", "") or "")
-                rendered_action = str(action_result.get("rendered", "") or "")
-            else:
-                rendered_action = str(action_result or "")
-                raw_action = rendered_action
+            raw_action = action_result.raw_action
+            rendered_action = action_result.rendered_action
 
             action = rendered_action or raw_action
             if action:
@@ -234,25 +189,14 @@ class OpenEndedActionChunkPolicy:
 
     max_actions: int = 3
     finished_action_signal: str = "FINISHED"
-    done_token: str | None = None
     name: str = "open_ended"
-
-    def __post_init__(self) -> None:
-        # Backward compatibility for existing config/dashboard payloads.
-        """__post_init__.
-
-        :returns: None
-        :rtype: None
-        """
-        if self.done_token:
-            self.finished_action_signal = str(self.done_token)
 
     def run(
         self,
         *,
         engine: Any,
         game_master: Any,
-        entity: Any,
+        agent: Any,
         action_spec: Any,
         skip_actions: bool,
         verbose: bool,
@@ -276,27 +220,18 @@ class OpenEndedActionChunkPolicy:
         actions_used = 0
 
         while actions_used < max_actions:
-            action_result = engine._run_single_entity_action(
+            action_result = engine.run_agent_step(
                 game_master=game_master,
-                entity=entity,
+                agent=agent,
                 action_spec=action_spec,
                 skip_actions=False,
                 verbose=verbose,
                 observe_before_action=not bool(last_action),
-                return_raw_action=True,
             )
 
-            raw_action = ""
-            rendered_action = ""
-            resolved_result = ""
-
-            if isinstance(action_result, dict):
-                raw_action = str(action_result.get("raw", "") or "")
-                rendered_action = str(action_result.get("rendered", "") or "")
-                resolved_result = str(action_result.get("resolved", "") or "")
-            else:
-                rendered_action = str(action_result or "")
-                raw_action = rendered_action
+            raw_action = action_result.raw_action
+            rendered_action = action_result.rendered_action
+            resolved_result = action_result.resolved_result
 
             action = rendered_action or raw_action
 

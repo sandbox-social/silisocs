@@ -66,8 +66,8 @@ def _extract_fixed_usernames_from_config(effective_config: dict[str, Any]) -> se
     for class_cfg in classes.values():
         if not isinstance(class_cfg, dict):
             continue
-        prefab_module = str(class_cfg.get("prefab_module", ""))
-        if "fixed_entity" not in prefab_module:
+        class_path = str(class_cfg.get("class_path", ""))
+        if "FixedAgent" not in class_path:
             continue
 
         data_cfg = class_cfg.get("data", {})

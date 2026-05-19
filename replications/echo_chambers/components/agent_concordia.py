@@ -19,24 +19,22 @@ from concordia.agents import entity_agent_with_logging
 from concordia.associative_memory import basic_associative_memory
 from concordia.components import agent as agent_components
 from concordia.document import interactive_document
-from concordia.language_model import language_model
 from concordia.typing import entity as entity_lib
 from concordia.typing import entity_component
 from concordia.typing import prefab as prefab_lib
 from pydantic import BaseModel
 
 from replications.echo_chambers.components.app import extract_observation
-from silisocs.agents.components.concat_act import (
+from silisocs.adapters.concordia import (
     SocialConcatActComponent,
     extract_structured_response,
 )
-from silisocs.agents.entity import (
-    DEFAULT_GOAL_COMPONENT_KEY,
-    INSTRUCTIONS_COMPONENT_KEY,
-    PERSONA_INFORMATION_KEY,
-    SCENARIO_CONTEXT_KEY,
-)
-from silisocs.runtime.config import ConfigStore
+from silisocs.runtime import language_models as language_model
+
+INSTRUCTIONS_COMPONENT_KEY = "__Roleplaying Instructions__"
+PERSONA_INFORMATION_KEY = "__Persona Information__"
+SCENARIO_CONTEXT_KEY = "__Scenario Context__"
+DEFAULT_GOAL_COMPONENT_KEY = "__Goal__"
 
 MEMORY_COMPONENT_KEY = agent_components.memory.DEFAULT_MEMORY_COMPONENT_KEY
 OBSERVATION_COMPONENT_KEY = "__Echo Observation Payload__"
@@ -44,6 +42,9 @@ SHORT_MEMORY_PROCESSOR_KEY = "__Echo Short Memory Processor__"
 LONG_MEMORY_PROCESSOR_KEY = "__Echo Long Memory Processor__"
 BELIEF_UPDATE_PROCESSOR_KEY = "__Echo Belief Update Processor__"
 SOCIAL_MEMORY_STORE_KEY = "__Echo Social Short/Long Memory__"
+DEFAULT_ROLEPLAYING_INSTRUCTIONS = (
+    "You are {name}. Act naturally and stay consistent with your persona and current goal."
+)
 ECHO_OBSERVATION_TAG = "ECHO_OBSERVATION"
 ECHO_SHORT_MEMORY_TAG = "ECHO_SHORT_MEMORY"
 ECHO_LONG_MEMORY_TAG = "ECHO_LONG_MEMORY"
@@ -567,8 +568,8 @@ class EchoSocialMemoryToolActComponent(SocialConcatActComponent):
         schema: dict[str, Any],
         fallback: dict[str, Any],
     ) -> dict[str, Any]:
-        if hasattr(self._model, "sample_structured_response"):
-            parsed = self._model.sample_structured_response(prompt, schema)
+        if hasattr(self._model, "sample_structured"):
+            parsed = self._model.sample_structured(prompt, schema)
             if isinstance(parsed, dict) and parsed:
                 return parsed
         try:
@@ -818,10 +819,12 @@ class EchoSocialToolEntity(prefab_lib.Prefab):
     ) -> entity_agent_with_logging.EntityAgentWithLogging:
         params = dict(self.params)
         agent_name = str(params.get("name", "Agent"))
-        cfg = ConfigStore.get_config()
-
         instructions = agent_components.instructions.Instructions(agent_name=agent_name)
-        instructions._state = cfg.sim.roleplaying_instructions.format(name=agent_name)
+        roleplaying = str(
+            params.get("roleplaying_instructions", DEFAULT_ROLEPLAYING_INSTRUCTIONS)
+            or DEFAULT_ROLEPLAYING_INSTRUCTIONS
+        )
+        instructions._state = roleplaying.format(name=agent_name)
 
         if isinstance(memory_bank, list):
             memory_component: entity_component.ContextComponent = (

@@ -155,8 +155,8 @@ def load_effective_configs() -> list[dict[str, str]]:
         cfg = yaml.safe_load(candidate.read_text(encoding="utf-8")) or {}
         sim = cfg.get("sim", {}) if isinstance(cfg, dict) else {}
         engine = sim.get("engine", {}) if isinstance(sim, dict) else {}
-        action_loop = engine.get("action_loop", {}) if isinstance(engine, dict) else {}
-        params = action_loop.get("params", {}) if isinstance(action_loop, dict) else {}
+        turn_policy = engine.get("turn_policy", {}) if isinstance(engine, dict) else {}
+        params = turn_policy.get("params", {}) if isinstance(turn_policy, dict) else {}
         tool = sim.get("tool_calling", {}) if isinstance(sim, dict) else {}
 
         rows.append(

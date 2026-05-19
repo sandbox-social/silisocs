@@ -6,8 +6,8 @@ import json
 import re
 from typing import Any
 
-from concordia.typing import entity as entity_lib
-from concordia.typing import entity_component
+from silisocs.environments.gm.components.base import BaseComponent
+from silisocs.runtime.types import ActionOutput
 
 
 def _extract_json(text: str) -> dict[str, Any] | None:
@@ -36,7 +36,7 @@ def _extract_json(text: str) -> dict[str, Any] | None:
     return None
 
 
-class EchoChamberResolve(entity_component.ContextComponent, entity_component.ComponentWithLogging):
+class EchoChamberResolve(BaseComponent):
     """Parse agent belief updates and stage them in shared replication state."""
 
     def __init__(self, *, sm_app: Any | None = None, **kwargs: Any) -> None:
@@ -44,32 +44,19 @@ class EchoChamberResolve(entity_component.ContextComponent, entity_component.Com
         super().__init__()
         self._sm_app = sm_app
 
-    def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
-        if action_spec.output_type != entity_lib.OutputType.RESOLVE:
-            return ""
+    def resolve_action(self, agent_name: str, action: ActionOutput) -> str:
         if self._sm_app is None or not hasattr(self._sm_app, "echo_stage_update"):
             raise TypeError("EchoChamberResolve requires an app with echo_stage_update().")
-        call = str(action_spec.call_to_action or "")
-        if ":" not in call:
-            return "Malformed echo chamber action."
-        name, action_text = call.split(":", 1)
-        active_entity = name.strip()
+        active_agent = str(agent_name).strip()
+        action_text = action.text if isinstance(action, ActionOutput) else str(action or "")
         payload = _extract_json(action_text) or {}
         episode = int(payload.get("episode", 0) or 0)
-        self._sm_app.echo_stage_update(name=active_entity, episode=episode, update=payload)
-        result = f"Staged echo chamber update for {active_entity} at episode {episode}."
-        self._logging_channel(
-            {
-                "Key": "echo_chamber_resolve",
-                "Summary": result,
-                "Value": payload,
-                "Active Entity": active_entity,
-            }
-        )
+        self._sm_app.echo_stage_update(name=active_agent, episode=episode, update=payload)
+        result = f"Staged echo chamber update for {active_agent} at episode {episode}."
         return result
 
-    def get_state(self) -> entity_component.ComponentState:
+    def get_state(self) -> dict[str, Any]:
         return {}
 
-    def set_state(self, state: entity_component.ComponentState) -> None:
+    def set_state(self, state: dict[str, Any]) -> None:
         del state

@@ -57,7 +57,6 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
         # @package agent
 
         persona_pipeline:
-          processing_mode: raw
           defaults:
             params:
               scenario_context: Agents discuss local election updates.
@@ -65,7 +64,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
           classes:
             fixed_seed:
               count: 1
-              prefab_module: silisocs.agents.fixed_entity
+              class_path: silisocs.agents.fixed.FixedAgent
               sim_role_name: fixed_seed
               flow_tag: fixed_pre
               params:
@@ -83,7 +82,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
                     - {action_type: post, content: "SeedBot update episode two"}
             llm_user:
               count: 4
-              prefab_module: silisocs.agents.entity
+              class_path: silisocs.agents.native.NativeAgent
               sim_role_name: llm_user
               data:
                 source: inline
@@ -121,8 +120,6 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
         # @package env
 
         platform_type: twitter_like
-        seed_posts:
-          type: llm
         social_network:
           activity_transition_rates:
             fixed_seed:
@@ -167,28 +164,27 @@ def _run_recsys_simulation(
         "env=twitter_like",
         "env.gm.preset=base",
         "env.enable_gm_multi_flow=false",
-        "sim.engine.preset=base",
-        "sim.engine.action_loop.built_in=single_action",
-        "env.gm.components.next_acting.built_in=all_entities",
+        "sim.engine.step.built_in=base",
+        "sim.engine.turn_policy.built_in=single_action",
+        "env.gm.components.next_acting.built_in=all_agents",
         "env.gm.components.resolve.built_in=parsed_action",
         "sim.action_mode=custom",
         "sim.tool_calling.mode=none",
         "env.timeline_mode=pure_recsys",
         "env.timeline_posts=10",
-        f"env.gm.components.recommend.params.default_recsys_type={recsys_type}",
+        f"env.gm.components.update.params.default_recsys_type={recsys_type}",
         f"env.gm.components.observe.params.recsys_type={recsys_type}",
-        "env.gm.components.recommend.params.update_every_n_steps=1",
-        "env.gm.components.recommend.params.max_posts=10",
-        "sim.memory_backend=list",
+        "env.gm.components.update.params.update_every_n_steps=1",
+        "env.gm.components.update.params.max_posts=10",
         "num_agents=5",
         "num_steps=3",
         "seed=13",
-        "evals.write_html_log=false",
         "sim.max_concurrent_actions=8",
+        "sim.llm.provider=local",
         "sim.llm.name=qwen3.5-4b",
         f"sim.llm.api_base={llm_url}",
         "sim.llm.api_key=test-key",
-        "sim.engine.flow_routing.flow_order=[fixed_pre,default]",
+        "sim.engine.step.params.flow_order=[fixed_pre,default]",
         f"hydra.run.dir={hydra_dir}",
         f"hydra.job.name={job_name}",
         f"experiment_name=recsys_e2e_{recsys_type}",

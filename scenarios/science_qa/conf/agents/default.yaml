@@ -3,7 +3,6 @@ shared_memories:
 - ${event.context}
 - ${setting.background}
 persona_pipeline:
-  processing_mode: raw
   defaults:
     params:
       seed_post: ''
@@ -16,7 +15,7 @@ persona_pipeline:
   classes:
     researcher:
       count: 2
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: researcher
       data:
         source: inline
@@ -50,7 +49,7 @@ persona_pipeline:
         seed_post: seed_post
     science_communicator:
       count: 2
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: science_communicator
       data:
         source: inline
@@ -84,7 +83,7 @@ persona_pipeline:
         seed_post: seed_post
     curious_learner:
       count: 3
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: curious_learner
       data:
         source: inline
@@ -128,7 +127,7 @@ persona_pipeline:
         seed_post: seed_post
     skeptic:
       count: 2
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: skeptic
       data:
         source: inline

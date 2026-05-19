@@ -1,7 +1,6 @@
 # @package agents
 
 persona_pipeline:
-  processing_mode: raw
   defaults:
     params:
       seed_post: ""
@@ -15,7 +14,7 @@ persona_pipeline:
   classes:
     trader:
       count: ${num_agents}
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: trader
       data:
         source: inline

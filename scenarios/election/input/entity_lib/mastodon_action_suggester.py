@@ -6,8 +6,9 @@ import random
 from collections.abc import Callable
 from decimal import ROUND_HALF_UP, Decimal
 
-from concordia.components.agent import action_spec_ignored
-from concordia.language_model import language_model
+from concordia.components.agent.action_spec_ignored import ActionSpecIgnored
+
+from silisocs.runtime.language_models import LanguageModel
 
 DEFAULT_PRE_ACT_KEY = "[Suggested Action]"
 
@@ -27,12 +28,12 @@ DEFAULT_ACTION_PROBABILITIES = {
 }
 
 
-class MastodonActionSuggester(action_spec_ignored.ActionSpecIgnored):
+class MastodonActionSuggester(ActionSpecIgnored):
     """Suggest likely Mastodon operations for an agent."""
 
     def __init__(
         self,
-        model: language_model.LanguageModel,
+        model: LanguageModel,
         action_probabilities: dict[str, float] | None = DEFAULT_ACTION_PROBABILITIES,
         pre_act_key: str = DEFAULT_PRE_ACT_KEY,
         logging_channel: Callable[[dict[str, object]], None] | None = None,

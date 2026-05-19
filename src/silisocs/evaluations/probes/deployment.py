@@ -6,11 +6,14 @@ Keeps probe scheduling and agent selection logic out of the simulation engine.
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from silisocs.evaluations.probes.agent_speech import _resolve_query_class, deploy_probes
+from silisocs.evaluations.probes.agent_speech import _resolve_probe_class, deploy_probes
+from silisocs.runtime.io import EventLogger
+from silisocs.simulation_engines.policies.factory import build_probe_schedule_policy
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +27,8 @@ class ProbeDeploymentPolicy:
     every_n_steps: int = 1
     include_classes: tuple[str, ...] = ()
     exclude_classes: tuple[str, ...] = ()
-    include_entities: tuple[str, ...] = ()
-    exclude_entities: tuple[str, ...] = ()
+    include_agents: tuple[str, ...] = ()
+    exclude_agents: tuple[str, ...] = ()
 
     @classmethod
     def from_probes_config(cls, probes_config: Mapping[str, Any] | None) -> ProbeDeploymentPolicy:
@@ -43,8 +46,8 @@ class ProbeDeploymentPolicy:
         if every_n_steps <= 0:
             raise ValueError("probes.deployment.every_n_steps must be >= 1")
 
-        include_entities = tuple(str(x) for x in deployment_cfg.get("include_entities", []) or [])
-        exclude_entities = tuple(str(x) for x in deployment_cfg.get("exclude_entities", []) or [])
+        include_agents = tuple(str(x) for x in deployment_cfg.get("include_agents", []) or [])
+        exclude_agents = tuple(str(x) for x in deployment_cfg.get("exclude_agents", []) or [])
         include_classes = tuple(str(x) for x in deployment_cfg.get("include_classes", []) or [])
         exclude_classes = tuple(str(x) for x in deployment_cfg.get("exclude_classes", []) or [])
 
@@ -54,8 +57,8 @@ class ProbeDeploymentPolicy:
             every_n_steps=every_n_steps,
             include_classes=include_classes,
             exclude_classes=exclude_classes,
-            include_entities=include_entities,
-            exclude_entities=exclude_entities,
+            include_agents=include_agents,
+            exclude_agents=exclude_agents,
         )
 
 
@@ -80,35 +83,35 @@ class ProbeDeploymentOrchestrator:
         self._probes_config = dict(probes_config or {})
         self._probe_event_logger = probe_event_logger
         self._policy = policy or ProbeDeploymentPolicy.from_probes_config(self._probes_config)
-        self._cached_queries: list[Any] | None = None
+        self._cached_probes: list[Any] | None = None
 
-    def _get_queries(self) -> list[Any]:
-        """Build and cache query objects from config (avoids rebuild every episode)."""
-        if self._cached_queries is not None:
-            return self._cached_queries
-        query_lib_module = self._probes_config.get("query_lib_module")
-        raw_queries = self._probes_config.get("queries", {})
-        if isinstance(raw_queries, Mapping):
-            queries_config = list(raw_queries.values())
-        elif isinstance(raw_queries, Sequence) and not isinstance(raw_queries, (str, bytes)):
-            queries_config = list(raw_queries)
+    def _get_probes(self) -> list[Any]:
+        """Build and cache probe objects from config."""
+        if self._cached_probes is not None:
+            return self._cached_probes
+        probe_lib_module = self._probes_config.get("probe_lib_module")
+        raw_probes = self._probes_config.get("probes", {})
+        if isinstance(raw_probes, Mapping):
+            probes_config = list(raw_probes.values())
+        elif isinstance(raw_probes, Sequence) and not isinstance(raw_probes, (str, bytes)):
+            probes_config = list(raw_probes)
         else:
-            queries_config = []
-        queries = []
-        for query_config in queries_config:
-            if not isinstance(query_config, Mapping):
+            probes_config = []
+        probes = []
+        for probe_config in probes_config:
+            if not isinstance(probe_config, Mapping):
                 continue
-            QueryClass = _resolve_query_class(query_config["query_type"], query_lib_module)
-            query_data = query_config.get("query_data", {})
-            if not isinstance(query_data, Mapping):
-                query_data = {}
-            query_obj = QueryClass(dict(query_data))
-            probe_name = query_config.get("probe_name") or query_data.get("name")
+            ProbeClass = _resolve_probe_class(probe_config["probe_type"], probe_lib_module)
+            probe_data = probe_config.get("probe_data", {})
+            if not isinstance(probe_data, Mapping):
+                probe_data = {}
+            probe_obj = ProbeClass(dict(probe_data))
+            probe_name = probe_config.get("probe_name") or probe_data.get("name")
             if probe_name:
-                query_obj.probe_name = str(probe_name)
-            queries.append(query_obj)
-        self._cached_queries = queries
-        return queries
+                probe_obj.probe_name = str(probe_name)
+            probes.append(probe_obj)
+        self._cached_probes = probes
+        return probes
 
     def is_configured(self) -> bool:
         """is_configured.
@@ -116,7 +119,7 @@ class ProbeDeploymentOrchestrator:
         :returns: bool
         :rtype: bool
         """
-        return bool(self._probes_config.get("queries"))
+        return bool(self._probes_config.get("probes"))
 
     def should_deploy(self, step: int) -> bool:
         """should_deploy.
@@ -145,8 +148,8 @@ class ProbeDeploymentOrchestrator:
         :rtype: list[Any]
         """
 
-        def _entity_classes(agent: Any) -> set[str]:
-            """_entity_classes.
+        def _agent_classes(agent: Any) -> set[str]:
+            """Return configured class/role labels for an agent.
 
             :param Any agent:
             :type agent: Any
@@ -156,7 +159,7 @@ class ProbeDeploymentOrchestrator:
             """
             out: set[str] = set()
 
-            for attr in ("sim_role_name", "sim_role", "role", "class_name", "entity_class"):
+            for attr in ("sim_role_name", "sim_role", "role", "class_name", "agent_class"):
                 value = getattr(agent, attr, None)
                 if isinstance(value, str) and value.strip():
                     out.add(value.strip())
@@ -175,7 +178,7 @@ class ProbeDeploymentOrchestrator:
                 elif isinstance(sim_role, str) and sim_role.strip():
                     out.add(sim_role.strip())
 
-                for key in ("role", "class_name", "entity_class"):
+                for key in ("role", "class_name", "agent_class"):
                     value = params.get(key)
                     if isinstance(value, str) and value.strip():
                         out.add(value.strip())
@@ -185,21 +188,21 @@ class ProbeDeploymentOrchestrator:
         selected = list(agents)
         if self._policy.include_classes:
             include_classes = set(self._policy.include_classes)
-            selected = [agent for agent in selected if _entity_classes(agent) & include_classes]
+            selected = [agent for agent in selected if _agent_classes(agent) & include_classes]
         if self._policy.exclude_classes:
             exclude_classes = set(self._policy.exclude_classes)
             selected = [
-                agent for agent in selected if not (_entity_classes(agent) & exclude_classes)
+                agent for agent in selected if not (_agent_classes(agent) & exclude_classes)
             ]
-        if self._policy.include_entities:
-            include = set(self._policy.include_entities)
+        if self._policy.include_agents:
+            include = set(self._policy.include_agents)
             selected = [
                 agent
                 for agent in selected
                 if getattr(agent, "_agent_name", getattr(agent, "name", "")) in include
             ]
-        if self._policy.exclude_entities:
-            exclude = set(self._policy.exclude_entities)
+        if self._policy.exclude_agents:
+            exclude = set(self._policy.exclude_agents)
             selected = [
                 agent
                 for agent in selected
@@ -230,6 +233,30 @@ class ProbeDeploymentOrchestrator:
             self._probes_config,
             self._probe_event_logger,
             worker_limit=worker_limit,
-            prebuilt_queries=self._get_queries(),
+            prebuilt_probes=self._get_probes(),
         )
         return True, len(selected_agents)
+
+
+class DefaultProbeRunner:
+    """Evaluation-owned probe runner for in-loop deployment."""
+
+    def __init__(self, probes_config: Mapping[str, Any] | None, output_rootname: str):
+        config = dict(probes_config or {})
+        self._logger = EventLogger("probe", os.path.join(output_rootname, "probe_events.jsonl"))
+        self._orchestrator = ProbeDeploymentOrchestrator(config, self._logger)
+        schedule_cfg = dict(config.get("schedule", {}) or {})
+        self._schedule_policy = build_probe_schedule_policy(schedule_cfg)
+
+    def maybe_run(
+        self,
+        *,
+        step: int,
+        agents: Sequence[Any],
+        worker_limit: int | None,
+    ) -> tuple[bool, int]:
+        if not self._schedule_policy.should_run_probe_phase(
+            step=step, orchestrator=self._orchestrator
+        ):
+            return False, 0
+        return self._orchestrator.maybe_deploy(step=step, agents=agents, worker_limit=worker_limit)

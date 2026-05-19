@@ -24,7 +24,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class MockEntity:
-    """Mock entity that mimics concordia EntityAgentWithLogging."""
+    """Mock entity with the native agent surface used by orchestration tests."""
 
     def __init__(self, name: str, agent_class: str | list[str] = "default"):
         self.name = name
@@ -127,91 +127,6 @@ class TestComponentFlowFieldIntegration:
         result = component.get_flow_field("missing_field", "any_entity", "fallback")
 
         assert result == "fallback"
-
-
-# ============================================================================
-# Integration Tests: GM Factory and Routing
-# ============================================================================
-
-
-class TestGameMasterFactoryIntegration:
-    """Integration tests for GameMasterFactory."""
-
-    def test_factory_routes_single_gm_agent_to_gm(self):
-        """Test factory correctly routes single-class agent to its GM."""
-        from silisocs.environments.gm.gm_factory import GameMasterFactory
-
-        config = {
-            "agent_classes": {"alice": "human"},
-            "class_to_gms": {"human": "gm_social"},
-        }
-        entity = MockEntity("alice")
-
-        factory = GameMasterFactory(
-            config,
-            agent_names=["alice"],
-            agent_to_classes={"alice": "human"},
-            class_to_gms={"human": "gm_social"},
-        )
-
-        assert factory.get_agent_gms("alice") == ["gm_social"]
-
-    def test_factory_routes_multi_class_agent_to_multiple_gms(self):
-        """Test factory routes multi-class agent to all relevant GMs."""
-        from silisocs.environments.gm.gm_factory import GameMasterFactory
-
-        agent_to_classes = {
-            "alice": ["human", "verified"],
-        }
-        class_to_gms = {
-            "human": ["gm_social"],
-            "verified": ["gm_analysis"],
-        }
-
-        factory = GameMasterFactory(
-            {},
-            agent_names=["alice"],
-            agent_to_classes=agent_to_classes,
-            class_to_gms=class_to_gms,
-        )
-
-        alice_gms = factory.get_agent_gms("alice")
-        assert "gm_social" in alice_gms
-        assert "gm_analysis" in alice_gms
-
-    def test_factory_detects_shared_agents(self):
-        """Test factory detects agents assigned to multiple GMs."""
-        from silisocs.environments.gm.gm_factory import GameMasterFactory
-
-        config = {
-            "gm_sequence": ["gm1", "gm2"],
-            "gm_configs": {
-                "gm1": {},
-                "gm2": {},
-            },
-        }
-        agent_to_classes = {
-            "alice": ["human", "active"],
-        }
-        class_to_gms = {
-            "human": ["gm1"],
-            "active": ["gm2"],
-        }
-
-        factory = GameMasterFactory(
-            config,
-            agent_names=["alice"],
-            agent_to_classes=agent_to_classes,
-            class_to_gms=class_to_gms,
-        )
-
-        # Get GMs for alice
-        alice_gms = factory.get_agent_gms("alice")
-
-        # Alice should be in both gm1 and gm2
-        assert "gm1" in alice_gms
-        assert "gm2" in alice_gms
-        assert len(alice_gms) == 2
 
 
 # ============================================================================
@@ -318,10 +233,9 @@ class TestSuite:
         """Document test coverage."""
         coverage = {
             "Component Multi-Field": 3,
-            "GM Factory Integration": 3,
             "Orchestration Scenarios": 3,
             "End-to-End with LLM": 3,
-            "Total": 12,
+            "Total": 9,
         }
         _LOGGER.info(f"Test suite coverage: {coverage}")
 

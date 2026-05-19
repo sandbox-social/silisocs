@@ -4,7 +4,8 @@ This file is a contributor guide for LLM coding agents working in this repositor
 
 ## 1) What This Repository Is
 
-Silisocs is a Concordia-based social simulation framework with:
+Silisocs is a native social simulation framework with an optional Concordia
+compatibility bridge for legacy scenarios. It has:
 
 - YAML-first scenario and runtime configuration (Hydra + OmegaConf)
 - A social-media game-master/environment layer
@@ -27,25 +28,24 @@ Core runtime layers:
 - Supports fixed-action set loading and template rendering
 - Entry point: `EntityBuilder.build_agents(cfg, model)`
 
-### 2. Prefab/Entity Layer
+### 2. Agent Runtime Layer
 - `src/silisocs/agents/base_agent.py` — Abstract Agent interface
-- `src/silisocs/agents/entity.py` — LLM-based agent (Concordia-compatible)
-- `src/silisocs/agents/fixed_entity.py` — Deterministic agent (pre-scripted actions)
-- Custom agents must implement: `name`, `observe(str)`, `act(ActionSpec) → str`
-- To add custom agent: create prefab module with `Entity(Prefab)` class, reference in scenario
+- `src/silisocs/agents/native.py` — default LLM-backed native agent
+- `src/silisocs/agents/fixed.py` — deterministic fixed-action agent
+- Custom agents subclass `Agent`, accept a `LanguageModel`, implement
+  `name`, `observe(str)`, and `act(ActionSpec) -> ActionOutput`
+- To add a custom agent, point `persona_pipeline.classes.*.class_path` at the
+  runtime class and provide strict constructor `params`
 
 ### 3. Game Master Layer (Component-Slotted Architecture)
 - `src/silisocs/environments/gm/base_game_master.py` — Base coordinator
 - `src/silisocs/environments/gm/game_master.py` — Simple preset (single components)
 - `src/silisocs/environments/gm/shared_flow_game_master.py` — Multi-flow preset (multi-instance routing)
-- `src/silisocs/environments/gm/act.py` — SMAct (simple) & MultiFlowSMAct (routing logic)
 - `src/silisocs/environments/gm/components/` — Pluggable components:
   - `next_acting.py` — Determine which agent acts next
   - `observe.py` — Generate timeline/episode observations
   - `resolve.py` — Parse agent output into backend actions
-  - `initializer.py` — Initialize agents with memories
   - `recommend.py` — Schedule recommendation algorithm updates
-  - `seed_post_provider.py` — Generate seed posts (LLM/CSV/JSON)
 - To add custom component: implement `Component` interface, set in `sim.gm.components.{role}.class_path`
 
 ### 4. Engine Layer (Execution Policies)
@@ -66,9 +66,9 @@ Core runtime layers:
 
 ### 6. Runtime Orchestration
 - `src/silisocs/runtime/runner.py` — CLI entrypoint, Hydra config composition
-- `src/silisocs/runtime/simulation.py` — SimulationRunner orchestrates full workflow
 - `src/silisocs/runtime/config.py` — Config validation and initialization
-- Handles: model creation, agent building, memory initialization, simulation execution, checkpoint save/resume
+- Handles: model creation, direct runtime construction, initialization,
+  simulation execution, checkpoint save/resume
 
 ## 3) Configuration Model
 
@@ -97,7 +97,6 @@ Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 | `sim.tool_calling.mode` | single | `none` \| `single` \| `multi` |
 | `sim.engine.preset` | base | `base` or `flow` (flow-aware scheduling) |
 | `sim.engine.action_loop.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended` |
-| `sim.memory_backend` | list | `list` (fast) or `associative` (embedding-based) |
 | `sim.checkpoint.every_n_steps` | null | Checkpoint frequency (run_study.py sets 1 by default) |
 
 Key run params live in `scenario/default.yaml` (at config root via `@package _global_`):
@@ -149,7 +148,7 @@ Default UX rule:
 - Keep users on simple mode (`gm.preset=simple`, advanced dashboard toggle off).
 - Only expose flow tags and multi-GM controls behind advanced mode.
 
-Fixed agents (`silisocs.agents.fixed_entity`) are the reference example.
+Fixed agents (`silisocs.agents.fixed.FixedAgent`) are the reference example.
 
 ## 5) Agent Interface: Concordia vs Custom
 
@@ -182,13 +181,13 @@ class MyAgent(Agent):
 The resolve component and agent's configuration determine the output format expected.
 Agents should not be concerned with prescribing action format—that is a platform concern.
 
-### Reference Implementation: FixedActionEntity
+### Reference Implementation: FixedAgent
 
-The `silisocs.agents.fixed_entity.FixedActionEntityRuntime` is a concrete example of a non-LLM agent:
+`silisocs.agents.fixed.FixedAgent` is a concrete example of a non-LLM agent:
 
 ```python
-# src/silisocs/agents/fixed_entity.py
-class FixedActionEntityRuntime(Agent):
+# src/silisocs/agents/fixed.py
+class FixedAgent(Agent):
     """Deterministic agent executing pre-defined actions by episode."""
     
     def observe(self, observation: str) -> None:
@@ -203,32 +202,43 @@ class FixedActionEntityRuntime(Agent):
 
 ### How Custom Agents Are Loaded
 
-1. Create a module with an `Entity` class (Prefab wrapper):
+1. Create a native runtime class:
    ```python
    # my_agents.py
-   import dataclasses
-   from concordia.typing import prefab as prefab_lib
+   from silisocs.agents.base_agent import Agent
+   from silisocs.runtime.types import ActionOutput
    
-   @dataclasses.dataclass
-   class Entity(prefab_lib.Prefab):
-       description: str = "My custom agent"
-       params: dict = dataclasses.field(default_factory=dict)
-       
-       def build(self, model, memory_bank):
-           return MyCustomAgentRuntime(params=self.params)
+   class MyCustomAgent(Agent):
+       def __init__(self, *, model, name: str, context: str = ""):
+           super().__init__(model)
+           self._name = name
+           self._context = context
+
+       @property
+       def name(self) -> str:
+           return self._name
+
+       def observe(self, observation: str) -> None:
+           self._context += f"\n{observation}"
+
+       def act(self, action_spec):
+           return self._call_model(self._context, action_spec)
    ```
 
 2. Reference in scenario config:
    ```yaml
    persona_pipeline:
-     prefab_module: my_agents
      classes:
-       Alice:
-         role: influencer
-         prefab: Entity  # Uses my_agents.Entity
+       influencer:
+         count: 1
+         class_path: my_agents.MyCustomAgent
+         params:
+           name: Alice
+           context: Initial persona text.
    ```
 
-3. Runner loads it via `get_prefab_instance(prefab_module, class_name)`.
+3. The runner imports the class path directly and instantiates it with `model`
+   plus the configured `params`.
 
 ### Concordia Integration Points
 
@@ -236,7 +246,8 @@ If building a **Concordia-compatible** agent (using EntityAgentWithLogging):
 
 - Agents are context components (observe/act participate in component orchestration)
 - Extend `EntityAgentWithLogging` to get logging + checkpoint support automatically
-- Return from prefab's `build()` method
+- Opt in with `compat: concordia`; the adapter calls the upstream Concordia
+  prefab's `build()` method
 
 If building a **custom (non-Concordia)** agent:
 
@@ -261,9 +272,6 @@ actions as tools and the language model selects which action(s) to invoke.
 
 ### Enabling Tool-Calling
 
-The base `Entity` prefab now uses `SocialConcatActComponent` by default, so tool-calling
-is enabled automatically when the game-master action spec includes tool markers.
-
 To enable tool-calling at the game-master layer, configure resolve as `tool_calling`.
 This keeps prompt generation mode (`custom` or `generic`) independent from parsing mode.
 
@@ -280,9 +288,8 @@ sim:
                 built_in: tool_calling
 ```
 
-When tool-calling is active AND the action_spec contains the marker,
-`SocialConcatActComponent.get_action_attempt()` handles tool selection.
-Otherwise, normal Concordia act proceeds.
+When tool-calling is active, the native `ActionSpec` carries tool schemas in
+`extra_args`; `Agent._call_model()` routes the request to `sample_tool_calls`.
 
 ### Validation & Error Handling
 
@@ -296,7 +303,7 @@ for entity in self.entities:
     assert hasattr(entity, 'act'), f"{entity} missing 'act' method"
 ```
 
-Runner also validates during prefab construction, so **missing methods will fail fast**.
+Runner validates direct class construction, so **missing methods fail fast**.
 
 ### Multi-Action Support (Open-Ended Policy)
 
@@ -343,8 +350,8 @@ For **tool-calling mode** specifically: The entity layer is responsible for call
 
 - Checkpoints are saved as JSON under run output `checkpoints/step_{N}_checkpoint.json`.
 - Runtime resume uses:
-  - `sim.checkpoint.resume_file`
-  - optional `sim.checkpoint.resume_step`
+- `sim.checkpoint.source_run`
+- `sim.checkpoint.restore`
 - Resume restores game-master and entity component state plus raw log.
 
 **Saving policy**: checkpoint saving is disabled by default when running directly via `run_experiment.py` unless `every_n_steps` or `explicit_steps` is configured. When running via `run_study.py`, checkpointing is enabled automatically (`every_n_steps=1`) so that `eval.py` can access the final checkpoint for action-type metrics. Studies can change the frequency via `run_defaults.overrides: {sim.checkpoint.every_n_steps: N}`.
@@ -462,5 +469,3 @@ Start from these files to understand the flow:
 5. **Multi-flow GM**: `src/silisocs/environments/gm/shared_flow_game_master.py` — Advanced preset
 6. **Component slots**: `src/silisocs/environments/gm/components/` — Pluggable behavior
 7. **Backend actions**: `src/silisocs/environments/backends/twitter_like/app.py` — Example backend
-
-

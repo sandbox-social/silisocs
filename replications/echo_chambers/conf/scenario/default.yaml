@@ -27,7 +27,7 @@ echo_leaders: [10, 30]
 echo_llm_response_mode: json_object
 echo_prompt_variant: compat
 echo_include_self_state_feedback: true
-echo_agent_prefab_module: replications.echo_chambers.components.agent
+echo_agent_class_path: replications.echo_chambers.components.agent.EchoChamberAgentRuntime
 echo_concordia_short_memory_processor_class: replications.echo_chambers.components.agent_concordia.ShortMemoryProcessor
 echo_concordia_long_memory_processor_class: replications.echo_chambers.components.agent_concordia.LongMemoryProcessor
 echo_concordia_belief_update_processor_class: replications.echo_chambers.components.agent_concordia.BeliefUpdateProcessor

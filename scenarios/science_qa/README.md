@@ -15,10 +15,10 @@ science coverage amplifies it beyond its appropriate confidence interval.
 
 | Role | Count | Prefab |
 |---|---|---|
-| `researcher` | 2 | `silisocs.agents.entity` |
-| `science_communicator` | 2 | `silisocs.agents.entity` |
-| `curious_learner` | 3 | `silisocs.agents.entity` |
-| `skeptic` | 2 | `silisocs.agents.entity` |
+| `researcher` | 2 | `silisocs.agents.native` |
+| `science_communicator` | 2 | `silisocs.agents.native` |
+| `curious_learner` | 3 | `silisocs.agents.native` |
+| `skeptic` | 2 | `silisocs.agents.native` |
 
 No fully-connected nodes; all roles use the same Barabási-Albert network.
 

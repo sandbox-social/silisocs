@@ -12,7 +12,7 @@ A 6-user social media community with asymmetric follow structure and distinct pe
 
 | Role | Count | Prefab |
 |---|---|---|
-| `user` | 6 | `silisocs.agents.entity` |
+| `user` | 6 | `silisocs.agents.native` |
 
 Archetypes: sensationalist spreader, laid-back bystander, skeptical fact-checker,
 emotionally-driven sharer, passive observer, moderate engager.

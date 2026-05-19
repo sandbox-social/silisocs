@@ -60,31 +60,30 @@ class TwitterLikeApp(SocialMediaApp):
             )
 
     def initialize(self, agent_names: list[str], **kwargs: Any) -> None:
-        """Set up users, generate follow network, and create seed posts.
+        """Compatibility no-op; runtime initializers own social setup."""
+        del agent_names, kwargs
 
-        Reads ``social_network`` config to decide graph generation strategy.
-        Supports ``barabasi_albert``, ``random``, ``lfr_benchmark``, and
-        ``predefined`` network types.
-
-        Args:
-            agent_names: Agent display names.
-            **kwargs: ``sim_roles``, ``seed_posts``, ``social_network``.
-        """
-        from silisocs.utils.network import generate_follow_network
-
-        sim_roles = kwargs.get("sim_roles", {})
-        seed_posts = kwargs.get("seed_posts", {})
-        social_network = kwargs.get("social_network", {})
+    def setup_social_state(
+        self,
+        *,
+        agent_names: list[str],
+        sim_roles: dict[str, str] | None = None,
+        social_network: dict[str, Any] | None = None,
+        following_graph: dict[str, list[str]] | None = None,
+        agent_bios: dict[str, str] | None = None,
+    ) -> None:
+        """Set up users and apply the initializer-provided follow network."""
+        del sim_roles, social_network
+        following = dict(following_graph or {})
+        agent_bios = dict(agent_bios or {})
 
         # Create users.
         for display_name in agent_names:
             username = self._display_name_to_username(display_name)
             self._user_mapping[display_name] = username
-            self._platform.create_user(username, bio="")
+            self._platform.create_user(username, bio=str(agent_bios.get(display_name, "")))
             self._log_action_event(display_name, "init_create_user", {"username": username})
 
-        # Generate follow network (graph-based).
-        following = generate_follow_network(agent_names, sim_roles, social_network)
         for display_name, followees in following.items():
             src = self._get_username(display_name)
             for followee in followees:
@@ -94,25 +93,12 @@ class TwitterLikeApp(SocialMediaApp):
                 except Exception as e:
                     self._print(f"Follow error ({src}->{tgt}): {e}", color="red")
 
-        # Seed posts.
-        for display_name, post_text in seed_posts.items():
-            if post_text:
-                try:
-                    self.create_tweet(display_name, post_text)
-                except Exception as e:
-                    self._print(f"Seed post error for {display_name}: {e}", color="red")
-
         follow_edges = sum(len(v) for v in following.values())
-        self._log_action_event(
-            "system",
-            "initialize",
-            {
-                "platform": "twitter_like",
-                "num_users": len(agent_names),
-                "num_follow_edges": follow_edges,
-                "num_seed_posts": sum(1 for t in seed_posts.values() if t),
-            },
-        )
+        self._last_initialization_stats = {
+            "platform": "twitter_like",
+            "num_users": len(agent_names),
+            "num_follow_edges": follow_edges,
+        }
         self._print(f"Initialized {len(agent_names)} users ({follow_edges} follow edges)")
 
     def get_timeline(self, user_name: str, limit: int = 10) -> list[dict]:

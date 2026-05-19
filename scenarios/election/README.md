@@ -13,7 +13,7 @@ tension between native-born and immigrant communities.
 
 | Role | Count | Prefab |
 |---|---|---|
-| `voter` | N-3 | `silisocs.agents.entity` (external persona pipeline) |
+| `voter` | N-3 | `silisocs.agents.native` (external persona pipeline) |
 | `candidate` | 2 | custom `input/entity_lib/candidate.py` |
 | `news_account` | 1 | custom `input/entity_lib/` (fixed posting schedule) |
 

@@ -36,14 +36,14 @@ platform config, and scenario config into a single resolved config tree.
 (or custom builder logic) and creates agent entities with personas, memories,
 and goals.
 
-**Phase 3 — Memory initialization**: The initializer GM injects shared memories,
-generates per-agent memories (raw or formative mode), and hands control to the
-main game master.
+**Phase 3 — Runtime initialization**: The runtime initializer injects shared
+memories, asks each GM to initialize backend state, and posts seed content
+before the main loop.
 
 **Phase 4 — Simulation loop**: Each step, agents observe environment state,
 decide on an action, and the game master executes it against the configured
 backend. Social backends provide timelines; generic backends can provide any
-domain observation through `EnvironmentApp.observe(...)`. Probes are deployed
+domain observation through `BackendApp.observe(...)`. Probes are deployed
 on schedule.
 
 ---
@@ -69,6 +69,9 @@ uv run silisocs env=reddit_like
 # Run the generic non-social sample backend
 uv run silisocs scenario=resource_market agents=resource_market env=resource_market
 
+# Run the virtual-space sample backend
+uv run silisocs scenario=virtual_space agents=virtual_space env=virtual_space
+
 # Run an external scenario
 uv run silisocs --config-path scenarios/election/conf
 ```
@@ -82,7 +85,6 @@ uv run silisocs \
   num_agents=100 \
   num_steps=50 \
   seed=42 \
-  sim.memory_backend=associative \
   env.social_network.network_type=random
 
 # Switch GM resolve mode to tool-calling
@@ -91,7 +93,7 @@ uv run silisocs \
   sim.tool_calling.mode=single
 
 # Override only who can act next
-uv run silisocs env.gm.components.next_acting.built_in=all_entities
+uv run silisocs env.gm.components.next_acting.built_in=all_agents
 ```
 
 ### Dashboard
@@ -187,11 +189,10 @@ Define agent classes with data sources and field mappings:
 
 ```yaml
 persona_pipeline:
-  processing_mode: raw
   classes:
     user:
       count: 100
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       data:
         source: inline
         records:
@@ -219,7 +220,7 @@ Create a `builders.py` in your scenario directory:
 
 ```python
 from silisocs.agents.builders import BaseAgentBuilder
-from silisocs.runtime.dataclasses import AgentConfig
+from silisocs.runtime.construction.specs import AgentConfig
 
 class MyScenarioAgentBuilder(BaseAgentBuilder):
     def build_role_agents(self, role, count):
@@ -237,6 +238,7 @@ You can assign different LLM models at three levels:
 **Global default** — in `sim/base.yaml`:
 ```yaml
 llm:
+  provider: openai
   name: gpt-4o
 ```
 
@@ -245,7 +247,7 @@ llm:
 classes:
   voter:
     count: 100
-    model: qwen3.5-4b       # Cheaper model for voters
+    model: gpt-4o-mini      # Cheaper model for voters
   candidate:
     count: 2
     model: gpt-4o            # Better model for key agents
@@ -290,9 +292,9 @@ transitions between active and inactive states. Only active agents take actions.
 
 ---
 
-## Fixed-Action Entities
+## Fixed-Action Agents
 
-Use a dedicated fixed entity prefab when you want deterministic,
+Use `silisocs.agents.fixed.FixedAgent` when you want deterministic,
 episode-aware behavior without LLM action generation.
 
 Minimal pattern:
@@ -302,7 +304,7 @@ persona_pipeline:
   classes:
     broadcaster:
       count: 1
-      prefab_module: silisocs.agents.fixed_entity
+      class_path: silisocs.agents.fixed.FixedAgent
       sim_role_name: broadcaster
       data:
         source: inline
@@ -328,8 +330,10 @@ persona_pipeline:
 
 sim:
   engine:
-    flow_routing:
-      flow_order: [fixed_pre, default]
+    step:
+      built_in: flow
+      params:
+        flow_order: [fixed_pre, default]
   gm:
     components:
       observe:
@@ -340,9 +344,9 @@ sim:
 
 Behavior notes:
 
-- Fixed entities parse episode index from observation text (for example `EPISODE: 12`).
-- If no episode number is parseable, the fixed entity increments its internal counter by 1.
-- The action text emitted by fixed entities is compatible with existing resolve components.
+- Fixed agents parse episode index from observation text (for example `EPISODE: 12`).
+- If no episode number is parseable, the fixed agent increments its internal counter by 1.
+- The action text emitted by fixed agents is compatible with existing resolve components.
 - `fixed_action_plan` is strict dict-only (`episode -> list[action]`), not list-based.
 - You can load the same structure from a file using `params.fixed_action_plan_file` (`.json/.yaml/.yml`).
 
@@ -355,8 +359,8 @@ Compatibility notes:
 
 ## Memory Initialization
 
-Before the simulation loop starts, the initializer game master populates each
-agent's memory:
+Before the simulation loop starts, the Engine runs agent initialization and
+populates each agent's memory:
 
 1. **Shared memories** (from config) are broadcast to all agents
 2. **Generated memories** (from `generate_memories()`) are per-agent
@@ -366,8 +370,8 @@ Two built-in modes:
 
 | Mode | Config | Behavior |
 |------|--------|----------|
-| **Raw** | `processing_mode: raw` | No LLM calls, only config memories |
-| **Formative** | `processing_mode: formative` | LLM-generated multi-episode backstories |
+| **Raw** | `sim.initialization.agents.built_in: raw_memory` | No LLM calls, only config memories |
+| **Formative** | `sim.initialization.agents.built_in: formative_memory` | LLM-generated multi-episode backstories |
 
 See [Memory Initialization](memory_initialization.md) for custom initializers.
 
@@ -383,16 +387,19 @@ probes:
     enabled: true
     start_step: 1
     every_n_steps: 5
-  queries:
-    0:
-      query_type: NumericRatingProbe
-      query_data:
-        interaction_premise_template:
-          question: "On a scale of 1-10, how satisfied are you?"
+  probes:
+    satisfaction:
+      probe_name: satisfaction
+      probe_type: NumericRatingProbe
+      probe_data:
+        name: Satisfaction
+        question: "On a scale of {lo} to {hi}, how satisfied are you?"
+        lo: 1
+        hi: 10
 ```
 
 Built-in probe types: `NumericRatingProbe`, `BinaryProbe`, `ChoiceProbe`,
-`FreeTextProbe`, `TemplateProbe`.
+`FreeTextProbe`.
 
 See [Evaluation Probes](probes.md) for details.
 
@@ -415,7 +422,7 @@ outputs/<scenario_name>/<jobname>/<jobname>_<timestamp>/
 | `prompts_and_responses.jsonl` | JSONL | Every LLM call — prompt, response, episode index, and agent name |
 | `run_stats.log` | Text | Per-episode timing, worker counts, retry telemetry, and startup phase durations |
 | `sim_metrics.json` | JSON | Structured metrics summary: system info, per-episode durations, worker limits, resource snapshots (CPU/memory), and aggregate statistics |
-| `logs.html` | HTML | Browseable Concordia log with tabs for the Game Master log, per-agent memory logs, and GM memories |
+| `logs.html` | HTML | Browseable simulation log with tabs for the Game Master log, per-agent memory logs, and GM memories |
 | `<platform>.db` | SQLite | Full social media state (users, posts, replies, likes, follows). Use with the [built-in visualizers](backends.md#built-in-visualizers) to browse |
 | `.hydra/config.yaml` | YAML | Fully resolved Hydra config snapshot |
 | `.hydra/overrides.yaml` | YAML | CLI overrides used for this run |
@@ -449,10 +456,10 @@ Each line in `probe_events.jsonl`:
   "event_index": 0,
   "data": {
     "agent": "Alice Smith",
-    "query_type": "NumericRatingProbe",
+    "probe_type": "NumericRatingProbe",
     "question": "Rate your satisfaction 1-10",
     "raw_response": "I'd say about a 7",
-    "query_return": "7"
+    "probe_return": "7"
   }
 }
 ```
@@ -543,7 +550,6 @@ event:
 # scenarios/my_scenario/conf/agents/default.yaml
 # @package agents
 persona_pipeline:
-  processing_mode: raw
   defaults:
     params:
       scenario_context: ${event.context}
@@ -553,7 +559,7 @@ persona_pipeline:
   classes:
     user:
       count: ${num_agents}
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: user
       data:
         source: inline
@@ -617,8 +623,8 @@ uv run streamlit run src/silisocs/dashboard/launch_app.py
 Create the scenario visually, configure agents, and launch. Use the sidebar
 `Start from` selector to load previous run configuration snapshots when needed.
 
-To replay simulation state from a checkpoint, use `sim.checkpoint.resume_file`
-in the launch overrides (CLI-based resume).
+To replay simulation state from a previous run, use `sim.checkpoint.source_run`
+in the launch overrides.
 
 ### 7. Replay from a Checkpoint
 
@@ -631,23 +637,14 @@ uv run silisocs \
   sim.checkpoint.every_n_steps=10
 ```
 
-Then resume from a snapshot file:
+Then restore from the previous output directory:
 
 ```sh
 uv run silisocs \
   --config-path scenarios/my_scenario/conf \
   num_steps=200 \
-  sim.checkpoint.resume_file=outputs/my_scenario/run1/.../checkpoints/step_100_checkpoint.json
-```
-
-Optional override for the resume step:
-
-```sh
-uv run silisocs \
-  --config-path scenarios/my_scenario/conf \
-  num_steps=200 \
-  sim.checkpoint.resume_file=/abs/path/to/step_100_checkpoint.json \
-  sim.checkpoint.resume_step=120
+  sim.checkpoint.source_run=outputs/my_scenario/run1 \
+  sim.checkpoint.restore.built_in=social_action_event_replay
 ```
 
 ---
@@ -659,50 +656,51 @@ users.
 
 ### Engine Responsibilities
 
-The runtime now includes two engine presets:
+The runtime now includes direct engine step strategies:
 
-- `sim.engine.preset: base` (default): simple execution path, one GM active per episode.
-- `sim.engine.preset: flow`: flow-aware execution with optional multi-GM phase orchestration.
+- `sim.engine.step.built_in: base` (default): simple execution path, one GM active per episode.
+- `sim.engine.step.built_in: flow`: flow-aware execution.
+- `sim.engine.step.built_in: multi_gm`: flow-aware execution with multi-GM routing.
 
 The flow engine (`FlowRuntimeEngine`) is responsible for:
 
 - Episode loop orchestration (`run_loop`)
 - Probe scheduling and deployment timing
-- Selecting acting entities and action specs for each episode
-- Running entity actions concurrently and resolving them through the GM
+- Selecting acting agents and action specs for each episode
+- Running agent actions concurrently and resolving them through the GM
 - Worker throttling based on retry telemetry
 
 Key implementation: `src/silisocs/simulation_engines/base_engines.py`.
 
 #### Current Action Semantics
 
-Action semantics are policy-driven through `sim.engine.action_loop`.
+Action semantics are policy-driven through `sim.engine.turn_policy`.
 
-- `single_action`: one resolved action per acting entity per episode.
-- `fixed_count`: a fixed number of resolved actions per acting entity.
+- `single_action`: one resolved action per acting agent per episode.
+- `fixed_count`: a fixed number of resolved actions per acting agent.
 - `open_ended`: continue until stop token or max action budget.
 
-Probe timing is also policy-driven through `sim.engine.probe_schedule`.
+Probe timing is policy-driven through `evals.probes.schedule`.
 
 #### Defining New Agent Behavior Flows
 
 To introduce new class-level behavior phases without engine/resolve bloat:
 
 1. Set `flow_tag` per class in `persona_pipeline.classes`.
-2. Define phase order in `sim.engine.flow_routing.flow_order`.
-3. Optionally add per-entity overrides with `sim.engine.flow_routing.entity_to_flow`.
+2. Define phase order in `sim.engine.step.params.flow_order`.
+3. Optionally add per-agent overrides with `sim.engine.step.params.agent_to_flow`.
 4. Add any flow names that require episode-style observations to
   `env.gm.components.observe.params.episode_observation_flows`.
 
-This pattern is how fixed entities run before default LLM-driven agents today,
+This pattern is how fixed agents run before default LLM-driven agents today,
 and it generalizes to any future specialized class.
 
 ### Game Master Responsibilities
 
-The environment GM (`GameMaster` + `SMAct`) is responsible for:
+The environment GM (`GameMaster` + native components) is responsible for:
 
 - Initializing the active backend app and any seed content
-- Building generic or timeline observations for each acting entity
+- Building generic or timeline observations for each acting agent
 - Parsing and dispatching actions (`custom`, `generic`) and tool calls (`none`, `single`, `multi`)
 - Applying action effects through the backend app contract
 - Managing activity-state-based actor gating
@@ -710,16 +708,15 @@ The environment GM (`GameMaster` + `SMAct`) is responsible for:
 Key implementations:
 
 - `src/silisocs/environments/gm/game_master.py`
-- `src/silisocs/environments/gm/act.py`
 - `src/silisocs/environments/gm/components/`
 
 ### What Developers Commonly Customize
 
 #### Engine-side tasks
 
-- Multi-action-per-episode loop policy (`sim.engine.action_loop`)
+- Multi-action-per-episode turn policy (`sim.engine.turn_policy`)
 - Alternative actor scheduling policies
-- Probe timing policy (`sim.engine.probe_schedule`)
+- Probe timing policy (`evals.probes.schedule`)
 - Concurrency and retry throttling strategy
 
 #### GM-side tasks
@@ -728,11 +725,11 @@ Key implementations:
 - Action dispatch strategy by mode (`_resolve`, `_resolve_generic`, `_resolve_tool_calling`)
 - Observation shaping (`app_observation`, `timeline_every_turn`, or custom component)
 - Activity transition behavior (`update_user_activity_state`)
-- Seed post generation strategy (`_collect_seed_posts`)
+- Seed post action handling through `resolve_action`
 
 ### Backend Contract Tasks
 
-For platform extensions, backend classes implement `EnvironmentApp` and are
+For platform extensions, backend classes implement `BackendApp` and are
 selected by `platform_type` or `env.app.class_path` through the backend factory.
 Typical developer tasks include adding new `@app_action` methods, observations,
 optional timeline semantics, and storage/query behavior.

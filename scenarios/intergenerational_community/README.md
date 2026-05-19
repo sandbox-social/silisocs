@@ -16,10 +16,10 @@ DVD/CD collection in favour of expanded Hoopla and Kanopy streaming access.
 
 | Role | Count | Prefab |
 |---|---|---|
-| `senior` | 2 | `silisocs.agents.entity` |
-| `middle_aged_resident` | 2 | `silisocs.agents.entity` |
-| `young_adult` | 3 | `silisocs.agents.entity` |
-| `teen` | 2 | `silisocs.agents.entity` |
+| `senior` | 2 | `silisocs.agents.native` |
+| `middle_aged_resident` | 2 | `silisocs.agents.native` |
+| `young_adult` | 3 | `silisocs.agents.native` |
+| `teen` | 2 | `silisocs.agents.native` |
 
 No fully-connected nodes; Barabási-Albert topology with base followership 0.5.
 

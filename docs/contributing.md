@@ -47,7 +47,7 @@ marker. These tests launch short simulation runs and validate runtime artifacts.
 - Run deterministic simulation-contract mirrors (default CI-safe set):
 
     ```sh
-    uv run pytest tests/test_fixed_entity_runtime.py tests/test_backend_feed_contracts.py -v
+    uv run pytest tests/test_fixed_runtime.py tests/test_backend_feed_contracts.py -v
     ```
 
 ### Required Artifact Checks

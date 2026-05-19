@@ -16,7 +16,7 @@ optimal viewing nights.
 
 | Role | Count | Prefab |
 |---|---|---|
-| `hobbyist` | 9 | `silisocs.agents.entity` |
+| `hobbyist` | 9 | `silisocs.agents.native` |
 
 All agents are the same role. Differentiation comes entirely from individual backstory,
 motivation, and voice — not from assigned function.

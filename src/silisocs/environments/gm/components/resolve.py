@@ -1,15 +1,16 @@
-"""Concordia-native resolve components for social-media game masters."""
+"""Native resolve components for social-media game masters."""
 
 from __future__ import annotations
 
-import ast
-import json
 import re
 from dataclasses import dataclass
 from typing import Any
 
-from concordia.typing import entity as entity_lib
-from concordia.typing import entity_component
+from silisocs.environments.gm.components.base import (
+    ComponentState,
+    ResolveComponent,
+)
+from silisocs.runtime.types import ActionOutput, OutputType
 
 _ACTION_BLOCK_PATTERN = re.compile(
     r"(?ims)^\s*(?P<label>ACTION TYPE|TARGET ID|CONTENT|REASONING)\s*:\s*"
@@ -36,9 +37,6 @@ _TARGET_REQUIRED_ACTIONS = {
     "retweet",
     "boost",
 }
-_TOOL_CALL_EXPR_PATTERN = re.compile(
-    r"(?is)tool_call\s*:\s*(?P<name>[a-zA-Z_][\w]*)\s*\((?P<args>.*)\)\s*$"
-)
 
 
 def _normalize_target_id(action_type: str, target_id: str) -> str:
@@ -90,43 +88,37 @@ def find_and_parse_action_data(data_string: str) -> dict[str, str] | None:
 
 
 @dataclass(eq=False)
-class _BaseResolveComponent(
-    entity_component.ContextComponent, entity_component.ComponentWithLogging
-):
-    """Base class for resolve components consumed by SwitchAct."""
+class _BaseResolveComponent(ResolveComponent):
+    """Base class for resolve components used by native game masters."""
 
     sm_app: Any
-    call_to_action_str: str = ""
+    action_prompt_template: str = ""
     model: Any = None
 
-    def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
-        """Execute resolve logic when the game master asks for RESOLVE output."""
-        if action_spec.output_type != entity_lib.OutputType.RESOLVE:
-            return ""
+    def resolve_action(self, agent_name: str, action: ActionOutput | str) -> str:
+        """Resolve raw action text for one agent."""
+        return self.resolve(active_agent=agent_name, action=action)
 
-        if ":" not in action_spec.call_to_action:
-            return ""
-        active_entity, action_text = action_spec.call_to_action.split(":", 1)
-        result = self.resolve(active_entity=active_entity, action_text=action_text)
-        self._logging_channel(
-            {
-                "Key": "resolve",
-                "Summary": result,
-                "Value": result,
-                "Action": action_spec.call_to_action,
-            }
-        )
-        return result
+    def _action_has_parameter(self, action_name: str, parameter_name: str) -> bool:
+        """Return whether an app action accepts the named parameter."""
+        actions = getattr(self.sm_app, "actions", None)
+        if not callable(actions):
+            return False
+        for action in actions():
+            if action_name not in {action.name, action.selectable_name}:
+                continue
+            return any(param.name == parameter_name for param in action.parameters)
+        return False
 
-    def resolve(self, *, active_entity: str, action_text: str) -> str:
+    def resolve(self, *, active_agent: str, action: ActionOutput | str) -> str:
         """Resolve raw action text into backend operation result."""
         raise NotImplementedError
 
-    def get_state(self) -> entity_component.ComponentState:
+    def get_state(self) -> ComponentState:
         """Return serializable component state."""
         return {}
 
-    def set_state(self, state: entity_component.ComponentState) -> None:
+    def set_state(self, state: ComponentState) -> None:
         """Restore component state."""
         del state
 
@@ -135,126 +127,66 @@ class _BaseResolveComponent(
 class ParsedActionResolveComponent(_BaseResolveComponent):
     """Resolve using ACTION TYPE/TARGET ID/CONTENT parser output."""
 
-    def resolve(self, *, active_entity: str, action_text: str) -> str:
+    def resolve(self, *, active_agent: str, action: ActionOutput | str) -> str:
         """Resolve.
 
         :returns: str
         :rtype: str
         """
+        action_text = action.text if isinstance(action, ActionOutput) else str(action)
         action_data = find_and_parse_action_data(action_text)
         if action_data is None:
             return ""
-        return self.sm_app.parse_and_resolve_action(active_entity, action_data)
+        return self.sm_app.parse_and_resolve_action(active_agent, action_data)
 
 
 @dataclass(eq=False)
 class GenericActionResolveComponent(_BaseResolveComponent):
     """Resolve generic ACTION: name / param: value format."""
 
-    def resolve(self, *, active_entity: str, action_text: str) -> str:
+    def resolve(self, *, active_agent: str, action: ActionOutput | str) -> str:
         """Resolve.
 
         :returns: str
         :rtype: str
         """
+        action_text = action.text if isinstance(action, ActionOutput) else str(action)
         action_match = re.search(r"(?i)ACTION:\s*(\w+)", action_text)
         if not action_match:
             return ""
         action_name = action_match.group(1).strip()
         args_text = action_text[action_match.end() :].strip()
+        if self._action_has_parameter(action_name, "current_user") and not re.search(
+            r"(?im)^\s*current_user\s*:",
+            args_text,
+        ):
+            args_text = f"current_user: {active_agent}" + (f"\n{args_text}" if args_text else "")
         return self.sm_app.invoke_action_by_name(action_name, args_text) or ""
 
 
 @dataclass(eq=False)
 class ToolCallingResolveComponent(_BaseResolveComponent):
-    """Resolve tool-call invocations from the entity's act output.
+    """Resolve typed tool-call invocations from an agent action output."""
 
-    In tool-calling mode, the entity layer (via SocialConcatActComponent) is
-    responsible for:
-    1. Receiving the action_spec with tool-calling indicators
-    2. Calling sample_tool_call() with available backend actions
-    3. Returning the selected tool call as JSON
-
-    This resolve component parses and executes the tool-call result.
-    """
-
-    @staticmethod
-    def _extract_tool_calls(action_text: str) -> list[tuple[str, dict[str, Any]]]:
-        """Parse JSON/function payload into one or many tool calls."""
-        normalized_text = str(action_text or "").strip()
-        # BaseRuntimeEngine may escape braces before RESOLVE dispatch to
-        # avoid SwitchAct formatting issues; restore only when explicit escaped
-        # opening braces are present to avoid corrupting valid JSON payloads.
-        if "{{" in normalized_text:
-            normalized_text = normalized_text.replace("{{", "{").replace("}}", "}")
-
-        # Primary path: strict JSON payload from SocialConcatActComponent.
-        try:
-            data = json.loads(normalized_text)
-        except (json.JSONDecodeError, TypeError, ValueError):
-            data = None
-
-        if isinstance(data, dict) and "tool_calls" in data:
-            tool_calls_raw = data.get("tool_calls")
-            if isinstance(tool_calls_raw, list):
-                parsed_calls: list[tuple[str, dict[str, Any]]] = []
-                for tool_call in tool_calls_raw:
-                    if not isinstance(tool_call, dict):
-                        continue
-                    tool_name = tool_call.get("name")
-                    payload = tool_call.get("arguments", {})
-                    if (
-                        isinstance(tool_name, str)
-                        and tool_name.strip()
-                        and isinstance(payload, dict)
-                    ):
-                        parsed_calls.append((tool_name.strip(), payload))
-                if parsed_calls:
-                    return parsed_calls
-
-        if isinstance(data, dict) and "tool_call" in data:
-            tool_call = data["tool_call"]
-            if isinstance(tool_call, dict):
-                tool_name = tool_call.get("name")
-                payload = tool_call.get("arguments", {})
-                if isinstance(tool_name, str) and tool_name.strip() and isinstance(payload, dict):
-                    return [(tool_name.strip(), payload)]
-
-        # Compatibility path: text format like tool_call:create_tweet({"content": "hi"}).
-        match = _TOOL_CALL_EXPR_PATTERN.search(normalized_text)
-        if not match:
-            return []
-
-        tool_name = match.group("name").strip()
-        args_text = match.group("args").strip()
-        if not tool_name:
-            return []
-
-        if not args_text:
-            return [(tool_name, {})]
-
-        payload_obj: Any = None
-        try:
-            payload_obj = json.loads(args_text)
-        except (json.JSONDecodeError, TypeError, ValueError):
-            try:
-                payload_obj = ast.literal_eval(args_text)
-            except (TypeError, ValueError, SyntaxError):
-                return []
-
-        if not isinstance(payload_obj, dict):
-            return []
-        return [(tool_name, payload_obj)]
-
-    def resolve(self, *, active_entity: str, action_text: str) -> str:
-        """Handle tool-calling action text from the entity."""
-        tool_calls = self._extract_tool_calls(action_text)
+    def resolve(self, *, active_agent: str, action: ActionOutput | str) -> str:
+        """Handle typed tool calls from an agent."""
+        if not isinstance(action, ActionOutput) or action.output_type != OutputType.TOOL_CALLS:
+            raise TypeError("ToolCallingResolveComponent requires ActionOutput.TOOL_CALLS.")
+        tool_calls = [(call.name, dict(call.arguments)) for call in action.tool_calls]
         if tool_calls:
+            normalized_calls: list[tuple[str, dict[str, Any]]] = []
+            for tool_name, payload in tool_calls:
+                payload = dict(payload)
+                if (
+                    self._action_has_parameter(tool_name, "current_user")
+                    and "current_user" not in payload
+                ):
+                    payload["current_user"] = active_agent
+                normalized_calls.append((tool_name, payload))
             results = [
                 str(self.sm_app.invoke_action_with_kwargs(tool_name, payload))
-                for tool_name, payload in tool_calls
+                for tool_name, payload in normalized_calls
             ]
             return "\n".join(result for result in results if result)
 
-        # If not a tool call or parsing failed, return empty
-        return f"[{active_entity} completed tool-calling action]"
+        raise ValueError("TOOL_CALLS action output must include at least one tool call.")

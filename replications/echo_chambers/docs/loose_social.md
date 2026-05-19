@@ -40,9 +40,9 @@ The GM does not judge or infer belief.  It only resolves social actions and
 records the terminal belief report routed back through resolve.
 
 Loose-social permits multiple actions per active agent by using the custom
-engine action-loop policy:
+engine turn policy:
 
-- `engine.action_loop.class_path=replications.echo_chambers.components.action_loop.FixedActionsThenBeliefProbePolicy`
+- `engine.turn_policy.class_path=replications.echo_chambers.components.turn_policy.FixedActionsThenBeliefProbePolicy`
 - default `count=5`
 
 That gives each active agent up to five separate post/reply/repost decisions in

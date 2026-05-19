@@ -3,7 +3,6 @@ shared_memories:
 - ${event.context}
 - ${setting.background}
 persona_pipeline:
-  processing_mode: raw
   defaults:
     params:
       seed_post: ''
@@ -17,7 +16,7 @@ persona_pipeline:
   classes:
     candidate:
       count: 2
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: candidate
       flow_tag: default
       data:
@@ -31,7 +30,7 @@ persona_pipeline:
         goal: goal
     voter:
       count: 17
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: voter
       flow_tag: default
       data:
@@ -44,7 +43,7 @@ persona_pipeline:
         goal: Their goal is to stay informed and discuss the local election.
     fixed_news:
       count: 1
-      prefab_module: silisocs.agents.fixed_entity
+      class_path: silisocs.agents.fixed.FixedAgent
       sim_role_name: news_account
       flow_tag: fixed_pre
       data:

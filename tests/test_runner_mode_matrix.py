@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from omegaconf import OmegaConf
 
-from silisocs.runtime.factories import build_engine, default_gm_filename
+from silisocs.runtime.construction.engines import build_engine, default_gm_filename
 from silisocs.simulation_engines.base_engines import (
     BaseRuntimeEngine,
     FlowRuntimeEngine,
@@ -12,10 +12,21 @@ from silisocs.simulation_engines.base_engines import (
 
 
 def _cfg(gm_preset: str, engine_preset: str):
+    step_built_in = "base"
+    if engine_preset == "flow":
+        step_built_in = "flow"
+    if engine_preset == "multi_gm":
+        step_built_in = "multi_gm"
     return OmegaConf.create(
         {
             "sim": {
-                "engine": {"preset": engine_preset},
+                "engine": {
+                    "step": {
+                        "built_in": step_built_in,
+                        "params": {"flow_order": ["fixed_pre", "default"]},
+                    },
+                    "turn_policy": {"built_in": "single_action"},
+                },
             },
             "env": {
                 "gm": {"preset": gm_preset},

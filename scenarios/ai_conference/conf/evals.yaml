@@ -1,16 +1,15 @@
-write_html_log: false
 probes:
   deployment:
     enabled: true
     start_step: 1
     every_n_steps: 1
-    include_entities: []
-    exclude_entities: []
-  queries:
+    include_agents: []
+    exclude_agents: []
+  probes:
     ai_optimism:
       probe_name: ai_optimism
-      query_type: NumericRatingProbe
-      query_data:
+      probe_type: NumericRatingProbe
+      probe_data:
         name: AIOptimism
         question: Return a single number from {lo} to {hi} reflecting how optimistic
           you feel about AI's overall impact on society right now.
@@ -20,23 +19,23 @@ probes:
         hi: 10
     suppressed_concerns:
       probe_name: suppressed_concerns
-      query_type: BinaryProbe
-      query_data:
+      probe_type: BinaryProbe
+      probe_data:
         name: SuppressedConcerns
         question: Have you held back an opinion or concern about AI today because
           you were worried how others would react? Answer yes or no.
     most_influential_post:
       probe_name: most_influential_post
-      query_type: FreeTextProbe
-      query_data:
+      probe_type: FreeTextProbe
+      probe_data:
         name: MostInfluentialPost
         question: Describe the most memorable or thought-provoking post you have seen
           today and explain why it stood out to you.
         context: '{agentname} reflects on what they have read on social media today.'
     narrative_alignment:
       probe_name: narrative_alignment
-      query_type: ChoiceProbe
-      query_data:
+      probe_type: ChoiceProbe
+      probe_data:
         name: NarrativeAlignment
         question: Which perspective on AI feels more accurate to you right now?
         context: '{agentname} reflects on the narratives they have been exposed to
@@ -47,8 +46,8 @@ probes:
         - Both perspectives have real merit and the truth is somewhere in between
     reasoning_view:
       probe_name: reasoning_view
-      query_type: FreeTextProbe
-      query_data:
+      probe_type: FreeTextProbe
+      probe_data:
         name: ReasoningView
         question: In 1-2 sentences, state your current personal view on the main topic
           being discussed on social media today, and identify the one thing that most
@@ -57,8 +56,8 @@ probes:
           it.'
     private_journal:
       probe_name: private_journal
-      query_type: FreeTextProbe
-      query_data:
+      probe_type: FreeTextProbe
+      probe_data:
         name: PrivateJournal
         question: Write a private journal entry about your experience on social media
           today. This is completely private — no character limit, no audience. Be

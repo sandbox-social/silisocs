@@ -3,7 +3,6 @@ shared_memories:
 - ${event.context}
 - ${setting.background}
 persona_pipeline:
-  processing_mode: raw
   defaults:
     params:
       seed_post: ''
@@ -16,7 +15,7 @@ persona_pipeline:
   classes:
     senior:
       count: 2
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: senior
       data:
         source: inline
@@ -50,7 +49,7 @@ persona_pipeline:
         seed_post: seed_post
     middle_aged_resident:
       count: 2
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: middle_aged_resident
       data:
         source: inline
@@ -84,7 +83,7 @@ persona_pipeline:
         seed_post: seed_post
     young_adult:
       count: 3
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: young_adult
       data:
         source: inline
@@ -128,7 +127,7 @@ persona_pipeline:
         seed_post: seed_post
     teen:
       count: 2
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: teen
       data:
         source: inline

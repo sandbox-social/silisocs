@@ -73,7 +73,7 @@ def test_probe_metrics_use_configured_probe_types(tmp_path: Path) -> None:
             {
                 "source_user": "Alice",
                 "label": "vote_intent",
-                "data": {"query_return": "Yes", "query_mode": "single_structured_lines"},
+                "data": {"probe_return": "Yes", "probe_mode": "single_structured_lines"},
                 "episode": 1,
                 "event_type": "probe",
                 "event_index": 1,
@@ -81,7 +81,7 @@ def test_probe_metrics_use_configured_probe_types(tmp_path: Path) -> None:
             {
                 "source_user": "Alice",
                 "label": "candidate_score",
-                "data": {"query_return": "7", "query_mode": "single_structured_lines"},
+                "data": {"probe_return": "7", "probe_mode": "single_structured_lines"},
                 "episode": 1,
                 "event_type": "probe",
                 "event_index": 2,
@@ -90,8 +90,8 @@ def test_probe_metrics_use_configured_probe_types(tmp_path: Path) -> None:
                 "source_user": "Bob",
                 "label": "open_comment",
                 "data": {
-                    "query_return": "I care about education and local jobs.",
-                    "query_mode": "single_structured_lines",
+                    "probe_return": "I care about education and local jobs.",
+                    "probe_mode": "single_structured_lines",
                 },
                 "episode": 2,
                 "event_type": "probe",
@@ -103,21 +103,21 @@ def test_probe_metrics_use_configured_probe_types(tmp_path: Path) -> None:
     cfg = {
         "scenario": {
             "probes": {
-                "queries": {
+                "probes": {
                     "vote_intent": {
                         "probe_name": "vote_intent",
-                        "query_type": "BinaryProbe",
-                        "query_data": {"name": "VoteIntent"},
+                        "probe_type": "BinaryProbe",
+                        "probe_data": {"name": "VoteIntent"},
                     },
                     "candidate_score": {
                         "probe_name": "candidate_score",
-                        "query_type": "NumericRatingProbe",
-                        "query_data": {"name": "CandidateScore"},
+                        "probe_type": "NumericRatingProbe",
+                        "probe_data": {"name": "CandidateScore"},
                     },
                     "open_comment": {
                         "probe_name": "open_comment",
-                        "query_type": "FreeTextProbe",
-                        "query_data": {"name": "OpenComment"},
+                        "probe_type": "FreeTextProbe",
+                        "probe_data": {"name": "OpenComment"},
                     },
                 }
             }
@@ -142,7 +142,7 @@ def test_probe_type_filtered_mode(tmp_path: Path) -> None:
             {
                 "source_user": "Alice",
                 "label": "vote_intent",
-                "data": {"query_return": "Yes"},
+                "data": {"probe_return": "Yes"},
                 "episode": 1,
                 "event_type": "probe",
                 "event_index": 1,
@@ -150,7 +150,7 @@ def test_probe_type_filtered_mode(tmp_path: Path) -> None:
             {
                 "source_user": "Bob",
                 "label": "candidate_score",
-                "data": {"query_return": "8"},
+                "data": {"probe_return": "8"},
                 "episode": 1,
                 "event_type": "probe",
                 "event_index": 2,
@@ -161,16 +161,16 @@ def test_probe_type_filtered_mode(tmp_path: Path) -> None:
     cfg = {
         "scenario": {
             "probes": {
-                "queries": {
+                "probes": {
                     "vote_intent": {
                         "probe_name": "vote_intent",
-                        "query_type": "BinaryProbe",
-                        "query_data": {"name": "VoteIntent"},
+                        "probe_type": "BinaryProbe",
+                        "probe_data": {"name": "VoteIntent"},
                     },
                     "candidate_score": {
                         "probe_name": "candidate_score",
-                        "query_type": "NumericRatingProbe",
-                        "query_data": {"name": "CandidateScore"},
+                        "probe_type": "NumericRatingProbe",
+                        "probe_data": {"name": "CandidateScore"},
                     },
                 }
             }
@@ -194,7 +194,7 @@ def test_probe_postprocessor_accepts_nonexistent_output_json_context(tmp_path: P
             {
                 "source_user": "Alice",
                 "label": "vote_choice",
-                "data": {"query_return": "Bill Fredrickson"},
+                "data": {"probe_return": "Bill Fredrickson"},
                 "episode": 1,
                 "event_type": "probe",
                 "event_index": 1,
@@ -202,7 +202,7 @@ def test_probe_postprocessor_accepts_nonexistent_output_json_context(tmp_path: P
             {
                 "source_user": "Bob",
                 "label": "vote_choice",
-                "data": {"query_return": "Bradley Carter"},
+                "data": {"probe_return": "Bradley Carter"},
                 "episode": 1,
                 "event_type": "probe",
                 "event_index": 2,
@@ -213,11 +213,11 @@ def test_probe_postprocessor_accepts_nonexistent_output_json_context(tmp_path: P
     cfg = {
         "scenario": {
             "probes": {
-                "queries": {
+                "probes": {
                     "vote_choice": {
                         "probe_name": "vote_choice",
-                        "query_type": "ChoiceProbe",
-                        "query_data": {
+                        "probe_type": "ChoiceProbe",
+                        "probe_data": {
                             "name": "VoteChoice",
                             "choices": ["Bill Fredrickson", "Bradley Carter"],
                         },

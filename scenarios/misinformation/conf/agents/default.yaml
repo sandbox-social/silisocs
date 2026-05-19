@@ -3,7 +3,6 @@ shared_memories:
 - ${event.context}
 - ${setting.background}
 persona_pipeline:
-  processing_mode: raw
   defaults:
     params:
       seed_post: ''
@@ -16,7 +15,7 @@ persona_pipeline:
   classes:
     user:
       count: 6
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: user
       data:
         source: inline

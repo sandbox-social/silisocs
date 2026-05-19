@@ -1,6 +1,5 @@
 # @package agents
 persona_pipeline:
-  processing_mode: raw
   defaults:
     params:
       seed_post: ''
@@ -13,7 +12,7 @@ persona_pipeline:
   classes:
     hobbyist:
       count: 9
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: hobbyist
       data:
         source: inline

@@ -1,0 +1,73 @@
+# @package env
+
+platform_type: virtual_space
+app_module_path: silisocs.environments.backends.virtual_space
+use_server: false
+
+enabled_actions: null
+enable_gm_multi_flow: false
+observation_history: 100
+
+app:
+  class_path: null
+  params:
+    rooms: [atrium, garden, workshop]
+    starting_room: atrium
+    room_descriptions:
+      atrium: A bright central hall with paths to every other room.
+      garden: A quiet garden for private conversations.
+      workshop: A practical room filled with tools and shared projects.
+    connections: null
+
+gamemaster:
+  filename: environment
+  name: virtual_space_gm
+  sim_role:
+    name: virtual space game master
+    module_path: silisocs.environments.gm.game_master
+
+gm:
+  preset: base
+  components:
+    initialize:
+      built_in: app_initialize
+      class_path: null
+      params: {}
+    next_acting:
+      built_in: fixed_order
+      class_path: null
+      params: {}
+    update:
+      built_in: disabled
+      class_path: null
+      params: {}
+    observe:
+      built_in: app_observation
+      class_path: null
+      params:
+        limit: 8
+    resolve:
+      built_in: tool_calling
+      class_path: null
+      params: {}
+
+gm_orchestration:
+  gms: []
+  flow_bindings:
+    flow_to_gms: {}
+
+usage_instructions: |
+  You are operating in a virtual space. Agents can look around their current
+  room, move to another reachable room, talk to another agent present in the
+  same room, or finish the current action episode.
+
+action_prompt: |
+  ## AVAILABLE ACTIONS
+  Choose one available virtual-space action based on the current room state.
+
+  [OUTPUT STYLE]
+
+output_style: |
+  ## OUTPUT FORMAT
+  ACTION: <action_name>
+  <param_name>: <value>

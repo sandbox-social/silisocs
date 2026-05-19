@@ -1,21 +1,29 @@
 llm:
+  provider: local
   name: qwen3.5-4b
   api_base: http://localhost:30000/v1
   api_key: test-key
+  extra_kwargs:
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: false
 
-memory_backend: list
 action_mode: generic
 tool_calling:
   mode: multi
 engine:
-  preset: base
-  action_loop:
+  step:
+    built_in: base
+    class_path: null
+    params:
+      flow_order:
+      - fixed_pre
+      - default
+      agent_to_flow: {}
+  turn_policy:
     built_in: open_ended
+    class_path: null
     params:
       max_actions: 20
       finished_action_signal: FINISHED
-      done_token: FINISHED
-  flow_routing:
-    flow_order:
-    - fixed_pre
-    - default
+      finished_action_signal: FINISHED

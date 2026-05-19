@@ -1,5 +1,5 @@
 site_name: Social Simulation Sandbox
-site_description: Configurable generative agent simulation of social media using the Concordia framework
+site_description: Configurable native generative-agent simulations with optional Concordia compatibility
 site_url: https://social-sandbox.github.io/silisocs
 repo_url: https://github.com/social-sandbox/silisocs
 repo_name: social-sandbox/silisocs

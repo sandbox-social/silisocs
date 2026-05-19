@@ -71,7 +71,6 @@ This file describes who is in the simulation, what they know, and how active the
 # @package agents          ← required header, do not omit
 
 persona_pipeline:
-  processing_mode: raw
 
   defaults:
     params:
@@ -83,7 +82,7 @@ persona_pipeline:
   classes:
     council_member:
       count: 1
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: council_member
       data:
         source: inline
@@ -106,7 +105,7 @@ persona_pipeline:
 
     resident:
       count: 2
-      prefab_module: silisocs.agents.entity
+      class_path: silisocs.agents.native.NativeAgent
       sim_role_name: resident
       data:
         source: inline
@@ -217,7 +216,7 @@ moderators, or officials.
 
 ### Scripted/deterministic agents
 
-Use `prefab_module: silisocs.agents.fixed_entity` with a `fixed_action` block for
+Use `class_path: silisocs.agents.fixed.FixedAgent` with a `fixed_action` block for
 agents that post from a predefined schedule (news feeds, announcements). See
 `agent_docs/scenario_design.md` for the fixed-action schema.
 

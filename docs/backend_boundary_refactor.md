@@ -5,7 +5,7 @@ environment backend behavior from social-media-specific game-master behavior.
 
 ## Target Architecture
 
-- The core backend contract is `EnvironmentApp`: initialize state, provide a
+- The core backend contract is `BackendApp`: initialize state, provide a
   generic observation string, and expose `@app_action` methods.
 - Social media remains supported through `SocialMediaApp`, timeline observation,
   parsed social action resolution, seed-post initialization, and recommendation
@@ -24,7 +24,7 @@ environment backend behavior from social-media-specific game-master behavior.
 
 ### Generic Backend Contract
 
-- Added `EnvironmentApp` in `src/silisocs/environments/backends/base.py`.
+- Added `BackendApp` in `src/silisocs/environments/backends/base.py`.
 - Kept `SocialMediaApp` as a social-specific subclass for existing social
   backends and tests.
 - Added `create_environment_app` in the backend factory and retained
@@ -38,7 +38,7 @@ environment backend behavior from social-media-specific game-master behavior.
   of assuming timeline/feed methods.
 - Added `NoOpComponent` for optional disabled component slots such as
   recommendation scheduling in non-social environments.
-- Added `BaseEnvironmentGameMaster`, `EnvironmentAct`, and multi-flow generic
+- Added `GameMaster`, `EnvironmentAct`, and multi-flow generic
   aliases while preserving existing social class names.
 
 ### Resource Market Backend

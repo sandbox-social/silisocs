@@ -104,7 +104,7 @@ class ElectionAnalyzer:
 
             if label == "Favorability":
                 candidate = data.get("interaction_premise_template", {}).get("candidate")
-                score = data.get("query_return")
+                score = data.get("probe_return")
 
                 if candidate and score and score.isdigit():
                     self.favorability_data.append(
@@ -119,7 +119,7 @@ class ElectionAnalyzer:
             elif label == "VotePref":
                 candidate1 = data.get("interaction_premise_template", {}).get("candidate1")
                 candidate2 = data.get("interaction_premise_template", {}).get("candidate2")
-                preference = data.get("query_return")
+                preference = data.get("probe_return")
 
                 if candidate1 and candidate2 and preference:
                     # Map the response to the full candidate name
@@ -139,7 +139,7 @@ class ElectionAnalyzer:
                     )
 
             elif label == "VoteIntent":
-                intent = data.get("query_return")
+                intent = data.get("probe_return")
                 if intent:
                     self.vote_intent_data.append(
                         {

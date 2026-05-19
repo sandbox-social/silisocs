@@ -1,114 +1,74 @@
 # Concordia Bridge
 
-Silisocs builds on [Concordia](https://github.com/google-deepmind/concordia)
-rather than replacing it. Concordia provides the agent substrate and action
-loop concepts. Silisocs adds social-media-specific configuration, game-master
-components, platform backends, probe scheduling, and run artifacts.
+Silisocs runs on native runtime contracts by default. Concordia is no longer a
+required dependency for installing, importing, or running the standard runtime.
+The bridge exists only to help teams port older Concordia-designed agents,
+prefabs, or context components into Silisocs incrementally.
 
-## Mental Model
+Install the bridge extra only when you need legacy interoperability:
 
-| Concordia concept | Silisocs layer |
-|-------------------|----------------|
-| Entity agent | `silisocs.agents.entity` or any custom `Agent` implementation |
-| Prefab | Scenario-selected prefab module/class in `persona_pipeline` |
-| Observation | GM observe component output from a social-media backend |
-| Action spec | GM act component prompt, optionally with tool-calling markers |
-| Game master | Component-slotted social-media coordinator |
-| Simulation loop | Engine policy plus GM/backend/probe orchestration |
+```sh
+pip install "silisocs[concordia]"
+```
 
-## Agent Boundary
+## Native First
 
-Every runtime agent must satisfy `silisocs.agents.base_agent.Agent`:
+The native runtime contracts are:
+
+| Native concept | Primary API |
+|---|---|
+| Agent | `silisocs.agents.base_agent.Agent` |
+| Action spec | `silisocs.runtime.types.ActionSpec` |
+| Output type | `silisocs.runtime.types.OutputType` |
+| Runtime config records | direct `class_path` + `params` specs |
+| Default agent | `silisocs.agents.native.NativeAgent` |
+| Native GM helpers | `silisocs.environments.gm.components` |
+| Runtime engine | `silisocs.simulation_engines` |
+
+Every runtime agent must implement:
 
 ```python
 class Agent:
     @property
     def name(self) -> str: ...
     def observe(self, observation: str) -> None: ...
-    def act(self, action_spec) -> str: ...
+    def act(self, action_spec) -> ActionOutput: ...
 ```
 
-Concordia-compatible entities satisfy this through their component orchestration.
-Simpler custom agents can implement the three-method interface directly. This is
-why deterministic fixed-action agents and LLM-backed Concordia entities can run
-through the same game-master and engine code.
+Stateful custom agents should also implement `get_state()` and
+`set_state(state)` for checkpoint resume.
 
-## Prefabs and Scenario YAML
+## Bridge Boundary
 
-Silisocs keeps Concordia prefab construction but moves the selection into YAML:
+All Concordia-shaped compatibility code lives under
+`silisocs.adapters.concordia`. Runtime code and native extensions should not
+import `concordia.*` directly. The adapter imports the real optional
+`gdm-concordia` package and exposes the limited legacy surface needed by older
+agents and game masters.
+
+Legacy configs must opt in explicitly:
 
 ```yaml
 persona_pipeline:
   classes:
-    user:
-      count: 10
-      prefab_module: silisocs.agents.entity
-      data:
-        source: inline
-        records:
-          - persona: Alex follows local policy and posts practical updates.
-      field_map:
-        context: persona
+    old_agent:
+      class_path: my_legacy.agent
+      compat: concordia
 ```
 
-The builder loads records, maps fields into prefab parameters, and instantiates
-the configured prefab. Custom prefabs should expose an `Entity` class whose
-`build(model, memory_bank)` method returns an object implementing the agent
-interface.
+Use the bridge only for legacy modules that are expensive to rewrite
+immediately. New extensions should target native Silisocs contracts.
 
-## Game Master Boundary
+## Porting Guidance
 
-Concordia asks agents to observe and act. Silisocs decides what those social
-observations and actions mean:
+- Replace direct `concordia.*` imports with native Silisocs contracts where
+  practical.
+- If a legacy component expects Concordia-shaped classes, import them from
+  `silisocs.adapters.concordia` as a temporary compatibility step.
+- Keep legacy scenario YAML stable except for the explicit `compat: concordia`
+  marker.
+- Prefer native agents that build context in `act()` and call
+  `self._call_model(context, action_spec)`.
 
-- `next_acting` chooses which agents act.
-- `observe` turns backend state into timeline or episode observations.
-- `act` creates Concordia action specs and routes flow-specific prompts.
-- `resolve` parses the agent response or executes selected tools.
-- `recommend` schedules recommender updates.
-- `initializer` creates backend users, follow networks, seed posts, and memory.
-
-This split keeps Concordia-facing agent code small while platform behavior
-lives in configurable GM components and backends.
-
-The baseline GM and the shared-flow GM use the same backend-facing contract:
-they create backend apps through the factory, initialize users/follow graphs and
-seed posts through the initializer component, and write action events through
-the same logger. Shared flow changes component routing; it does not define a
-separate platform lifecycle.
-
-## Where Silisocs Adds Structure
-
-Concordia components are still the unit that observes, acts, and stores state,
-but Silisocs adds a few conventions around them:
-
-- Scenario YAML chooses prefabs and passes structured persona data.
-- GM slots give names to platform-specific responsibilities such as timeline
-  observation, action parsing, backend initialization, and recommendation
-  updates.
-- Backend actions are Python methods decorated with `@app_action`, which lets
-  prompt-based parsing and tool-calling share one action catalog.
-- Runtime artifacts such as SQLite databases, checkpoints, probe outputs, and
-  action logs are owned by Silisocs so experiments are reproducible outside a
-  Concordia-only script.
-
-## Tool Calling
-
-When `sim.tool_calling.mode` is `single` or `multi`, the GM adds a tool-calling
-marker to the action spec. `SocialConcatActComponent` detects that marker, asks
-the model to choose backend action tools, and returns structured JSON. The
-resolve component then executes the selected backend actions.
-
-The agent still only implements `act(action_spec) -> str`; action execution
-remains a platform concern.
-
-## Extension Guidance
-
-- Add new agent behavior by creating a prefab module or custom `Agent`, then
-  select it from `persona_pipeline`.
-- Add new platform behavior by implementing backend actions with
-  `@app_action(...)`, then configure the backend and resolve component.
-- Add new scheduling behavior through engine policies or GM components instead
-  of branching inside the runner.
-- Prefer YAML composition for experiment-specific choices; reserve Python for
-  reusable components.
+The long-term target is simple: user-authored extensions should not need to
+know Concordia unless they are deliberately porting old Concordia code.

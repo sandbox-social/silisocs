@@ -2,23 +2,35 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
 from typing import Any
 
-from silisocs.environments.gm.components.base import BackendInitializer
+from silisocs.initialization.game_masters import GameMasterInitializer
 
 
-class EchoChamberInitializer(BackendInitializer):
+class EchoChamberInitializer(GameMasterInitializer):
     """Initialize the social app and validate its EchoChamberSim state."""
 
     def initialize(
         self,
         *,
-        sm_app: Any,
-        agent_names: Sequence[str],
-        init_kwargs: Mapping[str, Any],
+        agents: Any,
+        game_master: Any,
+        context: Any,
     ) -> None:
-        sm_app.initialize(list(agent_names), **dict(init_kwargs or {}))
+        agent_names = [agent.name for agent in agents]
+        sm_app = getattr(game_master, "app", getattr(game_master, "sm_app", None))
+        if sm_app is None:
+            raise TypeError("EchoChamberInitializer requires a game master with an app.")
+        sm_app.initialize(
+            list(agent_names),
+            sim_roles=dict(getattr(context, "sim_roles", {}) or {}),
+            social_network=dict(getattr(context, "social_network", {}) or {}),
+            seed_posts={},
+        )
+        self._validate(sm_app, agent_names)
+
+    @staticmethod
+    def _validate(sm_app: Any, agent_names: list[str]) -> None:
         state = getattr(sm_app, "echo_state", None)
         if state is None:
             raise ValueError("EchoChamberInitializer requires an app with echo_state.")

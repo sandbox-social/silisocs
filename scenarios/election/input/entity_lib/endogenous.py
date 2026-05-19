@@ -17,16 +17,18 @@
 import dataclasses
 from collections.abc import Mapping
 
-# from typing import override
-from concordia.agents import entity_agent_with_logging
-from concordia.associative_memory import basic_associative_memory
-from concordia.components import agent as agent_components
-from concordia.components.agent import scripted_act
-from concordia.language_model import language_model
-from concordia.typing import entity as entity_lib
+from concordia.agents.entity_agent_with_logging import EntityAgentWithLogging as ComponentEntity
+from concordia.associative_memory.basic_associative_memory import AssociativeMemoryBank
+from concordia.components.agent.scripted_act import ScriptedActComponent
+from concordia.typing import entity as concordia_entity
 from concordia.typing import entity_component
-from concordia.typing import prefab as prefab_lib
+from concordia.typing.prefab import Prefab
 from typing_extensions import override
+
+from silisocs.runtime.language_models import LanguageModel
+
+ComponentContextMapping = dict[str, entity_component.ContextComponent]
+ActionSpec = concordia_entity.ActionSpec
 
 DEFAULT_INSTRUCTIONS_COMPONENT_KEY = "Instructions"
 DEFAULT_INSTRUCTIONS_PRE_ACT_LABEL = "\nInstructions"
@@ -34,7 +36,7 @@ DEFAULT_GOAL_COMPONENT_KEY = "Goal"
 
 
 @dataclasses.dataclass
-class Entity(prefab_lib.Prefab):
+class Entity(Prefab):
     """A prefab implementing an entity with a minimal set of components."""
 
     description: str = "A minimalist entity"
@@ -48,9 +50,9 @@ class Entity(prefab_lib.Prefab):
 
     def build(
         self,
-        model: language_model.LanguageModel,
-        memory_bank: basic_associative_memory.AssociativeMemoryBank,
-    ) -> entity_agent_with_logging.EntityAgentWithLogging:
+        model: LanguageModel,
+        memory_bank: AssociativeMemoryBank,
+    ) -> ComponentEntity:
         """Build an agent.
 
         Args:
@@ -111,7 +113,7 @@ class Entity(prefab_lib.Prefab):
             script=self.params.get("script", []),
         )
 
-        agent = entity_agent_with_logging.EntityAgentWithLogging(
+        agent = ComponentEntity(
             agent_name=agent_name,
             act_component=act_component,
             context_components=components_of_agent,
@@ -120,7 +122,7 @@ class Entity(prefab_lib.Prefab):
         return agent
 
 
-class SimpleScriptedActComponent(scripted_act.ScriptedActComponent):
+class SimpleScriptedActComponent(ScriptedActComponent):
     """An acting component that outputs scripted text directly without LLM calls.
 
     This component simplifies the parent class by removing LLM calls and context
@@ -130,8 +132,8 @@ class SimpleScriptedActComponent(scripted_act.ScriptedActComponent):
     @override
     def get_action_attempt(  # type: ignore[misc]
         self,
-        contexts: entity_component.ComponentContextMapping,
-        action_spec: entity_lib.ActionSpec,
+        contexts: ComponentContextMapping,
+        action_spec: ActionSpec,
     ) -> str:
         # Initialize lines from script if not already done
         if not self._lines:

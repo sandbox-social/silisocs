@@ -36,7 +36,9 @@ Simple-first UX:
 
 Core simulation parameters:
 
-- **LLM Model**: Model name (e.g., `gpt-4o`, `qwen3.5-4b`)
+- **LLM Provider/Model**: Provider (`openai`, `local`, or `disabled`) plus model name
+  (for example, `gpt-4o-mini` for OpenAI or a local OpenAI-compatible model served
+  behind `sim.llm.api_base`)
 - **Number of agents / steps**: Scale parameters
 - **Random seed**: Reproducibility
 - **Memory backend**: `list` (fast) or `associative` (embedding-based)
@@ -63,7 +65,7 @@ Setting and event configuration:
 Configure the persona pipeline:
 
 - **Add/remove classes**: Dynamic list of agent classes
-- **Entity module**: Dropdown auto-populated by scanning the package for Prefab classes
+- **Agent class**: Dropdown auto-populated by scanning the package for agent classes
 - **Data source**: Choose from HuggingFace dataset, local JSON, config path, or inline
 - **File path verification**: Local JSON paths are validated as you type
 - **Field map**: YAML editor for mapping data fields to agent parameters
@@ -71,7 +73,7 @@ Configure the persona pipeline:
 - **Count**: Number of agents in each class
 - **Sim role name**: Role key used by social network/activity config
 - **Flow tag** (advanced only): Class-level action flow used by multi-GM orchestration
-- **Fixed-action entity mode** (optional):
+- **Fixed-action agent mode** (optional):
 - Enable fixed actions for a class
 - Select referenced action set id
 - Choose policy (`round_robin`, `weighted_random`, `scripted_sequence`)
@@ -91,16 +93,20 @@ Runtime environment controls:
 Environment levers in expanders:
 
 - **GM Components**
-- Next-acting choice: `activity_markov`, `activity_probability`, `all_entities`, `fixed_order`
+- Next-acting choice: `activity_markov`, `activity_probability`, `all_agents`, `fixed_order`
 - Observe choice: `timeline_every_turn`, `episode_only`
 - Resolve choice: `parsed_action`, `generic_action`, `tool_calling`
-- Initializer choice: `backend_default`
 - Optional custom class path override field for each GM slot
 
+- **Runtime Initializer**
+- Agent memory choice: `raw_memory`, `formative_memory`, `none`
+- Backend initializer choice: `social_media`, `app_initialize`, `none`
+- Seed-post choice: `llm`, `csv`, `json`, `fallback`, `none`
+
 - **Engine Policies**
-- Action loop choice: `single_action`, `fixed_count`, `open_ended`
+- Turn policy choice: `single_action`, `fixed_count`, `open_ended`
 - Probe schedule choice: `step_schedule`, `fixed_interval`, `disabled`
-- Action-loop params: `count`, `max_actions`, `done_token`
+- Turn-policy params: `count`, `max_actions`, `finished_action_signal`
 - Probe-schedule params: `start_step`, `every_n_steps`
 - Optional custom class path override for each policy slot
 
@@ -166,7 +172,7 @@ This allows you to start from the latest saved run config while keeping scenario
 Checkpoint replay note:
 
 - `Start from` loads configuration snapshots, not runtime state checkpoints.
-- To resume runtime state, launch with `sim.checkpoint.resume_file=<path_to_checkpoint.json>`.
+- To restore runtime state, launch with `sim.checkpoint.source_run=<prior_output_dir>`.
 
 Notes:
 

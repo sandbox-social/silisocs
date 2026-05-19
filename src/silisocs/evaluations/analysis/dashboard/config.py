@@ -21,10 +21,10 @@ LINE_COLORS = {
 NODE_COLORS = {"Bill Fredrickson": "#1f77b4", "Bradley Carter": "#ff7f0e", "Other": "#808080"}
 
 # Interaction types
-INTERACTION_TYPES = ["post", "like_toot", "boost_toot", "reply"]
+INTERACTION_TYPES = ["post", "like", "repost", "reply"]
 PAST_TENSE_MAP = {
     "post": "posted",
-    "like_toot": "liked",
-    "boost_toot": "boosted",
+    "like": "liked",
+    "repost": "reposted",
     "reply": "replied",
 }

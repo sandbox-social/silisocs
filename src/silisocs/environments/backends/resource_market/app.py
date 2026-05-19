@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from silisocs.environments.backends.base import EnvironmentApp, app_action
+from silisocs.environments.backends.base import BackendApp, app_action
 
 
 @dataclass
@@ -21,7 +21,7 @@ class Listing:
 
 
 @dataclass
-class ResourceMarketApp(EnvironmentApp):
+class ResourceMarketApp(BackendApp):
     """Small in-memory market where agents produce, list, buy, and consume resources."""
 
     action_logger: Any = None

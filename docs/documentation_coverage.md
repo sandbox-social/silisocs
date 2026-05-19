@@ -9,9 +9,9 @@ Last reviewed: 2026-05-11.
 
 | Area | Source of truth | Primary docs | Status |
 |---|---|---|---|
-| Runtime entrypoint and config composition | `src/silisocs/runtime/runner.py`, `runtime/simulation.py`, `src/silisocs/conf/` | [Configuration](configuration.md), [Usage](usage.md) | Covered; keep examples synced with packaged defaults |
+| Runtime entrypoint and config composition | `src/silisocs/runtime/runner.py`, `src/silisocs/conf/` | [Configuration](configuration.md), [Usage](usage.md) | Covered; keep examples synced with packaged defaults |
 | Agent runtime and persona pipeline | `src/silisocs/agents/` | [Building Agents](building_agents.md), [Simulation Extensibility API](simulation_extensibility_api.md) | Covered; custom runtime checkpointing should stay visible |
-| Generic backend app contract | `src/silisocs/environments/backends/base.py`, `factory.py` | [Backends](backends.md), [Environment Layer](environment_layer.md) | Needs emphasis; `EnvironmentApp` is now the core contract |
+| Generic backend app contract | `src/silisocs/environments/backends/base.py`, `factory.py` | [Backends](backends.md), [Environment Layer](environment_layer.md) | Needs emphasis; `BackendApp` is now the core contract |
 | Social backend capabilities | `twitter_like/`, `reddit_like/`, `mastodon/` | [Backends](backends.md), [Configuration](configuration.md) | Covered; ensure social-only language is scoped correctly |
 | Non-social sample backend | `resource_market/`, `conf/env/resource_market.yaml` | [Backends](backends.md), [Environment Layer](environment_layer.md) | Newly documented; keep as the minimal extension example |
 | GM component slots | `environments/gm/components/` | [Environment Layer](environment_layer.md), [Simulation Extensibility API](simulation_extensibility_api.md) | Covered; strict `params` behavior must be called out |
@@ -26,8 +26,8 @@ Last reviewed: 2026-05-11.
 | Issue | Impact | Required action |
 |---|---|---|
 | Old `src/silisocs/engines/...` paths | Misleads contributors; code now lives under `simulation_engines` | Replace stale paths in public docs |
-| Social-only backend wording | Hides the generic environment direction | Reframe backends around `EnvironmentApp`, with `SocialMediaApp` as a specialization |
-| `sim.enable_engine_multi_flow` references | Incorrect config knob | Use `sim.engine.preset: flow` |
+| Social-only backend wording | Hides the generic environment direction | Reframe backends around `BackendApp`, with `SocialMediaApp` as a specialization |
+| `sim.enable_engine_multi_flow` references | Incorrect config knob | Use `sim.engine.step.built_in: flow` |
 | Prompt addition key mismatch | Users may set a no-op key | Document `sim.prompt_additions.action_count_guidance` |
 | Advanced flow docs duplicated across `docs/` and `agent_docs/` | Divergence risk | Keep public docs canonical; use `agent_docs` as agent-facing deep dives |
 | Backend boundary refactor log in docs | Useful history but not a user guide | Keep linked from roadmap or remove before release docs if it becomes stale |
@@ -36,22 +36,20 @@ Last reviewed: 2026-05-11.
 
 Each extensible simulator part should have one documented shape:
 
-- Agent: implements `name`, `observe(str)`, `act(action_spec) -> str`; optional
+- Agent: implements `name`, `observe(str)`, `act(action_spec) -> ActionOutput`; optional
   `get_state()` and `set_state()` for checkpoint restore.
-- Prefab: exposes `Entity(Prefab)` and returns an agent runtime from
-  `build(model, memory_bank)`.
-- Environment app: subclasses `EnvironmentApp`, implements
+- Environment app: subclasses `BackendApp`, implements
   `initialize(agent_names, **kwargs)`, optionally overrides `observe(...)`, and
   exposes actions with `@app_action`.
 - Social app: subclasses `SocialMediaApp` when timelines, feed formatting,
   recommendation updates, or social action parsing are needed.
 - GM component: selected from `env.gm.components.<slot>`, receives YAML
-  `params`, and implements the relevant Concordia hook or initializer hook.
-- Flow component: declares `FLOW_FIELDS` and reads per-flow values through
-  `get_flow_field(...)`.
-- Engine policy: selected from `sim.engine.action_loop` or
-  `sim.engine.probe_schedule`, receives YAML `params`, and implements the policy
-  interface.
+  `params`, and implements direct native methods for its slot. Native
+  components do not expose Concordia lifecycle hooks.
+- Engine turn policy: selected from `sim.engine.turn_policy`, receives YAML
+  `params`, and implements the turn policy interface.
+- Probe schedule: selected from `evals.probes.schedule`, receives YAML
+  `params`, and implements the probe schedule interface.
 - Probe/evaluator: configured under `evals.probes` or study evaluator presets,
   with output written to probe event artifacts.
 

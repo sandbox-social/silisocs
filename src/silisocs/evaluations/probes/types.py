@@ -14,19 +14,11 @@ Supported types
 
 from __future__ import annotations
 
-import json
 import re
 from abc import ABC, abstractmethod
 from typing import Any
 
-from concordia.typing import entity
-
-from silisocs.agents.components.concat_act import (
-    STRUCTURED_RESPONSE_MARKER,
-    STRUCTURED_SCHEMA_END,
-    STRUCTURED_SCHEMA_START,
-    extract_structured_response,
-)
+from silisocs.runtime.types import ActionSpec, OutputType
 
 
 def _get_agent_name(agent: Any) -> str:
@@ -54,7 +46,7 @@ class ProbeBase(ABC):
     def form_question_for_agent(self, agent: Any) -> str:
         """Return the question text with agent-specific placeholders resolved."""
 
-    def _make_action_spec(self, prompt: str) -> entity.ActionSpec:
+    def _make_action_spec(self, prompt: str) -> ActionSpec:
         """_make_action_spec.
 
         :param str prompt:
@@ -63,17 +55,11 @@ class ProbeBase(ABC):
         :returns: entity.ActionSpec
         :rtype: entity.ActionSpec
         """
-        try:
-            return entity.ActionSpec(
-                call_to_action=prompt,
-                output_type=entity.OutputType.FREE,
-                tag="query",
-            )
-        except TypeError:
-            return entity.ActionSpec(
-                call_to_action=prompt,
-                output_type=entity.OutputType.FREE,
-            )
+        return ActionSpec(
+            prompt=prompt,
+            output_type=OutputType.TEXT,
+            tag="probe",
+        )
 
     _CALL_TO_SPEECH = (
         "Given the above, what is {name} likely to say next? Respond in"
@@ -83,8 +69,8 @@ class ProbeBase(ABC):
         'Townsfolk -- "Good morning".\n'
     )
 
-    def form_query_for_agent(self, agent: Any) -> str:
-        """form_query_for_agent.
+    def form_probe_for_agent(self, agent: Any) -> str:
+        """form_probe_for_agent.
 
         :param Any agent:
         :type agent: Any
@@ -108,8 +94,8 @@ class ProbeBase(ABC):
         :returns: str
         :rtype: str
         """
-        prompt = self.form_query_for_agent(agent)
-        return agent.act(action_spec=self._make_action_spec(prompt))
+        prompt = self.form_probe_for_agent(agent)
+        return str(agent.act(action_spec=self._make_action_spec(prompt)))
 
     @abstractmethod
     def parse_answer(self, raw: str) -> str | None:
@@ -136,9 +122,9 @@ class ProbeBase(ABC):
         :rtype: dict[str, Any]
         """
         return {
-            "query_type": self.name,
+            "probe_type": self.name,
             "raw_response": raw,
-            "query_return": self.parse_answer(raw or ""),
+            "probe_return": self.parse_answer(raw or ""),
         }
 
 
@@ -152,8 +138,8 @@ class NumericRatingProbe(ProbeBase):
 
     YAML example::
 
-        query_type: NumericRatingProbe
-        query_data:
+        probe_type: NumericRatingProbe
+        probe_data:
           name: Favorability
           question: "Rate your opinion of {candidate} from {lo} to {hi}."
           lo: 1
@@ -163,13 +149,13 @@ class NumericRatingProbe(ProbeBase):
                         candidate: Candidate A
     """
 
-    def __init__(self, query_data: dict[str, Any] | None = None):
+    def __init__(self, probe_data: dict[str, Any] | None = None):
         """__init__.
 
-        :param dict[str, Any] | None query_data:
-        :type query_data: dict[str, Any] | None
+        :param dict[str, Any] | None probe_data:
+        :type probe_data: dict[str, Any] | None
         """
-        cfg = query_data or {}
+        cfg = probe_data or {}
         self.name = cfg.get("name", "NumericRating")
         self._question = cfg.get("question", "Return a single numeric value from {lo} to {hi}.")
         self._context = cfg.get("context", "")
@@ -216,20 +202,20 @@ class BinaryProbe(ProbeBase):
 
     YAML example::
 
-        query_type: BinaryProbe
-        query_data:
+        probe_type: BinaryProbe
+        probe_data:
           name: VoteIntent
           question: "Will you cast a vote? Reply yes or no."
           context: "{agentname} is asked about voting."
     """
 
-    def __init__(self, query_data: dict[str, Any] | None = None):
+    def __init__(self, probe_data: dict[str, Any] | None = None):
         """__init__.
 
-        :param dict[str, Any] | None query_data:
-        :type query_data: dict[str, Any] | None
+        :param dict[str, Any] | None probe_data:
+        :type probe_data: dict[str, Any] | None
         """
-        cfg = query_data or {}
+        cfg = probe_data or {}
         self.name = cfg.get("name", "Binary")
         self._question = cfg.get("question", "Reply yes or no.")
         self._context = cfg.get("context", "")
@@ -274,8 +260,8 @@ class ChoiceProbe(ProbeBase):
 
     YAML example::
 
-        query_type: ChoiceProbe
-        query_data:
+        probe_type: ChoiceProbe
+        probe_data:
           name: VotePref
           question: "Name the candidate you want to vote for."
                     context: "{agentname} is voting for either {choice1} or {choice2}."
@@ -287,13 +273,13 @@ class ChoiceProbe(ProbeBase):
                         choice2: Candidate B
     """
 
-    def __init__(self, query_data: dict[str, Any] | None = None):
+    def __init__(self, probe_data: dict[str, Any] | None = None):
         """__init__.
 
-        :param dict[str, Any] | None query_data:
-        :type query_data: dict[str, Any] | None
+        :param dict[str, Any] | None probe_data:
+        :type probe_data: dict[str, Any] | None
         """
-        cfg = query_data or {}
+        cfg = probe_data or {}
         self.name = cfg.get("name", "Choice")
         self._question = cfg.get("question", "Pick one of the choices.")
         self._context = cfg.get("context", "")
@@ -342,20 +328,20 @@ class FreeTextProbe(ProbeBase):
 
     YAML example::
 
-        query_type: FreeTextProbe
-        query_data:
+        probe_type: FreeTextProbe
+        probe_data:
           name: OpenThoughts
           question: "What are your thoughts on the election?"
           context: "{agentname} reflects on the upcoming election."
     """
 
-    def __init__(self, query_data: dict[str, Any] | None = None):
+    def __init__(self, probe_data: dict[str, Any] | None = None):
         """__init__.
 
-        :param dict[str, Any] | None query_data:
-        :type query_data: dict[str, Any] | None
+        :param dict[str, Any] | None probe_data:
+        :type probe_data: dict[str, Any] | None
         """
-        cfg = query_data or {}
+        cfg = probe_data or {}
         self.name = cfg.get("name", "FreeText")
         self._question = cfg.get("question", "Share your thoughts.")
         self._context = cfg.get("context", "")
@@ -394,8 +380,8 @@ class FreeTextProbe(ProbeBase):
 class StructuredProbe(ProbeBase):
     """Probe that asks for one JSON object through structured-response mode."""
 
-    def __init__(self, query_data: dict[str, Any] | None = None):
-        cfg = query_data or {}
+    def __init__(self, probe_data: dict[str, Any] | None = None):
+        cfg = probe_data or {}
         self.name = cfg.get("name", "Structured")
         self._question = cfg.get("question", "Return a JSON object.")
         self._context = cfg.get("context", "")
@@ -404,24 +390,19 @@ class StructuredProbe(ProbeBase):
             cfg.get("schema", {"type": "object", "additionalProperties": True})
         )
 
-    def _make_action_spec(self, prompt: str) -> entity.ActionSpec:
-        structured_prompt = (
-            f"{STRUCTURED_RESPONSE_MARKER}\n"
-            f"{prompt}\n"
-            f"{STRUCTURED_SCHEMA_START}\n"
-            f"{json.dumps(self._schema, ensure_ascii=True)}\n"
-            f"{STRUCTURED_SCHEMA_END}"
-        )
+    def _make_action_spec(self, prompt: str) -> ActionSpec:
         try:
-            return entity.ActionSpec(
-                call_to_action=structured_prompt,
-                output_type=entity.OutputType.FREE,
+            return ActionSpec(
+                prompt=prompt,
+                output_type=OutputType.STRUCTURED,
                 tag="structured_probe",
+                extra_args={"schema": self._schema},
             )
         except TypeError:
-            return entity.ActionSpec(
-                call_to_action=structured_prompt,
-                output_type=entity.OutputType.FREE,
+            return ActionSpec(
+                prompt=prompt,
+                output_type=OutputType.STRUCTURED,
+                extra_args={"schema": self._schema},
             )
 
     def form_question_for_agent(self, agent: Any) -> str:
@@ -433,92 +414,10 @@ class StructuredProbe(ProbeBase):
         parts.append(self._question.format(**subs))
         return " ".join(parts)
 
-    def parse_answer(self, raw: str) -> dict[str, Any] | None:  # type: ignore[override]
-        return extract_structured_response(raw)
-
-
-class TemplateProbe(ProbeBase):
-    """Probe built from a ``query_text`` template dict (legacy format).
-
-    This preserves the template-composition style used by the original
-    ``AgentQuery`` base class while unifying it under :class:`ProbeBase`.
-    Subclasses define ``name`` and ``query_text`` as class attributes, then
-    pass ``query_data`` at construction time to fill template placeholders.
-
-    ``query_text`` is a dict of named sections, each with a ``"text"`` key
-    (a format string) and optionally ``"static_labels"`` listing expected
-    keys in ``query_data``.
-    """
-
-    name: str = "TemplateProbe"
-    query_text: dict[str, dict[str, Any]] = {}
-
-    def __init__(self, query_data: dict[str, Any] | None = None):
-        """__init__.
-
-        :param dict[str, Any] | None query_data:
-        :type query_data: dict[str, Any] | None
-        """
-        self.query_data = query_data or {}
-        self.question_template = ""
-        for component_name, component in self.query_text.items():
-            if "static_labels" in component:
-                premise_actors = [
-                    actor
-                    for actor in self.query_data[component_name]
-                    if self.query_data[component_name][actor] is not None
-                ]
-                assert component["static_labels"] == premise_actors, (
-                    "query data doesn't match query"
-                )
-                self.question_template += component["text"].format(
-                    **self.query_data[component_name]
-                )
-            else:
-                self.question_template += component["text"]
-
-    def form_question_for_agent(self, agent: Any) -> str:
-        """form_question_for_agent.
-
-        :param Any agent:
-        :type agent: Any
-
-        :returns: str
-        :rtype: str
-        """
-        agent_name = _get_agent_name(agent)
-        return self.question_template.format(agentname=agent_name)
-
-    def parse_answer(self, raw: str) -> str | None:
-        """parse_answer.
-
-        :param str raw:
-        :type raw: str
-
-        :returns: str | None
-        :rtype: str | None
-        """
-        text = raw.strip() if raw else None
-        return text or None
-
-    def submit_with_raw_response(self, raw: str) -> dict[str, Any]:
-        """submit_with_raw_response.
-
-        :param str raw:
-        :type raw: str
-
-        :returns: dict[str, Any]
-        :rtype: dict[str, Any]
-        """
-        query_return = dict(self.query_data) if self.query_data else {}
-        query_return.setdefault("query_type", self.name)
-        query_return["raw_response"] = raw
-        query_return["query_return"] = self.parse_answer(raw or "")
-        return query_return
-
-
-# Backward-compatible alias for the original AgentQuery base class.
-AgentQuery = TemplateProbe
+    def parse_answer(self, raw: Any) -> dict[str, Any] | None:  # type: ignore[override]
+        if isinstance(raw, dict):
+            return dict(raw)
+        raise TypeError("StructuredProbe expects a typed dict response.")
 
 
 # Registry for YAML-driven instantiation.
@@ -528,5 +427,4 @@ PROBE_TYPES: dict[str, type[ProbeBase]] = {
     "ChoiceProbe": ChoiceProbe,
     "StructuredProbe": StructuredProbe,
     "FreeTextProbe": FreeTextProbe,
-    "TemplateProbe": TemplateProbe,
 }

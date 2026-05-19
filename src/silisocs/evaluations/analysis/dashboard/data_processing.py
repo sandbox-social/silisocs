@@ -9,7 +9,38 @@ from typing import Any
 import networkx as nx
 import pandas as pd
 
-from silisocs.evaluations.analysis.dashboard.config import PAST_TENSE_MAP, PROBE_LABEL
+from silisocs.evaluations.analysis.dashboard.config import (
+    INTERACTION_TYPES,
+    PAST_TENSE_MAP,
+    PROBE_LABEL,
+)
+
+
+def _post_id(data: Any) -> str | None:
+    if not isinstance(data, dict):
+        return None
+    raw = data.get("post_id") or data.get("tweet_id") or data.get("toot_id")
+    return None if raw is None else str(raw)
+
+
+def _reply_target_id(data: Any) -> str | None:
+    if not isinstance(data, dict):
+        return None
+    raw = data.get("reply_to_id") or data.get("target_id")
+    if raw is None and isinstance(data.get("reply_to"), dict):
+        raw = data["reply_to"].get("post_id") or data["reply_to"].get("toot_id")
+    return None if raw is None else str(raw)
+
+
+def _normalize_action_data(data: Any) -> dict[str, Any]:
+    normalized = dict(data or {}) if isinstance(data, dict) else {}
+    post_id = _post_id(normalized)
+    if post_id is not None:
+        normalized["post_id"] = post_id
+    reply_to_id = _reply_target_id(normalized)
+    if reply_to_id is not None:
+        normalized["reply_to_id"] = reply_to_id
+    return normalized
 
 
 def post_process_output(df):
@@ -17,9 +48,9 @@ def post_process_output(df):
     probe_df = df.loc[
         df.event_type == "probe", ["episode", "source_user", "label", "data"]
     ].reset_index(drop=True)
-    probe_df["response"] = probe_df.data.apply(lambda x: x["query_return"])
-    probe_df = probe_df.drop("data", axis=1)
-    probe_df.episode = probe_df.episode
+    if not probe_df.empty:
+        probe_df["response"] = probe_df.data.apply(lambda x: x.get("probe_return"))
+        probe_df = probe_df.drop("data", axis=1)
 
     edge_df = df.loc[
         df.label.isin(["follow", "unfollow"]), ["episode", "source_user", "data", "label"]
@@ -27,86 +58,81 @@ def post_process_output(df):
     edge_df["target_user"] = edge_df.data.apply(lambda d: d["target_user"])
     edge_df = edge_df.drop("data", axis=1)
 
-    interaction_types = ["post", "like_toot", "boost_toot", "reply"]
-    int_df = df.loc[df.label.isin(interaction_types), :].reset_index(drop=True)
+    int_df = df.loc[df.label.isin(INTERACTION_TYPES), :].reset_index(drop=True)
 
     act_df = df.loc[df.label == "action", :].reset_index(drop=True)
 
     return probe_df, int_df, edge_df, act_df
 
 
-def get_target_user(row, toot_owner_dict):
-    """Get target user from row, using toot_owner_dict to look up users by toot_id."""
+def get_target_user(row, post_owner_dict):
+    """Get target user from row, using post_owner_dict to look up users by post_id."""
     if row.label == "post":
         target_user = row.source_user
-    elif row.label in ["like_toot", "boost_toot"]:
-        target_toot_id = row.data["toot_id"]
-        target_user = toot_owner_dict.get(target_toot_id)
+    elif row.label in ["like", "repost"]:
+        target_post_id = _post_id(row.data)
+        target_user = post_owner_dict.get(target_post_id)
 
     elif row.label == "reply":
-        target_toot_id = row.data["reply_to"]["toot_id"]
-        target_user = toot_owner_dict.get(target_toot_id)
+        target_post_id = _reply_target_id(row.data)
+        target_user = post_owner_dict.get(target_post_id)
     else:
         target_user = None
     return target_user
 
 
-def get_toot_dict(int_df):
-    """Create toot dictionary from interactions dataframe.
-    Also returns toot_owner_dict for use in get_int_dict.
-    """
+def get_post_dict(int_df):
+    """Create post dictionary and owner lookup from interactions."""
     text_df = int_df.loc[(int_df.label == "post") | (int_df.label == "reply"), :].reset_index(
         drop=True
     )
 
-    # Handle Nones as toot_ids by appending an index
-    no_toot_id = text_df.data.apply(lambda x: x["toot_id"] is None)
-    text_df["no_toot_id_idx"] = -1
-    text_df.loc[no_toot_id, "no_toot_id_idx"] = range(no_toot_id.sum())
-    text_df.loc[no_toot_id, "data"] = text_df.loc[no_toot_id, :].apply(
-        lambda x: x.data | {"toot_id": "None" + str(x.no_toot_id_idx)}, axis=1
+    missing_post_id = text_df.data.apply(lambda x: _post_id(x) is None)
+    text_df["missing_post_idx"] = -1
+    text_df.loc[missing_post_id, "missing_post_idx"] = range(missing_post_id.sum())
+    text_df.loc[missing_post_id, "data"] = text_df.loc[missing_post_id, :].apply(
+        lambda x: x.data | {"post_id": "None" + str(x.missing_post_idx)}, axis=1
     )
 
-    text_df["toot_id"] = text_df.data.apply(lambda x: x["toot_id"])
-    text_df = text_df.set_index("toot_id")
+    text_df["post_id"] = text_df.data.apply(_post_id)
+    text_df = text_df.set_index("post_id")
     text_df["text_data"] = text_df.apply(
         lambda x: {
             "user": x.source_user,
             "action": PAST_TENSE_MAP[x.label],
-            "content": x.data["post_text"],
+            "content": x.data.get("post_text") or x.data.get("content") or x.data.get("text", ""),
         },
         axis=1,
     )
     text_df.text_data = text_df.apply(
         lambda x: (
-            x.text_data | {"parent_toot_id": x.data["reply_to"]["toot_id"]}
+            x.text_data | {"parent_post_id": _reply_target_id(x.data)}
             if x.label == "reply"
             else x.text_data
         ),
         axis=1,
     )
 
-    # Create toot_owner_dict mapping toot_id -> user
-    toot_owner_dict = text_df.apply(lambda x: x.source_user, axis=1).to_dict()
+    post_owner_dict = text_df.apply(lambda x: x.source_user, axis=1).to_dict()
 
-    return text_df.text_data.to_dict(), toot_owner_dict
+    return text_df.text_data.to_dict(), post_owner_dict
 
 
-def get_int_dict(int_df, toot_owner_dict):
+def get_int_dict(int_df, post_owner_dict):
     """Create interaction dictionary from interactions dataframe."""
     int_df["int_data"] = int_df.apply(
         lambda x: {
             "action": PAST_TENSE_MAP[x.label],
             "episode": x.episode,
             "source": x.source_user,
-            "target": get_target_user(x, toot_owner_dict),
-            "toot_id": str(x.data["toot_id"]),
+            "target": get_target_user(x, post_owner_dict),
+            "post_id": str(_post_id(x.data)),
         },
         axis=1,
     )
     int_df.int_data = int_df.apply(
         lambda x: (
-            x.int_data | {"parent_toot_id": str(x.data["reply_to"]["toot_id"])}
+            x.int_data | {"parent_post_id": str(_reply_target_id(x.data))}
             if x.label == "reply"
             else x.int_data
         ),
@@ -131,56 +157,52 @@ def load_data_from_folder(folder_contents):
 
     Returns
     -------
-        Tuple of (follow_graph, int_dict, active_users_by_episode, toot_dict,
+        Tuple of (follow_graph, int_dict, active_users_by_episode, post_dict,
                   probe_data, act_dict)
     """
     # Extract the required files
     action_content = None
     probe_content = None
+    prompts_content = None
 
     for filename, content in folder_contents.items():
         if filename.endswith("action_events.jsonl"):
             action_content = content
         elif filename.endswith("probe_events.jsonl"):
             probe_content = content
+        elif filename.endswith("prompts_and_responses.jsonl"):
+            prompts_content = content
 
     if not action_content:
         raise ValueError("action_events.jsonl file not found in folder")
-    if not probe_content:
-        raise ValueError("probe_events.jsonl file not found in folder")
 
     # Load dataframes
     action_df = pd.read_json(StringIO(action_content), lines=True)
-    probe_df = pd.read_json(StringIO(probe_content), lines=True)
+    probe_df = (
+        pd.read_json(StringIO(probe_content), lines=True)
+        if probe_content
+        else pd.DataFrame(columns=action_df.columns)
+    )
     df = pd.concat([action_df, probe_df], ignore_index=True)
 
-    # Ensure all toot_ids are strings and episodes are ints
-    def get_toot_id(data):
-        """get_toot_id.
-
-        :param data:
-        """
-        if "toot_id" in data:
-            data["toot_id"] = str(data["toot_id"])
-        return data
-
-    df["data"] = df.data.apply(get_toot_id)
+    df["data"] = df.data.apply(_normalize_action_data)
     df["episode"] = df.episode.apply(int)
     # Process dataframes
     probe_df_processed, int_df, edge_df, act_df = post_process_output(df)
 
     # Extract probe data
     num_entries = len(probe_df_processed.loc[probe_df_processed.label == PROBE_LABEL])
-    print(f"{num_entries} probe entries!")
 
-    probe_data = (
-        probe_df_processed.loc[
-            probe_df_processed.label == PROBE_LABEL, ["source_user", "response", "episode"]
-        ]
-        .groupby("episode")
-        .apply(lambda x: dict(zip(x.source_user, x.response, strict=False)))
-        .to_dict()
-    )
+    probe_data = {}
+    if not probe_df_processed.empty and "response" in probe_df_processed:
+        probe_data = (
+            probe_df_processed.loc[
+                probe_df_processed.label == PROBE_LABEL, ["source_user", "response", "episode"]
+            ]
+            .groupby("episode")
+            .apply(lambda x: dict(zip(x.source_user, x.response, strict=False)))
+            .to_dict()
+        )
 
     # Build follow network
     follow_graph = nx.from_pandas_edgelist(
@@ -191,20 +213,18 @@ def load_data_from_folder(folder_contents):
     active_users_by_episode = int_df.groupby("episode")["source_user"].apply(set).to_dict()
 
     # Get toot and interaction data
-    toot_dict, toot_owner_dict = get_toot_dict(int_df.copy())
-    int_dict = get_int_dict(int_df.copy(), toot_owner_dict)
+    post_dict, post_owner_dict = get_post_dict(int_df.copy())
+    int_dict = get_int_dict(int_df.copy(), post_owner_dict)
 
     # Get action data
     act_dict = get_act_dict(act_df.copy())
-    print(act_df)
-
     return (
         follow_graph,
         int_dict,
         active_users_by_episode,
-        toot_dict,
+        post_dict,
         probe_data,
-        act_dict,
+        act_dict | ({"prompts": prompts_content} if prompts_content else {}),
     )
 
 

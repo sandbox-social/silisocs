@@ -2,50 +2,61 @@
 
 # LLM settings
 llm:
+  provider: openai
   name: gpt-4o-mini
   temperature: 0.5
   api_base: null
   api_key: null
   disabled: false
+  extra_kwargs: {}
 
 max_concurrent_actions: 1000
-sentence_encoder: sentence-transformers/all-MiniLM-L6-v2
-memory_backend: list
 action_mode: custom
 tool_calling:
   mode: single                 # none | single | multi
 prompt_additions:
   action_count_guidance: true
 
+initialization:
+  agents:
+    built_in: default           # default | raw_memory | formative_memory | none
+    class_path: null
+    params: {}
+  game_masters:
+    built_in: default           # default | none
+    class_path: null
+    params: {}
+  simulation:
+    built_in: none              # none | seed_posts
+    class_path: null
+    params: {}
+
 checkpoint:
   every_n_steps: null          # int | null
   explicit_steps: []           # list[int]
-  resume_file: null            # optional checkpoint json path to resume from
-  resume_step: null            # optional explicit start step override
+  source_run: null             # optional previous output directory to restore from
+  restore:
+    built_in: social_action_event_replay
+    class_path: null
+    params: {}
 
 engine:
-  preset: base
-
-  action_loop:
+  class_path: null
+  params: {}
+  loop:
+    built_in: fixed_steps
+    class_path: null
+    params: {}
+  step:
+    built_in: base                  # base | flow | multi_gm
+    class_path: null
+    params:
+      flow_order: [fixed_pre, default]
+      agent_to_flow: {}
+  turn_policy:
     built_in: single_action         # single_action | fixed_count | open_ended
     class_path: null
-    params:
-      count: 2                      # used by fixed_count
-      max_actions: 3                # used by open_ended
-      done_token: DONE              # used by open_ended
-
-  probe_schedule:
-    built_in: step_schedule         # step_schedule | fixed_interval | disabled
-    class_path: null
-    params:
-      start_step: 0
-      every_n_steps: 1
-
-  flow_routing:
-    flow_order: [fixed_pre, default]
-    entity_to_flow: {}
-
-  flow_policies: {}
+    params: {}
 
 roleplaying_instructions: |
   <general_instructions>

@@ -1,10 +1,10 @@
 # Social Simulation Sandbox
 
-**Configurable generative agent simulation of social media using the [Concordia framework](https://github.com/google-deepmind/concordia).**
+**Configurable generative agent simulation of social media using Silisocs-native runtime contracts.**
 
 - 2024 NeurIPS Workshop Paper: [arXiv:2410.13915](http://arxiv.org/abs/2410.13915)
 - 2025 IJCAI Demo Paper: [IJCAI 2025](https://www.ijcai.org/proceedings/2025/1271)
-- Version 2: Structured scenario configuration compatible with Concordia v2
+- Version 2: Structured scenario configuration with an optional Concordia bridge
 
 ---
 
@@ -18,7 +18,7 @@ generic non-social environment.
 
 You configure everything in YAML: the scenario setting, agent populations,
 social network topology, evaluation probes, and platform type. The framework
-handles the rest — memory initialization, agent action loops, probe deployment,
+handles the rest — memory initialization, agent turn policys, probe deployment,
 and structured output logging.
 
 ## Key Features
@@ -26,7 +26,7 @@ and structured output logging.
 | Feature | Description |
 |---------|-------------|
 | **Declarative scenarios** | Define agents, settings, and networks in YAML — no Python needed for most use cases |
-| **Multiple backends** | Local Twitter-like and Reddit-like backends (SQLite), a real Mastodon server, or generic `EnvironmentApp` domains |
+| **Multiple backends** | Local Twitter-like and Reddit-like backends (SQLite), a real Mastodon server, or generic `BackendApp` domains |
 | **Scalable** | Tested with 5000+ concurrent agents using adaptive concurrency control |
 | **Persona pipeline** | Source agent personas from HuggingFace datasets, local JSON, inline YAML, or config references |
 | **Memory initialization** | Raw (config-only) or formative (LLM-generated backstories) modes, with custom initializers |
@@ -56,7 +56,7 @@ If you want to **extend the framework** (new backends, entities, probes, initial
 
 1. Read the [Usage Overview](usage.md) to understand the pipeline
 2. See [Building Agents](building_agents.md) for custom builder classes
-3. See [Concordia Bridge](concordia_bridge.md) for how Silisocs maps Concordia agents and action specs to social-media simulations
+3. See [Concordia Bridge](concordia_bridge.md) for optional legacy interoperability details
 4. See [Memory Initialization](memory_initialization.md) for custom initializers
 5. See [Environment Layer](environment_layer.md) for Engine/GM/component configurability
 6. See [Environment Backends](backends.md#adding-a-new-backend-developer-guide) for new platform backends
@@ -100,7 +100,7 @@ If you're an **LLM helping design experiments via configuration**:
 - [Simulation Extensibility API](simulation_extensibility_api.md) — API-style contracts for extending agents, GMs, engines, and policies
 - [Documentation Coverage](documentation_coverage.md) — Coverage matrix and stale-doc register
 - [Framework Roadmap](framework_roadmap.md) — Near-term framework priorities
-- [Concordia Bridge](concordia_bridge.md) — How Concordia concepts map into Silisocs runtime layers
+- [Concordia Bridge](concordia_bridge.md) — Optional legacy interoperability layer
 - [Building Agents](building_agents.md) — YAML pipeline and custom builders
 - [Memory Initialization](memory_initialization.md) — Custom initializers
 - [Environment Backends](backends.md) — Backend plugin guide

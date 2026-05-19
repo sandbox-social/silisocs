@@ -28,11 +28,15 @@ gamemaster:
 gm:
   preset: base
   components:
+    initialize:
+      built_in: app_initialize
+      class_path: null
+      params: {}
     next_acting:
       built_in: fixed_order
       class_path: null
       params: {}
-    recommend:
+    update:
       built_in: disabled
       class_path: null
       params: {}
@@ -45,17 +49,11 @@ gm:
       built_in: tool_calling
       class_path: null
       params: {}
-    initializer:
-      built_in: backend_default
-      class_path: null
-      params: {}
 
 gm_orchestration:
   gms: []
   flow_bindings:
-    flow_to_gm: {}
     flow_to_gms: {}
-    gm_to_flows: {}
 
 usage_instructions: |
   You are operating in a resource market environment. Agents can inspect the

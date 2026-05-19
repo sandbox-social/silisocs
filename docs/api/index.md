@@ -3,8 +3,8 @@
 * agents
     * [base_agent](agents/base_agent.md)
     * [builders](agents/builders.md)
-    * [entity](agents/entity.md)
-    * [fixed_entity](agents/fixed_entity.md)
+    * [fixed](agents/fixed.md)
+    * [native](agents/native.md)
     * initialization
         * [base](agents/initialization/base.md)
         * [formative](agents/initialization/formative.md)
@@ -50,25 +50,19 @@
         * reddit_like
             * [app](environments/backends/reddit_like/app.md)
             * [engine](environments/backends/reddit_like/engine.md)
-            * [initialize](environments/backends/reddit_like/initialize.md)
         * twitter_like
             * [app](environments/backends/twitter_like/app.md)
             * [engine](environments/backends/twitter_like/engine.md)
     * gm
-        * [act](environments/gm/act.md)
         * [base_game_master](environments/gm/base_game_master.md)
         * components
             * [base](environments/gm/components/base.md)
             * [factory](environments/gm/components/factory.md)
-            * [initialize](environments/gm/components/initialize.md)
-            * [initializer_observe](environments/gm/components/initializer_observe.md)
             * [next_acting](environments/gm/components/next_acting.md)
             * [observe](environments/gm/components/observe.md)
-            * [recommend](environments/gm/components/recommend.md)
+            * [update](environments/gm/components/update.md)
             * [resolve](environments/gm/components/resolve.md)
-            * [seed_post_provider](environments/gm/components/seed_post_provider.md)
         * [game_master](environments/gm/game_master.md)
-        * [gm_factory](environments/gm/gm_factory.md)
         * [shared_flow_game_master](environments/gm/shared_flow_game_master.md)
 * evaluations
     * [activity_summary](evaluations/activity_summary.md)
@@ -89,14 +83,10 @@
         * [deployment](evaluations/probes/deployment.md)
         * [types](evaluations/probes/types.md)
 * runtime
-    * [action_prompts](runtime/action_prompts.md)
-    * [agent_building](runtime/agent_building.md)
-    * [config](runtime/config.md)
-    * [dataclasses](runtime/dataclasses.md)
-    * [factories](runtime/factories.md)
-    * [projection](runtime/projection.md)
+    * [types](runtime/types.md)
+    * [language_models](runtime/language_models.md)
+    * [checkpointing](runtime/checkpointing.md)
     * [runner](runtime/runner.md)
-    * [simulation](runtime/simulation.md)
     * telemetry
         * [engine_metrics](runtime/telemetry/engine_metrics.md)
 * scenario_gen
@@ -105,16 +95,9 @@
     * [validator](scenario_gen/validator.md)
     * [writer](scenario_gen/writer.md)
 * simulation_engines
-    * [base](simulation_engines/base.md)
     * [base_engines](simulation_engines/base_engines.md)
     * [multi_gm](simulation_engines/multi_gm.md)
     * policies
         * [action_chunk](simulation_engines/policies/action_chunk.md)
         * [factory](simulation_engines/policies/factory.md)
         * [probe_schedule](simulation_engines/policies/probe_schedule.md)
-* utils
-    * [media](utils/media.md)
-    * [memory](utils/memory.md)
-    * [misc](utils/misc.md)
-    * [network](utils/network.md)
-    * [social_media_dataclasses](utils/social_media_dataclasses.md)

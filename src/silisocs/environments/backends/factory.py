@@ -1,7 +1,7 @@
 """Factory functions for creating environment app instances.
 
 Provides a single entry point for the game master to instantiate the
-correct backend ``EnvironmentApp`` based on configuration.
+correct backend ``BackendApp`` based on configuration.
 """
 
 import importlib
@@ -9,24 +9,24 @@ import inspect
 from collections.abc import Mapping
 from typing import Any
 
-from silisocs.environments.backends.base import EnvironmentApp
+from silisocs.environments.backends.base import BackendApp
 
 
-def _load_app_class(class_path: str) -> type[EnvironmentApp]:
+def _load_app_class(class_path: str) -> type[BackendApp]:
     module_path, class_name = class_path.rsplit(".", 1)
     module = importlib.import_module(module_path)
     cls = getattr(module, class_name)
-    if not issubclass(cls, EnvironmentApp):
-        raise TypeError(f"Configured app class is not an EnvironmentApp: {class_path}")
+    if not issubclass(cls, BackendApp):
+        raise TypeError(f"Configured app class is not a BackendApp: {class_path}")
     return cls
 
 
 def _instantiate_app_with_supported_kwargs(
-    cls: type[EnvironmentApp],
+    cls: type[BackendApp],
     kwargs: Mapping[str, Any],
     *,
     config_param_keys: Any = (),
-) -> EnvironmentApp:
+) -> BackendApp:
     """Instantiate an app while validating user-supplied config params."""
     params = inspect.signature(cls.__init__).parameters
     if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
@@ -48,12 +48,13 @@ def _instantiate_app_with_supported_kwargs(
     return cls(**filtered)
 
 
-def create_environment_app(platform_type: str, **kwargs: Any) -> EnvironmentApp:
-    """Create and return an EnvironmentApp for the given platform type.
+def create_environment_app(platform_type: str, **kwargs: Any) -> BackendApp:
+    """Create and return a BackendApp for the given platform type.
 
     Args:
         platform_type: Built-in environment selector such as ``"mastodon"``,
-            ``"twitter_like"``, ``"reddit_like"``, or ``"resource_market"``.
+            ``"twitter_like"``, ``"reddit_like"``, ``"resource_market"``, or
+            ``"virtual_space"``.
         **kwargs: Common keys:
             - ``action_logger``: Logger for recording actions.
             - ``app_description`` (str): Description of the app.
@@ -62,7 +63,7 @@ def create_environment_app(platform_type: str, **kwargs: Any) -> EnvironmentApp:
 
     Returns
     -------
-        A configured ``EnvironmentApp`` instance.
+        A configured ``BackendApp`` instance.
 
     Raises
     ------
@@ -124,12 +125,23 @@ def create_environment_app(platform_type: str, **kwargs: Any) -> EnvironmentApp:
             init_kwargs,
             config_param_keys=app_params.keys(),
         )
+    if platform_type == "virtual_space":
+        from silisocs.environments.backends.virtual_space.app import VirtualSpaceApp
+
+        init_kwargs = {"action_logger": action_logger, "app_description": app_description}
+        init_kwargs.update(app_params)
+        return _instantiate_app_with_supported_kwargs(
+            VirtualSpaceApp,
+            init_kwargs,
+            config_param_keys=app_params.keys(),
+        )
     raise ValueError(
         f"Unknown environment platform type: '{platform_type}'. "
-        f"Supported types: 'mastodon', 'twitter_like', 'reddit_like', 'resource_market'."
+        "Supported types: 'mastodon', 'twitter_like', 'reddit_like', "
+        "'resource_market', 'virtual_space'."
     )
 
 
-def create_social_media_app(platform_type: str, **kwargs: Any) -> EnvironmentApp:
+def create_social_media_app(platform_type: str, **kwargs: Any) -> BackendApp:
     """Compatibility wrapper for existing social-media call sites."""
     return create_environment_app(platform_type=platform_type, **kwargs)

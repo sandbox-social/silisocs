@@ -1,23 +1,34 @@
-"""Default social-media game master prefab.
-
-This module provides a lightweight single-flow game master preset used by
-the simple/easy workflow. It exposes the :class:`GameMaster` dataclass which
-extends :class:`silisocs.environments.gm.base_game_master.BaseSocialMediaGameMaster`.
-"""
+"""Default native game master."""
 
 from __future__ import annotations
 
-import dataclasses
+from collections.abc import Sequence
+from typing import Any
 
-from silisocs.environments.gm.base_game_master import BaseSocialMediaGameMaster
+from silisocs.environments.gm.base_game_master import (
+    EnvironmentGameMaster,
+    _GameMasterWiring,
+)
 
 
-@dataclasses.dataclass
-class GameMaster(BaseSocialMediaGameMaster):
-    """Single-flow social-media game master preset.
+class GameMaster(EnvironmentGameMaster):
+    """Single-flow native game master.
 
-    The class is intentionally minimal and primarily exists to expose a
-    named prefab that can be referenced in scenario configs.
+    This public class is the runtime object consumed by the engine. The
+    Component wiring is internal; callers instantiate ``GameMaster`` directly
+    from config and must not call a separate ``build()`` step.
     """
 
-    description: str = "A social-media game master."
+    def __init__(
+        self,
+        *,
+        model: Any | None = None,
+        agents: Sequence[Any] = (),
+        **params: Any,
+    ) -> None:
+        runtime_kwargs = _GameMasterWiring(
+            model=model,
+            agents=agents,
+            **params,
+        ).build_runtime_kwargs(model=model)
+        super().__init__(**runtime_kwargs)

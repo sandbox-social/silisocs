@@ -29,7 +29,7 @@ def make_plot(probe_path: str, jumble_path: str | None, output_dir: Path | None 
                 cand = (
                     event.get("data", {}).get("interaction_premise_template", {}).get("candidate")
                 )
-                score_raw = event.get("data", {}).get("query_return")
+                score_raw = event.get("data", {}).get("probe_return")
                 try:
                     score = int(score_raw)
                 except (TypeError, ValueError):

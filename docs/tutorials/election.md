@@ -44,7 +44,7 @@ setting:
 classes:
   voter:
     count: 497
-    prefab_module: silisocs.agents.entity
+    class_path: silisocs.agents.native.NativeAgent
     sim_role_name: voter
     data:
       source: hf_dataset
@@ -113,11 +113,11 @@ Named built-in probes track voter attitudes every step:
 
 ```yaml
 probes:
-  queries:
+  probes:
     vote_pref:
       probe_name: vote_pref
-      query_type: ChoiceProbe
-      query_data:
+      probe_type: ChoiceProbe
+      probe_data:
         name: VotePref
         question: "In one word, name the candidate you want to vote for."
         context: "{agentname} is going to cast a vote for either Bill Fredrickson or Bradley Carter."
@@ -126,8 +126,8 @@ probes:
           - Bradley Carter
     favorability_bill:
       probe_name: favorability_bill
-      query_type: NumericRatingProbe
-      query_data:
+      probe_type: NumericRatingProbe
+      probe_data:
         name: FavorabilityBill
         question: "Return a single numeric value ranging from {lo} to {hi} for Bill Fredrickson."
         context: "{agentname} rates their opinion of Bill Fredrickson from {lo} to {hi}."
@@ -135,8 +135,8 @@ probes:
         hi: 10
     favorability_bradley:
       probe_name: favorability_bradley
-      query_type: NumericRatingProbe
-      query_data:
+      probe_type: NumericRatingProbe
+      probe_data:
         name: FavorabilityBradley
         question: "Return a single numeric value ranging from {lo} to {hi} for Bradley Carter."
         context: "{agentname} rates their opinion of Bradley Carter from {lo} to {hi}."
@@ -144,8 +144,8 @@ probes:
         hi: 10
     vote_intent:
       probe_name: vote_intent
-      query_type: BinaryProbe
-      query_data:
+      probe_type: BinaryProbe
+      probe_data:
         name: VoteIntent
         question: "In one word, will you cast a vote? Reply yes or no."
 ```
@@ -206,8 +206,10 @@ candidate:
 Switch from raw to formative initialization for richer agent backstories:
 
 ```yaml
-persona_pipeline:
-  processing_mode: formative
+sim:
+  initialization:
+    agents:
+      built_in: formative_memory
 ```
 
 This generates LLM-powered backstory episodes for each voter before the

@@ -2,22 +2,25 @@
 
 Verifies that:
 1. Prompt compilation at runner time produces expected output
-2. SMAct pass-through behavior is correct
-3. Tool-calling additions work at runtime
+2. Native GM action prompts expose typed ActionSpec metadata
+3. Tool-calling schemas are carried in ActionSpec.extra_args
 4. All prompt states match expected format
-5. Prompt modifications maintain structure (markers, sections)
+5. Prompt modifications maintain structure
 """
-
-import json
-from unittest.mock import MagicMock
 
 import pytest
 from omegaconf import OmegaConf
 
 from silisocs.environments.backends.base import SocialMediaApp, app_action
-from silisocs.environments.gm.act import SMAct
-from silisocs.environments.gm.base_game_master import BaseSocialMediaGameMaster
-from silisocs.runtime.action_prompts import (
+from silisocs.environments.gm.base_game_master import (
+    EnvironmentGameMaster,
+    GameMasterComponentSlots,
+    build_generic_action_prompt,
+)
+from silisocs.environments.gm.components.action_prompt import DefaultActionPromptComponent
+from silisocs.environments.gm.components.base import NoOpUpdateComponent
+from silisocs.initialization.game_masters import NoOpGameMasterInitializer
+from silisocs.runtime.prompts.action_prompts import (
     PromptAdditions,
     build_complete_action_prompt_for_runner,
     compile_action_prompt,
@@ -257,8 +260,7 @@ class TestPromptCompilationMatrixIntegration:
                 },
             }
         )
-        gm = BaseSocialMediaGameMaster()
-        prompt = gm.build_generic_prompt(
+        prompt = build_generic_action_prompt(
             cfg=cfg,
             sm_app=_GenericBuildApp(),
             tool_calling_mode="none",
@@ -270,121 +272,120 @@ class TestPromptCompilationMatrixIntegration:
         assert "FINAL: ACTION + params" in prompt
 
 
-class TestSMActPassThroughBehavior:
-    """Test that SMAct correctly returns pre-compiled prompts."""
+def _gm_for_prompt(
+    *,
+    app: _IntegrationTestApp | None,
+    prompt: str,
+    enable_tool_calling: bool,
+) -> EnvironmentGameMaster:
+    component_slots = GameMasterComponentSlots(
+        initialize=NoOpGameMasterInitializer(),
+        next_acting=object(),
+        action_prompt=DefaultActionPromptComponent(
+            app=app,
+            action_prompt_template=prompt,
+            enable_tool_calling=enable_tool_calling,
+        ),
+        observe=object(),
+        resolve=object(),
+        update=NoOpUpdateComponent(),
+    )
+    return EnvironmentGameMaster(
+        name="gm",
+        model=object(),
+        app=app,
+        component_slots=component_slots,
+        user_data={},
+        action_prompt_template=prompt,
+        action_output_mode="tool_calling" if enable_tool_calling else "parsed_action",
+        activity_transition_rates={},
+        agent_flow_tags={},
+        gm_orchestration={},
+        enable_tool_calling=enable_tool_calling,
+    )
 
-    def test_smact_returns_prompt_with_correct_format(self):
-        """SMAct should return prompt in 'prompt: ... ;;type: free' format."""
+
+class TestNativeGMActionPromptBehavior:
+    """Test that native GMs return typed action prompts directly."""
+
+    def test_gm_returns_text_action_spec(self):
+        """GM should return a typed text ActionSpec without string wrappers."""
         app = _IntegrationTestApp()
-        act = SMAct(
-            model=MagicMock(),
-            entity_names=["Alice"],
-            sm_app=app,
-            call_to_action_str="Test prompt here",
-            action_mode="custom",
+        gm = _gm_for_prompt(
+            app=app,
+            prompt="Test prompt here",
             enable_tool_calling=False,
         )
-        result = act._next_entity_action_spec({}, MagicMock())
-        assert result == "prompt: Test prompt here ;;type: free"
+        spec = gm.action_prompt("Alice")
+        assert spec.prompt == "Test prompt here"
+        assert spec.output_type.value == "text"
+        assert spec.extra_args == {}
 
-    def test_smact_with_multiline_prompt(self):
-        """SMAct should handle multiline prompts correctly."""
+    def test_gm_handles_multiline_prompt(self):
+        """GM should preserve multiline prompts."""
         multiline_prompt = "Line 1\nLine 2\nLine 3"
         app = _IntegrationTestApp()
-        act = SMAct(
-            model=MagicMock(),
-            entity_names=["Alice"],
-            sm_app=app,
-            call_to_action_str=multiline_prompt,
-            action_mode="custom",
+        gm = _gm_for_prompt(
+            app=app,
+            prompt=multiline_prompt,
             enable_tool_calling=False,
         )
-        result = act._next_entity_action_spec({}, MagicMock())
-        assert "Line 1\nLine 2\nLine 3" in result
-        assert ";;type: free" in result
+        assert gm.action_prompt("Alice").prompt == multiline_prompt
 
-    def test_smact_with_tool_calling_adds_markers(self):
-        """With tool_calling enabled, SMAct should add markers and schemas."""
+    def test_gm_with_tool_calling_uses_extra_args(self):
+        """Tool-calling GMs should carry schemas in extra_args."""
         app = _IntegrationTestApp()
-        act = SMAct(
-            model=MagicMock(),
-            entity_names=["Alice"],
-            sm_app=app,
-            call_to_action_str="Base prompt",
-            action_mode="custom",
+        gm = _gm_for_prompt(
+            app=app,
+            prompt="Base prompt",
             enable_tool_calling=True,
         )
-        result = act._next_entity_action_spec({}, MagicMock())
-        assert "### TOOL_CALLING_MODE ###" in result
-        assert "### TOOL_SCHEMAS_JSON ###" in result
-        assert "### END_TOOL_SCHEMAS_JSON ###" in result
-        assert "Base prompt" in result
+        spec = gm.action_prompt("Alice")
+        assert spec.prompt == "Base prompt"
+        assert spec.output_type.value == "tool_calls"
+        assert spec.extra_args["tool_mode"] == "multi"
+        schemas = spec.extra_args["tools"]
+        assert isinstance(schemas, list)
+        assert len(schemas) > 0
+        assert all("function" in schema for schema in schemas)
 
-    def test_smact_does_not_double_add_tool_markers_or_schemas(self):
-        """SMAct should preserve existing wrapper blocks without duplication."""
+    def test_gm_does_not_parse_legacy_tool_markers(self):
+        """Legacy markers are treated as prompt text, not as transport metadata."""
         app = _IntegrationTestApp()
         wrapped_prompt = (
-            "### TOOL_CALLING_MODE ###\n"
+            "### LEGACY_TOOL_MODE ###\n"
             "Base prompt\n"
             "### TOOL_SCHEMAS_JSON ###\n"
             "[]\n"
             "### END_TOOL_SCHEMAS_JSON ###"
         )
-        act = SMAct(
-            model=MagicMock(),
-            entity_names=["Alice"],
-            sm_app=app,
-            call_to_action_str=wrapped_prompt,
-            action_mode="custom",
+        gm = _gm_for_prompt(
+            app=app,
+            prompt=wrapped_prompt,
             enable_tool_calling=True,
         )
-        result = act._next_entity_action_spec({}, MagicMock())
-        assert result.count("### TOOL_CALLING_MODE ###") == 1
-        assert result.count("### TOOL_SCHEMAS_JSON ###") == 1
-        assert result.count("### END_TOOL_SCHEMAS_JSON ###") == 1
+        spec = gm.action_prompt("Alice")
+        assert spec.prompt == wrapped_prompt
+        assert spec.extra_args["tools"]
 
-    def test_smact_tool_schemas_are_valid_json(self):
-        """Tool schemas in SMAct output should be valid JSON."""
-        app = _IntegrationTestApp()
-        act = SMAct(
-            model=MagicMock(),
-            entity_names=["Alice"],
-            sm_app=app,
-            call_to_action_str="Base prompt",
-            action_mode="custom",
+    def test_gm_without_app_instance_no_tool_calling(self):
+        """GM without app instance should return a plain text spec."""
+        gm = _gm_for_prompt(
+            app=None,
+            prompt="Base prompt",
             enable_tool_calling=True,
         )
-        result = act._next_entity_action_spec({}, MagicMock())
-        # Extract JSON between markers
-        start = result.index("### TOOL_SCHEMAS_JSON ###") + len("### TOOL_SCHEMAS_JSON ###")
-        end = result.index("### END_TOOL_SCHEMAS_JSON ###")
-        json_str = result[start:end].strip()
-        schemas = json.loads(json_str)
-        assert isinstance(schemas, list)
-        assert len(schemas) > 0
-        assert all("function" in schema for schema in schemas)
-
-    def test_smact_without_app_instance_no_tool_calling(self):
-        """SMAct without app instance should not add tool-calling additions."""
-        act = SMAct(
-            model=MagicMock(),
-            entity_names=["Alice"],
-            sm_app=None,
-            call_to_action_str="Base prompt",
-            action_mode="custom",
-            enable_tool_calling=True,
-        )
-        result = act._next_entity_action_spec({}, MagicMock())
-        # Should just return the prompt without tool-calling additions
-        assert "Base prompt" in result
-        assert "### TOOL_CALLING_MODE ###" not in result
+        spec = gm.action_prompt("Alice")
+        assert spec.prompt == "Base prompt"
+        assert spec.output_type.value == "text"
+        assert spec.extra_args == {}
 
 
 class TestPromptPipelineEndToEnd:
-    """Test complete flow from config to SMAct output."""
+    """Test complete flow from config to native GM action prompt."""
 
-    def test_runner_compile_then_smact_passthrough(self):
-        """Test complete flow: runner compiles prompt, SMAct passes through."""
+    def test_runner_compile_then_gm_action_prompt(self):
+        """Test complete flow: runner compiles prompt, GM emits typed spec."""
         cfg = OmegaConf.create(
             {
                 "env": {
@@ -407,26 +408,23 @@ class TestPromptPipelineEndToEnd:
         assert "[OUTPUT STYLE]" in compiled_prompt
         assert "Only take one action" in compiled_prompt
 
-        # Step 2: SMAct uses compiled prompt
+        # Step 2: GM uses compiled prompt
         app = _IntegrationTestApp()
-        act = SMAct(
-            model=MagicMock(),
-            entity_names=["Alice"],
-            sm_app=app,
-            call_to_action_str=compiled_prompt,
-            action_mode="custom",
+        gm = _gm_for_prompt(
+            app=app,
+            prompt=compiled_prompt,
             enable_tool_calling=False,
         )
-        result = act._next_entity_action_spec({}, MagicMock())
+        spec = gm.action_prompt("Alice")
 
-        # Step 3: SMAct output should contain everything from runner
-        assert "[ActNum]" in result
-        assert "[OUTPUT STYLE]" in result
-        assert "Only take one action" in result
-        assert ";;type: free" in result
+        # Step 3: GM output should contain everything from runner as plain prompt text
+        assert "[ActNum]" in spec.prompt
+        assert "[OUTPUT STYLE]" in spec.prompt
+        assert "Only take one action" in spec.prompt
+        assert spec.output_type.value == "text"
 
-    def test_runner_with_tool_calling_and_smact_wrapping(self):
-        """Test flow with tool-calling: runner builds base, SMAct adds tool markers."""
+    def test_runner_with_tool_calling_uses_typed_metadata(self):
+        """Test flow with tool-calling: runner builds base, GM adds typed tool metadata."""
         cfg = OmegaConf.create(
             {
                 "env": {
@@ -448,23 +446,20 @@ class TestPromptPipelineEndToEnd:
         assert "[ActNum]" in compiled_prompt
         assert "[OUTPUT STYLE]" not in compiled_prompt  # Stripped by compile
 
-        # Step 2: SMAct wraps with tool-calling
+        # Step 2: GM attaches tool schemas via extra_args
         app = _IntegrationTestApp()
-        act = SMAct(
-            model=MagicMock(),
-            entity_names=["Alice"],
-            sm_app=app,
-            call_to_action_str=compiled_prompt,
-            action_mode="custom",
+        gm = _gm_for_prompt(
+            app=app,
+            prompt=compiled_prompt,
             enable_tool_calling=True,
         )
-        result = act._next_entity_action_spec({}, MagicMock())
+        spec = gm.action_prompt("Alice")
 
-        # Step 3: Final output should have markers from both stages
-        assert "### TOOL_CALLING_MODE ###" in result
-        assert "### TOOL_SCHEMAS_JSON ###" in result
-        assert "[ActNum]" in result
-        assert "Decide action." in result
+        # Step 3: Final output should have prompt text plus typed metadata
+        assert spec.output_type.value == "tool_calls"
+        assert spec.extra_args["tools"]
+        assert "[ActNum]" in spec.prompt
+        assert "Decide action." in spec.prompt
 
 
 class TestPromptStateTransitions:

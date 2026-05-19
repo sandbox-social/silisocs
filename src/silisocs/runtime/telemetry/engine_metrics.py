@@ -6,8 +6,9 @@ import os
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from concordia.typing import entity as entity_lib
 from omegaconf import OmegaConf
+
+from silisocs.agents.base_agent import Agent
 
 
 def resolve_configured_worker_cap(cfg: Any) -> int | None:
@@ -29,18 +30,18 @@ def resolve_configured_worker_cap(cfg: Any) -> int | None:
 
 
 def collect_unique_models(
-    game_master: entity_lib.Entity,
-    entities_to_process: Sequence[entity_lib.Entity] | None = None,
+    game_master: Agent,
+    entities_to_process: Sequence[Agent] | None = None,
 ) -> list[Any]:
     """Collect unique model objects used by the game master and active entities."""
     candidate_models: list[Any] = []
-    gm_model = getattr(getattr(game_master, "_act_component", None), "_model", None)
+    gm_model = getattr(game_master, "model", None)
     if gm_model is not None:
         candidate_models.append(gm_model)
 
     if entities_to_process:
         for entity in entities_to_process:
-            entity_model = getattr(getattr(entity, "_act_component", None), "_model", None)
+            entity_model = getattr(entity, "model", None)
             if entity_model is not None:
                 candidate_models.append(entity_model)
 

@@ -27,11 +27,11 @@ execution across large agent populations.
 
 ```yaml
 probes:
-  queries:
+  probes:
     satisfaction:
       probe_name: satisfaction
-      query_type: NumericRatingProbe
-      query_data:
+      probe_type: NumericRatingProbe
+      probe_data:
         name: Satisfaction
         question: "Return one number from {lo} to {hi}: how satisfied are you with community discussions?"
         context: "{agentname} rates current discussion quality."
@@ -40,16 +40,16 @@ probes:
 
     turnout_intent:
       probe_name: turnout_intent
-      query_type: BinaryProbe
-      query_data:
+      probe_type: BinaryProbe
+      probe_data:
         name: VoteIntent
         question: "Will you participate in the upcoming vote? Reply yes or no."
         context: "{agentname} decides whether they intend to vote."
 
     topic_preference:
       probe_name: topic_preference
-      query_type: ChoiceProbe
-      query_data:
+      probe_type: ChoiceProbe
+      probe_data:
         name: TopicPreference
         question: "Which topic interests you most?"
         context: "{agentname} picks a single preferred topic."
@@ -68,16 +68,16 @@ probes:
     enabled: true
     start_step: 1             # First step to deploy probes
     every_n_steps: 5          # Deploy every N steps
-    include_entities: []      # Empty = all agents
-    exclude_entities:         # Skip specific agents
+    include_agents: []      # Empty = all agents
+    exclude_agents:         # Skip specific agents
       - "Storhampton Gazette"
 ```
 
 ### Targeting
 
-- **All agents**: Leave `include_entities` empty
-- **Specific agents**: List agent names in `include_entities`
-- **Exclude agents**: List names in `exclude_entities` (e.g., news bots)
+- **All agents**: Leave `include_agents` empty
+- **Specific agents**: List agent names in `include_agents`
+- **Exclude agents**: List names in `exclude_agents` (e.g., news bots)
 
 ---
 
@@ -87,7 +87,7 @@ For scenario-specific probes, create a module and reference it:
 
 ```yaml
 probes:
-  query_lib_module: my_scenario.probes
+  probe_lib_module: my_scenario.probes
 ```
 
 ```python
@@ -97,7 +97,7 @@ from silisocs.evaluations.probes.types import ProbeBase
 class Favorability(ProbeBase):
     @property
     def question_text(self):
-        candidate = self.query_data["interaction_premise_template"]["candidate"]
+        candidate = self.probe_data["interaction_premise_template"]["candidate"]
         return f"On a scale of 1-10, how favorable is your view of {candidate}?"
 
     def parse_answer(self, raw_response):
@@ -133,15 +133,15 @@ Probe results are saved to `probe_events.jsonl` in the simulation output directo
   "source_user": "Alice Smith",
   "label": "turnout_intent",
   "data": {
-    "query_type": "BinaryProbe",
+    "probe_type": "BinaryProbe",
     "raw_response": "I'd say about a 7",
-    "query_return": "yes"
+    "probe_return": "yes"
   }
 }
 ```
 
 The election scenario demonstrates probes in action with named built-in
-queries (vote preference, favorability, intent) — see the
+probes (vote preference, favorability, intent) — see the
 [Election Walkthrough](tutorials/election.md).
 
 ### Default Detailed Probe Evaluators

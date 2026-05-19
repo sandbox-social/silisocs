@@ -2,32 +2,24 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
-from concordia.typing import entity as entity_lib
-from concordia.typing import entity_component
+from silisocs.environments.gm.components.base import UpdateComponent
 
 
-class NoOpRecommendation(entity_component.ContextComponent, entity_component.ComponentWithLogging):
+class NoOpUpdate(UpdateComponent):
     """Avoid social-backend recommendation work for this replication."""
 
     def __init__(self, **kwargs: Any) -> None:
         del kwargs
         super().__init__()
 
-    def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
-        del action_spec
-        return ""
+    def update(self, *, step: int, agents: Sequence[Any], context: Any | None = None) -> None:
+        del step, agents, context
 
-    def post_act(self, action_attempt: str) -> str:
-        del action_attempt
-        return ""
-
-    def update(self) -> None:
-        return None
-
-    def get_state(self) -> entity_component.ComponentState:
+    def get_state(self) -> dict[str, Any]:
         return {}
 
-    def set_state(self, state: entity_component.ComponentState) -> None:
+    def set_state(self, state: dict[str, Any]) -> None:
         del state

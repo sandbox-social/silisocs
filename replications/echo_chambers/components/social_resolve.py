@@ -5,10 +5,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from concordia.typing import entity as entity_lib
-
 from replications.echo_chambers.components.resolve import _extract_json
 from silisocs.environments.gm.components.resolve import ToolCallingResolveComponent
+from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType
 
 
 def _extract_tool_names(action_text: str) -> list[str]:
@@ -73,23 +72,20 @@ class EchoSocialToolResolve(ToolCallingResolveComponent):
         model: Any,
         call_to_action_str: str = "",
         entities_by_name: dict[str, Any] | None = None,
+        agents_by_name: dict[str, Any] | None = None,
         probe_belief: bool = True,
         belief_options: list[str] | tuple[str, ...] = ("-2", "-1", "0", "1", "2"),
         belief_probe_tag: str = "echo_belief_probe",
     ) -> None:
         super().__init__(sm_app=sm_app, model=model, call_to_action_str=call_to_action_str)
-        self._entities_by_name = dict(entities_by_name or {})
+        self._agents_by_name = dict(agents_by_name or entities_by_name or {})
         self._probe_belief = bool(probe_belief)
         self._belief_options = tuple(str(option) for option in belief_options)
         self._belief_probe_tag = str(belief_probe_tag)
 
-    def pre_act(self, action_spec: entity_lib.ActionSpec) -> str:
-        if action_spec.output_type != entity_lib.OutputType.RESOLVE:
-            return ""
-        if ":" not in action_spec.call_to_action:
-            return ""
-        active_entity, action_text = action_spec.call_to_action.split(":", 1)
-        active_entity = active_entity.strip()
+    def resolve_action(self, agent_name: str, action: ActionOutput) -> str:
+        active_entity = str(agent_name).strip()
+        action_text = action.text if isinstance(action, ActionOutput) else str(action or "")
 
         terminal_probe = _terminal_probe_payload(action_text)
         if terminal_probe is not None:
@@ -108,17 +104,6 @@ class EchoSocialToolResolve(ToolCallingResolveComponent):
                     update=update,
                 )
             result = f"Recorded terminal belief probe for {active_entity}."
-            self._logging_channel(
-                {
-                    "Key": "echo_social_belief_probe_resolve",
-                    "Summary": result,
-                    "Value": {
-                        "active_entity": active_entity,
-                        "belief": update.get("belief"),
-                        "action_count": terminal_probe.get("action_count"),
-                    },
-                }
-            )
             return result
 
         social_result = self.resolve(active_entity=active_entity, action_text=action_text)
@@ -139,17 +124,6 @@ class EchoSocialToolResolve(ToolCallingResolveComponent):
                 )
 
         result = social_result or f"{active_entity} completed a social-media action."
-        self._logging_channel(
-            {
-                "Key": "echo_social_tool_resolve",
-                "Summary": result,
-                "Value": {
-                    "active_entity": active_entity,
-                    "social_result": social_result,
-                    "tool_names": _extract_tool_names(action_text),
-                },
-            }
-        )
         return result
 
     def _update_from_reported_belief(
@@ -185,7 +159,7 @@ class EchoSocialToolResolve(ToolCallingResolveComponent):
 
         short_memory = ""
         long_memory = previous_long
-        agent = self._entities_by_name.get(active_entity)
+        agent = self._agents_by_name.get(active_entity)
         if agent is not None:
             try:
                 from replications.echo_chambers.components.agent_concordia import (
@@ -222,7 +196,7 @@ class EchoSocialToolResolve(ToolCallingResolveComponent):
     ) -> dict[str, Any]:
         fallback = _fallback_probe(active_entity, self.sm_app, episode)
         echo_state = getattr(self.sm_app, "echo_state", None)
-        agent = self._entities_by_name.get(active_entity)
+        agent = self._agents_by_name.get(active_entity)
         if echo_state is None or agent is None:
             return fallback
 
@@ -245,9 +219,9 @@ class EchoSocialToolResolve(ToolCallingResolveComponent):
         )
         try:
             reported = agent.act(
-                action_spec=entity_lib.ActionSpec(
-                    call_to_action=call_to_action,
-                    output_type=entity_lib.OutputType.CHOICE,
+                action_spec=ActionSpec(
+                    prompt=call_to_action,
+                    output_type=OutputType.CHOICE,
                     options=self._belief_options,
                     tag=self._belief_probe_tag,
                 )

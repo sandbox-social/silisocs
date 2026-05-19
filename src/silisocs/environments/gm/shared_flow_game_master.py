@@ -1,4 +1,4 @@
-"""Multi-flow social-media game master with component routing.
+"""Multi-flow environment game master with component routing.
 
 Use this GM when enable_gm_multi_flow=true in config. Supports:
 - Multiple component instances per role (e.g., TimelineObservation + EpisodeObservation)
@@ -10,38 +10,36 @@ All agents share one backend/app state but may see different observations/resolu
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 import os
 import re
-import time
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
-from concordia.agents import entity_agent_with_logging
-from concordia.associative_memory import basic_associative_memory
-from concordia.components import game_master as gm_components  # type: ignore[attr-defined]
-from concordia.language_model import language_model
 from omegaconf import OmegaConf
 
-from silisocs.environments.gm import act as gm_social_act
 from silisocs.environments.gm.base_game_master import (
-    BaseSocialMediaGameMaster,
-    _build_seed_post_provider,
-    _collect_seed_posts,
+    EnvironmentGameMaster,
+    GameMasterComponentSlots,
     _compute_activity_rates,
+    _GameMasterWiring,
+    _runtime_cfg,
 )
 from silisocs.environments.gm.components.factory import (
-    build_backend_initializer,
+    build_action_prompt_component,
+    build_action_prompt_components,
+    build_initialize_component,
+    build_initialize_components,
     build_next_acting_component,
+    build_next_acting_components,
     build_observe_component,
     build_observe_components,
-    build_recommendation_component,
     build_resolve_component,
-    initialize_component_flow_fields,
+    build_resolve_components,
+    build_update_component,
+    build_update_components,
 )
-from silisocs.runtime.config import ConfigStore
-from silisocs.utils.misc import EventLogger
+from silisocs.runtime.io import EventLogger
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +56,7 @@ def _env_cfg(cfg: Any) -> Any:
     return getattr(cfg, "env", getattr(cfg, "environment", object()))
 
 
-@dataclasses.dataclass
-class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
+class _FlowRoutedGameMasterWiring(_GameMasterWiring):
     """Multi-flow game master with explicit component routing per flow.
 
     This GM enables advanced scenarios where different agents (grouped by flow)
@@ -71,35 +68,32 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
           gm:
             preset: shared_flow
 
-    Component routing is built from entity_flow_tags and the multi-component
+    Component routing is built from agent flow tags and the multi-component
     configuration in gm.components.observe, etc.
     """
-
-    description: str = "A multi-flow social-media game master with component routing."
 
     def _is_shared_flow_mode(self) -> bool:
         """Indicates this is a multi-flow aware mode."""
         return True
 
-    def build(
+    def build_runtime_kwargs(
         self,
-        model: language_model.LanguageModel,
-        memory_bank: basic_associative_memory.AssociativeMemoryBank,
-    ) -> entity_agent_with_logging.EntityAgentWithLogging:
-        """Build multi-flow GM with component routing.
+        model: Any | None = None,
+    ) -> dict[str, Any]:
+        """Build multi-flow GM runtime keyword arguments.
 
         Overrides base build to handle multiple component instances per role.
         """
-        del memory_bank
-        cfg = ConfigStore.get_config()
+        model = model or self.model
+        cfg = _runtime_cfg(self.params)
         name = str(self.params.get("name"))
         calls_to_action = self.params.get("calls_to_action", {})
         user_data = self.params["sm_user_data"]
         call_to_sm_action = calls_to_action.get("social_media_action", "")
 
-        player_names = [e.name for e in self.entities]
+        agent_names = [agent.name for agent in self.agents]
 
-        # Build single components first (next_acting, resolve, recommend) - same as base
+        # Build single components first (next_acting, resolve, update).
         action_mode_to_resolve_map = {
             "custom": "parsed_action",
             "generic": "generic_action",
@@ -116,18 +110,27 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
                 dict[str, Any],
                 OmegaConf.to_container(cfg.env.gm.components, resolve=True),
             )
+        if "recommend" in gm_components_cfg:
+            raise ValueError(
+                "`env.gm.components.recommend` has been removed. "
+                "Use `env.gm.components.update` with built_in='social_recommendation'."
+            )
 
         user_data = self.params["sm_user_data"]
         activity_rates = _compute_activity_rates(user_data)
-        entity_flow_tags = dict(user_data.get("entity_flow_tags", {}))
+        agent_flow_tags = dict(user_data.get("agent_flow_tags", {}) or {})
         gm_orchestration = dict(user_data.get("gm_orchestration", {}) or {})
         gm_prompt_cfg = dict(gm_orchestration.get("prompt", {}) or {})
-
-        next_actor = build_next_acting_component(
-            gm_components_cfg.get("next_acting"),
-            player_names=player_names,
-            activity_transition_rates=activity_rates,
+        initializer_cfg = dict(
+            gm_components_cfg.get("initialize") or self.params.get("initializer") or {}
         )
+        if not initializer_cfg:
+            raise ValueError(
+                "FlowRoutedGameMaster requires `env.gm.components.initialize` "
+                "(or a runner-provided initializer during migration)."
+            )
+
+        next_acting_slot = dict(gm_components_cfg.get("next_acting", {}))
 
         resolve_slot = dict(gm_components_cfg.get("resolve", {}))
         if not resolve_slot:
@@ -148,6 +151,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
         timeline_mode = str(
             getattr(_env_cfg(cfg), "timeline_mode", None) or "follower_chronological"
         )
+        timeline_posts = int(getattr(_env_cfg(cfg), "timeline_posts", 10) or 10)
         supported_timeline_modes = {
             "twitter_like": {
                 "follower_chronological",
@@ -207,6 +211,7 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
             app_class_path=OmegaConf.select(cfg, "env.app.class_path", default=None),
             app_params=OmegaConf.select(cfg, "env.app.params", default={}) or {},
         )
+        sm_app.platform_type = platform_type  # type: ignore[attr-defined]
 
         enabled_actions_cfg = getattr(_env_cfg(cfg), "enabled_actions", None)
         if enabled_actions_cfg is not None:
@@ -217,13 +222,11 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
             else:
                 enabled_actions = [str(enabled_actions_cfg).strip()]
 
-            action_loop_built_in = ""
-            if hasattr(cfg.sim, "engine") and getattr(cfg.sim.engine, "action_loop", None):
-                action_loop_built_in = str(
-                    getattr(cfg.sim.engine.action_loop, "built_in", "")
-                ).strip()
+            turn_policy_built_in = str(
+                OmegaConf.select(cfg, "sim.engine.turn_policy.built_in", default="") or ""
+            ).strip()
             enabled_actions_upper = {name.upper() for name in enabled_actions if name}
-            if action_loop_built_in == "open_ended" and "FINISHED" not in enabled_actions_upper:
+            if turn_policy_built_in == "open_ended" and "FINISHED" not in enabled_actions_upper:
                 enabled_actions.append("FINISHED")
 
             sm_app.set_enabled_actions(enabled_actions)
@@ -237,67 +240,46 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
                 gm_prompt_cfg=gm_prompt_cfg,
             )
 
-        seed_post_cfg = {}
         env_cfg = _env_cfg(cfg)
-        if hasattr(env_cfg, "seed_posts"):
-            seed_post_cfg = cast(
-                dict[str, Any],
-                OmegaConf.to_container(env_cfg.seed_posts, resolve=True),
-            )
-        seed_post_provider = _build_seed_post_provider(seed_post_cfg)
-        seed_t0 = time.time()
-        seed_posts = _collect_seed_posts(self.entities, provider=seed_post_provider)
-        seed_elapsed = time.time() - seed_t0
-
-        social_network_cfg = (
-            dict(env_cfg.social_network) if hasattr(env_cfg, "social_network") else {}
-        )
-        backend_initializer = build_backend_initializer(gm_components_cfg.get("initializer"))
-        init_t0 = time.time()
-        backend_initializer.initialize(
-            sm_app=sm_app,
-            agent_names=player_names,
-            init_kwargs={
-                "sim_roles": user_data.get("sim_roles", {}),
-                "seed_posts": seed_posts,
-                "social_network": social_network_cfg,
-            },
-        )
-        init_elapsed = time.time() - init_t0
-
-        startup_line = (
-            f"Startup environment_init: seed_posts={seed_elapsed:.2f}s "
-            f"seed_provider={type(seed_post_provider).__name__} "
-            f"app_initialize={init_elapsed:.2f}s "
-            f"initializer={type(backend_initializer).__name__} "
-            f"agents={len(player_names)} seed_count={sum(1 for t in seed_posts.values() if t)}"
-        )
-        logger.info(startup_line)
-        stats_path = os.path.join(cfg.output_rootname, "run_stats.log")
-        with open(stats_path, "a", encoding="utf-8") as f:
-            f.write(startup_line + "\n")
-
-        catalog = sm_app.action_catalog()
-        allowed_action_types = sorted(
-            {
-                str(item.get("selectable_name", "")).strip().upper()
-                for item in catalog
-                if str(item.get("selectable_name", "")).strip()
-            }
-        )
-        for entity in self.entities:
-            setter = getattr(entity, "set_allowed_action_types", None)
-            existing = getattr(entity, "_allowed_action_types", None)
-            if callable(setter) and not existing:
-                setter(allowed_action_types)
 
         action_output_mode = str(resolve_slot.get("built_in", "parsed_action") or "parsed_action")
-        for entity in self.entities:
-            mode_setter = getattr(entity, "set_action_output_mode", None)
-            if callable(mode_setter):
-                mode_setter(action_output_mode)
 
-        # KEY CHANGE: Build MULTIPLE observe components
+        initialize_component = build_initialize_component(initializer_cfg)
+        initialize_components = {"initialize": initialize_component}
+        initialize_components.update(build_initialize_components(initializer_cfg))
+
+        next_actor = build_next_acting_component(
+            next_acting_slot,
+            agent_names=agent_names,
+            activity_transition_rates=activity_rates,
+        )
+        next_acting_components = {"next_acting": next_actor}
+        next_acting_components.update(
+            build_next_acting_components(
+                next_acting_slot,
+                agent_names=agent_names,
+                activity_transition_rates=activity_rates,
+            )
+        )
+
+        action_prompt_slot = dict(gm_components_cfg.get("action_prompt", {}))
+        action_prompt_component = build_action_prompt_component(
+            action_prompt_slot,
+            app=sm_app,
+            action_prompt_template=call_to_sm_action,
+            enable_tool_calling=enable_tool_calling,
+        )
+        action_prompt_components = {"action_prompt": action_prompt_component}
+        action_prompt_components.update(
+            build_action_prompt_components(
+                action_prompt_slot,
+                app=sm_app,
+                action_prompt_template=call_to_sm_action,
+                enable_tool_calling=enable_tool_calling,
+            )
+        )
+
+        # Build observe components.
         observe_slots = dict(gm_components_cfg.get("observe", {}))
         episode_observation_flow = (
             dict(observe_slots.get("params") or {}).get("episode_observation_flow", "fixed_pre")
@@ -318,11 +300,12 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
             observe_components = build_observe_components(
                 observe_slots,
                 model=model,
-                player_names=player_names,
+                agent_names=agent_names,
                 sm_app=sm_app,
-                entity_flow_tags=entity_flow_tags,
+                agent_flow_tags=agent_flow_tags,
                 episode_observation_flow=episode_observation_flow,
                 timeline_mode=timeline_mode,
+                timeline_posts=timeline_posts,
                 timeline_config=timeline_config,
             )
         else:
@@ -331,11 +314,12 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
             single_observe = build_observe_component(
                 observe_slots,
                 model=model,
-                player_names=player_names,
+                agent_names=agent_names,
                 sm_app=sm_app,
-                entity_flow_tags=entity_flow_tags,
+                agent_flow_tags=agent_flow_tags,
                 episode_observation_flow=episode_observation_flow,
                 timeline_mode=timeline_mode,
+                timeline_posts=timeline_posts,
                 timeline_config=timeline_config,
             )
             class_name = single_observe.__class__.__name__
@@ -343,78 +327,127 @@ class MultiFlowSocialMediaGameMaster(BaseSocialMediaGameMaster):
             full_key = f"observe__{kebab_key}"
             observe_components = {full_key: single_observe}
 
-        # Build resolve component (no multi-instance for now, but could add)
         resolve_component = build_resolve_component(
             resolve_slot,
             sm_app=sm_app,
             model=model,
-            call_to_action_str=call_to_sm_action,
-            entities_by_name={entity.name: entity for entity in self.entities},
+            action_prompt_template=call_to_sm_action,
+            agents_by_name={agent.name: agent for agent in self.agents},
+        )
+        resolve_components = {"resolve": resolve_component}
+        resolve_components.update(
+            build_resolve_components(
+                resolve_slot,
+                sm_app=sm_app,
+                model=model,
+                action_prompt_template=call_to_sm_action,
+                agents_by_name={agent.name: agent for agent in self.agents},
+            )
         )
 
-        # Build recommendation component
-        recommend_slot = dict(gm_components_cfg.get("recommend", {}))
-        recommend_component = build_recommendation_component(
-            recommend_slot,
+        update_slot = dict(gm_components_cfg.get("update", {}))
+        update_component = build_update_component(
+            update_slot,
             sm_app=sm_app,
             platform_type=platform_type,
             timeline_mode=timeline_mode,
         )
+        update_components = {"update": update_component}
+        update_components.update(
+            build_update_components(
+                update_slot,
+                sm_app=sm_app,
+                platform_type=platform_type,
+                timeline_mode=timeline_mode,
+            )
+        )
 
-        # Combine all components
-        components = {
-            gm_components.next_acting.DEFAULT_NEXT_ACTING_COMPONENT_KEY: next_actor,
-            gm_components.event_resolution.DEFAULT_RESOLUTION_COMPONENT_KEY: resolve_component,
-            "recommendation": recommend_component,
+        component_registry = {
+            **initialize_components,
+            **next_acting_components,
+            **action_prompt_components,
+            **resolve_components,
+            **update_components,
         }
-        components.update(observe_components)
+        component_registry.update(observe_components)
 
-        # Initialize multi-field values for all components
-        for slot_key, slot_cfg in gm_components_cfg.items():
-            for component_key, component in components.items():
-                if component_key.startswith(f"{slot_key}__"):
-                    initialize_component_flow_fields(component, slot_cfg)
+        for component in update_components.values():
+            if hasattr(component, "validate_recsys_types") and callable(
+                component.validate_recsys_types
+            ):
+                component.validate_recsys_types()
 
-        if hasattr(recommend_component, "validate_recsys_types") and callable(
-            recommend_component.validate_recsys_types
-        ):
-            recommend_component.validate_recsys_types()
-
-        # KEY CHANGE: Build flow-to-component mapping
         flow_to_component_map = _build_flow_to_component_map(
-            entity_flow_tags,
-            observe_components,
-            gm_components.event_resolution.DEFAULT_RESOLUTION_COMPONENT_KEY,
-            observe_slots,
-            resolve_slot,
+            agent_flow_tags,
+            {
+                "initialize": initialize_components,
+                "next_acting": next_acting_components,
+                "action_prompt": action_prompt_components,
+                "observe": observe_components,
+                "resolve": resolve_components,
+                "update": update_components,
+            },
+            {
+                "initialize": initializer_cfg,
+                "next_acting": next_acting_slot,
+                "action_prompt": action_prompt_slot,
+                "observe": observe_slots,
+                "resolve": resolve_slot,
+                "update": update_slot,
+            },
         )
 
         logger.info(f"Built flow-to-component mapping: {flow_to_component_map}")
+        component_slots = GameMasterComponentSlots(
+            initialize=initialize_component,
+            next_acting=next_actor,
+            action_prompt=action_prompt_component,
+            observe=component_registry[flow_to_component_map["default"]["observe"]],
+            resolve=resolve_component,
+            update=update_component,
+        )
 
-        # KEY CHANGE: Create MultiFlowSMAct instead of simple SMAct
-        act_component = gm_social_act.MultiFlowSMAct(
+        return {
+            "name": name,
+            "model": model,
+            "app": sm_app,
+            "component_slots": component_slots,
+            "component_registry": component_registry,
+            "user_data": user_data,
+            "action_prompt_template": call_to_sm_action,
+            "action_output_mode": action_output_mode,
+            "activity_transition_rates": activity_rates,
+            "agent_flow_tags": agent_flow_tags,
+            "gm_orchestration": gm_orchestration,
+            "flow_to_component_map": flow_to_component_map,
+            "shared_flow_mode": self._is_shared_flow_mode(),
+            "enable_tool_calling": enable_tool_calling,
+        }
+
+    def build(
+        self,
+        model: Any | None = None,
+    ) -> EnvironmentGameMaster:
+        """Build multi-flow GM with component routing."""
+        return EnvironmentGameMaster(**self.build_runtime_kwargs(model=model))
+
+
+class FlowRoutedGameMaster(EnvironmentGameMaster):
+    """Shared-flow native game master built directly from runtime config."""
+
+    def __init__(
+        self,
+        *,
+        model: Any | None = None,
+        agents: Sequence[Any] = (),
+        **params: Any,
+    ) -> None:
+        runtime_kwargs = _FlowRoutedGameMasterWiring(
             model=model,
-            entity_names=player_names,
-            sm_app=sm_app,
-            flow_to_component_map=flow_to_component_map,
-            entity_flow_tags=entity_flow_tags,
-            component_order=list(components.keys()),
-            call_to_action_str=call_to_sm_action,
-            activity_transition_rates=activity_rates,
-            action_mode=getattr(cfg.sim, "action_mode", "custom"),
-            enable_tool_calling=enable_tool_calling,
-        )
-        act_component.gm_orchestration = gm_orchestration
-        act_component.shared_flow_mode = self._is_shared_flow_mode()
-
-        return entity_agent_with_logging.EntityAgentWithLogging(
-            agent_name=name,
-            act_component=act_component,
-            context_components=components,
-        )
-
-
-MultiFlowEnvironmentGameMaster = MultiFlowSocialMediaGameMaster
+            agents=agents,
+            **params,
+        ).build_runtime_kwargs(model=model)
+        super().__init__(**runtime_kwargs)
 
 
 def _class_to_kebab_case(class_name: str) -> str:
@@ -426,72 +459,37 @@ def _class_to_kebab_case(class_name: str) -> str:
 
 
 def _build_flow_to_component_map(
-    entity_flow_tags: dict[str, str],
-    observe_components: dict[str, Any],
-    resolve_component_key: str,
-    observe_slot_cfg: Mapping[str, Any] | None = None,
-    resolve_slot_cfg: Mapping[str, Any] | None = None,
+    agent_flow_tags: dict[str, str],
+    components_by_role: Mapping[str, Mapping[str, Any]],
+    slot_cfg_by_role: Mapping[str, Mapping[str, Any] | None],
 ) -> dict[str, dict[str, str]]:
-    """Build flow-to-component mapping from config + available components.
-
-    Args:
-        entity_flow_tags: Maps entity name to flow tag
-        observe_components: {component_key: component_instance} for observe role
-        resolve_component_key: Context key used by resolve component
-        observe_slot_cfg: Observe slot configuration (may include flow_map)
-        resolve_slot_cfg: Resolve slot configuration (may include flow_map)
-
-    Returns
-    -------
-        {
-            flow_name: {
-                "observe": "observe__component_key",
-                "resolve": "<resolve_context_key>"
-            }
-        }
-    """
+    """Build flow-to-component mapping from slot ``flow_map`` values."""
     mapping: dict[str, dict[str, str]] = {}
-    observe_slot_cfg = dict(observe_slot_cfg or {})
-    resolve_slot_cfg = dict(resolve_slot_cfg or {})
-    observe_flow_map = _normalize_flow_map(observe_slot_cfg.get("flow_map"))
-    resolve_flow_map = _normalize_flow_map(resolve_slot_cfg.get("flow_map"))
+    flow_maps = {
+        role: _normalize_flow_map(dict(slot_cfg or {}).get("flow_map"))
+        for role, slot_cfg in slot_cfg_by_role.items()
+    }
 
-    # Get unique flows
-    unique_flows = set(entity_flow_tags.values())
-    unique_flows.update(observe_flow_map.keys())
-    unique_flows.update(resolve_flow_map.keys())
-    unique_flows.add("default")  # Always include default
+    unique_flows = set(agent_flow_tags.values())
+    for flow_map in flow_maps.values():
+        unique_flows.update(flow_map.keys())
+    unique_flows.add("default")
 
-    # Get the first observe component (or only one if single-instance)
-    observe_components_list = list(observe_components.keys())
-    default_observe_key = observe_components_list[0] if observe_components_list else ""
-    available_observe_keys = set(observe_components_list)
-
-    # Map each flow to components
     for flow in unique_flows:
-        requested_observe_key = (
-            observe_flow_map.get(flow) or observe_flow_map.get("default") or default_observe_key
-        )
-        observe_key = _resolve_observe_component_key(
-            requested_key=requested_observe_key,
-            available_keys=available_observe_keys,
-            default_key=default_observe_key,
-            flow=flow,
-        )
-        resolve_key = (
-            resolve_flow_map.get(flow) or resolve_flow_map.get("default") or resolve_component_key
-        )
-        if resolve_key != resolve_component_key:
-            raise ValueError(
-                "Invalid resolve flow_map configuration for flow "
-                f"'{flow}': requested '{resolve_key}', but this GM supports only "
-                f"the single resolve context key '{resolve_component_key}'."
+        mapping[flow] = {}
+        for role, components in components_by_role.items():
+            available = set(components)
+            default_key = role if role in available else next(iter(available), "")
+            requested_key = flow_maps.get(role, {}).get(flow) or flow_maps.get(role, {}).get(
+                "default"
             )
-
-        mapping[flow] = {
-            "observe": observe_key,
-            "resolve": resolve_key,
-        }
+            mapping[flow][role] = _resolve_component_key(
+                role=role,
+                requested_key=requested_key or default_key,
+                available_keys=available,
+                default_key=default_key,
+                flow=flow,
+            )
 
     logger.debug(f"Flow-to-component mapping: {mapping}")
     return mapping
@@ -510,29 +508,31 @@ def _normalize_flow_map(raw_flow_map: Any) -> dict[str, str]:
     return normalized
 
 
-def _resolve_observe_component_key(
+def _resolve_component_key(
     *,
+    role: str,
     requested_key: str,
     available_keys: set[str],
     default_key: str,
     flow: str,
 ) -> str:
-    """Resolve requested observe key against available observe context keys."""
+    """Resolve requested component key against available keys for one slot."""
     candidate = str(requested_key or "").strip()
     if not candidate:
         return default_key
 
     candidates = [candidate]
-    if not candidate.startswith("observe__"):
-        candidates.append(f"observe__{candidate}")
+    prefix = f"{role}__"
+    if not candidate.startswith(prefix):
+        candidates.append(f"{prefix}{candidate}")
         snake = re.sub(r"(?<!^)(?=[A-Z])", "_", candidate).lower()
-        candidates.append(f"observe__{snake}")
+        candidates.append(f"{prefix}{snake}")
 
     for item in candidates:
         if item in available_keys:
             return item
 
     raise ValueError(
-        "Invalid observe flow_map configuration for flow "
+        f"Invalid {role} flow_map configuration for flow "
         f"'{flow}': requested '{candidate}', available keys are {sorted(available_keys)}."
     )
