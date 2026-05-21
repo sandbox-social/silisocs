@@ -163,7 +163,7 @@ scenarios/election/
 │   ├── sim.yaml              # Optional partial sim override
 │   ├── env.yaml              # Optional partial env override
 │   └── evals.yaml            # Optional partial evals override
-├── builders.py              # Optional custom agent builder
+├── builders.py              # Optional importable custom agent builder
 └── outputs/                 # Simulation output (auto-created)
 ```
 
@@ -188,6 +188,10 @@ There are two methods:
 Define agent classes with data sources and field mappings:
 
 ```yaml
+builder:
+  class_path: null
+  params: {}
+
 persona_pipeline:
   classes:
     user:
@@ -216,15 +220,15 @@ data:
 
 ### Method 2: Custom Builder (Programmatic)
 
-Create a `builders.py` in your scenario directory:
+Set `agents.builder.class_path` when you need programmatic agent-spec logic:
 
 ```python
-from silisocs.agents.builders import BaseAgentBuilder
+from silisocs.runtime.construction.agent_builders import AgentBuilder
 from silisocs.runtime.construction.specs import AgentConfig
 
-class MyScenarioAgentBuilder(BaseAgentBuilder):
-    def build_role_agents(self, role, count):
-        return [AgentConfig(...) for i in range(count)]
+class MyScenarioAgentBuilder(AgentBuilder):
+    def build_agent_configs(self):
+        return [AgentConfig(...) for _ in range(3)]
 ```
 
 See [Building Agents](building_agents.md) for the full guide.
@@ -272,7 +276,10 @@ Priority: per-agent field_map > per-class config > global default.
 
 ## Social Network
 
-The `social_network` section configures the follower graph:
+The `social_network` section has two audiences. Graph fields such as
+`network_type`, `base_followership_probability`, and `fully_connected_targets`
+feed game-master initialization/backend setup. Activity rates feed the
+game-master `next_acting` slot.
 
 ```yaml
 social_network:
@@ -606,10 +613,10 @@ If you need programmatic control over agent construction:
 
 ```python
 # scenarios/my_scenario/builders.py
-from silisocs.agents.builders import BaseAgentBuilder
+from silisocs.runtime.construction.agent_builders import AgentBuilder
 
-class MyScenarioAgentBuilder(BaseAgentBuilder):
-    def build_role_agents(self, role, count):
+class MyScenarioAgentBuilder(AgentBuilder):
+    def build_agent_configs(self):
         # Custom logic here
         ...
 ```

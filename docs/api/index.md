@@ -2,7 +2,6 @@
 
 * agents
     * [base_agent](agents/base_agent.md)
-    * [builders](agents/builders.md)
     * [fixed](agents/fixed.md)
     * [native](agents/native.md)
     * initialization
@@ -84,6 +83,8 @@
         * [types](evaluations/probes/types.md)
 * runtime
     * [types](runtime/types.md)
+    * construction
+        * [agent_builders](runtime/construction/agent_builders.md)
     * [language_models](runtime/language_models.md)
     * [checkpointing](runtime/checkpointing.md)
     * [runner](runtime/runner.md)

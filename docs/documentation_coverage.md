@@ -61,7 +61,7 @@ When changing runtime behavior, update docs in the same pull request:
 2. Update the reference page for the changed interface.
 3. Update one workflow guide or recipe if users need a new invocation pattern.
 4. Add or update a contract test for the extension surface.
-5. Run `uv run mkdocs build --strict`.
+5. Run `uv run properdocs build --strict`.
 
 The minimum release-readiness marker is: no known stale paths/config keys in
 public docs, strict docs build succeeds, and the coverage matrix names every

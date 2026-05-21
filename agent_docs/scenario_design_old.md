@@ -60,11 +60,13 @@ See `scenarios/election/conf/scenario/default.yaml` for a production scenario wi
 
 ### File 2: Persona Pipeline (`agents/default.yaml`)
 
-Defines how to construct agents from data sources:
+Defines how to construct agent entities from data sources:
 
 ```yaml
 # @package agents
 persona_pipeline:
+  processing_mode: raw              # raw | formative
+
   defaults:                         # Applied to all classes
     params:
       scenario_context: ${event.context}
@@ -78,7 +80,7 @@ persona_pipeline:
   classes:
     voter:
       count: 497
-      class_path: silisocs.agents.native.NativeAgent
+      prefab_module: silisocs.agents.entity
       sim_role_name: voter           # For activity rates
       model: null                     # null = use sim.llm.name, or override per-class
       data:
@@ -96,7 +98,7 @@ persona_pipeline:
 
     candidate:
       count: 2
-      class_path: silisocs.agents.native.NativeAgent
+      prefab_module: silisocs.agents.entity
       sim_role_name: candidate
       data:
         source: config_path           # Reference another config section
@@ -111,7 +113,7 @@ persona_pipeline:
 
     news_account:
       count: 1
-      class_path: silisocs.agents.native.NativeAgent
+      prefab_module: silisocs.agents.entity
       sim_role_name: news_account
       data:
         source: config_path
@@ -192,14 +194,14 @@ probes:
     enabled: true
     start_step: 1
     every_n_steps: 1
-    include_agents: []
-    exclude_agents: []
+    include_entities: []
+    exclude_entities: []
 
-  probes:
+  queries:
     vote_pref:
       probe_name: vote_pref
-      probe_type: ChoiceProbe
-      probe_data:
+      query_type: ChoiceProbe
+      query_data:
         name: VotePref
         question: "In one word, name the candidate you want to vote for"
         choices:
@@ -208,8 +210,8 @@ probes:
 
     favorability_bill:
       probe_name: favorability_bill
-      probe_type: NumericRatingProbe
-      probe_data:
+      query_type: NumericRatingProbe
+      query_data:
         name: FavorabilityBill
         question: "Rate Bill Fredrickson on a scale of {lo} to {hi}"
         lo: 1
@@ -217,8 +219,8 @@ probes:
 
     will_vote:
       probe_name: will_vote
-      probe_type: BinaryProbe
-      probe_data:
+      query_type: BinaryProbe
+      query_data:
         name: WillVote
         question: "Will you cast a vote?"
 ```
@@ -269,10 +271,11 @@ llm:
   name: gpt-4o                     # Override model for this scenario
 
 engine:
-  turn_policy:
+  action_loop:
     built_in: open_ended
     params:
       max_actions: 10
+      done_token: FINISHED
 
 enabled_actions:                   # Restrict to specific actions (exact function names)
   - create_tweet
@@ -365,7 +368,7 @@ persona_pipeline:
   classes:
     news_bot:
       count: 1
-      class_path: silisocs.agents.fixed.FixedAgent
+      prefab_module: silisocs.agents.fixed_entity
       data:
         source: config_path
         path: news_bot
@@ -488,11 +491,11 @@ This means your scenario files only need to specify what's **different** from de
 
 **From `src/silisocs/conf/sim/base.yaml`:**
 - `sim.llm.name`: gpt-4o-mini
-- `sim.llm.provider`: openai
 - `sim.action_mode`: custom
 - `sim.tool_calling.mode`: single
-- `sim.engine.step.built_in`: base
-- `sim.engine.turn_policy.built_in`: single_action
+- `sim.memory_backend`: list
+- `sim.engine.preset`: base
+- `sim.engine.action_loop.built_in`: single_action
 
 **From `src/silisocs/conf/env/twitter_like.yaml`:**
 - `platform_type`: twitter_like
@@ -508,14 +511,14 @@ This means your scenario files only need to specify what's **different** from de
 
 **Problem:** "Unknown field in persona_pipeline"
 - **Check**: `docs/configuration.md` Scenario Config section for valid fields
-- **Check**: All agent classes have `class_path` and `data.source`
+- **Check**: All agent classes have `prefab_module` and `data.source`
 
 **Problem:** "Agent count exceeds num_agents"
 - **Check**: Sum of all `classes[*].count` <= `num_agents`
 - **Fix**: Adjust counts or increase `num_agents` in sim.yaml
 
-**Problem:** "Probe type unknown"
-- **Check**: Probe types are: ChoiceProbe, NumericRatingProbe, BinaryProbe, FreeTextProbe
+**Problem:** "Probe query_type unknown"
+- **Check**: Query types are: ChoiceProbe, NumericRatingProbe, BinaryProbe, FreeTextProbe
 - **Check**: `docs/probes.md` for detailed field requirements per type
 
 ---

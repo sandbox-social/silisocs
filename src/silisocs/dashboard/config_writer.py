@@ -57,6 +57,7 @@ def save_scenario(
                 set_nested_value(sim_section, key, value)
 
     agent_payload = {
+        "builder": scenario_data.get("builder", {"class_path": None, "params": {}}),
         "persona_pipeline": scenario_data.get("persona_pipeline", {}),
         "shared_memories": scenario_data.get("shared_memories", []),
         "initial_observations": scenario_data.get("initial_observations", []),

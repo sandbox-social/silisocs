@@ -36,12 +36,17 @@ except ImportError as exc:  # pragma: no cover - depends on optional extra
     raise ImportError(_INSTALL_HINT) from exc
 
 from silisocs.adapters.concordia.action_spec_parser import action_spec_parser
+from silisocs.adapters.concordia.memory import (
+    ListMemoryBank,
+    create_memory_bank,
+    deterministic_sentence_embedder,
+)
 from silisocs.runtime import language_models as language_model
 
 
-def make_concordia_memory_bank() -> Any:
-    """Return an upstream Concordia memory bank for compat prefabs."""
-    return basic_associative_memory.AssociativeMemoryBank(sentence_embedder=None)
+def make_concordia_memory_bank(memory_backend: str = "list") -> Any:
+    """Return a Concordia-compatible memory bank for compat prefabs."""
+    return create_memory_bank(memory_backend)
 
 
 def _native_to_concordia_spec(spec: ActionSpec) -> Any:
@@ -290,6 +295,7 @@ __all__ = [
     "ConcordiaAgentAdapter",
     "ConcordiaGameMasterAdapter",
     "EntityAgentWithLogging",
+    "ListMemoryBank",
     "ScriptedActComponent",
     "SocialConcatActComponent",
     "action_spec_ignored",
@@ -297,6 +303,8 @@ __all__ = [
     "concat_act_component",
     "concordia_location",
     "constant",
+    "create_memory_bank",
+    "deterministic_sentence_embedder",
     "entity_agent_with_logging",
     "entity_component",
     "entity_lib",

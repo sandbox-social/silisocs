@@ -60,22 +60,20 @@ Ask:
 > of participants — what motivates them, how they behave, whether any are scripted
 > or automated."
 
-Assess each role against the supported agent classes:
+Assess each role against the two existing agent prefabs:
 
-| Agent class | Module | Best for |
+| Prefab | Module | Best for |
 |---|---|---|
-| **NativeAgent** | `silisocs.agents.native.NativeAgent` | Any native agent that thinks, forms opinions, posts, reacts, follows — driven by an LLM using persona + goal + memory |
-| **FixedAgent** | `silisocs.agents.fixed.FixedAgent` | Scripted/deterministic agents: news bots, automated accounts, agents with a fixed posting schedule |
-| **ConcordiaAgent** | `silisocs.agents.concordia.ConcordiaAgent` with `compat: concordia` | Explicit compatibility for older Concordia-style scenario agents |
+| **Entity** | `silisocs.agents.entity` | Any agent that thinks, forms opinions, posts, reacts, follows — driven by an LLM using persona + goal + memory |
+| **Fixed entity** | `silisocs.agents.fixed_entity` | Scripted/deterministic agents: news bots, automated accounts, agents with a fixed posting schedule |
 
 For each role the user describes:
-- If it maps cleanly to an existing class: confirm which one and why.
-- If it requires capabilities none of these classes has (e.g. multi-agent coordination,
+- If it maps cleanly to an existing prefab: confirm which one and why.
+- If it requires capabilities neither prefab has (e.g. multi-agent coordination,
   custom tools, access to external data at runtime, components that carry scenario-specific semantics): say so clearly.
   Ask: "This role would need a custom agent model. Do you want to build one?
-  I can scaffold the `input/agent_lib/` stubs and explain what to implement."
-  Only proceed with custom scaffolding if the user confirms. Prioritize simple native
-  `Agent` subclasses before introducing compatibility code.
+  I can scaffold the `input/entity_lib/` stubs and explain what to implement."
+  Only proceed with custom scaffolding if the user confirms. Prioritize simpler implementations, such as adding a component to the entity agent, rather than starting from scratch.
 
 ---
 
@@ -144,14 +142,14 @@ scenarios/<name>/
     agents/default.yaml     # @package agents
     env.yaml
     evals.yaml
-  input/agent_lib/          # only if custom agent stubs were requested
+  input/entity_lib/         # only if custom agent stubs were requested
     __init__.py
     <role>.py
 ```
 
 Then validate the config loads correctly:
 ```bash
-uv run silisocs --config-path scenarios/<name>/conf num_steps=1 sim.llm.provider=scripted
+uv run silisocs --config-path scenarios/<name>/conf num_steps=1 llm.disabled=true
 ```
 
 Report the result to the user. If validation fails, diagnose and fix before finishing.
@@ -182,7 +180,7 @@ Report the result to the user. If validation fails, diagnose and fix before fini
     {
       "role": "role_name",
       "sim_role_name": "role_name",
-      "class_path": "silisocs.agents.native.NativeAgent",
+      "prefab_module": "silisocs.agents.entity",
       "count": 4,
       "agents": [
         {
@@ -211,6 +209,6 @@ Report the result to the user. If validation fails, diagnose and fix before fini
     "timeline_mode": "follower_chronological",
     "enabled_actions": ["create_tweet", "reply_to_tweet", "like_tweet", "repost_tweet", "FINISHED"]
   },
-  "custom_agent_stubs": []
+  "custom_entity_stubs": []
 }
 ```

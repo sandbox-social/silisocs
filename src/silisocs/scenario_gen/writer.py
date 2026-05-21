@@ -180,6 +180,7 @@ def _write_agents_yaml(spec: ScenarioSpec, conf: Path) -> None:
         }
 
     data = {
+        "builder": {"class_path": None, "params": {}},
         "shared_memories": ["${event.context}", "${setting.background}"],
         "persona_pipeline": {
             "defaults": {

@@ -11,7 +11,8 @@ GM components, engines, engine policies, or probe/evaluator code.
 
 | Layer | Primary modules |
 |---|---|
-| Agents | `src/silisocs/agents/base_agent.py`, `agents/native.py`, `agents/fixed.py`, `agents/builders.py` |
+| Agents | `src/silisocs/agents/base_agent.py`, `agents/native.py`, `agents/fixed.py` |
+| Agent builders | `src/silisocs/runtime/construction/agent_builders/` |
 | Environment apps | `src/silisocs/environments/backends/base.py`, `environments/backends/factory.py` |
 | GMs | `src/silisocs/environments/gm/base_game_master.py`, `gm/game_master.py`, `gm/shared_flow_game_master.py` |
 | GM components | `src/silisocs/environments/gm/components/` |

@@ -3,15 +3,16 @@
 For API-level contracts for runtime agents and builder hooks, see
 [Simulation Extensibility API](simulation_extensibility_api.md).
 
-There are two ways to build agents for your simulation:
+There are two ways to produce agent specs for your simulation:
 
 1. **YAML Pipeline** (recommended for most cases) — define agent classes
    declaratively in your scenario YAML
 2. **Custom Builder** — write a Python class for full programmatic control
 
-The runner auto-detects which method to use. If it finds a custom builder
-file, it uses that. Otherwise it uses the generic `BaseAgentBuilder` which
-reads the YAML pipeline config.
+The default `PersonaPipelineAgentBuilder` reads the YAML pipeline config. If a
+scenario needs programmatic logic, set `agents.builder.class_path` explicitly.
+Builders return `AgentConfig` records; the runtime still owns live agent
+construction and model injection.
 
 ---
 
@@ -25,6 +26,10 @@ to agent parameters — no Python code needed.
 
 ```yaml
 # scenarios/my_scenario/conf/agents/default.yaml
+builder:
+  class_path: null
+  params: {}
+
 persona_pipeline:
   defaults:
     params:
@@ -92,44 +97,38 @@ persona_pipeline:
 
 ## Method 2: Custom Builder (Programmatic)
 
-For scenarios that need logic beyond what YAML can express, create a
-`builders.py` file in your scenario directory.
+For scenarios that need logic beyond what YAML can express, create an importable
+Python builder class and point `agents.builder.class_path` at it.
 
-### File Location
+### Config Slot
 
-The runner checks three options (in order):
+```yaml
+agents:
+  builder:
+    class_path: scenarios.my_scenario.builders.MyScenarioAgentBuilder
+    params:
+      cohort: pilot
+```
 
-1. **In-package**: `src/silisocs/scenarios/<name>/builders.py`
-2. **External**: `scenarios/<name>/builders.py`
-3. **Fallback**: `BaseAgentBuilder` (YAML persona pipeline)
-
-### Naming Convention
-
-Your builder class must be named `<ScenarioName>AgentBuilder`:
-
-| Scenario name | Expected class |
-|---------------|----------------|
-| `election` | `ElectionAgentBuilder` |
-| `debate` | `DebateAgentBuilder` |
-| `default` | `DefaultAgentBuilder` |
+`class_path: null` uses `PersonaPipelineAgentBuilder`.
 
 ### Example
 
 ```python
 # scenarios/my_scenario/builders.py
-from silisocs.agents.builders import BaseAgentBuilder
+from silisocs.runtime.construction.agent_builders import AgentBuilder
 from silisocs.runtime.construction.specs import AgentConfig
 
-class MyScenarioAgentBuilder(BaseAgentBuilder):
-    def build_role_agents(self, role: str, count: int) -> list[AgentConfig]:
+class MyScenarioAgentBuilder(AgentBuilder):
+    def build_agent_configs(self) -> list[AgentConfig]:
         agents = []
-        for i in range(count):
+        for i in range(3):
             agents.append(AgentConfig(
                 class_path="silisocs.agents.native.NativeAgent",
                 params={
-                    "name": f"Agent_{role}_{i}",
-                    "context": f"A {role} in the simulation.",
-                    "sim_role_name": role,
+                    "name": f"Participant {i}",
+                    "context": "A participant in the simulation.",
+                    "sim_role_name": "participant",
                     "style": "",
                     "seed_post": "",
                     "bio": "",
@@ -139,23 +138,14 @@ class MyScenarioAgentBuilder(BaseAgentBuilder):
         return agents
 ```
 
-Your scenario YAML needs a `roles` section to drive the builder:
-
-```yaml
-roles:
-  moderator: 2
-  participant: 50
-```
-
 ### Mixing Both Methods
 
-A custom builder can also use the YAML pipeline. The base class
-`build_agents()` checks for `persona_pipeline.classes` first and only
-falls back to `build_role_agents()` if no pipeline is defined. So you
-can subclass `BaseAgentBuilder`, add custom logic in
-`build_role_agents()`, and still let the pipeline handle most classes.
+A custom builder can call `PersonaPipelineAgentBuilder` internally for the
+ordinary YAML-defined cohorts, then append custom `AgentConfig` records for
+special cases. That keeps bespoke logic explicit without hiding it behind
+scenario-name auto-detection.
 
-### Available Helpers in BaseAgentBuilder
+### Available Helpers in PersonaPipelineAgentBuilder
 
 | Method | Description |
 |--------|-------------|

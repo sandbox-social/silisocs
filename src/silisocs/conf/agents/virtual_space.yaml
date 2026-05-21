@@ -1,5 +1,9 @@
 # @package agents
 
+builder:
+  class_path: null
+  params: {}
+
 persona_pipeline:
   defaults:
     params:

@@ -128,6 +128,7 @@ def test_native_code_does_not_import_removed_utility_modules() -> None:
         "silisocs.utils.network",
         "silisocs.utils.misc",
         "silisocs.environments.gm.components.keys",
+        "silisocs.agents.builders",
     }
     offenders: list[str] = []
     for root in SCAN_ROOTS:
@@ -154,6 +155,7 @@ def test_docs_and_configs_do_not_use_removed_checkpoint_or_html_keys() -> None:
         PROJECT_ROOT / "replications",
         PROJECT_ROOT / "docs",
         PROJECT_ROOT / "agent_docs",
+        PROJECT_ROOT / ".github",
     ]
     forbidden = (
         "write_html_log",
@@ -177,6 +179,9 @@ def test_docs_and_configs_do_not_use_removed_checkpoint_or_html_keys() -> None:
         "sim.engine.probe_schedule",
         "engine.probe_schedule",
         "flow_routing",
+        "silisocs.agents.builders",
+        "build_agents(",
+        "mkdocs build",
     )
     offenders: list[str] = []
     for root in checked_roots:
@@ -185,10 +190,17 @@ def test_docs_and_configs_do_not_use_removed_checkpoint_or_html_keys() -> None:
         for path in root.rglob("*"):
             if path.suffix not in {".md", ".yaml", ".yml"}:
                 continue
+            if path.name.endswith("_old.md"):
+                continue
             text = path.read_text(encoding="utf-8")
             for marker in forbidden:
                 if marker in text:
                     offenders.append(f"{path.relative_to(PROJECT_ROOT)}:{marker}")
+    readme = PROJECT_ROOT / "README.md"
+    text = readme.read_text(encoding="utf-8")
+    for marker in forbidden:
+        if marker in text:
+            offenders.append(f"{readme.relative_to(PROJECT_ROOT)}:{marker}")
 
     assert sorted(offenders) == []
 

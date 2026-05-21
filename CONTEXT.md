@@ -13,6 +13,12 @@ Default agents use `NativeAgent`: they assemble semantic context from
 instructions, persona, scenario, goal, style, recent observations, and memory,
 then route through `Agent._call_model(context, action_spec)`.
 
+**Agent Builder**:
+The config-to-agent-spec translator that returns `AgentConfig` records for
+runtime construction. The default builder reads `agents.persona_pipeline`, and
+custom builders may provide different config-to-spec logic.
+_Avoid_: Runtime agent, agent factory, prefab
+
 **Environment**:
 The simulated world that agents act inside.
 _Avoid_: Simulator, social system
@@ -86,6 +92,8 @@ must not import `concordia.*` or local Concordia-like component/document copies.
 ## Relationships
 
 - An **Engine** runs one simulation using many **Agents** and one or more **Game Masters**.
+- The runner selects an **Agent Builder** before runtime objects are
+  instantiated; the builder returns specs, not live agents.
 - Engine startup has exactly three native phases: **Agent Initialization**,
   **Game Master Initialization**, then **Simulation Initialization**.
 - A **Game Master** coordinates exactly one **Backend** for its environment scope.

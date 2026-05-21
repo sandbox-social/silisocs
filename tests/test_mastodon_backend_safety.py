@@ -6,6 +6,8 @@ import builtins
 
 import pytest
 
+pytest.importorskip("loguru", reason="Mastodon backend tests require mastodon extra")
+
 from silisocs.environments.backends.mastodon import apps as mastodon_apps
 from silisocs.environments.backends.mastodon.apps import SocialNetworkApp
 

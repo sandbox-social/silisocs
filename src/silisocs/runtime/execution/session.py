@@ -225,11 +225,8 @@ def main(cfg: DictConfig):
         game_masters = build_game_masters(cfg)
     _log_startup_phase("build_game_masters", time.time() - t0, f"count={len(game_masters)}")
 
-    # Import scenario-specific agent builder and build agents.
-    # Lookup order:
-    #   1. In-package: silisocs.scenarios.<name>.builders.<Name>AgentBuilder
-    #   2. External:   scenarios/<name>/builders.py → <Name>AgentBuilder
-    #   3. Fallback:   BaseAgentBuilder (YAML pipeline only)
+    # Build agent specs with agents.builder.class_path, or the default
+    # persona-pipeline builder when that slot is unset.
     t0 = time.time()
     with metrics.phase("build_agents"):
         agent_configs = build_agent_configs(cfg)

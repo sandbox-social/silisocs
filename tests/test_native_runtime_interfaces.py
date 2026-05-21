@@ -10,7 +10,7 @@ from silisocs.agents.base_agent import Agent
 from silisocs.agents.native import NativeAgent
 from silisocs.runtime.construction.assembly import RuntimeObjects, add_agent
 from silisocs.runtime.construction.specs import AgentConfig
-from silisocs.runtime.language_models import LanguageModel, NoLanguageModel
+from silisocs.runtime.language_models import LanguageModel, NoLanguageModel, ScriptedLanguageModel
 from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType, ToolCall
 
 
@@ -252,12 +252,60 @@ def test_concordia_agent_compat_builds_through_adapter() -> None:
     agent = add_agent(
         runtime=RuntimeObjects(),
         spec=spec,
-        models={"default": NoLanguageModel()},
+        models={"default": ScriptedLanguageModel(text_response="scripted compat response")},
         object_to_model={"Alice": "default"},
     )
 
     assert isinstance(agent, ConcordiaAgentAdapter)
     assert agent.name == "Alice"
+    agent.observe("Alice sees one compatibility observation.")
+    result = agent.act(ActionSpec(prompt="What should {name} say?", output_type=OutputType.TEXT))
+    assert result.output_type == OutputType.TEXT
+    assert "scripted compat response" in result.text
+
+
+def test_concordia_agent_compat_supports_associative_memory() -> None:
+    pytest.importorskip("concordia")
+    from silisocs.adapters.concordia import ConcordiaAgentAdapter
+
+    spec = AgentConfig(
+        class_path="silisocs.agents.concordia.ConcordiaAgent",
+        params={
+            "name": "Alice",
+            "context": "Alice is a compat associative-memory participant.",
+            "memory_backend": "associative",
+        },
+        compat="concordia",
+    )
+
+    agent = add_agent(
+        runtime=RuntimeObjects(),
+        spec=spec,
+        models={"default": ScriptedLanguageModel(text_response="associative compat response")},
+        object_to_model={"Alice": "default"},
+    )
+
+    assert isinstance(agent, ConcordiaAgentAdapter)
+    agent.observe("Alice sees one associative-memory observation.")
+    result = agent.act(ActionSpec(prompt="What should {name} say?", output_type=OutputType.TEXT))
+    assert "associative compat response" in result.text
+
+
+def test_concordia_agent_compat_rejects_unknown_memory_backend() -> None:
+    pytest.importorskip("concordia")
+    spec = AgentConfig(
+        class_path="silisocs.agents.concordia.ConcordiaAgent",
+        params={"name": "Alice", "memory_backend": "mystery"},
+        compat="concordia",
+    )
+
+    with pytest.raises(ValueError, match="Unsupported Concordia memory backend"):
+        add_agent(
+            runtime=RuntimeObjects(),
+            spec=spec,
+            models={"default": NoLanguageModel()},
+            object_to_model={"Alice": "default"},
+        )
 
 
 def test_concordia_agent_requires_explicit_compat() -> None:

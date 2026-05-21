@@ -463,6 +463,7 @@ def _build_scenario_config() -> dict:
             "name": st.session_state.get("event_name", ""),
             "context": st.session_state.get("event_context", ""),
         },
+        "builder": {"class_path": None, "params": {}},
         "persona_pipeline": {
             "defaults": {
                 "params": {

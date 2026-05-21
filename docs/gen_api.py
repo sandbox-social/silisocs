@@ -1,4 +1,4 @@
-"""Generate API reference pages for mkdocs using mkdocs-gen-files.
+"""Generate API reference pages for ProperDocs using mkdocs-gen-files.
 
 This script is invoked by the `gen-files` MkDocs plugin at build time.
 It walks the `src/silisocs` package, creates one Markdown file per module

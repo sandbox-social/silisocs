@@ -264,3 +264,24 @@
   version of the old Concordia-style entity prefab. It is only valid with
   `compat: concordia` and is wrapped by `ConcordiaAgentAdapter` before it reaches
   the native engine.
+
+## Final Docs Restoration And Agent Builder Shape Update
+
+- Restored `agent_docs/*_old.md` as the semantic baseline for the agent-facing
+  architecture, scenario-design, new-scenario, and new-study docs, then patched
+  only stale runtime/config facts in the current docs.
+- Reaffirmed **Agent Builder** as the config-to-agent-spec translator. It
+  returns `AgentConfig` records and does not instantiate runtime agents.
+- Split the default builder internals into focused modules for record loading,
+  fixed-action rendering, parameter mapping, and normalization while keeping
+  `BaseAgentBuilder` as the public subclassing surface.
+- Added scripted Concordia compatibility coverage: `ConcordiaAgent` must be
+  configured with `compat: concordia`, then enters native runtime through
+  `ConcordiaAgentAdapter` and can act with `ScriptedLanguageModel`.
+
+## Public Release Follow-Up
+
+- Keep optional-library coverage in the normal contributor path by using
+  `uv sync --all-extras --group dev --group docs` before full validation.
+- Before release, do one final user-facing docs read-through for prose quality;
+  technical boundary tests catch stale keys but not tone or pedagogy.

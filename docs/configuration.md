@@ -529,6 +529,11 @@ forwarded observation settings.
 
 ### Social Network
 
+Graph fields in `env.social_network` are consumed during game-master
+initialization to create backend follow/subreddit state. The
+`activity_transition_rates` field is consumed by the GM `next_acting` slot to
+decide which agents are active on each step.
+
 ```yaml
 social_network:
   network_type: barabasi_albert       # barabasi_albert | random | predefined

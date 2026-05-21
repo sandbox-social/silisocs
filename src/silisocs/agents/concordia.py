@@ -9,7 +9,6 @@ from typing import Any, cast
 from silisocs.adapters.concordia import (
     EntityAgentWithLogging,
     SocialConcatActComponent,
-    basic_associative_memory,
     constant,
     instructions,
     language_model,
@@ -51,7 +50,7 @@ class ConcordiaAgent(prefab_lib.Prefab):
     def build(
         self,
         model: language_model.LanguageModel,
-        memory_bank: basic_associative_memory.AssociativeMemoryBank,
+        memory_bank: Any,
     ) -> EntityAgentWithLogging:
         agent_name = str(self.params.get("name", "Alice"))
         scenario_context = str(

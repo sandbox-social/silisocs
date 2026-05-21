@@ -5868,6 +5868,7 @@ all = [
     { name = "nbformat" },
     { name = "plotly" },
     { name = "powerlaw" },
+    { name = "properdocs" },
     { name = "pymdown-extensions" },
     { name = "python-louvain" },
     { name = "pyvis" },
@@ -5904,6 +5905,7 @@ docs = [
     { name = "mkdocs-literate-nav" },
     { name = "mkdocs-material" },
     { name = "mkdocstrings-python" },
+    { name = "properdocs" },
     { name = "pymdown-extensions" },
 ]
 hf = [
@@ -5944,6 +5946,7 @@ docs = [
     { name = "mkdocs-literate-nav" },
     { name = "mkdocs-material" },
     { name = "mkdocstrings", extra = ["python"] },
+    { name = "properdocs" },
 ]
 test = [
     { name = "coverage", extra = ["toml"] },
@@ -5986,6 +5989,7 @@ requires-dist = [
     { name = "plotly", marker = "extra == 'analysis'", specifier = ">=5.22.0,<6.0.0" },
     { name = "portalocker", specifier = ">=3.1.1,<4.0.0" },
     { name = "powerlaw", marker = "extra == 'analysis'", specifier = ">=1.5,<2.0.0" },
+    { name = "properdocs", marker = "extra == 'docs'", specifier = ">=1.6.7" },
     { name = "psutil", specifier = ">=7.2.2,<8.0.0" },
     { name = "pymdown-extensions", marker = "extra == 'docs'", specifier = ">=10.21.2" },
     { name = "python-dotenv", specifier = ">=1.0.1,<2.0.0" },
@@ -6026,6 +6030,7 @@ docs = [
     { name = "mkdocs-literate-nav", specifier = ">=0.6.0,<1.0.0" },
     { name = "mkdocs-material", specifier = ">=9.5.0,<10.0.0" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.24.0,<1.0.0" },
+    { name = "properdocs", specifier = ">=1.6.7" },
 ]
 test = [
     { name = "coverage", extras = ["toml"], specifier = ">=7.4.4" },

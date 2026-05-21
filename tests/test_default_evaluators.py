@@ -7,7 +7,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 import yaml
+
+pytest.importorskip("matplotlib", reason="default evaluator plotting tests require analysis extra")
 
 from silisocs.evaluations.default_evaluators import (
     _build_payload,

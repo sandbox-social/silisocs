@@ -2,17 +2,36 @@
 
 from __future__ import annotations
 
+import importlib
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from omegaconf import OmegaConf
 
-from silisocs.agents.builders import BaseAgentBuilder
+from silisocs.runtime.construction.agent_builders import AgentBuilder, PersonaPipelineAgentBuilder
+from silisocs.runtime.construction.agent_configs import build_agent_configs
+from silisocs.runtime.construction.specs import AgentConfig
 
 
-class _TestBuilder(BaseAgentBuilder):
+class _TestBuilder(PersonaPipelineAgentBuilder):
     """Concrete test builder for persona-pipeline tests."""
+
+
+class _ExplicitCustomBuilder(AgentBuilder):
+    """Tiny importable custom builder for explicit class_path tests."""
+
+    def build_agent_configs(self) -> list[AgentConfig]:
+        return [
+            AgentConfig(
+                class_path="silisocs.agents.native.NativeAgent",
+                params={
+                    "name": str(self.params["name"]),
+                    "context": "Built by explicit custom builder.",
+                },
+            )
+        ]
 
 
 def test_hf_dataset_builds_expected_agent_params(monkeypatch) -> None:
@@ -71,7 +90,7 @@ def test_hf_dataset_builds_expected_agent_params(monkeypatch) -> None:
     )
 
     builder = _TestBuilder(scenario_cfg)
-    agents = builder.build_agents({})
+    agents = builder.build_agent_configs()
 
     assert len(agents) == 1
     built = agents[0]
@@ -139,7 +158,7 @@ def test_hf_dataset_preserves_explicit_specific_memories(monkeypatch) -> None:
     )
 
     builder = _TestBuilder(scenario_cfg)
-    agents = builder.build_agents({})
+    agents = builder.build_agent_configs()
 
     assert len(agents) == 1
     assert agents[0].params["specific_memories"] == ["Pinned explicit memory"]
@@ -176,7 +195,7 @@ def test_field_map_template_combines_multiple_fields() -> None:
     )
 
     builder = _TestBuilder(scenario_cfg)
-    agents = builder.build_agents({})
+    agents = builder.build_agent_configs()
 
     assert len(agents) == 1
     assert (
@@ -222,7 +241,7 @@ def test_hf_dataset_derives_name_from_context(monkeypatch) -> None:
     )
 
     builder = _TestBuilder(scenario_cfg)
-    agents = builder.build_agents({})
+    agents = builder.build_agent_configs()
 
     assert len(agents) == 1
     assert agents[0].params["name"] == "Jordan Rivera"
@@ -295,7 +314,7 @@ def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
     )
 
     builder = _TestBuilder(scenario_cfg)
-    agents = builder.build_agents({})
+    agents = builder.build_agent_configs()
 
     assert len(agents) == 2
 
@@ -362,7 +381,7 @@ def test_hf_dataset_materializes_only_requested_count(monkeypatch) -> None:
     )
 
     builder = _TestBuilder(scenario_cfg)
-    agents = builder.build_agents({})
+    agents = builder.build_agent_configs()
 
     assert len(agents) == 3
     assert fake_dataset.selected_n == 3
@@ -400,7 +419,7 @@ def test_jsonl_source_builds_agents_with_name_and_context(tmp_path: Path) -> Non
     )
 
     builder = _TestBuilder(scenario_cfg)
-    agents = builder.build_agents({})
+    agents = builder.build_agent_configs()
 
     assert len(agents) == 2
     assert agents[0].params["name"] == "Alex Kim"
@@ -444,7 +463,7 @@ def test_shared_memories_inline_multiline_text_is_not_treated_as_path() -> None:
     )
 
     builder = _TestBuilder(scenario_cfg)
-    agents = builder.build_agents({})
+    agents = builder.build_agent_configs()
 
     assert len(agents) == 1
     assert agents[0].params["shared_memories"] == expected_shared_memories
@@ -476,7 +495,7 @@ def test_field_map_case_mismatch_still_resolves_context() -> None:
     )
 
     builder = _TestBuilder(scenario_cfg)
-    agents = builder.build_agents({})
+    agents = builder.build_agent_configs()
 
     assert len(agents) == 1
     assert agents[0].params["context"] == "Local resident who follows city council updates."
@@ -511,7 +530,136 @@ def test_class_pipeline_duplicate_names_are_skipped() -> None:
     )
 
     builder = _TestBuilder(scenario_cfg)
-    agents = builder.build_agents({})
+    agents = builder.build_agent_configs()
 
     assert [a.params["name"] for a in agents] == ["Alex Kim", "Jordan Lee"]
     assert len(agents) == 2
+
+
+def test_agent_builder_contract_allows_custom_subclass() -> None:
+    """Custom builders are a config-to-AgentConfig translator, not an object factory."""
+
+    class _CustomBuilder(AgentBuilder):
+        def build_agent_configs(self) -> list[AgentConfig]:
+            return [
+                AgentConfig(
+                    class_path="silisocs.agents.native.NativeAgent",
+                    params={"name": "Moderator", "context": "Keeps the forum grounded."},
+                )
+            ]
+
+    agents = _CustomBuilder(OmegaConf.create({})).build_agent_configs()
+
+    assert len(agents) == 1
+    assert agents[0].params["name"] == "Moderator"
+
+
+def test_explicit_builder_class_path_is_used() -> None:
+    """Runtime construction uses only agents.builder.class_path for custom builders."""
+    cfg = OmegaConf.create(
+        {
+            "scenario_name": "election",
+            "agents": {
+                "builder": {
+                    "class_path": f"{__name__}._ExplicitCustomBuilder",
+                    "params": {"name": "Custom Builder Agent"},
+                }
+            },
+        }
+    )
+
+    agents = build_agent_configs(cfg)
+
+    assert [agent.params["name"] for agent in agents] == ["Custom Builder Agent"]
+
+
+def test_builder_params_cannot_override_reserved_runtime_values() -> None:
+    """Runtime-supplied builder params are explicit and protected."""
+    cfg = OmegaConf.create(
+        {
+            "scenario_name": "election",
+            "agents": {
+                "builder": {
+                    "class_path": f"{__name__}._ExplicitCustomBuilder",
+                    "params": {"scenario_name": "wrong"},
+                }
+            },
+        }
+    )
+
+    with pytest.raises(ValueError, match="reserved runtime param"):
+        build_agent_configs(cfg)
+
+
+def test_old_agent_builder_import_path_is_absent() -> None:
+    """The builder extension surface lives under runtime construction."""
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("silisocs.agents.builders")
+
+
+def test_runtime_builder_selection_has_no_scenario_name_auto_detection() -> None:
+    """Custom builders must be selected explicitly with agents.builder.class_path."""
+    from silisocs.runtime.construction import agent_configs
+
+    source = Path(agent_configs.__file__).read_text(encoding="utf-8")
+    assert "spec_from_file_location" not in source
+    assert "scenarios.<name>.builders" not in source
+
+
+def test_fixed_action_set_renders_into_fixed_agent_plan() -> None:
+    """Fixed-action helper rendering remains available through the builder facade."""
+    scenario_cfg = OmegaConf.create(
+        {
+            "scenario_name": "election",
+            "fixed_action_sets": {
+                "inline": {
+                    "news_actions": {
+                        "actions": [
+                            {
+                                "action": "create_tweet",
+                                "args": {"status": "Breaking: {topic}"},
+                            }
+                        ]
+                    }
+                }
+            },
+            "persona_pipeline": {
+                "classes": {
+                    "news_bot": {
+                        "count": 1,
+                        "class_path": "silisocs.agents.fixed.FixedAgent",
+                        "data": {
+                            "source": "inline",
+                            "records": [
+                                {
+                                    "name": "News Bot",
+                                    "persona": "Posts verified updates.",
+                                    "topic": "river cleanup",
+                                }
+                            ],
+                        },
+                        "field_map": {"name": "name", "context": "persona"},
+                        "fixed_action": {
+                            "enabled": True,
+                            "action_set_ref": "news_actions",
+                            "on_exhaustion": "finish",
+                        },
+                    }
+                }
+            },
+        }
+    )
+
+    agents = _TestBuilder(scenario_cfg).build_agent_configs()
+
+    assert agents[0].params["fixed_action_plan"] == {
+        0: [
+            {
+                "action_type": "create_tweet",
+                "target_id": "",
+                "content": "Breaking: river cleanup",
+                "reasoning": "Fixed action set item.",
+            }
+        ]
+    }
+    assert agents[0].params["emit_finished_on_episode_end"] is True

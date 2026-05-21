@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from silisocs.environments.backends.reddit_like.engine import RedditLikePlatform
 from silisocs.environments.backends.twitter_like.engine import TwitterLikePlatform
 from silisocs.environments.gm.components.observe import TimelineMakeObservation
@@ -156,6 +158,7 @@ def test_twitter_platform_rejects_reddit_algorithm(tmp_path) -> None:
 
 
 def test_twitter_platform_supports_twitter_tfidf_algorithm(tmp_path) -> None:
+    pytest.importorskip("sklearn", reason="TF-IDF recsys test requires recsys extra")
     platform = TwitterLikePlatform(db_path=str(tmp_path / "twitter_tfidf.db"), use_queue=False)
 
     with platform.get_connection() as conn:
@@ -197,6 +200,7 @@ def test_twitter_platform_supports_twitter_tfidf_algorithm(tmp_path) -> None:
 
 
 def test_twitter_tfidf_recommends_expected_top_post_and_excludes_self(tmp_path) -> None:
+    pytest.importorskip("sklearn", reason="TF-IDF recsys test requires recsys extra")
     platform = TwitterLikePlatform(
         db_path=str(tmp_path / "twitter_tfidf_correctness.db"),
         use_queue=False,

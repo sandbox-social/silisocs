@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -61,7 +62,7 @@ class RuntimeObjects:
 
 def build_runtime_objects(
     *,
-    specs: list[RuntimeSpec],
+    specs: Sequence[RuntimeSpec],
     models: dict[str, LanguageModel],
     object_to_model: dict[str, str],
 ) -> RuntimeObjects:
@@ -174,7 +175,7 @@ def add_game_master(
 
 def construct_runtime_with_metrics(
     *,
-    specs: list[RuntimeSpec],
+    specs: Sequence[RuntimeSpec],
     models: dict[str, LanguageModel],
     object_to_model: dict[str, str],
 ) -> RuntimeObjects:
@@ -217,7 +218,9 @@ def _build_concordia_agent(*, spec: RuntimeSpec, model: LanguageModel) -> Agent:
     adapter = importlib.import_module("silisocs.adapters.concordia")
     prefab_cls = _load_object(spec.class_path)
     prefab = _instantiate_with_supported_kwargs(prefab_cls, {"params": spec.params})
-    memory_bank = adapter.make_concordia_memory_bank()
+    memory_bank = adapter.make_concordia_memory_bank(
+        str(spec.params.get("memory_backend", "list") or "list")
+    )
     built = prefab.build(model=model, memory_bank=memory_bank)
     return adapter.ConcordiaAgentAdapter(built, model)
 
@@ -233,7 +236,9 @@ def _build_concordia_game_master(
     prefab = _instantiate_with_supported_kwargs(prefab_cls, {"params": spec.params})
     if hasattr(prefab, "entities"):
         prefab.entities = agents
-    memory_bank = adapter.make_concordia_memory_bank()
+    memory_bank = adapter.make_concordia_memory_bank(
+        str(spec.params.get("memory_backend", "list") or "list")
+    )
     built = prefab.build(model=model, memory_bank=memory_bank)
     return adapter.ConcordiaGameMasterAdapter(built)
 

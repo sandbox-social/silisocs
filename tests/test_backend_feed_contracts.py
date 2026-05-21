@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 import types
 
+import pytest
+
 from silisocs.environments.backends.reddit_like.engine import RedditLikePlatform
 from silisocs.environments.backends.twitter_like.engine import TwitterLikePlatform
 
@@ -233,6 +235,7 @@ def test_reddit_recsys_update_computes_and_persists_recommendations(tmp_path) ->
 
 
 def test_reddit_twhin_update_computes_and_persists_recommendations(tmp_path, monkeypatch) -> None:
+    pytest.importorskip("torch", reason="TWHIN embedding recsys test requires recsys extra")
     platform = RedditLikePlatform(
         db_path=str(tmp_path / "reddit_twhin_compute.db"), use_queue=False
     )

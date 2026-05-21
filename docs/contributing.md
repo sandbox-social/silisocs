@@ -16,12 +16,16 @@ Thank you for considering contributing to this project! We appreciate your effor
 
 - `test` is the default uv group for this repository. A plain `uv sync` installs the project plus the test, lint, and type-checking tools used in CI.
 - `dev` adds local contributor tooling on top of the default environment, including `poethepoet`, `commitizen`, notebooks, and documentation generation helpers.
-- `docs` is optional and only needed when building the documentation site (MkDocs).
+- `docs` is optional and only needed when building the documentation site (ProperDocs).
+- Full release validation assumes all optional library extras are installed. Tests
+  that need a real external service or LLM endpoint remain explicitly skipped or
+  opt-in, but pure optional-library coverage is expected in contributor
+  environments.
 
 ## Common Commands
 
 - Sync the standard contributor environment: `uv sync --group dev`
-- Sync the contributor environment with docs tooling: `uv sync --group dev --group docs`
+- Sync the full release-test environment: `uv sync --all-extras --group dev --group docs`
 - Run the pre-commit suite: `uv run poe lint`
 - Run tests with coverage (defaults to non-LLM tests): `uv run poe test`
 - Generate API docs with `pdoc`: `uv run poe docs`
@@ -88,10 +92,15 @@ Every `llm_e2e` test should verify these generated files:
 4. Install dependencies and local contributor tooling:
 
     ```sh
-    uv sync --group dev
+    uv sync --all-extras --group dev --group docs
     ```
 
-    If you need to build the docs site too, use:
+    If you intentionally want a lean environment, `uv sync --group dev` is fine
+    for core work, but full `uv run pytest` may skip or fail optional-library
+    tests until extras are installed. For missing-extra failures, install the
+    package with `silisocs[all]` or rerun the all-extras sync command above.
+
+    If you only need to add docs tooling to a lean environment, use:
 
     ```sh
     uv sync --group dev --group docs

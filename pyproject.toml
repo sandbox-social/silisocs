@@ -64,6 +64,7 @@ dashboard = [
   "streamlit>=1.45.1,<2.0.0",
 ]
 docs = [
+  "properdocs>=1.6.7",
   "mkdocs-autorefs>=1.4.4",
   "mkdocs-gen-files>=0.6.1",
   "mkdocs-literate-nav>=0.6.3",
@@ -125,6 +126,7 @@ dev = [
   "types-requests>=2.32.0.20241016",
 ]
 docs = [
+  "properdocs>=1.6.7",
   "mkdocs-material>=9.5.0,<10.0.0",
   "mkdocstrings[python]>=0.24.0,<1.0.0",
   "mkdocs-gen-files>=0.5.0,<1.0.0",

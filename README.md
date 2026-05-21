@@ -52,7 +52,7 @@ uv run silisocs
 For a local smoke test without model API calls:
 
 ```sh
-uv run silisocs sim.llm.disabled=true
+uv run silisocs sim.llm.provider=scripted
 ```
 
 Override scale or model settings with Hydra dot notation:
@@ -81,7 +81,7 @@ uv run silisocs scenario=virtual_space agents=virtual_space env=virtual_space
 
 Outputs are written under `outputs/<scenario_name>/<jobname>/` and include
 `action_events.jsonl`, `probe_events.jsonl`, `prompts_and_responses.jsonl`,
-`sim_metrics.json`, `logs.html`, a resolved Hydra config snapshot, and a local
+`sim_metrics.json`, a resolved Hydra config snapshot, and a local
 SQLite backend database for local platforms.
 
 ## Architecture
@@ -94,7 +94,7 @@ artifacts.
 ```text
 silisocs/
 ├── src/silisocs/
-│   ├── agents/              # Native and bridge-compatible agent builders
+│   ├── agents/              # Native and bridge-compatible runtime agents
 │   ├── conf/                # Packaged Hydra defaults
 │   ├── dashboard/           # Optional Streamlit scenario launcher
 │   ├── environments/        # Game masters and environment backends
@@ -103,7 +103,7 @@ silisocs/
 │   └── simulation_engines/  # Engine loop, step, and turn policies
 ├── scenarios/               # Scenario configs and curated inputs
 ├── experiments/             # Study orchestration and generated study outputs
-├── docs/                    # MkDocs documentation
+├── docs/                    # ProperDocs documentation
 └── tests/                   # Unit and integration tests
 ```
 
@@ -131,7 +131,7 @@ Common commands:
 uv run pytest
 uv run poe lint
 uv build --sdist --wheel
-uv run mkdocs build --strict
+uv run properdocs build --strict
 ```
 
 Do not commit `.env` files, credentials, live-service tokens, or generated

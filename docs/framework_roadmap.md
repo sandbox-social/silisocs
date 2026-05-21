@@ -77,5 +77,5 @@ The framework is in good V1 shape when:
 - Public docs describe every stable extension surface.
 - A non-social smoke scenario runs without social network, timeline, or recsys
   assumptions.
-- `uv run pytest` and `uv run mkdocs build --strict` pass in the contributor
+- `uv run pytest` and `uv run properdocs build --strict` pass in the contributor
   environment.
