@@ -1,5 +1,5 @@
-[![CI](https://github.com/social-sandbox/silisocs/actions/workflows/test.yml/badge.svg)](https://github.com/social-sandbox/silisocs/actions/workflows/test.yml)
-[![Docs](https://github.com/social-sandbox/silisocs/actions/workflows/docs.yml/badge.svg)](https://social-sandbox.github.io/silisocs)
+[![CI](https://github.com/sandbox-social/silisocs/actions/workflows/test.yml/badge.svg)](https://github.com/sandbox-social/silisocs/actions/workflows/test.yml)
+[![Docs](https://github.com/sandbox-social/silisocs/actions/workflows/docs.yml/badge.svg)](https://sandbox-social.github.io/silisocs)
 
 # Silisocs
 
@@ -11,7 +11,7 @@ optional bridge extra.
 
 - 2024 NeurIPS Workshop Paper: [arXiv:2410.13915](http://arxiv.org/abs/2410.13915)
 - 2025 IJCAI Demo Paper: [IJCAI 2025](https://www.ijcai.org/proceedings/2025/1271)
-- Documentation: [social-sandbox.github.io/silisocs](https://social-sandbox.github.io/silisocs)
+- Documentation: [sandbox-social.github.io/silisocs](https://sandbox-social.github.io/silisocs)
 
 ## Install
 
