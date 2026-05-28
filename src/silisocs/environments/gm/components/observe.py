@@ -39,8 +39,7 @@ class AppObservationComponent(ObservationComponent):
         *,
         model: Any,
         agent_names: Sequence[str],
-        env_app: Any | None = None,
-        sm_app: Any | None = None,
+        backend: Any | None = None,
         agent_flow_tags: dict[str, str] | None = None,
         observation_params: dict[str, Any] | None = None,
     ):
@@ -51,7 +50,7 @@ class AppObservationComponent(ObservationComponent):
             agent_names=agent_names,
             components=(),
         )
-        self._env_app = env_app if env_app is not None else sm_app
+        self._backend = backend
         self._agent_flow_tags = dict(agent_flow_tags or {})
         self._observation_params = dict(observation_params or {})
 
@@ -59,8 +58,8 @@ class AppObservationComponent(ObservationComponent):
         """Return the environment app observation for one agent."""
         active_agent_name = self._agent_name(agent_name)
         flow_tag = self._agent_flow_tags.get(active_agent_name, "default")
-        current_episode = getattr(getattr(self._env_app, "action_logger", None), "episode_idx", 0)
-        observe = getattr(self._env_app, "observe", None)
+        current_episode = getattr(getattr(self._backend, "action_logger", None), "episode_idx", 0)
+        observe = getattr(self._backend, "observe", None)
         if not callable(observe):
             result = ""
         else:
@@ -84,7 +83,7 @@ class TimelineMakeObservation(ObservationComponent):
         *,
         model: Any,
         agent_names: Sequence[str],
-        sm_app: Any,
+        backend: Any,
         agent_flow_tags: dict[str, str] | None = None,
         episode_observation_flows: Sequence[str] | None = None,
         timeline_mode: str | None = None,
@@ -99,7 +98,7 @@ class TimelineMakeObservation(ObservationComponent):
             agent_names=agent_names,
             components=(),
         )
-        self._sm_app = sm_app
+        self._backend = backend
         self._agent_flow_tags = dict(agent_flow_tags or {})
         self._episode_observation_flows = {
             str(flow).strip() for flow in (episode_observation_flows or ()) if str(flow).strip()
@@ -115,12 +114,12 @@ class TimelineMakeObservation(ObservationComponent):
         flow_type = self._agent_flow_tags.get(active_agent_name, "default")
         if flow_type in self._episode_observation_flows:
             current_episode = getattr(
-                getattr(self._sm_app, "action_logger", None), "episode_idx", 0
+                getattr(self._backend, "action_logger", None), "episode_idx", 0
             )
             result = f"EPISODE: {current_episode}"
             return result
 
-        timeline = self._sm_app.get_timeline_mode(
+        timeline = self._backend.get_timeline_mode(
             self._timeline_mode,
             active_agent_name,
             self._timeline_posts,
@@ -129,7 +128,7 @@ class TimelineMakeObservation(ObservationComponent):
         )
         result = (
             "STARTING SOCIAL MEDIA SESSION\n\n TIMELINE:\n\n"
-            + self._sm_app.format_timeline_for_observation(timeline)
+            + self._backend.format_timeline_for_observation(timeline)
         )
 
         # Ensure non-empty result even when timeline is empty
@@ -151,7 +150,7 @@ class EpisodeObservation(ObservationComponent):
         *,
         model: Any,
         agent_names: Sequence[str],
-        sm_app: Any,
+        backend: Any,
         agent_flow_tags: dict[str, str] | None = None,
         episode_observation_flow: str = "fixed_pre",
     ):
@@ -161,7 +160,7 @@ class EpisodeObservation(ObservationComponent):
             agent_names=agent_names,
             components=(),
         )
-        self._sm_app = sm_app
+        self._backend = backend
         self._agent_flow_tags = dict(agent_flow_tags or {})
         self._episode_observation_flow = str(episode_observation_flow).strip()
 
@@ -172,6 +171,6 @@ class EpisodeObservation(ObservationComponent):
         if flow_type != self._episode_observation_flow:
             return ""
 
-        current_episode = getattr(getattr(self._sm_app, "action_logger", None), "episode_idx", 0)
+        current_episode = getattr(getattr(self._backend, "action_logger", None), "episode_idx", 0)
         result = f"EPISODE: {current_episode}"
         return result

@@ -1,7 +1,7 @@
 """Twitter-like social media app for simulation.
 
 Wraps ``TwitterLikePlatform`` (SQLite-backed engine) with the
-``SocialMediaApp`` interface so it can be used as a drag-and-drop
+``SocialBackendApp`` interface so it can be used as a drag-and-drop
 replacement for the Mastodon app in the simulation.
 """
 
@@ -11,12 +11,12 @@ import dataclasses
 import os
 from typing import Any
 
-from silisocs.environments.backends.base import SocialMediaApp, app_action
+from silisocs.environments.backends.base import SocialBackendApp, app_action
 from silisocs.environments.backends.twitter_like.engine import TwitterLikePlatform
 
 
 @dataclasses.dataclass
-class TwitterLikeApp(SocialMediaApp):
+class TwitterLikeApp(SocialBackendApp):
     """Twitter-like social media app.
 
     A microblogging platform where users post tweets, reply, like, repost,
@@ -38,7 +38,7 @@ class TwitterLikeApp(SocialMediaApp):
         self._platform = TwitterLikePlatform(self.db_path, use_queue=True)
 
     # ------------------------------------------------------------------ #
-    # SocialMediaApp required interface
+    # SocialBackendApp required interface
     # ------------------------------------------------------------------ #
 
     def name(self) -> str:
@@ -68,12 +68,12 @@ class TwitterLikeApp(SocialMediaApp):
         *,
         agent_names: list[str],
         sim_roles: dict[str, str] | None = None,
-        social_network: dict[str, Any] | None = None,
+        graph_config: dict[str, Any] | None = None,
         following_graph: dict[str, list[str]] | None = None,
         agent_bios: dict[str, str] | None = None,
     ) -> None:
         """Set up users and apply the initializer-provided follow network."""
-        del sim_roles, social_network
+        del sim_roles, graph_config
         following = dict(following_graph or {})
         agent_bios = dict(agent_bios or {})
 
@@ -90,6 +90,11 @@ class TwitterLikeApp(SocialMediaApp):
                 tgt = self._get_username(followee)
                 try:
                     self._platform.follow(src, tgt)
+                    self._log_action_event(
+                        display_name,
+                        "init_follow",
+                        {"target_user": followee},
+                    )
                 except Exception as e:
                     self._print(f"Follow error ({src}->{tgt}): {e}", color="red")
 

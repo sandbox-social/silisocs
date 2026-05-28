@@ -5,11 +5,11 @@ New probes can be created from YAML config without writing Python code.
 
 Supported types
 ---------------
-- ``NumericRatingProbe``  – expects a number in a user-defined range
-- ``BinaryProbe``         – expects yes/no
-- ``ChoiceProbe``         – expects one of a fixed set of choices
-- ``StructuredProbe``     – expects a JSON object matching a schema
-- ``FreeTextProbe``       – accepts any text answer
+- ``NumericRatingProbe``  -- expects a number in a user-defined range
+- ``BinaryProbe``         -- expects yes/no
+- ``ChoiceProbe``         -- expects one of a fixed set of choices
+- ``StructuredProbe``     -- expects a JSON object matching a schema
+- ``FreeTextProbe``       -- accepts any text answer
 """
 
 from __future__ import annotations
@@ -30,11 +30,11 @@ def _get_agent_name(agent: Any) -> str:
 
 
 class ProbeBase(ABC):
-    """Minimal abstract base for all probe types.
+    """Abstract base for all probe types.
 
-    Subclasses must set ``name`` and implement ``prompt_text``, ``parse_answer``,
-    and ``form_question_for_agent``.  Everything else (ask, submit, questionnaire
-    integration) is provided.
+    Subclasses must set ``name`` and implement ``form_question_for_agent`` and
+    ``parse_answer``.  Everything else (prompt formatting, ask, submit) is
+    provided by the base class.
     """
 
     name: str
@@ -47,53 +47,27 @@ class ProbeBase(ABC):
         """Return the question text with agent-specific placeholders resolved."""
 
     def _make_action_spec(self, prompt: str) -> ActionSpec:
-        """_make_action_spec.
-
-        :param str prompt:
-        :type prompt: str
-
-        :returns: entity.ActionSpec
-        :rtype: entity.ActionSpec
-        """
         return ActionSpec(
             prompt=prompt,
             output_type=OutputType.TEXT,
             tag="probe",
         )
 
-    _CALL_TO_SPEECH = (
-        "Given the above, what is {name} likely to say next? Respond in"
-        ' the format `{name} -- "..."` For example, '
-        'Cristina -- "Hello! Mighty fine weather today, right?", '
-        'Ichabod -- "I wonder if the alfalfa is ready to harvest", or '
-        'Townsfolk -- "Good morning".\n'
-    )
-
     def form_probe_for_agent(self, agent: Any) -> str:
-        """form_probe_for_agent.
+        """Build the full prompt sent to the model for this probe.
 
-        :param Any agent:
-        :type agent: Any
-
-        :returns: str
-        :rtype: str
+        Wraps the question in a short instruction frame that asks the model
+        to answer directly.  This replaces the legacy completion-style prompt
+        that assumed the model would continue a dialogue transcript.
         """
-        agent_name = _get_agent_name(agent)
         question = self.form_question_for_agent(agent)
-        return "Context: " + question + self._CALL_TO_SPEECH.format(name=agent_name)
+        return f"{question}\n\nAnswer the question above directly and concisely."
 
     # ------------------------------------------------------------------
     # Execution
     # ------------------------------------------------------------------
     def ask(self, agent: Any) -> str:
-        """Ask.
-
-        :param Any agent:
-        :type agent: Any
-
-        :returns: str
-        :rtype: str
-        """
+        """Send the probe to the agent and return the raw response text."""
         prompt = self.form_probe_for_agent(agent)
         return str(agent.act(action_spec=self._make_action_spec(prompt)))
 
@@ -102,25 +76,11 @@ class ProbeBase(ABC):
         """Extract the structured answer from raw LLM text."""
 
     def submit(self, agent: Any) -> dict[str, Any]:
-        """Submit.
-
-        :param Any agent:
-        :type agent: Any
-
-        :returns: dict[str, Any]
-        :rtype: dict[str, Any]
-        """
+        """Ask the agent and return a structured probe result dict."""
         return self.submit_with_raw_response(self.ask(agent))
 
     def submit_with_raw_response(self, raw: str) -> dict[str, Any]:
-        """submit_with_raw_response.
-
-        :param str raw:
-        :type raw: str
-
-        :returns: dict[str, Any]
-        :rtype: dict[str, Any]
-        """
+        """Parse a raw response and return a structured probe result dict."""
         return {
             "probe_type": self.name,
             "raw_response": raw,
@@ -146,15 +106,10 @@ class NumericRatingProbe(ProbeBase):
           hi: 10
           context: "{agentname} rates election candidate {candidate}."
           labels:
-                        candidate: Candidate A
+            candidate: Candidate A
     """
 
     def __init__(self, probe_data: dict[str, Any] | None = None):
-        """__init__.
-
-        :param dict[str, Any] | None probe_data:
-        :type probe_data: dict[str, Any] | None
-        """
         cfg = probe_data or {}
         self.name = cfg.get("name", "NumericRating")
         self._question = cfg.get("question", "Return a single numeric value from {lo} to {hi}.")
@@ -164,14 +119,6 @@ class NumericRatingProbe(ProbeBase):
         self._labels: dict[str, str] = dict(cfg.get("labels", {}))
 
     def form_question_for_agent(self, agent: Any) -> str:
-        """form_question_for_agent.
-
-        :param Any agent:
-        :type agent: Any
-
-        :returns: str
-        :rtype: str
-        """
         agent_name = _get_agent_name(agent)
         subs = {**self._labels, "agentname": agent_name, "lo": self._lo, "hi": self._hi}
         parts = []
@@ -181,15 +128,6 @@ class NumericRatingProbe(ProbeBase):
         return " ".join(parts)
 
     def parse_answer(self, raw: str) -> str | None:
-        # Match any integer, then validate range.
-        """parse_answer.
-
-        :param str raw:
-        :type raw: str
-
-        :returns: str | None
-        :rtype: str | None
-        """
         for m in re.finditer(r"\b(\d+)\b", raw):
             val = int(m.group(1))
             if self._lo <= val <= self._hi:
@@ -210,11 +148,6 @@ class BinaryProbe(ProbeBase):
     """
 
     def __init__(self, probe_data: dict[str, Any] | None = None):
-        """__init__.
-
-        :param dict[str, Any] | None probe_data:
-        :type probe_data: dict[str, Any] | None
-        """
         cfg = probe_data or {}
         self.name = cfg.get("name", "Binary")
         self._question = cfg.get("question", "Reply yes or no.")
@@ -222,14 +155,6 @@ class BinaryProbe(ProbeBase):
         self._labels: dict[str, str] = dict(cfg.get("labels", {}))
 
     def form_question_for_agent(self, agent: Any) -> str:
-        """form_question_for_agent.
-
-        :param Any agent:
-        :type agent: Any
-
-        :returns: str
-        :rtype: str
-        """
         agent_name = _get_agent_name(agent)
         subs = {**self._labels, "agentname": agent_name}
         parts = []
@@ -239,14 +164,6 @@ class BinaryProbe(ProbeBase):
         return " ".join(parts)
 
     def parse_answer(self, raw: str) -> str | None:
-        """parse_answer.
-
-        :param str raw:
-        :type raw: str
-
-        :returns: str | None
-        :rtype: str | None
-        """
         lower = raw.lower()
         if "yes" in lower:
             return "Yes"
@@ -264,21 +181,16 @@ class ChoiceProbe(ProbeBase):
         probe_data:
           name: VotePref
           question: "Name the candidate you want to vote for."
-                    context: "{agentname} is voting for either {choice1} or {choice2}."
+          context: "{agentname} is voting for either {choice1} or {choice2}."
           choices:
-                        - Candidate A
-                        - Candidate B
+            - Candidate A
+            - Candidate B
           labels:
-                        choice1: Candidate A
-                        choice2: Candidate B
+            choice1: Candidate A
+            choice2: Candidate B
     """
 
     def __init__(self, probe_data: dict[str, Any] | None = None):
-        """__init__.
-
-        :param dict[str, Any] | None probe_data:
-        :type probe_data: dict[str, Any] | None
-        """
         cfg = probe_data or {}
         self.name = cfg.get("name", "Choice")
         self._question = cfg.get("question", "Pick one of the choices.")
@@ -287,14 +199,6 @@ class ChoiceProbe(ProbeBase):
         self._labels: dict[str, str] = dict(cfg.get("labels", {}))
 
     def form_question_for_agent(self, agent: Any) -> str:
-        """form_question_for_agent.
-
-        :param Any agent:
-        :type agent: Any
-
-        :returns: str
-        :rtype: str
-        """
         agent_name = _get_agent_name(agent)
         subs = {**self._labels, "agentname": agent_name}
         parts = []
@@ -304,16 +208,7 @@ class ChoiceProbe(ProbeBase):
         return " ".join(parts)
 
     def parse_answer(self, raw: str) -> str | None:
-        """parse_answer.
-
-        :param str raw:
-        :type raw: str
-
-        :returns: str | None
-        :rtype: str | None
-        """
         lower = raw.lower()
-        # Check each choice's full name and individual tokens.
         for choice in self._choices:
             if choice.lower() in lower:
                 return choice
@@ -336,11 +231,6 @@ class FreeTextProbe(ProbeBase):
     """
 
     def __init__(self, probe_data: dict[str, Any] | None = None):
-        """__init__.
-
-        :param dict[str, Any] | None probe_data:
-        :type probe_data: dict[str, Any] | None
-        """
         cfg = probe_data or {}
         self.name = cfg.get("name", "FreeText")
         self._question = cfg.get("question", "Share your thoughts.")
@@ -348,14 +238,6 @@ class FreeTextProbe(ProbeBase):
         self._labels: dict[str, str] = dict(cfg.get("labels", {}))
 
     def form_question_for_agent(self, agent: Any) -> str:
-        """form_question_for_agent.
-
-        :param Any agent:
-        :type agent: Any
-
-        :returns: str
-        :rtype: str
-        """
         agent_name = _get_agent_name(agent)
         subs = {**self._labels, "agentname": agent_name}
         parts = []
@@ -365,14 +247,6 @@ class FreeTextProbe(ProbeBase):
         return " ".join(parts)
 
     def parse_answer(self, raw: str) -> str | None:
-        """parse_answer.
-
-        :param str raw:
-        :type raw: str
-
-        :returns: str | None
-        :rtype: str | None
-        """
         text = raw.strip() if raw else None
         return text or None
 

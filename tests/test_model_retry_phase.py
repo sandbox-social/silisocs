@@ -1,8 +1,8 @@
-from silisocs.runtime.language_models import LocalLanguageModel
+from silisocs.runtime.language_models import OpenAICompatibleLanguageModel
 
 
-def _make_model() -> LocalLanguageModel:
-    return LocalLanguageModel(
+def _make_model() -> OpenAICompatibleLanguageModel:
+    return OpenAICompatibleLanguageModel(
         model_name="qwen3-4b",
         api_key="test-key",
         api_base="http://localhost:8000/v1",

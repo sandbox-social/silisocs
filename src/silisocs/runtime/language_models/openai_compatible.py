@@ -1,4 +1,4 @@
-"""OpenAI-compatible local language-model provider."""
+"""OpenAI-compatible language-model provider."""
 
 import os
 from typing import Any
@@ -10,8 +10,8 @@ from silisocs.runtime.language_models.openai import (
 )
 
 
-class LocalLanguageModel(OpenAILanguageModel):
-    """OpenAI-compatible language model for local/vLLM-style endpoints."""
+class OpenAICompatibleLanguageModel(OpenAILanguageModel):
+    """Language model for OpenAI-compatible endpoints such as vLLM or Ollama."""
 
     def __init__(
         self,
@@ -27,10 +27,10 @@ class LocalLanguageModel(OpenAILanguageModel):
         extra_kwargs: dict[str, Any] | None = None,
     ) -> None:
         if not str(api_base or "").strip():
-            raise ValueError("LocalLanguageModel requires api_base.")
+            raise ValueError("OpenAICompatibleLanguageModel requires api_base.")
         super().__init__(
             model_name=model_name,
-            api_key=api_key or os.getenv("OPENAI_API_KEY") or "local-api-key",
+            api_key=api_key or os.getenv("OPENAI_API_KEY") or "openai-compatible-api-key",
             api_base=api_base,
             temperature=temperature,
             measurements=measurements,

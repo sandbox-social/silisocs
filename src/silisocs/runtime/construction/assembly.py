@@ -46,10 +46,10 @@ class RuntimeObjects:
             spec = self.object_specs.get(game_master.name)
             if not spec:
                 return 0
-            user_data = spec.params.get("environment_data", spec.params.get("sm_user_data", {}))
-            if not isinstance(user_data, dict):
+            environment_data = spec.params.get("environment_data", {})
+            if not isinstance(environment_data, dict):
                 return 0
-            orchestration = user_data.get("gm_orchestration", {})
+            orchestration = environment_data.get("gm_orchestration", {})
             if not isinstance(orchestration, dict):
                 return 0
             try:
@@ -234,8 +234,8 @@ def _build_concordia_game_master(
     adapter = importlib.import_module("silisocs.adapters.concordia")
     prefab_cls = _load_object(spec.class_path)
     prefab = _instantiate_with_supported_kwargs(prefab_cls, {"params": spec.params})
-    if hasattr(prefab, "entities"):
-        prefab.entities = agents
+    if hasattr(prefab, "agents"):
+        prefab.agents = agents
     memory_bank = adapter.make_concordia_memory_bank(
         str(spec.params.get("memory_backend", "list") or "list")
     )

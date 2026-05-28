@@ -7,7 +7,7 @@ environment backend behavior from social-media-specific game-master behavior.
 
 - The core backend contract is `BackendApp`: initialize state, provide a
   generic observation string, and expose `@app_action` methods.
-- Social media remains supported through `SocialMediaApp`, timeline observation,
+- Social media remains supported through `SocialBackendApp`, timeline observation,
   parsed social action resolution, seed-post initialization, and recommendation
   components.
 - Non-social environments can use generic observation and tool/generic action
@@ -25,16 +25,15 @@ environment backend behavior from social-media-specific game-master behavior.
 ### Generic Backend Contract
 
 - Added `BackendApp` in `src/silisocs/environments/backends/base.py`.
-- Kept `SocialMediaApp` as a social-specific subclass for existing social
+- Kept `SocialBackendApp` as a social-specific subclass for existing social
   backends and tests.
-- Added `create_environment_app` in the backend factory and retained
-  `create_social_media_app` as a compatibility wrapper.
+- Kept one backend factory path, `create_backend_app`.
 - Added generic `EnvironmentParams` / `EnvironmentRuntimeData` names while
   keeping social-media dataclass compatibility.
 
 ### Generic Components
 
-- Added `AppObservationComponent`, which calls `env_app.observe(...)` instead
+- Added `AppObservationComponent`, which calls `backend.observe(...)` instead
   of assuming timeline/feed methods.
 - Added `NoOpComponent` for optional disabled component slots such as
   recommendation scheduling in non-social environments.
@@ -57,7 +56,7 @@ environment backend behavior from social-media-specific game-master behavior.
 - Added `tests/test_resource_market_backend.py` for market initialization,
   listing/purchase flow, invalid actions, consumption, and `FINISHED`.
 - Added `tests/test_generic_game_master_build.py` proving the generic GM can
-  build without `seed_posts` or `social_network`.
+  build without seed-post or graph setup buckets on the backend config.
 - Verified new targeted tests: `7 passed`.
 - Verified social regression subset covering action catalogs, prompt/tool
   calling, timeline observation, recsys selection, and shared-flow GM build:

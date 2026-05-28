@@ -91,7 +91,7 @@ def find_and_parse_action_data(data_string: str) -> dict[str, str] | None:
 class _BaseResolveComponent(ResolveComponent):
     """Base class for resolve components used by native game masters."""
 
-    sm_app: Any
+    backend: Any
     action_prompt_template: str = ""
     model: Any = None
 
@@ -101,7 +101,7 @@ class _BaseResolveComponent(ResolveComponent):
 
     def _action_has_parameter(self, action_name: str, parameter_name: str) -> bool:
         """Return whether an app action accepts the named parameter."""
-        actions = getattr(self.sm_app, "actions", None)
+        actions = getattr(self.backend, "actions", None)
         if not callable(actions):
             return False
         for action in actions():
@@ -137,7 +137,7 @@ class ParsedActionResolveComponent(_BaseResolveComponent):
         action_data = find_and_parse_action_data(action_text)
         if action_data is None:
             return ""
-        return self.sm_app.parse_and_resolve_action(active_agent, action_data)
+        return self.backend.parse_and_resolve_action(active_agent, action_data)
 
 
 @dataclass(eq=False)
@@ -161,7 +161,7 @@ class GenericActionResolveComponent(_BaseResolveComponent):
             args_text,
         ):
             args_text = f"current_user: {active_agent}" + (f"\n{args_text}" if args_text else "")
-        return self.sm_app.invoke_action_by_name(action_name, args_text) or ""
+        return self.backend.invoke_action_by_name(action_name, args_text) or ""
 
 
 @dataclass(eq=False)
@@ -184,7 +184,7 @@ class ToolCallingResolveComponent(_BaseResolveComponent):
                     payload["current_user"] = active_agent
                 normalized_calls.append((tool_name, payload))
             results = [
-                str(self.sm_app.invoke_action_with_kwargs(tool_name, payload))
+                str(self.backend.invoke_action_with_kwargs(tool_name, payload))
                 for tool_name, payload in normalized_calls
             ]
             return "\n".join(result for result in results if result)

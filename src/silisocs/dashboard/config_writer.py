@@ -24,7 +24,7 @@ def save_scenario(
     scenario_data: dict[str, Any],
     sim_data: dict[str, Any],
     env_data: dict[str, Any],
-    environment_type: str,
+    backend_type: str,
     scenarios_root: Path,
     evals_data: dict[str, Any] | None = None,
 ) -> Path:
@@ -66,8 +66,48 @@ def save_scenario(
         agent_payload["fixed_action_sets"] = scenario_data.get("fixed_action_sets", {})
 
     env_payload = {
-        "platform_type": environment_type or "twitter_like",
-        "social_network": scenario_data.get("social_network", {}),
+        "backend": {
+            "type": backend_type or "twitter_like",
+            "class_path": None,
+            "params": {},
+            "enabled_actions": None,
+        },
+        "gm": {
+            "class_path": "silisocs.environments.gm.game_master.GameMaster",
+            "name": f"{backend_type or 'twitter_like'}_gm",
+            "components": {
+                "initialize": {
+                    "built_in": "social_media",
+                    "class_path": None,
+                    "params": {"graph": {}},
+                },
+                "next_acting": {
+                    "built_in": "activity_probability",
+                    "class_path": None,
+                    "params": {},
+                },
+                "observe": {
+                    "built_in": "timeline_every_turn",
+                    "class_path": None,
+                    "params": {},
+                },
+                "resolve": {
+                    "built_in": "tool_calling",
+                    "class_path": None,
+                    "params": {},
+                },
+                "update": {
+                    "built_in": "social_recommendation",
+                    "class_path": None,
+                    "params": {},
+                },
+                "action_prompt": {
+                    "built_in": "default",
+                    "class_path": None,
+                    "params": {},
+                },
+            },
+        },
         "candidates": scenario_data.get("candidates", {}),
         "news_account": scenario_data.get("news_account", {}),
         "partisan_types": scenario_data.get("partisan_types", []),

@@ -11,6 +11,9 @@ class _FakeModel(LanguageModel):
     def __init__(self, mode: str = "single") -> None:
         self.mode = mode
 
+    def sample_text(self, prompt: str, **kwargs) -> str:
+        return ""
+
     def sample_tool_calls(
         self,
         prompt: str,
@@ -156,7 +159,7 @@ def test_structured_probe_builds_marker_prompt_and_parses_payload() -> None:
 
 
 def test_tool_calling_resolve_executes_tool_kwargs() -> None:
-    resolve = ToolCallingResolveComponent(sm_app=_FakeApp())
+    resolve = ToolCallingResolveComponent(backend=_FakeApp())
 
     action = entity_lib.ActionOutput.from_tool_calls(
         [
@@ -172,7 +175,7 @@ def test_tool_calling_resolve_executes_tool_kwargs() -> None:
 
 
 def test_tool_calling_resolve_allows_finished_tool_call() -> None:
-    resolve = ToolCallingResolveComponent(sm_app=_FakeApp())
+    resolve = ToolCallingResolveComponent(backend=_FakeApp())
 
     action = entity_lib.ActionOutput.from_tool_calls([entity_lib.ToolCall("FINISHED", {})])
 
@@ -181,7 +184,7 @@ def test_tool_calling_resolve_allows_finished_tool_call() -> None:
 
 
 def test_tool_calling_resolve_executes_multi_tool_calls_in_order() -> None:
-    resolve = ToolCallingResolveComponent(sm_app=_FakeApp())
+    resolve = ToolCallingResolveComponent(backend=_FakeApp())
 
     action = entity_lib.ActionOutput.from_tool_calls(
         [

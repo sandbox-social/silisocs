@@ -16,10 +16,11 @@ class EchoBeliefFilteredTimelineObservation(ObservationComponent):
         *,
         model: Any,
         agent_names: Sequence[str],
-        sm_app: Any,
+        backend: Any,
         timeline_mode: str | None = None,
         recsys_type: str | None = None,
         timeline_config: dict[str, Any] | None = None,
+        timeline_posts: int | None = None,
         call_to_make_observation: str = "{name}",
         policy: str = "similarity",
         threshold: int = 2,
@@ -27,9 +28,9 @@ class EchoBeliefFilteredTimelineObservation(ObservationComponent):
         fetch_multiplier: int = 3,
         include_unclassified_posts: bool = False,
     ) -> None:
-        del call_to_make_observation
+        del call_to_make_observation, timeline_posts
         super().__init__(model=model, agent_names=agent_names, components=())
-        self._sm_app = sm_app
+        self._backend = backend
         self._timeline_mode = str(timeline_mode or "follower_chronological")
         self._recsys_type = str(recsys_type or "").strip() or None
         self._timeline_config = dict(timeline_config or {})
@@ -40,12 +41,12 @@ class EchoBeliefFilteredTimelineObservation(ObservationComponent):
         self._include_unclassified_posts = bool(include_unclassified_posts)
 
     def _keep_post(self, *, active_name: str, post: dict[str, Any]) -> bool:
-        echo_state = getattr(self._sm_app, "echo_state", None)
+        echo_state = getattr(self._backend, "echo_state", None)
         if echo_state is None:
             return True
         if self._policy in {"none", "off", "all", "unfiltered"}:
             return True
-        author_name = self._sm_app.echo_name_for_post(post)
+        author_name = self._backend.echo_name_for_post(post)
         if author_name == active_name:
             return False
         if author_name is None:
@@ -63,7 +64,7 @@ class EchoBeliefFilteredTimelineObservation(ObservationComponent):
         active_name = self._agent_name(agent_name)
         limit = self._max_posts or 10
         raw_limit = max(limit, limit * self._fetch_multiplier)
-        raw_timeline = self._sm_app.get_timeline_mode(
+        raw_timeline = self._backend.get_timeline_mode(
             self._timeline_mode,
             active_name,
             raw_limit,
@@ -74,15 +75,15 @@ class EchoBeliefFilteredTimelineObservation(ObservationComponent):
             post for post in raw_timeline if self._keep_post(active_name=active_name, post=post)
         ]
         if self._policy == "random":
-            rng = getattr(getattr(self._sm_app, "echo_state", None), "rng", None)
+            rng = getattr(getattr(self._backend, "echo_state", None), "rng", None)
             if rng is not None:
                 rng.shuffle(filtered)
         filtered = filtered[:limit]
 
-        timeline_text = self._sm_app.format_timeline_for_observation(filtered)
+        timeline_text = self._backend.format_timeline_for_observation(filtered)
         if not timeline_text.strip():
             timeline_text = "No visible posts matched your current feed policy."
 
-        echo_state = getattr(self._sm_app, "echo_state", None)
+        echo_state = getattr(self._backend, "echo_state", None)
         topic = str(getattr(echo_state, "topic", "the discussion topic")) if echo_state else ""
         return f"STARTING SOCIAL MEDIA SESSION\n\nTopic: {topic}\nTIMELINE:\n{timeline_text}"

@@ -1,4 +1,4 @@
-"""No-op recommendation component for non-social echo chamber runs."""
+"""Native recommendation update components for EchoChamberSim replications."""
 
 from __future__ import annotations
 
@@ -8,11 +8,10 @@ from typing import Any
 from silisocs.environments.gm.components.base import UpdateComponent
 
 
-class NoOpUpdate(UpdateComponent):
-    """Avoid social-backend recommendation work for this replication."""
+class NoOpRecommendationUpdate(UpdateComponent):
+    """Preserve the old no-op recommendation behavior in the native update slot."""
 
-    def __init__(self, **kwargs: Any) -> None:
-        del kwargs
+    def __init__(self) -> None:
         super().__init__()
 
     def update(self, *, step: int, agents: Sequence[Any], context: Any | None = None) -> None:

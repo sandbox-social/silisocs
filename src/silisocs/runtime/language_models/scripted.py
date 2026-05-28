@@ -53,7 +53,11 @@ class ScriptedLanguageModel(LanguageModel):
     def _log(self, prompt: str, output: str) -> None:
         if not self.debug or not self._log_file:
             return
-        entry = {"prompt": prompt, "output": output} | self.meta_data
+        meta = dict(self.meta_data)
+        for key in ("agent_name", "episode_idx", "phase", "tag"):
+            if hasattr(self._local, key):
+                meta[key] = getattr(self._local, key)
+        entry = {"prompt": prompt, "output": output} | meta
         write_jsonl_item(entry, self._log_file)
 
     def set_runtime_context(

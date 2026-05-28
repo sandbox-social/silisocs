@@ -10,43 +10,23 @@ from silisocs.environments.gm.components.resolve import ToolCallingResolveCompon
 from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType
 
 
-def _extract_tool_names(action_text: str) -> list[str]:
-    payload = _extract_json(action_text)
-    if not isinstance(payload, dict):
-        return []
-    calls = payload.get("tool_calls")
-    if isinstance(calls, list):
-        return [
-            str(item.get("name", "")).strip()
-            for item in calls
-            if isinstance(item, dict) and str(item.get("name", "")).strip()
-        ]
-    call = payload.get("tool_call")
-    if isinstance(call, dict) and str(call.get("name", "")).strip():
-        return [str(call.get("name")).strip()]
-    return []
-
-
-def _fallback_probe(active_entity: str, sm_app: Any, episode: int) -> dict[str, Any]:
-    echo_state = getattr(sm_app, "echo_state", None)
+def _fallback_probe(agent_name: str, backend: Any, episode: int) -> dict[str, Any]:
+    echo_state = getattr(backend, "echo_state", None)
     if echo_state is None:
         return {"episode": episode}
     return {
         "episode": episode,
-        "belief": int(echo_state.current_beliefs.get(active_entity, 0)),
-        "opinion": str(echo_state.current_opinions.get(active_entity, "")),
+        "belief": int(echo_state.current_beliefs.get(agent_name, 0)),
+        "opinion": str(echo_state.current_opinions.get(agent_name, "")),
         "reasoning": "No valid structured belief-probe JSON was produced.",
         "short_term_memory": "",
-        "long_term_memory": str(echo_state.long_memory.get(active_entity, "")),
+        "long_term_memory": str(echo_state.long_memory.get(agent_name, "")),
         "contact_ids": [],
     }
 
 
 def _extract_contact_ids(action_text: str) -> list[int]:
-    contact_ids: list[int] = []
-    for match in re.finditer(r'"post_id"\s*:\s*"?(\d+)"?', action_text):
-        contact_ids.append(int(match.group(1)))
-    return contact_ids
+    return [int(match.group(1)) for match in re.finditer(r'"post_id"\s*:\s*"?(\d+)"?', action_text)]
 
 
 def _terminal_probe_payload(action_text: str) -> dict[str, Any] | None:
@@ -68,80 +48,83 @@ class EchoSocialToolResolve(ToolCallingResolveComponent):
     def __init__(
         self,
         *,
-        sm_app: Any,
+        backend: Any,
         model: Any,
-        call_to_action_str: str = "",
-        entities_by_name: dict[str, Any] | None = None,
+        action_prompt_template: str = "",
         agents_by_name: dict[str, Any] | None = None,
         probe_belief: bool = True,
         belief_options: list[str] | tuple[str, ...] = ("-2", "-1", "0", "1", "2"),
         belief_probe_tag: str = "echo_belief_probe",
     ) -> None:
-        super().__init__(sm_app=sm_app, model=model, call_to_action_str=call_to_action_str)
-        self._agents_by_name = dict(agents_by_name or entities_by_name or {})
+        super().__init__(
+            backend=backend,
+            model=model,
+            action_prompt_template=action_prompt_template,
+        )
+        self._agents_by_name = dict(agents_by_name or {})
         self._probe_belief = bool(probe_belief)
         self._belief_options = tuple(str(option) for option in belief_options)
         self._belief_probe_tag = str(belief_probe_tag)
 
     def resolve_action(self, agent_name: str, action: ActionOutput) -> str:
-        active_entity = str(agent_name).strip()
+        active_agent = str(agent_name).strip()
         action_text = action.text if isinstance(action, ActionOutput) else str(action or "")
 
         terminal_probe = _terminal_probe_payload(action_text)
         if terminal_probe is not None:
-            episode = int(getattr(getattr(self.sm_app, "action_logger", None), "episode_idx", 0))
+            episode = int(getattr(getattr(self.backend, "action_logger", None), "episode_idx", 0))
             replication_episode = max(0, episode - 1)
             update = self._update_from_reported_belief(
-                active_entity=active_entity,
+                agent_name=active_agent,
                 reported=terminal_probe,
                 episode=replication_episode,
                 contact_ids=list(terminal_probe.get("contact_ids", []) or []),
             )
-            if hasattr(self.sm_app, "echo_stage_update"):
-                self.sm_app.echo_stage_update(
-                    name=active_entity,
+            if hasattr(self.backend, "echo_stage_update"):
+                self.backend.echo_stage_update(
+                    name=active_agent,
                     episode=replication_episode,
                     update=update,
                 )
-            result = f"Recorded terminal belief probe for {active_entity}."
+            result = f"Recorded terminal belief probe for {active_agent}."
             return result
 
-        social_result = self.resolve(active_entity=active_entity, action_text=action_text)
+        social_result = self.resolve(active_entity=active_agent, action_text=action_text)
         if self._probe_belief:
-            episode = int(getattr(getattr(self.sm_app, "action_logger", None), "episode_idx", 0))
+            episode = int(getattr(getattr(self.backend, "action_logger", None), "episode_idx", 0))
             replication_episode = max(0, episode - 1)
             update = self._agent_reported_update(
-                active_entity=active_entity,
+                agent_name=active_agent,
                 action_text=action_text,
                 social_result=social_result,
                 episode=replication_episode,
             )
-            if hasattr(self.sm_app, "echo_stage_update"):
-                self.sm_app.echo_stage_update(
-                    name=active_entity,
+            if hasattr(self.backend, "echo_stage_update"):
+                self.backend.echo_stage_update(
+                    name=active_agent,
                     episode=replication_episode,
                     update=update,
                 )
 
-        result = social_result or f"{active_entity} completed a social-media action."
+        result = social_result or f"{active_agent} completed a social-media action."
         return result
 
     def _update_from_reported_belief(
         self,
         *,
-        active_entity: str,
+        agent_name: str,
         reported: Any,
         episode: int,
         contact_ids: list[int],
     ) -> dict[str, Any]:
-        fallback = _fallback_probe(active_entity, self.sm_app, episode)
-        echo_state = getattr(self.sm_app, "echo_state", None)
+        fallback = _fallback_probe(agent_name, self.backend, episode)
+        echo_state = getattr(self.backend, "echo_state", None)
         if echo_state is None:
             return fallback
 
-        previous_belief = int(echo_state.current_beliefs.get(active_entity, 0))
-        previous_opinion = str(echo_state.current_opinions.get(active_entity, ""))
-        previous_long = str(echo_state.long_memory.get(active_entity, ""))
+        previous_belief = int(echo_state.current_beliefs.get(agent_name, 0))
+        previous_opinion = str(echo_state.current_opinions.get(agent_name, ""))
+        previous_long = str(echo_state.long_memory.get(agent_name, ""))
         reported_payload = reported if isinstance(reported, dict) else {"belief": reported}
         try:
             belief = int(str(reported_payload.get("belief", previous_belief)).strip())
@@ -159,7 +142,7 @@ class EchoSocialToolResolve(ToolCallingResolveComponent):
 
         short_memory = ""
         long_memory = previous_long
-        agent = self._agents_by_name.get(active_entity)
+        agent = self._agents_by_name.get(agent_name)
         if agent is not None:
             try:
                 from replications.echo_chambers.components.agent_concordia import (
@@ -189,23 +172,23 @@ class EchoSocialToolResolve(ToolCallingResolveComponent):
     def _agent_reported_update(
         self,
         *,
-        active_entity: str,
+        agent_name: str,
         action_text: str,
         social_result: str,
         episode: int,
     ) -> dict[str, Any]:
-        fallback = _fallback_probe(active_entity, self.sm_app, episode)
-        echo_state = getattr(self.sm_app, "echo_state", None)
-        agent = self._agents_by_name.get(active_entity)
+        fallback = _fallback_probe(agent_name, self.backend, episode)
+        echo_state = getattr(self.backend, "echo_state", None)
+        agent = self._agents_by_name.get(agent_name)
         if echo_state is None or agent is None:
             return fallback
 
-        previous_belief = int(echo_state.current_beliefs.get(active_entity, 0))
-        previous_opinion = str(echo_state.current_opinions.get(active_entity, ""))
-        previous_long = str(echo_state.long_memory.get(active_entity, ""))
-        call_to_action = (
+        previous_belief = int(echo_state.current_beliefs.get(agent_name, 0))
+        previous_opinion = str(echo_state.current_opinions.get(agent_name, ""))
+        previous_long = str(echo_state.long_memory.get(agent_name, ""))
+        prompt = (
             "This is a private measurement probe, not a social-media action.\n"
-            f"You are {active_entity}. Report your current belief after your latest "
+            f"You are {agent_name}. Report your current belief after your latest "
             "timeline observation and social-media action.\n"
             f"Topic: {echo_state.topic}\n"
             f"Previous belief: {previous_belief}\n"
@@ -220,7 +203,7 @@ class EchoSocialToolResolve(ToolCallingResolveComponent):
         try:
             reported = agent.act(
                 action_spec=ActionSpec(
-                    prompt=call_to_action,
+                    prompt=prompt,
                     output_type=OutputType.CHOICE,
                     options=self._belief_options,
                     tag=self._belief_probe_tag,
@@ -230,7 +213,7 @@ class EchoSocialToolResolve(ToolCallingResolveComponent):
             return fallback
 
         update = self._update_from_reported_belief(
-            active_entity=active_entity,
+            agent_name=agent_name,
             reported=reported,
             episode=episode,
             contact_ids=_extract_contact_ids(action_text),

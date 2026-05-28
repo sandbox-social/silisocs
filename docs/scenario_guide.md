@@ -138,18 +138,24 @@ initial_observations:
   - "{name} opens their social media feed and starts scrolling."
   - "{name} sees new posts about the mill site vote."
 
-social_network:
-  activity_transition_rates:
-    council_member:
-      inactive_to_active: 0.9
-      active_to_inactive: 0.1
-    resident:
-      inactive_to_active: 0.6
-      active_to_inactive: 0.3
-  fully_connected_targets:
-    - council_member         # everyone follows the council member
-  base_followership_probability: 0.5
-  network_type: barabasi_albert
+gm:
+  components:
+    initialize:
+      params:
+        graph:
+          fully_connected_targets:
+            - council_member
+          base_followership_probability: 0.5
+          network_type: barabasi_albert
+    next_acting:
+      params:
+        activity_transition_rates:
+          council_member:
+            inactive_to_active: 0.9
+            active_to_inactive: 0.1
+          resident:
+            inactive_to_active: 0.6
+            active_to_inactive: 0.3
   barabasi_albert_m: 2
 ```
 
@@ -206,7 +212,8 @@ existing scenarios like `scenarios/neighborhood_forum/README.md` for the format)
 ### Multiple agent classes with different activity levels
 
 Set `inactive_to_active` high (0.8–0.9) for active roles and low (0.3–0.5) for
-lurkers. Activity rates go in `social_network.activity_transition_rates` keyed by
+lurkers. Activity rates go in
+`env.gm.components.next_acting.params.activity_transition_rates` keyed by
 `sim_role_name`.
 
 ### A broadcast/authority agent everyone follows
@@ -220,11 +227,14 @@ Use `class_path: silisocs.agents.fixed.FixedAgent` with a `fixed_action` block f
 agents that post from a predefined schedule (news feeds, announcements). See
 `agent_docs/scenario_design.md` for the fixed-action schema.
 
-### Switching platforms
+### Switching backends
 
 Create `scenarios/my_scenario/conf/env.yaml` with a single line:
 ```yaml
-platform_type: reddit_like   # or mastodon
+backend:
+  type: reddit_like   # or mastodon
+  class_path: null
+  params: {}
 ```
 
 ---

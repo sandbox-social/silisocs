@@ -494,13 +494,15 @@ class EchoChamberApp(TwitterLikeApp):
         *,
         agent_names: list[str],
         sim_roles: dict[str, str] | None = None,
-        social_network: dict[str, Any] | None = None,
+        graph_config: dict[str, Any] | None = None,
+        following_graph: dict[str, list[str]] | None = None,
         agent_bios: dict[str, str] | None = None,
     ) -> None:
         super().setup_social_state(
             agent_names=agent_names,
             sim_roles=sim_roles,
-            social_network=social_network,
+            graph_config=graph_config,
+            following_graph=following_graph,
             agent_bios=agent_bios,
         )
         self.echo_state = self._build_world()
@@ -546,31 +548,59 @@ class EchoChamberSocialApp(EchoChamberApp):
 
     app_description: str = "EchoChamberSocialApp"
     seed_initial_opinion_posts: bool = True
+    _seeded_initial_opinion_posts: bool = dataclasses.field(default=False, init=False, repr=False)
 
     def name(self) -> str:
         return "EchoChamberSocialApp"
 
     def initialize(self, agent_names: Sequence[str], **kwargs: Any) -> None:
         super().initialize(agent_names, **kwargs)
-        if self.seed_initial_opinion_posts and self.echo_state is not None:
-            for name in self.echo_state.agent_names:
-                opinion = self.echo_state.current_opinions.get(name, "")
-                if opinion:
-                    try:
-                        self.create_tweet(name, opinion)
-                    except Exception as exc:
-                        self._print(
-                            f"Initial opinion seed post failed for {name}: {exc}",
-                            color="red",
-                        )
-            self._log_action_event(
-                "system",
-                "echo_chamber_social_seed_posts",
-                {
-                    "num_seeded_posts": len(self.echo_state.agent_names),
-                    "source": "initial_opinions",
-                },
-            )
+        self._seed_initial_opinion_posts()
+
+    def setup_social_state(
+        self,
+        *,
+        agent_names: list[str],
+        sim_roles: dict[str, str] | None = None,
+        graph_config: dict[str, Any] | None = None,
+        following_graph: dict[str, list[str]] | None = None,
+        agent_bios: dict[str, str] | None = None,
+    ) -> None:
+        super().setup_social_state(
+            agent_names=agent_names,
+            sim_roles=sim_roles,
+            graph_config=graph_config,
+            following_graph=following_graph,
+            agent_bios=agent_bios,
+        )
+        self._seed_initial_opinion_posts()
+
+    def _seed_initial_opinion_posts(self) -> None:
+        if (
+            not self.seed_initial_opinion_posts
+            or self.echo_state is None
+            or self._seeded_initial_opinion_posts
+        ):
+            return
+        for name in self.echo_state.agent_names:
+            opinion = self.echo_state.current_opinions.get(name, "")
+            if opinion:
+                try:
+                    self.create_tweet(name, opinion)
+                except Exception as exc:
+                    self._print(
+                        f"Initial opinion seed post failed for {name}: {exc}",
+                        color="red",
+                    )
+        self._seeded_initial_opinion_posts = True
+        self._log_action_event(
+            "system",
+            "echo_chamber_social_seed_posts",
+            {
+                "num_seeded_posts": len(self.echo_state.agent_names),
+                "source": "initial_opinions",
+            },
+        )
 
     def echo_belief_for_post(self, post: dict[str, Any]) -> int | None:
         """Return current author belief for a backend post, if known."""

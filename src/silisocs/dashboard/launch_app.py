@@ -28,7 +28,7 @@ _CONF_DIR = _PACKAGE_ROOT / "conf"
 _SCENARIOS_DIR = _PACKAGE_ROOT.parents[2] / "scenarios"
 _PROJECT_ROOT = _PACKAGE_ROOT.parents[2]
 
-_PLATFORM_OPTIONS = ["twitter_like", "reddit_like", "mastodon"]
+_BACKEND_OPTIONS = ["twitter_like", "reddit_like", "mastodon"]
 _MEMORY_BACKENDS = ["list", "associative"]
 _ACTION_MODES = ["custom", "generic", "tool_calling"]
 _NETWORK_TYPES = ["barabasi_albert", "random", "lfr_benchmark"]
@@ -46,7 +46,7 @@ _PROBE_TYPE_OPTIONS = ["NumericRatingProbe", "BinaryProbe", "ChoiceProbe", "Free
 # Theme & page config
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Mastodon-Sim Launcher",
+    page_title="Silisocs Launcher",
     page_icon="\U0001f30d",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -259,27 +259,17 @@ def _split_loaded_config(
     if not isinstance(loaded_cfg, dict):
         return {}, {}, {}
 
-    if any(isinstance(loaded_cfg.get(k), dict) for k in ("agent", "sim", "env", "environment")):
+    if any(isinstance(loaded_cfg.get(k), dict) for k in ("agents", "sim", "env")):
         loaded_agent = (
-            loaded_cfg.get("agent", {}) if isinstance(loaded_cfg.get("agent"), dict) else {}
+            loaded_cfg.get("agents", {}) if isinstance(loaded_cfg.get("agents"), dict) else {}
         )
         loaded_sim = loaded_cfg.get("sim", {}) if isinstance(loaded_cfg.get("sim"), dict) else {}
         loaded_env = loaded_cfg.get("env", {}) if isinstance(loaded_cfg.get("env"), dict) else {}
-        if not loaded_env:
-            loaded_env = (
-                loaded_cfg.get("environment", {})
-                if isinstance(loaded_cfg.get("environment"), dict)
-                else {}
-            )
         loaded_eval = (
             loaded_cfg.get("evals", {}) if isinstance(loaded_cfg.get("evals"), dict) else {}
         )
-        if not loaded_eval:
-            loaded_eval = (
-                loaded_cfg.get("evaluations", {})
-                if isinstance(loaded_cfg.get("evaluations"), dict)
-                else {}
-            )
+        gm_components = (loaded_env.get("gm") or {}).get("components") or {}
+        graph_cfg = ((gm_components.get("initialize") or {}).get("params") or {}).get("graph")
 
         scenario_view: dict = {
             "scenario_name": loaded_sim.get("scenario_name", ""),
@@ -287,9 +277,7 @@ def _split_loaded_config(
             "setting": loaded_sim.get("setting", {}),
             "event": loaded_sim.get("event", {}),
             "data": loaded_sim.get("data", {}),
-            "social_network": loaded_env.get(
-                "social_network", loaded_sim.get("social_network", {})
-            ),
+            "graph": graph_cfg or {},
             "persona_pipeline": loaded_agent.get("persona_pipeline", {}),
             "shared_memories": loaded_agent.get("shared_memories", []),
             "initial_observations": loaded_agent.get("initial_observations", []),
@@ -303,43 +291,33 @@ def _split_loaded_config(
         }
         return scenario_view, loaded_sim, loaded_env
 
-    # Legacy fallback for older single-file configs.
-    loaded_scenario = loaded_cfg.get("scenario", loaded_cfg)
-    loaded_sim = loaded_cfg.get("sim", {}) if isinstance(loaded_cfg.get("sim"), dict) else {}
-    loaded_env = loaded_cfg.get(
-        "env", loaded_cfg.get("environment", loaded_cfg.get("social_media", {}))
-    )
-    loaded_env = loaded_env if isinstance(loaded_env, dict) else {}
-
-    if not isinstance(loaded_scenario, dict):
-        loaded_scenario = {}
-    return loaded_scenario, loaded_sim, loaded_env
+    return {}, {}, {}
 
 
-def _backend_app_class(platform_type: str):
-    """_backend_app_class.
+def _backend_class(backend_type: str):
+    """_backend_class.
 
-    :param str platform_type:
-    :type platform_type: str
+    :param str backend_type:
+    :type backend_type: str
     """
-    if platform_type == "twitter_like":
+    if backend_type == "twitter_like":
         from silisocs.environments.backends.twitter_like.app import TwitterLikeApp
 
         return TwitterLikeApp
-    if platform_type == "reddit_like":
+    if backend_type == "reddit_like":
         from silisocs.environments.backends.reddit_like.app import RedditLikeApp
 
         return RedditLikeApp
-    if platform_type == "mastodon":
+    if backend_type == "mastodon":
         from silisocs.environments.backends.mastodon.apps import SocialNetworkApp
 
         return SocialNetworkApp
-    raise ValueError(f"Unknown platform_type: {platform_type}")
+    raise ValueError(f"Unknown backend_type: {backend_type}")
 
 
-def _backend_action_catalog(platform_type: str) -> list[dict]:
+def _backend_action_catalog(backend_type: str) -> list[dict]:
     """Build backend action catalog without creating live backend instances."""
-    cls = _backend_app_class(platform_type)
+    cls = _backend_class(backend_type)
     actions = []
     for _, fn in inspect.getmembers(cls, predicate=inspect.isfunction):
         if getattr(fn, "__app_action__", False):
@@ -477,12 +455,6 @@ def _build_scenario_config() -> dict:
             },
             "classes": classes_dict,
         },
-        "social_network": {
-            "activity_transition_rates": activity_rates,
-            "network_type": st.session_state.get("network_type", "barabasi_albert"),
-            "barabasi_albert_m": st.session_state.get("ba_m", 10),
-            "base_followership_probability": st.session_state.get("follow_prob", 0.3),
-        },
         "shared_memories": shared_list,
         "initial_observations": [
             '"{name} is at home checking their social media feed."',
@@ -534,7 +506,7 @@ def _build_scenario_config() -> dict:
 def _build_hydra_overrides(
     sim: dict,
     env: dict,
-    platform: str,
+    backend_group: str,
     scenario: dict,
     evals: dict | None = None,
 ) -> list[str]:
@@ -544,8 +516,8 @@ def _build_hydra_overrides(
     :type sim: dict
     :param dict env:
     :type env: dict
-    :param str platform:
-    :type platform: str
+    :param str backend_group:
+    :type backend_group: str
     :param dict scenario:
     :type scenario: dict
 
@@ -568,7 +540,7 @@ def _build_hydra_overrides(
             overrides.append(f'sim.{key}="{val}"')
         else:
             overrides.append(f"sim.{key}={val}")
-    overrides.append(f"env={platform}")
+    overrides.append(f"env={backend_group}")
     for key, val in env.items():
         if val is None:
             overrides.append(f"env.{key}=null")
@@ -602,7 +574,7 @@ def _build_hydra_overrides(
     for key, val in scenario.items():
         if val is None:
             continue
-        prefix = "env" if key.startswith("social_network.") else "sim"
+        prefix = "env" if key.startswith("gm.") or key.startswith("backend.") else "sim"
         if isinstance(val, bool):
             overrides.append(f"{prefix}.{key}={'true' if val else 'false'}")
         elif isinstance(val, (int, float)):
@@ -636,8 +608,8 @@ def _validate_config(sim_params: dict, classes: list[dict]) -> None:
 # Sidebar — scenario management
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    st.title("\U0001f30d Mastodon-Sim")
-    st.caption("Social Simulation Sandbox")
+    st.title("\U0001f30d Silisocs")
+    st.caption("Social Simulation Framework")
     st.divider()
 
     # NEW: Preset selection
@@ -770,7 +742,7 @@ with st.sidebar:
                 "setting": {"name": "", "background": []},
                 "event": {"name": "", "context": ""},
                 "persona_pipeline": {},
-                "social_network": {},
+                "graph": {},
                 "shared_memories": [],
                 "initial_observations": [],
                 "probes": {},
@@ -904,7 +876,7 @@ with tab_sim:
             "LLM API base URL",
             value=str(_sim_defaults.get("llm_api_base") or ""),
             key="llm_api_base",
-            help="Required for provider=local.",
+            help="Required for provider=openai_compatible.",
         )
         st.text_input(
             "LLM API key",
@@ -971,15 +943,9 @@ with tab_sim:
     with st.expander("🔀 Multi-Flow & Orchestration (Advanced)", expanded=False):
         mf1, mf2 = st.columns(2)
         with mf1:
-            st.checkbox(
-                "Enable GM Multi-Flow",
-                value=bool(
-                    _environment_defaults.get(
-                        "enable_gm_multi_flow", _sim_defaults.get("enable_gm_multi_flow", False)
-                    )
-                ),
-                key="enable_gm_multi_flow",
-                help="Allow game master to route agents to different component instances per flow.",
+            st.caption(
+                "GM flow routing is configured by selecting a routed GM class "
+                "and component instances in YAML."
             )
             st.checkbox(
                 "Enable Engine Multi-Flow",
@@ -1394,21 +1360,23 @@ with tab_env:
     st.markdown("**Runtime Environment**")
     ec1, ec2 = st.columns(2)
     with ec1:
-        platform_default = str(_environment_defaults.get("platform_type", "twitter_like"))
+        backend_default = str(
+            (_environment_defaults.get("backend") or {}).get("type", "twitter_like")
+        )
         st.selectbox(
-            "Platform backend",
-            _PLATFORM_OPTIONS,
-            index=_PLATFORM_OPTIONS.index(platform_default)
-            if platform_default in _PLATFORM_OPTIONS
+            "Backend",
+            _BACKEND_OPTIONS,
+            index=_BACKEND_OPTIONS.index(backend_default)
+            if backend_default in _BACKEND_OPTIONS
             else 0,
-            key="platform_type",
+            key="backend_type",
             help="twitter_like/reddit_like are local. mastodon requires a server.",
         )
     with ec2:
         st.caption("GM and engine policy controls are below.")
 
-    selected_platform_for_actions = st.session_state.get("platform_type", platform_default)
-    action_catalog = _backend_action_catalog(selected_platform_for_actions)
+    selected_backend_for_actions = st.session_state.get("backend_type", backend_default)
+    action_catalog = _backend_action_catalog(selected_backend_for_actions)
     action_labels = [item["selectable_name"] for item in action_catalog]
     configured_enabled = _environment_defaults.get(
         "enabled_actions", _sim_defaults.get("enabled_actions")
@@ -1434,8 +1402,8 @@ with tab_env:
         "timeline_config", _sim_defaults.get("timeline_config", {})
     )
 
-    # Define available strategies per platform
-    timeline_strategies_by_platform = {
+    # Define available strategies per backend.
+    timeline_strategies_by_backend = {
         "twitter_like": [
             "follower_chronological",
             "pure_recsys",
@@ -1446,8 +1414,8 @@ with tab_env:
         "mastodon": ["follower_chronological"],  # Mastodon always uses server feed
     }
 
-    available_strategies = timeline_strategies_by_platform.get(
-        selected_platform_for_actions, ["follower_chronological"]
+    available_strategies = timeline_strategies_by_backend.get(
+        selected_backend_for_actions, ["follower_chronological"]
     )
     strategy_idx = (
         available_strategies.index(timeline_strategy_default)
@@ -1689,15 +1657,6 @@ with tab_env:
                 "Advanced orchestration is intended for expert YAML workflows. "
                 "Use this section to copy/edit settings, then apply through config files or explicit Hydra overrides."
             )
-            gm_preset_default = str(_gm_defaults.get("preset", "base"))
-            st.selectbox(
-                "GM preset",
-                ["base", "shared_flow"],
-                index=1 if gm_preset_default == "shared_flow" else 0,
-                key="gm_preset",
-                help="base uses the standard GM. shared_flow uses the shared-flow GM base.",
-            )
-
             default_orchestration = _environment_defaults.get(
                 "gm_orchestration", _sim_defaults.get("gm_orchestration", {})
             )
@@ -1853,8 +1812,8 @@ with tab_env:
             - Followed posts maintain social identity and network influence
             """)
 
-    st.markdown("**Social Network Configuration**")
-    net_cfg = _scenario_cfg.get("social_network", {})
+    st.markdown("**Social Graph Configuration**")
+    net_cfg = _scenario_cfg.get("graph", {})
 
     nc1, nc2 = st.columns(2)
     with nc1:
@@ -2150,25 +2109,21 @@ with tab_launch:
         ),
     }
     env_params = {
-        "enable_gm_multi_flow": st.session_state.get("enable_gm_multi_flow", False),
-        "enabled_actions": (
+        "backend.enabled_actions": (
             st.session_state.get("enabled_actions")
             if st.session_state.get("enabled_actions")
             else None
         ),
-        "timeline_posts": st.session_state.get("timeline_posts", 10),
-        "timeline_mode": st.session_state.get("timeline_strategy", "follower_chronological"),
-        "timeline_config": {
+        "gm.components.observe.params.timeline_posts": st.session_state.get("timeline_posts", 10),
+        "gm.components.observe.params.timeline_mode": st.session_state.get(
+            "timeline_strategy", "follower_chronological"
+        ),
+        "gm.components.observe.params.timeline_config": {
             "recsys_ratio": st.session_state.get("timeline_recsys_ratio", 0.6),
             "follower_ratio": 1.0 - st.session_state.get("timeline_recsys_ratio", 0.6),
         },
         "observation_history": st.session_state.get("observation_history", 100),
         "gm_orchestration": st.session_state.get("gm_orchestration_yaml_parsed", {}),
-        "gm.preset": (
-            st.session_state.get("gm_preset", "base")
-            if bool(st.session_state.get("advanced_config_enabled", False))
-            else "base"
-        ),
         "gm.components.next_acting.built_in": st.session_state.get(
             "gm_next_acting_built_in", "activity_markov"
         ),
@@ -2199,7 +2154,7 @@ with tab_launch:
         ),
         "gm.components.update.params.lazy": st.session_state.get("engine_recsys_lazy", True),
     }
-    selected_platform = st.session_state.get("platform_type", "twitter_like")
+    selected_backend = st.session_state.get("backend_type", "twitter_like")
 
     # Build scenario config for saving.
     scenario_data = _build_scenario_config()
@@ -2212,7 +2167,7 @@ with tab_launch:
         st.metric("Episodes", sim_params["num_steps"])
     with sc2:
         st.metric("Default LLM", sim_params["llm_name"])
-        st.metric("Platform", selected_platform)
+        st.metric("Backend", selected_backend)
     with sc3:
         n_classes = len(st.session_state.get("_agent_classes", []))
         st.metric("Agent Classes", n_classes)
@@ -2229,11 +2184,15 @@ with tab_launch:
     overrides = _build_hydra_overrides(
         sim_params,
         env_params,
-        selected_platform,
+        selected_backend,
         {
-            "social_network.network_type": st.session_state.get("network_type", "barabasi_albert"),
-            "social_network.barabasi_albert_m": st.session_state.get("ba_m", 10),
-            "social_network.base_followership_probability": st.session_state.get(
+            "gm.components.initialize.params.graph.network_type": st.session_state.get(
+                "network_type", "barabasi_albert"
+            ),
+            "gm.components.initialize.params.graph.barabasi_albert_m": st.session_state.get(
+                "ba_m", 10
+            ),
+            "gm.components.initialize.params.graph.base_followership_probability": st.session_state.get(
                 "follow_prob", 0.3
             ),
         },
@@ -2310,18 +2269,18 @@ with tab_launch:
 
             env_data_to_save.update(
                 {
-                    "enable_gm_multi_flow": st.session_state.get("enable_gm_multi_flow", False),
-                    "timeline_posts": st.session_state.get("timeline_posts", 10),
-                    "timeline_mode": st.session_state.get(
+                    "gm.components.observe.params.timeline_posts": st.session_state.get(
+                        "timeline_posts", 10
+                    ),
+                    "gm.components.observe.params.timeline_mode": st.session_state.get(
                         "timeline_strategy", "follower_chronological"
                     ),
                     "observation_history": st.session_state.get("observation_history", 100),
-                    "enabled_actions": (
+                    "backend.enabled_actions": (
                         st.session_state.get("enabled_actions")
                         if st.session_state.get("enabled_actions")
                         else None
                     ),
-                    "gm.preset": st.session_state.get("gm_preset", "base"),
                     "gm.components.initialize.built_in": st.session_state.get(
                         "gm_initializer_built_in", "social_media"
                     ),
@@ -2356,7 +2315,7 @@ with tab_launch:
                     ),
                 }
             )
-            env_data_to_save["timeline_config"] = {
+            env_data_to_save["gm.components.observe.params.timeline_config"] = {
                 "recsys_ratio": st.session_state.get("timeline_recsys_ratio", 0.6),
                 "follower_ratio": 1.0 - st.session_state.get("timeline_recsys_ratio", 0.6),
             }
@@ -2365,13 +2324,13 @@ with tab_launch:
                     "gm_orchestration_yaml_parsed"
                 )
 
-            selected_platform = st.session_state.get("platform_type", "twitter_like")
+            selected_backend = st.session_state.get("backend_type", "twitter_like")
             save_path = _save_scenario(
                 name,
                 scenario_data,
                 sim_data_to_save,
                 env_data_to_save,
-                selected_platform,
+                selected_backend,
                 loaded_scenarios_root,
                 eval_params,
             )
@@ -2440,18 +2399,18 @@ with tab_launch:
 
         env_data_to_save.update(
             {
-                "enable_gm_multi_flow": st.session_state.get("enable_gm_multi_flow", False),
-                "timeline_posts": st.session_state.get("timeline_posts", 10),
-                "timeline_mode": st.session_state.get(
+                "gm.components.observe.params.timeline_posts": st.session_state.get(
+                    "timeline_posts", 10
+                ),
+                "gm.components.observe.params.timeline_mode": st.session_state.get(
                     "timeline_strategy", "follower_chronological"
                 ),
                 "observation_history": st.session_state.get("observation_history", 100),
-                "enabled_actions": (
+                "backend.enabled_actions": (
                     st.session_state.get("enabled_actions")
                     if st.session_state.get("enabled_actions")
                     else None
                 ),
-                "gm.preset": st.session_state.get("gm_preset", "base"),
                 "gm.components.initialize.built_in": st.session_state.get(
                     "gm_initializer_built_in", "social_media"
                 ),
@@ -2486,7 +2445,7 @@ with tab_launch:
                 ),
             }
         )
-        env_data_to_save["timeline_config"] = {
+        env_data_to_save["gm.components.observe.params.timeline_config"] = {
             "recsys_ratio": st.session_state.get("timeline_recsys_ratio", 0.6),
             "follower_ratio": 1.0 - st.session_state.get("timeline_recsys_ratio", 0.6),
         }
@@ -2495,13 +2454,13 @@ with tab_launch:
                 "gm_orchestration_yaml_parsed"
             )
 
-        selected_platform = st.session_state.get("platform_type", "twitter_like")
+        selected_backend = st.session_state.get("backend_type", "twitter_like")
         _save_scenario(
             name,
             scenario_data,
             sim_data_to_save,
             env_data_to_save,
-            selected_platform,
+            selected_backend,
             loaded_scenarios_root,
             eval_params,
         )

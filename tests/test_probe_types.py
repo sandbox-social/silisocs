@@ -83,3 +83,13 @@ def test_probe_submit_with_raw_response() -> None:
     assert result["probe_type"] == "VoteIntent"
     assert result["probe_return"] == "Yes"
     assert result["raw_response"] == "Yes I will definitely vote"
+
+
+def test_probe_prompt_does_not_inject_identity_frame() -> None:
+    probe = BinaryProbe({"name": "VoteIntent", "question": "Will you vote?"})
+    prompt = probe.form_probe_for_agent(_FakeAgent("Alice Smith"))
+
+    assert "Will you vote?" in prompt
+    assert "Answer the question above directly and concisely." in prompt
+    assert "Alice Smith" not in prompt
+    assert "You are answering as" not in prompt

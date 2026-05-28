@@ -7,7 +7,7 @@ from typing import Any, cast
 import pytest
 
 from silisocs.runtime.language_models import (
-    LocalLanguageModel,
+    OpenAICompatibleLanguageModel,
     OpenAILanguageModel,
     ScriptedLanguageModel,
     select_large_language_model,
@@ -37,7 +37,7 @@ class _Completions:
         return _Response()
 
 
-def _attach_fake_client(model: OpenAILanguageModel | LocalLanguageModel) -> _Completions:
+def _attach_fake_client(model: OpenAILanguageModel | OpenAICompatibleLanguageModel) -> _Completions:
     completions = _Completions()
     cast(Any, model)._client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
     cast(Any, model)._record_retry_outcome = lambda retries, success: None
@@ -102,13 +102,13 @@ def test_openai_language_model_uses_direct_instruct_messages_without_local_kwarg
     assert "extra_body" not in request
 
 
-def test_local_language_model_requires_api_base_and_merges_extra_kwargs() -> None:
+def test_openai_compatible_language_model_requires_api_base_and_merges_extra_kwargs() -> None:
     with pytest.raises(ValueError, match="api_base"):
-        LocalLanguageModel(model_name="qwen3.5-4b", api_base="", api_key="local")
+        OpenAICompatibleLanguageModel(model_name="qwen3.5-4b", api_base="", api_key="test-key")
 
-    model = LocalLanguageModel.__new__(LocalLanguageModel)
+    model = OpenAICompatibleLanguageModel.__new__(OpenAICompatibleLanguageModel)
     model._temperature = 0.1
-    model._model_name = "local-model"
+    model._model_name = "openai-compatible-model"
     model._max_retries = 0
     model._measurements = None
     model.debug = False
@@ -129,6 +129,17 @@ def test_select_language_model_requires_explicit_provider() -> None:
             False,
             api_key="test",
             provider=None,
+        )
+
+
+def test_select_language_model_rejects_removed_local_provider_alias() -> None:
+    with pytest.raises(ValueError, match="Unknown sim.llm.provider"):
+        select_large_language_model(
+            "openai-compatible-model",
+            "prompts.jsonl",
+            False,
+            api_base="http://localhost:8000/v1",
+            provider="local",
         )
 
 

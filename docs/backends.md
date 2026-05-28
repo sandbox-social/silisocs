@@ -44,8 +44,9 @@ A minimal in-memory non-social backend that demonstrates the generic
 **Config**: `env/resource_market.yaml`
 
 ```yaml
-platform_type: resource_market
-app:
+backend:
+  type: resource_market
+  class_path: null
   params:
     initial_cash: 20
     initial_inventory:
@@ -73,8 +74,9 @@ rooms, and talk only to agents present in the same room.
 **Config**: `env/virtual_space.yaml`
 
 ```yaml
-platform_type: virtual_space
-app:
+backend:
+  type: virtual_space
+  class_path: null
   params:
     rooms: [atrium, garden, workshop]
     starting_room: atrium
@@ -105,7 +107,10 @@ A local SQLite-based backend that simulates a Twitter/X-like platform.
 **Config**: `env/twitter_like.yaml`
 
 ```yaml
-platform_type: twitter_like
+backend:
+  type: twitter_like
+  class_path: null
+  params: {}
 use_server: false
 ```
 
@@ -129,7 +134,10 @@ A local SQLite-based backend that simulates a Reddit-like platform.
 **Config**: `env/reddit_like.yaml`
 
 ```yaml
-platform_type: reddit_like
+backend:
+  type: reddit_like
+  class_path: null
+  params: {}
 use_server: false
 ```
 
@@ -154,7 +162,10 @@ Connects to a real Mastodon instance via its API.
 **Config**: `env/mastodon.yaml`
 
 ```yaml
-platform_type: mastodon
+backend:
+  type: mastodon
+  class_path: null
+  params: {}
 use_server: true
 ```
 
@@ -171,7 +182,7 @@ USER001_PASSWORD=password_for_user_001
 For public-package and CI usage, `use_server: false` constructs the Mastodon
 backend in dry-run mode. Dry-run mode is non-interactive, does not clear or
 mutate a Mastodon server, and returns empty/mock timeline data while still
-exercising the same `SocialMediaApp` action interface. Use this mode for tests,
+exercising the same `SocialBackendApp` action interface. Use this mode for tests,
 documentation examples, and local development that should not require Mastodon
 credentials.
 
@@ -284,15 +295,15 @@ To implement a new generic environment:
             ...
     ```
 
-    Use `SocialMediaApp` instead if your backend needs timelines, feed
+    Use `SocialBackendApp` instead if your backend needs timelines, feed
     formatting, social action parsing, or recommendation updates.
 
 3. **Configure the class path and params**:
 
     ```yaml
-    platform_type: custom
-    app:
-      class_path: my_pkg.backends.YourPlatformApp
+    backend:
+      type: custom
+      class_path: my_pkg.backends.YourBackendApp
       params:
         some_setting: 1
     ```
@@ -301,18 +312,19 @@ To implement a new generic environment:
     the app constructor accepts `**kwargs`.
 
 4. **Optionally register as a built-in** in the factory if it should be
-   selectable by `platform_type` alone:
+   selectable by `env.backend.type` alone:
 
     ```python
-    elif platform_type == "your_platform":
-        from .your_platform.app import YourPlatformApp
-        return YourPlatformApp(db_path=db_path)
+    _BUILTIN_BACKENDS["your_backend"] = "my_pkg.backends.YourBackendApp"
     ```
 
-5. **Create a config** at `conf/env/your_platform.yaml`:
+5. **Create a config** at `conf/env/your_backend.yaml`:
 
     ```yaml
-    platform_type: your_platform
+    backend:
+      type: your_backend
+      class_path: null
+      params: {}
     use_server: false
     gm:
       components:
@@ -329,7 +341,7 @@ Action metadata notes:
 - By default, the selectable action name is the Python function name.
 - Backend authors can optionally provide `selectable_name` and `description`
     via `@app_action(...)` to expose more LLM-friendly names/descriptions.
-- Simulation-level action filtering (`env.enabled_actions`) accepts either the
+- Backend-level action filtering (`env.backend.enabled_actions`) accepts either the
     canonical function name or the selectable alias.
 - Fixed-action agent sets can also reference either canonical names or aliases.
 

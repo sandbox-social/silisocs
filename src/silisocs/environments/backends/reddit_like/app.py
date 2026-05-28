@@ -1,7 +1,7 @@
 """Reddit-like social media app for simulation.
 
 Wraps ``RedditLikePlatform`` (SQLite-backed engine) with the
-``SocialMediaApp`` interface so it can be used as a drag-and-drop
+``SocialBackendApp`` interface so it can be used as a drag-and-drop
 replacement for the Mastodon app in the simulation.
 """
 
@@ -11,12 +11,12 @@ import dataclasses
 import os
 from typing import Any
 
-from silisocs.environments.backends.base import SocialMediaApp, app_action
+from silisocs.environments.backends.base import SocialBackendApp, app_action
 from silisocs.environments.backends.reddit_like.engine import RedditLikePlatform
 
 
 @dataclasses.dataclass
-class RedditLikeApp(SocialMediaApp):
+class RedditLikeApp(SocialBackendApp):
     """Reddit-like social media app.
 
     A forum-style platform where users create posts in subreddits, comment
@@ -39,7 +39,7 @@ class RedditLikeApp(SocialMediaApp):
         self._platform = RedditLikePlatform(self.db_path, use_queue=True)
 
     # ------------------------------------------------------------------ #
-    # SocialMediaApp required interface
+    # SocialBackendApp required interface
     # ------------------------------------------------------------------ #
 
     def name(self) -> str:
@@ -69,17 +69,17 @@ class RedditLikeApp(SocialMediaApp):
         *,
         agent_names: list[str],
         sim_roles: dict[str, str] | None = None,
-        social_network: dict[str, Any] | None = None,
+        graph_config: dict[str, Any] | None = None,
         following_graph: dict[str, list[str]] | None = None,
         agent_bios: dict[str, str] | None = None,
     ) -> None:
         """Set up users, subreddits, and role-based memberships.
 
         Reddit uses **subreddit membership** instead of a follow graph.
-        Configure subreddits and which roles subscribe to them via
-        ``social_network.subreddits`` in the scenario YAML::
+        Configure subreddits and which roles subscribe to them via the
+        GM initialize component graph config::
 
-            social_network:
+            env.gm.components.initialize.params.graph:
               subreddits:
                 - name: general
                   description: General discussion
@@ -92,14 +92,14 @@ class RedditLikeApp(SocialMediaApp):
         """
         del following_graph
         sim_roles = dict(sim_roles or {})
-        social_network = dict(social_network or {})
+        graph_config = dict(graph_config or {})
         agent_bios = dict(agent_bios or {})
 
-        subreddit_configs = social_network.get(
+        subreddit_configs = graph_config.get(
             "subreddits",
             [{"name": "general", "description": "General discussion", "roles": "all"}],
         )
-        default_subreddit = social_network.get("default_subreddit", "general")
+        default_subreddit = graph_config.get("default_subreddit", "general")
 
         # Create subreddits.
         for sub_cfg in subreddit_configs:

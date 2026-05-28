@@ -975,11 +975,7 @@ class RedditLikePlatform:
 
             return combined[:limit]
 
-        # Fallback: use follower_chronological
-        logger.warning(
-            f"Unknown timeline strategy '{strategy}', falling back to follower_chronological"
-        )
-        return self.get_timeline("follower_chronological", username, limit, **timeline_config)
+        raise ValueError(f"Unknown timeline strategy: {strategy}")
 
     # ================================================================ #
     # OASIS-Compatible Extended Methods (mirrored from Twitter)
@@ -1368,18 +1364,14 @@ class RedditLikePlatform:
             users: List of user dicts.
             posts: List of post dicts.
             max_posts: Maximum recommendations per user.
-            recsys_state: State dict for this algorithm type containing 'model' and 'embeddings_cache'.
-                         If None, attempts to use legacy self.recsys_model.
+            recsys_state: State dict for this algorithm type containing model
+                and embeddings_cache.
         """
-        # Handle backward compatibility (single-model mode)
         if recsys_state is None:
-            if not hasattr(self, "recsys_model") or self.recsys_model is None:
-                return {}
-            model = self.recsys_model
-            embeddings_cache = getattr(self, "embeddings_cache", {})
-        else:
-            model = recsys_state.get("model")
-            embeddings_cache = recsys_state.get("embeddings_cache", {})
+            raise ValueError("Embedding recommendations require initialized recsys_state.")
+
+        model = recsys_state.get("model")
+        embeddings_cache = recsys_state.get("embeddings_cache", {})
 
         if model is None:
             return {}

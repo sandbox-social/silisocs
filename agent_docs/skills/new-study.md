@@ -58,7 +58,7 @@ Ask:
 For each hypothesis, expand into:
 - `id`: short snake_case identifier, format `h{N}_{short_name}` (e.g. `h1_timeline_effect`)
 - `statement`: the hypothesis as a falsifiable claim (one sentence)
-- `independent_variable`: the config key being varied (e.g. `env.timeline_mode`)
+- `independent_variable`: the config key being varied (e.g. `env.gm.components.observe.params.timeline_mode`)
 - `prediction`: expected direction or outcome if hypothesis is true
 - `status`: always start as `testing`
 
@@ -87,9 +87,9 @@ Help the user translate intent into Hydra override dicts. Reference the scenario
 config structure (read `scenarios/<name>/conf/`) to suggest valid keys.
 
 Common patterns:
-- Timeline: `env.timeline_mode: follower_chronological` vs `pure_recsys`
+- Timeline: `env.gm.components.observe.params.timeline_mode: follower_chronological` vs `pure_recsys`
 - Agent counts: `agents.persona_pipeline.classes.<role>.count: N`
-- Network: `env.social_network.base_followership_probability: 0.8`
+- Graph: `env.gm.components.initialize.params.graph.base_followership_probability: 0.8`
 - Scale: `num_steps: 20`, `num_agents: 100`
 
 For each condition also ask:
@@ -237,7 +237,7 @@ Remind the user of this pattern after writing files:
     {
       "id": "h1_short_name",
       "statement": "Falsifiable hypothesis in one sentence.",
-      "independent_variable": "env.timeline_mode",
+      "independent_variable": "env.gm.components.observe.params.timeline_mode",
       "prediction": "Expected direction or outcome.",
       "status": "testing",
       "follows_from": null,
@@ -247,7 +247,7 @@ Remind the user of this pattern after writing files:
           "id": "timeline=chronological",
           "sub_experiment": null,
           "overrides": {
-            "env.timeline_mode": "follower_chronological"
+            "env.gm.components.observe.params.timeline_mode": "follower_chronological"
           },
           "execution_mode": "run",
           "reuse_source": null

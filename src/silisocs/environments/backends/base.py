@@ -1,7 +1,7 @@
 """Backend app base class and action infrastructure for simulations.
 
-Extracted from silisocs/apps.py to provide a shared foundation
-for all social media platform apps (Mastodon, Twitter-like, Reddit-like, etc.).
+Provides the shared backend action infrastructure for social and non-social
+environment backends.
 """
 
 import abc
@@ -300,7 +300,7 @@ class BackendApp(metaclass=abc.ABCMeta):
     simulation with ``@app_action``. The base contract is intentionally
     domain-neutral: apps expose callable actions, can provide observations, and
     may opt into a generic initialization hook. Social backends layer timeline
-    behavior on top through :class:`SocialMediaApp`.
+    behavior on top through :class:`SocialBackendApp`.
     """
 
     action_logger: Any = None
@@ -574,31 +574,6 @@ class BackendApp(metaclass=abc.ABCMeta):
             )
         return schemas
 
-    def get_timeline(self, user_name: str, limit: int = 10) -> list[dict]:
-        """Return raw timeline data for a user."""
-        return []
-
-    def get_timeline_mode(
-        self,
-        timeline_mode: str,
-        user_name: str,
-        limit: int = 10,
-        recsys_type: str | None = None,
-        **timeline_config: dict,
-    ) -> list[dict]:
-        """Return timeline data for a specific mode."""
-        del timeline_mode, recsys_type, timeline_config
-        return self.get_timeline(user_name, limit)
-
-    def format_timeline_for_observation(self, timeline: list[dict]) -> str:
-        """Convert raw timeline data into text for an agent observation."""
-        return ""
-
-    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
-        """Dispatch a parsed action to the correct app method."""
-        del user_name, action_data
-        return ""
-
     @app_action(
         selectable_name="FINISHED",
         description="To be used when desirable actions for current timestep have been conducted.",
@@ -661,14 +636,54 @@ def _param_to_json_schema(param: "Parameter") -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# SocialMediaApp - social-specific backend base
+# SocialBackendApp - social-specific backend base
 # --------------------------------------------------------------------------- #
 
 
-class SocialMediaApp(BackendApp):
+class SocialBackendApp(BackendApp):
     """Base class for social-media backends.
 
-    Social media apps are environment apps with optional feed/timeline and
-    recommendation capabilities. New generic backends should subclass
-    :class:`BackendApp` directly.
+    Social backends add explicit timeline, feed, action parsing, and optional
+    recommendation hooks on top of the domain-neutral :class:`BackendApp`.
+    Non-social backends should subclass :class:`BackendApp` directly.
     """
+
+    def setup_social_state(
+        self,
+        *,
+        agent_names: list[str],
+        sim_roles: dict[str, str] | None = None,
+        graph_config: dict[str, Any] | None = None,
+        following_graph: dict[str, list[str]] | None = None,
+        agent_bios: dict[str, str] | None = None,
+    ) -> None:
+        """Set up social users and relationships for this backend."""
+        del agent_names, sim_roles, graph_config, following_graph, agent_bios
+        raise NotImplementedError(f"{type(self).__name__} does not implement social state setup.")
+
+    def get_timeline(self, user_name: str, limit: int = 10) -> list[dict]:
+        """Return raw timeline data for a user."""
+        del user_name, limit
+        raise NotImplementedError(f"{type(self).__name__} does not implement timelines.")
+
+    def get_timeline_mode(
+        self,
+        timeline_mode: str,
+        user_name: str,
+        limit: int = 10,
+        recsys_type: str | None = None,
+        **timeline_config: dict,
+    ) -> list[dict]:
+        """Return timeline data for a specific mode."""
+        del timeline_mode, user_name, limit, recsys_type, timeline_config
+        raise NotImplementedError(f"{type(self).__name__} does not implement timeline modes.")
+
+    def format_timeline_for_observation(self, timeline: list[dict]) -> str:
+        """Convert raw timeline data into text for an agent observation."""
+        del timeline
+        raise NotImplementedError(f"{type(self).__name__} does not format social timelines.")
+
+    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
+        """Dispatch a parsed social action to the correct backend method."""
+        del user_name, action_data
+        raise NotImplementedError(f"{type(self).__name__} does not resolve social actions.")

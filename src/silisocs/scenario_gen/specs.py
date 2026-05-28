@@ -63,10 +63,10 @@ class NetworkConfig(BaseModel):
     barabasi_albert_m: int = 2
 
 
-class PlatformConfig(BaseModel):
-    """PlatformConfig."""
+class BackendConfig(BaseModel):
+    """BackendConfig."""
 
-    platform_type: str = "twitter_like"
+    backend_type: str = "twitter_like"
     timeline_mode: Literal["follower_chronological", "pure_recsys"] = "follower_chronological"
     enabled_actions: list[str] = Field(
         default_factory=lambda: [
@@ -94,7 +94,7 @@ class ScenarioSpec(BaseModel):
     data: dict[str, Any] = Field(default_factory=dict)
     agent_classes: list[AgentClass]
     network: NetworkConfig = Field(default_factory=NetworkConfig)
-    platform: PlatformConfig = Field(default_factory=PlatformConfig)
+    backend: BackendConfig = Field(default_factory=BackendConfig)
     custom_entity_stubs: list[str] = Field(default_factory=list)
 
 

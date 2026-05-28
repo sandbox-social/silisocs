@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 import pytest
 from omegaconf import OmegaConf
 
-from silisocs.environments.backends.base import BackendApp, SocialMediaApp, app_action
+from silisocs.environments.backends.base import BackendApp, SocialBackendApp, app_action
 from silisocs.environments.gm.components.resolve import (
     GenericActionResolveComponent,
     ParsedActionResolveComponent,
@@ -33,8 +33,16 @@ class TestActionCallToActionBuilder:
         cfg = OmegaConf.create(
             {
                 "env": {
-                    "action_prompt": "Please decide what action to take.\n[OUTPUT STYLE]",
-                    "output_style": "Format as: ACTION TYPE: ...",
+                    "gm": {
+                        "components": {
+                            "action_prompt": {
+                                "params": {
+                                    "action_prompt": "Please decide what action to take.\n[OUTPUT STYLE]",
+                                    "output_style": "Format as: ACTION TYPE: ...",
+                                }
+                            }
+                        }
+                    },
                 },
                 "sim": {
                     "prompt_additions": {
@@ -57,8 +65,16 @@ class TestActionCallToActionBuilder:
         cfg = OmegaConf.create(
             {
                 "env": {
-                    "action_prompt": "Please decide what action to take.\n[OUTPUT STYLE]",
-                    "output_style": "Format as: ACTION TYPE: ...",
+                    "gm": {
+                        "components": {
+                            "action_prompt": {
+                                "params": {
+                                    "action_prompt": "Please decide what action to take.\n[OUTPUT STYLE]",
+                                    "output_style": "Format as: ACTION TYPE: ...",
+                                }
+                            }
+                        }
+                    },
                 },
                 "sim": {
                     "prompt_additions": {
@@ -81,8 +97,16 @@ class TestActionCallToActionBuilder:
         cfg = OmegaConf.create(
             {
                 "env": {
-                    "action_prompt": "Please decide what action to take.\n[OUTPUT STYLE]",
-                    "output_style": "Format as: ACTION TYPE: ...",
+                    "gm": {
+                        "components": {
+                            "action_prompt": {
+                                "params": {
+                                    "action_prompt": "Please decide what action to take.\n[OUTPUT STYLE]",
+                                    "output_style": "Format as: ACTION TYPE: ...",
+                                }
+                            }
+                        }
+                    },
                 },
                 "sim": {
                     "prompt_additions": {
@@ -111,8 +135,16 @@ class TestActionCallToActionBuilder:
         cfg = OmegaConf.create(
             {
                 "env": {
-                    "action_prompt": "Custom action prompt",
-                    "output_style": "Custom output style",
+                    "gm": {
+                        "components": {
+                            "action_prompt": {
+                                "params": {
+                                    "action_prompt": "Custom action prompt",
+                                    "output_style": "Custom output style",
+                                }
+                            }
+                        }
+                    }
                 }
             }
         )
@@ -126,8 +158,16 @@ class TestActionCallToActionBuilder:
         cfg = OmegaConf.create(
             {
                 "env": {
-                    "action_prompt": "Please take an action.",
-                    "output_style": "Format as: ACTION",
+                    "gm": {
+                        "components": {
+                            "action_prompt": {
+                                "params": {
+                                    "action_prompt": "Please take an action.",
+                                    "output_style": "Format as: ACTION",
+                                }
+                            }
+                        }
+                    }
                 }
             }
         )
@@ -145,7 +185,11 @@ class TestActionCallToActionBuilder:
         cfg = OmegaConf.create(
             {
                 "env": {
-                    "output_style": "Format as: ACTION",
+                    "gm": {
+                        "components": {
+                            "action_prompt": {"params": {"output_style": "Format as: ACTION"}}
+                        }
+                    },
                 },
                 "sim": {
                     "prompt_additions": {
@@ -165,7 +209,11 @@ class TestActionCallToActionBuilder:
         cfg = OmegaConf.create(
             {
                 "env": {
-                    "output_style": "Format as: ACTION",
+                    "gm": {
+                        "components": {
+                            "action_prompt": {"params": {"output_style": "Format as: ACTION"}}
+                        }
+                    },
                 },
                 "sim": {
                     "prompt_additions": {
@@ -186,8 +234,16 @@ class TestActionCallToActionBuilder:
         cfg = OmegaConf.create(
             {
                 "env": {
-                    "action_prompt": "Take action.\n[OUTPUT STYLE]",
-                    "output_style": "Format as: ACTION",
+                    "gm": {
+                        "components": {
+                            "action_prompt": {
+                                "params": {
+                                    "action_prompt": "Take action.\n[OUTPUT STYLE]",
+                                    "output_style": "Format as: ACTION",
+                                }
+                            }
+                        }
+                    }
                 }
             }
         )
@@ -204,8 +260,16 @@ class TestActionCallToActionBuilder:
         cfg = OmegaConf.create(
             {
                 "env": {
-                    "action_prompt": prompt,
-                    "output_style": "Style",
+                    "gm": {
+                        "components": {
+                            "action_prompt": {
+                                "params": {
+                                    "action_prompt": prompt,
+                                    "output_style": "Style",
+                                }
+                            }
+                        }
+                    },
                 },
                 "sim": {
                     "prompt_additions": {
@@ -267,7 +331,7 @@ class MockBackend(BackendApp):
         return []
 
 
-class _FinishedIntegrationApp(SocialMediaApp):
+class _FinishedIntegrationApp(SocialBackendApp):
     def name(self) -> str:
         return "finished_app"
 
@@ -288,7 +352,7 @@ class _FinishedIntegrationApp(SocialMediaApp):
         return ""
 
 
-class _GenericPromptApp(SocialMediaApp):
+class _GenericPromptApp(SocialBackendApp):
     def name(self) -> str:
         return "generic_prompt_app"
 
@@ -313,7 +377,7 @@ class TestResolveComponentFormatMatching:
         mock_app.invoke_action_by_name.return_value = "success"
 
         component = GenericActionResolveComponent(
-            sm_app=mock_app,
+            backend=mock_app,
             model=MagicMock(),
         )
 
@@ -338,7 +402,7 @@ class TestResolveComponentFormatMatching:
         mock_app.parse_and_resolve_action.return_value = "success"
 
         component = ParsedActionResolveComponent(
-            sm_app=mock_app,
+            backend=mock_app,
             model=MagicMock(),
         )
 
@@ -355,7 +419,7 @@ class TestResolveComponentFormatMatching:
         mock_app.invoke_action_with_kwargs.return_value = "success"
 
         component = ToolCallingResolveComponent(
-            sm_app=mock_app,
+            backend=mock_app,
             model=MagicMock(),
         )
 
@@ -381,9 +445,9 @@ class TestResolveComponentFormatMatching:
 def test_finished_routes_through_backend_across_all_resolve_modes() -> None:
     app = _FinishedIntegrationApp()
 
-    parsed = ParsedActionResolveComponent(sm_app=app, model=MagicMock())
-    generic = GenericActionResolveComponent(sm_app=app, model=MagicMock())
-    tool = ToolCallingResolveComponent(sm_app=app, model=MagicMock())
+    parsed = ParsedActionResolveComponent(backend=app, model=MagicMock())
+    generic = GenericActionResolveComponent(backend=app, model=MagicMock())
+    tool = ToolCallingResolveComponent(backend=app, model=MagicMock())
 
     parsed_result = parsed.resolve(
         active_agent="Alice",
@@ -407,7 +471,7 @@ def test_finished_routes_through_backend_across_all_resolve_modes() -> None:
 def test_tool_calling_resolve_supports_multi_tool_payload() -> None:
     mock_app = MagicMock()
     mock_app.invoke_action_with_kwargs.side_effect = ["posted", "liked"]
-    tool = ToolCallingResolveComponent(sm_app=mock_app, model=MagicMock())
+    tool = ToolCallingResolveComponent(backend=mock_app, model=MagicMock())
 
     tool_result = tool.resolve(
         active_agent="Alice",

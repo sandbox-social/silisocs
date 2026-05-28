@@ -205,7 +205,8 @@ hypotheses:
           echo_timeline_recsys_type: null
           echo_observation_max_posts: 10
           echo_update_component_built_in: null
-          echo_update_component_class_path: replications.echo_chambers.components.update.NoOpUpdate
+          echo_update_component_class_path: replications.echo_chambers.components.recommend.NoOpRecommendationUpdate
+          echo_update_component_params: null
       loose_social_twhin_recsys_5seed:
         scenarios: [loose_social]
         seeds: [6301, 6302, 6303, 6304, 6305]
@@ -222,9 +223,10 @@ hypotheses:
           echo_observation_max_posts: 10
           echo_update_component_built_in: social_recommendation
           echo_update_component_class_path: null
-          echo_recommend_default_recsys_type: twhin
-          echo_recommend_update_every_n_steps: 1
-          echo_recommend_max_posts: 50
+          echo_update_component_params:
+            default_recsys_type: twhin
+            update_every_n_steps: 1
+            max_posts: 50
 
   h4_self_state_feedback:
     statement: "Echo-chamber dynamics depend on whether agents are reminded of their own previously reported belief and opinion during the terminal belief probe."
@@ -326,7 +328,7 @@ hypotheses:
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
           agents: loose_social
-          sim.llm.provider: local
+          sim.llm.provider: openai_compatible
           sim.llm.name: qwen3.5-4b
           sim.llm.api_base: http://127.0.0.1:30000/v1
           sim.llm.api_key: local-api-key
@@ -346,7 +348,7 @@ hypotheses:
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
           agents: loose_social
-          sim.llm.provider: local
+          sim.llm.provider: openai_compatible
           sim.llm.name: qwen3.5-4b
           sim.llm.api_base: http://127.0.0.1:30000/v1
           sim.llm.api_key: local-api-key
@@ -388,7 +390,7 @@ hypotheses:
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
           agents: simple_social
-          sim.llm.provider: local
+          sim.llm.provider: openai_compatible
           sim.llm.name: qwen3.5-4b
           sim.llm.api_base: http://127.0.0.1:30000/v1
           sim.llm.api_key: local-api-key
@@ -423,7 +425,7 @@ hypotheses:
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
           agents: simple_social
-          sim.llm.provider: local
+          sim.llm.provider: openai_compatible
           sim.llm.name: qwen3.5-4b
           sim.llm.api_base: http://127.0.0.1:30000/v1
           sim.llm.api_key: local-api-key

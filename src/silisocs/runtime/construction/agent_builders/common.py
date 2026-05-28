@@ -81,7 +81,11 @@ def resolve_source(record: Any, spec: Any) -> Any:
         value = extract_path(record, match.group(1).strip())
         if value is None:
             return ""
-        return "\n".join(str(item).strip() for item in value) if isinstance(value, list) else str(value)
+        return (
+            "\n".join(str(item).strip() for item in value)
+            if isinstance(value, list)
+            else str(value)
+        )
 
     return re.sub(r"\{([^{}]+)\}", _sub, spec)
 

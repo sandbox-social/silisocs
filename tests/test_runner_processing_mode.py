@@ -24,25 +24,52 @@ def _base_cfg(processing_mode: str):
                 "persona_pipeline": {},
             },
             "env": {
-                "gm": {"components": {"resolve": {"built_in": "parsed_action"}}},
-                "social_network": {
-                    "activity_transition_rates": {
-                        "user": {
-                            "inactive_to_active": 0.3,
-                            "active_to_inactive": 0.3,
-                        }
-                    },
-                    "fully_connected_targets": [],
-                    "base_followership_probability": 0.3,
+                "backend": {
+                    "type": "twitter_like",
+                    "class_path": None,
+                    "params": {},
+                    "enabled_actions": None,
                 },
-                "usage_instructions": "Use platform respectfully.",
-                "action_prompt": "Act on timeline.",
-                "gamemaster": {
+                "gm": {
+                    "class_path": "silisocs.environments.gm.game_master.GameMaster",
                     "name": "social-media_game-master",
-                    "filename": "social_media_game_master",
                     "sim_role": {
                         "name": "social_media_gm",
                         "module_path": "silisocs.environments.gm.game_master",
+                    },
+                    "components": {
+                        "initialize": {
+                            "built_in": "social_media",
+                            "params": {
+                                "graph": {
+                                    "fully_connected_targets": [],
+                                    "base_followership_probability": 0.3,
+                                }
+                            },
+                        },
+                        "next_acting": {
+                            "built_in": "activity_probability",
+                            "params": {
+                                "activity_transition_rates": {
+                                    "user": {
+                                        "inactive_to_active": 0.3,
+                                        "active_to_inactive": 0.3,
+                                    }
+                                }
+                            },
+                        },
+                        "observe": {
+                            "built_in": "timeline_every_turn",
+                            "params": {"timeline_mode": "follower_chronological"},
+                        },
+                        "resolve": {"built_in": "parsed_action"},
+                        "action_prompt": {
+                            "built_in": "default",
+                            "params": {
+                                "action_prompt": "Act on timeline.",
+                                "output_style": "",
+                            },
+                        },
                     },
                 },
             },
@@ -105,6 +132,38 @@ def test_old_gm_initializer_config_is_rejected() -> None:
         build_game_masters(cfg)
 
 
+def test_top_level_environment_config_is_rejected() -> None:
+    cfg = _base_cfg("raw")
+    cfg.environment = {"backend": {"type": "twitter_like"}}
+
+    with pytest.raises(ValueError, match="environment"):
+        build_game_masters(cfg)
+
+
+def test_old_env_backend_selector_config_is_rejected() -> None:
+    cfg = _base_cfg("raw")
+    cfg.env.platform_type = "twitter_like"
+
+    with pytest.raises(ValueError, match="env.platform_type"):
+        build_game_masters(cfg)
+
+
+def test_old_env_app_config_is_rejected() -> None:
+    cfg = _base_cfg("raw")
+    cfg.env.app = {"class_path": "tests.fake.App", "params": {}}
+
+    with pytest.raises(ValueError, match="env.app"):
+        build_game_masters(cfg)
+
+
+def test_removed_local_llm_provider_is_rejected() -> None:
+    cfg = _base_cfg("raw")
+    cfg.sim.llm = {"provider": "local"}
+
+    with pytest.raises(ValueError, match="local LLM provider"):
+        build_game_masters(cfg)
+
+
 def test_build_game_masters_supports_per_gm_prompt_overrides() -> None:
     cfg = _base_cfg("raw")
     cfg.env.gm_orchestration = {
@@ -146,8 +205,7 @@ def test_build_game_masters_supports_per_gm_prompt_overrides() -> None:
     game_masters = build_game_masters(cfg)
     social_media_gms = list(game_masters)
     prompts_by_name = {
-        gm.params["name"]: gm.params["calls_to_action"]["social_media_action"]
-        for gm in social_media_gms
+        gm.params["name"]: gm.params["action_prompt_template"] for gm in social_media_gms
     }
 
     assert "gm_alpha" in prompts_by_name

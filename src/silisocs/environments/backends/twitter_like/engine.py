@@ -919,11 +919,7 @@ class TwitterLikePlatform:
             feed = self.get_feed("curated_global", username, limit=limit)
             return feed.get("posts", [])
 
-        # Fallback: use follower_chronological
-        logger.warning(
-            f"Unknown timeline strategy '{strategy}', falling back to follower_chronological"
-        )
-        return self.get_timeline("follower_chronological", username, limit, **timeline_config)
+        raise ValueError(f"Unknown timeline strategy: {strategy}")
 
     # ================================================================ #
     # OASIS-Compatible Extended Methods
@@ -1609,19 +1605,15 @@ class TwitterLikePlatform:
             users: List of user dicts.
             posts: List of post dicts.
             max_posts: Maximum recommendations per user.
-            recsys_state: State dict for this algorithm type containing 'model' and 'embeddings_cache'.
-                         If None, attempts to use legacy self.recsys_model.
+            recsys_state: State dict for this algorithm type containing model
+                and embeddings_cache.
         """
-        # Handle backward compatibility (single-model mode)
         if recsys_state is None:
-            if not hasattr(self, "recsys_model") or self.recsys_model is None:
-                return {}
-            model = self.recsys_model
-            embeddings_cache = getattr(self, "embeddings_cache", {})
-        else:
-            model = recsys_state.get("model")
-            embeddings_cache = recsys_state.get("embeddings_cache", {})
-            backend = str(recsys_state.get("backend") or "sentence_transformer").strip()
+            raise ValueError("Embedding recommendations require initialized recsys_state.")
+
+        model = recsys_state.get("model")
+        embeddings_cache = recsys_state.get("embeddings_cache", {})
+        backend = str(recsys_state.get("backend") or "sentence_transformer").strip()
 
         options = self._resolve_context_options(recsys_state)
         context_recent_posts = int(options["context_recent_posts"])
@@ -1638,10 +1630,10 @@ class TwitterLikePlatform:
             like_trace_window=like_trace_window,
         )
 
-        if recsys_state is not None and backend == "tfidf":
+        if backend == "tfidf":
             return self._rec_tfidf(users, posts, max_posts, user_context_index=user_context_index)
 
-        if recsys_state is not None and backend == "twhin_transformers":
+        if backend == "twhin_transformers":
             tokenizer = recsys_state.get("tokenizer")
             return self._rec_twhin(
                 users,

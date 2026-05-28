@@ -24,7 +24,8 @@ The simulated world that agents act inside.
 _Avoid_: Simulator, social system
 
 **Game Master**:
-The environment-facing coordinator that decides which agents act, prompts them, observes backend state, and resolves actions.
+The environment-facing coordinator that owns one `backend` plus typed slots for
+initialization, update, actor selection, prompting, observation, and resolution.
 _Avoid_: GM-as-agent, simulator object
 
 **Game Master Component**:
@@ -32,11 +33,25 @@ A native helper selected under `env.gm.components.<slot>` that implements one
 direct role method such as `initialize(...)`, `acting_agent_names()`,
 `action_prompt(agent_name)`, `make_observation(agent_name)`,
 `resolve_action(agent_name, action)`, or `update(step, agents, context)`.
+Behavior knobs live with the component that owns them: graph setup under
+`initialize.params.graph`, activity rates under `next_acting.params`,
+timeline settings under `observe.params`, and recommendation settings under
+`update.params`.
 _Avoid_: Concordia lifecycle component, `pre_act`, `post_act`
 
 **Backend**:
 The domain state and operations exposed by an environment.
 _Avoid_: App when referring to the whole environment
+
+**BackendApp**:
+The domain-neutral backend contract: initialization, observations, action
+discovery, action schemas, and action invocation.
+_Avoid_: Social timeline contract
+
+**SocialBackendApp**:
+A backend specialization for social platforms that need timelines, feed
+formatting, parsed social actions, and recommendation hooks.
+_Avoid_: Putting social methods on `BackendApp`
 
 **Engine**:
 The runtime loop that initializes objects, schedules turns, and advances the simulation.
@@ -69,8 +84,10 @@ A post-run or in-run measurement of agent behavior or environment state.
 _Avoid_: Probe when referring to all evaluation forms
 
 **Probe**:
-An in-run question or measurement directed at agents.
-_Avoid_: Query when describing runtime behavior
+An in-run question or measurement directed at agents. Probe prompts ask the
+measurement question and answer-format constraint only; agent identity and
+persona context belong to the agent.
+_Avoid_: Query when describing runtime behavior, probe-owned identity framing
 
 **Checkpoint Source Run**:
 A previous output directory used as the source for checkpoint restore.
@@ -108,6 +125,8 @@ must not import `concordia.*` or local Concordia-like component/document copies.
   configuration, but they are plain Silisocs helpers with no Concordia
   lifecycle methods. Per-flow behavior routes to separately configured
   component instances; components do not implement flow-field mixins.
+- `env` wires `backend` and `gm`; it is not a behavior namespace. Component
+  params own behavior controls.
 - Checkpoint restore is configured under `sim.checkpoint.source_run` plus
   `sim.checkpoint.restore`; it is not a Simulation Initialization mode.
 

@@ -40,7 +40,7 @@ def test_timeline_observe_passes_configured_recsys_type() -> None:
     component = TimelineMakeObservation(
         model=object(),
         agent_names=("alice",),
-        sm_app=app,
+        backend=app,
         agent_flow_tags={"alice": "active"},
         timeline_mode="pure_recsys",
         recsys_type="twitter",
@@ -270,7 +270,7 @@ def test_reddit_platform_rejects_twitter_algorithm(tmp_path) -> None:
 
 
 def test_social_recommendation_has_no_native_owner_binding() -> None:
-    component = SocialRecommendationUpdateComponent(sm_app=object())
+    component = SocialRecommendationUpdateComponent(backend=object())
 
     assert not hasattr(component, "set_entity")
     assert not hasattr(component, "get_entity")

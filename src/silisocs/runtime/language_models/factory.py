@@ -4,8 +4,8 @@ import os
 from typing import Any
 
 from silisocs.runtime.language_models.base import LanguageModel, NoLanguageModel
-from silisocs.runtime.language_models.local import LocalLanguageModel
 from silisocs.runtime.language_models.openai import OpenAILanguageModel
+from silisocs.runtime.language_models.openai_compatible import OpenAICompatibleLanguageModel
 from silisocs.runtime.language_models.scripted import ScriptedLanguageModel
 
 
@@ -24,7 +24,10 @@ def select_large_language_model(
     if disable_language_model:
         normalized_provider = "disabled"
     if not normalized_provider:
-        raise ValueError("sim.llm.provider is required: openai | local | scripted | disabled.")
+        raise ValueError(
+            "sim.llm.provider is required: openai | openai_compatible | scripted | disabled."
+        )
+
     if normalized_provider == "disabled":
         return NoLanguageModel()
     if normalized_provider == "scripted":
@@ -43,8 +46,8 @@ def select_large_language_model(
             debug=debug_mode,
             extra_kwargs=extra_kwargs,
         )
-    if normalized_provider == "local":
-        return LocalLanguageModel(
+    if normalized_provider == "openai_compatible":
+        return OpenAICompatibleLanguageModel(
             api_key=api_key,
             model_name=model_name,
             api_base=str(api_base or ""),
@@ -54,5 +57,6 @@ def select_large_language_model(
             extra_kwargs=extra_kwargs,
         )
     raise ValueError(
-        f"Unknown sim.llm.provider '{provider}'. Available: openai, local, scripted, disabled."
+        f"Unknown sim.llm.provider '{provider}'. "
+        f"Available: openai, openai_compatible, scripted, disabled."
     )

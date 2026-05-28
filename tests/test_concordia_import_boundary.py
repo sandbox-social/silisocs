@@ -148,6 +148,41 @@ def test_native_code_does_not_import_removed_utility_modules() -> None:
     assert sorted(offenders) == []
 
 
+def test_native_source_does_not_use_removed_backend_or_config_names() -> None:
+    forbidden = (
+        "write_" + "seed_toot",
+        "silisocs." + "_utils",
+        "env_" + "cfg(",
+        "Social" + "MediaApp",
+        "create_" + "social_media_app",
+        "Local" + "LanguageModel",
+        "language_models." + "local",
+        "sm_" + "app",
+        "env_" + "app",
+        "sm_" + "user_data",
+        "social_" + "media_action",
+        "runtime_" + "config",
+        "platform_" + "type",
+        "create_" + "environment_app",
+        "app_" + "class_path",
+        "app_" + "params",
+        "You are answering as",
+        "in character",
+    )
+    offenders: list[str] = []
+    for path in SRC_ROOT.rglob("*.py"):
+        if _is_allowed(path, SRC_ROOT):
+            continue
+        if path.relative_to(SRC_ROOT).as_posix() == "runtime/configuration/legacy.py":
+            continue
+        text = path.read_text(encoding="utf-8")
+        for marker in forbidden:
+            if marker in text:
+                offenders.append(f"{path.relative_to(PROJECT_ROOT)}:{marker}")
+
+    assert sorted(offenders) == []
+
+
 def test_docs_and_configs_do_not_use_removed_checkpoint_or_html_keys() -> None:
     checked_roots = [
         SRC_ROOT / "conf",
@@ -182,6 +217,15 @@ def test_docs_and_configs_do_not_use_removed_checkpoint_or_html_keys() -> None:
         "silisocs.agents.builders",
         "build_agents(",
         "mkdocs build",
+        "provider: local",
+        "local, or disabled",
+        "logs.html",
+        "SocialMediaApp",
+        "sm_app",
+        "env_app",
+        "platform_type",
+        "backend_type:",
+        "env.app",
     )
     offenders: list[str] = []
     for root in checked_roots:
@@ -190,7 +234,7 @@ def test_docs_and_configs_do_not_use_removed_checkpoint_or_html_keys() -> None:
         for path in root.rglob("*"):
             if path.suffix not in {".md", ".yaml", ".yml"}:
                 continue
-            if path.name.endswith("_old.md"):
+            if path.name.endswith("_old.md") or path.name == "concordia_migration_log.md":
                 continue
             text = path.read_text(encoding="utf-8")
             for marker in forbidden:

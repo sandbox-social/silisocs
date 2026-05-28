@@ -47,10 +47,12 @@ class SeedPostsSimulationInitializer(SimulationInitializer):
         type: str = "agent",  # noqa: A002
         params: Mapping[str, Any] | None = None,
         action_mappings: Mapping[str, Any] | None = None,
+        default_subreddit: str = "general",
     ) -> None:
         provider_cfg = {"type": type, "params": dict(params or {})}
         self.seed_post_provider = seed_post_provider or build_seed_post_provider(provider_cfg)
         self.action_mappings = dict(action_mappings or {})
+        self.default_subreddit = str(default_subreddit or "general")
 
     def initialize(
         self,
@@ -69,17 +71,19 @@ class SeedPostsSimulationInitializer(SimulationInitializer):
             if not post_text:
                 continue
             game_master = _owning_game_master(agent.name, game_masters, context)
-            platform_type = str(getattr(getattr(game_master, "app", None), "platform_type", ""))
-            if not platform_type:
-                platform_type = str(
-                    getattr(getattr(game_master, "app", None), "name", lambda: "")()
+            backend_type = str(getattr(game_master, "backend_type", "") or "").strip()
+            if not backend_type:
+                raise ValueError(
+                    f"Game master {getattr(game_master, 'name', '<unknown>')!r} "
+                    "is missing backend_type required for seed-post initialization."
                 )
             action = build_seed_post_action(
-                platform_type=platform_type,
+                backend_type=backend_type,
                 agent_name=agent.name,
                 post_text=post_text,
                 context=context,
                 mapping_overrides=self.action_mappings,
+                default_subreddit=self.default_subreddit,
             )
             if action.output_type == OutputType.SKIP:
                 continue

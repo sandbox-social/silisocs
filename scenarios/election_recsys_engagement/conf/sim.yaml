@@ -1,5 +1,5 @@
 llm:
-  provider: local
+  provider: openai_compatible
   name: qwen3.5-4b
   api_base: http://localhost:30000/v1
   api_key: test-key

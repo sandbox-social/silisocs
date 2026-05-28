@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from silisocs.environments.backends.factory import create_environment_app
+from silisocs.environments.backends.factory import create_backend_app
 from silisocs.environments.backends.virtual_space.app import VirtualSpaceApp
 
 
@@ -67,9 +67,9 @@ def test_virtual_space_talk_requires_same_room_and_records_message() -> None:
 
 
 def test_virtual_space_factory_and_finished_action() -> None:
-    app = create_environment_app(
+    app = create_backend_app(
         "virtual_space",
-        app_params={"rooms": ["atrium", "lab"], "starting_room": "lab"},
+        params={"rooms": ["atrium", "lab"], "starting_room": "lab"},
     )
     app.initialize(agent_names=["Alice"])
 

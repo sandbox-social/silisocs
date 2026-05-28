@@ -11,23 +11,30 @@ Verifies that:
 import pytest
 from omegaconf import OmegaConf
 
-from silisocs.environments.backends.base import SocialMediaApp, app_action
+from silisocs.environments.backends.base import SocialBackendApp, app_action
 from silisocs.environments.gm.base_game_master import (
     EnvironmentGameMaster,
     GameMasterComponentSlots,
     build_generic_action_prompt,
 )
 from silisocs.environments.gm.components.action_prompt import DefaultActionPromptComponent
-from silisocs.environments.gm.components.base import NoOpUpdateComponent
+from silisocs.environments.gm.components.base import (
+    NextActingComponent,
+    NoOpUpdateComponent,
+    ObservationComponent,
+    ResolveComponent,
+)
 from silisocs.initialization.game_masters import NoOpGameMasterInitializer
+from silisocs.runtime.language_models import NoLanguageModel
 from silisocs.runtime.prompts.action_prompts import (
     PromptAdditions,
     build_complete_action_prompt_for_runner,
     compile_action_prompt,
 )
+from silisocs.runtime.types import ActionOutput
 
 
-class _IntegrationTestApp(SocialMediaApp):
+class _IntegrationTestApp(SocialBackendApp):
     """Minimal test app for integration testing."""
 
     def name(self) -> str:
@@ -65,18 +72,57 @@ class _GenericBuildApp:
         )
 
 
+class _NoOpNextActing(NextActingComponent):
+    def acting_agent_names(self) -> list[str]:
+        return []
+
+
+class _NoOpObservation(ObservationComponent):
+    def make_observation(self, agent_name: str) -> str:
+        del agent_name
+        return ""
+
+
+class _NoOpResolve(ResolveComponent):
+    def resolve_action(self, agent_name: str, action: ActionOutput) -> str:
+        del agent_name, action
+        return ""
+
+
+def _prompt_cfg(
+    action_prompt: str | None = None,
+    output_style: str | None = None,
+    sim: dict | None = None,
+):
+    params = {}
+    if action_prompt is not None:
+        params["action_prompt"] = action_prompt
+    if output_style is not None:
+        params["output_style"] = output_style
+    data = {
+        "env": {
+            "gm": {
+                "components": {
+                    "action_prompt": {
+                        "params": params,
+                    }
+                }
+            }
+        }
+    }
+    if sim:
+        data["sim"] = sim
+    return OmegaConf.create(data)
+
+
 class TestPromptCompilationMatrixIntegration:
     """Test all combinations of prompt compilation modes."""
 
     def test_custom_mode_no_additions_produces_baseline_prompt(self):
         """Custom mode defaults include guidance and output style in non-tool mode."""
-        cfg = OmegaConf.create(
-            {
-                "env": {
-                    "action_prompt": "Take an action.",
-                    "output_style": "Use ACTION TYPE format",
-                }
-            }
+        cfg = _prompt_cfg(
+            action_prompt="Take an action.",
+            output_style="Use ACTION TYPE format",
         )
         result = build_complete_action_prompt_for_runner(
             cfg=cfg, action_mode="custom", tool_calling_mode="none"
@@ -87,18 +133,10 @@ class TestPromptCompilationMatrixIntegration:
 
     def test_custom_mode_with_action_count_guidance_adds_marker_and_guidance(self):
         """With action_count_guidance flag, should add [ActNum] marker and guidance."""
-        cfg = OmegaConf.create(
-            {
-                "env": {
-                    "action_prompt": "Take an action.",
-                    "output_style": "Ignored",
-                },
-                "sim": {
-                    "prompt_additions": {
-                        "action_count_guidance": True,
-                    }
-                },
-            }
+        cfg = _prompt_cfg(
+            action_prompt="Take an action.",
+            output_style="Ignored",
+            sim={"prompt_additions": {"action_count_guidance": True}},
         )
         result = build_complete_action_prompt_for_runner(
             cfg=cfg, action_mode="custom", tool_calling_mode="none"
@@ -109,13 +147,9 @@ class TestPromptCompilationMatrixIntegration:
 
     def test_custom_mode_includes_output_style_by_default(self):
         """Output-style section should be included by default in non-tool mode."""
-        cfg = OmegaConf.create(
-            {
-                "env": {
-                    "action_prompt": "Take action.",
-                    "output_style": "Format: ACTION TYPE: ...",
-                },
-            }
+        cfg = _prompt_cfg(
+            action_prompt="Take action.",
+            output_style="Format: ACTION TYPE: ...",
         )
         result = build_complete_action_prompt_for_runner(
             cfg=cfg, action_mode="custom", tool_calling_mode="none"
@@ -126,18 +160,10 @@ class TestPromptCompilationMatrixIntegration:
 
     def test_custom_mode_tool_calling_strips_output_style(self):
         """Tool-calling mode should strip output style even if flag is set."""
-        cfg = OmegaConf.create(
-            {
-                "env": {
-                    "action_prompt": "Take action.",
-                    "output_style": "Format: ACTION TYPE: ...",
-                },
-                "sim": {
-                    "prompt_additions": {
-                        "action_count_guidance": True,
-                    }
-                },
-            }
+        cfg = _prompt_cfg(
+            action_prompt="Take action.",
+            output_style="Format: ACTION TYPE: ...",
+            sim={"prompt_additions": {"action_count_guidance": True}},
         )
         result = build_complete_action_prompt_for_runner(
             cfg=cfg, action_mode="custom", tool_calling_mode="single"
@@ -152,14 +178,7 @@ class TestPromptCompilationMatrixIntegration:
 
     def test_generic_mode_runner_compiler_ignores_config_prompt_text(self):
         """Runner-side generic compile should not consume user-authored generic prompts."""
-        cfg = OmegaConf.create(
-            {
-                "env": {
-                    "action_prompt": "Ignored",
-                    "output_style": "Runner style",
-                }
-            }
-        )
+        cfg = _prompt_cfg(action_prompt="Ignored", output_style="Runner style")
         result = build_complete_action_prompt_for_runner(
             cfg=cfg, action_mode="generic", tool_calling_mode="none"
         )
@@ -167,13 +186,9 @@ class TestPromptCompilationMatrixIntegration:
 
     def test_generic_mode_runner_compiler_can_disable_action_guidance(self):
         """Only action guidance toggle should affect runner generic skeleton output."""
-        cfg = OmegaConf.create(
-            {
-                "env": {
-                    "output_style": "Runner style",
-                },
-                "sim": {"prompt_additions": {"action_count_guidance": False}},
-            }
+        cfg = _prompt_cfg(
+            output_style="Runner style",
+            sim={"prompt_additions": {"action_count_guidance": False}},
         )
         result = build_complete_action_prompt_for_runner(
             cfg=cfg, action_mode="generic", tool_calling_mode="none"
@@ -183,15 +198,9 @@ class TestPromptCompilationMatrixIntegration:
 
     def test_generic_mode_with_multi_tool_calling_guidance(self):
         """Runner-side generic compile in tool mode only carries action guidance."""
-        cfg = OmegaConf.create(
-            {
-                "env": {"output_style": "Style ignored under tool-calling"},
-                "sim": {
-                    "prompt_additions": {
-                        "action_count_guidance": True,
-                    }
-                },
-            }
+        cfg = _prompt_cfg(
+            output_style="Style ignored under tool-calling",
+            sim={"prompt_additions": {"action_count_guidance": True}},
         )
         result = build_complete_action_prompt_for_runner(
             cfg=cfg, action_mode="generic", tool_calling_mode="multi"
@@ -202,18 +211,10 @@ class TestPromptCompilationMatrixIntegration:
 
     def test_prompt_structure_with_both_additions(self):
         """Prompt with both action guidance and output style should be ordered correctly."""
-        cfg = OmegaConf.create(
-            {
-                "env": {
-                    "action_prompt": "Base prompt.",
-                    "output_style": "Format instructions",
-                },
-                "sim": {
-                    "prompt_additions": {
-                        "action_count_guidance": True,
-                    }
-                },
-            }
+        cfg = _prompt_cfg(
+            action_prompt="Base prompt.",
+            output_style="Format instructions",
+            sim={"prompt_additions": {"action_count_guidance": True}},
         )
         result = build_complete_action_prompt_for_runner(
             cfg=cfg, action_mode="custom", tool_calling_mode="none"
@@ -226,13 +227,9 @@ class TestPromptCompilationMatrixIntegration:
 
     def test_runner_uses_per_gm_prompt_overrides_when_provided(self):
         """Per-GM prompt config should override environment defaults."""
-        cfg = OmegaConf.create(
-            {
-                "env": {
-                    "action_prompt": "Default base prompt.",
-                    "output_style": "Default style",
-                },
-            }
+        cfg = _prompt_cfg(
+            action_prompt="Default base prompt.",
+            output_style="Default style",
         )
         result = build_complete_action_prompt_for_runner(
             cfg=cfg,
@@ -251,7 +248,15 @@ class TestPromptCompilationMatrixIntegration:
         cfg = OmegaConf.create(
             {
                 "env": {
-                    "output_style": "FINAL: ACTION + params",
+                    "gm": {
+                        "components": {
+                            "action_prompt": {
+                                "params": {
+                                    "output_style": "FINAL: ACTION + params",
+                                }
+                            }
+                        }
+                    },
                 },
                 "sim": {
                     "prompt_additions": {
@@ -261,9 +266,10 @@ class TestPromptCompilationMatrixIntegration:
             }
         )
         prompt = build_generic_action_prompt(
-            cfg=cfg,
-            sm_app=_GenericBuildApp(),
+            backend=_GenericBuildApp(),
             tool_calling_mode="none",
+            output_style=str(cfg.env.gm.components.action_prompt.params.output_style),
+            add_action_count_guidance=True,
         )
         assert "Available actions:" in prompt
         assert "POST(content)" in prompt
@@ -274,28 +280,29 @@ class TestPromptCompilationMatrixIntegration:
 
 def _gm_for_prompt(
     *,
-    app: _IntegrationTestApp | None,
+    backend: SocialBackendApp,
     prompt: str,
     enable_tool_calling: bool,
 ) -> EnvironmentGameMaster:
     component_slots = GameMasterComponentSlots(
         initialize=NoOpGameMasterInitializer(),
-        next_acting=object(),
+        next_acting=_NoOpNextActing(),
         action_prompt=DefaultActionPromptComponent(
-            app=app,
+            backend=backend,
             action_prompt_template=prompt,
             enable_tool_calling=enable_tool_calling,
         ),
-        observe=object(),
-        resolve=object(),
+        observe=_NoOpObservation(),
+        resolve=_NoOpResolve(),
         update=NoOpUpdateComponent(),
     )
     return EnvironmentGameMaster(
         name="gm",
-        model=object(),
-        app=app,
+        model=NoLanguageModel(),
+        backend=backend,
+        backend_type="integration_test",
         component_slots=component_slots,
-        user_data={},
+        environment_data={},
         action_prompt_template=prompt,
         action_output_mode="tool_calling" if enable_tool_calling else "parsed_action",
         activity_transition_rates={},
@@ -312,7 +319,7 @@ class TestNativeGMActionPromptBehavior:
         """GM should return a typed text ActionSpec without string wrappers."""
         app = _IntegrationTestApp()
         gm = _gm_for_prompt(
-            app=app,
+            backend=app,
             prompt="Test prompt here",
             enable_tool_calling=False,
         )
@@ -326,7 +333,7 @@ class TestNativeGMActionPromptBehavior:
         multiline_prompt = "Line 1\nLine 2\nLine 3"
         app = _IntegrationTestApp()
         gm = _gm_for_prompt(
-            app=app,
+            backend=app,
             prompt=multiline_prompt,
             enable_tool_calling=False,
         )
@@ -336,14 +343,14 @@ class TestNativeGMActionPromptBehavior:
         """Tool-calling GMs should carry schemas in extra_args."""
         app = _IntegrationTestApp()
         gm = _gm_for_prompt(
-            app=app,
+            backend=app,
             prompt="Base prompt",
             enable_tool_calling=True,
         )
         spec = gm.action_prompt("Alice")
         assert spec.prompt == "Base prompt"
         assert spec.output_type.value == "tool_calls"
-        assert spec.extra_args["tool_mode"] == "multi"
+        assert spec.extra_args["tool_mode"] == "single"
         schemas = spec.extra_args["tools"]
         assert isinstance(schemas, list)
         assert len(schemas) > 0
@@ -360,7 +367,7 @@ class TestNativeGMActionPromptBehavior:
             "### END_TOOL_SCHEMAS_JSON ###"
         )
         gm = _gm_for_prompt(
-            app=app,
+            backend=app,
             prompt=wrapped_prompt,
             enable_tool_calling=True,
         )
@@ -368,14 +375,14 @@ class TestNativeGMActionPromptBehavior:
         assert spec.prompt == wrapped_prompt
         assert spec.extra_args["tools"]
 
-    def test_gm_without_app_instance_no_tool_calling(self):
-        """GM without app instance should return a plain text spec."""
-        gm = _gm_for_prompt(
-            app=None,
-            prompt="Base prompt",
+    def test_action_prompt_component_without_backend_returns_text_spec(self):
+        """Component without a backend should return a plain text spec."""
+        component = DefaultActionPromptComponent(
+            backend=None,
+            action_prompt_template="Base prompt",
             enable_tool_calling=True,
         )
-        spec = gm.action_prompt("Alice")
+        spec = component.action_prompt("Alice")
         assert spec.prompt == "Base prompt"
         assert spec.output_type.value == "text"
         assert spec.extra_args == {}
@@ -386,18 +393,10 @@ class TestPromptPipelineEndToEnd:
 
     def test_runner_compile_then_gm_action_prompt(self):
         """Test complete flow: runner compiles prompt, GM emits typed spec."""
-        cfg = OmegaConf.create(
-            {
-                "env": {
-                    "action_prompt": "Decide action for {name}.",
-                    "output_style": "Format: ACTION TYPE: ...",
-                },
-                "sim": {
-                    "prompt_additions": {
-                        "action_count_guidance": True,
-                    }
-                },
-            }
+        cfg = _prompt_cfg(
+            action_prompt="Decide action for {name}.",
+            output_style="Format: ACTION TYPE: ...",
+            sim={"prompt_additions": {"action_count_guidance": True}},
         )
 
         # Step 1: Runner builds prompt
@@ -411,7 +410,7 @@ class TestPromptPipelineEndToEnd:
         # Step 2: GM uses compiled prompt
         app = _IntegrationTestApp()
         gm = _gm_for_prompt(
-            app=app,
+            backend=app,
             prompt=compiled_prompt,
             enable_tool_calling=False,
         )
@@ -425,18 +424,10 @@ class TestPromptPipelineEndToEnd:
 
     def test_runner_with_tool_calling_uses_typed_metadata(self):
         """Test flow with tool-calling: runner builds base, GM adds typed tool metadata."""
-        cfg = OmegaConf.create(
-            {
-                "env": {
-                    "action_prompt": "Decide action.",
-                    "output_style": "Format: ACTION TYPE: ...",
-                },
-                "sim": {
-                    "prompt_additions": {
-                        "action_count_guidance": True,
-                    }
-                },
-            }
+        cfg = _prompt_cfg(
+            action_prompt="Decide action.",
+            output_style="Format: ACTION TYPE: ...",
+            sim={"prompt_additions": {"action_count_guidance": True}},
         )
 
         # Step 1: Runner builds prompt (note: output style stripped for tool-calling)
@@ -449,7 +440,7 @@ class TestPromptPipelineEndToEnd:
         # Step 2: GM attaches tool schemas via extra_args
         app = _IntegrationTestApp()
         gm = _gm_for_prompt(
-            app=app,
+            backend=app,
             prompt=compiled_prompt,
             enable_tool_calling=True,
         )
@@ -489,18 +480,10 @@ class TestPromptStateTransitions:
 
     def test_marker_ordering_is_stable(self):
         """Marker ordering should be deterministic."""
-        cfg = OmegaConf.create(
-            {
-                "env": {
-                    "action_prompt": "Decide action.",
-                    "output_style": "Format: ACTION TYPE",
-                },
-                "sim": {
-                    "prompt_additions": {
-                        "action_count_guidance": True,
-                    }
-                },
-            }
+        cfg = _prompt_cfg(
+            action_prompt="Decide action.",
+            output_style="Format: ACTION TYPE",
+            sim={"prompt_additions": {"action_count_guidance": True}},
         )
 
         # Run multiple times

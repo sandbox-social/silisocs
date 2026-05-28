@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from silisocs.agents.base_agent import Agent
+from silisocs.environments.backends.base import SocialBackendApp
 from silisocs.environments.backends.social.network import generate_follow_network
 from silisocs.environments.gm.components.base import InitializeComponent
 from silisocs.initialization.context import InitializationContext
@@ -41,21 +42,21 @@ class AppInitializeGameMasterInitializer(GameMasterInitializer):
         game_master: Any,
         context: InitializationContext,
     ) -> None:
-        app = _app_for_game_master(game_master)
-        if app is None:
-            raise TypeError(f"Game master {game_master!r} has no backend app.")
-        initializer = getattr(app, "initialize", None)
+        backend = _backend_for_game_master(game_master)
+        initializer = getattr(backend, "initialize", None)
         if not callable(initializer):
-            raise TypeError(f"Backend app {app!r} has no initialize(...) method.")
+            raise TypeError(f"Backend {backend!r} has no initialize(...) method.")
         initializer(
             agent_names=[agent.name for agent in agents],
             sim_roles=dict(context.sim_roles or {}),
-            social_network=dict(context.social_network or {}),
         )
 
 
 class SocialMediaGameMasterInitializer(GameMasterInitializer):
     """Initialize social-media users, graph/subreddit state, and action metadata."""
+
+    def __init__(self, *, graph: Mapping[str, Any] | None = None) -> None:
+        self.graph = dict(graph or {})
 
     def initialize(
         self,
@@ -64,34 +65,39 @@ class SocialMediaGameMasterInitializer(GameMasterInitializer):
         game_master: Any,
         context: InitializationContext,
     ) -> None:
-        app = _app_for_game_master(game_master)
-        if app is None:
-            raise TypeError(f"Game master {game_master!r} has no backend app.")
+        backend = _backend_for_game_master(game_master)
+        if not isinstance(backend, SocialBackendApp):
+            raise TypeError(
+                f"Social GM initializer requires SocialBackendApp, got "
+                f"{backend.__class__.__name__}."
+            )
         _bind_agent_action_metadata(
             agents=agents,
-            app=app,
+            backend=backend,
             action_output_mode=str(getattr(game_master, "action_output_mode", "") or ""),
         )
-        setup = getattr(app, "setup_social_state", None)
+        setup = getattr(backend, "setup_social_state", None)
         if not callable(setup):
             raise TypeError(
-                f"Social backend app {app.__class__.__name__} must expose setup_social_state(...)."
+                f"Social backend {backend.__class__.__name__} must expose setup_social_state(...)."
             )
         agent_names = [agent.name for agent in agents]
         sim_roles = dict(context.sim_roles or {})
-        social_network = dict(context.social_network or {})
-        following_graph = generate_follow_network(agent_names, sim_roles, social_network)
+        setup_config = dict(self.graph)
+        following_graph = generate_follow_network(agent_names, sim_roles, setup_config)
         setup(
             agent_names=agent_names,
             sim_roles=sim_roles,
-            social_network=social_network,
+            graph_config=setup_config,
             following_graph=following_graph,
             agent_bios=dict(context.agent_bios or {}),
         )
-        logger = getattr(app, "_log_action_event", None)
+        logger = getattr(backend, "_log_action_event", None)
         if callable(logger):
             logger(
-                "system", "initialize", dict(getattr(app, "_last_initialization_stats", {}) or {})
+                "system",
+                "initialize",
+                dict(getattr(backend, "_last_initialization_stats", {}) or {}),
             )
 
 
@@ -219,21 +225,20 @@ def _instantiate_with_supported_kwargs(cls: type[Any], kwargs: Mapping[str, Any]
     return cls(**{key: value for key, value in kwargs.items() if key in supported})
 
 
-def _app_for_game_master(game_master: Any) -> Any | None:
-    return getattr(
-        game_master,
-        "app",
-        getattr(game_master, "sm_app", getattr(game_master, "env_app", None)),
-    )
+def _backend_for_game_master(game_master: Any) -> Any:
+    backend = getattr(game_master, "backend", None)
+    if backend is None:
+        raise TypeError(f"Game master {game_master!r} has no backend.")
+    return backend
 
 
 def _bind_agent_action_metadata(
     *,
     agents: Sequence[Agent],
-    app: Any,
+    backend: Any,
     action_output_mode: str,
 ) -> None:
-    catalog = app.action_catalog() if callable(getattr(app, "action_catalog", None)) else []
+    catalog = backend.action_catalog() if callable(getattr(backend, "action_catalog", None)) else []
     allowed_action_types = sorted(
         {
             str(item.get("selectable_name", "")).strip().upper()

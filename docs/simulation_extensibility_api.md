@@ -66,7 +66,7 @@ Common optional methods:
 Expose executable actions with `@app_action`. `generic_action` and
 `tool_calling` resolve modes discover those actions automatically.
 
-`SocialMediaApp` subclasses `BackendApp` for backends with social timelines,
+`SocialBackendApp` subclasses `BackendApp` for backends with social timelines,
 feeds, social action parsing, or recommendation updates. Generic environments
 should subclass `BackendApp` directly.
 
@@ -74,8 +74,8 @@ Custom app config:
 
 ```yaml
 env:
-  platform_type: custom
-  app:
+  backend:
+    type: custom
     class_path: my_pkg.apps.MyBackendApp
     params:
       initial_cash: 20
@@ -101,7 +101,7 @@ Direct GM methods live on `GameMaster`:
 
 Important integration fields used by engines/components:
 
-- `sm_app`
+- `backend`
 - `agent_flow_tags`
 - `gm_orchestration`
 - `flow_to_component_map`
@@ -223,7 +223,7 @@ Add a custom backend app:
 1. Subclass `BackendApp`.
 2. Implement `initialize(...)`.
 3. Add `@app_action` methods.
-4. Configure `env.app.class_path` and `env.app.params`.
+4. Configure `env.backend.class_path` and `env.backend.params`.
 
 Add a custom GM component:
 

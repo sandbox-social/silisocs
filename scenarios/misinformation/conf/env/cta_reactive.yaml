@@ -1,125 +1,209 @@
-# @package env
-# CTA variant: reactive — timeline-driven, impulsive framing
-# Complete env config: twitter_like base + misinformation scenario overrides + variant action_prompt
-platform_type: twitter_like
-app_module_path: silisocs.environments.backends.twitter_like
-use_server: false
-enable_gm_multi_flow: false
-timeline_posts: 10
-timeline_mode: follower_chronological
-timeline_config:
-  recsys_ratio: 0.6
-  follower_ratio: 0.4
-observation_history: 100
-enabled_actions:
+backend:
+  type: twitter_like
+  class_path: null
+  params:
+    perform_operations: false
+    app_description: 'You are currently operating on a Twitter like platform.
+
+      You are allowed to perform the given actions, descriptions, and instructions
+      on how to perform them will follow.
+
+      Generally, to share content, you can write a ''tweet'' (a short post).
+
+      Tweets can be up to 280 characters long.
+
+      You can reply to tweets, creating threaded conversations., and you can
+
+      like (favorite) them to show appreciation, or
+
+      repost (retweet) tweets to share them with your followers.
+
+      You can mention other users in your tweets using their @username.
+
+      You can follow other users to see their tweets in your home timeline.
+
+      You can unfollow users if they no longer wish to see their content.
+
+      Generally, if you don''t want to take actions, or are done taking actions for
+      a given step, you can use the finished action to stop.
+
+      Some of the above listed actions, may not be available at thus step, or some
+      other actions may also be available, as described below.
+
+      current_user is always the full display name (e.g. "Alice Smith").
+
+      Only use real post IDs from timeline/feed observations; do not fabricate IDs.
+
+      For status/content fields, write in first person as the character.
+
+      Omit optional parameters you do not want to use.
+
+      Choose actions from those that are available:'
+  enabled_actions:
   - create_tweet
   - reply_to_tweet
   - like_tweet
   - repost_tweet
   - FINISHED
-gamemaster:
-  filename: social_media
-  name: twitter_like_gm
-  sim_role:
-    name: social media game master
-    module_path: silisocs.environments.gm.game_master
+observation_history: 100
 gm:
-  preset: base
   components:
     initialize:
       built_in: social_media
       class_path: null
-      params: {}
+      params:
+        graph:
+          network_type: predefined
+          predefined_graph:
+            Alice:
+            - Bob
+            - Charlie
+            - Diana
+            Bob:
+            - Alice
+            - Charlie
+            Charlie:
+            - Alice
+            - Bob
+            - Diana
+            Diana:
+            - Alice
+            - Bob
+            - Charlie
+            - Eve
+            Eve:
+            - Alice
+            - Diana
+            Frank:
+            - Bob
+            - Charlie
+            - Eve
+          fully_connected_targets: []
+          base_followership_probability: 0.0
     next_acting:
       built_in: activity_probability
       class_path: null
-      params: {}
+      params:
+        activity_transition_rates:
+          user:
+            inactive_to_active: 0.8
+            active_to_inactive: 0.1
     observe:
       built_in: timeline_every_turn
       class_path: null
-      params: {}
+      params:
+        timeline_mode: follower_chronological
+        timeline_posts: 10
+        timeline_config:
+          recsys_ratio: 0.6
+          follower_ratio: 0.4
     resolve:
       built_in: tool_calling
       class_path: null
       params: {}
+    update:
+      built_in: social_recommendation
+      class_path: null
+      params: {}
+    action_prompt:
+      built_in: default
+      class_path: null
+      params:
+        action_prompt: 'You are currently operating on a Twitter like platform.
+
+          You are allowed to perform the given actions, descriptions, and instructions
+          on how to perform them will follow.
+
+          Generally, to share content, you can write a ''tweet'' (a short post).
+
+          Tweets can be up to 280 characters long.
+
+          You can reply to tweets, creating threaded conversations., and you can
+
+          like (favorite) them to show appreciation, or
+
+          repost (retweet) tweets to share them with your followers.
+
+          You can mention other users in your tweets using their @username.
+
+          You can follow other users to see their tweets in your home timeline.
+
+          You can unfollow users if they no longer wish to see their content.
+
+          Generally, if you don''t want to take actions, or are done taking actions
+          for a given step, you can use the finished action to stop.
+
+          Some of the above listed actions, may not be available at thus step, or
+          some other actions may also be available, as described below.
+
+          current_user is always the full display name (e.g. "Alice Smith").
+
+          Only use real post IDs from timeline/feed observations; do not fabricate
+          IDs.
+
+          For status/content fields, write in first person as the character.
+
+          Omit optional parameters you do not want to use.
+
+          Choose actions from those that are available:
+
+
+          ## AVAILABLE ACTIONS
+
+          1. POST - Share new content by creating a new tweet
+
+          2. REPLY - Engage existing content by responding to a tweet (needs post
+          ID)
+
+          3. REPOST - Extend the reach of content by reposting someone''s tweet (needs
+          post ID)
+
+          4. LIKE - Show the world you appreciate content by liking a tweet (needs
+          post ID)
+
+
+          ## INSTRUCTIONS
+
+          React to what {name} just saw in their feed. What is their immediate impulse?
+
+          - What jumped out at them from the timeline?
+
+          - What do they feel compelled to do right now?
+
+          - Act on that instinct — don''t overthink it.
+
+          If text-based, the text must reflect their posting style description.
+
+
+          [OUTPUT STYLE]'
+        output_style: '## OUTPUT FORMAT
+
+          Answer: {name}
+
+          STEP 1: [Analyze {name}''s motivation based on their character]
+
+          STEP 2: [Consider which posts/actions align with {name}''s values]
+
+          STEP 3: [Determine the single most authentic action]
+
+
+          FINAL DECISION:
+
+          ACTION TYPE: [POST/REPLY/REPOST/LIKE]
+
+          TARGET ID: [Include post ID if applicable]
+
+          CONTENT: [For posts/replies, exact text {name} would write]
+
+          REASONING: [Brief explanation of why this action fits {name}''s character]
+
+          '
+  name: twitter_like_gm
+  sim_role:
+    name: social media game master
+    module_path: silisocs.environments.gm.game_master
+  class_path: silisocs.environments.gm.game_master.GameMaster
 gm_orchestration:
   gms: []
   flow_bindings:
     flow_to_gms: {}
-social_network:
-  network_type: predefined
-  predefined_graph:
-    Alice:
-      - Bob
-      - Charlie
-      - Diana
-    Bob:
-      - Alice
-      - Charlie
-    Charlie:
-      - Alice
-      - Bob
-      - Diana
-    Diana:
-      - Alice
-      - Bob
-      - Charlie
-      - Eve
-    Eve:
-      - Alice
-      - Diana
-    Frank:
-      - Bob
-      - Charlie
-      - Eve
-  activity_transition_rates:
-    user:
-      inactive_to_active: 0.8
-      active_to_inactive: 0.1
-  fully_connected_targets: []
-  base_followership_probability: 0.0
-usage_instructions: |
-  You are currently operating on a Twitter like platform.
-  You are allowed to perform the given actions, descriptions, and instructions on how to perform them will follow.
-  Generally, to share content, you can write a 'tweet' (a short post).
-  Tweets can be up to 280 characters long.
-  You can reply to tweets, creating threaded conversations., and you can
-  like (favorite) them to show appreciation, or
-  repost (retweet) tweets to share them with your followers.
-  You can mention other users in your tweets using their @username.
-  You can follow other users to see their tweets in your home timeline.
-  You can unfollow users if they no longer wish to see their content.
-  Generally, if you don't want to take actions, or are done taking actions for a given step, you can use the finished action to stop.
-  Some of the above listed actions, may not be available at thus step, or some other actions may also be available, as described below.
-  current_user is always the full display name (e.g. "Alice Smith").
-  Only use real post IDs from timeline/feed observations; do not fabricate IDs.
-  For status/content fields, write in first person as the character.
-  Omit optional parameters you do not want to use.
-  Choose actions from those that are available:
-action_prompt: |
-  ## AVAILABLE ACTIONS
-  1. POST - Share new content by creating a new tweet
-  2. REPLY - Engage existing content by responding to a tweet (needs post ID)
-  3. REPOST - Extend the reach of content by reposting someone's tweet (needs post ID)
-  4. LIKE - Show the world you appreciate content by liking a tweet (needs post ID)
-
-  ## INSTRUCTIONS
-  React to what {name} just saw in their feed. What is their immediate impulse?
-  - What jumped out at them from the timeline?
-  - What do they feel compelled to do right now?
-  - Act on that instinct — don't overthink it.
-  If text-based, the text must reflect their posting style description.
-
-  [OUTPUT STYLE]
-output_style: |
-  ## OUTPUT FORMAT
-  Answer: {name}
-  STEP 1: [Analyze {name}'s motivation based on their character]
-  STEP 2: [Consider which posts/actions align with {name}'s values]
-  STEP 3: [Determine the single most authentic action]
-
-  FINAL DECISION:
-  ACTION TYPE: [POST/REPLY/REPOST/LIKE]
-  TARGET ID: [Include post ID if applicable]
-  CONTENT: [For posts/replies, exact text {name} would write]
-  REASONING: [Brief explanation of why this action fits {name}'s character]

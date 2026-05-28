@@ -49,20 +49,29 @@ class ActivityMarkovNextActing(AllAgentsNextActing):
         self,
         *,
         agent_names: Sequence[str],
-        activity_transition_rates: Mapping[str, Mapping[str, float]],
+        activity_transition_rates: Mapping[str, Mapping[str, float]] | None = None,
+        sim_roles: Mapping[str, str] | None = None,
     ):
         """__init__."""
         super().__init__(agent_names=agent_names)
-        self._activity_transition_rates = activity_transition_rates
+        self._activity_transition_rates = dict(activity_transition_rates or {})
+        self._sim_roles = dict(sim_roles or {})
         self._users_activity_state: dict[str, int] = dict(
             zip(agent_names, [1] * len(agent_names), strict=False)
+        )
+
+    def _rates_for_agent(self, agent_name: str) -> Mapping[str, float]:
+        role = self._sim_roles.get(agent_name, "")
+        return self._activity_transition_rates.get(
+            agent_name,
+            self._activity_transition_rates.get(role, {}),
         )
 
     def acting_agent_names(self) -> list[str]:
         """Return active agents for the current step."""
         for agent_name in self._agent_names:
             last_state = self._users_activity_state[agent_name]
-            rates = self._activity_transition_rates[agent_name]
+            rates = self._rates_for_agent(agent_name)
             inactive_to_active = float(rates.get("inactive_to_active", 0.3))
             active_to_inactive = float(rates.get("active_to_inactive", inactive_to_active))
             if last_state == 0:
@@ -93,13 +102,15 @@ class ActivityProbabilityNextActing(AllAgentsNextActing):
         self,
         *,
         agent_names: Sequence[str],
-        activity_transition_rates: Mapping[str, Mapping[str, float]],
+        activity_transition_rates: Mapping[str, Mapping[str, float]] | None = None,
+        sim_roles: Mapping[str, str] | None = None,
         active_probability: float | None = None,
         min_active_agents: int = 0,
     ):
         """__init__."""
         super().__init__(agent_names=agent_names)
-        self._activity_transition_rates = activity_transition_rates
+        self._activity_transition_rates = dict(activity_transition_rates or {})
+        self._sim_roles = dict(sim_roles or {})
         self._global_active_probability = active_probability
         self._min_active_agents = max(0, int(min_active_agents))
 
@@ -108,7 +119,11 @@ class ActivityProbabilityNextActing(AllAgentsNextActing):
         if self._global_active_probability is not None:
             return max(0.0, min(1.0, float(self._global_active_probability)))
 
-        rates = self._activity_transition_rates.get(agent_name, {})
+        role = self._sim_roles.get(agent_name, "")
+        rates = self._activity_transition_rates.get(
+            agent_name,
+            self._activity_transition_rates.get(role, {}),
+        )
         p = rates.get("inactive_to_active")
         if p is None:
             p = rates.get("active_to_inactive")

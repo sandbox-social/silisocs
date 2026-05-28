@@ -850,11 +850,11 @@ class EchoSocialToolEntity(prefab_lib.Prefab):
                 topic=topic,
                 current_belief=initial_belief_value,
                 current_opinion=str(params.get("initial_opinion", "") or ""),
-                with_long_memory=bool(getattr(cfg, "echo_with_long_memory", True)),
+                with_long_memory=bool(params.get("with_long_memory", True)),
                 include_self_state=bool(
                     params.get(
                         "include_self_state_feedback",
-                        getattr(cfg, "echo_include_self_state_feedback", True),
+                        True,
                     )
                 ),
             ),

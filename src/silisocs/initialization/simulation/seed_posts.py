@@ -169,23 +169,24 @@ def build_seed_post_provider(slot_cfg: Mapping[str, Any] | None = None) -> SeedP
 
 def build_seed_post_action(
     *,
-    platform_type: str,
+    backend_type: str,
     agent_name: str,
     post_text: str,
     context: InitializationContext,
     mapping_overrides: Mapping[str, Any] | None = None,
+    default_subreddit: str = "general",
 ) -> ActionOutput:
     """Map seed text to a typed backend action payload."""
     text = str(post_text or "").strip()
     if not text:
         return ActionOutput.skip()
-    mapping = _seed_mapping(platform_type, context, mapping_overrides)
+    mapping = _seed_mapping(backend_type, context, mapping_overrides)
     payload = {
         str(key): str(value).format(
             agent_name=agent_name,
             post_text=text,
             title=text[:100],
-            default_subreddit=str(context.social_network.get("default_subreddit", "general")),
+            default_subreddit=str(default_subreddit or "general"),
         )
         for key, value in dict(mapping.get("arguments", {}) or {}).items()
     }
@@ -193,11 +194,11 @@ def build_seed_post_action(
 
 
 def _seed_mapping(
-    platform_type: str,
+    backend_type: str,
     context: InitializationContext,
     overrides: Mapping[str, Any] | None,
 ) -> Mapping[str, Any]:
-    normalized = str(platform_type or "").strip().lower()
+    normalized = str(backend_type or "").strip().lower()
     defaults: dict[str, Mapping[str, Any]] = {
         "twitter_like": {
             "tool_name": "create_tweet",
@@ -224,11 +225,11 @@ def _seed_mapping(
         merged[str(key)] = dict(value)
     if normalized not in merged:
         raise ValueError(
-            f"No seed-post action mapping configured for platform_type '{platform_type}'."
+            f"No seed-post action mapping configured for backend_type '{backend_type}'."
         )
     mapping = merged[normalized]
     if not mapping.get("tool_name"):
-        raise ValueError(f"Seed-post action mapping for {platform_type!r} is missing tool_name.")
+        raise ValueError(f"Seed-post action mapping for {backend_type!r} is missing tool_name.")
     return mapping
 
 

@@ -224,35 +224,57 @@ def _write_env_yaml(spec: ScenarioSpec, conf: Path) -> None:
     }
 
     data = {
-        "platform_type": spec.platform.platform_type,
-        "enabled_actions": spec.platform.enabled_actions,
-        "timeline_mode": spec.platform.timeline_mode,
+        "backend": {
+            "type": spec.backend.backend_type,
+            "class_path": None,
+            "params": {},
+            "enabled_actions": spec.backend.enabled_actions,
+        },
         "gm": {
-            "preset": "base",
+            "class_path": "silisocs.environments.gm.game_master.GameMaster",
+            "name": f"{spec.backend.backend_type}_gm",
             "components": {
+                "initialize": {
+                    "built_in": "social_media",
+                    "class_path": None,
+                    "params": {
+                        "graph": {
+                            "fully_connected_targets": spec.network.fully_connected_targets,
+                            "base_followership_probability": spec.network.base_followership_probability,
+                            "network_type": spec.network.network_type,
+                            "barabasi_albert_m": spec.network.barabasi_albert_m,
+                        }
+                    },
+                },
                 "next_acting": {
                     "built_in": "activity_probability",
                     "class_path": None,
-                    "params": {},
+                    "params": {"activity_transition_rates": activity_rates},
                 },
                 "observe": {
                     "built_in": "timeline_every_turn",
                     "class_path": None,
-                    "params": {"episode_observation_flow": "fixed_pre"},
+                    "params": {
+                        "episode_observation_flow": "fixed_pre",
+                        "timeline_mode": spec.backend.timeline_mode,
+                    },
                 },
                 "resolve": {
                     "built_in": "tool_calling",
                     "class_path": None,
                     "params": {},
                 },
+                "update": {
+                    "built_in": "social_recommendation",
+                    "class_path": None,
+                    "params": {},
+                },
+                "action_prompt": {
+                    "built_in": "default",
+                    "class_path": None,
+                    "params": {},
+                },
             },
-        },
-        "social_network": {
-            "activity_transition_rates": activity_rates,
-            "fully_connected_targets": spec.network.fully_connected_targets,
-            "base_followership_probability": spec.network.base_followership_probability,
-            "network_type": spec.network.network_type,
-            "barabasi_albert_m": spec.network.barabasi_albert_m,
         },
     }
     _write(conf / "env.yaml", _dump(data))

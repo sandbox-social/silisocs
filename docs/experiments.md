@@ -58,11 +58,11 @@ hypotheses:
       chronological:
         sub_experiment: bill_bias
         overrides:
-          env.timeline_mode: follower_chronological
+          env.gm.components.observe.params.timeline_mode: follower_chronological
       recsys:
         sub_experiment: bill_bias
         overrides:
-          env.timeline_mode: pure_recsys
+          env.gm.components.observe.params.timeline_mode: pure_recsys
 ```
 
 ## Exact Command Mode

@@ -36,12 +36,12 @@ Simple-first UX:
 
 Core simulation parameters:
 
-- **LLM Provider/Model**: Provider (`openai`, `local`, or `disabled`) plus model name
-  (for example, `gpt-4o-mini` for OpenAI or a local OpenAI-compatible model served
+- **LLM Provider/Model**: Provider (`openai`, `openai_compatible`, `scripted`, or `disabled`) plus model name
+  (for example, `gpt-4o-mini` for OpenAI or an OpenAI-compatible model served
   behind `sim.llm.api_base`)
 - **Number of agents / steps**: Scale parameters
 - **Random seed**: Reproducibility
-- **Memory backend**: `list` (fast) or `associative` (embedding-based)
+- **Agent initialization**: choose configured memory initialization or no-op startup
 - **Action mode**: `custom` or `generic`
 - **Tool-calling mode**: `none`, `single`, or `multi`
 
@@ -216,6 +216,6 @@ dynamic follow/interactions graph.
 ## Recommended End-To-End User Journey
 
 1. Use Streamlit launcher to create or edit scenario and run simulation.
-2. Inspect generated output folder (`action_events.jsonl`, `probe_events.jsonl`, `logs.html`, DB).
+2. Inspect generated output folder (`action_events.jsonl`, `probe_events.jsonl`, prompt logs, DB).
 3. Open Dash analytics app on that output folder for exploratory analysis.
 4. Use backend visualizer (Twitter-like or Reddit-like) for detailed platform state inspection.

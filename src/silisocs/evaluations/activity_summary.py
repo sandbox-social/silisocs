@@ -1,8 +1,8 @@
-"""Compute lightweight per-run summaries from action_events.jsonl.
+"""Compute lightweight per-run summaries.
 
 Modes:
-- activity: action label counts and basic run coverage
-- probes: probe label coverage and response counts
+- activity: action label counts and basic run coverage (reads action_events.jsonl)
+- probes: probe label coverage and response counts (reads probe_events.jsonl)
 """
 
 from __future__ import annotations
@@ -17,14 +17,7 @@ VALID_MODES = {"activity", "probes"}
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    """_read_jsonl.
-
-    :param Path path:
-    :type path: Path
-
-    :returns: list[dict[str, Any]]
-    :rtype: list[dict[str, Any]]
-    """
+    """Read a JSONL file into a list of dicts."""
     rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as f:
         for raw_line in f:
@@ -36,16 +29,6 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
-    """_safe_int.
-
-    :param Any value:
-    :type value: Any
-    :param int default:
-    :type default: int
-
-    :returns: int
-    :rtype: int
-    """
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -53,14 +36,7 @@ def _safe_int(value: Any, default: int = 0) -> int:
 
 
 def _summarize_activity(events: list[dict[str, Any]]) -> dict[str, Any]:
-    """_summarize_activity.
-
-    :param list[dict[str, Any]] events:
-    :type events: list[dict[str, Any]]
-
-    :returns: dict[str, Any]
-    :rtype: dict[str, Any]
-    """
+    """Build a summary of action labels, users, and episodes from action events."""
     labels = Counter(str(e.get("label", "")) for e in events if e.get("label") is not None)
     action_like = {
         "post",
@@ -99,14 +75,7 @@ def _summarize_activity(events: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _summarize_probes(events: list[dict[str, Any]]) -> dict[str, Any]:
-    """_summarize_probes.
-
-    :param list[dict[str, Any]] events:
-    :type events: list[dict[str, Any]]
-
-    :returns: dict[str, Any]
-    :rtype: dict[str, Any]
-    """
+    """Build a summary of probe labels and responses from probe events."""
     probe_rows = [e for e in events if str(e.get("event_type", "")).strip() == "probe"]
     probe_labels = Counter(str(e.get("label", "")) for e in probe_rows)
 
@@ -149,9 +118,14 @@ def main() -> None:
     run_dir = Path(args.run_dir).expanduser().resolve()
     out_path = Path(args.output).expanduser().resolve()
 
-    events_path = run_dir / "action_events.jsonl"
-    if not events_path.is_file():
-        raise FileNotFoundError(f"Missing action events file: {events_path}")
+    if args.mode == "probes":
+        events_path = run_dir / "probe_events.jsonl"
+        if not events_path.is_file():
+            raise FileNotFoundError(f"Missing probe events file: {events_path}")
+    else:
+        events_path = run_dir / "action_events.jsonl"
+        if not events_path.is_file():
+            raise FileNotFoundError(f"Missing action events file: {events_path}")
 
     events = _read_jsonl(events_path)
     payload = _summarize_activity(events) if args.mode == "activity" else _summarize_probes(events)

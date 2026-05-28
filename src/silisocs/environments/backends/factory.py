@@ -1,7 +1,11 @@
-"""Factory functions for creating environment app instances.
+"""Factory functions for creating backend app instances.
 
-Provides a single entry point for the game master to instantiate the
-correct backend ``BackendApp`` based on configuration.
+Provides a single entry point for the game master to instantiate the correct
+``BackendApp`` based on configuration.
+
+Built-in backends are registered in ``_BUILTIN_BACKENDS`` by backend type name
+to fully-qualified class path. Custom backends can set
+``env.backend.class_path`` in config.
 """
 
 import importlib
@@ -10,6 +14,14 @@ from collections.abc import Mapping
 from typing import Any
 
 from silisocs.environments.backends.base import BackendApp
+
+_BUILTIN_BACKENDS: dict[str, str] = {
+    "twitter_like": "silisocs.environments.backends.twitter_like.app.TwitterLikeApp",
+    "reddit_like": "silisocs.environments.backends.reddit_like.app.RedditLikeApp",
+    "mastodon": "silisocs.environments.backends.mastodon.apps.SocialNetworkApp",
+    "resource_market": "silisocs.environments.backends.resource_market.app.ResourceMarketApp",
+    "virtual_space": "silisocs.environments.backends.virtual_space.app.VirtualSpaceApp",
+}
 
 
 def _load_app_class(class_path: str) -> type[BackendApp]:
@@ -48,100 +60,50 @@ def _instantiate_app_with_supported_kwargs(
     return cls(**filtered)
 
 
-def create_environment_app(platform_type: str, **kwargs: Any) -> BackendApp:
-    """Create and return a BackendApp for the given platform type.
+def create_backend_app(backend_type: str, **kwargs: Any) -> BackendApp:
+    """Create and return a BackendApp for the given backend type.
 
-    Args:
-        platform_type: Built-in environment selector such as ``"mastodon"``,
-            ``"twitter_like"``, ``"reddit_like"``, ``"resource_market"``, or
-            ``"virtual_space"``.
-        **kwargs: Common keys:
-            - ``action_logger``: Logger for recording actions.
-            - ``app_description`` (str): Description of the app.
-            - ``perform_operations`` (bool): Whether to perform real API calls
-              (Mastodon-specific).
+    Parameters
+    ----------
+    backend_type:
+        Built-in environment selector (see ``_BUILTIN_BACKENDS``) or any
+        string when ``class_path`` is also provided in kwargs.
+    **kwargs:
+        Common keys: ``action_logger``, ``app_description``, ``db_path``,
+        ``perform_operations``, ``class_path``, ``params``.
 
     Returns
     -------
-        A configured ``BackendApp`` instance.
-
-    Raises
-    ------
-        ValueError: If ``platform_type`` is not recognized.
+    BackendApp
+        A configured backend instance.
     """
     action_logger = kwargs.get("action_logger")
     app_description = kwargs.get("app_description", "")
-    app_class_path = str(kwargs.get("app_class_path") or "").strip()
-    app_params = dict(kwargs.get("app_params") or {})
+    class_path = str(kwargs.get("class_path") or "").strip()
+    backend_params = dict(kwargs.get("params") or {})
 
-    if app_class_path:
-        cls = _load_app_class(app_class_path)
-        init_kwargs = {
-            "action_logger": action_logger,
-            "app_description": app_description,
-            "db_path": kwargs.get("db_path", "twitter_like.db"),
-        }
-        init_kwargs.update(app_params)
-        return _instantiate_app_with_supported_kwargs(
-            cls,
-            init_kwargs,
-            config_param_keys=app_params.keys(),
+    class_path = class_path or _BUILTIN_BACKENDS.get(backend_type, "")
+
+    if not class_path:
+        available = ", ".join(sorted(_BUILTIN_BACKENDS.keys()))
+        raise ValueError(
+            f"Unknown environment backend type: '{backend_type}'. "
+            f"Available built-in types: {available}. "
+            f"Or set env.backend.class_path for a custom backend."
         )
 
-    if platform_type == "mastodon":
-        from silisocs.environments.backends.mastodon.apps import SocialNetworkApp
+    cls = _load_app_class(class_path)
 
-        return SocialNetworkApp(
-            action_logger=action_logger,
-            perform_operations=kwargs.get("perform_operations", False),
-            app_description=app_description,
-        )
-    if platform_type == "twitter_like":
-        from silisocs.environments.backends.twitter_like.app import TwitterLikeApp
+    init_kwargs: dict[str, Any] = {
+        "action_logger": action_logger,
+        "app_description": app_description,
+        "db_path": kwargs.get("db_path", f"{backend_type}.db"),
+        "perform_operations": kwargs.get("perform_operations", False),
+    }
+    init_kwargs.update(backend_params)
 
-        # Derive DB path from output directory if available
-        db_path = kwargs.get("db_path", "twitter_like.db")
-        return TwitterLikeApp(
-            action_logger=action_logger,
-            app_description=app_description,
-            db_path=db_path,
-        )
-    if platform_type == "reddit_like":
-        from silisocs.environments.backends.reddit_like.app import RedditLikeApp
-
-        db_path = kwargs.get("db_path", "reddit_like.db")
-        return RedditLikeApp(
-            action_logger=action_logger,
-            app_description=app_description,
-            db_path=db_path,
-        )
-    if platform_type == "resource_market":
-        from silisocs.environments.backends.resource_market.app import ResourceMarketApp
-
-        init_kwargs = {"action_logger": action_logger, "app_description": app_description}
-        init_kwargs.update(app_params)
-        return _instantiate_app_with_supported_kwargs(
-            ResourceMarketApp,
-            init_kwargs,
-            config_param_keys=app_params.keys(),
-        )
-    if platform_type == "virtual_space":
-        from silisocs.environments.backends.virtual_space.app import VirtualSpaceApp
-
-        init_kwargs = {"action_logger": action_logger, "app_description": app_description}
-        init_kwargs.update(app_params)
-        return _instantiate_app_with_supported_kwargs(
-            VirtualSpaceApp,
-            init_kwargs,
-            config_param_keys=app_params.keys(),
-        )
-    raise ValueError(
-        f"Unknown environment platform type: '{platform_type}'. "
-        "Supported types: 'mastodon', 'twitter_like', 'reddit_like', "
-        "'resource_market', 'virtual_space'."
+    return _instantiate_app_with_supported_kwargs(
+        cls,
+        init_kwargs,
+        config_param_keys=backend_params.keys(),
     )
-
-
-def create_social_media_app(platform_type: str, **kwargs: Any) -> BackendApp:
-    """Compatibility wrapper for existing social-media call sites."""
-    return create_environment_app(platform_type=platform_type, **kwargs)

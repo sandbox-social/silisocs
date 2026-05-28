@@ -87,6 +87,7 @@ nav:
     - Framework Roadmap: framework_roadmap.md
     - Simulation Extensibility API: simulation_extensibility_api.md
     - Concordia Bridge: concordia_bridge.md
+    - Concordia Migration Log: concordia_migration_log.md
     - Environment Layer: environment_layer.md
     - Multi-GM Architecture: multi_gm_architecture.md
     - Building Agents: building_agents.md

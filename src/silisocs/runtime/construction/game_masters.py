@@ -3,21 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any, cast
+from typing import Any
 
 from omegaconf import DictConfig, OmegaConf
 
-from silisocs.environments.backends.social.network import get_simrole_parameters
 from silisocs.runtime.configuration.legacy import reject_removed_runtime_keys
 from silisocs.runtime.configuration.projection import RuntimeProjection
-from silisocs.runtime.construction.engines import default_gm_filename, default_gm_module_path
 from silisocs.runtime.construction.specs import GameMasterConfig, SimRole
 
 DEFAULT_FLOW_TAG = "default"
-
-
-def _env_cfg(cfg: Any) -> Any:
-    return getattr(cfg, "env", getattr(cfg, "environment", object()))
 
 
 def _collect_declared_flow_tags(cfg: DictConfig) -> set[str]:
@@ -42,7 +36,7 @@ def _collect_declared_flow_tags(cfg: DictConfig) -> set[str]:
 def _build_action_prompt(
     cfg: DictConfig,
     tool_calling_mode: str,
-    gm_prompt_cfg: Mapping[str, Any] | None = None,
+    action_prompt_params: Mapping[str, Any] | None = None,
 ) -> str:
     from silisocs.runtime.prompts.action_prompts import build_action_prompt_with_app_instance
 
@@ -54,26 +48,8 @@ def _build_action_prompt(
         cfg=cfg,
         action_mode=action_mode,
         tool_calling_mode=tool_calling_mode,
-        gm_prompt_cfg=gm_prompt_cfg,
+        gm_prompt_cfg=action_prompt_params,
     )
-
-
-def _gm_runtime_config(cfg: DictConfig) -> dict[str, Any]:
-    sim_view = {
-        "action_mode": OmegaConf.select(cfg, "sim.action_mode", default="custom"),
-        "tool_calling": OmegaConf.select(cfg, "sim.tool_calling", default={}) or {},
-        "prompt_additions": OmegaConf.select(cfg, "sim.prompt_additions", default={}) or {},
-        "engine": {
-            "turn_policy": OmegaConf.select(cfg, "sim.engine.turn_policy", default={}) or {},
-        },
-    }
-    return {
-        "output_rootname": str(OmegaConf.select(cfg, "output_rootname", default="") or ""),
-        "env": cast(dict[str, Any], OmegaConf.to_container(_env_cfg(cfg), resolve=True)),
-        "sim": cast(
-            dict[str, Any], OmegaConf.to_container(OmegaConf.create(sim_view), resolve=True)
-        ),
-    }
 
 
 def _normalise_gm_initializer_cfg(raw: Any, *, index: int) -> dict[str, Any]:
@@ -111,28 +87,87 @@ def _default_gm_initializer_cfg(cfg: DictConfig) -> dict[str, Any]:
         if not isinstance(configured, Mapping):
             raise ValueError("env.gm.components.initialize must be a mapping.")
         return _normalise_gm_initializer_cfg(configured, index=0)
-    platform_type = str(getattr(_env_cfg(cfg), "platform_type", "") or "").strip()
-    social_platforms = {"twitter_like", "reddit_like", "mastodon", "oasis_twitter", "oasis_reddit"}
-    built_in = "social_media" if platform_type in social_platforms else "app_initialize"
+    backend_type = str(OmegaConf.select(cfg, "env.backend.type", default="") or "").strip()
+    social_backend_types = {
+        "twitter_like",
+        "reddit_like",
+        "mastodon",
+        "oasis_twitter",
+        "oasis_reddit",
+    }
+    built_in = "social_media" if backend_type in social_backend_types else "app_initialize"
     return {"built_in": built_in, "class_path": None, "params": {}}
 
 
+def _plain_mapping(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, DictConfig):
+        value = OmegaConf.to_container(value, resolve=True)
+    if not isinstance(value, Mapping):
+        raise ValueError(f"Expected mapping config, got {type(value).__name__}.")
+    return dict(value)
+
+
+def _gm_components_cfg(cfg: DictConfig) -> dict[str, Any]:
+    components = _plain_mapping(OmegaConf.select(cfg, "env.gm.components", default={}) or {})
+    if "recommend" in components:
+        raise ValueError(
+            "`env.gm.components.recommend` has been removed. "
+            "Use `env.gm.components.update` with built_in='social_recommendation'."
+        )
+    return components
+
+
+def _backend_config(cfg: DictConfig) -> dict[str, Any]:
+    backend_type = str(OmegaConf.select(cfg, "env.backend.type", default="") or "").strip()
+    if not backend_type:
+        raise ValueError("env.backend.type is required.")
+    backend_params = _plain_mapping(OmegaConf.select(cfg, "env.backend.params", default={}) or {})
+    return {
+        "backend_type": backend_type,
+        "output_rootname": str(OmegaConf.select(cfg, "output_rootname", default="") or ""),
+        "perform_operations": bool(backend_params.pop("perform_operations", False)),
+        "app_description": str(backend_params.pop("app_description", "") or ""),
+        "class_path": OmegaConf.select(cfg, "env.backend.class_path", default=None),
+        "params": backend_params,
+        "enabled_actions": OmegaConf.to_container(
+            OmegaConf.select(cfg, "env.backend.enabled_actions", default=None), resolve=True
+        )
+        if OmegaConf.select(cfg, "env.backend.enabled_actions", default=None) is not None
+        else None,
+        "turn_policy_built_in": str(
+            OmegaConf.select(cfg, "sim.engine.turn_policy.built_in", default="") or ""
+        ),
+    }
+
+
 def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
-    default_gm = _env_cfg(cfg).gamemaster
+    default_gm = cfg.env.gm
     default_initializer = _default_gm_initializer_cfg(cfg)
     default_mode = "shared"
+    default_class_path = str(
+        OmegaConf.select(
+            cfg,
+            "env.gm.class_path",
+            default="silisocs.environments.gm.game_master.GameMaster",
+        )
+        or "silisocs.environments.gm.game_master.GameMaster"
+    )
     default_spec = {
-        "gm_name": str(default_gm.name),
-        "filename": default_gm_filename(cfg, default_mode),
-        "sim_role_name": str(default_gm.sim_role.name),
-        "sim_role_module_path": default_gm_module_path(cfg, default_mode),
+        "gm_name": str(getattr(default_gm, "name", "environment_gm") or "environment_gm"),
+        "class_path": default_class_path,
+        "sim_role_name": str(
+            OmegaConf.select(cfg, "env.gm.sim_role.name", default="environment game master")
+            or "environment game master"
+        ),
         "sequence": 0,
         "mode": default_mode,
         "backend_scope": "shared_default",
         "initializer": default_initializer,
     }
 
-    gm_orchestration_cfg = getattr(_env_cfg(cfg), "gm_orchestration", None)
+    gm_orchestration_cfg = getattr(cfg.env, "gm_orchestration", None)
     if gm_orchestration_cfg is None:
         gm_orchestration_cfg = getattr(getattr(cfg, "sim", object()), "gm_orchestration", object())
     gm_specs_raw = getattr(gm_orchestration_cfg, "gms", None)
@@ -156,20 +191,11 @@ def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
             ).strip(),
             "mode": str(gm_raw.get("mode", "shared") or "shared").strip(),
         }
-        spec["filename"] = str(
-            gm_raw.get("filename", default_gm_filename(cfg, str(spec["mode"]))) or ""
-        ).strip()
+        spec["class_path"] = str(gm_raw.get("class_path", default_class_path) or "").strip()
         spec.update(
             {
                 "sim_role_name": str(
                     sim_role_cfg.get("name", default_spec["sim_role_name"]) or ""
-                ).strip(),
-                "sim_role_module_path": str(
-                    sim_role_cfg.get(
-                        "module_path",
-                        default_gm_module_path(cfg, str(spec["mode"])),
-                    )
-                    or ""
                 ).strip(),
                 "sequence": int(gm_raw.get("sequence", idx)),
                 "backend_scope": str(
@@ -213,7 +239,7 @@ def _resolve_flow_chains(
     default_gm = str(min(gm_specs, key=lambda item: int(item["sequence"]))["gm_name"])
 
     chains: dict[str, list[str]] = {}
-    gm_orchestration_cfg = getattr(_env_cfg(cfg), "gm_orchestration", None)
+    gm_orchestration_cfg = getattr(cfg.env, "gm_orchestration", None)
     if gm_orchestration_cfg is None:
         gm_orchestration_cfg = getattr(getattr(cfg, "sim", object()), "gm_orchestration", object())
     bindings = getattr(gm_orchestration_cfg, "flow_bindings", None)
@@ -276,38 +302,18 @@ def build_game_masters(cfg: DictConfig) -> list[GameMasterConfig]:
     declared_flows = _collect_declared_flow_tags(cfg)
     flow_chains = _resolve_flow_chains(cfg, gm_specs, declared_flows)
 
-    activity_transition_rates = dict(
-        OmegaConf.select(cfg, "env.social_network.activity_transition_rates")
-        or OmegaConf.select(cfg, "sim.social_network.activity_transition_rates")
-        or {}
-    )
-    fully_connected_targets = list(
-        OmegaConf.select(cfg, "env.social_network.fully_connected_targets")
-        or OmegaConf.select(cfg, "sim.social_network.fully_connected_targets")
-        or []
-    )
-    simrole_params = get_simrole_parameters(
-        activity_transition_rates=activity_transition_rates,
-        roles=list(activity_transition_rates.keys()),
-        fully_connected_targets=fully_connected_targets,
-        base_probability=(
-            OmegaConf.select(cfg, "env.social_network.base_followership_probability")
-            or OmegaConf.select(cfg, "sim.social_network.base_followership_probability")
-            or 0.4
-        ),
-    )
-
     projection = RuntimeProjection.from_cfg(cfg)
-    social_media_gms: list[GameMasterConfig] = []
+    game_masters: list[GameMasterConfig] = []
+    components_cfg = _gm_components_cfg(cfg)
+    backend_config = _backend_config(cfg)
     for spec in gm_specs:
         gm_name = str(spec["gm_name"])
         owned_flows = [flow for flow, chain in flow_chains.items() if gm_name in chain]
         sim_role = SimRole(
             name=str(spec["sim_role_name"]),
-            module_path=str(spec["sim_role_module_path"]),
+            module_path=str(spec["class_path"]).rsplit(".", 1)[0],
         )
         gm_user_data = {
-            "sim_role_parameters": dict(simrole_params),
             "sim_roles": {},
             "gm_orchestration": {
                 "gm_name": gm_name,
@@ -319,35 +325,32 @@ def build_game_masters(cfg: DictConfig) -> list[GameMasterConfig]:
                 "prompt": dict(spec.get("prompt") or {}),
             },
         }
+        gm_components_cfg = dict(components_cfg)
+        action_prompt_params = dict(
+            dict(gm_components_cfg.get("action_prompt", {}) or {}).get("params", {}) or {}
+        )
+        action_prompt_params.update(dict(spec.get("prompt") or {}))
         action_prompt = _build_action_prompt(
             cfg,
             tool_calling_mode=projection.tool_calling_mode,
-            gm_prompt_cfg=cast(Mapping[str, Any] | None, spec.get("prompt")),
+            action_prompt_params=action_prompt_params,
         )
+        gm_components_cfg["initialize"] = dict(spec["initializer"])
         gm_params = {
             "name": gm_name,
-            "calls_to_action": {
-                "environment_action": action_prompt,
-                "social_media_action": action_prompt,
-            },
             "sim_role": sim_role,
-            "app_module_path": getattr(_env_cfg(cfg), "app_module_path", ""),
             "environment_data": gm_user_data,
-            "sm_user_data": gm_user_data,
-            "app_description": getattr(_env_cfg(cfg), "usage_instructions", ""),
-            "runtime_config": _gm_runtime_config(cfg),
-            "initializer": dict(spec["initializer"]),
+            "backend_config": dict(backend_config),
+            "components": gm_components_cfg,
+            "action_prompt_template": action_prompt,
+            "action_mode": projection.action_mode,
+            "tool_calling_mode": projection.tool_calling_mode,
         }
-        gm_class_name = (
-            "FlowRoutedGameMaster"
-            if str(spec["filename"]) == "shared_flow_game_master"
-            else "GameMaster"
-        )
-        social_media_gms.append(
+        game_masters.append(
             GameMasterConfig(
-                class_path=f"{spec['sim_role_module_path']}.{gm_class_name}",
+                class_path=str(spec["class_path"]),
                 params=gm_params,
             )
         )
 
-    return social_media_gms
+    return game_masters

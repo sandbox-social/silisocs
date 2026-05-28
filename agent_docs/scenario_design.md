@@ -10,7 +10,7 @@ A complete scenario consists of:
 2. **Social Network** — Define followership patterns, activity rates, network topology
 3. **Probes** — Define evaluation questions to ask agents during/after simulation
 4. **Setting & Event** — Provide narrative context for the simulation
-5. **Optional sim/platform overrides** — Customize sim parameters or platform type for this scenario
+5. **Optional sim/backend overrides** — Customize sim parameters or backend type for this scenario
 
 ### Creating a New Scenario
 
@@ -132,32 +132,31 @@ persona_pipeline:
 | Inline YAML | `source: inline`<br>`records: [{name: Alice, bio: "..."}]` | Defined directly in scenario |
 | Config Reference | `source: config_path`<br>`path: candidates` | Dot-path into this YAML file |
 
-### File 3: Social Network Topology
+### File 3: GM Component Behavior
 
 Controls how agents follow each other:
 
 ```yaml
-social_network:
-  # Activity state transitions (per sim_role_name)
-  activity_transition_rates:
-    voter:
-      inactive_to_active: 0.1
-      active_to_inactive: 0.2
-    candidate:
-      inactive_to_active: 0.8
-      active_to_inactive: 0.1
-
-  # Agents that everyone follows
-  fully_connected_targets:
-    - candidate
-    - news_account
-
-  # Base probability for random followership
-  base_followership_probability: 0.4
-
-  # Network topology algorithm
-  network_type: barabasi_albert      # barabasi_albert | erdos_renyi
-  barabasi_albert_m: 30              # Preferential attachment parameter
+gm:
+  components:
+    initialize:
+      params:
+        graph:
+          network_type: barabasi_albert
+          barabasi_albert_m: 30
+          base_followership_probability: 0.4
+          fully_connected_targets:
+            - candidate
+            - news_account
+    next_acting:
+      params:
+        activity_transition_rates:
+          voter:
+            inactive_to_active: 0.1
+            active_to_inactive: 0.2
+          candidate:
+            inactive_to_active: 0.8
+            active_to_inactive: 0.1
 ```
 
 ### File 4: Shared Memories
@@ -285,12 +284,15 @@ enabled_actions:                   # Restrict to specific actions (exact functio
 
 ### File 8: Optional env.yaml
 
-Create if you want a different platform or GM component settings:
+Create if you want a different backend or GM component settings:
 
 ```yaml
 # No @package header needed — merged into env group automatically
 
-platform_type: reddit_like         # twitter_like | reddit_like | mastodon
+backend:
+  type: reddit_like         # twitter_like | reddit_like | mastodon
+  class_path: null
+  params: {}
 ```
 
 ---
@@ -316,22 +318,18 @@ persona_pipeline:
       sim_role_name: inactive
       ...
 
-social_network:
-  activity_transition_rates:
-    active:
-      inactive_to_active: 0.9
-      active_to_inactive: 0.1
-    inactive:
-      inactive_to_active: 0.05
-      active_to_inactive: 0.5
-```
-
-Then in `sim.yaml` (if needed):
-
-```yaml
-enable_gm_multi_flow: true
-# This allows different observation/resolution for each flow
-# (optional — both flows still work with default components)
+gm:
+  class_path: silisocs.environments.gm.shared_flow_game_master.FlowRoutedGameMaster
+  components:
+    next_acting:
+      params:
+        activity_transition_rates:
+          active:
+            inactive_to_active: 0.9
+            active_to_inactive: 0.1
+          inactive:
+            inactive_to_active: 0.05
+            active_to_inactive: 0.5
 ```
 
 ### Pattern 2: Different Recommendation Algorithms per Agent Class
@@ -415,13 +413,11 @@ uv run silisocs --config-path scenarios/my_scenario/conf \
 
 ## 5) Understanding Multi-Flow (Advanced)
 
-If you want different agent populations to receive different observations or components, enable multi-flow:
+If you want different agent populations to receive different observations or components, use the flow-routed GM class:
 
 ```yaml
-enable_gm_multi_flow: true
-
 gm:
-  preset: shared_flow              # Allows multiple component instances
+  class_path: silisocs.environments.gm.shared_flow_game_master.FlowRoutedGameMaster
   components:
     observe:
       # Create two separate Observe components
@@ -495,7 +491,7 @@ This means your scenario files only need to specify what's **different** from de
 - `sim.engine.turn_policy.built_in`: single_action
 
 **From `src/silisocs/conf/env/twitter_like.yaml`:**
-- `platform_type`: twitter_like
+- `env.backend.type`: twitter_like
 - Supports: `create_tweet`, `like_tweet`, `repost_tweet`, `reply_to_tweet`, `follow_user`
 
 ---

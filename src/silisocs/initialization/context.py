@@ -18,7 +18,6 @@ class InitializationContext:
     player_specific_context: Mapping[str, str] = dataclasses.field(default_factory=dict)
     sim_roles: Mapping[str, str] = dataclasses.field(default_factory=dict)
     agent_flow_tags: Mapping[str, str] = dataclasses.field(default_factory=dict)
-    social_network: Mapping[str, Any] = dataclasses.field(default_factory=dict)
     agent_bios: Mapping[str, str] = dataclasses.field(default_factory=dict)
     checkpoint: Mapping[str, Any] = dataclasses.field(default_factory=dict)
 

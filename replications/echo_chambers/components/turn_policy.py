@@ -18,28 +18,31 @@ def _extract_contact_ids(action_text: str) -> list[int]:
     ]
 
 
-def _sm_app_from_game_master(game_master: Any) -> Any:
-    return getattr(game_master, "sm_app", getattr(game_master, "app", None))
+def _backend_from_game_master(game_master: Any) -> Any:
+    backend = getattr(game_master, "backend", None)
+    if backend is None:
+        raise TypeError("Echo belief policy requires a game master with a backend.")
+    return backend
 
 
 def _belief_probe_prompt(
     *,
-    entity_name: str,
-    sm_app: Any,
+    agent_name: str,
+    backend: Any,
     action_count: int,
     last_action_result: str,
     include_self_state: bool,
 ) -> str:
-    echo_state = getattr(sm_app, "echo_state", None)
+    echo_state = getattr(backend, "echo_state", None)
     if echo_state is None:
         previous_belief = 0
         previous_opinion = ""
         previous_long = ""
         topic = "Should we use euthanasia?"
     else:
-        previous_belief = int(echo_state.current_beliefs.get(entity_name, 0))
-        previous_opinion = str(echo_state.current_opinions.get(entity_name, ""))
-        previous_long = str(echo_state.long_memory.get(entity_name, ""))
+        previous_belief = int(echo_state.current_beliefs.get(agent_name, 0))
+        previous_opinion = str(echo_state.current_opinions.get(agent_name, ""))
+        previous_long = str(echo_state.long_memory.get(agent_name, ""))
         topic = str(echo_state.topic)
 
     self_state_text = ""
@@ -50,7 +53,7 @@ def _belief_probe_prompt(
 
     return (
         "This is a private measurement probe, not a social-media action.\n"
-        f"You are {entity_name}. Update your opinion and belief after your latest "
+        f"You are {agent_name}. Update your opinion and belief after your latest "
         f"timeline observation and {action_count} social-media action(s).\n"
         f"Topic: {topic}\n"
         f"{self_state_text}"
@@ -156,10 +159,10 @@ class FixedActionsThenBeliefProbePolicy:
         last_action_result: str,
         verbose: bool,
     ) -> None:
-        sm_app = _sm_app_from_game_master(game_master)
+        backend = _backend_from_game_master(game_master)
         prompt = _belief_probe_prompt(
-            entity_name=agent.name,
-            sm_app=sm_app,
+            agent_name=agent.name,
+            backend=backend,
             action_count=action_count,
             last_action_result=last_action_result,
             include_self_state=bool(self.include_self_state),

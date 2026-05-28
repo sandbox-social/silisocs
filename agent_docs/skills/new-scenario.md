@@ -206,8 +206,8 @@ Report the result to the user. If validation fails, diagnose and fix before fini
     "network_type": "barabasi_albert",
     "barabasi_albert_m": 2
   },
-  "platform": {
-    "platform_type": "twitter_like",
+  "backend": {
+    "backend_type": "twitter_like",
     "timeline_mode": "follower_chronological",
     "enabled_actions": ["create_tweet", "reply_to_tweet", "like_tweet", "repost_tweet", "FINISHED"]
   },

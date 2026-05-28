@@ -14,7 +14,7 @@ Configuration is split across named groups, each with a base preset in
 | `agents` | `agents/default.yaml` | Persona pipeline, shared memories, initial observations |
 | `sim` | `sim/base.yaml` | LLM (model, API, temperature), engine, tool-calling, checkpoint |
 | `env` | `env/twitter_like.yaml` | Platform backend, GM components, social network |
-| `evals` | `evals/base.yaml` | Probes, HTML log writing |
+| `evals` | `evals/base.yaml` | Probes and evaluation timing |
 
 ---
 
@@ -70,13 +70,13 @@ Run parameters live in the `scenario` config group (placed at config root via
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `sim.llm.provider` | `openai` | Model provider: `openai`, `local`, or `disabled` |
+| `sim.llm.provider` | `openai` | Model provider: `openai`, `openai_compatible`, `scripted`, or `disabled` |
 | `sim.llm.name` | `gpt-4o-mini` | LLM model name (passed to the model factory) |
-| `sim.llm.api_base` | `null` | Required base URL when `provider: local` |
+| `sim.llm.api_base` | `null` | Required base URL when `provider: openai_compatible` |
 | `sim.llm.api_key` | `null` | API key (or set via environment variable) |
 | `sim.llm.temperature` | `0.5` | Sampling temperature |
 | `sim.llm.disabled` | `false` | Use a no-op model (for testing without API calls) |
-| `sim.llm.extra_kwargs` | `{}` | Provider request kwargs such as local `extra_body` settings |
+| `sim.llm.extra_kwargs` | `{}` | Provider request kwargs such as OpenAI-compatible `extra_body` settings |
 
 ### Engine and Runtime
 
@@ -237,14 +237,20 @@ initial_observations:
 
 **`scenarios/my_scenario/conf/env.yaml`** — optional platform overrides:
 ```yaml
-social_network:
-  base_followership_probability: 0.3
-  network_type: barabasi_albert
-  barabasi_albert_m: 10
-  activity_transition_rates:
-    user:
-      inactive_to_active: 0.5
-      active_to_inactive: 0.2
+gm:
+  components:
+    initialize:
+      params:
+        graph:
+          base_followership_probability: 0.3
+          network_type: barabasi_albert
+          barabasi_albert_m: 10
+    next_acting:
+      params:
+        activity_transition_rates:
+          user:
+            inactive_to_active: 0.5
+            active_to_inactive: 0.2
 ```
 
 ### Output Structure
@@ -379,23 +385,32 @@ uv run silisocs --config-path scenarios/ai_conference/conf \
 
 ## Env Config (`env/twitter_like.yaml`)
 
-### Platform Backends
+### Backends
 
 **Twitter-like (default)**
 ```yaml
-platform_type: twitter_like
+backend:
+  type: twitter_like
+  class_path: null
+  params: {}
 use_server: false
 ```
 
 **Reddit-like**
 ```yaml
-platform_type: reddit_like
+backend:
+  type: reddit_like
+  class_path: null
+  params: {}
 use_server: false
 ```
 
 **Mastodon (remote)**
 ```yaml
-platform_type: mastodon
+backend:
+  type: mastodon
+  class_path: null
+  params: {}
 use_server: true   # Requires a running Mastodon server
 ```
 
@@ -404,8 +419,9 @@ See [Installation](installation.md) for `.env` setup.
 
 **Resource market (generic non-social)**
 ```yaml
-platform_type: resource_market
-app:
+backend:
+  type: resource_market
+  class_path: null
   params:
     initial_cash: 20
     initial_inventory:
@@ -416,8 +432,9 @@ app:
 
 **Virtual space (generic non-social)**
 ```yaml
-platform_type: virtual_space
-app:
+backend:
+  type: virtual_space
+  class_path: null
   params:
     rooms: [atrium, garden, workshop]
     starting_room: atrium
@@ -426,8 +443,8 @@ app:
 Custom backend apps can be loaded without editing the factory:
 
 ```yaml
-platform_type: custom
-app:
+backend:
+  type: custom
   class_path: my_pkg.apps.MyBackendApp
   params:
     custom_setting: value
@@ -529,28 +546,36 @@ forwarded observation settings.
 
 ### Social Network
 
-Graph fields in `env.social_network` are consumed during game-master
-initialization to create backend follow/subreddit state. The
-`activity_transition_rates` field is consumed by the GM `next_acting` slot to
-decide which agents are active on each step.
+Graph fields are owned by the GM initialize component. Activity rates are owned
+by the GM next-acting component.
 
 ```yaml
-social_network:
-  network_type: barabasi_albert       # barabasi_albert | random | predefined
-  barabasi_albert_m: 10
-  base_followership_probability: 0.3
-  fully_connected_targets:            # Roles that all agents follow
-    - news_account
-  activity_transition_rates:
-    <role_name>:
-      inactive_to_active: 0.3
-      active_to_inactive: 0.3
+gm:
+  components:
+    initialize:
+      params:
+        graph:
+          network_type: barabasi_albert
+          barabasi_albert_m: 10
+          base_followership_probability: 0.3
+          fully_connected_targets:
+            - news_account
+    next_acting:
+      params:
+        activity_transition_rates:
+          <role_name>:
+            inactive_to_active: 0.3
+            active_to_inactive: 0.3
 ```
 
 ### Timeline Mode
 
 ```yaml
-timeline_mode: follower_chronological  # follower_chronological | pure_recsys | hybrid_recsys_follower | curated_global
+gm:
+  components:
+    observe:
+      params:
+        timeline_mode: follower_chronological
 ```
 
 | Strategy | Platforms | Description |

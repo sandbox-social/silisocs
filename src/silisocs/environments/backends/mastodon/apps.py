@@ -1,11 +1,11 @@
 """Mastodon social network app for simulation.
 
 This module provides ``SocialNetworkApp``, the Mastodon implementation of
-the ``SocialMediaApp`` interface.  It wraps the Mastodon API via
+the ``SocialBackendApp`` interface.  It wraps the Mastodon API via
 ``mastodon_ops`` and exposes ``@app_action`` decorated methods for the
 simulation game master.
 
-The generic ``BackendApp`` base class, ``SocialMediaApp`` ABC, and supporting
+The generic ``BackendApp`` base class, ``SocialBackendApp`` ABC, and supporting
 utilities (``app_action``, ``Parameter``, ``ActionDescriptor``, etc.) come
 from ``silisocs.environments.backends.base``.
 """
@@ -22,7 +22,7 @@ from silisocs.environments.backends.base import (  # noqa: F401
     ActionDescriptor,
     BackendApp,
     Parameter,
-    SocialMediaApp,
+    SocialBackendApp,
     app_action,
 )
 from silisocs.environments.backends.mastodon.mastodon_ops import (
@@ -34,7 +34,7 @@ from silisocs.environments.backends.mastodon.mastodon_ops import (
 
 
 @dataclasses.dataclass
-class SocialNetworkApp(SocialMediaApp):
+class SocialNetworkApp(SocialBackendApp):
     """Mastodon social network app.
         description = (
             "MastodonSocialNetworkApp is a social media application similar to"
@@ -78,7 +78,7 @@ class SocialNetworkApp(SocialMediaApp):
             self.action_logger.log(event)
 
     # ------------------------------------------------------------------ #
-    # SocialMediaApp interface
+    # SocialBackendApp interface
     # ------------------------------------------------------------------ #
 
     def initialize(self, agent_names: list[str], **kwargs: Any) -> None:
@@ -90,12 +90,12 @@ class SocialNetworkApp(SocialMediaApp):
         *,
         agent_names: list[str],
         sim_roles: dict[str, str] | None = None,
-        social_network: dict[str, Any] | None = None,
+        graph_config: dict[str, Any] | None = None,
         following_graph: dict[str, list[str]] | None = None,
         agent_bios: dict[str, str] | None = None,
     ) -> None:
         """Set up Mastodon user mapping, bios, and initializer-provided follows."""
-        del sim_roles, social_network
+        del sim_roles, graph_config
         following = dict(following_graph or {})
         agent_bios = dict(agent_bios or {})
 

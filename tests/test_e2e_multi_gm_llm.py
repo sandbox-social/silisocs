@@ -120,23 +120,47 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
         """
                 # @package env
 
-                platform_type: twitter_like
-                social_network:
-                    activity_transition_rates:
-                        fixed_seed:
-                            inactive_to_active: 1.0
-                            active_to_inactive: 0.0
-                        llm_user:
-                            inactive_to_active: 1.0
-                            active_to_inactive: 0.0
-                    fully_connected_targets: []
-                    base_followership_probability: 1.0
-                    network_type: random
+                backend:
+                  type: twitter_like
+                  class_path: null
+                  params: {}
+                gm:
+                    class_path: silisocs.environments.gm.game_master.GameMaster
+                    components:
+                        initialize:
+                            built_in: social_media
+                            params:
+                                graph:
+                                    fully_connected_targets: []
+                                    base_followership_probability: 1.0
+                                    network_type: random
+                        next_acting:
+                            built_in: activity_probability
+                            params:
+                                activity_transition_rates:
+                                    fixed_seed:
+                                        inactive_to_active: 1.0
+                                        active_to_inactive: 0.0
+                                    llm_user:
+                                        inactive_to_active: 1.0
+                                        active_to_inactive: 0.0
+                        observe:
+                            built_in: timeline_every_turn
+                            params: {}
+                        resolve:
+                            built_in: parsed_action
+                            params: {}
+                        update:
+                            built_in: social_recommendation
+                            params: {}
+                        action_prompt:
+                            built_in: default
+                            params: {}
                 """
     ).strip()
 
     (conf_dir / "sim.yaml").write_text(sim_yaml + "\n", encoding="utf-8")
-    (conf_dir / "agent.yaml").write_text(agent_yaml + "\n", encoding="utf-8")
+    (conf_dir / "agents.yaml").write_text(agent_yaml + "\n", encoding="utf-8")
     (conf_dir / "evals.yaml").write_text(evals_yaml + "\n", encoding="utf-8")
     (conf_dir / "env.yaml").write_text(env_yaml + "\n", encoding="utf-8")
 
@@ -178,22 +202,20 @@ def _run_simulation(
         "--config-path",
         str(conf_dir),
         f"env={backend}",
-        "env.gm.preset=base",
-        "env.enable_gm_multi_flow=false",
         f"sim.engine.step.built_in={engine_preset}",
         "sim.engine.turn_policy.built_in=single_action",
         "env.gm.components.next_acting.built_in=all_agents",
         f"env.gm.components.resolve.built_in={resolve_built_in}",
         f"sim.tool_calling.mode={resolved_tool_mode}",
-        f"env.timeline_mode={timeline_mode}",
-        "env.timeline_posts=5",
+        f"env.gm.components.observe.params.timeline_mode={timeline_mode}",
+        "env.gm.components.observe.params.timeline_posts=5",
         f"env.gm.components.update.params.default_recsys_type={recsys_type}",
         f"env.gm.components.observe.params.recsys_type={recsys_type}",
         f"sim.action_mode={action_mode}",
         f"num_steps={num_steps}",
         "seed=11",
         "sim.max_concurrent_actions=8",
-        "sim.llm.provider=local",
+        "sim.llm.provider=openai_compatible",
         "sim.llm.name=qwen3.5-4b",
         f"sim.llm.api_base={llm_url}",
         "sim.llm.api_key=test-key",

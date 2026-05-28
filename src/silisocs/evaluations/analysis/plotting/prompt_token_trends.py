@@ -49,7 +49,7 @@ def _classify_phase(prompt: str, episode_idx: int) -> str:
     :rtype: str
     """
     lower = (prompt or "").lower()
-    if "you are completing a survey in character." in lower and "questions:" in lower:
+    if "return only answer lines" in lower and "questions:" in lower:
         return "probe"
     if "final decision:" in lower and "action type:" in lower and "target id:" in lower:
         return "action"

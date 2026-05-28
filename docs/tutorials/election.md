@@ -91,13 +91,19 @@ candidates:
 Candidates and the news account are fully connected targets — everyone follows them:
 
 ```yaml
-social_network:
-  fully_connected_targets:
-    - candidate
-    - news_account
-  activity_transition_rates:
-    voter:
-      inactive_to_active: 0.1     # Voters are mostly passive
+gm:
+  components:
+    initialize:
+      params:
+        graph:
+          fully_connected_targets:
+            - candidate
+            - news_account
+    next_acting:
+      params:
+        activity_transition_rates:
+          voter:
+            inactive_to_active: 0.1     # Voters are mostly passive
       active_to_inactive: 0.2
     candidate:
       inactive_to_active: 0.8     # Candidates are very active

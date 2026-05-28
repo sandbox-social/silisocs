@@ -47,7 +47,7 @@ class _GameMaster:
 
     def __init__(self, events: list[str]) -> None:
         self.events = events
-        self.app = type("_App", (), {"platform_type": "twitter_like"})()
+        self.backend_type = "twitter_like"
         self._initializer = _GMOwnedInitializer()
 
     def initialize(self, *, agents: Sequence[Agent], context: InitializationContext) -> None:

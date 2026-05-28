@@ -184,8 +184,8 @@ def _runtime_metadata(runtime: RuntimeObjects) -> dict[str, Any]:
     action_events_file = ""
     output_rootname = ""
     if runtime.game_masters:
-        app = getattr(runtime.game_masters[0], "app", None)
-        action_logger = getattr(app, "action_logger", None)
+        backend = getattr(runtime.game_masters[0], "backend", None)
+        action_logger = getattr(backend, "action_logger", None)
         action_events_file = str(getattr(action_logger, "output_filename", "") or "")
         if action_events_file:
             output_rootname = str(os.path.dirname(action_events_file))

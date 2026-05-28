@@ -26,7 +26,7 @@ Last reviewed: 2026-05-11.
 | Issue | Impact | Required action |
 |---|---|---|
 | Old `src/silisocs/engines/...` paths | Misleads contributors; code now lives under `simulation_engines` | Replace stale paths in public docs |
-| Social-only backend wording | Hides the generic environment direction | Reframe backends around `BackendApp`, with `SocialMediaApp` as a specialization |
+| Social-only backend wording | Hides the generic environment direction | Reframe backends around `BackendApp`, with `SocialBackendApp` as a specialization |
 | `sim.enable_engine_multi_flow` references | Incorrect config knob | Use `sim.engine.step.built_in: flow` |
 | Prompt addition key mismatch | Users may set a no-op key | Document `sim.prompt_additions.action_count_guidance` |
 | Advanced flow docs duplicated across `docs/` and `agent_docs/` | Divergence risk | Keep public docs canonical; use `agent_docs` as agent-facing deep dives |
@@ -41,7 +41,7 @@ Each extensible simulator part should have one documented shape:
 - Environment app: subclasses `BackendApp`, implements
   `initialize(agent_names, **kwargs)`, optionally overrides `observe(...)`, and
   exposes actions with `@app_action`.
-- Social app: subclasses `SocialMediaApp` when timelines, feed formatting,
+- Social app: subclasses `SocialBackendApp` when timelines, feed formatting,
   recommendation updates, or social action parsing are needed.
 - GM component: selected from `env.gm.components.<slot>`, receives YAML
   `params`, and implements direct native methods for its slot. Native

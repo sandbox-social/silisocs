@@ -50,15 +50,15 @@ def _ensure_gm_method(game_master: Any, method: str) -> Callable[..., Any]:
 
 
 def _set_gm_episode_index(game_master: Any, step_index: int) -> None:
-    app = getattr(game_master, "app", None)
-    action_logger = getattr(app, "action_logger", None)
+    backend = getattr(game_master, "backend", None)
+    action_logger = getattr(backend, "action_logger", None)
     if action_logger is not None and hasattr(action_logger, "episode_idx"):
         action_logger.episode_idx = int(step_index)
 
 
 def _gm_episode_index(game_master: Any) -> int:
-    app = getattr(game_master, "app", None)
-    action_logger = getattr(app, "action_logger", None)
+    backend = getattr(game_master, "backend", None)
+    action_logger = getattr(backend, "action_logger", None)
     raw = getattr(action_logger, "episode_idx", -1)
     try:
         return int(raw)
@@ -569,22 +569,31 @@ class MultiGMStepStrategy(StepStrategy):
         return engine._execute_batches(step_index=0, batches=batches, verbose=False)
 
 
+def _extract_flow_order(cfg: Any | None) -> tuple[str, ...]:
+    """Read sim.engine.step.params.flow_order from config with sensible default."""
+    default = ["fixed_pre", "default"]
+    raw = (
+        OmegaConf.select(cfg, "sim.engine.step.params.flow_order", default=default)
+        if cfg is not None
+        else default
+    )
+    return tuple(str(item) for item in (raw or default))
+
+
+def _apply_engine_defaults(kwargs: dict[str, Any], step_strategy: Any) -> None:
+    """Set shared defaults (loop strategy, step strategy, turn policy) on kwargs."""
+    cfg = kwargs.get("config")
+    kwargs.setdefault("loop_strategy", FixedStepsLoopStrategy())
+    kwargs.setdefault("step_strategy", step_strategy)
+    kwargs.setdefault("turn_policy", build_turn_policy(_engine_turn_policy_cfg(cfg)))
+
+
 class BaseRuntimeEngine(RuntimeEngine):
     """Runtime engine preset wrapper using base step strategy."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        cfg = kwargs.get("config")
-        step_cfg = (
-            OmegaConf.select(
-                cfg, "sim.engine.step.params.flow_order", default=["fixed_pre", "default"]
-            )
-            if cfg is not None
-            else ["fixed_pre", "default"]
-        )
-        flow_order = tuple(str(item) for item in (step_cfg or ["fixed_pre", "default"]))
-        kwargs.setdefault("loop_strategy", FixedStepsLoopStrategy())
-        kwargs.setdefault("step_strategy", BaseStepStrategy())
-        kwargs.setdefault("turn_policy", build_turn_policy(_engine_turn_policy_cfg(cfg)))
+        flow_order = _extract_flow_order(kwargs.get("config"))
+        _apply_engine_defaults(kwargs, BaseStepStrategy())
         super().__init__(*args, **kwargs)
         self._flow_order = flow_order
 
@@ -593,18 +602,8 @@ class FlowRuntimeEngine(RuntimeEngine):
     """Runtime engine preset wrapper using flow step strategy."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        cfg = kwargs.get("config")
-        flow_order_cfg = (
-            OmegaConf.select(
-                cfg, "sim.engine.step.params.flow_order", default=["fixed_pre", "default"]
-            )
-            if cfg is not None
-            else ["fixed_pre", "default"]
-        )
-        flow_order = tuple(str(item) for item in (flow_order_cfg or ["fixed_pre", "default"]))
-        kwargs.setdefault("loop_strategy", FixedStepsLoopStrategy())
-        kwargs.setdefault("step_strategy", FlowStepStrategy(flow_order=flow_order))
-        kwargs.setdefault("turn_policy", build_turn_policy(_engine_turn_policy_cfg(cfg)))
+        flow_order = _extract_flow_order(kwargs.get("config"))
+        _apply_engine_defaults(kwargs, FlowStepStrategy(flow_order=flow_order))
         super().__init__(*args, **kwargs)
 
 
@@ -612,18 +611,8 @@ class MultiGMRuntimeEngine(FlowRuntimeEngine):
     """Runtime engine preset wrapper using flow-first multi-GM step strategy."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        cfg = kwargs.get("config")
-        flow_order_cfg = (
-            OmegaConf.select(
-                cfg, "sim.engine.step.params.flow_order", default=["fixed_pre", "default"]
-            )
-            if cfg is not None
-            else ["fixed_pre", "default"]
-        )
-        flow_order = tuple(str(item) for item in (flow_order_cfg or ["fixed_pre", "default"]))
-        kwargs.setdefault("loop_strategy", FixedStepsLoopStrategy())
-        kwargs.setdefault("step_strategy", MultiGMStepStrategy(flow_order=flow_order))
-        kwargs.setdefault("turn_policy", build_turn_policy(_engine_turn_policy_cfg(cfg)))
+        flow_order = _extract_flow_order(kwargs.get("config"))
+        _apply_engine_defaults(kwargs, MultiGMStepStrategy(flow_order=flow_order))
         super().__init__(*args, **kwargs)
 
 

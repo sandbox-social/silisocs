@@ -1,5 +1,6 @@
 """Language-model contracts used by agents and runtime components."""
 
+from abc import ABC, abstractmethod
 from collections.abc import Collection, Sequence
 from typing import Any
 
@@ -14,9 +15,15 @@ class InvalidResponseError(RuntimeError):
     """Raised when a model cannot produce a valid constrained response."""
 
 
-class LanguageModel:
-    """Minimal model interface used by Silisocs agents and components."""
+class LanguageModel(ABC):
+    """Abstract base for language models used by Silisocs agents and components.
 
+    Subclasses must implement :meth:`sample_text`. All other sampling methods
+    have default implementations that delegate to ``sample_text`` or raise
+    ``NotImplementedError`` for capabilities the provider may not support.
+    """
+
+    @abstractmethod
     def sample_text(
         self,
         prompt: str,
@@ -28,7 +35,7 @@ class LanguageModel:
         media: Sequence[str] | None = None,
         seed: int | None = 0,
     ) -> str:
-        raise NotImplementedError
+        """Generate a text completion for the given prompt."""
 
     def sample_choice(
         self,

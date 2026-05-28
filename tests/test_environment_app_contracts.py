@@ -4,8 +4,12 @@ from typing import Any
 
 import pytest
 
-from silisocs.environments.backends.base import BackendApp, app_action
-from silisocs.environments.backends.factory import create_environment_app
+from silisocs.environments.backends.base import BackendApp, SocialBackendApp, app_action
+from silisocs.environments.backends.factory import create_backend_app
+from silisocs.environments.backends.reddit_like.app import RedditLikeApp
+from silisocs.environments.backends.resource_market.app import ResourceMarketApp
+from silisocs.environments.backends.twitter_like.app import TwitterLikeApp
+from silisocs.environments.backends.virtual_space.app import VirtualSpaceApp
 from silisocs.environments.gm.components.observe import AppObservationComponent
 
 
@@ -50,12 +54,45 @@ def test_environment_app_keeps_action_catalog_generic() -> None:
     )
 
 
+def test_backend_app_is_domain_neutral() -> None:
+    for method_name in (
+        "setup_social_state",
+        "get_timeline",
+        "get_timeline_mode",
+        "format_timeline_for_observation",
+        "parse_and_resolve_action",
+        "init_recsys",
+        "update_recommendations",
+    ):
+        assert method_name not in BackendApp.__dict__
+
+
+def test_social_backend_app_owns_social_surface() -> None:
+    for method_name in (
+        "setup_social_state",
+        "get_timeline",
+        "get_timeline_mode",
+        "format_timeline_for_observation",
+        "parse_and_resolve_action",
+    ):
+        assert method_name in SocialBackendApp.__dict__
+
+
+def test_builtin_backend_classes_use_correct_base() -> None:
+    assert issubclass(TwitterLikeApp, SocialBackendApp)
+    assert issubclass(RedditLikeApp, SocialBackendApp)
+    assert not issubclass(ResourceMarketApp, SocialBackendApp)
+    assert not issubclass(VirtualSpaceApp, SocialBackendApp)
+    assert issubclass(ResourceMarketApp, BackendApp)
+    assert issubclass(VirtualSpaceApp, BackendApp)
+
+
 def test_app_observation_component_delegates_to_environment_observe() -> None:
     app = _GenericTestApp()
     component = AppObservationComponent(
         model=object(),
         agent_names=("Alice",),
-        env_app=app,
+        backend=app,
         agent_flow_tags={"Alice": "market"},
         observation_params={"limit": 4},
     )
@@ -75,8 +112,8 @@ def test_app_observation_component_delegates_to_environment_observe() -> None:
 
 def test_custom_environment_app_rejects_unknown_params() -> None:
     with pytest.raises(ValueError, match="Unsupported config param"):
-        create_environment_app(
+        create_backend_app(
             "custom",
-            app_class_path="tests.test_environment_app_contracts._GenericTestApp",
-            app_params={"unknown_param": True},
+            class_path="tests.test_environment_app_contracts._GenericTestApp",
+            params={"unknown_param": True},
         )

@@ -39,17 +39,11 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
     component instances and route them from the game master.
     """
 
-    _RECSYS_TIMELINE_MODES = {
-        "pure_recsys",
-        "hybrid_recsys_follower",
-    }
-
     def __init__(
         self,
-        sm_app: Any | None = None,
-        platform_type: str | None = None,
+        backend: Any | None = None,
+        backend_type: str | None = None,
         default_recsys_type: str | None = None,
-        timeline_mode: str | None = None,
         update_every_n_steps: int = 1,
         lazy: bool = True,
         max_posts: int = 10,
@@ -62,16 +56,15 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
         """Initialize the update component.
 
         Args:
-            sm_app: Reference to the social media app backend
+            backend: Reference to the social media app backend
             update_every_n_steps: Steps between recommendation updates
             lazy: If True, only compute for active users
             max_posts: Maximum recommended posts per user
         """
         super().__init__()
-        self.sm_app = sm_app
-        self.platform_type = str(platform_type or "").strip()
+        self.backend = backend
+        self.backend_type = str(backend_type or "").strip()
         self.default_recsys_type = str(default_recsys_type).strip() if default_recsys_type else None
-        self.timeline_mode = str(timeline_mode or "").strip().lower()
         self.update_every_n_steps = update_every_n_steps
         self.lazy = lazy
         self.max_posts = max_posts
@@ -85,13 +78,13 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
         self._initialized_recsys_types: set[str] = set()
         self._recsys_disabled = False
 
-    _SUPPORTED_RECSYS_BY_PLATFORM = {
+    _SUPPORTED_RECSYS_BY_BACKEND = {
         "twitter_like": {"twitter", "twitter_tfidf", "twhin"},
         "reddit_like": {"reddit", "twhin"},
         "mastodon": set(),
     }
 
-    _DEFAULT_RECSYS_BY_PLATFORM = {
+    _DEFAULT_RECSYS_BY_BACKEND = {
         "twitter_like": "twitter",
         "reddit_like": "reddit",
     }
@@ -102,7 +95,7 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
         :returns: set[str]
         :rtype: set[str]
         """
-        return set(self._SUPPORTED_RECSYS_BY_PLATFORM.get(self.platform_type, set()))
+        return set(self._SUPPORTED_RECSYS_BY_BACKEND.get(self.backend_type, set()))
 
     def _effective_default_recsys_type(self) -> str | None:
         """_effective_default_recsys_type.
@@ -112,24 +105,24 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
         """
         if self.default_recsys_type:
             return self.default_recsys_type
-        return self._DEFAULT_RECSYS_BY_PLATFORM.get(self.platform_type)
+        return self._DEFAULT_RECSYS_BY_BACKEND.get(self.backend_type)
 
     def validate_recsys_types(self) -> None:
-        """Validate configured recsys types for the current backend platform."""
+        """Validate configured recsys types for the current backend."""
         configured_types = self._extract_unique_recsys_types()
         supported = self._supported_recsys_types()
         unsupported = sorted(configured_types - supported)
         if unsupported:
             raise ValueError(
-                "Unsupported recommendation algorithm(s) for platform "
-                f"'{self.platform_type}': {unsupported}. Supported: {sorted(supported)}"
+                "Unsupported recommendation algorithm(s) for backend "
+                f"'{self.backend_type}': {unsupported}. Supported: {sorted(supported)}"
             )
 
     def _log_recsys_event(self, label: str, data: dict[str, Any]) -> None:
         """Emit recommendation diagnostics to app action logger when available."""
-        if not self.sm_app:
+        if not self.backend:
             return
-        log_fn = getattr(self.sm_app, "_log_action_event", None)
+        log_fn = getattr(self.backend, "_log_action_event", None)
         if callable(log_fn):
             try:
                 payload = dict(data)
@@ -140,7 +133,7 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
 
     def _current_episode(self) -> int | None:
         """Return current engine episode index when available."""
-        action_logger = getattr(self.sm_app, "action_logger", None)
+        action_logger = getattr(self.backend, "action_logger", None)
         episode_idx = getattr(action_logger, "episode_idx", None)
         if episode_idx is None:
             return None
@@ -180,24 +173,26 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
             return
 
         try:
-            if not self.sm_app:
-                logger.warning("SocialRecommendationUpdateComponent has no sm_app; skipping update")
+            if not self.backend:
+                logger.warning(
+                    "SocialRecommendationUpdateComponent has no backend; skipping update"
+                )
                 self._log_recsys_event(
                     "recsys_update_skipped",
-                    {"reason": "no_sm_app"},
+                    {"reason": "no_backend"},
                 )
                 return
 
-            backend = self.sm_app
+            backend = self.backend
 
             # Initialize all unique recsys types on first call
             if not self._initialized_recsys_types:
                 recsys_types = self._extract_unique_recsys_types()
                 if not recsys_types:
                     logger.debug(
-                        "No recommendation algorithms configured/supported for platform '%s'; "
+                        "No recommendation algorithms configured/supported for backend '%s'; "
                         "skipping recommendation updates.",
-                        self.platform_type,
+                        self.backend_type,
                     )
                     self._initialized_recsys_types = set()
                     self._recsys_disabled = True
@@ -205,7 +200,7 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
                         "recsys_update_skipped",
                         {
                             "reason": "no_recsys_types",
-                            "platform_type": self.platform_type,
+                            "backend_type": self.backend_type,
                         },
                     )
                     return
@@ -227,7 +222,7 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
                 self._log_recsys_event(
                     "recsys_update_attempt",
                     {
-                        "platform_type": self.platform_type,
+                        "backend_type": self.backend_type,
                         "recsys_types": sorted(self._initialized_recsys_types),
                         "max_posts": int(self.max_posts),
                         "episode_idx": current_episode,
@@ -248,7 +243,7 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
                 self._log_recsys_event(
                     "recsys_update_complete",
                     {
-                        "platform_type": self.platform_type,
+                        "backend_type": self.backend_type,
                         "recsys_types": sorted(self._initialized_recsys_types),
                         "max_posts": int(self.max_posts),
                         "episode_idx": current_episode,
@@ -260,7 +255,7 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
                     "recsys_update_skipped",
                     {
                         "reason": "backend_missing_update_recommendations",
-                        "platform_type": self.platform_type,
+                        "backend_type": self.backend_type,
                         "backend_class": backend.__class__.__name__,
                     },
                 )
@@ -270,7 +265,7 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
             self._log_recsys_event(
                 "recsys_update_error",
                 {
-                    "platform_type": self.platform_type,
+                    "backend_type": self.backend_type,
                     "error": str(e),
                     "recsys_types": sorted(self._initialized_recsys_types),
                 },
@@ -283,11 +278,6 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
         unique_types: set[str] = set()
         if self.default_recsys_type:
             unique_types.add(self.default_recsys_type)
-        if not unique_types and self.timeline_mode in self._RECSYS_TIMELINE_MODES:
-            default_type = self._effective_default_recsys_type()
-            if default_type:
-                unique_types.add(default_type)
-
         return unique_types
 
     def get_state(self) -> dict[str, Any]:

@@ -133,5 +133,5 @@ def test_old_flow_field_override_is_rejected() -> None:
             },
             model=object(),
             agent_names=["alice"],
-            sm_app=object(),
+            backend=object(),
         )

@@ -220,7 +220,7 @@ def test_reddit_like_scripted_post_comment_vote(tmp_path: Path) -> None:
         behavior="tests.test_scripted_backend_matrix.RedditPostCommentVoteBehavior",
         extra_overrides=[
             "env.gm.components.update.built_in=disabled",
-            "env.timeline_mode=follower_chronological",
+            "env.gm.components.observe.params.timeline_mode=follower_chronological",
         ],
     )
 
@@ -312,14 +312,6 @@ def test_dashboard_saved_config_runs_with_scripted_model(tmp_path: Path) -> None
             },
             "shared_memories": ["Agents are validating dashboard output."],
             "initial_observations": ["{name} opens the dashboard-generated scenario."],
-            "social_network": {
-                "activity_transition_rates": {
-                    "user": {"inactive_to_active": 1.0, "active_to_inactive": 0.0}
-                },
-                "network_type": "random",
-                "base_followership_probability": 1.0,
-                "fully_connected_targets": ["user"],
-            },
             "probes": {"deployment": {"enabled": False}, "probes": {}},
         },
         {
@@ -336,7 +328,12 @@ def test_dashboard_saved_config_runs_with_scripted_model(tmp_path: Path) -> None
             "initialization.simulation.built_in": "none",
         },
         {
-            "timeline_mode": "follower_chronological",
+            "gm.components.initialize.params.graph.network_type": "random",
+            "gm.components.initialize.params.graph.base_followership_probability": 1.0,
+            "gm.components.initialize.params.graph.fully_connected_targets": ["user"],
+            "gm.components.next_acting.params.activity_transition_rates.user.inactive_to_active": 1.0,
+            "gm.components.next_acting.params.activity_transition_rates.user.active_to_inactive": 0.0,
+            "gm.components.observe.params.timeline_mode": "follower_chronological",
             "gm.components.update.built_in": "disabled",
             "gm.components.resolve.built_in": "tool_calling",
         },

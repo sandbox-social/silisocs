@@ -17,7 +17,6 @@ class RuntimeProjection:
     action_mode: str
     tool_calling_mode: str
     resolve_built_in: str
-    gm_preset: str
     engine_step: str
 
     @classmethod
@@ -56,13 +55,11 @@ class RuntimeProjection:
                 "sim.tool_calling.mode=none when resolver is not tool_calling."
             )
 
-        gm_preset = str(OmegaConf.select(cfg, "env.gm.preset") or "base")
         engine_step = str(OmegaConf.select(cfg, "sim.engine.step.built_in") or "base")
 
         return cls(
             action_mode=action_mode,
             tool_calling_mode=tool_calling_mode,
             resolve_built_in=resolve_built_in,
-            gm_preset=gm_preset,
             engine_step=engine_step,
         )

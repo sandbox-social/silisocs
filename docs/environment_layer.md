@@ -27,9 +27,9 @@ This page focuses on end-user and developer configurability for Engine/GM/backen
 - Specialized agent classes can define distinct runtime behavior (for example,
   fixed-action agents) while still using the same GM resolve components.
 
-Flow controls use two independent switches:
+Flow controls use two independent settings:
 
-- `env.enable_gm_multi_flow`: enables GM-side component routing (`env.gm.preset: shared_flow`).
+- `env.gm.class_path: silisocs.environments.gm.shared_flow_game_master.FlowRoutedGameMaster`: enables GM-side component routing.
 - `sim.engine.step.built_in: flow`: enables engine-side flow scheduling.
 
 ## Canonical Structure
@@ -121,7 +121,7 @@ Built-in backend initializer slots:
 
 It uses backend tools generated from `@app_action` and can include both:
 
-- YAML action guidance (`env.action_prompt`)
+- YAML action guidance (`env.gm.components.action_prompt.params.action_prompt`)
 - auto-generated backend action catalog
 
 This supports both styles:
@@ -270,12 +270,12 @@ Flow routing notes:
 
 ## Shared-Flow GM Contract
 
-`env.gm.preset: shared_flow` is an advanced GM preset for routing multiple
+`FlowRoutedGameMaster` is an advanced GM class for routing multiple
 component instances by flow. It uses the same runtime contracts as the baseline
 GM:
 
 - Backend apps are created through the backend factory with the configured
-  `env.app.class_path` and `env.app.params`.
+  `env.backend.class_path` and `env.backend.params`.
 - Action events are written through the standard action event logger.
 - Game Master initialization receives agent names, simulation roles, and
   social-network config through the configured initializer component.
@@ -293,7 +293,7 @@ not bypass backend initialization or logging.
 
 For non-social domains, subclass `BackendApp`, provide generic
 `observe(...)`, use `app_observation`, and disable recommendation scheduling.
-Use `SocialMediaApp` only when the backend needs social timeline, feed, or
+Use `SocialBackendApp` only when the backend needs social timeline, feed, or
 recommendation capabilities.
 
 ## Action Prompt Pipeline Implementation

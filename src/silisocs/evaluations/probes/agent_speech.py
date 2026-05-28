@@ -1,4 +1,4 @@
-"""agent_speech module. Auto-generated module docstring."""
+"""Probe deployment: structured questionnaire mode with single-probe fallback."""
 
 import importlib
 import logging
@@ -11,55 +11,15 @@ from silisocs.runtime.types import ActionSpec, OutputType
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CALL_TO_SPEECH = (
-    "Given the above, what is {name} likely to say next? Respond in"
-    ' the format `{name} -- "..."` For example, '
-    'Cristina -- "Hello! Mighty fine weather today, right?", '
-    'Ichabod -- "I wonder if the alfalfa is ready to harvest", or '
-    'Townsfolk -- "Good morning".\n'
-)
-
 
 def _agent_name(agent) -> str:
     """Return the public agent name without depending on private storage."""
     return str(getattr(agent, "name", getattr(agent, "_agent_name", "unknown")))
 
 
-def write_seed_toot(agent):
-    """write_seed_toot.
-
-    :param agent:
-    """
-    agent_name = _agent_name(agent)
-    call_to_speech = DEFAULT_CALL_TO_SPEECH.format(
-        name=agent_name,
-    )
-    interaction_premise = f"{agent_name} has to make their first post on Social Media\n"
-    interrogation = interaction_premise
-    interrogation += "Thought on Social Media post: In less than 100 words, write a toot that aligns with your views and background."
-    agent_says = agent.act(
-        action_spec=ActionSpec(
-            prompt="Context: " + interrogation + call_to_speech,
-            output_type=OutputType.TEXT,
-        ),
-    )
-    # Some agent names are single tokens; strip available name tokens safely.
-    cleaned = str(agent_says).strip()
-    for token in agent_name.split():
-        if token:
-            cleaned = cleaned.strip(token).strip()
-    agent_says = cleaned.strip("-").strip().strip('"')
-    return agent_says
-
-
 def _build_questionnaire_prompt(agent, probes):
-    """_build_questionnaire_prompt.
-
-    :param agent:
-    :param probes:
-    """
+    """Build a single multi-question prompt for the agent."""
     lines = [
-        "You are completing a survey in character.",
         "Return only answer lines in this exact style and order:",
         "Q0: <answer>",
         "Q1: <answer>",
@@ -73,19 +33,8 @@ def _build_questionnaire_prompt(agent, probes):
 
 
 def _parse_questionnaire_answers(raw_response: str, expected_count: int) -> dict[str, str]:
-    """_parse_questionnaire_answers.
-
-    :param str raw_response:
-    :type raw_response: str
-    :param int expected_count:
-    :type expected_count: int
-
-    :returns: dict[str, str]
-    :rtype: dict[str, str]
-    """
+    """Parse ``Q0: ..., Q1: ...`` formatted answers from model output."""
     parsed: dict[str, str] = {}
-    # Match Q<n> anywhere on a line (not just at line start) to handle cases
-    # where the act wrapper prepends the agent name to the first line of output.
     line_pattern = re.compile(r"(?im)(?:^|\s)q(?P<idx>\d+)\s*[:\-]\s*(?P<answer>.+?)\s*$")
     for match in line_pattern.finditer(raw_response):
         idx = int(match.group("idx"))
@@ -93,8 +42,6 @@ def _parse_questionnaire_answers(raw_response: str, expected_count: int) -> dict
         if key not in parsed:
             parsed[key] = match.group("answer").strip()
 
-    # Some small models use Q1..Qn labels even when prompted for Q0..Q(n-1).
-    # Normalize one-based indexing if all expected answers are present that way.
     if expected_count > 0 and "q0" not in parsed:
         one_based_keys = [f"q{i}" for i in range(1, expected_count + 1)]
         if all(k in parsed for k in one_based_keys):
@@ -121,14 +68,7 @@ def _parse_questionnaire_answers(raw_response: str, expected_count: int) -> dict
 
 
 def _ask_structured_questionnaire(agent, probes) -> dict[str, str]:
-    """_ask_structured_questionnaire.
-
-    :param agent:
-    :param probes:
-
-    :returns: dict[str, str]
-    :rtype: dict[str, str]
-    """
+    """Send the full questionnaire to an agent and parse the response."""
     questionnaire_prompt = _build_questionnaire_prompt(agent, probes)
     action_spec = ActionSpec(
         prompt=questionnaire_prompt,
@@ -217,12 +157,7 @@ def _run_single_probe_query(
 
 
 def deploy_probes_to_agent(agent, probes, probe_event_logger):
-    """deploy_probes_to_agent.
-
-    :param agent:
-    :param probes:
-    :param probe_event_logger:
-    """
+    """Run all probes against a single agent, trying structured mode first."""
     if not probes:
         return
 
@@ -304,16 +239,7 @@ def deploy_probes(
     worker_limit: int | None = None,
     prebuilt_probes: list | None = None,
 ):
-    """deploy_probes.
-
-    :param agents:
-    :param probes:
-    :param probe_event_logger:
-    :param int | None worker_limit:
-    :type worker_limit: int | None
-    :param list | None prebuilt_probes:
-    :type prebuilt_probes: list | None
-    """
+    """Deploy probes to all agents in parallel with optional worker cap."""
     if prebuilt_probes is not None:
         probes = prebuilt_probes
     else:

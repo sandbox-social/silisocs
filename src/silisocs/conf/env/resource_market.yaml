@@ -1,14 +1,5 @@
-# @package env
-
-platform_type: resource_market
-app_module_path: silisocs.environments.backends.resource_market
-use_server: false
-
-enabled_actions: null
-enable_gm_multi_flow: false
-observation_history: 100
-
-app:
+backend:
+  type: resource_market
   class_path: null
   params:
     initial_cash: 20
@@ -16,17 +7,20 @@ app:
       food: 1
       wood: 0
       ore: 0
-    resources: [food, wood, ore]
+    resources:
+    - food
+    - wood
+    - ore
+    perform_operations: false
+    app_description: 'You are operating in a resource market environment. Agents can
+      inspect the
 
-gamemaster:
-  filename: environment
-  name: resource_market_gm
-  sim_role:
-    name: resource market game master
-    module_path: silisocs.environments.gm.game_master
+      market, produce resources, list resources for sale, buy open listings, consume
 
+      inventory, or finish the current action episode.'
+  enabled_actions: null
+observation_history: 100
 gm:
-  preset: base
   components:
     initialize:
       built_in: app_initialize
@@ -49,24 +43,38 @@ gm:
       built_in: tool_calling
       class_path: null
       params: {}
+    action_prompt:
+      built_in: default
+      class_path: null
+      params:
+        action_prompt: 'You are operating in a resource market environment. Agents
+          can inspect the
 
+          market, produce resources, list resources for sale, buy open listings, consume
+
+          inventory, or finish the current action episode.
+
+
+          ## AVAILABLE ACTIONS
+
+          Choose one available market action based on the current resource market
+          state.
+
+
+          [OUTPUT STYLE]'
+        output_style: '## OUTPUT FORMAT
+
+          ACTION: <action_name>
+
+          <param_name>: <value>
+
+          '
+  name: resource_market_gm
+  sim_role:
+    name: resource market game master
+    module_path: silisocs.environments.gm.game_master
+  class_path: silisocs.environments.gm.game_master.GameMaster
 gm_orchestration:
   gms: []
   flow_bindings:
     flow_to_gms: {}
-
-usage_instructions: |
-  You are operating in a resource market environment. Agents can inspect the
-  market, produce resources, list resources for sale, buy open listings, consume
-  inventory, or finish the current action episode.
-
-action_prompt: |
-  ## AVAILABLE ACTIONS
-  Choose one available market action based on the current resource market state.
-
-  [OUTPUT STYLE]
-
-output_style: |
-  ## OUTPUT FORMAT
-  ACTION: <action_name>
-  <param_name>: <value>

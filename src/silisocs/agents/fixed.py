@@ -374,7 +374,14 @@ class FixedAgent(Agent):
         return raw
 
     def _format_action(
-        self, *, mode: str, action_name: str, target_id: str, content: str, reasoning: str
+        self,
+        *,
+        mode: str,
+        action_name: str,
+        target_id: str,
+        content: str,
+        reasoning: str,
+        tool_kwargs: Mapping[str, Any] | None = None,
     ) -> ActionOutput:
         """_format_action.
 
@@ -385,12 +392,15 @@ class FixedAgent(Agent):
             payload: dict[str, Any] = {}
             normalized_name = str(action_name).strip()
             if normalized_name.upper() != self._finished_action_name.upper():
-                if content:
-                    payload["status"] = content
-                    payload.setdefault("content", content)
-                if target_id:
-                    payload["post_id"] = target_id
-                    payload.setdefault("target_id", target_id)
+                if isinstance(tool_kwargs, Mapping):
+                    payload = {
+                        str(key): value for key, value in tool_kwargs.items() if str(key).strip()
+                    }
+                if not payload:
+                    if content:
+                        payload["status"] = content
+                    if target_id:
+                        payload["post_id"] = target_id
             return ActionOutput.from_tool_calls([ToolCall(normalized_name, payload)])
 
         if mode == "generic_action":
@@ -438,6 +448,7 @@ class FixedAgent(Agent):
         target_id = str(item.get("target_id", "") or "")
         content = str(item.get("content", "") or "")
         reasoning = str(item.get("reasoning", "Fixed action entity response.") or "")
+        tool_kwargs = item.get("tool_kwargs", {})
 
         action_output = self._format_action(
             mode=mode,
@@ -445,6 +456,7 @@ class FixedAgent(Agent):
             target_id=target_id,
             content=content,
             reasoning=reasoning,
+            tool_kwargs=tool_kwargs if isinstance(tool_kwargs, Mapping) else None,
         )
         self._last_log = {
             "episode": self._current_episode,

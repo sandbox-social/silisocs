@@ -7,11 +7,21 @@ import os
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-from omegaconf import OmegaConf
+if TYPE_CHECKING:
+    from silisocs.environments.backends.base import BackendApp
+    from silisocs.environments.gm.components.base import (
+        ActionPromptComponent,
+        InitializeComponent,
+        NextActingComponent,
+        ObservationComponent,
+        ResolveComponent,
+        UpdateComponent,
+    )
+    from silisocs.runtime.language_models.base import LanguageModel
 
-from silisocs.environments.backends.factory import create_environment_app
+from silisocs.environments.backends.factory import create_backend_app
 from silisocs.environments.gm.components.factory import (
     build_action_prompt_component,
     build_initialize_component,
@@ -24,7 +34,6 @@ from silisocs.runtime.io import EventLogger
 from silisocs.runtime.prompts.action_prompts import (
     PromptAdditions,
     compile_action_prompt,
-    prompt_additions_from_cfg,
 )
 from silisocs.runtime.types import ActionOutput, ActionSpec
 
@@ -35,12 +44,12 @@ _LOGGER = logging.getLogger(__name__)
 class GameMasterComponentSlots:
     """Typed native component slots owned by a game master."""
 
-    initialize: Any
-    next_acting: Any
-    action_prompt: Any
-    observe: Any
-    resolve: Any
-    update: Any
+    initialize: InitializeComponent
+    next_acting: NextActingComponent
+    action_prompt: ActionPromptComponent
+    observe: ObservationComponent
+    resolve: ResolveComponent
+    update: UpdateComponent
 
 
 class BaseGameMaster(ABC):
@@ -76,72 +85,26 @@ class BaseGameMaster(ABC):
         """Resolve one agent action through the backend."""
 
 
-def _env_cfg(cfg: Any) -> Any:
-    """_env_cfg.
-
-    :param Any cfg:
-    :type cfg: Any
-
-    :returns: Any
-    :rtype: Any
-    """
-    return getattr(cfg, "env", getattr(cfg, "environment", object()))
-
-
-def _runtime_cfg(params: Mapping[str, Any]) -> Any:
-    """Return the explicit runner-provided config view for GM construction."""
-    raw = params.get("runtime_config")
-    if raw is None:
-        raise ValueError(
-            "GameMaster requires `runtime_config` in params. Runtime construction must pass "
-            "the runner-built config view explicitly."
-        )
-    if isinstance(raw, Mapping):
-        return OmegaConf.create(dict(raw))
-    return raw
-
-
-def _compute_activity_rates(
-    user_data: dict[str, Any],
-) -> dict[str, dict[str, float]]:
-    """Map each agent to its role's activity transition rates."""
-    rates: dict[str, dict[str, float]] = {}
-    sim_role_parameters = user_data.get("sim_role_parameters", {}) or {}
-    transition_rates = dict(sim_role_parameters.get("activity_transition_rates", {}) or {})
-    for agent, role in user_data["sim_roles"].items():
-        rates[agent] = dict(
-            transition_rates.get(
-                role,
-                {
-                    "inactive_to_active": 1.0,
-                    "active_to_inactive": 0.0,
-                },
-            )
-        )
-    return rates
-
-
 def build_generic_action_prompt(
     *,
-    cfg: Any,
-    sm_app: Any,
+    backend: Any,
     tool_calling_mode: str,
     gm_prompt_cfg: Mapping[str, Any] | None = None,
+    output_style: str = "",
+    add_action_count_guidance: bool = True,
 ) -> str:
     """Build a generic action prompt from a backend action catalog."""
     gm_prompt_cfg = dict(gm_prompt_cfg or {})
-    output_style = str(gm_prompt_cfg.get("output_style", "") or "").strip()
-    if not output_style:
-        output_style = str(getattr(_env_cfg(cfg), "output_style", "") or "")
-
-    additions = prompt_additions_from_cfg(cfg)
-    base_prompt = str(sm_app.generate_generic_action_prompt() or "").strip()
+    resolved_output_style = str(gm_prompt_cfg.get("output_style", "") or "").strip()
+    if not resolved_output_style:
+        resolved_output_style = str(output_style or "")
+    base_prompt = str(backend.generate_generic_action_prompt() or "").strip()
     return compile_action_prompt(
         base_prompt=base_prompt,
-        output_style=output_style,
+        output_style=resolved_output_style,
         tool_calling_mode=tool_calling_mode,
         additions=PromptAdditions(
-            add_action_count_guidance=additions.add_action_count_guidance,
+            add_action_count_guidance=add_action_count_guidance,
         ),
     )
 
@@ -153,11 +116,12 @@ class EnvironmentGameMaster(BaseGameMaster):
         self,
         *,
         name: str,
-        model: Any,
-        app: Any,
+        model: LanguageModel | None,
+        backend: BackendApp,
+        backend_type: str,
         component_slots: GameMasterComponentSlots,
         component_registry: Mapping[str, Any] | None = None,
-        user_data: Mapping[str, Any],
+        environment_data: Mapping[str, Any],
         action_prompt_template: str,
         action_output_mode: str,
         activity_transition_rates: Mapping[str, Any],
@@ -169,9 +133,8 @@ class EnvironmentGameMaster(BaseGameMaster):
     ) -> None:
         self._name = str(name)
         self.model = model
-        self.app = app
-        self.sm_app = app
-        self.env_app = app
+        self.backend = backend
+        self.backend_type = str(backend_type)
         self.initialize_component = component_slots.initialize
         self.next_acting = component_slots.next_acting
         self.action_prompt_component = component_slots.action_prompt
@@ -187,7 +150,7 @@ class EnvironmentGameMaster(BaseGameMaster):
             "update": self.update_component,
             **dict(component_registry or {}),
         }
-        self.user_data = dict(user_data or {})
+        self.environment_data = dict(environment_data or {})
         self.action_prompt_template = str(action_prompt_template or "")
         self.action_output_mode = str(action_output_mode or "parsed_action")
         self.activity_transition_rates = dict(activity_transition_rates or {})
@@ -393,6 +356,9 @@ class _GameMasterWiring:
     ) -> None:
         if "entities" in params:
             raise ValueError("GameMaster params use removed `entities`; pass `agents` instead.")
+        for removed in ("runtime" + "_config", "sm" + "_user_data", "social" + "_media_action"):
+            if removed in params:
+                raise ValueError("GameMaster params include a removed legacy backend key.")
         nested_params = params.pop("params", None)
         if isinstance(nested_params, Mapping):
             params = {**dict(nested_params), **params}
@@ -400,28 +366,26 @@ class _GameMasterWiring:
         self.agents = tuple(agents)
         self.params = {
             "name": "environment_game-master",
-            "calls_to_action": {},
-            "app_module_path": "",
             "sim_role": {},
             "environment_data": {},
-            "sm_user_data": {},
-            "app_description": "",
+            "backend_config": {},
+            "components": {},
+            "action_prompt_template": "",
+            "action_mode": "custom",
+            "tool_calling_mode": "none",
+            "timeline_mode": "follower_chronological",
+            "timeline_posts": 10,
+            "timeline_config": {},
             **dict(params),
         }
 
     def _is_shared_flow_mode(self) -> bool:
-        """_is_shared_flow_mode.
-
-        :returns: bool
-        :rtype: bool
-        """
         return False
 
     def build_generic_prompt(
         self,
         *,
-        cfg: Any,
-        sm_app: Any,
+        backend: Any,
         tool_calling_mode: str,
         gm_prompt_cfg: Mapping[str, Any] | None = None,
     ) -> str:
@@ -431,47 +395,42 @@ class _GameMasterWiring:
         instance and enabled action set.
         """
         return build_generic_action_prompt(
-            cfg=cfg,
-            sm_app=sm_app,
+            backend=backend,
             tool_calling_mode=tool_calling_mode,
             gm_prompt_cfg=gm_prompt_cfg,
+            output_style=str(self.params.get("output_style", "") or ""),
+            add_action_count_guidance=bool(self.params.get("add_action_count_guidance", True)),
         )
 
-    def build_runtime_kwargs(
-        self,
-        model: Any | None = None,
-    ) -> dict[str, Any]:
-        """Build keyword arguments for the native game-master runtime."""
-        model = model or self.model
-        name = str(self.params.get("name"))
-        calls_to_action = self.params.get("calls_to_action", {})
-        user_data = self.params.get("environment_data") or self.params["sm_user_data"]
-        call_to_sm_action = calls_to_action.get(
-            "environment_action",
-            calls_to_action.get("social_media_action", ""),
-        )
+    # ------------------------------------------------------------------
+    # build_runtime_kwargs helpers
+    # ------------------------------------------------------------------
 
-        cfg = _runtime_cfg(self.params)
+    def _create_backend_app(self) -> Any:
+        """Instantiate the backend app and configure enabled actions."""
+        backend_cfg = dict(self.params.get("backend_config") or {})
+        backend_type = str(backend_cfg.get("backend_type") or "").strip()
+        if not backend_type:
+            raise ValueError("GameMaster backend_config.backend_type is required.")
+        output_rootname = str(backend_cfg.get("output_rootname") or "")
         action_logger = EventLogger(
             "action",
-            os.path.join(cfg.output_rootname, "action_events.jsonl"),
+            os.path.join(output_rootname, "action_events.jsonl"),
         )
         action_logger.episode_idx = 0
 
-        platform_type = getattr(_env_cfg(cfg), "platform_type", "twitter_like")
-        db_path = os.path.join(cfg.output_rootname, f"{platform_type}.db")
-        sm_app = create_environment_app(
-            platform_type=platform_type,
+        db_path = os.path.join(output_rootname, f"{backend_type}.db")
+        backend = create_backend_app(
+            backend_type=backend_type,
             action_logger=action_logger,
-            perform_operations=getattr(_env_cfg(cfg), "use_server", False),
-            app_description=self.params.get("app_description", ""),
+            perform_operations=bool(backend_cfg.get("perform_operations", False)),
+            app_description=str(backend_cfg.get("app_description") or ""),
             db_path=db_path,
-            app_class_path=OmegaConf.select(cfg, "env.app.class_path", default=None),
-            app_params=OmegaConf.select(cfg, "env.app.params", default={}) or {},
+            class_path=backend_cfg.get("class_path"),
+            params=dict(backend_cfg.get("params") or {}),
         )
-        sm_app.platform_type = platform_type  # type: ignore[attr-defined]
 
-        enabled_actions_cfg = getattr(_env_cfg(cfg), "enabled_actions", None)
+        enabled_actions_cfg = backend_cfg.get("enabled_actions")
         if enabled_actions_cfg is not None:
             if isinstance(enabled_actions_cfg, Sequence) and not isinstance(
                 enabled_actions_cfg, (str, bytes)
@@ -480,111 +439,33 @@ class _GameMasterWiring:
             else:
                 enabled_actions = [str(enabled_actions_cfg).strip()]
 
-            turn_policy_built_in = str(
-                OmegaConf.select(cfg, "sim.engine.turn_policy.built_in", default="") or ""
-            ).strip()
+            turn_policy_built_in = str(backend_cfg.get("turn_policy_built_in") or "").strip()
             enabled_actions_upper = {name.upper() for name in enabled_actions if name}
             if turn_policy_built_in == "open_ended" and "FINISHED" not in enabled_actions_upper:
                 enabled_actions.append("FINISHED")
 
-            sm_app.set_enabled_actions(enabled_actions)
+            backend.set_enabled_actions(enabled_actions)
 
-        agent_names = [agent.name for agent in self.agents]
+        return backend
 
-        env_cfg = _env_cfg(cfg)
-        activity_rates = _compute_activity_rates(user_data)
-        agent_flow_tags = dict(user_data.get("agent_flow_tags", {}) or {})
-        gm_orchestration = dict(user_data.get("gm_orchestration", {}) or {})
-        gm_prompt_cfg = dict(gm_orchestration.get("prompt", {}) or {})
-        gm_components_cfg: dict[str, Any] = {}
-        env_gm_cfg = getattr(_env_cfg(cfg), "gm", None)
-        if env_gm_cfg is not None and getattr(env_gm_cfg, "components", None) is not None:
-            gm_components_cfg = cast(
-                dict[str, Any],
-                OmegaConf.to_container(
-                    env_gm_cfg.components,
-                    resolve=True,
-                ),
-            )
-        elif hasattr(cfg.env, "gm") and getattr(cfg.env.gm, "components", None) is not None:
-            gm_components_cfg = cast(
-                dict[str, Any],
-                OmegaConf.to_container(
-                    cfg.env.gm.components,
-                    resolve=True,
-                ),
-            )
+    @staticmethod
+    def _resolve_gm_components_cfg(params: Mapping[str, Any]) -> dict[str, Any]:
+        """Extract and validate the gm.components config dict."""
+        gm_components_cfg = dict(params.get("components") or {})
         if "recommend" in gm_components_cfg:
             raise ValueError(
                 "`env.gm.components.recommend` has been removed. "
                 "Use `env.gm.components.update` with built_in='social_recommendation'."
             )
-        initializer_cfg = dict(
-            gm_components_cfg.get("initialize") or self.params.get("initializer") or {}
-        )
-        if not initializer_cfg:
-            raise ValueError(
-                "Native GameMaster requires `env.gm.components.initialize` "
-                "(or a runner-provided initializer during migration)."
-            )
+        return gm_components_cfg
 
-        # Map action_mode to default resolve component
-        # Note: tool_calling is NOT an action_mode, only a resolve component option
-        action_mode_to_resolve_map = {
-            "custom": "parsed_action",
-            "generic": "generic_action",
-        }
-        resolve_slot = dict(gm_components_cfg.get("resolve", {}))
-        if not resolve_slot:
-            # Use default resolver based on action_mode
-            resolve_slot = {
-                "built_in": action_mode_to_resolve_map.get(
-                    getattr(cfg.sim, "action_mode", "custom"), "parsed_action"
-                ),
-            }
-
-        # Determine if tool-calling is enabled from explicit mode config.
-        tool_calling_mode = (
-            str(OmegaConf.select(cfg, "sim.tool_calling.mode", default="none") or "none")
-            .strip()
-            .lower()
-        )
-        action_mode = str(getattr(cfg.sim, "action_mode", "custom") or "custom").strip().lower()
-        if action_mode == "generic":
-            call_to_sm_action = self.build_generic_prompt(
-                cfg=cfg,
-                sm_app=sm_app,
-                tool_calling_mode=tool_calling_mode,
-                gm_prompt_cfg=gm_prompt_cfg,
-            )
-
-        enable_tool_calling = tool_calling_mode in {"single", "multi"}
-        action_output_mode = str(resolve_slot.get("built_in", "parsed_action") or "parsed_action")
-
-        initialize_component = build_initialize_component(initializer_cfg)
-        next_actor = build_next_acting_component(
-            gm_components_cfg.get("next_acting"),
-            agent_names=agent_names,
-            activity_transition_rates=activity_rates,
-        )
-        action_prompt_component = build_action_prompt_component(
-            gm_components_cfg.get("action_prompt"),
-            app=sm_app,
-            action_prompt_template=call_to_sm_action,
-            enable_tool_calling=enable_tool_calling,
-        )
-        observe_slot = dict(gm_components_cfg.get("observe", {}))
-        observe_params = dict(observe_slot.get("params") or {})
-        episode_observation_flow = observe_params.get("episode_observation_flow", "fixed_pre")
-        if isinstance(episode_observation_flow, list):
-            episode_observation_flow = (
-                episode_observation_flow[0] if episode_observation_flow else "fixed_pre"
-            )
-
-        timeline_mode = str(
-            getattr(_env_cfg(cfg), "timeline_mode", None) or "follower_chronological"
-        )
-        timeline_posts = int(getattr(_env_cfg(cfg), "timeline_posts", 10) or 10)
+    def _validate_observe_slot(self, backend_type: str, observe_slot: Mapping[str, Any]) -> None:
+        """Validate timeline config when the observe slot declares one."""
+        params = dict(observe_slot.get("params") or {}) if isinstance(observe_slot, Mapping) else {}
+        timeline_mode = params.get("timeline_mode")
+        if not timeline_mode:
+            return
+        timeline_mode = str(timeline_mode)
         supported_timeline_modes = {
             "twitter_like": {
                 "follower_chronological",
@@ -599,56 +480,106 @@ class _GameMasterWiring:
             },
             "mastodon": {"follower_chronological"},
         }
-        allowed_modes = supported_timeline_modes.get(platform_type, {"follower_chronological"})
+        allowed_modes = supported_timeline_modes.get(backend_type, {"follower_chronological"})
         if timeline_mode not in allowed_modes:
             raise ValueError(
-                f"Unsupported timeline_mode='{timeline_mode}' for platform '{platform_type}'. "
+                f"Unsupported timeline_mode='{timeline_mode}' for backend '{backend_type}'. "
                 f"Supported: {sorted(allowed_modes)}"
             )
-        timeline_config = {}
-        if hasattr(_env_cfg(cfg), "timeline_config"):
-            timeline_config = (
-                cast(
-                    dict[str, Any],
-                    OmegaConf.to_container(_env_cfg(cfg).timeline_config, resolve=True),
-                )
-                if isinstance(_env_cfg(cfg).timeline_config, dict)
-                else {}
+
+    # ------------------------------------------------------------------
+
+    def build_runtime_kwargs(
+        self,
+        model: Any | None = None,
+    ) -> dict[str, Any]:
+        """Build keyword arguments for the native game-master runtime."""
+        model = model or self.model
+        name = str(self.params.get("name"))
+        environment_data = dict(self.params["environment_data"])
+        action_prompt_template = str(self.params.get("action_prompt_template") or "")
+        backend_cfg = dict(self.params.get("backend_config") or {})
+        backend_type = str(backend_cfg.get("backend_type") or "")
+        backend = self._create_backend_app()
+
+        agent_names = [agent.name for agent in self.agents]
+        sim_roles = dict(environment_data.get("sim_roles", {}) or {})
+        agent_flow_tags = dict(environment_data.get("agent_flow_tags", {}) or {})
+        gm_orchestration = dict(environment_data.get("gm_orchestration", {}) or {})
+        gm_prompt_cfg = dict(gm_orchestration.get("prompt", {}) or {})
+
+        gm_components_cfg = self._resolve_gm_components_cfg(self.params)
+
+        initializer_cfg = dict(gm_components_cfg.get("initialize") or {})
+        if not initializer_cfg:
+            raise ValueError("Native GameMaster requires `env.gm.components.initialize`.")
+
+        _ACTION_MODE_TO_RESOLVE = {"custom": "parsed_action", "generic": "generic_action"}
+        resolve_slot = dict(gm_components_cfg.get("resolve", {}))
+        if not resolve_slot:
+            resolve_slot = {
+                "built_in": _ACTION_MODE_TO_RESOLVE.get(
+                    str(self.params.get("action_mode") or "custom"), "parsed_action"
+                ),
+            }
+
+        tool_calling_mode = str(self.params.get("tool_calling_mode") or "none").strip().lower()
+        action_mode = str(self.params.get("action_mode") or "custom").strip().lower()
+        if action_mode == "generic":
+            action_prompt_template = self.build_generic_prompt(
+                backend=backend,
+                tool_calling_mode=tool_calling_mode,
+                gm_prompt_cfg=gm_prompt_cfg,
             )
-        elif hasattr(cfg.env, "timeline_config"):
-            timeline_config = (
-                cast(
-                    dict[str, Any],
-                    OmegaConf.to_container(cfg.env.timeline_config, resolve=True),
-                )
-                if isinstance(cfg.env.timeline_config, dict)
-                else {}
+
+        enable_tool_calling = tool_calling_mode in {"single", "multi"}
+        action_output_mode = str(resolve_slot.get("built_in", "parsed_action") or "parsed_action")
+
+        # Build all component slots
+        initialize_component = build_initialize_component(initializer_cfg)
+        next_actor = build_next_acting_component(
+            gm_components_cfg.get("next_acting"),
+            agent_names=agent_names,
+            sim_roles=sim_roles,
+        )
+        action_prompt_component = build_action_prompt_component(
+            gm_components_cfg.get("action_prompt"),
+            backend=backend,
+            action_prompt_template=action_prompt_template,
+            enable_tool_calling=enable_tool_calling,
+            tool_calling_mode=tool_calling_mode,
+        )
+
+        observe_slot = dict(gm_components_cfg.get("observe", {}))
+        observe_params = dict(observe_slot.get("params") or {})
+        episode_observation_flow = observe_params.get("episode_observation_flow", "fixed_pre")
+        if isinstance(episode_observation_flow, list):
+            episode_observation_flow = (
+                episode_observation_flow[0] if episode_observation_flow else "fixed_pre"
             )
+
+        self._validate_observe_slot(backend_type, observe_slot)
 
         make_observation = build_observe_component(
             observe_slot,
             model=model,
             agent_names=agent_names,
-            sm_app=sm_app,
+            backend=backend,
             agent_flow_tags=agent_flow_tags,
             episode_observation_flow=str(episode_observation_flow),
-            timeline_mode=timeline_mode,
-            timeline_posts=timeline_posts,
-            timeline_config=timeline_config,
         )
         resolve_component = build_resolve_component(
             resolve_slot,
-            sm_app=sm_app,
+            backend=backend,
             model=model,
-            action_prompt_template=call_to_sm_action,
+            action_prompt_template=action_prompt_template,
             agents_by_name={agent.name: agent for agent in self.agents},
         )
         update_slot = dict(gm_components_cfg.get("update", {}))
         update_component = build_update_component(
             update_slot,
-            sm_app=sm_app,
-            platform_type=platform_type,
-            timeline_mode=timeline_mode,
+            backend=backend,
+            backend_type=backend_type,
         )
 
         if hasattr(update_component, "validate_recsys_types") and callable(
@@ -668,12 +599,18 @@ class _GameMasterWiring:
         return {
             "name": name,
             "model": model,
-            "app": sm_app,
+            "backend": backend,
+            "backend_type": backend_type,
             "component_slots": component_slots,
-            "user_data": user_data,
-            "action_prompt_template": call_to_sm_action,
+            "environment_data": environment_data,
+            "action_prompt_template": action_prompt_template,
             "action_output_mode": action_output_mode,
-            "activity_transition_rates": activity_rates,
+            "activity_transition_rates": dict(
+                dict(gm_components_cfg.get("next_acting", {}) or {})
+                .get("params", {})
+                .get("activity_transition_rates", {})
+                or {}
+            ),
             "agent_flow_tags": agent_flow_tags,
             "gm_orchestration": gm_orchestration,
             "shared_flow_mode": self._is_shared_flow_mode(),

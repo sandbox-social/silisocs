@@ -79,6 +79,7 @@ def build_checkpoint_restore(slot_cfg: Any) -> CheckpointRestoreStrategy:
 _IGNORED_ACTION_LABELS = {
     "initialize",
     "init_create_user",
+    "init_follow",
     "read_profile",
     "get_own_timeline",
     "get_home_feed",

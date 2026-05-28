@@ -130,6 +130,9 @@ class FixedActionBuilder:
                 "target_id": str(args.get("post_id", args.get("target_id", "")) or ""),
                 "content": str(args.get("status", args.get("content", "")) or ""),
                 "reasoning": str(args.get("reasoning", "Fixed action set item.") or ""),
+                "tool_kwargs": {
+                    str(key): value for key, value in args.items() if str(key) != "episode"
+                },
             }
             plan.setdefault(episode, []).append(normalized)
         return plan

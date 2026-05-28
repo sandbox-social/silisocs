@@ -119,25 +119,47 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
         """
         # @package env
 
-        platform_type: twitter_like
-        social_network:
-          activity_transition_rates:
-            fixed_seed:
-              inactive_to_active: 1.0
-              active_to_inactive: 0.0
-            llm_user:
-              inactive_to_active: 1.0
-              active_to_inactive: 0.0
-          fully_connected_targets:
-            - llm_user
-            - fixed_seed
-          base_followership_probability: 1.0
-          network_type: random
+        backend:
+          type: twitter_like
+          class_path: null
+          params: {}
+        gm:
+          class_path: silisocs.environments.gm.game_master.GameMaster
+          components:
+            initialize:
+              built_in: social_media
+              params:
+                graph:
+                  fully_connected_targets: [llm_user, fixed_seed]
+                  base_followership_probability: 1.0
+                  network_type: random
+            next_acting:
+              built_in: activity_probability
+              params:
+                activity_transition_rates:
+                  fixed_seed:
+                    inactive_to_active: 1.0
+                    active_to_inactive: 0.0
+                  llm_user:
+                    inactive_to_active: 1.0
+                    active_to_inactive: 0.0
+            observe:
+              built_in: timeline_every_turn
+              params: {}
+            resolve:
+              built_in: parsed_action
+              params: {}
+            update:
+              built_in: social_recommendation
+              params: {}
+            action_prompt:
+              built_in: default
+              params: {}
         """
     ).strip()
 
     (conf_dir / "sim.yaml").write_text(sim_yaml + "\n", encoding="utf-8")
-    (conf_dir / "agent.yaml").write_text(agent_yaml + "\n", encoding="utf-8")
+    (conf_dir / "agents.yaml").write_text(agent_yaml + "\n", encoding="utf-8")
     (conf_dir / "evals.yaml").write_text(evals_yaml + "\n", encoding="utf-8")
     (conf_dir / "env.yaml").write_text(env_yaml + "\n", encoding="utf-8")
 
@@ -162,16 +184,14 @@ def _run_recsys_simulation(
         "--config-path",
         str(conf_dir),
         "env=twitter_like",
-        "env.gm.preset=base",
-        "env.enable_gm_multi_flow=false",
         "sim.engine.step.built_in=base",
         "sim.engine.turn_policy.built_in=single_action",
         "env.gm.components.next_acting.built_in=all_agents",
         "env.gm.components.resolve.built_in=parsed_action",
         "sim.action_mode=custom",
         "sim.tool_calling.mode=none",
-        "env.timeline_mode=pure_recsys",
-        "env.timeline_posts=10",
+        "env.gm.components.observe.params.timeline_mode=pure_recsys",
+        "env.gm.components.observe.params.timeline_posts=10",
         f"env.gm.components.update.params.default_recsys_type={recsys_type}",
         f"env.gm.components.observe.params.recsys_type={recsys_type}",
         "env.gm.components.update.params.update_every_n_steps=1",
@@ -180,7 +200,7 @@ def _run_recsys_simulation(
         "num_steps=3",
         "seed=13",
         "sim.max_concurrent_actions=8",
-        "sim.llm.provider=local",
+        "sim.llm.provider=openai_compatible",
         "sim.llm.name=qwen3.5-4b",
         f"sim.llm.api_base={llm_url}",
         "sim.llm.api_key=test-key",

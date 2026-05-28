@@ -154,44 +154,42 @@ def get_followership_connection_stats(
 
 def generate_random_network(
     agents: list[str],
-    user_data: dict,
+    sim_roles: dict[str, str],
+    role_follow_probabilities: dict[str, dict[str, float]],
     ensure_candidate_following: bool = True,
 ) -> dict[str, list[str]]:
     """
     Generate a random social network based on role probabilities.
-    Restores original logic but with optional candidate constraint enforcement.
 
     Args:
         agents: List of agent names.
-        user_data: Dictionary containing 'sim_roles' and 'sim_role_parameters'.
+        sim_roles: Agent name -> role name mapping.
+        role_follow_probabilities: Role-to-role follow probability matrix.
         ensure_candidate_following: If True, ensures all agents follow candidates.
 
     Returns
     -------
         Adjacency list mapping follower -> list of followees.
     """
-    role_prob_matrix = user_data["sim_role_parameters"]["initial_follow_prob"]
     following_lists: dict[str, list[str]] = {}
 
     # Identify candidates for constraint enforcement
     candidates = []
     if ensure_candidate_following:
-        candidates = [
-            agent for agent, role in user_data["sim_roles"].items() if role == "candidate"
-        ]
+        candidates = [agent for agent, role in sim_roles.items() if role == "candidate"]
 
-    for agent_i, role_i in user_data["sim_roles"].items():
+    for agent_i, role_i in sim_roles.items():
         if agent_i not in agents:
             continue
 
         following_lists[agent_i] = []
-        for agent_j, role_j in user_data["sim_roles"].items():
+        for agent_j, role_j in sim_roles.items():
             if agent_i == agent_j:
                 continue
             if agent_j not in agents:
                 continue
 
-            prob = role_prob_matrix.get(role_i, {}).get(role_j, 0.0)
+            prob = role_follow_probabilities.get(role_i, {}).get(role_j, 0.0)
             if random.random() < prob:
                 following_lists[agent_i].append(agent_j)
 
@@ -285,39 +283,12 @@ def generate_graph_from_networkx(
     return following
 
 
-def get_simrole_parameters(
-    activity_transition_rates: dict[str, dict[str, int]],
-    roles: list[str],
-    fully_connected_targets: list[str],
-    base_probability: float,
-) -> dict[str, dict]:
-    """
-    Generate SimRoleParameters from configuration.
-
-    Args:
-        active_rates: Activity rates per episode for each role
-        roles: List of all role names
-        fully_connected_targets: Roles that everyone follows
-        base_probability: Base followership probability
-
-    Returns
-    -------
-        Mapping with activity transition rates and initial follow probabilities.
-    """
-    return {
-        "activity_transition_rates": activity_transition_rates,
-        "initial_follow_prob": get_followership_connection_stats(
-            roles, fully_connected_targets, base_probability
-        ),
-    }
-
-
 def generate_follow_network(
     agent_names: list[str],
     sim_roles: dict[str, str],
-    social_network_cfg: dict,
+    graph_config: dict,
 ) -> dict[str, list[str]]:
-    """Generate a follow network from scenario ``social_network`` config.
+    """Generate a follow network from GM initialize graph config.
 
     This is the single entry-point that SM app backends call.  It reads
     ``network_type``, ``barabasi_albert_m``, ``fully_connected_targets``,
@@ -328,16 +299,16 @@ def generate_follow_network(
     Args:
         agent_names: All agent display names.
         sim_roles: Agent name -> role name mapping.
-        social_network_cfg: The ``social_network`` section from scenario YAML.
+        graph_config: ``env.gm.components.initialize.params.graph``.
 
     Returns
     -------
         Dict mapping each agent name to a list of agents they follow.
     """
-    network_type = social_network_cfg.get("network_type", "barabasi_albert")
-    ba_m = int(social_network_cfg.get("barabasi_albert_m", 30))
-    fully_connected = social_network_cfg.get("fully_connected_targets", [])
-    base_prob = float(social_network_cfg.get("base_followership_probability", 0.4))
+    network_type = graph_config.get("network_type", "barabasi_albert")
+    ba_m = int(graph_config.get("barabasi_albert_m", 30))
+    fully_connected = graph_config.get("fully_connected_targets", [])
+    base_prob = float(graph_config.get("base_followership_probability", 0.4))
 
     # Identify hub agents (agents whose role is in fully_connected_targets).
     hub_agents = [name for name in agent_names if sim_roles.get(name, "") in fully_connected]
@@ -359,16 +330,15 @@ def generate_follow_network(
         # Build a simple role-probability matrix for random network.
         roles = list({r for r in sim_roles.values() if r})
         follow_prob = get_followership_connection_stats(roles, list(fully_connected), base_prob)
-        user_data = {
-            "sim_roles": sim_roles,
-            "sim_role_parameters": {"initial_follow_prob": follow_prob},
-        }
         return generate_random_network(
-            agent_names, user_data, ensure_candidate_following=bool(hub_agents)
+            agent_names,
+            sim_roles,
+            follow_prob,
+            ensure_candidate_following=bool(hub_agents),
         )
     if network_type == "predefined":
-        predefined = social_network_cfg.get("predefined_graph", {})
-        predefined_path = str(social_network_cfg.get("predefined_graph_path", "")).strip()
+        predefined = graph_config.get("predefined_graph", {})
+        predefined_path = str(graph_config.get("predefined_graph_path", "")).strip()
         if predefined_path:
             path = Path(predefined_path)
             if not path.is_file():

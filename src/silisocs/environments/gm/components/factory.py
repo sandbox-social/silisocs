@@ -6,12 +6,17 @@ import importlib
 import inspect
 import re
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from silisocs.environments.gm.components.action_prompt import DefaultActionPromptComponent
 from silisocs.environments.gm.components.base import (
-    BaseComponent,
+    ActionPromptComponent,
+    InitializeComponent,
+    NextActingComponent,
     NoOpUpdateComponent,
+    ObservationComponent,
+    ResolveComponent,
+    UpdateComponent,
 )
 from silisocs.environments.gm.components.next_acting import (
     ActivityMarkovNextActing,
@@ -206,20 +211,23 @@ def _instance_key(role: str, instance_name: str, component: Any) -> str:
 
 def build_initialize_component(
     slot_cfg: Mapping[str, Any] | None = None,
-) -> BaseComponent:
+) -> InitializeComponent:
     """Build one GM initialize component."""
-    return _build_from_slot(
-        slot_cfg,
-        built_ins=_INITIALIZE_BUILT_INS,
-        default_built_in="none",
+    return cast(
+        InitializeComponent,
+        _build_from_slot(
+            slot_cfg,
+            built_ins=_INITIALIZE_BUILT_INS,
+            default_built_in="none",
+        ),
     )
 
 
 def build_initialize_components(
     slots_cfg: Mapping[str, Any] | None = None,
-) -> dict[str, BaseComponent]:
+) -> dict[str, InitializeComponent]:
     """Build multiple initialize component instances."""
-    components: dict[str, BaseComponent] = {}
+    components: dict[str, InitializeComponent] = {}
     for instance_name, instance_config in _slot_instances_cfg(slots_cfg).items():
         component = build_initialize_component(instance_config)
         components[_instance_key("initialize", instance_name, component)] = component
@@ -229,38 +237,45 @@ def build_initialize_components(
 def build_action_prompt_component(
     slot_cfg: Mapping[str, Any] | None = None,
     *,
-    app: Any | None = None,
+    backend: Any | None = None,
     action_prompt_template: str,
     enable_tool_calling: bool,
-) -> BaseComponent:
+    tool_calling_mode: str = "single",
+) -> ActionPromptComponent:
     """Build one action-prompt component."""
-    return _build_from_slot(
-        slot_cfg,
-        built_ins=_ACTION_PROMPT_BUILT_INS,
-        default_built_in="default",
-        runtime_kwargs={
-            "app": app,
-            "action_prompt_template": action_prompt_template,
-            "enable_tool_calling": enable_tool_calling,
-        },
+    return cast(
+        ActionPromptComponent,
+        _build_from_slot(
+            slot_cfg,
+            built_ins=_ACTION_PROMPT_BUILT_INS,
+            default_built_in="default",
+            runtime_kwargs={
+                "backend": backend,
+                "action_prompt_template": action_prompt_template,
+                "enable_tool_calling": enable_tool_calling,
+                "tool_calling_mode": tool_calling_mode,
+            },
+        ),
     )
 
 
 def build_action_prompt_components(
     slots_cfg: Mapping[str, Any] | None = None,
     *,
-    app: Any | None = None,
+    backend: Any | None = None,
     action_prompt_template: str,
     enable_tool_calling: bool,
-) -> dict[str, BaseComponent]:
+    tool_calling_mode: str = "single",
+) -> dict[str, ActionPromptComponent]:
     """Build multiple action-prompt component instances."""
-    components: dict[str, BaseComponent] = {}
+    components: dict[str, ActionPromptComponent] = {}
     for instance_name, instance_config in _slot_instances_cfg(slots_cfg).items():
         component = build_action_prompt_component(
             instance_config,
-            app=app,
+            backend=backend,
             action_prompt_template=action_prompt_template,
             enable_tool_calling=enable_tool_calling,
+            tool_calling_mode=tool_calling_mode,
         )
         components[_instance_key("action_prompt", instance_name, component)] = component
     return components
@@ -271,14 +286,10 @@ def build_observe_components(
     *,
     model: Any,
     agent_names: list[str],
-    sm_app: Any,
-    env_app: Any | None = None,
+    backend: Any,
     agent_flow_tags: dict[str, str] | None = None,
     episode_observation_flow: str = "fixed_pre",
-    timeline_mode: str | None = None,
-    timeline_posts: int = 10,
-    timeline_config: Mapping[str, Any] | None = None,
-) -> dict[str, BaseComponent]:
+) -> dict[str, ObservationComponent]:
     """Build multiple observe component instances from config.
 
     Args:
@@ -290,19 +301,15 @@ def build_observe_components(
         Dict of {component_key: component_instance} where keys are
         "observe__{instance_name}".
     """
-    components: dict[str, BaseComponent] = {}
+    components: dict[str, ObservationComponent] = {}
     for instance_name, instance_config in _slot_instances_cfg(slots_cfg).items():
         component = build_observe_component(
             instance_config,
             model=model,
             agent_names=agent_names,
-            sm_app=sm_app,
-            env_app=env_app if env_app is not None else sm_app,
+            backend=backend,
             agent_flow_tags=agent_flow_tags,
             episode_observation_flow=episode_observation_flow,
-            timeline_mode=timeline_mode,
-            timeline_posts=timeline_posts,
-            timeline_config=timeline_config,
         )
 
         components[_instance_key("observe", instance_name, component)] = component
@@ -315,61 +322,59 @@ def build_observe_component(
     *,
     model: Any,
     agent_names: list[str],
-    sm_app: Any,
-    env_app: Any | None = None,
+    backend: Any,
     agent_flow_tags: dict[str, str] | None = None,
     episode_observation_flow: str = "fixed_pre",
-    timeline_mode: str | None = None,
-    timeline_posts: int = 10,
-    timeline_config: Mapping[str, Any] | None = None,
-) -> BaseComponent:
+) -> ObservationComponent:
     """Build a single observe component from slot config."""
     episode_observation_flows = (
         [episode_observation_flow]
         if isinstance(episode_observation_flow, str)
         else list(episode_observation_flow or [])
     )
-    return _build_from_slot(
-        slot_cfg,
-        built_ins=_OBSERVE_BUILT_INS,
-        default_built_in="timeline_every_turn",
-        runtime_kwargs={
-            "model": model,
-            "agent_names": agent_names,
-            "sm_app": sm_app,
-            "env_app": env_app if env_app is not None else sm_app,
-            "agent_flow_tags": agent_flow_tags,
-            "episode_observation_flow": episode_observation_flow,
-            "episode_observation_flows": episode_observation_flows,
-            "timeline_mode": timeline_mode,
-            "timeline_posts": timeline_posts,
-            "timeline_config": dict(timeline_config or {}),
-            "observation_params": dict(
-                (slot_cfg or {}).get("params", {}) if isinstance(slot_cfg, Mapping) else {}
-            ),
-        },
+    return cast(
+        ObservationComponent,
+        _build_from_slot(
+            slot_cfg,
+            built_ins=_OBSERVE_BUILT_INS,
+            default_built_in="timeline_every_turn",
+            runtime_kwargs={
+                "model": model,
+                "agent_names": agent_names,
+                "backend": backend,
+                "agent_flow_tags": agent_flow_tags,
+                "episode_observation_flow": episode_observation_flow,
+                "episode_observation_flows": episode_observation_flows,
+                "observation_params": dict(
+                    (slot_cfg or {}).get("params", {}) if isinstance(slot_cfg, Mapping) else {}
+                ),
+            },
+        ),
     )
 
 
 def build_resolve_component(
     slot_cfg: Mapping[str, Any] | None = None,
     *,
-    sm_app: Any,
+    backend: Any,
     model: Any,
     action_prompt_template: str,
     agents_by_name: Mapping[str, Any] | None = None,
-) -> BaseComponent:
+) -> ResolveComponent:
     """Build resolve component from slot config."""
-    return _build_from_slot(
-        slot_cfg,
-        built_ins=_RESOLVE_BUILT_INS,
-        default_built_in="parsed_action",
-        runtime_kwargs={
-            "sm_app": sm_app,
-            "model": model,
-            "action_prompt_template": action_prompt_template,
-            "agents_by_name": agents_by_name or {},
-        },
+    return cast(
+        ResolveComponent,
+        _build_from_slot(
+            slot_cfg,
+            built_ins=_RESOLVE_BUILT_INS,
+            default_built_in="parsed_action",
+            runtime_kwargs={
+                "backend": backend,
+                "model": model,
+                "action_prompt_template": action_prompt_template,
+                "agents_by_name": agents_by_name or {},
+            },
+        ),
     )
 
 
@@ -377,60 +382,63 @@ def build_next_acting_component(
     slot_cfg: Mapping[str, Any] | None = None,
     *,
     agent_names: list[str],
-    activity_transition_rates: Mapping[str, Mapping[str, float]],
-) -> BaseComponent:
+    sim_roles: Mapping[str, str] | None = None,
+) -> NextActingComponent:
     """Build next-acting component from slot config."""
-    return _build_from_slot(
-        slot_cfg,
-        built_ins=_NEXT_ACTING_BUILT_INS,
-        default_built_in="activity_markov",
-        runtime_kwargs={
-            "agent_names": agent_names,
-            "activity_transition_rates": activity_transition_rates,
-            "sequence": agent_names,
-        },
+    return cast(
+        NextActingComponent,
+        _build_from_slot(
+            slot_cfg,
+            built_ins=_NEXT_ACTING_BUILT_INS,
+            default_built_in="activity_markov",
+            runtime_kwargs={
+                "agent_names": agent_names,
+                "sim_roles": dict(sim_roles or {}),
+                "sequence": agent_names,
+            },
+        ),
     )
 
 
 def build_update_component(
     slot_cfg: Mapping[str, Any] | None = None,
     *,
-    sm_app: Any | None = None,
-    platform_type: str | None = None,
-    timeline_mode: str | None = None,
-) -> BaseComponent:
+    backend: Any | None = None,
+    backend_type: str | None = None,
+) -> UpdateComponent:
     """Build update component from slot config."""
-    return _build_from_slot(
-        slot_cfg,
-        built_ins=_UPDATE_BUILT_INS,
-        default_built_in="none",
-        runtime_kwargs={
-            "sm_app": sm_app,
-            "platform_type": platform_type,
-            "timeline_mode": timeline_mode,
-        }
-        if sm_app
-        else {
-            "platform_type": platform_type,
-            "timeline_mode": timeline_mode,
-        },
+    return cast(
+        UpdateComponent,
+        _build_from_slot(
+            slot_cfg,
+            built_ins=_UPDATE_BUILT_INS,
+            default_built_in="none",
+            runtime_kwargs={
+                "backend": backend,
+                "backend_type": backend_type,
+            }
+            if backend
+            else {
+                "backend_type": backend_type,
+            },
+        ),
     )
 
 
 def build_resolve_components(
     slots_cfg: Mapping[str, Any] | None = None,
     *,
-    sm_app: Any,
+    backend: Any,
     model: Any,
     action_prompt_template: str,
     agents_by_name: Mapping[str, Any] | None = None,
-) -> dict[str, BaseComponent]:
+) -> dict[str, ResolveComponent]:
     """Build multiple resolve component instances."""
-    components: dict[str, BaseComponent] = {}
+    components: dict[str, ResolveComponent] = {}
     for instance_name, instance_config in _slot_instances_cfg(slots_cfg).items():
         component = build_resolve_component(
             instance_config,
-            sm_app=sm_app,
+            backend=backend,
             model=model,
             action_prompt_template=action_prompt_template,
             agents_by_name=agents_by_name,
@@ -443,15 +451,15 @@ def build_next_acting_components(
     slots_cfg: Mapping[str, Any] | None = None,
     *,
     agent_names: list[str],
-    activity_transition_rates: Mapping[str, Mapping[str, float]],
-) -> dict[str, BaseComponent]:
+    sim_roles: Mapping[str, str] | None = None,
+) -> dict[str, NextActingComponent]:
     """Build multiple next-acting component instances."""
-    components: dict[str, BaseComponent] = {}
+    components: dict[str, NextActingComponent] = {}
     for instance_name, instance_config in _slot_instances_cfg(slots_cfg).items():
         component = build_next_acting_component(
             instance_config,
             agent_names=agent_names,
-            activity_transition_rates=activity_transition_rates,
+            sim_roles=sim_roles,
         )
         components[_instance_key("next_acting", instance_name, component)] = component
     return components
@@ -460,18 +468,16 @@ def build_next_acting_components(
 def build_update_components(
     slots_cfg: Mapping[str, Any] | None = None,
     *,
-    sm_app: Any | None = None,
-    platform_type: str | None = None,
-    timeline_mode: str | None = None,
-) -> dict[str, BaseComponent]:
+    backend: Any | None = None,
+    backend_type: str | None = None,
+) -> dict[str, UpdateComponent]:
     """Build multiple update component instances."""
-    components: dict[str, BaseComponent] = {}
+    components: dict[str, UpdateComponent] = {}
     for instance_name, instance_config in _slot_instances_cfg(slots_cfg).items():
         component = build_update_component(
             instance_config,
-            sm_app=sm_app,
-            platform_type=platform_type,
-            timeline_mode=timeline_mode,
+            backend=backend,
+            backend_type=backend_type,
         )
         components[_instance_key("update", instance_name, component)] = component
     return components

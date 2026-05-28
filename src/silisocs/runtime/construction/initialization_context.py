@@ -3,17 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any, cast
+from typing import Any
 
 from omegaconf import DictConfig, OmegaConf
 
 from silisocs.initialization.context import InitializationContext
 from silisocs.runtime.construction.game_masters import DEFAULT_FLOW_TAG
 from silisocs.runtime.construction.specs import RuntimeSpec
-
-
-def _env_cfg(cfg: Any) -> Any:
-    return getattr(cfg, "env", getattr(cfg, "environment", object()))
 
 
 def _normalize_memories(memories: Any) -> list[str]:
@@ -29,12 +25,6 @@ def _normalize_memories(memories: Any) -> list[str]:
     return [str(memories).strip()] if str(memories).strip() else []
 
 
-def _to_plain_container(value: Any) -> Any:
-    if OmegaConf.is_config(value):
-        return OmegaConf.to_container(value, resolve=True)
-    return value
-
-
 def build_initializer_context(
     cfg: DictConfig,
     agent_configs: Sequence[RuntimeSpec],
@@ -44,10 +34,6 @@ def build_initializer_context(
         scenario_shared = OmegaConf.select(cfg, "agents.persona_pipeline.defaults.shared_memories")
 
     shared_memories = _normalize_memories(scenario_shared)
-    usage = str(getattr(_env_cfg(cfg), "usage_instructions", "") or "").strip()
-    if usage:
-        shared_memories.append(usage)
-
     player_specific_memories: dict[str, tuple[str, ...]] = {}
     player_specific_context: dict[str, str] = {}
     sim_roles: dict[str, str] = {}
@@ -75,10 +61,6 @@ def build_initializer_context(
         player_specific_context=player_specific_context,
         sim_roles=sim_roles,
         agent_flow_tags=agent_flow_tags,
-        social_network=cast(
-            Mapping[str, Any],
-            _to_plain_container(OmegaConf.select(cfg, "env.social_network", default={}) or {}),
-        ),
         agent_bios=agent_bios,
     )
 
@@ -102,9 +84,9 @@ def populate_agent_data(
     for social_media_gm in social_media_gms:
         user_data = social_media_gm.params.setdefault(
             "environment_data",
-            social_media_gm.params.setdefault("sm_user_data", {}),
+            social_media_gm.params.get("environment_data", {}),
         )
-        social_media_gm.params["sm_user_data"] = user_data
+        social_media_gm.params["environment_data"] = user_data
         user_data.setdefault("sim_roles", {}).update(sim_roles)
         user_data["agent_flow_tags"] = dict(agent_flow_tags)
 
@@ -114,6 +96,6 @@ def populate_agent_data(
         )
         owned_flows = {str(flow).strip() for flow in owned_flows_raw if str(flow).strip()}
         if isinstance(orchestration, dict) and owned_flows:
-            orchestration["owned_entities"] = sorted(
+            orchestration["owned_agents"] = sorted(
                 name for name, flow in agent_flow_tags.items() if flow in owned_flows
             )

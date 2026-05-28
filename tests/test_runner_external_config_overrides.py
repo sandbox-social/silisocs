@@ -3,6 +3,9 @@
 import os
 import sys
 
+from omegaconf import OmegaConf
+
+from silisocs.runtime.configuration.external import merge_external_group_overrides
 from silisocs.runtime.execution.session import _inject_external_config_path
 
 
@@ -45,3 +48,51 @@ def test_overlay_config_paths_precede_primary_in_env_var(tmp_path, monkeypatch) 
     env_dirs = os.environ.get("SILISOCS_EXTERNAL_CONFIG_DIRS", "").split(":")
     assert env_dirs[0] == str(primary.resolve())
     assert env_dirs[1] == str(overlay.resolve())
+
+
+def test_external_group_merge_includes_agents_yaml(tmp_path, monkeypatch) -> None:
+    """External overlays can override benchmark/generated agent records."""
+    overlay = tmp_path / "overlay"
+    overlay.mkdir()
+    (overlay / "agents.yaml").write_text(
+        """
+persona_pipeline:
+  classes:
+    user:
+      count: 1
+      data:
+        source: inline
+        records:
+          - name: user_1
+            persona: Benchmark-specific persona.
+      field_map:
+        name: name
+        context: persona
+""",
+        encoding="utf-8",
+    )
+    cfg = OmegaConf.create(
+        {
+            "agents": {
+                "persona_pipeline": {
+                    "classes": {
+                        "user": {
+                            "count": 5,
+                            "data": {
+                                "source": "inline",
+                                "records": [{"persona": "Packaged persona."}],
+                            },
+                        }
+                    }
+                }
+            }
+        }
+    )
+    monkeypatch.setenv("SILISOCS_EXTERNAL_CONFIG_DIRS", str(overlay))
+
+    merged = merge_external_group_overrides(cfg)
+
+    user_cfg = merged.agents.persona_pipeline.classes.user
+    assert user_cfg.count == 1
+    assert user_cfg.data.records[0].name == "user_1"
+    assert user_cfg.data.records[0].persona == "Benchmark-specific persona."

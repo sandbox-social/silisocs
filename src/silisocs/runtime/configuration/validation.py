@@ -52,15 +52,6 @@ class BaseScenarioSchema:
     roles: dict[str, int] = field(default_factory=dict)  # role -> count
     role_configs: dict[str, Any] = field(default_factory=dict)  # role -> config
 
-    # Social network configuration
-    social_network: dict[str, Any] = field(
-        default_factory=lambda: {
-            "active_rates": {},
-            "fully_connected_targets": [],
-            "base_followership_probability": 0.4,
-        }
-    )
-
     # Shared memories and observations
     shared_memories: list[str] = field(default_factory=list)
     initial_observations: list[str] = field(default_factory=list)
@@ -88,20 +79,27 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
     ------
         ValueError: If required fields are missing
     """
-    has_class_pipeline = bool(OmegaConf.select(cfg, "persona_pipeline.classes"))
+    has_class_pipeline = bool(
+        OmegaConf.select(cfg, "agents.persona_pipeline.classes")
+        or OmegaConf.select(cfg, "persona_pipeline.classes")
+    )
     required_fields = ["scenario_name", "setting"]
     if has_class_pipeline:
         # Modern class-pipeline scenarios can define shared memories at the
         # persona defaults level and do not need legacy initial_observations.
-        has_top_level_shared = OmegaConf.select(cfg, "shared_memories") is not None
+        has_top_level_shared = (
+            OmegaConf.select(cfg, "agents.shared_memories") is not None
+            or OmegaConf.select(cfg, "shared_memories") is not None
+        )
         has_pipeline_shared = (
-            OmegaConf.select(cfg, "persona_pipeline.defaults.shared_memories") is not None
+            OmegaConf.select(cfg, "agents.persona_pipeline.defaults.shared_memories") is not None
+            or OmegaConf.select(cfg, "persona_pipeline.defaults.shared_memories") is not None
         )
         if not (has_top_level_shared or has_pipeline_shared):
             missing_fields = ["shared_memories or persona_pipeline.defaults.shared_memories"]
             raise ValueError(
                 f"Scenario configuration missing required fields: {', '.join(missing_fields)}\n"
-                "Please ensure your sim.yaml/agent.yaml include all required fields."
+                "Please ensure your scenario config includes all required fields."
             )
     else:
         required_fields.extend(["roles", "shared_memories", "initial_observations"])
@@ -114,7 +112,7 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
     if missing_fields:
         raise ValueError(
             f"Scenario configuration missing required fields: {', '.join(missing_fields)}\n"
-            "Please ensure your sim.yaml/agent.yaml include all required fields."
+            "Please ensure your scenario config includes all required fields."
         )
 
     # Validate nested required fields
@@ -152,8 +150,7 @@ def validate_cross_references(cfg: DictConfig) -> None:
     """
     errors = []
 
-    # Support both legacy (`cfg.sc`) and refactored scenario-level config.
-    scenario_cfg = getattr(cfg, "sc", cfg)
+    scenario_cfg = cfg
 
     # Validate that probe candidate references exist
     if hasattr(scenario_cfg, "probes"):
@@ -167,20 +164,6 @@ def validate_cross_references(cfg: DictConfig) -> None:
                     candidate_names.append(str(info.name))
                 elif isinstance(info, dict) and "name" in info:
                     candidate_names.append(str(info["name"]))
-
-        # Legacy fallback: nested role_configs.candidate.candidates structure.
-        if (
-            not candidate_names
-            and hasattr(scenario_cfg, "role_configs")
-            and "candidate" in scenario_cfg.role_configs
-        ):
-            candidate_cfg = scenario_cfg.role_configs.candidate
-            if hasattr(candidate_cfg, "candidates"):
-                for _partisan_type, info in candidate_cfg.candidates.items():
-                    if hasattr(info, "name"):
-                        candidate_names.append(str(info.name))
-                    elif isinstance(info, dict) and "name" in info:
-                        candidate_names.append(str(info["name"]))
 
         # Validate probe references
         probes_to_validate = getattr(probes_cfg, "probes", None)
@@ -205,31 +188,26 @@ def validate_cross_references(cfg: DictConfig) -> None:
                                 f"Probe {probe_num} references unknown candidate: {candidate}"
                             )
 
-    # Validate social network role references
-    if hasattr(scenario_cfg, "social_network") and hasattr(scenario_cfg, "roles"):
-        roles = set(scenario_cfg.roles.keys())
-        social_network_cfg = scenario_cfg.social_network
+    roles_cfg = OmegaConf.select(scenario_cfg, "roles") or {}
+    roles = set(roles_cfg.keys()) if isinstance(roles_cfg, dict) else set()
+    activity_rates = OmegaConf.select(
+        scenario_cfg,
+        "env.gm.components.next_acting.params.activity_transition_rates",
+    )
+    if activity_rates and roles:
+        for role in activity_rates.keys():
+            if role not in roles:
+                errors.append(f"Next-acting activity rates reference unknown role: {role}")
 
-        # Check social-network activity rate references.
-        # Refactor renamed `active_rates` -> `activity_transition_rates`.
-        active_rates = None
-        if hasattr(social_network_cfg, "activity_transition_rates"):
-            active_rates = social_network_cfg.activity_transition_rates
-        elif hasattr(social_network_cfg, "active_rates"):
-            active_rates = social_network_cfg.active_rates
-
-        if active_rates:
-            for role in active_rates.keys():
-                if role not in roles:
-                    errors.append(f"Social network activity rates reference unknown role: {role}")
-
-        # Check fully_connected_targets references
-        if hasattr(social_network_cfg, "fully_connected_targets"):
-            for role in social_network_cfg.fully_connected_targets:
-                if role not in roles:
-                    errors.append(
-                        f"Social network fully_connected_targets references unknown role: {role}"
-                    )
+    graph_cfg = OmegaConf.select(scenario_cfg, "env.gm.components.initialize.params.graph")
+    fully_connected_targets = (
+        graph_cfg.get("fully_connected_targets", []) if isinstance(graph_cfg, dict) else []
+    )
+    for role in fully_connected_targets:
+        if roles and role not in roles:
+            errors.append(
+                f"GM initialize graph fully_connected_targets references unknown role: {role}"
+            )
 
     # Validate fixed-action set references in class pipeline.
     class_pipeline = OmegaConf.select(scenario_cfg, "persona_pipeline.classes")

@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from silisocs.environments.backends.base import SocialMediaApp, app_action
+from silisocs.environments.backends.base import SocialBackendApp, app_action
 
 
 @dataclass
-class _FakeApp(SocialMediaApp):
+class _FakeApp(SocialBackendApp):
     def name(self) -> str:
         return "FakeApp"
 

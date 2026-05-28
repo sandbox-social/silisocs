@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import pytest
-from omegaconf import OmegaConf
 
 from silisocs.environments.backends.base import BackendApp, app_action
 from silisocs.environments.gm import base_game_master as base_gm
@@ -49,50 +48,37 @@ class _Entity:
 
 
 def test_base_environment_gm_builds_without_social_config(tmp_path, monkeypatch) -> None:
-    cfg = OmegaConf.create(
-        {
-            "output_rootname": str(tmp_path),
-            "sim": {
-                "action_mode": "generic",
-                "tool_calling": {"mode": "none"},
-                "prompt_additions": {"action_count_guidance": False},
-                "engine": {"turn_policy": {"built_in": "single_action"}},
-            },
-            "env": {
-                "platform_type": "resource_market",
-                "use_server": False,
-                "enabled_actions": ["ACT"],
-                "app": {"class_path": None, "params": {}},
-                "gm": {
-                    "components": {
-                        "next_acting": {"built_in": "fixed_order"},
-                        "observe": {"built_in": "app_observation", "params": {"limit": 3}},
-                        "resolve": {"built_in": "generic_action"},
-                        "update": {"built_in": "disabled"},
-                    }
-                },
-            },
-        }
-    )
     app = _GenericApp()
-    monkeypatch.setattr(base_gm, "create_environment_app", lambda **kwargs: app)
+    monkeypatch.setattr(base_gm, "create_backend_app", lambda **kwargs: app)
 
-    entities = [_Entity("Alice"), _Entity("Bob")]
+    agents = [_Entity("Alice"), _Entity("Bob")]
     built = GameMaster(
         model=object(),
-        agents=entities,
+        agents=agents,
         params={
             "name": "generic_gm",
-            "calls_to_action": {"environment_action": "Act"},
             "environment_data": {
-                "sim_role_parameters": {},
                 "sim_roles": {"Alice": "worker", "Bob": "worker"},
                 "agent_flow_tags": {"Alice": "default", "Bob": "default"},
                 "gm_orchestration": {"gm_name": "generic_gm"},
             },
-            "app_description": "Generic app",
-            "runtime_config": OmegaConf.to_container(cfg, resolve=True),
-            "initializer": {"built_in": "app_initialize", "class_path": None, "params": {}},
+            "backend_config": {
+                "backend_type": "resource_market",
+                "output_rootname": str(tmp_path),
+                "enabled_actions": ["ACT"],
+                "turn_policy_built_in": "single_action",
+                "app_description": "Generic app",
+            },
+            "components": {
+                "initialize": {"built_in": "app_initialize", "class_path": None, "params": {}},
+                "next_acting": {"built_in": "fixed_order"},
+                "observe": {"built_in": "app_observation", "params": {"limit": 3}},
+                "resolve": {"built_in": "generic_action"},
+                "update": {"built_in": "disabled"},
+            },
+            "action_mode": "generic",
+            "tool_calling_mode": "none",
+            "add_action_count_guidance": False,
         },
     )
 
@@ -103,8 +89,8 @@ def test_base_environment_gm_builds_without_social_config(tmp_path, monkeypatch)
     assert hasattr(built, "make_observation")
     assert hasattr(built, "resolve_action")
     assert hasattr(built, "initialize")
-    assert entities[0]._allowed_action_types is None
-    assert entities[0].action_output_mode is None
+    assert agents[0]._allowed_action_types is None
+    assert agents[0].action_output_mode is None
     assert "Available actions:" in built.action_prompt_template
     assert set(built.components) >= {
         "next_acting",
@@ -113,7 +99,7 @@ def test_base_environment_gm_builds_without_social_config(tmp_path, monkeypatch)
         "update",
     }
 
-    turns = built.acting_agents(entities)
+    turns = built.acting_agents(agents)
     assert turns == ["Alice"]
     action_spec = built.action_prompt("Alice")
     assert action_spec.output_type == OutputType.TEXT
@@ -123,33 +109,8 @@ def test_base_environment_gm_builds_without_social_config(tmp_path, monkeypatch)
 
 
 def test_base_environment_gm_rejects_unknown_component_params(tmp_path, monkeypatch) -> None:
-    cfg = OmegaConf.create(
-        {
-            "output_rootname": str(tmp_path),
-            "sim": {
-                "action_mode": "generic",
-                "tool_calling": {"mode": "none"},
-                "prompt_additions": {"action_count_guidance": False},
-                "engine": {"turn_policy": {"built_in": "single_action"}},
-            },
-            "env": {
-                "platform_type": "resource_market",
-                "use_server": False,
-                "enabled_actions": ["ACT"],
-                "app": {"class_path": None, "params": {}},
-                "gm": {
-                    "components": {
-                        "next_acting": {"built_in": "fixed_order", "params": {"typo": True}},
-                        "observe": {"built_in": "app_observation"},
-                        "resolve": {"built_in": "generic_action"},
-                        "update": {"built_in": "disabled"},
-                    }
-                },
-            },
-        }
-    )
     app = _GenericApp()
-    monkeypatch.setattr(base_gm, "create_environment_app", lambda **kwargs: app)
+    monkeypatch.setattr(base_gm, "create_backend_app", lambda **kwargs: app)
 
     with pytest.raises(ValueError, match="Unsupported config param"):
         GameMaster(
@@ -159,13 +120,26 @@ def test_base_environment_gm_rejects_unknown_component_params(tmp_path, monkeypa
                 "name": "generic_gm",
                 "calls_to_action": {"environment_action": "Act"},
                 "environment_data": {
-                    "sim_role_parameters": {},
                     "sim_roles": {"Alice": "worker"},
                     "agent_flow_tags": {"Alice": "default"},
                     "gm_orchestration": {"gm_name": "generic_gm"},
                 },
-                "app_description": "Generic app",
-                "runtime_config": OmegaConf.to_container(cfg, resolve=True),
-                "initializer": {"built_in": "app_initialize", "class_path": None, "params": {}},
+                "backend_config": {
+                    "backend_type": "resource_market",
+                    "output_rootname": str(tmp_path),
+                    "enabled_actions": ["ACT"],
+                    "turn_policy_built_in": "single_action",
+                    "app_description": "Generic app",
+                },
+                "components": {
+                    "initialize": {"built_in": "app_initialize", "class_path": None, "params": {}},
+                    "next_acting": {"built_in": "fixed_order", "params": {"typo": True}},
+                    "observe": {"built_in": "app_observation"},
+                    "resolve": {"built_in": "generic_action"},
+                    "update": {"built_in": "disabled"},
+                },
+                "action_mode": "generic",
+                "tool_calling_mode": "none",
+                "add_action_count_guidance": False,
             },
         )

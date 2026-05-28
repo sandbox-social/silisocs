@@ -659,6 +659,7 @@ def test_fixed_action_set_renders_into_fixed_agent_plan() -> None:
                 "target_id": "",
                 "content": "Breaking: river cleanup",
                 "reasoning": "Fixed action set item.",
+                "tool_kwargs": {"status": "Breaking: river cleanup"},
             }
         ]
     }

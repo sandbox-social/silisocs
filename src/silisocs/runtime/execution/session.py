@@ -1,4 +1,3 @@
-# src/silisocs/runtime/runner.py
 """Runtime entrypoint for experiments.
 
 This module provides the CLI entrypoint used to compose experiment
@@ -48,7 +47,6 @@ from silisocs.runtime.configuration.external import (
     merge_external_group_overrides,
     register_search_path_plugin,
 )
-from silisocs.runtime.configuration.legacy import build_legacy_scenario_view
 from silisocs.runtime.configuration.projection import RuntimeProjection
 
 # Local imports
@@ -72,30 +70,55 @@ RUNTIME_LAYER_NAME = "silisocs-native"
 
 
 def _initialize_runtime_environment() -> Path:
-    """Apply runtime setup only when the simulation entrypoint is executed."""
+    """Apply runtime setup only when the simulation entrypoint is executed.
+
+    Resolves the project root by walking up from the package location until a
+    ``pyproject.toml`` is found (works both from a repo checkout and when the
+    package is installed in editable mode). Falls back to ``cwd`` when running
+    from an installed wheel.
+    """
     print(r"""
-   _____ ____   __  ______  ____  ____ __  __   _____ ____  _____ ____ ___   __
-  / ___//   |  / | / / __ \/ __ )/ __ \| |/ /  / ___// __ \/ ___//  _//   | / /
-  \__ \/ /| | /  |/ / / / / __  | / / //   /  /___ \/ / / / /    / / / /| |/ /
- ___/ / ___ |/ /|  / /_/ / /_/ / /_/ //   |   ___/ / /_/ / /____/ / / ___ | /__
-/____/_/  |_/_/ |_/_____/_____/\____//_/|_|  /____/\____/\____/___//_/  /_/___/
+     _ _ _
+ ___(_) (_)___  ___   ___ ___
+/ __| | | / __|/ _ \ / __/ __|
+\__ \ | | \__ \ (_) | (__\__ \
+|___/_|_|_|___/\___/ \___|___/
 """)
     print("=" * 80)
     print(f"Runtime layer: {RUNTIME_LAYER_NAME}")
     warnings.filterwarnings(action="ignore", category=FutureWarning, module="concordia")
     print("=" * 80)
 
-    project_root = Path(__file__).resolve().parents[4]
+    project_root = _resolve_project_root()
     print(f"Project root: {project_root}")
     print("=" * 80)
-    os.chdir(project_root)
+
+    if project_root != Path.cwd():
+        os.chdir(project_root)
 
     src_path = project_root / "src"
-    if str(src_path) not in sys.path:
+    if src_path.is_dir() and str(src_path) not in sys.path:
         sys.path.insert(0, str(src_path))
 
     print(f"Config directory: {CONF_DIR}")
     return project_root
+
+
+def _resolve_project_root() -> Path:
+    """Walk up from the package to find the project root (contains pyproject.toml).
+
+    Falls back to cwd when running from an installed package without a repo
+    checkout above the install location.
+    """
+    candidate = Path(__file__).resolve().parent
+    for _ in range(8):
+        if (candidate / "pyproject.toml").is_file():
+            return candidate
+        parent = candidate.parent
+        if parent == candidate:
+            break
+        candidate = parent
+    return Path.cwd()
 
 
 # ============================================================================
@@ -144,7 +167,7 @@ def main(cfg: DictConfig):
 
     # Determine scenario path for file validation.
     # Check top-level scenarios/ first, fall back to in-package.
-    project_root = PACKAGE_ROOT.parents[2]
+    project_root = _resolve_project_root()
     top_scenario = project_root / "scenarios" / cfg.scenario_name
     pkg_scenario = PACKAGE_ROOT / "scenarios" / cfg.scenario_name
     scenario_path = top_scenario if top_scenario.is_dir() else pkg_scenario
@@ -152,7 +175,7 @@ def main(cfg: DictConfig):
     # Run all config schema validation checks
     with metrics.phase("config_validation"):
         try:
-            validate_scenario_config(build_legacy_scenario_view(cfg), scenario_path)
+            validate_scenario_config(cfg, scenario_path)
         except Exception as e:
             logger.error(f"Configuration validation failed: {e}")
             raise
@@ -293,7 +316,7 @@ def main(cfg: DictConfig):
         if isinstance(raw_llm_extra_kwargs, DictConfig)
         else dict(raw_llm_extra_kwargs),
     )
-    # Build models map and entity->model mapping for all instances.
+    # Build models map and agent->model mapping for all instances.
     # If an instance doesn't specify a model name, default to `cfg.sim.llm.name`.
     t0 = time.time()
     with metrics.phase("model_creation"):
@@ -308,7 +331,7 @@ def main(cfg: DictConfig):
             if not model_name:
                 model_name = llm_cfg.name
 
-            # map entity name to the model name
+            # map agent name to the model name
             object_to_model[instance.params["name"]] = model_name
 
             # load the model once per unique name
@@ -409,7 +432,6 @@ def main(cfg: DictConfig):
             player_specific_context=initializer_context.player_specific_context,
             sim_roles=initializer_context.sim_roles,
             agent_flow_tags=initializer_context.agent_flow_tags,
-            social_network=initializer_context.social_network,
             agent_bios=initializer_context.agent_bios,
             checkpoint=checkpoint_meta,
         )

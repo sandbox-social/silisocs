@@ -21,32 +21,6 @@ from silisocs.simulation_engines.base_engines import (
 from silisocs.simulation_engines.policies.factory import build_turn_policy
 
 
-def _env_cfg(cfg: DictConfig):
-    return getattr(cfg, "env", getattr(cfg, "environment", object()))
-
-
-def default_gm_filename(cfg: DictConfig, mode: str) -> str:
-    gm_preset = str(
-        getattr(getattr(_env_cfg(cfg), "gm", object()), "preset", None)
-        or getattr(getattr(getattr(cfg, "sim", object()), "gm", object()), "preset", "base")
-        or "base"
-    )
-    if mode == "shared" and gm_preset == "shared_flow":
-        return "shared_flow_game_master"
-    return str(_env_cfg(cfg).gamemaster.filename)
-
-
-def default_gm_module_path(cfg: DictConfig, mode: str) -> str:
-    gm_preset = str(
-        getattr(getattr(_env_cfg(cfg), "gm", object()), "preset", None)
-        or getattr(getattr(getattr(cfg, "sim", object()), "gm", object()), "preset", "base")
-        or "base"
-    )
-    if mode == "shared" and gm_preset == "shared_flow":
-        return "silisocs.environments.gm.shared_flow_game_master"
-    return str(_env_cfg(cfg).gamemaster.sim_role.module_path)
-
-
 def _load_class(class_path: str) -> type[Any]:
     module_path, class_name = class_path.rsplit(".", 1)
     module = importlib.import_module(module_path)

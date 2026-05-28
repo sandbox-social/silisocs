@@ -1,6 +1,6 @@
 """Multi-flow environment game master with component routing.
 
-Use this GM when enable_gm_multi_flow=true in config. Supports:
+Use this GM class when one game master should route component slots by agent flow. Supports:
 - Multiple component instances per role (e.g., TimelineObservation + EpisodeObservation)
 - Flow-based component routing (agents use components based on their assigned flow)
 - Per-flow multi-field configuration (different algorithms/strategies per flow)
@@ -11,19 +11,14 @@ All agents share one backend/app state but may see different observations/resolu
 from __future__ import annotations
 
 import logging
-import os
 import re
 from collections.abc import Mapping, Sequence
-from typing import Any, cast
-
-from omegaconf import OmegaConf
+from typing import Any
 
 from silisocs.environments.gm.base_game_master import (
     EnvironmentGameMaster,
     GameMasterComponentSlots,
-    _compute_activity_rates,
     _GameMasterWiring,
-    _runtime_cfg,
 )
 from silisocs.environments.gm.components.factory import (
     build_action_prompt_component,
@@ -39,21 +34,8 @@ from silisocs.environments.gm.components.factory import (
     build_update_component,
     build_update_components,
 )
-from silisocs.runtime.io import EventLogger
 
 logger = logging.getLogger(__name__)
-
-
-def _env_cfg(cfg: Any) -> Any:
-    """_env_cfg.
-
-    :param Any cfg:
-    :type cfg: Any
-
-    :returns: Any
-    :rtype: Any
-    """
-    return getattr(cfg, "env", getattr(cfg, "environment", object()))
 
 
 class _FlowRoutedGameMasterWiring(_GameMasterWiring):
@@ -63,13 +45,12 @@ class _FlowRoutedGameMasterWiring(_GameMasterWiring):
     use different component implementations and configurations.
 
     Configuration:
-        sim:
-          enable_gm_multi_flow: true
+        env:
           gm:
-            preset: shared_flow
+            class_path: silisocs.environments.gm.shared_flow_game_master.FlowRoutedGameMaster
 
     Component routing is built from agent flow tags and the multi-component
-    configuration in gm.components.observe, etc.
+    configuration in env.gm.components.<slot>.
     """
 
     def _is_shared_flow_mode(self) -> bool:
@@ -85,50 +66,25 @@ class _FlowRoutedGameMasterWiring(_GameMasterWiring):
         Overrides base build to handle multiple component instances per role.
         """
         model = model or self.model
-        cfg = _runtime_cfg(self.params)
         name = str(self.params.get("name"))
-        calls_to_action = self.params.get("calls_to_action", {})
-        user_data = self.params["sm_user_data"]
-        call_to_sm_action = calls_to_action.get("social_media_action", "")
+        environment_data = dict(self.params["environment_data"])
+        action_prompt_template = str(self.params.get("action_prompt_template") or "")
 
         agent_names = [agent.name for agent in self.agents]
 
-        # Build single components first (next_acting, resolve, update).
         action_mode_to_resolve_map = {
             "custom": "parsed_action",
             "generic": "generic_action",
         }
-        gm_components_cfg: dict[str, Any] = {}
-        env_gm_cfg = getattr(_env_cfg(cfg), "gm", None)
-        if env_gm_cfg is not None and getattr(env_gm_cfg, "components", None) is not None:
-            gm_components_cfg = cast(
-                dict[str, Any],
-                OmegaConf.to_container(env_gm_cfg.components, resolve=True),
-            )
-        elif hasattr(cfg.env, "gm") and getattr(cfg.env.gm, "components", None) is not None:
-            gm_components_cfg = cast(
-                dict[str, Any],
-                OmegaConf.to_container(cfg.env.gm.components, resolve=True),
-            )
-        if "recommend" in gm_components_cfg:
-            raise ValueError(
-                "`env.gm.components.recommend` has been removed. "
-                "Use `env.gm.components.update` with built_in='social_recommendation'."
-            )
+        gm_components_cfg = self._resolve_gm_components_cfg(self.params)
 
-        user_data = self.params["sm_user_data"]
-        activity_rates = _compute_activity_rates(user_data)
-        agent_flow_tags = dict(user_data.get("agent_flow_tags", {}) or {})
-        gm_orchestration = dict(user_data.get("gm_orchestration", {}) or {})
+        sim_roles = dict(environment_data.get("sim_roles", {}) or {})
+        agent_flow_tags = dict(environment_data.get("agent_flow_tags", {}) or {})
+        gm_orchestration = dict(environment_data.get("gm_orchestration", {}) or {})
         gm_prompt_cfg = dict(gm_orchestration.get("prompt", {}) or {})
-        initializer_cfg = dict(
-            gm_components_cfg.get("initialize") or self.params.get("initializer") or {}
-        )
+        initializer_cfg = dict(gm_components_cfg.get("initialize") or {})
         if not initializer_cfg:
-            raise ValueError(
-                "FlowRoutedGameMaster requires `env.gm.components.initialize` "
-                "(or a runner-provided initializer during migration)."
-            )
+            raise ValueError("FlowRoutedGameMaster requires `env.gm.components.initialize`.")
 
         next_acting_slot = dict(gm_components_cfg.get("next_acting", {}))
 
@@ -136,111 +92,25 @@ class _FlowRoutedGameMasterWiring(_GameMasterWiring):
         if not resolve_slot:
             resolve_slot = {
                 "built_in": action_mode_to_resolve_map.get(
-                    getattr(cfg.sim, "action_mode", "custom"), "parsed_action"
+                    str(self.params.get("action_mode") or "custom"), "parsed_action"
                 ),
             }
-        tool_calling_mode = (
-            str(OmegaConf.select(cfg, "sim.tool_calling.mode", default="none") or "none")
-            .strip()
-            .lower()
-        )
+        tool_calling_mode = str(self.params.get("tool_calling_mode") or "none").strip().lower()
         enable_tool_calling = tool_calling_mode in {"single", "multi"}
 
-        platform_type = getattr(_env_cfg(cfg), "platform_type", "twitter_like")
+        backend_cfg = dict(self.params.get("backend_config") or {})
+        backend_type = str(backend_cfg.get("backend_type") or "").strip()
+        if not backend_type:
+            raise ValueError("FlowRoutedGameMaster backend_config.backend_type is required.")
+        backend = self._create_backend_app()
 
-        timeline_mode = str(
-            getattr(_env_cfg(cfg), "timeline_mode", None) or "follower_chronological"
-        )
-        timeline_posts = int(getattr(_env_cfg(cfg), "timeline_posts", 10) or 10)
-        supported_timeline_modes = {
-            "twitter_like": {
-                "follower_chronological",
-                "pure_recsys",
-                "hybrid_recsys_follower",
-                "curated_global",
-            },
-            "reddit_like": {
-                "follower_chronological",
-                "pure_recsys",
-                "hybrid_recsys_follower",
-            },
-            "mastodon": {"follower_chronological"},
-        }
-        allowed_modes = supported_timeline_modes.get(platform_type, {"follower_chronological"})
-        if timeline_mode not in allowed_modes:
-            raise ValueError(
-                f"Unsupported timeline_mode='{timeline_mode}' for platform '{platform_type}'. "
-                f"Supported: {sorted(allowed_modes)}"
-            )
-        timeline_config = {}
-        if hasattr(_env_cfg(cfg), "timeline_config"):
-            timeline_config = (
-                cast(
-                    dict[str, Any],
-                    OmegaConf.to_container(_env_cfg(cfg).timeline_config, resolve=True),
-                )
-                if isinstance(_env_cfg(cfg).timeline_config, dict)
-                else {}
-            )
-        elif hasattr(cfg.env, "timeline_config"):
-            timeline_config = (
-                cast(
-                    dict[str, Any],
-                    OmegaConf.to_container(cfg.env.timeline_config, resolve=True),
-                )
-                if isinstance(cfg.env.timeline_config, dict)
-                else {}
-            )
-
-        # Build the social media app (same as base)
-        from silisocs.environments.backends.factory import create_social_media_app
-
-        action_logger = EventLogger(
-            "action",
-            os.path.join(cfg.output_rootname, "action_events.jsonl"),
-        )
-        action_logger.episode_idx = 0
-        db_path = os.path.join(cfg.output_rootname, f"{platform_type}.db")
-
-        sm_app = create_social_media_app(
-            platform_type=platform_type,
-            action_logger=action_logger,
-            perform_operations=getattr(_env_cfg(cfg), "use_server", False),
-            app_description=self.params.get("app_description", ""),
-            db_path=db_path,
-            app_class_path=OmegaConf.select(cfg, "env.app.class_path", default=None),
-            app_params=OmegaConf.select(cfg, "env.app.params", default={}) or {},
-        )
-        sm_app.platform_type = platform_type  # type: ignore[attr-defined]
-
-        enabled_actions_cfg = getattr(_env_cfg(cfg), "enabled_actions", None)
-        if enabled_actions_cfg is not None:
-            if isinstance(enabled_actions_cfg, Sequence) and not isinstance(
-                enabled_actions_cfg, (str, bytes)
-            ):
-                enabled_actions = [str(action).strip() for action in enabled_actions_cfg]
-            else:
-                enabled_actions = [str(enabled_actions_cfg).strip()]
-
-            turn_policy_built_in = str(
-                OmegaConf.select(cfg, "sim.engine.turn_policy.built_in", default="") or ""
-            ).strip()
-            enabled_actions_upper = {name.upper() for name in enabled_actions if name}
-            if turn_policy_built_in == "open_ended" and "FINISHED" not in enabled_actions_upper:
-                enabled_actions.append("FINISHED")
-
-            sm_app.set_enabled_actions(enabled_actions)
-
-        action_mode = str(getattr(cfg.sim, "action_mode", "custom") or "custom").strip().lower()
+        action_mode = str(self.params.get("action_mode") or "custom").strip().lower()
         if action_mode == "generic":
-            call_to_sm_action = self.build_generic_prompt(
-                cfg=cfg,
-                sm_app=sm_app,
+            action_prompt_template = self.build_generic_prompt(
+                backend=backend,
                 tool_calling_mode=tool_calling_mode,
                 gm_prompt_cfg=gm_prompt_cfg,
             )
-
-        env_cfg = _env_cfg(cfg)
 
         action_output_mode = str(resolve_slot.get("built_in", "parsed_action") or "parsed_action")
 
@@ -251,31 +121,33 @@ class _FlowRoutedGameMasterWiring(_GameMasterWiring):
         next_actor = build_next_acting_component(
             next_acting_slot,
             agent_names=agent_names,
-            activity_transition_rates=activity_rates,
+            sim_roles=sim_roles,
         )
         next_acting_components = {"next_acting": next_actor}
         next_acting_components.update(
             build_next_acting_components(
                 next_acting_slot,
                 agent_names=agent_names,
-                activity_transition_rates=activity_rates,
+                sim_roles=sim_roles,
             )
         )
 
         action_prompt_slot = dict(gm_components_cfg.get("action_prompt", {}))
         action_prompt_component = build_action_prompt_component(
             action_prompt_slot,
-            app=sm_app,
-            action_prompt_template=call_to_sm_action,
+            backend=backend,
+            action_prompt_template=action_prompt_template,
             enable_tool_calling=enable_tool_calling,
+            tool_calling_mode=tool_calling_mode,
         )
         action_prompt_components = {"action_prompt": action_prompt_component}
         action_prompt_components.update(
             build_action_prompt_components(
                 action_prompt_slot,
-                app=sm_app,
-                action_prompt_template=call_to_sm_action,
+                backend=backend,
+                action_prompt_template=action_prompt_template,
                 enable_tool_calling=enable_tool_calling,
+                tool_calling_mode=tool_calling_mode,
             )
         )
 
@@ -301,12 +173,9 @@ class _FlowRoutedGameMasterWiring(_GameMasterWiring):
                 observe_slots,
                 model=model,
                 agent_names=agent_names,
-                sm_app=sm_app,
+                backend=backend,
                 agent_flow_tags=agent_flow_tags,
                 episode_observation_flow=episode_observation_flow,
-                timeline_mode=timeline_mode,
-                timeline_posts=timeline_posts,
-                timeline_config=timeline_config,
             )
         else:
             # Single-instance mode: use single component (fallback)
@@ -315,12 +184,9 @@ class _FlowRoutedGameMasterWiring(_GameMasterWiring):
                 observe_slots,
                 model=model,
                 agent_names=agent_names,
-                sm_app=sm_app,
+                backend=backend,
                 agent_flow_tags=agent_flow_tags,
                 episode_observation_flow=episode_observation_flow,
-                timeline_mode=timeline_mode,
-                timeline_posts=timeline_posts,
-                timeline_config=timeline_config,
             )
             class_name = single_observe.__class__.__name__
             kebab_key = _class_to_kebab_case(class_name)
@@ -329,18 +195,18 @@ class _FlowRoutedGameMasterWiring(_GameMasterWiring):
 
         resolve_component = build_resolve_component(
             resolve_slot,
-            sm_app=sm_app,
+            backend=backend,
             model=model,
-            action_prompt_template=call_to_sm_action,
+            action_prompt_template=action_prompt_template,
             agents_by_name={agent.name: agent for agent in self.agents},
         )
         resolve_components = {"resolve": resolve_component}
         resolve_components.update(
             build_resolve_components(
                 resolve_slot,
-                sm_app=sm_app,
+                backend=backend,
                 model=model,
-                action_prompt_template=call_to_sm_action,
+                action_prompt_template=action_prompt_template,
                 agents_by_name={agent.name: agent for agent in self.agents},
             )
         )
@@ -348,17 +214,15 @@ class _FlowRoutedGameMasterWiring(_GameMasterWiring):
         update_slot = dict(gm_components_cfg.get("update", {}))
         update_component = build_update_component(
             update_slot,
-            sm_app=sm_app,
-            platform_type=platform_type,
-            timeline_mode=timeline_mode,
+            backend=backend,
+            backend_type=backend_type,
         )
         update_components = {"update": update_component}
         update_components.update(
             build_update_components(
                 update_slot,
-                sm_app=sm_app,
-                platform_type=platform_type,
-                timeline_mode=timeline_mode,
+                backend=backend,
+                backend_type=backend_type,
             )
         )
 
@@ -402,7 +266,7 @@ class _FlowRoutedGameMasterWiring(_GameMasterWiring):
             initialize=initialize_component,
             next_acting=next_actor,
             action_prompt=action_prompt_component,
-            observe=component_registry[flow_to_component_map["default"]["observe"]],
+            observe=observe_components[flow_to_component_map["default"]["observe"]],
             resolve=resolve_component,
             update=update_component,
         )
@@ -410,13 +274,20 @@ class _FlowRoutedGameMasterWiring(_GameMasterWiring):
         return {
             "name": name,
             "model": model,
-            "app": sm_app,
+            "backend": backend,
+            "backend_type": backend_type,
             "component_slots": component_slots,
             "component_registry": component_registry,
-            "user_data": user_data,
-            "action_prompt_template": call_to_sm_action,
+            "environment_data": environment_data,
+            "action_prompt_template": action_prompt_template,
             "action_output_mode": action_output_mode,
-            "activity_transition_rates": activity_rates,
+            "activity_transition_rates": dict(
+                dict(next_acting_slot.get("params", {}) or {}).get(
+                    "activity_transition_rates",
+                    {},
+                )
+                or {}
+            ),
             "agent_flow_tags": agent_flow_tags,
             "gm_orchestration": gm_orchestration,
             "flow_to_component_map": flow_to_component_map,

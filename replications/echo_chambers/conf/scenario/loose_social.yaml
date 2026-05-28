@@ -33,10 +33,8 @@ echo_timeline_config: {}
 echo_observation_max_posts: 20
 echo_observation_fetch_multiplier: 3
 echo_update_component_built_in: null
-echo_update_component_class_path: replications.echo_chambers.components.update.NoOpUpdate
-echo_recommend_default_recsys_type: twitter
-echo_recommend_update_every_n_steps: 1
-echo_recommend_max_posts: 50
+echo_update_component_class_path: replications.echo_chambers.components.recommend.NoOpRecommendationUpdate
+echo_update_component_params: null
 echo_agent_class_path: replications.echo_chambers.components.agent_concordia.EchoSocialToolEntity
 echo_concordia_short_memory_processor_class: replications.echo_chambers.components.agent_concordia.ShortMemoryProcessor
 echo_concordia_long_memory_processor_class: replications.echo_chambers.components.agent_concordia.LongMemoryProcessor

@@ -85,7 +85,7 @@ uv run silisocs \
   num_agents=100 \
   num_steps=50 \
   seed=42 \
-  env.social_network.network_type=random
+  env.gm.components.initialize.params.graph.network_type=random
 
 # Switch GM resolve mode to tool-calling
 uv run silisocs \
@@ -274,24 +274,28 @@ Priority: per-agent field_map > per-class config > global default.
 
 ---
 
-## Social Network
+## Social Graph And Activity
 
-The `social_network` section has two audiences. Graph fields such as
-`network_type`, `base_followership_probability`, and `fully_connected_targets`
-feed game-master initialization/backend setup. Activity rates feed the
-game-master `next_acting` slot.
+Graph fields feed the GM initialize component. Activity rates feed the GM
+`next_acting` slot.
 
 ```yaml
-social_network:
-  network_type: barabasi_albert     # barabasi_albert | random | lfr_benchmark | predefined
-  barabasi_albert_m: 10             # Edges per new node
-  base_followership_probability: 0.3
-  fully_connected_targets:          # These roles are followed by everyone
-    - news_account
-  activity_transition_rates:        # Per-role activity model
-    user:
-      inactive_to_active: 0.3
-      active_to_inactive: 0.3
+gm:
+  components:
+    initialize:
+      params:
+        graph:
+          network_type: barabasi_albert
+          barabasi_albert_m: 10
+          base_followership_probability: 0.3
+          fully_connected_targets:
+            - news_account
+    next_acting:
+      params:
+        activity_transition_rates:
+          user:
+            inactive_to_active: 0.3
+            active_to_inactive: 0.3
 ```
 
 The activity model uses a two-state Markov process: each step, an agent
@@ -360,7 +364,7 @@ Behavior notes:
 Compatibility notes:
 
 - Fixed-action items use backend action names (or selectable aliases).
-- `env.enabled_actions` applies globally and can restrict fixed-action items.
+- `env.backend.enabled_actions` applies globally and can restrict fixed-action items.
 
 ---
 
@@ -429,7 +433,6 @@ outputs/<scenario_name>/<jobname>/<jobname>_<timestamp>/
 | `prompts_and_responses.jsonl` | JSONL | Every LLM call — prompt, response, episode index, and agent name |
 | `run_stats.log` | Text | Per-episode timing, worker counts, retry telemetry, and startup phase durations |
 | `sim_metrics.json` | JSON | Structured metrics summary: system info, per-episode durations, worker limits, resource snapshots (CPU/memory), and aggregate statistics |
-| `logs.html` | HTML | Browseable simulation log with tabs for the Game Master log, per-agent memory logs, and GM memories |
 | `<platform>.db` | SQLite | Full social media state (users, posts, replies, likes, follows). Use with the [built-in visualizers](backends.md#built-in-visualizers) to browse |
 | `.hydra/config.yaml` | YAML | Fully resolved Hydra config snapshot |
 | `.hydra/overrides.yaml` | YAML | CLI overrides used for this run |
@@ -587,14 +590,20 @@ initial_observations:
 
 ```yaml
 # scenarios/my_scenario/conf/env.yaml
-social_network:
-  network_type: barabasi_albert
-  barabasi_albert_m: 10
-  base_followership_probability: 0.3
-  activity_transition_rates:
-    user:
-      inactive_to_active: 0.3
-      active_to_inactive: 0.3
+gm:
+  components:
+    initialize:
+      params:
+        graph:
+          network_type: barabasi_albert
+          barabasi_albert_m: 10
+          base_followership_probability: 0.3
+    next_acting:
+      params:
+        activity_transition_rates:
+          user:
+            inactive_to_active: 0.3
+            active_to_inactive: 0.3
 ```
 
 ### 3. Run It
@@ -737,7 +746,7 @@ Key implementations:
 ### Backend Contract Tasks
 
 For platform extensions, backend classes implement `BackendApp` and are
-selected by `platform_type` or `env.app.class_path` through the backend factory.
+selected by `env.backend.type` or `env.backend.class_path` through the backend factory.
 Typical developer tasks include adding new `@app_action` methods, observations,
 optional timeline semantics, and storage/query behavior.
 

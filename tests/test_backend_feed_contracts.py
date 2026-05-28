@@ -306,7 +306,7 @@ def test_reddit_twhin_update_computes_and_persists_recommendations(tmp_path, mon
     assert rec_contents == {"top-embed-post", "mid-embed-post"}
 
 
-def test_twitter_unknown_timeline_mode_falls_back_to_follower_chronological(tmp_path) -> None:
+def test_twitter_unknown_timeline_mode_fails_loudly(tmp_path) -> None:
     platform = TwitterLikePlatform(
         db_path=str(tmp_path / "twitter_default_timeline.db"), use_queue=False
     )
@@ -316,13 +316,11 @@ def test_twitter_unknown_timeline_mode_falls_back_to_follower_chronological(tmp_
     platform.follow("alice", "bob")
     platform.create_post("bob", "fallback-post")
 
-    unknown_timeline = platform.get_timeline("unknown_mode", "alice", limit=10)
-    follower_timeline = platform.get_timeline("follower_chronological", "alice", limit=10)
-
-    assert [post["id"] for post in unknown_timeline] == [post["id"] for post in follower_timeline]
+    with pytest.raises(ValueError, match="Unknown timeline strategy: unknown_mode"):
+        platform.get_timeline("unknown_mode", "alice", limit=10)
 
 
-def test_reddit_unknown_timeline_mode_falls_back_to_follower_chronological(tmp_path) -> None:
+def test_reddit_unknown_timeline_mode_fails_loudly(tmp_path) -> None:
     platform = RedditLikePlatform(
         db_path=str(tmp_path / "reddit_default_timeline.db"), use_queue=False
     )
@@ -334,7 +332,5 @@ def test_reddit_unknown_timeline_mode_falls_back_to_follower_chronological(tmp_p
     platform.join_subreddit("bob", "general")
     platform.create_post("bob", "general", "fallback", "fallback-post")
 
-    unknown_timeline = platform.get_timeline("unknown_mode", "alice", limit=10)
-    follower_timeline = platform.get_timeline("follower_chronological", "alice", limit=10)
-
-    assert [post["id"] for post in unknown_timeline] == [post["id"] for post in follower_timeline]
+    with pytest.raises(ValueError, match="Unknown timeline strategy: unknown_mode"):
+        platform.get_timeline("unknown_mode", "alice", limit=10)

@@ -10,6 +10,9 @@ from silisocs.initialization.game_masters import GameMasterInitializer
 class EchoChamberInitializer(GameMasterInitializer):
     """Initialize the social app and validate its EchoChamberSim state."""
 
+    def __init__(self, graph: dict[str, Any] | None = None) -> None:
+        self.graph = dict(graph or {})
+
     def initialize(
         self,
         *,
@@ -18,20 +21,20 @@ class EchoChamberInitializer(GameMasterInitializer):
         context: Any,
     ) -> None:
         agent_names = [agent.name for agent in agents]
-        sm_app = getattr(game_master, "app", getattr(game_master, "sm_app", None))
-        if sm_app is None:
-            raise TypeError("EchoChamberInitializer requires a game master with an app.")
-        sm_app.initialize(
+        backend = getattr(game_master, "backend", None)
+        if backend is None:
+            raise TypeError("EchoChamberInitializer requires a game master with a backend.")
+        backend.initialize(
             list(agent_names),
             sim_roles=dict(getattr(context, "sim_roles", {}) or {}),
-            social_network=dict(getattr(context, "social_network", {}) or {}),
+            graph_config=self.graph,
             seed_posts={},
         )
-        self._validate(sm_app, agent_names)
+        self._validate(backend, agent_names)
 
     @staticmethod
-    def _validate(sm_app: Any, agent_names: list[str]) -> None:
-        state = getattr(sm_app, "echo_state", None)
+    def _validate(backend: Any, agent_names: list[str]) -> None:
+        state = getattr(backend, "echo_state", None)
         if state is None:
             raise ValueError("EchoChamberInitializer requires an app with echo_state.")
         expected = set(state.agent_names)

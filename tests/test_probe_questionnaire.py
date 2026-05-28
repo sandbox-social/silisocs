@@ -25,9 +25,10 @@ class _DummyAgent:
         self._agent_name = name
         self._responses = list(responses)
         self.call_count = 0
+        self.prompts: list[str] = []
 
     def act(self, action_spec: entity.ActionSpec) -> str:
-        _ = action_spec
+        self.prompts.append(action_spec.prompt)
         self.call_count += 1
         if self._responses:
             response = self._responses.pop(0)
@@ -65,6 +66,10 @@ def test_structured_questionnaire_uses_single_llm_call() -> None:
     assert logger.records[0]["data"]["probe_mode"] == "single_structured_lines"
     assert logger.records[0]["data"]["probe_return"] == "YES"
     assert logger.records[1]["data"]["probe_return"] == "NO"
+    assert "Question 0?" in agent.prompts[0]
+    assert "Return only answer lines" in agent.prompts[0]
+    assert "You are completing a survey" not in agent.prompts[0]
+    assert "in character" not in agent.prompts[0]
 
 
 def test_structured_questionnaire_handles_agent_name_prefix() -> None:

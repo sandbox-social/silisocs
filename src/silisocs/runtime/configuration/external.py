@@ -31,25 +31,17 @@ def merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
     for raw_dir in [p for p in paths_csv.split(":") if p]:
         conf_dir = Path(raw_dir)
 
-        for group, aliases in (
-            ("env", ("env", "environment")),
-            ("evals", ("evals", "evaluations")),
-            ("sim", ("sim",)),
-        ):
-            for file_group in aliases:
-                file_path = conf_dir / f"{file_group}.yaml"
-                if not file_path.is_file():
-                    continue
-                loaded = yaml.safe_load(file_path.read_text(encoding="utf-8")) or {}
-                if not isinstance(loaded, dict):
-                    raise ValueError(
-                        f"Expected mapping in {file_path}, got {type(loaded).__name__}"
-                    )
-                merged_cfg = cast(
-                    DictConfig,
-                    OmegaConf.merge(merged_cfg, OmegaConf.create({group: loaded})),
-                )
-                break
+        for group in ("agents", "env", "evals", "sim"):
+            file_path = conf_dir / f"{group}.yaml"
+            if not file_path.is_file():
+                continue
+            loaded = yaml.safe_load(file_path.read_text(encoding="utf-8")) or {}
+            if not isinstance(loaded, dict):
+                raise ValueError(f"Expected mapping in {file_path}, got {type(loaded).__name__}")
+            merged_cfg = cast(
+                DictConfig,
+                OmegaConf.merge(merged_cfg, OmegaConf.create({group: loaded})),
+            )
 
         if scenario_variant:
             for group in ("env", "sim", "evals"):

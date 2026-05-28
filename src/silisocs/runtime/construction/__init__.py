@@ -7,11 +7,7 @@ from silisocs.runtime.construction.assembly import (
     add_game_master,
     construct_runtime_with_metrics,
 )
-from silisocs.runtime.construction.engines import (
-    build_engine,
-    default_gm_filename,
-    default_gm_module_path,
-)
+from silisocs.runtime.construction.engines import build_engine
 from silisocs.runtime.construction.game_masters import build_game_masters
 from silisocs.runtime.construction.initialization_context import (
     build_initializer_context,
@@ -39,7 +35,5 @@ __all__ = [
     "build_game_masters",
     "build_initializer_context",
     "construct_runtime_with_metrics",
-    "default_gm_filename",
-    "default_gm_module_path",
     "populate_agent_data",
 ]
