@@ -1,5 +1,5 @@
 [![CI](https://github.com/sandbox-social/silisocs/actions/workflows/test.yml/badge.svg)](https://github.com/sandbox-social/silisocs/actions/workflows/test.yml)
-[![Docs](https://github.com/sandbox-social/silisocs/actions/workflows/docs.yml/badge.svg)](https://sandbox-social.github.io/silisocs)
+[![Docs](https://github.com/sandbox-social/silisocs/actions/workflows/docs.yml/badge.svg)](https://sandbox-social.github.io/silisocs/)
 
 # Silisocs
 
