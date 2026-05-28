@@ -20,12 +20,25 @@ pip install silisocs
 
 Install optional integrations only when needed:
 
+| Extra | Key packages | When to use |
+|---|---|---|
+| `concordia` | `gdm-concordia` | Legacy Concordia agent compatibility |
+| `dashboard` | `streamlit` | Streamlit scenario launcher UI |
+| `analysis` | matplotlib, plotly, dash, scipy, seaborn, scikit-network | Post-run plotting and network analysis |
+| `recsys` | scikit-learn, scipy, sentence-transformers | Recommendation system backends |
+| `viz` | FastAPI, uvicorn, jinja2 | Local web visualizer for simulation logs |
+| `hf` | `datasets` | Hugging Face persona datasets |
+| `mastodon` | `mastodon.py`, loguru, pyvis | Real Mastodon server integration |
+| `aws` | `boto3` | AWS storage and services |
+| `docs` | mkdocs-material, mkdocstrings | Building the documentation site |
+| `all` | all of the above except `aws` and `docs` | Full runtime feature set |
+
 ```sh
-pip install "silisocs[hf]"        # Hugging Face persona datasets
-pip install "silisocs[mastodon]"  # real Mastodon server integration
-pip install "silisocs[dashboard]" # Streamlit scenario launcher
-pip install "silisocs[analysis]"  # plotting and analysis dashboards
-pip install "silisocs[viz]"       # local backend web visualizers
+pip install "silisocs[dashboard]"           # Streamlit scenario launcher
+pip install "silisocs[analysis]"            # plotting and analysis
+pip install "silisocs[mastodon]"            # real Mastodon server integration
+pip install "silisocs[all]"                 # all runtime extras
+pip install "silisocs[all,aws]"             # all runtime extras + AWS
 ```
 
 ## Contributor Setup
