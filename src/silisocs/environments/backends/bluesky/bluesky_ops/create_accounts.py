@@ -7,8 +7,6 @@ from atproto.exceptions import BadRequestError
 
 load_dotenv()
 
-PDS_URL = os.getenv("BLUESKY_BASE_URL")
-
 def create_bluesky_account(handle: str, password: str, email: str) -> dict:
     """
     Creates a Bluesky account on the PDS.

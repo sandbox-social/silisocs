@@ -5,8 +5,6 @@ from .get_client import get_authenticated_client
 
 load_dotenv()
 
-PDS_URL = os.getenv("BLUESKY_BASE_URL")
-
 def update_profile(handle: str, password: str, display_name: str, bio: str) -> None:
     """Updates the profile with the given handle with a new display_name and bio."""
     
@@ -32,3 +30,29 @@ def update_profile(handle: str, password: str, display_name: str, bio: str) -> N
             },
         }
     )
+    
+def read_profile(handle: str, password: str, target: str) -> tuple[str, str]:
+    """Reads the target user's profile in Bluesky"""
+    
+    client = get_authenticated_client(
+        handle,
+        password,
+    )
+
+    profile = client.app.bsky.actor.get_profile(
+        {"actor": target}
+    )
+
+    display_name = (
+        profile.display_name
+        if profile.display_name
+        else profile.handle
+    )
+
+    bio = (
+        profile.description
+        if profile.description
+        else ""
+    )
+
+    return display_name, bio
