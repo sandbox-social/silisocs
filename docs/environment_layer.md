@@ -29,7 +29,7 @@ This page focuses on end-user and developer configurability for Engine/GM/backen
 
 Flow controls use two independent settings:
 
-- `env.gm.class_path: silisocs.environments.gm.shared_flow_game_master.FlowRoutedGameMaster`: enables GM-side component routing.
+- `env.gm.class_path: silisocs.environments.gm.game_master.MultiFlowGameMaster`: enables GM-side component routing.
 - `sim.engine.step.built_in: flow`: enables engine-side flow scheduling.
 
 ## Canonical Structure
@@ -144,10 +144,11 @@ uv run silisocs \
 ```yaml
 env:
   gm:
-    initializer:
-      class_path: my_scenario.gm.CustomInitializer
-      params:
-        graph_strategy: role_weighted
+    components:
+      initialize:
+        class_path: my_scenario.gm.CustomInitializer
+        params:
+          graph_strategy: role_weighted
 ```
 
 ### 3. Force all agents active each step
@@ -270,12 +271,12 @@ Flow routing notes:
 
 ## Shared-Flow GM Contract
 
-`FlowRoutedGameMaster` is an advanced GM class for routing multiple
+`MultiFlowGameMaster` is an advanced GM class for routing multiple
 component instances by flow. It uses the same runtime contracts as the baseline
 GM:
 
 - Backend apps are created through the backend factory with the configured
-  `env.backend.class_path` and `env.backend.params`.
+  `env.gm.backend.class_path` and `env.gm.backend.params`.
 - Action events are written through the standard action event logger.
 - Game Master initialization receives agent names, simulation roles, and
   social-network config through the configured initializer component.
@@ -304,13 +305,13 @@ For detailed configuration and behavior of action prompts, see `docs/configurati
 
 The action prompt pipeline is implemented across three layers:
 
-1. **Runner-time compilation** (`src/silisocs/runtime/action_prompts.py`):
-   - `build_complete_action_prompt_for_runner()` — entry point, compiles prompt from config
-  - `compile_action_prompt()` — core logic that applies additions (action count guidance + output style handling)
-   - All prompt building happens here before GM/app instantiation
+1. **Runner-time compilation** (`src/silisocs/runtime/prompts/action_prompts.py`):
+   - `compile_action_prompt()` applies prompt additions such as action-count guidance
+     and output-style handling.
+   - Generic prompts are compiled during GM construction from the backend action catalog.
 
-2. **Game master prompt assembly** (`src/silisocs/environments/gm/base_game_master.py`):
-   - `GameMaster.action_prompt()` returns typed `ActionSpec`
+2. **Game master prompt assembly** (`src/silisocs/environments/gm/game_master.py`):
+   - `ComponentGameMaster.action_prompt()` returns typed `ActionSpec`
    - If `enable_tool_calling=True`: returns `OutputType.TOOL_CALLS` with schemas in `extra_args["tools"]`
    - Keeps base prompt text unchanged
 

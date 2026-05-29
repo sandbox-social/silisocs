@@ -78,24 +78,9 @@ def populate_agent_data(
         flow_tag = str(agent.params.get("flow_tag", DEFAULT_FLOW_TAG) or DEFAULT_FLOW_TAG).strip()
         agent_flow_tags[agent_name] = flow_tag or DEFAULT_FLOW_TAG
 
-    social_media_gms = list(game_masters)
-    if not social_media_gms:
+    configured_gms = list(game_masters)
+    if not configured_gms:
         raise ValueError("No environment game master found.")
-    for social_media_gm in social_media_gms:
-        user_data = social_media_gm.params.setdefault(
-            "environment_data",
-            social_media_gm.params.get("environment_data", {}),
-        )
-        social_media_gm.params["environment_data"] = user_data
-        user_data.setdefault("sim_roles", {}).update(sim_roles)
-        user_data["agent_flow_tags"] = dict(agent_flow_tags)
-
-        orchestration = user_data.setdefault("gm_orchestration", {})
-        owned_flows_raw = (
-            orchestration.get("owned_flows", []) if isinstance(orchestration, dict) else []
-        )
-        owned_flows = {str(flow).strip() for flow in owned_flows_raw if str(flow).strip()}
-        if isinstance(orchestration, dict) and owned_flows:
-            orchestration["owned_agents"] = sorted(
-                name for name, flow in agent_flow_tags.items() if flow in owned_flows
-            )
+    for game_master in configured_gms:
+        game_master.params["sim_roles"] = dict(sim_roles)
+        game_master.params["agent_flow_tags"] = dict(agent_flow_tags)

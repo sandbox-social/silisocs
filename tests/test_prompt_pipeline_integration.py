@@ -12,17 +12,17 @@ import pytest
 from omegaconf import OmegaConf
 
 from silisocs.environments.backends.base import SocialBackendApp, app_action
-from silisocs.environments.gm.base_game_master import (
-    EnvironmentGameMaster,
-    GameMasterComponentSlots,
-    build_generic_action_prompt,
-)
 from silisocs.environments.gm.components.action_prompt import DefaultActionPromptComponent
 from silisocs.environments.gm.components.base import (
     NextActingComponent,
     NoOpUpdateComponent,
     ObservationComponent,
     ResolveComponent,
+)
+from silisocs.environments.gm.game_master import (
+    ComponentGameMaster,
+    GameMasterComponentSlots,
+    build_generic_action_prompt,
 )
 from silisocs.initialization.game_masters import NoOpGameMasterInitializer
 from silisocs.runtime.language_models import NoLanguageModel
@@ -283,7 +283,7 @@ def _gm_for_prompt(
     backend: SocialBackendApp,
     prompt: str,
     enable_tool_calling: bool,
-) -> EnvironmentGameMaster:
+) -> ComponentGameMaster:
     component_slots = GameMasterComponentSlots(
         initialize=NoOpGameMasterInitializer(),
         next_acting=_NoOpNextActing(),
@@ -296,19 +296,15 @@ def _gm_for_prompt(
         resolve=_NoOpResolve(),
         update=NoOpUpdateComponent(),
     )
-    return EnvironmentGameMaster(
+    return ComponentGameMaster(
         name="gm",
         model=NoLanguageModel(),
         backend=backend,
         backend_type="integration_test",
         component_slots=component_slots,
-        environment_data={},
         action_prompt_template=prompt,
-        action_output_mode="tool_calling" if enable_tool_calling else "parsed_action",
-        activity_transition_rates={},
         agent_flow_tags={},
-        gm_orchestration={},
-        enable_tool_calling=enable_tool_calling,
+        tool_calling_mode="single" if enable_tool_calling else "none",
     )
 
 

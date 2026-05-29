@@ -119,12 +119,12 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
         """
         # @package env
 
-        backend:
-          type: twitter_like
-          class_path: null
-          params: {}
         gm:
-          class_path: silisocs.environments.gm.game_master.GameMaster
+          backend:
+            type: twitter_like
+            class_path: null
+            params: {}
+          class_path: silisocs.environments.gm.game_master.ComponentGameMaster
           components:
             initialize:
               built_in: social_media

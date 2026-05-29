@@ -536,10 +536,7 @@ class MultiGMStepStrategy(StepStrategy):
         for agent in cast(list[Agent], agents):
             flow = engine._agent_flow_tag(default_gm, agent.name)
             flow_to_agents.setdefault(flow, []).append(agent)
-        flow_chains = {}
-        gm_orchestration = getattr(default_gm, "gm_orchestration", {}) or {}
-        if isinstance(gm_orchestration, Mapping):
-            flow_chains = dict(gm_orchestration.get("flow_chains", {}) or {})
+        flow_chains = dict(getattr(default_gm, "flow_chains", {}) or {})
 
         batches: list[_StepBatch] = []
         ordered_flows: list[str] = []

@@ -28,7 +28,9 @@ def _cfg(engine_preset: str):
                     "turn_policy": {"built_in": "single_action"},
                 },
             },
-            "env": {"gm": {"class_path": "silisocs.environments.gm.game_master.GameMaster"}},
+            "env": {
+                "gm": {"class_path": "silisocs.environments.gm.game_master.ComponentGameMaster"}
+            },
         }
     )
 
@@ -54,7 +56,7 @@ def test_base_gm_with_flow_engine() -> None:
 def test_shared_flow_gm_with_base_engine() -> None:
     """Flow-routed GM class is selected directly in env.gm.class_path."""
     cfg = _cfg("base")
-    cfg.env.gm.class_path = "silisocs.environments.gm.shared_flow_game_master.FlowRoutedGameMaster"
+    cfg.env.gm.class_path = "silisocs.environments.gm.game_master.MultiFlowGameMaster"
 
     engine = build_engine(cfg)
 

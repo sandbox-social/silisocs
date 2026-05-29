@@ -5,9 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from silisocs.environments.gm import base_game_master as base_gm
-from silisocs.environments.gm import shared_flow_game_master as shared_gm
-from silisocs.environments.gm.shared_flow_game_master import FlowRoutedGameMaster
+from silisocs.environments.gm import game_master as gm_module
+from silisocs.environments.gm.game_master import MultiFlowGameMaster
 
 
 @dataclass
@@ -51,51 +50,38 @@ def test_shared_flow_gm_uses_base_initialization_contracts(tmp_path, monkeypatch
         created.update(kwargs)
         return app
 
-    monkeypatch.setattr(base_gm, "create_backend_app", fake_create_backend_app)
-    monkeypatch.setattr(shared_gm, "build_next_acting_component", lambda *a, **k: object())
-    monkeypatch.setattr(shared_gm, "build_observe_component", lambda *a, **k: object())
-    monkeypatch.setattr(shared_gm, "build_resolve_component", lambda *a, **k: object())
-    monkeypatch.setattr(shared_gm, "build_update_component", lambda *a, **k: object())
+    monkeypatch.setattr(gm_module, "create_backend_app", fake_create_backend_app)
 
     agents = [_DummyEntity("Alice Smith"), _DummyEntity("Bob Jones")]
-    user_data = {
-        "sim_roles": {"Alice Smith": "user", "Bob Jones": "user"},
-        "agent_flow_tags": {"Alice Smith": "default", "Bob Jones": "default"},
-        "gm_orchestration": {"gm_name": "gm_shared", "owned_flows": ["default"]},
-    }
-    gm = FlowRoutedGameMaster(
+    gm = MultiFlowGameMaster(
         model=object(),
         agents=agents,
-        params={
-            "name": "gm_shared",
-            "environment_data": user_data,
-            "backend_config": {
-                "backend_type": "twitter_like",
-                "output_rootname": str(tmp_path),
-                "enabled_actions": ["POST"],
-                "turn_policy_built_in": "open_ended",
-                "app_description": "desc",
-                "class_path": "tests.fake.CustomApp",
-                "params": {"answer": 42},
-            },
-            "components": {
-                "initialize": {"built_in": "social_media", "class_path": None, "params": {}},
-                "next_acting": {
-                    "built_in": "all_agents",
-                    "params": {
-                        "activity_transition_rates": {
-                            "user": {"inactive_to_active": 0.7, "active_to_inactive": 0.2}
-                        }
-                    },
-                },
-                "observe": {"built_in": "timeline_every_turn"},
-                "resolve": {"built_in": "parsed_action"},
-                "update": {"built_in": "social_recommendation"},
-            },
-            "action_prompt_template": "Act",
-            "action_mode": "custom",
-            "tool_calling_mode": "none",
+        name="gm_shared",
+        sim_roles={"Alice Smith": "user", "Bob Jones": "user"},
+        agent_flow_tags={"Alice Smith": "default", "Bob Jones": "default"},
+        owned_flows=["default"],
+        backend_config={
+            "backend_type": "twitter_like",
+            "output_rootname": str(tmp_path),
+            "enabled_actions": ["POST"],
+            "turn_policy_built_in": "open_ended",
+            "app_description": "desc",
+            "class_path": "tests.fake.CustomApp",
+            "params": {"answer": 42},
         },
+        components={
+            "initialize": {"built_in": "social_media", "class_path": None, "params": {}},
+            "next_acting": {
+                "built_in": "all_agents",
+                "params": {},
+            },
+            "observe": {"built_in": "timeline_every_turn"},
+            "resolve": {"built_in": "parsed_action"},
+            "update": {"built_in": "social_recommendation"},
+        },
+        action_prompt_template="Act",
+        action_mode="custom",
+        tool_calling_mode="none",
     )
 
     assert created["action_logger"] is not None
@@ -107,11 +93,7 @@ def test_shared_flow_gm_uses_base_initialization_contracts(tmp_path, monkeypatch
     assert app.enabled_actions == ["POST", "FINISHED"]
     assert app.initialized_with is None
     assert gm.name == "gm_shared"
-    assert gm.activity_transition_rates == {
-        "user": {"inactive_to_active": 0.7, "active_to_inactive": 0.2}
-    }
-    assert gm.gm_orchestration == user_data["gm_orchestration"]
-    assert gm.shared_flow_mode is True
+    assert gm.owned_flows == ("default",)
     assert hasattr(gm, "acting_agents")
     assert hasattr(gm, "action_prompt")
     assert hasattr(gm, "make_observation")

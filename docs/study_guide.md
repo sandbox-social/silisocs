@@ -22,7 +22,7 @@ type `/new-study` to be guided through this process interactively.
 Example: *"Larger LLMs produce more stylistically diverse posts."*
 
 **Condition** — One value of the independent variable. A hypothesis has 2+ conditions.
-Example: `model=gpt4o-mini` and `model=gpt4o`.
+Example: `sim.llm.name=gpt-4o-mini` and `sim.llm.name=gpt-4o`.
 
 **Run** — One simulation of one (condition × scenario × seed) combination.
 

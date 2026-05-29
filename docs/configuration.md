@@ -389,29 +389,30 @@ uv run silisocs --config-path scenarios/ai_conference/conf \
 
 **Twitter-like (default)**
 ```yaml
-backend:
-  type: twitter_like
-  class_path: null
-  params: {}
-use_server: false
+gm:
+  backend:
+    type: twitter_like
+    class_path: null
+    params: {}
 ```
 
 **Reddit-like**
 ```yaml
-backend:
-  type: reddit_like
-  class_path: null
-  params: {}
-use_server: false
+gm:
+  backend:
+    type: reddit_like
+    class_path: null
+    params: {}
 ```
 
 **Mastodon (remote)**
 ```yaml
-backend:
-  type: mastodon
-  class_path: null
-  params: {}
-use_server: true   # Requires a running Mastodon server
+gm:
+  backend:
+    type: mastodon
+    class_path: null
+    params:
+      perform_operations: true   # Requires a running Mastodon server
 ```
 
 Requires environment variables for server URL and API credentials.
@@ -419,38 +420,41 @@ See [Installation](installation.md) for `.env` setup.
 
 **Resource market (generic non-social)**
 ```yaml
-backend:
-  type: resource_market
-  class_path: null
-  params:
-    initial_cash: 20
-    initial_inventory:
-      food: 1
-      wood: 0
-      ore: 0
+gm:
+  backend:
+    type: resource_market
+    class_path: null
+    params:
+      initial_cash: 20
+      initial_inventory:
+        food: 1
+        wood: 0
+        ore: 0
 ```
 
 **Virtual space (generic non-social)**
 ```yaml
-backend:
-  type: virtual_space
-  class_path: null
-  params:
-    rooms: [atrium, garden, workshop]
-    starting_room: atrium
+gm:
+  backend:
+    type: virtual_space
+    class_path: null
+    params:
+      rooms: [atrium, garden, workshop]
+      starting_room: atrium
 ```
 
 Custom backend apps can be loaded without editing the factory:
 
 ```yaml
-backend:
-  type: custom
-  class_path: my_pkg.apps.MyBackendApp
-  params:
-    custom_setting: value
+gm:
+  backend:
+    type: custom
+    class_path: my_pkg.apps.MyBackendApp
+    params:
+      custom_setting: value
 ```
 
-`app.params` are strict constructor arguments. Unknown keys fail before the
+`gm.backend.params` are strict constructor arguments. Unknown keys fail before the
 simulation starts unless the app constructor accepts `**kwargs`.
 
 ### Enabled Actions
@@ -458,20 +462,24 @@ simulation starts unless the app constructor accepts `**kwargs`.
 By default agents can use all backend actions. Restrict to a subset:
 
 ```yaml
-enabled_actions:
-  - create_tweet
-  - reply_to_tweet
-  - like_tweet
-  - FINISHED
+env:
+  gm:
+    backend:
+      enabled_actions:
+        - create_tweet
+        - reply_to_tweet
+        - like_tweet
+        - FINISHED
 ```
 
-Action names must be the **exact decorated backend function names**:
+Action names may be canonical decorated backend function names or selectable
+aliases such as `FINISHED`:
 
-| Platform | Actions |
-|----------|---------|
-| TwitterLike | `create_tweet`, `reply_to_tweet`, `like_tweet`, `repost_tweet`, `follow_user`, `unfollow_user` |
-| RedditLike | `create_reddit_post`, `create_comment`, `upvote_post`, `downvote_post`, `subscribe`, `unsubscribe` |
-| Mastodon | `post_toot`, `reply_to_toot`, `like_toot`, `boost_toot`, `follow_user`, `unfollow_user` |
+| Backend | Common actions |
+|---------|----------------|
+| `twitter_like` | `create_tweet`, `reply_to_tweet`, `like_tweet`, `unlike_tweet`, `repost_tweet`, `quote_repost_tweet`, `follow_user`, `unfollow_user`, `mute_user`, `unmute_user`, `search_posts`, `get_trending_posts`, `report_post`, `update_profile`, `view_profile`, `do_nothing`, `FINISHED` |
+| `reddit_like` | `create_reddit_post`, `create_comment`, `upvote`, `downvote`, `like_post`, `unlike_post`, `dislike_post`, `undo_dislike_post`, `get_home_feed`, `get_post_comments`, `search_subreddits`, `get_trending_posts`, `report_post`, `mute_user`, `unmute_user`, `update_profile`, `view_profile`, `do_nothing`, `FINISHED` |
+| `mastodon` | `post_toot`, `reply_to_toot`, `like_toot`, `boost_toot`, `follow_user`, `unfollow_user` |
 
 ### Seed Posts
 
@@ -512,15 +520,16 @@ sim:
       params: {}
 ```
 
-Each native Game Master spec also has its own initializer slot:
+Each native Game Master has an initialize component slot:
 
 ```yaml
 env:
   gm:
-    initializer:
-      built_in: social_media   # social_media | app_initialize | none
-      class_path: null
-      params: {}
+    components:
+      initialize:
+        built_in: social_media   # social_media | app_initialize | none
+        class_path: null
+        params: {}
 ```
 
 ### GM Components

@@ -132,6 +132,11 @@ def _run_target(project_root: Path, target: DryRunTarget, run_root: Path) -> Dry
         combined = f"{stderr}\n{stdout}"
         if "No module named 'datasets'" in combined:
             skip_reason = "missing optional dependency: datasets (hf extra)"
+        elif (
+            "Install Concordia compatibility" in combined
+            or "No module named 'concordia'" in combined
+        ):
+            skip_reason = "missing optional dependency: concordia extra"
     return DryRunResult(
         target=target,
         ok=result.returncode == 0 or bool(skip_reason),

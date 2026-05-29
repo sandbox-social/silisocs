@@ -102,8 +102,10 @@ Ask:
 > "What actions can agents take, and how should they be connected to each other?"
 
 Collect or confirm:
-- `enabled_actions`: choose from `[create_tweet, reply_to_tweet, like_tweet, repost_tweet, FINISHED]`
-  (all enabled by default; FINISHED signals end of turn)
+- `env.gm.backend.enabled_actions`: leave as `null` for the full backend action
+  surface, or list the exact actions this scenario should allow. For a small
+  Twitter-like social run, use `[create_tweet, reply_to_tweet, like_tweet,
+  repost_tweet, FINISHED]`. `FINISHED` signals the end of an open-ended turn.
 - `timeline_mode`: `follower_chronological` (default) or `pure_recsys`
 - Network topology:
   - Any roles that should follow *everyone* (bridge/journalist roles)?
@@ -207,7 +209,7 @@ Report the result to the user. If validation fails, diagnose and fix before fini
     "barabasi_albert_m": 2
   },
   "backend": {
-    "backend_type": "twitter_like",
+    "type": "twitter_like",
     "timeline_mode": "follower_chronological",
     "enabled_actions": ["create_tweet", "reply_to_tweet", "like_tweet", "repost_tweet", "FINISHED"]
   },

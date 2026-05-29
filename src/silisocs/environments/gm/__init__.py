@@ -3,9 +3,9 @@
 __all__ = [
     "AppInitializeGameMasterInitializer",
     "BaseGameMaster",
-    "FlowRoutedGameMaster",
-    "GameMaster",
+    "ComponentGameMaster",
     "GameMasterInitializer",
+    "MultiFlowGameMaster",
     "NoOpGameMasterInitializer",
     "SocialMediaGameMasterInitializer",
     "build_game_master_initializer",
@@ -17,14 +17,14 @@ def __getattr__(name: str):
         from silisocs.environments.gm.base_game_master import BaseGameMaster
 
         return BaseGameMaster
-    if name == "GameMaster":
-        from silisocs.environments.gm.game_master import GameMaster
+    if name == "ComponentGameMaster":
+        from silisocs.environments.gm.game_master import ComponentGameMaster
 
-        return GameMaster
-    if name == "FlowRoutedGameMaster":
-        from silisocs.environments.gm.shared_flow_game_master import FlowRoutedGameMaster
+        return ComponentGameMaster
+    if name == "MultiFlowGameMaster":
+        from silisocs.environments.gm.game_master import MultiFlowGameMaster
 
-        return FlowRoutedGameMaster
+        return MultiFlowGameMaster
     if name in {
         "AppInitializeGameMasterInitializer",
         "GameMasterInitializer",

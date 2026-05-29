@@ -11,7 +11,7 @@ Silisocs should make each simulator layer replaceable through a defined shape:
 |---|---|---|
 | Scenario | Hydra config groups plus scenario-local overrides | Add scenario files, agent variants, study overrides |
 | Agent | `Agent` runtime plus optional compatibility adapter | Custom agent module or custom builder |
-| Environment app | `BackendApp` plus `@app_action` methods | Built-in `env.backend.type` or `env.backend.class_path` |
+| Environment app | `BackendApp` plus `@app_action` methods | Built-in `env.gm.backend.type` or `env.gm.backend.class_path` |
 | Social app | `SocialBackendApp` optional timeline/recsys capabilities | Twitter-like, Reddit-like, Mastodon, or custom social backend |
 | GM | Component-slotted game master | Override component slots before replacing the full GM |
 | GM component | Slot config with `built_in`, `class_path`, `params`, optional `flows` | Custom initialize, next-acting, action_prompt, observe, resolve, update |
@@ -47,7 +47,7 @@ Silisocs should make each simulator layer replaceable through a defined shape:
    - Keep fast non-LLM smoke tests for packaged sample scenarios.
 
 5. **Configuration discoverability**
-   - Document `env.backend.class_path` and `env.backend.params`.
+   - Document `env.gm.backend.class_path` and `env.gm.backend.params`.
    - Document component slot `params` and `flows`.
    - Add generated or checked config tables once the schema settles.
 
@@ -70,7 +70,7 @@ Silisocs should make each simulator layer replaceable through a defined shape:
 
 The framework is in good V1 shape when:
 
-- A new backend can be added through `env.backend.class_path` without changing core
+- A new backend can be added through `env.gm.backend.class_path` without changing core
   runtime code.
 - A new GM component or engine policy can be configured with documented
   `params`, and typos fail before simulation starts.

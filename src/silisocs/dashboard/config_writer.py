@@ -66,14 +66,14 @@ def save_scenario(
         agent_payload["fixed_action_sets"] = scenario_data.get("fixed_action_sets", {})
 
     env_payload = {
-        "backend": {
-            "type": backend_type or "twitter_like",
-            "class_path": None,
-            "params": {},
-            "enabled_actions": None,
-        },
         "gm": {
-            "class_path": "silisocs.environments.gm.game_master.GameMaster",
+            "backend": {
+                "type": backend_type or "twitter_like",
+                "class_path": None,
+                "params": {},
+                "enabled_actions": None,
+            },
+            "class_path": "silisocs.environments.gm.game_master.ComponentGameMaster",
             "name": f"{backend_type or 'twitter_like'}_gm",
             "components": {
                 "initialize": {
@@ -108,9 +108,6 @@ def save_scenario(
                 },
             },
         },
-        "candidates": scenario_data.get("candidates", {}),
-        "news_account": scenario_data.get("news_account", {}),
-        "partisan_types": scenario_data.get("partisan_types", []),
     }
     for key, value in env_data.items():
         if value is not None:

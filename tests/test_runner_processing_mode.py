@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 import pytest
 from omegaconf import OmegaConf
 
@@ -24,19 +26,15 @@ def _base_cfg(processing_mode: str):
                 "persona_pipeline": {},
             },
             "env": {
-                "backend": {
-                    "type": "twitter_like",
-                    "class_path": None,
-                    "params": {},
-                    "enabled_actions": None,
-                },
                 "gm": {
-                    "class_path": "silisocs.environments.gm.game_master.GameMaster",
-                    "name": "social-media_game-master",
-                    "sim_role": {
-                        "name": "social_media_gm",
-                        "module_path": "silisocs.environments.gm.game_master",
+                    "backend": {
+                        "type": "twitter_like",
+                        "class_path": None,
+                        "params": {},
+                        "enabled_actions": None,
                     },
+                    "class_path": "silisocs.environments.gm.game_master.ComponentGameMaster",
+                    "name": "social-media_game-master",
                     "components": {
                         "initialize": {
                             "built_in": "social_media",
@@ -120,7 +118,7 @@ def test_old_env_seed_posts_config_is_rejected() -> None:
     cfg = _base_cfg("raw")
     cfg.env.seed_posts = {"type": "none"}
 
-    with pytest.raises(ValueError, match="env.seed_posts"):
+    with pytest.raises(ValueError, match="seed_posts"):
         build_game_masters(cfg)
 
 
@@ -128,23 +126,23 @@ def test_old_gm_initializer_config_is_rejected() -> None:
     cfg = _base_cfg("raw")
     cfg.env.gm.components.initializer = {"built_in": "backend_default"}
 
-    with pytest.raises(ValueError, match="env.gm.components.initializer"):
+    with pytest.raises(ValueError, match="initializer"):
         build_game_masters(cfg)
 
 
-def test_top_level_environment_config_is_rejected() -> None:
+def test_unknown_env_structure_key_is_rejected() -> None:
     cfg = _base_cfg("raw")
-    cfg.environment = {"backend": {"type": "twitter_like"}}
+    cfg.env.extra = {"backend": {"type": "twitter_like"}}
 
-    with pytest.raises(ValueError, match="environment"):
+    with pytest.raises(ValueError, match="extra"):
         build_game_masters(cfg)
 
 
-def test_old_env_backend_selector_config_is_rejected() -> None:
+def test_old_env_backend_config_is_rejected() -> None:
     cfg = _base_cfg("raw")
-    cfg.env.platform_type = "twitter_like"
+    cfg.env.backend = {"type": "twitter_like"}
 
-    with pytest.raises(ValueError, match="env.platform_type"):
+    with pytest.raises(ValueError, match="backend"):
         build_game_masters(cfg)
 
 
@@ -152,7 +150,7 @@ def test_old_env_app_config_is_rejected() -> None:
     cfg = _base_cfg("raw")
     cfg.env.app = {"class_path": "tests.fake.App", "params": {}}
 
-    with pytest.raises(ValueError, match="env.app"):
+    with pytest.raises(ValueError, match="app"):
         build_game_masters(cfg)
 
 
@@ -160,45 +158,60 @@ def test_removed_local_llm_provider_is_rejected() -> None:
     cfg = _base_cfg("raw")
     cfg.sim.llm = {"provider": "local"}
 
-    with pytest.raises(ValueError, match="local LLM provider"):
+    with pytest.raises(ValueError, match="Unsupported sim.llm.provider"):
         build_game_masters(cfg)
 
 
 def test_build_game_masters_supports_per_gm_prompt_overrides() -> None:
     cfg = _base_cfg("raw")
+    base_components = cast(
+        dict[str, Any], OmegaConf.to_container(cfg.env.gm.components, resolve=True)
+    )
     cfg.env.gm_orchestration = {
         "gms": [
             {
                 "gm_name": "gm_alpha",
                 "sequence": 0,
-                "initializer": {"built_in": "social_media", "class_path": None, "params": {}},
-                "sim_role": {
-                    "name": "social_media_gm",
-                    "module_path": "silisocs.environments.gm.game_master",
+                "backend": {
+                    "type": "twitter_like",
+                    "class_path": None,
+                    "params": {},
+                    "enabled_actions": None,
                 },
-                "prompt": {
-                    "action_prompt": "Alpha prompt body\n[OUTPUT STYLE]",
-                    "output_style": "Alpha output style",
+                "components": {
+                    **base_components,
+                    "action_prompt": {
+                        "built_in": "default",
+                        "params": {
+                            "action_prompt": "Alpha prompt body\n[OUTPUT STYLE]",
+                            "output_style": "Alpha output style",
+                        },
+                    },
                 },
             },
             {
                 "gm_name": "gm_beta",
                 "sequence": 1,
-                "initializer": {"built_in": "social_media", "class_path": None, "params": {}},
-                "sim_role": {
-                    "name": "social_media_gm",
-                    "module_path": "silisocs.environments.gm.game_master",
+                "backend": {
+                    "type": "twitter_like",
+                    "class_path": None,
+                    "params": {},
+                    "enabled_actions": None,
                 },
-                "prompt": {
-                    "action_prompt": "Beta prompt body\n[OUTPUT STYLE]",
-                    "output_style": "Beta output style",
+                "components": {
+                    **base_components,
+                    "action_prompt": {
+                        "built_in": "default",
+                        "params": {
+                            "action_prompt": "Beta prompt body\n[OUTPUT STYLE]",
+                            "output_style": "Beta output style",
+                        },
+                    },
                 },
             },
         ],
         "flow_bindings": {
-            "flow_to_gm": {},
             "flow_to_gms": {},
-            "gm_to_flows": {},
         },
     }
 
@@ -214,3 +227,85 @@ def test_build_game_masters_supports_per_gm_prompt_overrides() -> None:
     assert "Alpha output style" in prompts_by_name["gm_alpha"]
     assert "Beta prompt body" in prompts_by_name["gm_beta"]
     assert "Beta output style" in prompts_by_name["gm_beta"]
+
+
+def test_multi_gm_specs_require_own_backend_and_components() -> None:
+    cfg = _base_cfg("raw")
+    cfg.env.gm_orchestration = {
+        "gms": [
+            {
+                "gm_name": "gm_alpha",
+                "sequence": 0,
+                "components": cast(
+                    dict[str, Any], OmegaConf.to_container(cfg.env.gm.components, resolve=True)
+                ),
+            }
+        ]
+    }
+
+    with pytest.raises(ValueError, match="backend is required"):
+        build_game_masters(cfg)
+
+    cfg = _base_cfg("raw")
+    cfg.env.gm_orchestration = {
+        "gms": [
+            {
+                "gm_name": "gm_alpha",
+                "sequence": 0,
+                "backend": OmegaConf.to_container(cfg.env.gm.backend, resolve=True),
+            }
+        ]
+    }
+
+    with pytest.raises(ValueError, match="components is required"):
+        build_game_masters(cfg)
+
+
+def test_multi_gm_specs_can_use_distinct_backends() -> None:
+    cfg = _base_cfg("raw")
+    social_components = cast(
+        dict[str, Any], OmegaConf.to_container(cfg.env.gm.components, resolve=True)
+    )
+    social_components["resolve"] = {"built_in": "parsed_action", "params": {}}
+    market_components = {
+        "initialize": {"built_in": "app_initialize", "params": {}},
+        "next_acting": {"built_in": "fixed_order", "params": {}},
+        "observe": {"built_in": "app_observation", "params": {}},
+        "resolve": {"built_in": "parsed_action", "params": {}},
+        "update": {"built_in": "disabled", "params": {}},
+        "action_prompt": {"built_in": "default", "params": {}},
+    }
+    cfg.env.gm_orchestration = {
+        "gms": [
+            {
+                "gm_name": "social_gm",
+                "sequence": 0,
+                "backend": {
+                    "type": "twitter_like",
+                    "class_path": None,
+                    "params": {},
+                    "enabled_actions": None,
+                },
+                "components": social_components,
+            },
+            {
+                "gm_name": "market_gm",
+                "sequence": 1,
+                "backend": {
+                    "type": "resource_market",
+                    "class_path": None,
+                    "params": {"initial_cash": 5},
+                    "enabled_actions": None,
+                },
+                "components": market_components,
+            },
+        ],
+        "flow_bindings": {"flow_to_gms": {"social": ["social_gm"], "market": ["market_gm"]}},
+    }
+
+    specs = build_game_masters(cfg)
+
+    by_name = {spec.params["name"]: spec for spec in specs}
+    assert by_name["social_gm"].params["backend_config"]["backend_type"] == "twitter_like"
+    assert by_name["market_gm"].params["backend_config"]["backend_type"] == "resource_market"
+    assert by_name["market_gm"].params["backend_config"]["params"] == {"initial_cash": 5}

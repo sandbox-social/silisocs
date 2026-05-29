@@ -85,7 +85,7 @@ def _is_finished_event(
         if action_name.strip().upper() in aliases:
             return True
 
-    # Legacy fallback: allow exact token equality only (no substring matching).
+    # Text outputs may still intentionally return only the terminal action name.
     raw_upper = str(raw_action or "").strip().upper()
     if raw_upper in aliases:
         return True

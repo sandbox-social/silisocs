@@ -110,15 +110,6 @@ def build_engine(cfg: DictConfig):
     else:
         raise ValueError("`sim.engine` must be a mapping.")
 
-    legacy_keys = {"preset", "action_loop", "probe_schedule"}
-    used_legacy = sorted(key for key in legacy_keys if key in engine_cfg)
-    if used_legacy:
-        raise ValueError(
-            "Legacy engine key(s) are removed: "
-            + ", ".join(used_legacy)
-            + ". Use sim.engine.loop/step/turn_policy and evals.probes.schedule."
-        )
-
     class_path = str(engine_cfg.get("class_path") or "").strip()
     loop_cfg = _slot_to_mapping(
         engine_cfg.get("loop"),

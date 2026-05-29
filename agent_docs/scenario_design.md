@@ -272,12 +272,6 @@ engine:
     built_in: open_ended
     params:
       max_actions: 10
-
-enabled_actions:                   # Restrict to specific actions (exact function names)
-  - create_tweet
-  - like_tweet
-  - repost_tweet
-  - follow_user
 ```
 
 **Important:** Missing fields automatically fall back to `src/silisocs/conf/sim/base.yaml` defaults. This keeps scenario files minimal.
@@ -289,10 +283,36 @@ Create if you want a different backend or GM component settings:
 ```yaml
 # No @package header needed — merged into env group automatically
 
-backend:
-  type: reddit_like         # twitter_like | reddit_like | mastodon
-  class_path: null
-  params: {}
+gm:
+  backend:
+    type: reddit_like       # twitter_like | reddit_like | mastodon
+    class_path: null
+    params: {}
+    enabled_actions: null   # null = all backend actions; list names to restrict
+```
+
+Default action surfaces:
+
+- `twitter_like`: all Twitter-like `@app_action` tools are available by default,
+  including posting, replying, liking/unliking, reposting, following,
+  muting/unmuting, search/trends, reporting, profile actions, `do_nothing`, and
+  `FINISHED`.
+- `reddit_like`: all Reddit-like `@app_action` tools are available by default,
+  including posting, commenting, voting, feed/comment inspection, muting,
+  search/trends, reporting, profile actions, `do_nothing`, and `FINISHED`.
+
+Use `env.gm.backend.enabled_actions` to narrow a scenario to the action set you want.
+Entries may be canonical method names or selectable aliases.
+
+```yaml
+gm:
+  backend:
+    enabled_actions:
+      - create_tweet
+      - reply_to_tweet
+      - like_tweet
+      - repost_tweet
+      - FINISHED
 ```
 
 ---
@@ -319,7 +339,7 @@ persona_pipeline:
       ...
 
 gm:
-  class_path: silisocs.environments.gm.shared_flow_game_master.FlowRoutedGameMaster
+  class_path: silisocs.environments.gm.game_master.MultiFlowGameMaster
   components:
     next_acting:
       params:
@@ -417,7 +437,7 @@ If you want different agent populations to receive different observations or com
 
 ```yaml
 gm:
-  class_path: silisocs.environments.gm.shared_flow_game_master.FlowRoutedGameMaster
+  class_path: silisocs.environments.gm.game_master.MultiFlowGameMaster
   components:
     observe:
       # Create two separate Observe components
@@ -465,9 +485,8 @@ The game master automatically routes each agent to the correct component instanc
    - `num_agents=500`
    - `sim.llm.name=gpt-4o`
 
-**Fallback behavior:**
+**Default behavior:**
 - If `sim.yaml` omits `llm.name`, uses `base.yaml` value (`gpt-4o-mini`)
-- If `env.yaml` omits `use_server`, uses `twitter_like.yaml` value (`false`)
 - If scenario omits a probe, that probe is not deployed
 
 This means your scenario files only need to specify what's **different** from defaults.
@@ -491,7 +510,7 @@ This means your scenario files only need to specify what's **different** from de
 - `sim.engine.turn_policy.built_in`: single_action
 
 **From `src/silisocs/conf/env/twitter_like.yaml`:**
-- `env.backend.type`: twitter_like
+- `env.gm.backend.type`: twitter_like
 - Supports: `create_tweet`, `like_tweet`, `repost_tweet`, `reply_to_tweet`, `follow_user`
 
 ---

@@ -77,8 +77,7 @@ def load_checkpoint_into_runtime(
     """Load checkpointed object state into an existing runtime object set."""
     if checkpoint.get("schema_version") != CHECKPOINT_SCHEMA_VERSION:
         raise ValueError(
-            "Unsupported checkpoint schema. Old prefab-shaped checkpoints cannot be loaded "
-            "by the native class-path runtime."
+            f"Unsupported checkpoint schema version: {checkpoint.get('schema_version')!r}"
         )
     objects = checkpoint.get("objects", {})
     if not isinstance(objects, Mapping):

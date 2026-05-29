@@ -125,12 +125,12 @@ match the persona class flow.
 
 ### Single-Slot Game Master
 
-The default `GameMaster` uses one component per slot:
+The default `ComponentGameMaster` uses one component per slot:
 
 ```yaml
 env:
   gm:
-    class_path: silisocs.environments.gm.game_master.GameMaster
+    class_path: silisocs.environments.gm.game_master.ComponentGameMaster
     components:
       initialize:
         built_in: social_media
@@ -160,14 +160,14 @@ observation style, prompt style, resolver, and update behavior.
 
 ### Flow-Routed Game Master
 
-`FlowRoutedGameMaster` keeps the same public Game Master methods, but each slot
+`MultiFlowGameMaster` keeps the same public Game Master methods, but each slot
 can contain multiple component instances. The GM chooses the right instance from
 `flow_map` based on the acting agent's flow.
 
 ```yaml
 env:
   gm:
-    class_path: silisocs.environments.gm.game_master.FlowRoutedGameMaster
+    class_path: silisocs.environments.gm.game_master.MultiFlowGameMaster
     components:
       observe:
         instances:
@@ -205,7 +205,7 @@ The same `instances + flow_map` shape works for all GM slots:
 - `update`
 
 Custom components do not need to know about flows. They implement one slot
-interface, and `FlowRoutedGameMaster` handles selection.
+interface, and `MultiFlowGameMaster` handles selection.
 
 ---
 
@@ -292,7 +292,7 @@ sim:
 
 env:
   gm:
-    class_path: silisocs.environments.gm.game_master.GameMaster
+    class_path: silisocs.environments.gm.game_master.ComponentGameMaster
     components:
       observe:
         built_in: timeline_every_turn
@@ -320,7 +320,7 @@ sim:
 ```yaml
 env:
   gm:
-    class_path: silisocs.environments.gm.game_master.FlowRoutedGameMaster
+    class_path: silisocs.environments.gm.game_master.MultiFlowGameMaster
     components:
       observe:
         instances:

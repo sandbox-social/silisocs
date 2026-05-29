@@ -28,7 +28,7 @@ Thank you for considering contributing to this project! We appreciate your effor
 - Sync the full release-test environment: `uv sync --all-extras --group dev --group docs`
 - Run the pre-commit suite: `uv run poe lint`
 - Run tests with coverage (defaults to non-LLM tests): `uv run poe test`
-- Generate API docs with `pdoc`: `uv run poe docs`
+- Build the documentation site: `uv run --group docs properdocs build --strict`
 - Install git hooks: `uv run pre-commit install`
 - Create a commit with Commitizen: `uv run cz c`
 

@@ -85,8 +85,8 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
     )
     required_fields = ["scenario_name", "setting"]
     if has_class_pipeline:
-        # Modern class-pipeline scenarios can define shared memories at the
-        # persona defaults level and do not need legacy initial_observations.
+        # Class-pipeline scenarios can define shared memories at the persona
+        # defaults level and do not need initial_observations.
         has_top_level_shared = (
             OmegaConf.select(cfg, "agents.shared_memories") is not None
             or OmegaConf.select(cfg, "shared_memories") is not None
@@ -330,6 +330,108 @@ def validate_data_files(cfg: DictConfig, scenario_path: Path) -> None:
     print("✓ Data file validation passed")
 
 
+def validate_runtime_structure(cfg: DictConfig) -> None:
+    """Validate framework-owned config sections while leaving params open."""
+    _assert_allowed_keys(cfg, "agents.builder", {"class_path", "params"})
+    _assert_allowed_keys(cfg, "agents.persona_pipeline", {"defaults", "classes"})
+
+    _assert_allowed_keys(
+        cfg,
+        "env",
+        {"observation_history", "gm", "gm_orchestration"},
+    )
+    _assert_allowed_keys(cfg, "env.gm", {"backend", "components", "name", "class_path"})
+    _assert_allowed_keys(
+        cfg,
+        "env.gm.backend",
+        {"type", "class_path", "params", "enabled_actions"},
+    )
+    _assert_allowed_keys(cfg, "env.gm_orchestration", {"gms", "flow_bindings"})
+    _assert_allowed_keys(cfg, "env.gm_orchestration.flow_bindings", {"flow_to_gms"})
+    _assert_allowed_keys(
+        cfg,
+        "env.gm.components",
+        {"initialize", "next_acting", "action_prompt", "observe", "resolve", "update"},
+    )
+    for slot in ("initialize", "next_acting", "action_prompt", "observe", "resolve", "update"):
+        _assert_component_slot(cfg, f"env.gm.components.{slot}")
+
+    _assert_allowed_keys(
+        cfg,
+        "sim",
+        {
+            "llm",
+            "max_concurrent_actions",
+            "action_mode",
+            "tool_calling",
+            "prompt_additions",
+            "initialization",
+            "checkpoint",
+            "engine",
+            "roleplaying_instructions",
+        },
+    )
+    _assert_allowed_keys(
+        cfg,
+        "sim.llm",
+        {"provider", "name", "temperature", "api_base", "api_key", "disabled", "extra_kwargs"},
+    )
+    provider = OmegaConf.select(cfg, "sim.llm.provider")
+    if provider is not None and str(provider) not in {
+        "openai",
+        "openai_compatible",
+        "scripted",
+        "disabled",
+    }:
+        raise ValueError(f"Unsupported sim.llm.provider: {provider!r}")
+    _assert_allowed_keys(
+        cfg,
+        "sim.engine",
+        {"class_path", "params", "loop", "step", "turn_policy"},
+    )
+    _assert_allowed_keys(cfg, "evals", {"probes"})
+    print("✓ Runtime section validation passed")
+
+
+def _assert_allowed_keys(cfg: DictConfig, path: str, allowed: set[str]) -> None:
+    value = OmegaConf.select(cfg, path)
+    if value is None:
+        return
+    if not isinstance(value, DictConfig):
+        raise ValueError(f"{path} must be a mapping.")
+    extras = sorted(str(key) for key in value.keys() if str(key) not in allowed)
+    if extras:
+        raise ValueError(f"Unsupported config key(s) under {path}: {extras}")
+
+
+def _assert_component_slot(cfg: DictConfig, path: str) -> None:
+    value = OmegaConf.select(cfg, path)
+    if value is None:
+        return
+    if not isinstance(value, DictConfig):
+        raise ValueError(f"{path} must be a mapping.")
+    allowed = {"built_in", "class_path", "params", "instances", "flow_map"}
+    extras = sorted(str(key) for key in value.keys() if str(key) not in allowed)
+    if extras:
+        raise ValueError(f"Unsupported config key(s) under {path}: {extras}")
+    instances = value.get("instances")
+    if instances is None:
+        return
+    if not isinstance(instances, DictConfig):
+        raise ValueError(f"{path}.instances must be a mapping.")
+    for instance_name, instance_cfg in instances.items():
+        instance_path = f"{path}.instances.{instance_name!s}"
+        if not isinstance(instance_cfg, DictConfig):
+            raise ValueError(f"{instance_path} must be a mapping.")
+        instance_extras = sorted(
+            str(key)
+            for key in instance_cfg.keys()
+            if str(key) not in {"built_in", "class_path", "params"}
+        )
+        if instance_extras:
+            raise ValueError(f"Unsupported config key(s) under {instance_path}: {instance_extras}")
+
+
 def validate_scenario_config(cfg: DictConfig, scenario_path: Path | None = None) -> None:
     """
     Run all validation checks on scenario configuration.
@@ -348,6 +450,7 @@ def validate_scenario_config(cfg: DictConfig, scenario_path: Path | None = None)
 
     # 1. Validate structure
     validate_scenario_structure(cfg)
+    validate_runtime_structure(cfg)
 
     # 2. Validate cross-references
     validate_cross_references(cfg)

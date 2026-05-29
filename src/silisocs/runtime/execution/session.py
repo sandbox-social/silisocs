@@ -522,12 +522,12 @@ def main(cfg: DictConfig):
 
 
 def _inject_external_config_path() -> None:
-    """Backward-compatible test hook for external config preprocessing."""
+    """Run external config preprocessing before Hydra composes config."""
     inject_external_config_path()
 
 
 def _register_search_path_plugin() -> None:
-    """Backward-compatible test hook for Hydra search-path registration."""
+    """Register the Hydra search-path plugin."""
     register_search_path_plugin()
 
 

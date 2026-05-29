@@ -62,7 +62,6 @@
             * [update](environments/gm/components/update.md)
             * [resolve](environments/gm/components/resolve.md)
         * [game_master](environments/gm/game_master.md)
-        * [shared_flow_game_master](environments/gm/shared_flow_game_master.md)
 * evaluations
     * [activity_summary](evaluations/activity_summary.md)
     * analysis

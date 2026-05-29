@@ -48,8 +48,8 @@ methods.
 - Native prefab/entity construction for normal agents.
 - Initializer game masters.
 - Whole-config reads from runtime objects.
-- `env.platform_type` and `env.app.*`; backend selection is now
-  `env.backend.type`, `env.backend.class_path`, and `env.backend.params`.
+- Old top-level backend selector and app-construction keys; backend selection is now
+  `env.gm.backend.type`, `env.gm.backend.class_path`, and `env.gm.backend.params`.
 - The old `local` LLM provider alias; OpenAI-compatible endpoints use
   `openai_compatible`.
 

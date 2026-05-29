@@ -36,10 +36,10 @@ class _AgentInitializer(AgentInitializer):
 
 
 class _GMOwnedInitializer(GameMasterInitializer):
-    def initialize(self, *, agents: Sequence[Agent], game_master: Any, context: Any) -> None:
+    def initialize(self, *, agents: Sequence[Agent], gm_context: Any, context: Any) -> None:
         assert [agent.name for agent in agents] == ["Alice"]
         assert isinstance(context, InitializationContext)
-        game_master.events.append("gm")
+        gm_context.events.append("gm")
 
 
 class _GameMaster:
@@ -51,7 +51,7 @@ class _GameMaster:
         self._initializer = _GMOwnedInitializer()
 
     def initialize(self, *, agents: Sequence[Agent], context: InitializationContext) -> None:
-        self._initializer.initialize(agents=agents, game_master=self, context=context)
+        self._initializer.initialize(agents=agents, gm_context=self, context=context)
 
     def resolve_action(self, agent_name: str, action: ActionOutput) -> str:
         assert agent_name == "Alice"

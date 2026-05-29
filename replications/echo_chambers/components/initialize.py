@@ -17,13 +17,13 @@ class EchoChamberInitializer(GameMasterInitializer):
         self,
         *,
         agents: Any,
-        game_master: Any,
+        gm_context: Any,
         context: Any,
     ) -> None:
         agent_names = [agent.name for agent in agents]
-        backend = getattr(game_master, "backend", None)
+        backend = getattr(gm_context, "backend", None)
         if backend is None:
-            raise TypeError("EchoChamberInitializer requires a game master with a backend.")
+            raise TypeError("EchoChamberInitializer requires a game-master context with a backend.")
         backend.initialize(
             list(agent_names),
             sim_roles=dict(getattr(context, "sim_roles", {}) or {}),

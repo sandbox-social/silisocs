@@ -21,11 +21,11 @@ class GameMasterInitializer(InitializeComponent):
         self,
         *,
         agents: Sequence[Agent],
-        game_master: Any,
+        gm_context: Any,
         context: InitializationContext,
     ) -> None:
         """Initialize backend/environment state for one game master."""
-        del agents, game_master, context
+        del agents, gm_context, context
 
 
 class NoOpGameMasterInitializer(GameMasterInitializer):
@@ -39,10 +39,10 @@ class AppInitializeGameMasterInitializer(GameMasterInitializer):
         self,
         *,
         agents: Sequence[Agent],
-        game_master: Any,
+        gm_context: Any,
         context: InitializationContext,
     ) -> None:
-        backend = _backend_for_game_master(game_master)
+        backend = _backend_for_context(gm_context)
         initializer = getattr(backend, "initialize", None)
         if not callable(initializer):
             raise TypeError(f"Backend {backend!r} has no initialize(...) method.")
@@ -62,10 +62,10 @@ class SocialMediaGameMasterInitializer(GameMasterInitializer):
         self,
         *,
         agents: Sequence[Agent],
-        game_master: Any,
+        gm_context: Any,
         context: InitializationContext,
     ) -> None:
-        backend = _backend_for_game_master(game_master)
+        backend = _backend_for_context(gm_context)
         if not isinstance(backend, SocialBackendApp):
             raise TypeError(
                 f"Social GM initializer requires SocialBackendApp, got "
@@ -74,7 +74,7 @@ class SocialMediaGameMasterInitializer(GameMasterInitializer):
         _bind_agent_action_metadata(
             agents=agents,
             backend=backend,
-            action_output_mode=str(getattr(game_master, "action_output_mode", "") or ""),
+            action_output_mode="",
         )
         setup = getattr(backend, "setup_social_state", None)
         if not callable(setup):
@@ -225,10 +225,10 @@ def _instantiate_with_supported_kwargs(cls: type[Any], kwargs: Mapping[str, Any]
     return cls(**{key: value for key, value in kwargs.items() if key in supported})
 
 
-def _backend_for_game_master(game_master: Any) -> Any:
-    backend = getattr(game_master, "backend", None)
+def _backend_for_context(gm_context: Any) -> Any:
+    backend = getattr(gm_context, "backend", None)
     if backend is None:
-        raise TypeError(f"Game master {game_master!r} has no backend.")
+        raise TypeError(f"Game master context {gm_context!r} has no backend.")
     return backend
 
 

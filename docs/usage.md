@@ -364,7 +364,7 @@ Behavior notes:
 Compatibility notes:
 
 - Fixed-action items use backend action names (or selectable aliases).
-- `env.backend.enabled_actions` applies globally and can restrict fixed-action items.
+- `env.gm.backend.enabled_actions` applies globally and can restrict fixed-action items.
 
 ---
 
@@ -746,7 +746,7 @@ Key implementations:
 ### Backend Contract Tasks
 
 For platform extensions, backend classes implement `BackendApp` and are
-selected by `env.backend.type` or `env.backend.class_path` through the backend factory.
+selected by `env.gm.backend.type` or `env.gm.backend.class_path` through the backend factory.
 Typical developer tasks include adding new `@app_action` methods, observations,
 optional timeline semantics, and storage/query behavior.
 

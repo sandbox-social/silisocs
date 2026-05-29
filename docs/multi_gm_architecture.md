@@ -1,6 +1,7 @@
 # Multi-Flow & Multi-GM Architecture
 
-Advanced composition model for routing agents to multiple game masters with explicit flow sequencing and per-agent component field customization.
+Advanced composition model for routing agent flows through multiple native game
+masters.
 
 **For**: Developers extending the framework with complex orchestration needs.
 **See also**: [Environment Layer](environment_layer.md), [Configuration Reference](configuration.md#gm-components)
@@ -11,22 +12,21 @@ Advanced composition model for routing agents to multiple game masters with expl
 
 The multi-GM architecture provides:
 
-1. **Many-to-Many Agent-to-GM Routing**: Agents belong to multiple classes; classes route to multiple GMs
-2. **Separate Flow Layers**: Agent flow sequencing (within each GM) distinct from GM sequencing (orchestration)
-3. **Per-Agent Component Configuration**: Component field values customized per agent via YAML
-4. **Sequential GM Execution**: GMs execute one at a time (safe for shared agents); flows within each GM still run in parallel
+1. **Flow-to-GM routing**: each configured agent flow maps to one or more GMs.
+2. **Per-GM backends**: each GM owns exactly one backend for this release.
+3. **Per-GM components**: each GM defines its own typed component slots.
+4. **Sequential flow chains**: a flow can pass through multiple GMs in sequence.
 
 ### When to Use
 
-- Simulating different decision-making processes for different agent cohorts
-- Bot/human detection where agents route differently based on classification
-- Multi-stage analysis pipelines (main decision → deep analysis → audit)
-- Complex multi-level ecosystems with different rule sets per subgroup
+- Simulating different backend worlds in the same run.
+- Routing agent cohorts through different decision environments.
+- Multi-stage pipelines such as public action → audit → moderation.
 
 ### When NOT to Use
 
-- Simple single-platform scenario: use default GM with flow routing only
-- Agents don't need different logic: use agent classes + flow sequencing
+- Simple single-backend scenario: use one GM.
+- Agents only need sequencing: use a single GM with `FlowStepStrategy`.
 
 ---
 
@@ -36,17 +36,14 @@ The multi-GM architecture provides:
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│ GM Sequencing (gm_sequence)                         │ ← Which GMs execute, in order
-│ Controls external orchestration of multiple GMs     │
-├─────────────────────────────────────────────────────┤
-│ Agent → Classes → GMs (agent_classes, class_to_gms)│ ← Flexible many-to-many routing
-│ Agents assigned to one or more GMs via classes     │
+│ Flow → GM chains (env.gm_orchestration.flow_bindings)│
+│ Agents are grouped by flow, then routed through GMs   │
 ├─────────────────────────────────────────────────────┤
 │ Agent Flow Sequencing (flow_order, agent_to_flow)   │ ← Agent grouping within GM
 │ Groups agents by flow, executes sequentially        │
 ├─────────────────────────────────────────────────────┤
-│ Component Field Values (flows.<flow>.<field>)       │ ← Per-flow component config
-│ Custom values for component behavior                │
+│ GM component slots                                  │ ← initialize/next/observe/resolve/update
+│ Components are configured per GM                    │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -64,97 +61,95 @@ Engine Step Loop:
 **Multi-GM Mode (Advanced):**
 ```
 Engine Step Loop:
-  → for each GM in gm_sequence:
-    → get agents assigned to this GM
-    → next_acting (within GM) selects agents
-    → group by flow
-    → execute flows sequentially (within each, agents parallel)
-  → next GM in sequence
-  → repeat
+  → group agents by flow
+  → for each flow in flow_order:
+    → for each GM in that flow's configured GM chain:
+      → gm.update(...)
+      → gm.acting_agents(flow_agents)
+      → each active agent observes/acts/resolves through that GM
+  → next step
 ```
 
-**Key property**: GMs execute sequentially (no parallelism between GMs); flows within each GM run sequentially; agents within each flow run in parallel.
+**Key property**: a GM owns one backend. Multi-backend simulations use multiple
+GMs, each with its own backend and components.
 
 ---
 
 ## Configuration
 
-### Simplest: Single GM (Backward Compatible)
+### Simplest: Single GM
 
 ```yaml
 gm:
-  name: "default_gm"
+  name: default_gm
+  backend:
+    type: twitter_like
+    class_path: null
+    params: {}
+    enabled_actions: null
   components:
+    initialize:
+      built_in: social_media
+      params: {graph: {}}
+    next_acting:
+      built_in: activity_probability
     observe:
       built_in: timeline_every_turn
     resolve:
       built_in: parsed_action
+    update:
+      built_in: social_recommendation
+    action_prompt:
+      built_in: default
 ```
 
-All agents → one GM. Existing behavior unchanged.
+All agents use this GM unless the engine step strategy routes by flow.
 
-### Multi-Class: Different GMs for Different Agent Types
+### Multi-GM: Different GMs for Different Flows
 
 ```yaml
-gm:
-  agent_classes:
-    alice: "human"
-    bob: "bot"
-    charlie: "bot"
-
-  class_to_gms:
-    human: "gm_social"
-    bot: "gm_detection"
-
-  gm_sequence: ["gm_social", "gm_detection"]
-
-  gm_configs:
-    gm_social:
-      name: "human_decision_gm"
+gm_orchestration:
+  gms:
+    - name: social_gm
+      sequence: 0
+      backend:
+        type: twitter_like
+        class_path: null
+        params: {}
+        enabled_actions: null
       components:
-        observe: {built_in: timeline_every_turn}
-        resolve: {built_in: parsed_action}
+        initialize: {built_in: social_media, params: {graph: {}}}
+        next_acting: {built_in: activity_probability, params: {}}
+        observe: {built_in: timeline_every_turn, params: {}}
+        resolve: {built_in: tool_calling, params: {}}
+        update: {built_in: social_recommendation, params: {}}
+        action_prompt: {built_in: default, params: {}}
 
-    gm_detection:
-      name: "bot_detection_gm"
+    - name: market_gm
+      sequence: 1
+      backend:
+        type: resource_market
+        class_path: null
+        params: {}
+        enabled_actions: null
       components:
-        observe: {built_in: timeline_every_turn}
-        resolve: {built_in: parsed_action}
+        initialize: {built_in: app_initialize, params: {}}
+        next_acting: {built_in: fixed_order, params: {}}
+        observe: {built_in: app_observation, params: {}}
+        resolve: {built_in: tool_calling, params: {}}
+        update: {built_in: disabled, params: {}}
+        action_prompt: {built_in: default, params: {}}
+
+  flow_bindings:
+    flow_to_gms:
+      social: [social_gm]
+      market: [market_gm]
 ```
 
 **Behavior:**
-- alice uses gm_social
-- bob and charlie use gm_detection
-- gm_social executes first, then gm_detection
-
-### Advanced: Multi-Class Per Agent + Multi-GM Per Class
-
-```yaml
-gm:
-  agent_classes:
-    alice: ["human", "verified"]        # alice gets 2 classes
-    bob: ["bot", "suspicious"]          # bob gets 2 classes
-    charlie: "bot"                      # charlie gets 1 class
-
-  class_to_gms:
-    human: ["gm_social"]
-    verified: ["gm_analysis"]           # separate GM
-    bot: ["gm_detection"]
-    suspicious: ["gm_audit"]            # additional GM
-
-  gm_sequence: ["gm_social", "gm_detection", "gm_analysis", "gm_audit"]
-
-  gm_configs:
-    gm_social: {...}
-    gm_detection: {...}
-    gm_analysis: {...}
-    gm_audit: {...}
-```
-
-**Behavior:**
-- alice (human + verified) → gm_social, then gm_analysis
-- bob (bot + suspicious) → gm_detection, then gm_audit
-- charlie (bot) → gm_detection
+- agents with flow `social` act through `social_gm`;
+- agents with flow `market` act through `market_gm`;
+- each GM initializes and updates its own backend.
 
 Within each GM:
 ```yaml
@@ -216,48 +211,18 @@ class CustomObserve(ObservationComponent):
 
 ## Implementation Details
 
-### GameMasterFactory
+### Runtime Construction
 
-Located: `src/silisocs/environments/gm/direct GM construction.py`
-
-Routes agents to GM instances:
-
-```python
-factory = GameMasterFactory(
-    gm_config=config_dict,
-    agent_names=["alice", "bob"],
-    agent_to_classes={"alice": ["human"], "bob": ["bot"]},
-    class_to_gms={"human": ["gm_social"], "bot": ["gm_detection"]}
-)
-
-gm_instances = factory.build(model, memory_bank, entities)
-```
-
-**Methods:**
-- `build(model, memory_bank, entities)` → tuple of GM instances
-- `get_agent_gms(agent_name)` → list of GM names assigned to agent
-- `get_gm_instance(name)` → specific GM instance
+`silisocs.runtime.construction.game_masters.build_game_masters(...)` converts
+Hydra config into native `GameMasterConfig` specs. In multi-GM mode every item
+under `env.gm_orchestration.gms` must define its own `backend` and
+`components`; defaults are not inherited into orchestrated GMs.
 
 ### MultiGMRuntimeEngine
 
-Located: `src/silisocs/simulation_engines/multi_gm.py`
-
-Orchestrates multiple GMs:
-
-```python
-engine = MultiGMRuntimeEngine(...)
-
-# Reads gm_sequence + gm_configs from config
-# Validates configuration
-# Logs agent-to-GM mapping
-# Executes GMs sequentially
-```
-
-**Methods:**
-- `run_loop(game_masters, agents, ...)` → native episode execution
-- `get_agent_gms(agent_name)` → GMs for this agent
-- `detect_gm_conflicts()` → agents in multiple GMs
-- `validate_gm_sequence()` → check config validity
+`MultiGMRuntimeEngine` uses `MultiGMStepStrategy`. It reads
+`flow_to_gms` from the first GM's routing metadata, groups agents by flow, and
+executes each flow through its configured GM chain.
 
 ### Routed Slot Components
 
@@ -269,150 +234,39 @@ the same as the single-flow APIs; routing is a GM responsibility.
 
 ---
 
-## Real-World Examples
-
-### Example 1: Bot Detection + Analysis
-
-Scenario: Detect bots during social interaction, then audit suspicious behavior.
-
-```yaml
-gm:
-  agent_classes:
-    user_0: "human"
-    user_1: "human"
-    bot_0: ["bot", "suspicious"]
-    bot_1: "bot"
-
-  class_to_gms:
-    human: "gm_social"
-    bot: "gm_detection"
-    suspicious: "gm_audit"
-
-  gm_sequence: ["gm_social", "gm_detection", "gm_audit"]
-
-  gm_configs:
-    gm_social:
-      components:
-        observe: {built_in: timeline_every_turn}
-        resolve: {built_in: parsed_action}
-
-    gm_detection:
-      components:
-        observe:
-          built_in: timeline_every_turn
-          params:
-            check_bot_signals: true
-
-    gm_audit:
-      components:
-        resolve:
-          class_path: my_scenario.audit.AuditResolve
-```
-
-**Execution:**
-1. gm_social: human users interact
-2. gm_detection: all bots evaluated, suspicious ones flagged
-3. gm_audit: suspicious bots undergo deeper investigation
-
-### Example 2: Role-Based Decision Making
-
-Scenario: Employees, managers, executives with different decision strategies.
-
-```yaml
-gm:
-  agent_classes:
-    emp_0: "employee"
-    emp_1: "employee"
-    mgr_0: ["manager", "decision_maker"]
-    exec_0: ["executive", "decision_maker"]
-
-  class_to_gms:
-    employee: "gm_ops"
-    manager: "gm_strategy"
-    executive: "gm_board"
-    decision_maker: "gm_governance"
-
-  gm_sequence: ["gm_ops", "gm_strategy", "gm_board", "gm_governance"]
-```
-
-**Who acts where:**
-- emp_0, emp_1 → gm_ops (operational decisions)
-- mgr_0 → gm_strategy + gm_governance (strategy + oversight)
-- exec_0 → gm_board + gm_governance (executive + oversight)
-
----
-
 ## Testing
 
-Located: `tests/test_direct GM construction.py`, `tests/test_multi_gm_runtime_engine.py`, `tests/test_e2e_multi_gm.py`
-
-### Unit Tests
-
 ```bash
-uv run pytest tests/test_direct GM construction.py -v
 uv run pytest tests/test_multi_gm_runtime_engine.py -v
+uv run pytest tests/test_runner_processing_mode.py::test_multi_gm_specs_can_use_distinct_backends -v
 ```
-
-### Integration Tests
-
-```bash
-uv run pytest tests/test_e2e_multi_gm.py -v
-```
-
-### End-to-End with LLM Reasoning (Optional)
-
-```bash
-export LLM_SERVER_URL=http://localhost:30000/v1
-uv run pytest tests/test_e2e_multi_gm_llm.py -v -s
-```
-
-Requires Qwen 3.5-4B server on port 30000.
-
----
-
-## Migration Notes
-
-Use the canonical multi-GM schema (`agent_classes`, `class_to_gms`, `gm_sequence`, `gm_configs`) for routing.
-
-### Canonical Multi-GM Config
-
-```yaml
-gm:
-  agent_classes: {alice: "human", bob: "bot"}
-  class_to_gms: {human: "gm_human", bot: "gm_bot"}
-  gm_sequence: ["gm_human", "gm_bot"]
-  gm_configs:
-    gm_human: {name: "human_gm", ...}
-    gm_bot: {name: "bot_gm", ...}
-```
-
----
 
 ## Performance Considerations
 
-- **Sequential GM execution**: No parallelism between GMs (trades parallelism for safety)
-- **Within-GM parallelism**: Flows sequence; agents within each flow run parallel (unchanged)
-- **Multi-field lookup**: O(1) hash lookup, negligible overhead
-- **Memory**: Minimal additional memory for routing metadata
+- **Flow chains are sequential**: a flow passes through its configured GMs in order.
+- **Within-batch agent turns can run in parallel**: agents selected by the same
+  GM and flow are isolated as separate turns.
+- **Backend state is per GM**: this release does not share one live backend
+  object across multiple GMs.
 
 ---
 
 ## FAQ
 
 **Q: Can agents move between GMs during simulation?**
-A: No, assignment is fixed at initialization based on config. Consider using different scenarios for dynamic assignment.
+A: Flow assignment is configured before the run. Dynamic reassignment requires a
+custom engine strategy.
 
 **Q: Can GMs share state?**
-A: No, each GM has independent state. Agents in multiple GMs don't share memories across GMs. Consider storing shared state in agent persistent storage or database.
+A: Not as a shared backend object in this release. Use one backend per GM, or
+persist shared state externally in custom components.
 
-**Q: What if an agent's classes don't route to any GM?**
-A: Runtime error during GM initialization. Ensure all classes declared in `agent_classes` have entries in `class_to_gms`.
-
-**Q: Can I use multi-fields without multi-GM?**
-A: Yes. Multi-fields work in single-GM mode. Declare `FLOW_FIELDS` on the component and configure `flows.<flow_name>.<field_name>` in YAML.
+**Q: Can I route slots by flow without multi-GM?**
+A: Yes. A single GM can use `instances + flow_map` on any typed component slot.
 
 **Q: Do I need to modify existing components?**
-A: No. Multi-GM and multi-field systems are purely opt-in. Existing components work unchanged.
+A: No. Flow routing is handled by the GM; components expose the same direct slot
+methods.
 
 ---
 

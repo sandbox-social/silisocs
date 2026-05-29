@@ -37,7 +37,7 @@ class InitializeComponent(BaseComponent, ABC):
     """Base class for components that initialize one game master."""
 
     @abstractmethod
-    def initialize(self, *, agents: Sequence[Any], game_master: Any, context: Any) -> None:
+    def initialize(self, *, agents: Sequence[Any], gm_context: Any, context: Any) -> None:
         """Initialize backend/environment state for one game master."""
 
 

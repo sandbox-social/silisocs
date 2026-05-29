@@ -618,7 +618,7 @@ class TwitterLikeApp(SocialBackendApp):
         return msg
 
     # ================================================================ #
-    # OASIS-Compatible Actions
+    # Extended social actions
     # ================================================================ #
 
     @app_action

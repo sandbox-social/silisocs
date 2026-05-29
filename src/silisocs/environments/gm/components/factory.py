@@ -35,6 +35,7 @@ from silisocs.environments.gm.components.resolve import (
     ToolCallingResolveComponent,
 )
 from silisocs.environments.gm.components.update import SocialRecommendationUpdateComponent
+from silisocs.environments.gm.context import GameMasterContext
 from silisocs.initialization.game_masters.runtime import (
     AppInitializeGameMasterInitializer,
     NoOpGameMasterInitializer,
@@ -117,11 +118,6 @@ def _build_from_slot(
     :rtype: Any
     """
     cfg = dict(slot_cfg or {})
-    if "flows" in cfg:
-        raise ValueError(
-            "`flows` field overrides have been removed from GM component configs. "
-            "Use component `instances` plus `flow_map` for flow-specific behavior."
-        )
     class_path = cfg.get("class_path")
     params = dict(cfg.get("params") or {})
 
@@ -188,11 +184,6 @@ def _class_to_kebab_case(class_name: str) -> str:
 
 def _slot_instances_cfg(slot_cfg: Mapping[str, Any] | None) -> dict[str, Any]:
     cfg = dict(slot_cfg or {})
-    if "flows" in cfg:
-        raise ValueError(
-            "`flows` field overrides have been removed from GM component configs. "
-            "Use component `instances` plus `flow_map` for flow-specific behavior."
-        )
     if "instances" in cfg:
         if not isinstance(cfg["instances"], Mapping):
             raise TypeError("GM component `instances` must be a mapping.")
@@ -211,6 +202,8 @@ def _instance_key(role: str, instance_name: str, component: Any) -> str:
 
 def build_initialize_component(
     slot_cfg: Mapping[str, Any] | None = None,
+    *,
+    context: GameMasterContext | None = None,
 ) -> InitializeComponent:
     """Build one GM initialize component."""
     return cast(
@@ -219,17 +212,20 @@ def build_initialize_component(
             slot_cfg,
             built_ins=_INITIALIZE_BUILT_INS,
             default_built_in="none",
+            runtime_kwargs={"context": context},
         ),
     )
 
 
 def build_initialize_components(
     slots_cfg: Mapping[str, Any] | None = None,
+    *,
+    context: GameMasterContext | None = None,
 ) -> dict[str, InitializeComponent]:
     """Build multiple initialize component instances."""
     components: dict[str, InitializeComponent] = {}
     for instance_name, instance_config in _slot_instances_cfg(slots_cfg).items():
-        component = build_initialize_component(instance_config)
+        component = build_initialize_component(instance_config, context=context)
         components[_instance_key("initialize", instance_name, component)] = component
     return components
 
@@ -237,7 +233,7 @@ def build_initialize_components(
 def build_action_prompt_component(
     slot_cfg: Mapping[str, Any] | None = None,
     *,
-    backend: Any | None = None,
+    context: GameMasterContext | None = None,
     action_prompt_template: str,
     enable_tool_calling: bool,
     tool_calling_mode: str = "single",
@@ -250,7 +246,8 @@ def build_action_prompt_component(
             built_ins=_ACTION_PROMPT_BUILT_INS,
             default_built_in="default",
             runtime_kwargs={
-                "backend": backend,
+                "context": context,
+                "backend": context.backend if context is not None else None,
                 "action_prompt_template": action_prompt_template,
                 "enable_tool_calling": enable_tool_calling,
                 "tool_calling_mode": tool_calling_mode,
@@ -262,7 +259,7 @@ def build_action_prompt_component(
 def build_action_prompt_components(
     slots_cfg: Mapping[str, Any] | None = None,
     *,
-    backend: Any | None = None,
+    context: GameMasterContext | None = None,
     action_prompt_template: str,
     enable_tool_calling: bool,
     tool_calling_mode: str = "single",
@@ -272,7 +269,7 @@ def build_action_prompt_components(
     for instance_name, instance_config in _slot_instances_cfg(slots_cfg).items():
         component = build_action_prompt_component(
             instance_config,
-            backend=backend,
+            context=context,
             action_prompt_template=action_prompt_template,
             enable_tool_calling=enable_tool_calling,
             tool_calling_mode=tool_calling_mode,
@@ -284,10 +281,7 @@ def build_action_prompt_components(
 def build_observe_components(
     slots_cfg: Mapping[str, Any] | None = None,
     *,
-    model: Any,
-    agent_names: list[str],
-    backend: Any,
-    agent_flow_tags: dict[str, str] | None = None,
+    context: GameMasterContext,
     episode_observation_flow: str = "fixed_pre",
 ) -> dict[str, ObservationComponent]:
     """Build multiple observe component instances from config.
@@ -305,10 +299,7 @@ def build_observe_components(
     for instance_name, instance_config in _slot_instances_cfg(slots_cfg).items():
         component = build_observe_component(
             instance_config,
-            model=model,
-            agent_names=agent_names,
-            backend=backend,
-            agent_flow_tags=agent_flow_tags,
+            context=context,
             episode_observation_flow=episode_observation_flow,
         )
 
@@ -320,10 +311,7 @@ def build_observe_components(
 def build_observe_component(
     slot_cfg: Mapping[str, Any] | None = None,
     *,
-    model: Any,
-    agent_names: list[str],
-    backend: Any,
-    agent_flow_tags: dict[str, str] | None = None,
+    context: GameMasterContext,
     episode_observation_flow: str = "fixed_pre",
 ) -> ObservationComponent:
     """Build a single observe component from slot config."""
@@ -339,10 +327,11 @@ def build_observe_component(
             built_ins=_OBSERVE_BUILT_INS,
             default_built_in="timeline_every_turn",
             runtime_kwargs={
-                "model": model,
-                "agent_names": agent_names,
-                "backend": backend,
-                "agent_flow_tags": agent_flow_tags,
+                "context": context,
+                "model": context.model,
+                "agent_names": list(context.agent_names),
+                "backend": context.backend,
+                "agent_flow_tags": dict(context.agent_flow_tags),
                 "episode_observation_flow": episode_observation_flow,
                 "episode_observation_flows": episode_observation_flows,
                 "observation_params": dict(
@@ -356,8 +345,7 @@ def build_observe_component(
 def build_resolve_component(
     slot_cfg: Mapping[str, Any] | None = None,
     *,
-    backend: Any,
-    model: Any,
+    context: GameMasterContext,
     action_prompt_template: str,
     agents_by_name: Mapping[str, Any] | None = None,
 ) -> ResolveComponent:
@@ -369,10 +357,11 @@ def build_resolve_component(
             built_ins=_RESOLVE_BUILT_INS,
             default_built_in="parsed_action",
             runtime_kwargs={
-                "backend": backend,
-                "model": model,
+                "context": context,
+                "backend": context.backend,
+                "model": context.model,
                 "action_prompt_template": action_prompt_template,
-                "agents_by_name": agents_by_name or {},
+                "agents_by_name": agents_by_name or {agent.name: agent for agent in context.agents},
             },
         ),
     )
@@ -381,7 +370,7 @@ def build_resolve_component(
 def build_next_acting_component(
     slot_cfg: Mapping[str, Any] | None = None,
     *,
-    agent_names: list[str],
+    context: GameMasterContext,
     sim_roles: Mapping[str, str] | None = None,
 ) -> NextActingComponent:
     """Build next-acting component from slot config."""
@@ -392,9 +381,10 @@ def build_next_acting_component(
             built_ins=_NEXT_ACTING_BUILT_INS,
             default_built_in="activity_markov",
             runtime_kwargs={
-                "agent_names": agent_names,
+                "context": context,
+                "agent_names": list(context.agent_names),
                 "sim_roles": dict(sim_roles or {}),
-                "sequence": agent_names,
+                "sequence": list(context.agent_names),
             },
         ),
     )
@@ -403,7 +393,7 @@ def build_next_acting_component(
 def build_update_component(
     slot_cfg: Mapping[str, Any] | None = None,
     *,
-    backend: Any | None = None,
+    context: GameMasterContext | None = None,
     backend_type: str | None = None,
 ) -> UpdateComponent:
     """Build update component from slot config."""
@@ -414,10 +404,11 @@ def build_update_component(
             built_ins=_UPDATE_BUILT_INS,
             default_built_in="none",
             runtime_kwargs={
-                "backend": backend,
+                "context": context,
+                "backend": context.backend if context is not None else None,
                 "backend_type": backend_type,
             }
-            if backend
+            if context is not None
             else {
                 "backend_type": backend_type,
             },
@@ -428,8 +419,7 @@ def build_update_component(
 def build_resolve_components(
     slots_cfg: Mapping[str, Any] | None = None,
     *,
-    backend: Any,
-    model: Any,
+    context: GameMasterContext,
     action_prompt_template: str,
     agents_by_name: Mapping[str, Any] | None = None,
 ) -> dict[str, ResolveComponent]:
@@ -438,8 +428,7 @@ def build_resolve_components(
     for instance_name, instance_config in _slot_instances_cfg(slots_cfg).items():
         component = build_resolve_component(
             instance_config,
-            backend=backend,
-            model=model,
+            context=context,
             action_prompt_template=action_prompt_template,
             agents_by_name=agents_by_name,
         )
@@ -450,7 +439,7 @@ def build_resolve_components(
 def build_next_acting_components(
     slots_cfg: Mapping[str, Any] | None = None,
     *,
-    agent_names: list[str],
+    context: GameMasterContext,
     sim_roles: Mapping[str, str] | None = None,
 ) -> dict[str, NextActingComponent]:
     """Build multiple next-acting component instances."""
@@ -458,7 +447,7 @@ def build_next_acting_components(
     for instance_name, instance_config in _slot_instances_cfg(slots_cfg).items():
         component = build_next_acting_component(
             instance_config,
-            agent_names=agent_names,
+            context=context,
             sim_roles=sim_roles,
         )
         components[_instance_key("next_acting", instance_name, component)] = component
@@ -468,7 +457,7 @@ def build_next_acting_components(
 def build_update_components(
     slots_cfg: Mapping[str, Any] | None = None,
     *,
-    backend: Any | None = None,
+    context: GameMasterContext | None = None,
     backend_type: str | None = None,
 ) -> dict[str, UpdateComponent]:
     """Build multiple update component instances."""
@@ -476,7 +465,7 @@ def build_update_components(
     for instance_name, instance_config in _slot_instances_cfg(slots_cfg).items():
         component = build_update_component(
             instance_config,
-            backend=backend,
+            context=context,
             backend_type=backend_type,
         )
         components[_instance_key("update", instance_name, component)] = component

@@ -1,35 +1,37 @@
-backend:
-  type: twitter_like
-  class_path: replications.echo_chambers.components.app.EchoChamberSocialApp
-  params:
-    agent_records_path: ${echo_agent_records_path}
-    belief_keywords_path: ${echo_belief_keywords_path}
-    opinions_path: ${echo_opinions_path}
-    topic_key: ${echo_topic_key}
-    network_path: ${echo_network_path}
-    recommendation: ${echo_recommendation}
-    max_interactions: ${echo_max_interactions}
-    similarity_threshold: ${echo_similarity_threshold}
-    mitigation_step: ${echo_mitigation_step}
-    mitigation_perspectives_path: ${echo_mitigation_perspectives_path}
-    mitigation_perspectives_only: ${echo_mitigation_perspectives_only}
-    with_long_memory: ${echo_with_long_memory}
-    expected_updates_per_agent_per_episode: 1
-    leaders: ${echo_leaders}
-    llm_response_mode: ${echo_llm_response_mode}
-    prompt_variant: ${echo_prompt_variant}
-    seed: ${seed}
-    seed_initial_opinion_posts: true
-    perform_operations: false
-    app_description: 'You are currently operating on a Twitter-like platform in an opinion discussion study.
-
-      Use only the available app actions. Do not invent post IDs; reply or repost only posts that appear in your timeline.'
-  enabled_actions:
-  - create_tweet
-  - reply_to_tweet
-  - repost_tweet
 observation_history: 20
 gm:
+  backend:
+    type: twitter_like
+    class_path: replications.echo_chambers.components.app.EchoChamberSocialApp
+    params:
+      agent_records_path: ${echo_agent_records_path}
+      belief_keywords_path: ${echo_belief_keywords_path}
+      opinions_path: ${echo_opinions_path}
+      topic_key: ${echo_topic_key}
+      network_path: ${echo_network_path}
+      recommendation: ${echo_recommendation}
+      max_interactions: ${echo_max_interactions}
+      similarity_threshold: ${echo_similarity_threshold}
+      mitigation_step: ${echo_mitigation_step}
+      mitigation_perspectives_path: ${echo_mitigation_perspectives_path}
+      mitigation_perspectives_only: ${echo_mitigation_perspectives_only}
+      with_long_memory: ${echo_with_long_memory}
+      expected_updates_per_agent_per_episode: 1
+      leaders: ${echo_leaders}
+      llm_response_mode: ${echo_llm_response_mode}
+      prompt_variant: ${echo_prompt_variant}
+      seed: ${seed}
+      seed_initial_opinion_posts: true
+      perform_operations: false
+      app_description: 'You are currently operating on a Twitter-like platform in
+        an opinion discussion study.
+
+        Use only the available app actions. Do not invent post IDs; reply or repost
+        only posts that appear in your timeline.'
+    enabled_actions:
+    - create_tweet
+    - reply_to_tweet
+    - repost_tweet
   components:
     initialize:
       built_in: social_media
@@ -40,7 +42,7 @@ gm:
           base_followership_probability: 0.0
           network_type: predefined
           predefined_graph: {}
-          predefined_graph_path: ${env.backend.params.network_path}
+          predefined_graph_path: ${env.gm.backend.params.network_path}
     next_acting:
       built_in: activity_probability
       class_path: null
@@ -81,15 +83,18 @@ gm:
       built_in: default
       class_path: null
       params:
-        action_prompt: 'You are currently operating on a Twitter-like platform in an opinion discussion study.
+        action_prompt: 'You are currently operating on a Twitter-like platform in
+          an opinion discussion study.
 
-          Use only the available app actions. Do not invent post IDs; reply or repost only posts that appear in your timeline.
+          Use only the available app actions. Do not invent post IDs; reply or repost
+          only posts that appear in your timeline.
 
 
           Decide the single social-media action {name} would take now.
 
           The topic is euthanasia. Stay in character and write content in first person.
 
-          You may post a new tweet, reply to a visible tweet, or repost a visible tweet.'
+          You may post a new tweet, reply to a visible tweet, or repost a visible
+          tweet.'
         output_style: ''
-  class_path: silisocs.environments.gm.game_master.GameMaster
+  class_path: silisocs.environments.gm.game_master.ComponentGameMaster

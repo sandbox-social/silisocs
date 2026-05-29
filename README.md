@@ -36,7 +36,7 @@ pip install "silisocs[concordia]" # optional legacy Concordia bridge
 For contributor work from a checkout:
 
 ```sh
-git clone https://github.com/social-sandbox/silisocs.git
+git clone https://github.com/sandbox-social/silisocs.git
 cd silisocs
 uv sync --all-extras --group dev --group docs
 ```

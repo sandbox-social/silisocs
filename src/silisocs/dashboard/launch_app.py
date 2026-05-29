@@ -574,7 +574,7 @@ def _build_hydra_overrides(
     for key, val in scenario.items():
         if val is None:
             continue
-        prefix = "env" if key.startswith("gm.") or key.startswith("backend.") else "sim"
+        prefix = "env" if key.startswith("gm.") else "sim"
         if isinstance(val, bool):
             overrides.append(f"{prefix}.{key}={'true' if val else 'false'}")
         elif isinstance(val, (int, float)):
@@ -612,9 +612,8 @@ with st.sidebar:
     st.caption("Social Simulation Framework")
     st.divider()
 
-    # NEW: Preset selection
     st.markdown("**Configuration Preset**")
-    preset_options = ["default", "oasis"]
+    preset_options = ["default", "recommendation"]
     selected_preset = st.selectbox(
         "Load preset",
         preset_options,
@@ -623,7 +622,7 @@ with st.sidebar:
         help=(
             "Select a preset configuration:\n"
             "- **default**: Standard mastodon-sim settings\n"
-            "- **oasis**: OASIS-compatible settings (tool_calling, recsys enabled)"
+            "- **recommendation**: Tool-calling actions with recommendation timelines enabled"
         ),
     )
 
@@ -639,25 +638,20 @@ with st.sidebar:
             "Standard mastodon-sim configuration with custom action parsing and optional recommendation system."
         )
     else:
-        st.info("**OASIS Preset Active**")
+        st.info("**Recommendation Preset Active**")
         st.markdown(
             """
-            **OASIS-Compatible Features:**
-            - ✅ Tool-calling action mode (LLM native)
+            **Recommendation Features:**
+            - ✅ Tool-calling action mode
             - ✅ Recommendation system enabled
-            - ✅ Central batch recsys computation
-            - ✅ All 27 OASIS actions available
-            - ✅ Full OASIS evaluations support
-
-            **Included Scenarios:**
-            - oasis_reddit_herding (500 agents)
-            - oasis_twitter_polarization (40+ agents)
-            - oasis_twitter_infoprop (100 agents)
+            - ✅ Central batch recommendation computation
+            - ✅ Full selected backend action surface available
+            - ✅ Probe and artifact logging support
             """
         )
 
     st.markdown("**Quick Links**")
-    st.markdown("- 📖 [OASIS Integration Guide](../../../scenarios/OASIS_INTEGRATION_GUIDE.md)")
+    st.markdown("- 📖 [Documentation](../../../docs/)")
     st.markdown("- 📁 [Scenario Folder](../../../scenarios/)")
     st.divider()
     default_scenarios_root = _resolve_scenarios_root(
@@ -668,7 +662,7 @@ with st.sidebar:
         value=str(default_scenarios_root),
         key="scenarios_root_path",
         help=(
-            "Directory containing scenario folders (e.g. election, oasis_reddit_herding). "
+            "Directory containing scenario folders (for example, election). "
             "You can also provide a project root; if it has a nested scenarios/ folder, it will be used."
         ),
     )
@@ -687,7 +681,7 @@ with st.sidebar:
         scenario_names,
         index=0,
         key="sidebar_scenario_select",
-        help="Select a scenario to load. OASIS presets include: oasis_reddit_herding, oasis_twitter_polarization, oasis_twitter_infoprop",
+        help="Select a scenario to load.",
     )
 
     run_configs = _discover_run_configs_for_scenario(selected_scenarios_root, selected_scenario)
@@ -935,8 +929,8 @@ with tab_sim:
             )
             st.checkbox(
                 "Disable language model (dry run)",
-                value=bool(_sim_defaults.get("disable_language_model", False)),
-                key="disable_language_model",
+                value=bool((_sim_defaults.get("llm") or {}).get("disabled", False)),
+                key="llm_disabled",
             )
 
     # Multi-flow and multi-GM orchestration (advanced)
@@ -1361,7 +1355,9 @@ with tab_env:
     ec1, ec2 = st.columns(2)
     with ec1:
         backend_default = str(
-            (_environment_defaults.get("backend") or {}).get("type", "twitter_like")
+            ((_environment_defaults.get("gm") or {}).get("backend") or {}).get(
+                "type", "twitter_like"
+            )
         )
         st.selectbox(
             "Backend",
@@ -1378,8 +1374,8 @@ with tab_env:
     selected_backend_for_actions = st.session_state.get("backend_type", backend_default)
     action_catalog = _backend_action_catalog(selected_backend_for_actions)
     action_labels = [item["selectable_name"] for item in action_catalog]
-    configured_enabled = _environment_defaults.get(
-        "enabled_actions", _sim_defaults.get("enabled_actions")
+    configured_enabled = ((_environment_defaults.get("gm") or {}).get("backend") or {}).get(
+        "enabled_actions"
     )
     default_enabled = configured_enabled if isinstance(configured_enabled, list) else []
     st.multiselect(
@@ -1673,11 +1669,11 @@ with tab_env:
                 help="Supports gms, flow_to_gm, flow_to_gms, gm_to_flows.",
             )
 
-    # NEW: Recommendation System Configuration
     with st.expander(
-        "Recommendation System (Recsys)", expanded=(_selected_preset_for_defaults == "oasis")
+        "Recommendation System (Recsys)",
+        expanded=(_selected_preset_for_defaults == "recommendation"),
     ):
-        st.markdown("**OASIS-Compatible Recommendation Engine**")
+        st.markdown("**Recommendation Engine**")
         st.caption(
             "Central batch recommendation algorithm with embedding caching and lazy evaluation."
         )
@@ -2076,7 +2072,7 @@ with tab_launch:
             if st.session_state.get("seed_posts_file")
             else None
         ),
-        "disable_language_model": st.session_state.get("disable_language_model", False),
+        "llm.disabled": st.session_state.get("llm_disabled", False),
         "engine.step.built_in": (
             "flow" if st.session_state.get("enable_engine_multi_flow", False) else "base"
         ),
@@ -2109,7 +2105,7 @@ with tab_launch:
         ),
     }
     env_params = {
-        "backend.enabled_actions": (
+        "gm.backend.enabled_actions": (
             st.session_state.get("enabled_actions")
             if st.session_state.get("enabled_actions")
             else None
@@ -2240,7 +2236,7 @@ with tab_launch:
                 "run_name",
                 "seed",
                 "action_mode",
-                "disable_language_model",
+                "llm.disabled",
                 # Multi-flow/orchestration flags
                 "engine.step.built_in",
                 # Engine turn policy
@@ -2276,7 +2272,7 @@ with tab_launch:
                         "timeline_strategy", "follower_chronological"
                     ),
                     "observation_history": st.session_state.get("observation_history", 100),
-                    "backend.enabled_actions": (
+                    "gm.backend.enabled_actions": (
                         st.session_state.get("enabled_actions")
                         if st.session_state.get("enabled_actions")
                         else None
@@ -2370,7 +2366,7 @@ with tab_launch:
             "run_name",
             "seed",
             "action_mode",
-            "disable_language_model",
+            "llm.disabled",
             # Multi-flow/orchestration flags
             "engine.step.built_in",
             # Engine turn policy
@@ -2406,7 +2402,7 @@ with tab_launch:
                     "timeline_strategy", "follower_chronological"
                 ),
                 "observation_history": st.session_state.get("observation_history", 100),
-                "backend.enabled_actions": (
+                "gm.backend.enabled_actions": (
                     st.session_state.get("enabled_actions")
                     if st.session_state.get("enabled_actions")
                     else None

@@ -1,34 +1,18 @@
-backend:
-  type: reddit_like
-  class_path: null
-  params:
-    perform_operations: false
-    app_description: 'Reddit is a social media platform organized around communities
-      called subreddits.
-
-      Each subreddit (e.g. r/general, r/politics) focuses on a particular topic.
-
-      Users create posts with a title and optional body text in a subreddit.
-
-      Other users can comment on posts, creating threaded discussion chains.
-
-      Comments can be replies to the post itself or to other comments (nested replies).
-
-      Users can upvote content they find valuable, increasing its score.
-
-      Users can downvote content they find unhelpful, decreasing its score.
-
-      Posts are ranked by score within their subreddit.
-
-      Your home feed shows posts from subreddits you have joined.
-
-      Critically important: Operations such as commenting, upvoting, or downvoting
-      require a `post_id`. To obtain a `post_id`, you must have memory/knowledge of
-      a real `post_id`. If you don''t know a `post_id`, you can''t perform actions
-      that require it. `post_id`''s can be retrieved using the `get_home_feed` action.'
-  enabled_actions: null
 observation_history: 100
 gm:
+  backend:
+    type: reddit_like
+    class_path: null
+    params:
+      perform_operations: false
+      app_description: Reddit-like social backend organized around communities called
+        subreddits. Users can create posts, comment, vote, inspect feeds/comments,
+        mute/unmute users, search, inspect trends, report posts, update/view profiles,
+        and finish an open-ended turn. By default all backend actions exposed with
+        @app_action are available; restrict them with env.gm.backend.enabled_actions
+        when a scenario needs a smaller action surface. Actions that engage existing
+        content require real post/comment IDs from observations or action results.
+    enabled_actions: null
   components:
     initialize:
       built_in: social_media
@@ -39,6 +23,11 @@ gm:
           base_followership_probability: 0.3
           network_type: barabasi_albert
           barabasi_albert_m: 10
+          subreddits:
+          - name: general
+            description: General discussion for all topics
+            roles: all
+          default_subreddit: general
     next_acting:
       built_in: activity_probability
       class_path: null
@@ -80,111 +69,34 @@ gm:
       built_in: default
       class_path: null
       params:
-        action_prompt: 'Reddit is a social media platform organized around communities
-          called subreddits.
+        action_prompt: 'You are operating on a Reddit-like social backend organized
+          around communities called subreddits.
 
-          Each subreddit (e.g. r/general, r/politics) focuses on a particular topic.
+          The backend exposes actions as typed tools. By default, every @app_action
+          on the backend is available. Scenarios can restrict the action surface with
+          env.gm.backend.enabled_actions using canonical function names or selectable
+          aliases.
 
-          Users create posts with a title and optional body text in a subreddit.
+          Common actions include create_reddit_post, create_comment, upvote, downvote,
+          like_post, unlike_post, dislike_post, undo_dislike_post, get_home_feed,
+          get_post_comments, search_subreddits, get_trending_posts, report_post, mute_user,
+          unmute_user, update_profile, view_profile, do_nothing, and FINISHED.
 
-          Other users can comment on posts, creating threaded discussion chains.
+          Use only real post/comment IDs from feed observations or action results;
+          do not fabricate IDs. Omit optional parameters you do not want to use.
 
-          Comments can be replies to the post itself or to other comments (nested
-          replies).
+          Determine what one action {name} would take next based on their character,
+          memories, goals, current context, feed, and recent actions.
 
-          Users can upvote content they find valuable, increasing its score.
-
-          Users can downvote content they find unhelpful, decreasing its score.
-
-          Posts are ranked by score within their subreddit.
-
-          Your home feed shows posts from subreddits you have joined.
-
-          Critically important: Operations such as commenting, upvoting, or downvoting
-          require a `post_id`. To obtain a `post_id`, you must have memory/knowledge
-          of a real `post_id`. If you don''t know a `post_id`, you can''t perform
-          actions that require it. `post_id`''s can be retrieved using the `get_home_feed`
-          action.
-
-
-          ## AVAILABLE ACTIONS
-
-          1. POST - Share new content by creating a post in a subreddit
-
-          2. COMMENT - Engage existing content by commenting on a post (needs post
-          ID)
-
-          3. UPVOTE - Show support for content by upvoting a post (needs post ID)
-
-          4. DOWNVOTE - Flag low-quality content by downvoting a post (needs post
-          ID)
-
-
-          ## INSTRUCTIONS
-
-          Determine what ONE action {name} would take next based on:
-
-          - Their character and values via self-perception and goal descriptions
-
-          - The current context and feed
-
-          - Not repeating recent actions
-
-          If text-based, the text must reflect their posting style description.
-
-
-          ## DECISION PROCESS
-
-          Answer: {name}
-
-          STEP 1: [Analyze {name}''s motivation based on their character]
-
-          STEP 2: [Consider which posts/actions align with {name}''s values]
-
-          STEP 3: [Determine the single most authentic action]'
+          [OUTPUT STYLE]'
         output_style: 'FINAL DECISION:
 
-          ACTION TYPE: [POST/COMMENT/UPVOTE/DOWNVOTE]
+          ACTION TYPE: [chosen backend action]
 
-          TARGET ID: [Include post ID if applicable]
+          TARGET ID: [Include post or comment ID if applicable]
 
           CONTENT: [For posts/comments, exact text {name} would write]
 
-          REASONING: [Brief explanation of why this action fits {name}''s character]
-
-
-          ## EXAMPLE OUTPUT
-
-          STEP 1: {name} is motivated by their interest in educational policy and
-          community engagement.
-
-          STEP 2: The post about community priorities resonates with {name}''s values.
-
-          STEP 3: Commenting to add their educational perspective would be most authentic.
-
-
-          FINAL DECISION:
-
-          ACTION TYPE: COMMENT
-
-          TARGET ID: 5
-
-          CONTENT: "Great point about community priorities! I think we also need to
-          consider how educational funding plays into local economic development."
-
-          REASONING: This comment allows {name} to contribute their educational perspective
-          to a relevant discussion.
-
-          '
+          REASONING: [Brief explanation of why this action fits {name}''s character]'
   name: reddit_like_gm
-  sim_role:
-    name: social media game master
-    module_path: silisocs.environments.gm.game_master
-  class_path: silisocs.environments.gm.game_master.GameMaster
-gm_orchestration:
-  gms: []
-  flow_bindings:
-    flow_to_gms: {}
-subreddits:
-- name: general
-  description: General discussion for all topics
+  class_path: silisocs.environments.gm.game_master.ComponentGameMaster

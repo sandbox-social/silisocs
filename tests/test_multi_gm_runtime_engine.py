@@ -29,12 +29,12 @@ class _GameMaster:
         name: str,
         selected: list[str],
         agent_flow_tags: dict[str, str] | None = None,
-        gm_orchestration: dict[str, object] | None = None,
+        flow_chains: dict[str, list[str]] | None = None,
     ) -> None:
         self.name = name
         self.selected = selected
         self.agent_flow_tags = agent_flow_tags or {}
-        self.gm_orchestration = gm_orchestration or {}
+        self.flow_chains = flow_chains or {}
         self.resolved: list[tuple[str, ActionOutput]] = []
         self.events: list[str] = []
 
@@ -87,7 +87,7 @@ def test_multi_gm_step_strategy_routes_agents_through_flow_chains() -> None:
         name="primary",
         selected=["Alice", "Bob"],
         agent_flow_tags={"Alice": "pre", "Bob": "default"},
-        gm_orchestration={"flow_chains": {"pre": ["pre_gm"], "default": ["main_gm"]}},
+        flow_chains={"pre": ["pre_gm"], "default": ["main_gm"]},
     )
     pre_gm = _GameMaster(name="pre_gm", selected=["Alice"])
     main_gm = _GameMaster(name="main_gm", selected=["Bob"])

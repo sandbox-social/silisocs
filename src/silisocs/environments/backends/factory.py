@@ -5,7 +5,7 @@ Provides a single entry point for the game master to instantiate the correct
 
 Built-in backends are registered in ``_BUILTIN_BACKENDS`` by backend type name
 to fully-qualified class path. Custom backends can set
-``env.backend.class_path`` in config.
+``env.gm.backend.class_path`` in config.
 """
 
 import importlib
@@ -89,7 +89,7 @@ def create_backend_app(backend_type: str, **kwargs: Any) -> BackendApp:
         raise ValueError(
             f"Unknown environment backend type: '{backend_type}'. "
             f"Available built-in types: {available}. "
-            f"Or set env.backend.class_path for a custom backend."
+            f"Or set env.gm.backend.class_path for a custom backend."
         )
 
     cls = _load_app_class(class_path)

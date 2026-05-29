@@ -30,7 +30,7 @@ Install optional integrations only when needed:
 | `hf` | `datasets` | Hugging Face persona datasets |
 | `mastodon` | `mastodon.py`, loguru, pyvis | Real Mastodon server integration |
 | `aws` | `boto3` | AWS storage and services |
-| `docs` | mkdocs-material, mkdocstrings | Building the documentation site |
+| `docs` | ProperDocs, mkdocstrings, MkDocs plugins | Building the documentation site |
 | `all` | all of the above except `aws` and `docs` | Full runtime feature set |
 
 ```sh
@@ -46,7 +46,7 @@ pip install "silisocs[all,aws]"             # all runtime extras + AWS
 1. Clone the repository:
 
    ```sh
-   git clone https://github.com/social-sandbox/silisocs.git
+   git clone https://github.com/sandbox-social/silisocs.git
    cd silisocs
    ```
 
@@ -66,7 +66,7 @@ pip install "silisocs[all,aws]"             # all runtime extras + AWS
    uv sync --all-extras --group dev
    ```
 
-4. If you need the documentation toolchain (MkDocs) as well, include the docs group:
+4. If you need the documentation toolchain as well, include the docs group:
 
    ```sh
    uv sync --all-extras --group dev --group docs
@@ -86,7 +86,7 @@ pip install "silisocs[all,aws]"             # all runtime extras + AWS
 - Install git hooks: `uv run pre-commit install`
 - Run the lint workflow: `uv run poe lint`
 - Run the test workflow: `uv run poe test`
-- Generate API docs with `pdoc`: `uv run poe docs`
+- Build the documentation site: `uv run --group docs properdocs build --strict`
 
 ## Environment Variables
 

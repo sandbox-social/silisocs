@@ -28,16 +28,16 @@ scale when you want a larger run:
 uv run silisocs num_agents=25 num_steps=10
 ```
 
-### Try the OASIS Preset
+### Try Recommendation-Backed Timelines
 
-Run an OASIS-compatible simulation (smaller scale, optimized for recommendation studies):
+Run a small social simulation with recommendation-backed timeline updates:
 
 ```sh
-uv run silisocs sim=oasis env=reddit_like num_agents=10 num_steps=5
+uv run silisocs env=reddit_like num_agents=10 num_steps=5
 ```
 
-This uses the `oasis` preset configuration with 100 agents, hybrid timeline feeds (mixing recommendations
-and follower posts), and built-in recommendation system updates.
+This uses the Reddit-like backend with hybrid timeline feeds, mixing
+recommendations and follower posts, and built-in recommendation system updates.
 
 See [Configuration Reference](configuration.md) for detailed configuration options.
 

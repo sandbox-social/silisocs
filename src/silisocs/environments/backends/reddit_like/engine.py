@@ -238,11 +238,11 @@ class RedditLikePlatform:
                 "CREATE INDEX IF NOT EXISTS idx_activities_target ON activities(target_user_id, created_at DESC)"
             )
 
-            # Initialize OASIS schema tables
-            self._init_oasis_schema(conn)
+            # Initialize recommendation schema tables
+            self._init_recommendation_schema(conn)
 
-    def _init_oasis_schema(self, conn: sqlite3.Connection) -> None:
-        """Initialize optional OASIS extension schema.
+    def _init_recommendation_schema(self, conn: sqlite3.Connection) -> None:
+        """Initialize optional recommendation extension schema.
 
         Recommendation-driven timelines rely on this table at runtime.
         """
@@ -978,7 +978,7 @@ class RedditLikePlatform:
         raise ValueError(f"Unknown timeline strategy: {strategy}")
 
     # ================================================================ #
-    # OASIS-Compatible Extended Methods (mirrored from Twitter)
+    # Extended social methods (mirrored from Twitter)
     # ================================================================ #
 
     def dislike_post(self, username: str, post_id: int) -> bool:
@@ -1190,7 +1190,7 @@ class RedditLikePlatform:
             return []
 
     # ================================================================ #
-    # Recommendation System (OASIS-compatible)
+    # Recommendation system
     # ================================================================ #
 
     def init_recsys(self, recsys_type: str = "reddit") -> None:

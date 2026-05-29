@@ -128,6 +128,7 @@ def test_native_code_does_not_import_removed_utility_modules() -> None:
         "silisocs.utils.network",
         "silisocs.utils.misc",
         "silisocs.environments.gm.components.keys",
+        "silisocs.environments.gm.shared_flow_game_master",
         "silisocs.agents.builders",
     }
     offenders: list[str] = []
@@ -226,6 +227,12 @@ def test_docs_and_configs_do_not_use_removed_checkpoint_or_html_keys() -> None:
         "platform_type",
         "backend_type:",
         "env.app",
+        "shared_flow_game_master",
+        "FlowRoutedGameMaster",
+        "EnvironmentGameMaster",
+        "game_master.GameMaster",
+        "OASIS",
+        "sim=oasis",
     )
     offenders: list[str] = []
     for root in checked_roots:
@@ -245,6 +252,32 @@ def test_docs_and_configs_do_not_use_removed_checkpoint_or_html_keys() -> None:
     for marker in forbidden:
         if marker in text:
             offenders.append(f"{readme.relative_to(PROJECT_ROOT)}:{marker}")
+
+    assert sorted(offenders) == []
+
+
+def test_public_runtime_surfaces_do_not_advertise_oasis() -> None:
+    """User-facing docs/config/dashboard copy should describe Silisocs directly."""
+    marker = "OA" + "SIS"
+    checked_roots = [
+        PROJECT_ROOT / "docs",
+        PROJECT_ROOT / "agent_docs",
+        PROJECT_ROOT / "README.md",
+        SRC_ROOT / "conf",
+        SRC_ROOT / "dashboard",
+    ]
+    offenders: list[str] = []
+    for root in checked_roots:
+        paths = [root] if root.is_file() else root.rglob("*")
+        for path in paths:
+            if not path.is_file() or path.suffix not in {".md", ".yaml", ".yml", ".py"}:
+                continue
+            if path.name.endswith("_old.md") or path.name == "concordia_migration_log.md":
+                continue
+            if marker in path.read_text(encoding="utf-8"):
+                offenders.append(str(path.relative_to(PROJECT_ROOT)))
+            if marker.lower() in path.name.lower():
+                offenders.append(str(path.relative_to(PROJECT_ROOT)))
 
     assert sorted(offenders) == []
 

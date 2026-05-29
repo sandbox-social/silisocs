@@ -14,7 +14,7 @@ GM components, engines, engine policies, or probe/evaluator code.
 | Agents | `src/silisocs/agents/base_agent.py`, `agents/native.py`, `agents/fixed.py` |
 | Agent builders | `src/silisocs/runtime/construction/agent_builders/` |
 | Environment apps | `src/silisocs/environments/backends/base.py`, `environments/backends/factory.py` |
-| GMs | `src/silisocs/environments/gm/base_game_master.py`, `gm/game_master.py`, `gm/shared_flow_game_master.py` |
+| GMs | `src/silisocs/environments/gm/base_game_master.py`, `gm/game_master.py` |
 | GM components | `src/silisocs/environments/gm/components/` |
 | Engines | `src/silisocs/simulation_engines/base.py`, `simulation_engines/base_engines.py`, `simulation_engines/multi_gm.py` |
 | Engine policies | `src/silisocs/simulation_engines/policies/` |
@@ -74,11 +74,12 @@ Custom app config:
 
 ```yaml
 env:
-  backend:
-    type: custom
-    class_path: my_pkg.apps.MyBackendApp
-    params:
-      initial_cash: 20
+  gm:
+    backend:
+      type: custom
+      class_path: my_pkg.apps.MyBackendApp
+      params:
+        initial_cash: 20
 ```
 
 `params` are strict constructor arguments. Unknown keys fail before simulation
@@ -86,10 +87,11 @@ startup unless the target class accepts `**kwargs`.
 
 ## 3) Game Master API
 
-Base class: `GameMaster`
+Base class: `BaseGameMaster`
 Module: `src/silisocs/environments/gm/base_game_master.py`
 
-Direct GM methods live on `GameMaster`:
+Direct GM methods live on `ComponentGameMaster`. `MultiFlowGameMaster` keeps
+the same public methods and routes component slots by agent flow:
 
 - `acting_agents(...)`: chooses active actors.
 - `action_prompt(agent_name)`: emits typed `ActionSpec`.
@@ -103,7 +105,6 @@ Important integration fields used by engines/components:
 
 - `backend`
 - `agent_flow_tags`
-- `gm_orchestration`
 - `flow_to_component_map`
 
 ## 4) GM Component API
@@ -177,7 +178,8 @@ Modules:
   `FlowRuntimeEngine`.
 - `src/silisocs/simulation_engines/multi_gm.py`: `MultiGMRuntimeEngine`.
 
-Factory entrypoint: `build_engine(cfg)` in `src/silisocs/runtime/factories.py`.
+Factory entrypoint: `build_engine(cfg)` in
+`src/silisocs/runtime/construction/engines.py`.
 
 `BaseRuntimeEngine` provides the standard episode loop, actor concurrency, and
 probe phase orchestration. `FlowRuntimeEngine` adds flow grouping and per-flow
@@ -223,7 +225,7 @@ Add a custom backend app:
 1. Subclass `BackendApp`.
 2. Implement `initialize(...)`.
 3. Add `@app_action` methods.
-4. Configure `env.backend.class_path` and `env.backend.params`.
+4. Configure `env.gm.backend.class_path` and `env.gm.backend.params`.
 
 Add a custom GM component:
 

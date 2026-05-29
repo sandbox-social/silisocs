@@ -13,6 +13,7 @@ from silisocs.agents.base_agent import Agent
 from silisocs.environments.backends.reddit_like.app import RedditLikeApp
 from silisocs.environments.backends.twitter_like.app import TwitterLikeApp
 from silisocs.environments.gm.components.resolve import ToolCallingResolveComponent
+from silisocs.environments.gm.context import GameMasterContext
 from silisocs.initialization.context import InitializationContext
 from silisocs.initialization.game_masters import SocialMediaGameMasterInitializer
 from silisocs.initialization.simulation import SeedPostsSimulationInitializer
@@ -46,7 +47,7 @@ def _initialize_social_app(app, *, graph_config: dict, seed_posts: dict[str, str
     game_master = SimpleNamespace(
         backend=app,
         backend_type=backend_type,
-        action_output_mode="tool_calling",
+        owned_flows=("default",),
         resolve_action=resolver.resolve_action,
     )
     context = InitializationContext(
@@ -54,7 +55,14 @@ def _initialize_social_app(app, *, graph_config: dict, seed_posts: dict[str, str
     )
     initializer = SocialMediaGameMasterInitializer(graph=graph_config)
     typed_agents = cast(Sequence[Agent], agents)
-    initializer.initialize(agents=typed_agents, game_master=game_master, context=context)
+    gm_context = GameMasterContext(
+        gm_name=f"{backend_type}_gm",
+        backend=app,
+        agents=typed_agents,
+        agent_names=tuple(agent.name for agent in agents),
+        agent_flow_tags={"Alice Smith": "default", "Bob Jones": "default"},
+    )
+    initializer.initialize(agents=typed_agents, gm_context=gm_context, context=context)
     SeedPostsSimulationInitializer(seed_post_provider=_SeedProvider(seed_posts)).initialize(
         agents=typed_agents,
         game_masters=[game_master],
@@ -125,12 +133,14 @@ def test_echo_loose_social_setup_seeds_initial_opinion_posts(tmp_path) -> None:
     try:
         state = app._build_world()
         agents = [SimpleNamespace(name=name) for name in state.agent_names]
-        game_master = SimpleNamespace(
-            backend=app,
-            backend_type="twitter_like",
-            action_output_mode="tool_calling",
-        )
         context = InitializationContext(sim_roles=dict.fromkeys(state.agent_names, "echo_user"))
+        gm_context = GameMasterContext(
+            gm_name="echo_gm",
+            backend=app,
+            agents=cast(Sequence[Agent], agents),
+            agent_names=tuple(state.agent_names),
+            agent_flow_tags=dict.fromkeys(state.agent_names, "default"),
+        )
         initializer = SocialMediaGameMasterInitializer(
             graph={
                 "network_type": "predefined",
@@ -142,7 +152,7 @@ def test_echo_loose_social_setup_seeds_initial_opinion_posts(tmp_path) -> None:
         )
         initializer.initialize(
             agents=cast(Sequence[Agent], agents),
-            game_master=game_master,
+            gm_context=gm_context,
             context=context,
         )
     finally:

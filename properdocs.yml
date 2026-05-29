@@ -99,6 +99,10 @@ nav:
     - Election Scenario Walkthrough: tutorials/election.md
   - Development:
     - Contributing: contributing.md
+    - Architecture Decisions:
+      - Native Core and Concordia Boundary: adr/0001-native-core-concordia-compatibility-boundary.md
+      - Engine-Owned Initialization: adr/0002-engine-owned-initialization-lifecycle.md
+      - Checkpoint-Owned Restore: adr/0003-checkpoint-owned-restore.md
 
 extra:
   social:

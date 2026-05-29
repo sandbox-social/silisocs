@@ -1,27 +1,27 @@
-backend:
-  type: virtual_space
-  class_path: null
-  params:
-    rooms:
-    - atrium
-    - garden
-    - workshop
-    starting_room: atrium
-    room_descriptions:
-      atrium: A bright central hall with paths to every other room.
-      garden: A quiet garden for private conversations.
-      workshop: A practical room filled with tools and shared projects.
-    connections: null
-    perform_operations: false
-    app_description: 'You are operating in a virtual space. Agents can look around
-      their current
-
-      room, move to another reachable room, talk to another agent present in the
-
-      same room, or finish the current action episode.'
-  enabled_actions: null
 observation_history: 100
 gm:
+  backend:
+    type: virtual_space
+    class_path: null
+    params:
+      rooms:
+      - atrium
+      - garden
+      - workshop
+      starting_room: atrium
+      room_descriptions:
+        atrium: A bright central hall with paths to every other room.
+        garden: A quiet garden for private conversations.
+        workshop: A practical room filled with tools and shared projects.
+      connections: null
+      perform_operations: false
+      app_description: 'You are operating in a virtual space. Agents can look around
+        their current
+
+        room, move to another reachable room, talk to another agent present in the
+
+        same room, or finish the current action episode.'
+    enabled_actions: null
   components:
     initialize:
       built_in: app_initialize
@@ -70,11 +70,4 @@ gm:
 
           '
   name: virtual_space_gm
-  sim_role:
-    name: virtual space game master
-    module_path: silisocs.environments.gm.game_master
-  class_path: silisocs.environments.gm.game_master.GameMaster
-gm_orchestration:
-  gms: []
-  flow_bindings:
-    flow_to_gms: {}
+  class_path: silisocs.environments.gm.game_master.ComponentGameMaster

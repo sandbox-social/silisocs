@@ -127,10 +127,7 @@ def _owning_game_master(
 ) -> Any:
     flow = str(context.agent_flow_tags.get(agent_name, "default") or "default")
     for game_master in game_masters:
-        orchestration = getattr(game_master, "gm_orchestration", {})
-        owned_flows = (
-            orchestration.get("owned_flows", []) if isinstance(orchestration, dict) else []
-        )
+        owned_flows = getattr(game_master, "owned_flows", ())
         if flow in {str(item) for item in owned_flows}:
             return game_master
     return game_masters[0]

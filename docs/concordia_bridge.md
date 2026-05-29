@@ -72,3 +72,9 @@ immediately. New extensions should target native Silisocs contracts.
 
 The long-term target is simple: user-authored extensions should not need to
 know Concordia unless they are deliberately porting old Concordia code.
+
+## Licensing
+
+The bridge extra depends on `gdm-concordia`, which is licensed under Apache
+License 2.0. Silisocs does not vendor Concordia; keep upstream notices intact
+when distributing environments that install the optional bridge extra.

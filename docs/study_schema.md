@@ -47,7 +47,7 @@ Raw simulation outputs (`outputs/{scenario}_experiment/{timestamp}/`) and stable
 |---------|--------|---------|
 | Study name | `snake_case` | `style_diversity` |
 | Hypothesis ID | `h{N}_{short_name}` | `h1_model_capacity` |
-| Condition directory | `{iv}={value}` | `model=gpt4o-mini` |
+| Condition directory | `{iv}={value}` | `sim.llm.name=gpt-4o-mini` |
 | Run directory | `run_{ISO timestamp}` | `run_2026-02-06T23-50-55` |
 | Notebook file | `notebook.ipynb` (inside study dir) | `experiments/studies/style_diversity/notebook.ipynb` |
 
@@ -70,7 +70,7 @@ study:
     - misinformation
   base_config: config/experiment.yaml
   run_overrides:
-    simulation.execution.max_steps: 10
+    num_steps: 10
     seed: 42
 
 hypotheses:
@@ -83,17 +83,17 @@ hypotheses:
     status: supported
     conditions:
       gpt4o-mini:
-        cli_override: model=gpt4omini
+        cli_override: sim.llm.name=gpt-4omini
         runs:
           - scenario: ai_conference
             source: outputs/ai_conference_experiment/2026-02-06_23-50-55
-            eval: outputs/eval_style_diversity/h1_model_capacity/model=gpt4o-mini/ai_conference/eval.json
+            eval: outputs/eval_style_diversity/h1_model_capacity/sim.llm.name=gpt-4o-mini/ai_conference/eval.json
       gpt4o:
-        cli_override: model=gpt4o
+        cli_override: sim.llm.name=gpt-4o
         runs:
           - scenario: ai_conference
             source: outputs/ai_conference_experiment/2026-02-07_09-43-11
-            eval: outputs/eval_style_diversity/h1_model_capacity/model=gpt4o/ai_conference/eval.json
+            eval: outputs/eval_style_diversity/h1_model_capacity/sim.llm.name=gpt-4o/ai_conference/eval.json
 
   h2_temperature_effect:
     follows_from: h1_model_capacity
@@ -133,13 +133,13 @@ hypotheses:
 | `question` | string | The research question in plain language |
 | `scenarios` | list[string] | Scenario names used across all hypotheses |
 | `base_config` | string | Path to the Hydra config file that defines the defaults (e.g. `config/experiment.yaml`). Used by the organizer when constructing `run_command` in each run's `config.yaml`. |
-| `run_overrides` | dict | Hydra overrides shared by all runs in this study that differ from `base_config` defaults. Per-condition overrides (e.g. `model=gpt4o`) are added on top. |
+| `run_overrides` | dict | Hydra overrides shared by all runs in this study that differ from `base_config` defaults. Per-condition overrides (e.g. `sim.llm.name=gpt-4o`) are added on top. |
 
 **`hypotheses.{id}.conditions.{name}` fields:**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `cli_override` | string | The Hydra CLI flag that sets this condition's value of the IV (e.g. `model=gpt4o`). Required by `run_study.py` to execute the run. The condition name is a human-readable label; this is the exact override passed to `run_experiment.py`. |
+| `cli_override` | string | The Hydra CLI flag that sets this condition's value of the IV (e.g. `sim.llm.name=gpt-4o-mini`). Required by `run_study.py` to execute the run. The condition name is a human-readable label; this is the exact override passed to the Silisocs runner. |
 | `runs` | list | Registered run records (see below). Populated by `run_study.py` or manually after each run. |
 
 **`hypotheses.{id}.conditions.{name}.runs[]` fields:**
@@ -222,11 +222,11 @@ condition: gpt4o
 hypothesis: h1_model_capacity
 cli_overrides:
   - scenario=ai_conference
-  - model=gpt4o
-  - simulation.execution.max_steps=10
+  - sim.llm.name=gpt-4o
+  - num_steps=10
 run_command: >-
-  uv run python run_experiment.py
-  scenario=ai_conference model=gpt4o simulation.execution.max_steps=10
+  uv run python -m silisocs.runtime.runner
+  scenario=ai_conference sim.llm.name=gpt-4o-mini num_steps=10
 ```
 
 **Required fields:**
@@ -448,7 +448,7 @@ Stage 3 is idempotent and can be re-run as runs accumulate. Raw outputs always g
 │                                                                         │
 │  1. Simulate                                                            │
 │                                                                         │
-│     uv run python run_experiment.py \                                   │
+│     uv run python -m silisocs.runtime.runner \                          │
 │         scenario={scenario} \                                           │
 │         {study.run_overrides} \                                         │
 │         {per-condition override}                                        │
@@ -457,10 +457,10 @@ Stage 3 is idempotent and can be re-run as runs accumulate. Raw outputs always g
 │     Output lands in: outputs/{scenario}_experiment/{timestamp}/        │
 │                                                                         │
 │     Example:                                                            │
-│       uv run python run_experiment.py \                                 │
+│       uv run python -m silisocs.runtime.runner \                        │
 │           scenario=ai_conference \                                      │
-│           simulation.execution.max_steps=10 \                          │
-│           model=gpt4o                                                   │
+│           num_steps=10 \                                                │
+│           sim.llm.name=gpt-4o-mini                                      │
 │                                                                         │
 │  2. Evaluate                                                            │
 │                                                                         │
@@ -578,7 +578,7 @@ The results notebook (`experiments/studies/{name}/notebook.ipynb`) follows a fix
 
 ### Reusing a baseline condition across hypotheses
 
-If a condition from an earlier hypothesis serves as the control for a later one (e.g. `model=gpt4o-mini` in H1 is also the baseline for H2), reference the same `source` and `eval` paths in both hypothesis entries in `study.yaml`. The organizer handles duplicate paths correctly — the run is not re-copied, just re-linked. This avoids redundant API costs and keeps results comparable.
+If a condition from an earlier hypothesis serves as the control for a later one (e.g. `sim.llm.name=gpt-4o-mini` in H1 is also the baseline for H2), reference the same `source` and `eval` paths in both hypothesis entries in `study.yaml`. The organizer handles duplicate paths correctly — the run is not re-copied, just re-linked. This avoids redundant API costs and keeps results comparable.
 
 ```yaml
 hypotheses:

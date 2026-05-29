@@ -7,9 +7,9 @@ from typing import Any
 
 from omegaconf import DictConfig, OmegaConf
 
-from silisocs.runtime.configuration.legacy import reject_removed_runtime_keys
 from silisocs.runtime.configuration.projection import RuntimeProjection
-from silisocs.runtime.construction.specs import GameMasterConfig, SimRole
+from silisocs.runtime.configuration.validation import validate_runtime_structure
+from silisocs.runtime.construction.specs import GameMasterConfig
 
 DEFAULT_FLOW_TAG = "default"
 
@@ -52,51 +52,30 @@ def _build_action_prompt(
     )
 
 
-def _normalise_gm_initializer_cfg(raw: Any, *, index: int) -> dict[str, Any]:
+def _normalise_gm_initializer_cfg(raw: Any, *, path: str) -> dict[str, Any]:
     if raw is None:
-        raise ValueError(
-            f"env.gm_orchestration.gms[{index}] is missing required components.initialize."
-        )
+        raise ValueError(f"{path} is missing required initialize component.")
     if isinstance(raw, DictConfig):
         raw = OmegaConf.to_container(raw, resolve=True)
     if not isinstance(raw, Mapping):
-        raise ValueError(
-            f"env.gm_orchestration.gms[{index}].components.initialize must be a mapping."
-        )
+        raise ValueError(f"{path}.initialize must be a mapping.")
     cfg = dict(raw)
     if not str(cfg.get("built_in") or "").strip() and not str(cfg.get("class_path") or "").strip():
-        raise ValueError(
-            f"env.gm_orchestration.gms[{index}].components.initialize must set "
-            "built_in or class_path."
-        )
+        raise ValueError(f"{path}.initialize must set built_in or class_path.")
     cfg.setdefault("class_path", None)
     cfg.setdefault("params", {})
     return cfg
 
 
 def _default_gm_initializer_cfg(cfg: DictConfig) -> dict[str, Any]:
-    if OmegaConf.select(cfg, "env.gm.initializer") is not None:
-        raise ValueError(
-            "`env.gm.initializer` has been removed. Use "
-            "`env.gm.components.initialize` for GM-owned backend setup."
-        )
     configured = OmegaConf.select(cfg, "env.gm.components.initialize")
-    if configured is not None:
-        if isinstance(configured, DictConfig):
-            configured = OmegaConf.to_container(configured, resolve=True)
-        if not isinstance(configured, Mapping):
-            raise ValueError("env.gm.components.initialize must be a mapping.")
-        return _normalise_gm_initializer_cfg(configured, index=0)
-    backend_type = str(OmegaConf.select(cfg, "env.backend.type", default="") or "").strip()
-    social_backend_types = {
-        "twitter_like",
-        "reddit_like",
-        "mastodon",
-        "oasis_twitter",
-        "oasis_reddit",
-    }
-    built_in = "social_media" if backend_type in social_backend_types else "app_initialize"
-    return {"built_in": built_in, "class_path": None, "params": {}}
+    if configured is None:
+        raise ValueError("env.gm.components.initialize is required.")
+    if isinstance(configured, DictConfig):
+        configured = OmegaConf.to_container(configured, resolve=True)
+    if not isinstance(configured, Mapping):
+        raise ValueError("env.gm.components.initialize must be a mapping.")
+    return _normalise_gm_initializer_cfg(configured, path="env.gm.components")
 
 
 def _plain_mapping(value: Any) -> dict[str, Any]:
@@ -110,32 +89,27 @@ def _plain_mapping(value: Any) -> dict[str, Any]:
 
 
 def _gm_components_cfg(cfg: DictConfig) -> dict[str, Any]:
-    components = _plain_mapping(OmegaConf.select(cfg, "env.gm.components", default={}) or {})
-    if "recommend" in components:
-        raise ValueError(
-            "`env.gm.components.recommend` has been removed. "
-            "Use `env.gm.components.update` with built_in='social_recommendation'."
-        )
-    return components
+    return _plain_mapping(OmegaConf.select(cfg, "env.gm.components", default={}) or {})
 
 
-def _backend_config(cfg: DictConfig) -> dict[str, Any]:
-    backend_type = str(OmegaConf.select(cfg, "env.backend.type", default="") or "").strip()
+def _backend_config(
+    cfg: DictConfig,
+    raw_backend: Mapping[str, Any],
+    *,
+    path: str,
+) -> dict[str, Any]:
+    backend_type = str(raw_backend.get("type", "") or "").strip()
     if not backend_type:
-        raise ValueError("env.backend.type is required.")
-    backend_params = _plain_mapping(OmegaConf.select(cfg, "env.backend.params", default={}) or {})
+        raise ValueError(f"{path}.type is required.")
+    backend_params = _plain_mapping(raw_backend.get("params") or {})
     return {
         "backend_type": backend_type,
         "output_rootname": str(OmegaConf.select(cfg, "output_rootname", default="") or ""),
         "perform_operations": bool(backend_params.pop("perform_operations", False)),
         "app_description": str(backend_params.pop("app_description", "") or ""),
-        "class_path": OmegaConf.select(cfg, "env.backend.class_path", default=None),
+        "class_path": raw_backend.get("class_path"),
         "params": backend_params,
-        "enabled_actions": OmegaConf.to_container(
-            OmegaConf.select(cfg, "env.backend.enabled_actions", default=None), resolve=True
-        )
-        if OmegaConf.select(cfg, "env.backend.enabled_actions", default=None) is not None
-        else None,
+        "enabled_actions": raw_backend.get("enabled_actions"),
         "turn_policy_built_in": str(
             OmegaConf.select(cfg, "sim.engine.turn_policy.built_in", default="") or ""
         ),
@@ -144,47 +118,53 @@ def _backend_config(cfg: DictConfig) -> dict[str, Any]:
 
 def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
     default_gm = cfg.env.gm
-    default_initializer = _default_gm_initializer_cfg(cfg)
-    default_mode = "shared"
     default_class_path = str(
         OmegaConf.select(
             cfg,
             "env.gm.class_path",
-            default="silisocs.environments.gm.game_master.GameMaster",
+            default="silisocs.environments.gm.game_master.ComponentGameMaster",
         )
-        or "silisocs.environments.gm.game_master.GameMaster"
+        or "silisocs.environments.gm.game_master.ComponentGameMaster"
     )
     default_spec = {
         "gm_name": str(getattr(default_gm, "name", "environment_gm") or "environment_gm"),
         "class_path": default_class_path,
-        "sim_role_name": str(
-            OmegaConf.select(cfg, "env.gm.sim_role.name", default="environment game master")
-            or "environment game master"
-        ),
         "sequence": 0,
-        "mode": default_mode,
-        "backend_scope": "shared_default",
-        "initializer": default_initializer,
+        "mode": "shared",
+        "backend": _plain_mapping(OmegaConf.select(cfg, "env.gm.backend", default={}) or {}),
+        "backend_path": "env.gm.backend",
+        "components": _gm_components_cfg(cfg),
     }
 
     gm_orchestration_cfg = getattr(cfg.env, "gm_orchestration", None)
-    if gm_orchestration_cfg is None:
-        gm_orchestration_cfg = getattr(getattr(cfg, "sim", object()), "gm_orchestration", object())
     gm_specs_raw = getattr(gm_orchestration_cfg, "gms", None)
     if (
         not isinstance(gm_specs_raw, Sequence)
         or isinstance(gm_specs_raw, (str, bytes))
         or not gm_specs_raw
     ):
+        default_spec["initializer"] = _default_gm_initializer_cfg(cfg)
         return [default_spec]
 
     specs: list[dict[str, Any]] = []
     for idx, gm_raw in enumerate(gm_specs_raw):
         if not isinstance(gm_raw, Mapping):
             raise ValueError(f"env.gm_orchestration.gms[{idx}] must be a mapping.")
-        sim_role_cfg = gm_raw.get("sim_role", {})
-        if not isinstance(sim_role_cfg, Mapping):
-            sim_role_cfg = {}
+        unsupported = sorted(
+            set(gm_raw)
+            - {"gm_name", "name", "class_path", "sequence", "mode", "backend", "components"}
+        )
+        if unsupported:
+            raise ValueError(
+                f"Unsupported config key(s) under env.gm_orchestration.gms[{idx}]: {unsupported}"
+            )
+        raw_backend = gm_raw.get("backend")
+        if raw_backend is None:
+            raise ValueError(f"env.gm_orchestration.gms[{idx}].backend is required.")
+        raw_components = gm_raw.get("components")
+        if raw_components is None:
+            raise ValueError(f"env.gm_orchestration.gms[{idx}].components is required.")
+        components = _plain_mapping(raw_components)
         spec: dict[str, Any] = {
             "gm_name": str(
                 gm_raw.get("gm_name", gm_raw.get("name", default_spec["gm_name"])) or ""
@@ -194,27 +174,16 @@ def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
         spec["class_path"] = str(gm_raw.get("class_path", default_class_path) or "").strip()
         spec.update(
             {
-                "sim_role_name": str(
-                    sim_role_cfg.get("name", default_spec["sim_role_name"]) or ""
-                ).strip(),
                 "sequence": int(gm_raw.get("sequence", idx)),
-                "backend_scope": str(
-                    gm_raw.get("backend_scope", "shared_default") or "shared_default"
-                ).strip(),
+                "backend": _plain_mapping(raw_backend),
+                "backend_path": f"env.gm_orchestration.gms[{idx}].backend",
+                "components": components,
                 "initializer": _normalise_gm_initializer_cfg(
-                    gm_raw.get("initializer"),
-                    index=idx,
+                    components.get("initialize"),
+                    path=f"env.gm_orchestration.gms[{idx}].components",
                 ),
             }
         )
-        prompt_cfg = gm_raw.get("prompt", {})
-        if prompt_cfg is None:
-            prompt_cfg = {}
-        if not isinstance(prompt_cfg, Mapping):
-            raise ValueError(
-                f"env.gm_orchestration.gms[{idx}].prompt must be a mapping when provided."
-            )
-        spec["prompt"] = dict(prompt_cfg)
         if not spec["gm_name"]:
             raise ValueError(f"env.gm_orchestration.gms[{idx}] is missing gm_name/name.")
         specs.append(spec)
@@ -240,17 +209,13 @@ def _resolve_flow_chains(
 
     chains: dict[str, list[str]] = {}
     gm_orchestration_cfg = getattr(cfg.env, "gm_orchestration", None)
-    if gm_orchestration_cfg is None:
-        gm_orchestration_cfg = getattr(getattr(cfg, "sim", object()), "gm_orchestration", object())
     bindings = getattr(gm_orchestration_cfg, "flow_bindings", None)
     if isinstance(bindings, Mapping):
-        for legacy_key in ("flow_to_gm", "gm_to_flows"):
-            legacy_value = bindings.get(legacy_key, {})
-            if isinstance(legacy_value, Mapping) and legacy_value:
-                raise ValueError(
-                    f"env.gm_orchestration.flow_bindings.{legacy_key} is removed. "
-                    "Use flow_to_gms only."
-                )
+        unsupported = sorted(str(key) for key in bindings if str(key) != "flow_to_gms")
+        if unsupported:
+            raise ValueError(
+                f"Unsupported config key(s) under env.gm_orchestration.flow_bindings: {unsupported}"
+            )
         flow_to_gms = bindings.get("flow_to_gms", {})
         if isinstance(flow_to_gms, Mapping):
             for flow, gm_chain in flow_to_gms.items():
@@ -296,7 +261,7 @@ def _resolve_flow_chains(
 
 
 def build_game_masters(cfg: DictConfig) -> list[GameMasterConfig]:
-    reject_removed_runtime_keys(cfg)
+    validate_runtime_structure(cfg)
 
     gm_specs = _resolve_gm_specs(cfg)
     declared_flows = _collect_declared_flow_tags(cfg)
@@ -304,32 +269,13 @@ def build_game_masters(cfg: DictConfig) -> list[GameMasterConfig]:
 
     projection = RuntimeProjection.from_cfg(cfg)
     game_masters: list[GameMasterConfig] = []
-    components_cfg = _gm_components_cfg(cfg)
-    backend_config = _backend_config(cfg)
     for spec in gm_specs:
         gm_name = str(spec["gm_name"])
         owned_flows = [flow for flow, chain in flow_chains.items() if gm_name in chain]
-        sim_role = SimRole(
-            name=str(spec["sim_role_name"]),
-            module_path=str(spec["class_path"]).rsplit(".", 1)[0],
-        )
-        gm_user_data = {
-            "sim_roles": {},
-            "gm_orchestration": {
-                "gm_name": gm_name,
-                "sequence": int(spec["sequence"]),
-                "mode": str(spec["mode"]),
-                "backend_scope": str(spec["backend_scope"]),
-                "owned_flows": owned_flows,
-                "flow_chains": flow_chains,
-                "prompt": dict(spec.get("prompt") or {}),
-            },
-        }
-        gm_components_cfg = dict(components_cfg)
+        gm_components_cfg = dict(spec["components"])
         action_prompt_params = dict(
             dict(gm_components_cfg.get("action_prompt", {}) or {}).get("params", {}) or {}
         )
-        action_prompt_params.update(dict(spec.get("prompt") or {}))
         action_prompt = _build_action_prompt(
             cfg,
             tool_calling_mode=projection.tool_calling_mode,
@@ -338,13 +284,22 @@ def build_game_masters(cfg: DictConfig) -> list[GameMasterConfig]:
         gm_components_cfg["initialize"] = dict(spec["initializer"])
         gm_params = {
             "name": gm_name,
-            "sim_role": sim_role,
-            "environment_data": gm_user_data,
-            "backend_config": dict(backend_config),
+            "backend_config": _backend_config(
+                cfg,
+                spec["backend"],
+                path=str(spec["backend_path"]),
+            ),
             "components": gm_components_cfg,
             "action_prompt_template": action_prompt,
             "action_mode": projection.action_mode,
             "tool_calling_mode": projection.tool_calling_mode,
+            "sim_roles": {},
+            "agent_flow_tags": {},
+            "owned_flows": owned_flows,
+            "flow_chains": flow_chains,
+            "prompt_config": dict(action_prompt_params),
+            "sequence": int(spec["sequence"]),
+            "mode": str(spec["mode"]),
         }
         game_masters.append(
             GameMasterConfig(

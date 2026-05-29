@@ -9,7 +9,7 @@ description = "A native social simulation framework for configurable social-medi
 readme = "README.md"
 requires-python = ">=3.11,<4.0"
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "NOTICE"]
 authors = [{name = "Austin Welch", email = "austinmw89@gmail.com"}]
 keywords = ["agent-based simulation", "social simulation", "llm", "social media"]
 classifiers = [
@@ -97,8 +97,8 @@ all = [
 ]
 
 [project.urls]
-Documentation = "https://social-sandbox.github.io/silisocs"
-Repository = "https://github.com/social-sandbox/silisocs"
+Documentation = "https://sandbox-social.github.io/silisocs"
+Repository = "https://github.com/sandbox-social/silisocs"
 
 [project.scripts]
 silisocs = "silisocs.runtime.runner:cli_main"
@@ -122,7 +122,6 @@ dev = [
   "ipykernel>=6.29.4",
   "ipywidgets>=8.1.2",
   "isort>=5.13.2,<6.0.0",
-  "pdoc>=14.4.0",
   "poethepoet>=0.25.0",
   "types-pyyaml>=6.0.12.20241230",
   "types-requests>=2.32.0.20241016",
@@ -261,25 +260,8 @@ convention = "numpy"
     options = ["--dev"]
 
   [tool.poe.tasks.docs]
-  help = "Generate this app's docs"
-  cmd = """
-    pdoc
-      --docformat $docformat
-      --output-directory $outputdirectory
-      silisocs
-    """
-
-    [[tool.poe.tasks.docs.args]]
-    help = "The docstring style (default: numpy)"
-    name = "docformat"
-    options = ["--docformat"]
-    default = "numpy"
-
-    [[tool.poe.tasks.docs.args]]
-    help = "The output directory (default: docs)"
-    name = "outputdirectory"
-    options = ["--output-directory"]
-    default = "docs"
+  help = "Build the documentation site"
+  cmd = "properdocs build --strict"
 
   [tool.poe.tasks.lint]
   help = "Lint this app"

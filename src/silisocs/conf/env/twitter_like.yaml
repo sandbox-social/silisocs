@@ -1,28 +1,16 @@
-backend:
-  type: twitter_like
-  class_path: null
-  params:
-    perform_operations: false
-    app_description: "You are currently operating on a Twitter like platform.\nYou\
-      \ are allowed to perform the given actions, descriptions, and instructions on\
-      \ how to perform them will follow.\nGenerally, to share content, you can write\
-      \ a 'tweet' (a short post).\nTweets can be up to 280 characters long.\nYou can\
-      \ reply to tweets, creating threaded conversations., and you can \nlike (favorite)\
-      \ them to show appreciation, or \nrepost (retweet) tweets to share them with\
-      \ your followers.\nYou can mention other users in your tweets using their @username.\n\
-      You can follow other users to see their tweets in your home timeline.\nYou can\
-      \ unfollow users if they no longer wish to see their content.\nGenerally, if\
-      \ you don't want to take actions, or are done taking actions for a given step,\
-      \ you can use the finished action to stop.\nSome of the above listed actions,\
-      \ may not be available at thus step, or some other actions may also be available,\
-      \ as described below.\ncurrent_user is always the full display name (e.g. \"\
-      Alice Smith\").\nOnly use real post IDs from timeline/feed observations; do\
-      \ not fabricate IDs.\nFor status/content fields, write in first person as the\
-      \ character.\nOmit optional parameters you do not want to use.\nChoose actions\
-      \ from those that are available:"
-  enabled_actions: null
 observation_history: 100
 gm:
+  backend:
+    type: twitter_like
+    class_path: null
+    params:
+      perform_operations: false
+      app_description: Twitter-like social backend. Agents can create posts, reply,
+        like, repost, follow/unfollow, mute/unmute, search, inspect trends, report
+        posts, update/view profiles, and finish an open-ended turn. By default all
+        backend actions exposed with @app_action are available; restrict them with
+        env.gm.backend.enabled_actions when a scenario needs a smaller action surface.
+    enabled_actions: null
   components:
     initialize:
       built_in: social_media
@@ -74,32 +62,36 @@ gm:
       built_in: default
       class_path: null
       params:
-        action_prompt: "You are currently operating on a Twitter like platform.\n\
-          You are allowed to perform the given actions, descriptions, and instructions\
-          \ on how to perform them will follow.\nGenerally, to share content, you\
-          \ can write a 'tweet' (a short post).\nTweets can be up to 280 characters\
-          \ long.\nYou can reply to tweets, creating threaded conversations., and\
-          \ you can \nlike (favorite) them to show appreciation, or \nrepost (retweet)\
-          \ tweets to share them with your followers.\nYou can mention other users\
-          \ in your tweets using their @username.\nYou can follow other users to see\
-          \ their tweets in your home timeline.\nYou can unfollow users if they no\
-          \ longer wish to see their content.\nGenerally, if you don't want to take\
-          \ actions, or are done taking actions for a given step, you can use the\
-          \ finished action to stop.\nSome of the above listed actions, may not be\
-          \ available at thus step, or some other actions may also be available, as\
-          \ described below.\ncurrent_user is always the full display name (e.g. \"\
-          Alice Smith\").\nOnly use real post IDs from timeline/feed observations;\
-          \ do not fabricate IDs.\nFor status/content fields, write in first person\
-          \ as the character.\nOmit optional parameters you do not want to use.\n\
-          Choose actions from those that are available:\n\n## AVAILABLE ACTIONS\n\
-          1. POST - Share new content by creating a new tweet\n2. REPLY - Engage existing\
-          \ content by responding to a tweet (needs post ID)\n3. REPOST - Extend the\
-          \ reach of content by reposting someone's tweet (needs post ID)\n4. LIKE\
-          \ - Show the world you appreciate content by liking a tweet (needs post\
-          \ ID)\n\n## INSTRUCTIONS\nDetermine what ONE action {name} would take next\
-          \ based on:\n- Their character and values via self-perception and goal descriptions\n\
-          - The current context and timeline\n- Not repeating recent actions\nIf text-based,\
-          \ the text must reflect their posting style description.\n\n[OUTPUT STYLE]"
+        action_prompt: 'You are operating on a Twitter-like social backend.
+
+
+          The backend exposes actions as typed tools. By default, every @app_action
+          on the backend is available. Scenarios can restrict the action surface with
+          env.gm.backend.enabled_actions using canonical function names or selectable
+          aliases.
+
+
+          Common actions include create_tweet, reply_to_tweet, like_tweet, unlike_tweet,
+          repost_tweet, quote_repost_tweet, follow_user, unfollow_user, mute_user,
+          unmute_user, search_posts, get_trending_posts, report_post, update_profile,
+          view_profile, do_nothing, and FINISHED.
+
+
+          Use only real post IDs from timeline/feed observations; do not fabricate
+          IDs. For status/content fields, write in first person as the character.
+          Omit optional parameters you do not want to use.
+
+
+          Determine what one action {name} would take next based on:
+
+          - Their character, memories, and goals
+
+          - The current context and timeline
+
+          - Not repeating recent actions
+
+
+          [OUTPUT STYLE]'
         output_style: '## OUTPUT FORMAT
 
           Answer: {name}
@@ -113,7 +105,7 @@ gm:
 
           FINAL DECISION:
 
-          ACTION TYPE: [POST/REPLY/REPOST/LIKE]
+          ACTION TYPE: [chosen backend action]
 
           TARGET ID: [Include post ID if applicable]
 
@@ -149,11 +141,4 @@ gm:
 
           '
   name: twitter_like_gm
-  sim_role:
-    name: social media game master
-    module_path: silisocs.environments.gm.game_master
-  class_path: silisocs.environments.gm.game_master.GameMaster
-gm_orchestration:
-  gms: []
-  flow_bindings:
-    flow_to_gms: {}
+  class_path: silisocs.environments.gm.game_master.ComponentGameMaster

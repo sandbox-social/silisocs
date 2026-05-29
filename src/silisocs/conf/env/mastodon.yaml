@@ -1,52 +1,53 @@
-backend:
-  type: mastodon
-  class_path: null
-  params:
-    perform_operations: true
-    app_description: 'Mastodon is a social media application.
-
-      To share content on Mastodon, users write a ''toot'' (equivalent to a tweet
-      or post).
-
-      Toots can be up to 500 characters long.
-
-      A user''s home timeline shows toots from people they follow and boosted (reblogged)
-      content.
-
-      Users can reply to toots, creating threaded conversations.
-
-      Users can like (favorite) toots to show appreciation or save them for later.
-
-      Users can boost (reblog) toots to share them with their followers.
-
-      Users can mention other users in their toots using their @username.
-
-      Follow other users to see their public and unlisted toots in their home timeline.
-
-      Users can unfollow users if they no longer wish to see their content.
-
-      A user''s profile can be customized with a display name and bio.
-
-      A user can block other users to prevent them from seeing the user''s content
-      or interacting with them.
-
-      Unblocking a user reverses the effects of blocking.
-
-      Critically important: Operations such as liking, boosting, replying, etc. require
-      a `toot_id`. To obtain a `toot_id`, you must have memory/knowledge of a real
-      `toot_id`. If you don''t know a `toot_id`, you can''t perform actions that require
-      it. `toot_id`''s can be retrieved using the `get_timeline` action.
-
-      - current_user is always the full display name (e.g. "Alice Smith").
-
-      - Only use real toot IDs from timeline/feed observations; do not fabricate IDs.
-
-      - For status/content fields, write in first person as the character.
-
-      - Omit optional parameters you do not want to use.'
-  enabled_actions: null
 observation_history: 100
 gm:
+  backend:
+    type: mastodon
+    class_path: null
+    params:
+      perform_operations: true
+      app_description: 'Mastodon is a social media application.
+
+        To share content on Mastodon, users write a ''toot'' (equivalent to a tweet
+        or post).
+
+        Toots can be up to 500 characters long.
+
+        A user''s home timeline shows toots from people they follow and boosted (reblogged)
+        content.
+
+        Users can reply to toots, creating threaded conversations.
+
+        Users can like (favorite) toots to show appreciation or save them for later.
+
+        Users can boost (reblog) toots to share them with their followers.
+
+        Users can mention other users in their toots using their @username.
+
+        Follow other users to see their public and unlisted toots in their home timeline.
+
+        Users can unfollow users if they no longer wish to see their content.
+
+        A user''s profile can be customized with a display name and bio.
+
+        A user can block other users to prevent them from seeing the user''s content
+        or interacting with them.
+
+        Unblocking a user reverses the effects of blocking.
+
+        Critically important: Operations such as liking, boosting, replying, etc.
+        require a `toot_id`. To obtain a `toot_id`, you must have memory/knowledge
+        of a real `toot_id`. If you don''t know a `toot_id`, you can''t perform actions
+        that require it. `toot_id`''s can be retrieved using the `get_timeline` action.
+
+        - current_user is always the full display name (e.g. "Alice Smith").
+
+        - Only use real toot IDs from timeline/feed observations; do not fabricate
+        IDs.
+
+        - For status/content fields, write in first person as the character.
+
+        - Omit optional parameters you do not want to use.'
+    enabled_actions: null
   components:
     initialize:
       built_in: social_media
@@ -219,11 +220,4 @@ gm:
 
           '
   name: mastodon_gm
-  sim_role:
-    name: social media game master
-    module_path: silisocs.environments.gm.game_master
-  class_path: silisocs.environments.gm.game_master.GameMaster
-gm_orchestration:
-  gms: []
-  flow_bindings:
-    flow_to_gms: {}
+  class_path: silisocs.environments.gm.game_master.ComponentGameMaster

@@ -321,10 +321,10 @@ class RedditLikeApp(SocialBackendApp):
             if action_type == "downvote":
                 return self.downvote(user_name, int(target_id), "post")
             if action_type == "upvote_comment":
-                # Upvote a comment (OASIS data-driven voting)
+                # Upvote a comment (data-driven voting)
                 return self.upvote(user_name, int(target_id), "comment")
             if action_type == "downvote_comment":
-                # Downvote a comment (OASIS data-driven voting)
+                # Downvote a comment (data-driven voting)
                 return self.downvote(user_name, int(target_id), "comment")
             if action_type == "reply":
                 # Treat reply as a comment on a post
@@ -599,7 +599,7 @@ class RedditLikeApp(SocialBackendApp):
         return msg
 
     # ================================================================ #
-    # OASIS-Compatible Actions
+    # Extended social actions
     # ================================================================ #
 
     @app_action

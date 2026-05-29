@@ -231,10 +231,11 @@ agents that post from a predefined schedule (news feeds, announcements). See
 
 Create `scenarios/my_scenario/conf/env.yaml` with a single line:
 ```yaml
-backend:
-  type: reddit_like   # or mastodon
-  class_path: null
-  params: {}
+gm:
+  backend:
+    type: reddit_like   # or mastodon
+    class_path: null
+    params: {}
 ```
 
 ---

@@ -46,14 +46,8 @@ class RuntimeObjects:
             spec = self.object_specs.get(game_master.name)
             if not spec:
                 return 0
-            environment_data = spec.params.get("environment_data", {})
-            if not isinstance(environment_data, dict):
-                return 0
-            orchestration = environment_data.get("gm_orchestration", {})
-            if not isinstance(orchestration, dict):
-                return 0
             try:
-                return int(orchestration.get("sequence", 0))
+                return int(spec.params.get("sequence", 0))
             except (TypeError, ValueError):
                 return 0
 
@@ -118,7 +112,8 @@ def add_agent(
         if not isinstance(built, Agent):
             raise TypeError(
                 f"Agent class '{spec.class_path}' returned {type(built).__name__}, "
-                "not a native silisocs Agent. Use `compat: concordia` only for legacy agents."
+                "not a native silisocs Agent. Use `compat: concordia` only for "
+                "Concordia-shaped agents."
             )
         agent = built
     if state:
@@ -216,12 +211,12 @@ def _instantiate_with_supported_kwargs(cls: Any, kwargs: dict[str, Any]) -> Any:
 
 def _build_concordia_agent(*, spec: RuntimeSpec, model: LanguageModel) -> Agent:
     adapter = importlib.import_module("silisocs.adapters.concordia")
-    prefab_cls = _load_object(spec.class_path)
-    prefab = _instantiate_with_supported_kwargs(prefab_cls, {"params": spec.params})
+    builder_cls = _load_object(spec.class_path)
+    builder = _instantiate_with_supported_kwargs(builder_cls, {"params": spec.params})
     memory_bank = adapter.make_concordia_memory_bank(
         str(spec.params.get("memory_backend", "list") or "list")
     )
-    built = prefab.build(model=model, memory_bank=memory_bank)
+    built = builder.build(model=model, memory_bank=memory_bank)
     return adapter.ConcordiaAgentAdapter(built, model)
 
 
@@ -232,14 +227,14 @@ def _build_concordia_game_master(
     agents: list[Agent],
 ) -> Any:
     adapter = importlib.import_module("silisocs.adapters.concordia")
-    prefab_cls = _load_object(spec.class_path)
-    prefab = _instantiate_with_supported_kwargs(prefab_cls, {"params": spec.params})
-    if hasattr(prefab, "agents"):
-        prefab.agents = agents
+    builder_cls = _load_object(spec.class_path)
+    builder = _instantiate_with_supported_kwargs(builder_cls, {"params": spec.params})
+    if hasattr(builder, "agents"):
+        builder.agents = agents
     memory_bank = adapter.make_concordia_memory_bank(
         str(spec.params.get("memory_backend", "list") or "list")
     )
-    built = prefab.build(model=model, memory_bank=memory_bank)
+    built = builder.build(model=model, memory_bank=memory_bank)
     return adapter.ConcordiaGameMasterAdapter(built)
 
 

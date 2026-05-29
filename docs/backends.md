@@ -44,15 +44,16 @@ A minimal in-memory non-social backend that demonstrates the generic
 **Config**: `env/resource_market.yaml`
 
 ```yaml
-backend:
-  type: resource_market
-  class_path: null
-  params:
-    initial_cash: 20
-    initial_inventory:
-      food: 1
-      wood: 0
-      ore: 0
+gm:
+  backend:
+    type: resource_market
+    class_path: null
+    params:
+      initial_cash: 20
+      initial_inventory:
+        food: 1
+        wood: 0
+        ore: 0
 ```
 
 Features:
@@ -74,16 +75,17 @@ rooms, and talk only to agents present in the same room.
 **Config**: `env/virtual_space.yaml`
 
 ```yaml
-backend:
-  type: virtual_space
-  class_path: null
-  params:
-    rooms: [atrium, garden, workshop]
-    starting_room: atrium
-    room_descriptions:
-      atrium: A bright central hall with paths to every other room.
-      garden: A quiet garden for private conversations.
-      workshop: A practical room filled with tools and shared projects.
+gm:
+  backend:
+    type: virtual_space
+    class_path: null
+    params:
+      rooms: [atrium, garden, workshop]
+      starting_room: atrium
+      room_descriptions:
+        atrium: A bright central hall with paths to every other room.
+        garden: A quiet garden for private conversations.
+        workshop: A practical room filled with tools and shared projects.
 ```
 
 Features:
@@ -107,11 +109,12 @@ A local SQLite-based backend that simulates a Twitter/X-like platform.
 **Config**: `env/twitter_like.yaml`
 
 ```yaml
-backend:
-  type: twitter_like
-  class_path: null
-  params: {}
-use_server: false
+gm:
+  backend:
+    type: twitter_like
+    class_path: null
+    params:
+      perform_operations: false
 ```
 
 Features:
@@ -134,11 +137,12 @@ A local SQLite-based backend that simulates a Reddit-like platform.
 **Config**: `env/reddit_like.yaml`
 
 ```yaml
-backend:
-  type: reddit_like
-  class_path: null
-  params: {}
-use_server: false
+gm:
+  backend:
+    type: reddit_like
+    class_path: null
+    params:
+      perform_operations: false
 ```
 
 Features:
@@ -162,11 +166,12 @@ Connects to a real Mastodon instance via its API.
 **Config**: `env/mastodon.yaml`
 
 ```yaml
-backend:
-  type: mastodon
-  class_path: null
-  params: {}
-use_server: true
+gm:
+  backend:
+    type: mastodon
+    class_path: null
+    params:
+      perform_operations: true
 ```
 
 Live server operations require environment variables in `.env`:
@@ -179,14 +184,14 @@ EMAIL_PREFIX=user_email_prefix
 USER001_PASSWORD=password_for_user_001
 ```
 
-For public-package and CI usage, `use_server: false` constructs the Mastodon
+For public-package and CI usage, `perform_operations: false` constructs the Mastodon
 backend in dry-run mode. Dry-run mode is non-interactive, does not clear or
 mutate a Mastodon server, and returns empty/mock timeline data while still
 exercising the same `SocialBackendApp` action interface. Use this mode for tests,
 documentation examples, and local development that should not require Mastodon
 credentials.
 
-See the [infrastructure/](https://github.com/social-sandbox/silisocs/tree/main/infrastructure)
+See the [infrastructure/](https://github.com/sandbox-social/silisocs/tree/main/infrastructure)
 directory for instructions on deploying your own Mastodon instance.
 
 ---
@@ -301,18 +306,19 @@ To implement a new generic environment:
 3. **Configure the class path and params**:
 
     ```yaml
-    backend:
-      type: custom
-      class_path: my_pkg.backends.YourBackendApp
-      params:
-        some_setting: 1
+    gm:
+      backend:
+        type: custom
+        class_path: my_pkg.backends.YourBackendApp
+        params:
+          some_setting: 1
     ```
 
     `params` are strict constructor arguments. Unknown keys fail early unless
     the app constructor accepts `**kwargs`.
 
 4. **Optionally register as a built-in** in the factory if it should be
-   selectable by `env.backend.type` alone:
+   selectable by `env.gm.backend.type` alone:
 
     ```python
     _BUILTIN_BACKENDS["your_backend"] = "my_pkg.backends.YourBackendApp"
@@ -321,12 +327,11 @@ To implement a new generic environment:
 5. **Create a config** at `conf/env/your_backend.yaml`:
 
     ```yaml
-    backend:
-      type: your_backend
-      class_path: null
-      params: {}
-    use_server: false
     gm:
+      backend:
+        type: your_backend
+        class_path: null
+        params: {}
       components:
         observe:
           built_in: app_observation
@@ -341,9 +346,34 @@ Action metadata notes:
 - By default, the selectable action name is the Python function name.
 - Backend authors can optionally provide `selectable_name` and `description`
     via `@app_action(...)` to expose more LLM-friendly names/descriptions.
-- Backend-level action filtering (`env.backend.enabled_actions`) accepts either the
+- Backend-level action filtering (`env.gm.backend.enabled_actions`) accepts either the
     canonical function name or the selectable alias.
 - Fixed-action agent sets can also reference either canonical names or aliases.
+
+Default action surfaces:
+
+- `env=twitter_like` exposes the full Twitter-like action catalog by default:
+    create/reply/like/unlike/repost/quote, follow/unfollow, mute/unmute,
+    search/trends, report, profile actions, `do_nothing`, and `FINISHED`.
+- `env=reddit_like` exposes the full Reddit-like action catalog by default:
+    post/comment/vote, feed/comment inspection, mute/unmute, search/trends,
+    report, profile actions, `do_nothing`, and `FINISHED`.
+- Set `env.gm.backend.enabled_actions` to a list when a scenario should use a
+    smaller action surface. `null` means all backend actions.
+
+Example:
+
+```yaml
+gm:
+  backend:
+    type: twitter_like
+    enabled_actions:
+      - create_tweet
+      - reply_to_tweet
+      - like_tweet
+      - repost_tweet
+      - FINISHED
+```
 
 ### High-Value Customization Tasks
 
