@@ -1,24 +1,12 @@
-"""Configuration and constants for the Social Sandbox Dashboard."""
+"""Configuration and constants for the analysis dashboard."""
 
 from pathlib import Path
 
 # Package root (silisocs/)
 PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 
-# Probe configuration
-PROBE_LABEL = "VotePref"
-
-# Custom names for specific agents
-CUSTOM_NAMES = ["Bill Fredrickson", "Bradley Carter"]
-
 # Color schemes
-LINE_COLORS = {
-    "Bill Fredrickson": "#1f77b4",
-    "Bradley Carter": "#ff7f0e",
-    "did not vote": "#000000",
-}
-
-NODE_COLORS = {"Bill Fredrickson": "#1f77b4", "Bradley Carter": "#ff7f0e", "Other": "#808080"}
+LINE_COLORS = ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd", "#8c564b", "#17becf"]
 
 # Interaction types
 INTERACTION_TYPES = ["post", "like", "repost", "reply"]
@@ -27,4 +15,6 @@ PAST_TENSE_MAP = {
     "like": "liked",
     "repost": "reposted",
     "reply": "replied",
+    "follow": "followed",
+    "unfollow": "unfollowed",
 }

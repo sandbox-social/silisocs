@@ -1,4 +1,4 @@
-"""Streamlit dashboard for configuring and launching mastodon-sim simulations.
+"""Streamlit dashboard for configuring and launching Silisocs simulations.
 
 Run with:
     streamlit run src/silisocs/dashboard/launch_app.py
@@ -28,16 +28,22 @@ _CONF_DIR = _PACKAGE_ROOT / "conf"
 _SCENARIOS_DIR = _PACKAGE_ROOT.parents[2] / "scenarios"
 _PROJECT_ROOT = _PACKAGE_ROOT.parents[2]
 
-_BACKEND_OPTIONS = ["twitter_like", "reddit_like", "mastodon"]
+_BACKEND_OPTIONS = ["twitter_like", "reddit_like", "mastodon", "resource_market", "virtual_space"]
+_SOCIAL_BACKENDS = {"twitter_like", "reddit_like", "mastodon"}
 _MEMORY_BACKENDS = ["list", "associative"]
 _ACTION_MODES = ["custom", "generic", "tool_calling"]
 _NETWORK_TYPES = ["barabasi_albert", "random", "lfr_benchmark"]
 _RUNTIME_INITIALIZERS = ["raw_memory", "formative_memory", "none"]
-_PERSONA_SOURCES = ["hf_dataset", "local_json", "inline", "config_path"]
-_GM_NEXT_ACTING_OPTIONS = ["activity_markov", "all_agents", "fixed_order"]
-_GM_OBSERVE_OPTIONS = ["timeline_every_turn", "episode_only"]
+_PERSONA_SOURCES = ["inline", "local_json", "config_path", "hf_dataset"]
+_GM_NEXT_ACTING_OPTIONS = [
+    "activity_probability",
+    "activity_markov",
+    "all_agents",
+    "fixed_order",
+]
+_GM_OBSERVE_OPTIONS = ["timeline_every_turn", "app_observation", "episode_only"]
 _GM_RESOLVE_OPTIONS = ["parsed_action", "generic_action", "tool_calling"]
-_BACKEND_INITIALIZER_OPTIONS = ["social_media", "app_initialize", "none"]
+_BACKEND_INITIALIZER_OPTIONS = ["social_media", "app_initialize", "none", "disabled"]
 _ENGINE_TURN_POLICY_OPTIONS = ["single_action", "fixed_count", "open_ended"]
 _ENGINE_PROBE_SCHEDULE_OPTIONS = ["step_schedule", "fixed_interval", "disabled"]
 _PROBE_TYPE_OPTIONS = ["NumericRatingProbe", "BinaryProbe", "ChoiceProbe", "FreeTextProbe"]
@@ -312,6 +318,14 @@ def _backend_class(backend_type: str):
         from silisocs.environments.backends.mastodon.apps import SocialNetworkApp
 
         return SocialNetworkApp
+    if backend_type == "resource_market":
+        from silisocs.environments.backends.resource_market.app import ResourceMarketApp
+
+        return ResourceMarketApp
+    if backend_type == "virtual_space":
+        from silisocs.environments.backends.virtual_space.app import VirtualSpaceApp
+
+        return VirtualSpaceApp
     raise ValueError(f"Unknown backend_type: {backend_type}")
 
 
@@ -803,6 +817,9 @@ _engine_probe_defaults = (
     if isinstance((_evals_base_defaults.get("probes", {}) or {}).get("schedule", {}), dict)
     else {}
 )
+_llm_defaults = (
+    _sim_defaults.get("llm", {}) if isinstance(_sim_defaults.get("llm", {}), dict) else {}
+)
 
 # ---------------------------------------------------------------------------
 # MAIN
@@ -851,30 +868,29 @@ with tab_sim:
     with col2:
         st.text_input(
             "Default LLM model",
-            value=str(_sim_defaults.get("llm_name", "gpt-4o-mini")),
+            value=str(_llm_defaults.get("name", "gpt-4o-mini")),
             key="llm_name",
             help="Default model. Per-class overrides in Agent Classes tab.",
         )
+        llm_provider_options = ["openai", "openai_compatible", "scripted", "disabled"]
+        llm_provider_default = str(_llm_defaults.get("provider", "openai"))
         st.selectbox(
             "LLM provider",
-            ["openai", "local", "disabled"],
-            index=["openai", "local", "disabled"].index(
-                str(_sim_defaults.get("llm_provider", "openai"))
-                if str(_sim_defaults.get("llm_provider", "openai"))
-                in {"openai", "local", "disabled"}
-                else "openai"
-            ),
+            llm_provider_options,
+            index=llm_provider_options.index(llm_provider_default)
+            if llm_provider_default in llm_provider_options
+            else 0,
             key="llm_provider",
         )
         st.text_input(
             "LLM API base URL",
-            value=str(_sim_defaults.get("llm_api_base") or ""),
+            value=str(_llm_defaults.get("api_base") or ""),
             key="llm_api_base",
             help="Required for provider=openai_compatible.",
         )
         st.text_input(
             "LLM API key",
-            value=str(_sim_defaults.get("llm_api_key") or ""),
+            value=str(_llm_defaults.get("api_key") or ""),
             type="password",
             key="llm_api_key",
             help="Uses OPENAI_API_KEY env var if blank.",
@@ -1386,116 +1402,122 @@ with tab_env:
         help="Constrains action prompts, parser/tool choices, and fixed-action agent execution.",
     )
 
-    # Timeline strategy selection
-    st.markdown("**Timeline Configuration**")
-    timeline_strategy_default = _environment_defaults.get(
-        "timeline_mode",
-        _environment_defaults.get(
-            "timeline_strategy", _sim_defaults.get("timeline_strategy", "follower_chronological")
-        ),
-    )
-    timeline_config_default = _environment_defaults.get(
-        "timeline_config", _sim_defaults.get("timeline_config", {})
-    )
-
-    # Define available strategies per backend.
-    timeline_strategies_by_backend = {
-        "twitter_like": [
-            "follower_chronological",
-            "pure_recsys",
-            "hybrid_recsys_follower",
-            "curated_global",
-        ],
-        "reddit_like": ["follower_chronological", "pure_recsys", "hybrid_recsys_follower"],
-        "mastodon": ["follower_chronological"],  # Mastodon always uses server feed
-    }
-
-    available_strategies = timeline_strategies_by_backend.get(
-        selected_backend_for_actions, ["follower_chronological"]
-    )
-    strategy_idx = (
-        available_strategies.index(timeline_strategy_default)
-        if timeline_strategy_default in available_strategies
-        else 0
-    )
-
-    selected_timeline_strategy = st.selectbox(
-        "Timeline strategy",
-        available_strategies,
-        index=strategy_idx,
-        key="timeline_strategy",
-        help=(
-            "follower_chronological: Posts from followed users (chronological)\n"
-            "pure_recsys: Pure recommendation algorithm feed\n"
-            "hybrid_recsys_follower: Mix of recommendations + followed users\n"
-            "curated_global: Global trending + network mix (Twitter only)"
-        ),
-    )
-
-    # Timeline configuration for hybrid mode
-    if selected_timeline_strategy == "hybrid_recsys_follower":
-        tc_col1, tc_col2 = st.columns(2)
-        with tc_col1:
-            recsys_ratio = st.slider(
-                "Recommendation ratio",
-                0.0,
-                1.0,
-                float(timeline_config_default.get("recsys_ratio", 0.6)),
-                0.1,
-                key="timeline_recsys_ratio",
-                help="Fraction of timeline to fill with recommendations",
-            )
-        with tc_col2:
-            follower_ratio = 1.0 - recsys_ratio
-            st.metric("Follower ratio", f"{follower_ratio:.1%}")
-
-    # Seed posts configuration
-    st.markdown("**Seed Posts Configuration**")
-    seed_posts_type = st.selectbox(
-        "Seed post provider",
-        ["agent", "csv", "json", "none", "fallback"],
-        index=0,
-        key="seed_posts_type",
-        help=(
-            "agent: Ask agents for starting posts through their normal act path\n"
-            "csv: Load from CSV file (agent_name,post_text)\n"
-            "json: Load from JSON file ({agent_name: post_text})\n"
-            "none: No seed posts (organic growth)\n"
-            "fallback: Use configured file rows first, then ask agents for missing posts"
-        ),
-    )
-
-    if seed_posts_type in ("csv", "json", "fallback"):
-        seed_posts_file = st.text_input(
-            "Seed posts file path",
-            value="",
-            key="seed_posts_file",
-            help="Path to CSV or JSON file with agent posts",
-            placeholder="agents_posts.csv or agents_posts.json",
+    if selected_backend_for_actions in _SOCIAL_BACKENDS:
+        st.markdown("**Timeline Configuration**")
+        observe_params = (
+            ((_gm_components_defaults.get("observe") or {}).get("params") or {})
+            if isinstance(_gm_components_defaults.get("observe"), dict)
+            else {}
         )
+        timeline_strategy_default = observe_params.get("timeline_mode", "follower_chronological")
+        timeline_config_default = observe_params.get("timeline_config", {})
+
+        timeline_strategies_by_backend = {
+            "twitter_like": [
+                "follower_chronological",
+                "pure_recsys",
+                "hybrid_recsys_follower",
+                "curated_global",
+            ],
+            "reddit_like": ["follower_chronological", "pure_recsys", "hybrid_recsys_follower"],
+            "mastodon": ["follower_chronological"],
+        }
+
+        available_strategies = timeline_strategies_by_backend.get(
+            selected_backend_for_actions, ["follower_chronological"]
+        )
+        strategy_idx = (
+            available_strategies.index(timeline_strategy_default)
+            if timeline_strategy_default in available_strategies
+            else 0
+        )
+
+        selected_timeline_strategy = st.selectbox(
+            "Timeline strategy",
+            available_strategies,
+            index=strategy_idx,
+            key="timeline_strategy",
+            help=(
+                "follower_chronological: posts from followed users\n"
+                "pure_recsys: recommendation feed\n"
+                "hybrid_recsys_follower: recommendations plus followed users\n"
+                "curated_global: global and network mix for Twitter-like runs"
+            ),
+        )
+
+        if selected_timeline_strategy == "hybrid_recsys_follower":
+            tc_col1, tc_col2 = st.columns(2)
+            with tc_col1:
+                recsys_ratio = st.slider(
+                    "Recommendation ratio",
+                    0.0,
+                    1.0,
+                    float(timeline_config_default.get("recsys_ratio", 0.6)),
+                    0.1,
+                    key="timeline_recsys_ratio",
+                    help="Fraction of timeline to fill with recommendations",
+                )
+            with tc_col2:
+                follower_ratio = 1.0 - recsys_ratio
+                st.metric("Follower ratio", f"{follower_ratio:.1%}")
+
+        st.markdown("**Seed Posts Configuration**")
+        seed_posts_type = st.selectbox(
+            "Seed post provider",
+            ["agent", "csv", "json", "none", "fallback"],
+            index=0,
+            key="seed_posts_type",
+            help=(
+                "agent: ask agents for starting posts\n"
+                "csv: load from CSV file (agent_name,post_text)\n"
+                "json: load from JSON file ({agent_name: post_text})\n"
+                "none: no seed posts\n"
+                "fallback: use configured file rows first, then ask agents for missing posts"
+            ),
+        )
+
+        if seed_posts_type in ("csv", "json", "fallback"):
+            st.text_input(
+                "Seed posts file path",
+                value="",
+                key="seed_posts_file",
+                help="Path to CSV or JSON file with agent posts",
+                placeholder="agents_posts.csv or agents_posts.json",
+            )
 
     with st.expander("GM Components", expanded=False):
         gc1, gc2 = st.columns(2)
 
         next_acting_defaults = _gm_components_defaults.get("next_acting", {})
-        next_acting_default = (
-            next_acting_defaults.get("built_in", "activity_markov")
-            if isinstance(next_acting_defaults, dict)
-            else "activity_markov"
-        )
         observe_defaults = _gm_components_defaults.get("observe", {})
-        observe_default = (
-            observe_defaults.get("built_in", "timeline_every_turn")
-            if isinstance(observe_defaults, dict)
-            else "timeline_every_turn"
-        )
         resolve_defaults = _gm_components_defaults.get("resolve", {})
-        resolve_default = (
-            resolve_defaults.get("built_in", "parsed_action")
-            if isinstance(resolve_defaults, dict)
-            else "parsed_action"
-        )
-        gm_initializer_default = "social_media"
+        initialize_defaults = _gm_components_defaults.get("initialize", {})
+        if selected_backend_for_actions in _SOCIAL_BACKENDS:
+            next_acting_default = (
+                next_acting_defaults.get("built_in", "activity_probability")
+                if isinstance(next_acting_defaults, dict)
+                else "activity_probability"
+            )
+            observe_default = (
+                observe_defaults.get("built_in", "timeline_every_turn")
+                if isinstance(observe_defaults, dict)
+                else "timeline_every_turn"
+            )
+            resolve_default = (
+                resolve_defaults.get("built_in", "tool_calling")
+                if isinstance(resolve_defaults, dict)
+                else "tool_calling"
+            )
+            gm_initializer_default = (
+                initialize_defaults.get("built_in", "social_media")
+                if isinstance(initialize_defaults, dict)
+                else "social_media"
+            )
+        else:
+            next_acting_default = "fixed_order"
+            observe_default = "app_observation"
+            resolve_default = "tool_calling"
+            gm_initializer_default = "app_initialize"
 
         with gc1:
             st.selectbox(
@@ -1606,6 +1628,17 @@ with tab_env:
                 "Open-ended finished action signal",
                 value=str(turn_policy_params.get("finished_action_signal", "DONE")),
                 key="engine_turn_policy_finished_action_signal",
+            )
+            observe_default = str(turn_policy_params.get("observe_before_act", "first"))
+            observe_options = ["first", "always", "never"]
+            st.selectbox(
+                "Observe before act",
+                observe_options,
+                index=observe_options.index(observe_default)
+                if observe_default in observe_options
+                else 0,
+                key="engine_turn_policy_observe_before_act",
+                help="first preserves current behavior; always refreshes context before every repeated action; never disables turn-policy observations.",
             )
             st.text_input(
                 "Custom turn-policy class path",
@@ -2048,10 +2081,10 @@ with tab_launch:
         "num_steps": st.session_state.get("num_steps", 50),
         "seed": st.session_state.get("seed", 1),
         "run_name": st.session_state.get("run_name", "run1"),
-        "llm_provider": st.session_state.get("llm_provider", "openai"),
-        "llm_name": st.session_state.get("llm_name", "gpt-4o-mini"),
-        "llm_api_base": st.session_state.get("llm_api_base") or None,
-        "llm_api_key": st.session_state.get("llm_api_key") or None,
+        "llm.provider": st.session_state.get("llm_provider", "openai"),
+        "llm.name": st.session_state.get("llm_name", "gpt-4o-mini"),
+        "llm.api_base": st.session_state.get("llm_api_base") or None,
+        "llm.api_key": st.session_state.get("llm_api_key") or None,
         "max_concurrent_actions": st.session_state.get("max_concurrent_actions", 1000),
         "action_mode": st.session_state.get("action_mode", "custom"),
         "initialization.agents.built_in": st.session_state.get(
@@ -2089,6 +2122,9 @@ with tab_launch:
         "engine.turn_policy.params.finished_action_signal": st.session_state.get(
             "engine_turn_policy_finished_action_signal", "DONE"
         ),
+        "engine.turn_policy.params.observe_before_act": st.session_state.get(
+            "engine_turn_policy_observe_before_act", "first"
+        ),
     }
     eval_params = {
         "probes.schedule.built_in": st.session_state.get(
@@ -2104,53 +2140,81 @@ with tab_launch:
             "engine_probe_schedule_every_n_steps", 1
         ),
     }
+    selected_backend = st.session_state.get("backend_type", "twitter_like")
     env_params = {
         "gm.backend.enabled_actions": (
             st.session_state.get("enabled_actions")
             if st.session_state.get("enabled_actions")
             else None
         ),
-        "gm.components.observe.params.timeline_posts": st.session_state.get("timeline_posts", 10),
-        "gm.components.observe.params.timeline_mode": st.session_state.get(
-            "timeline_strategy", "follower_chronological"
-        ),
-        "gm.components.observe.params.timeline_config": {
-            "recsys_ratio": st.session_state.get("timeline_recsys_ratio", 0.6),
-            "follower_ratio": 1.0 - st.session_state.get("timeline_recsys_ratio", 0.6),
-        },
         "observation_history": st.session_state.get("observation_history", 100),
         "gm_orchestration": st.session_state.get("gm_orchestration_yaml_parsed", {}),
+        "gm.components.initialize.built_in": st.session_state.get(
+            "gm_initializer_built_in",
+            "social_media" if selected_backend in _SOCIAL_BACKENDS else "app_initialize",
+        ),
+        "gm.components.initialize.class_path": (
+            st.session_state.get("gm_initializer_class_path") or None
+        ),
         "gm.components.next_acting.built_in": st.session_state.get(
-            "gm_next_acting_built_in", "activity_markov"
+            "gm_next_acting_built_in",
+            "activity_probability" if selected_backend in _SOCIAL_BACKENDS else "fixed_order",
         ),
         "gm.components.next_acting.class_path": (
             st.session_state.get("gm_next_acting_class_path") or None
         ),
         "gm.components.observe.built_in": st.session_state.get(
-            "gm_observe_built_in", "timeline_every_turn"
+            "gm_observe_built_in",
+            "timeline_every_turn" if selected_backend in _SOCIAL_BACKENDS else "app_observation",
         ),
         "gm.components.observe.class_path": (st.session_state.get("gm_observe_class_path") or None),
         "gm.components.resolve.built_in": st.session_state.get(
-            "gm_resolve_built_in", "parsed_action"
+            "gm_resolve_built_in", "tool_calling"
         ),
         "gm.components.resolve.class_path": (st.session_state.get("gm_resolve_class_path") or None),
-        "gm.components.update.built_in": (
-            "social_recommendation"
-            if st.session_state.get("engine_recsys_enabled", False)
-            else "disabled"
-        ),
-        "gm.components.update.params.default_recsys_type": st.session_state.get(
-            "engine_recsys_type", "reddit"
-        ),
-        "gm.components.update.params.max_posts": st.session_state.get(
-            "engine_recsys_max_rec_posts", 10
-        ),
-        "gm.components.update.params.update_every_n_steps": st.session_state.get(
-            "engine_recsys_update_every_n_steps", 1
-        ),
-        "gm.components.update.params.lazy": st.session_state.get("engine_recsys_lazy", True),
     }
-    selected_backend = st.session_state.get("backend_type", "twitter_like")
+    if selected_backend in _SOCIAL_BACKENDS:
+        env_params.update(
+            {
+                "gm.components.observe.params.timeline_posts": st.session_state.get(
+                    "timeline_posts", 10
+                ),
+                "gm.components.observe.params.timeline_mode": st.session_state.get(
+                    "timeline_strategy", "follower_chronological"
+                ),
+                "gm.components.observe.params.timeline_config": {
+                    "recsys_ratio": st.session_state.get("timeline_recsys_ratio", 0.6),
+                    "follower_ratio": 1.0 - st.session_state.get("timeline_recsys_ratio", 0.6),
+                },
+                "gm.components.update.built_in": (
+                    "social_recommendation"
+                    if st.session_state.get("engine_recsys_enabled", False)
+                    else "disabled"
+                ),
+                "gm.components.update.params.default_recsys_type": st.session_state.get(
+                    "engine_recsys_type", "reddit"
+                ),
+                "gm.components.update.params.max_posts": st.session_state.get(
+                    "engine_recsys_max_rec_posts", 10
+                ),
+                "gm.components.update.params.update_every_n_steps": st.session_state.get(
+                    "engine_recsys_update_every_n_steps", 1
+                ),
+                "gm.components.update.params.lazy": st.session_state.get(
+                    "engine_recsys_lazy", True
+                ),
+            }
+        )
+    else:
+        env_params.update(
+            {
+                "gm.components.initialize.built_in": "app_initialize",
+                "gm.components.next_acting.built_in": "fixed_order",
+                "gm.components.observe.built_in": "app_observation",
+                "gm.components.resolve.built_in": "tool_calling",
+                "gm.components.update.built_in": "disabled",
+            }
+        )
 
     # Build scenario config for saving.
     scenario_data = _build_scenario_config()
@@ -2162,7 +2226,7 @@ with tab_launch:
         st.metric("Agents", sim_params["num_agents"])
         st.metric("Episodes", sim_params["num_steps"])
     with sc2:
-        st.metric("Default LLM", sim_params["llm_name"])
+        st.metric("Default LLM", sim_params["llm.name"])
         st.metric("Backend", selected_backend)
     with sc3:
         n_classes = len(st.session_state.get("_agent_classes", []))
@@ -2177,10 +2241,7 @@ with tab_launch:
             st.markdown(f"- `{cls_name}`: {model_name}")
 
     # Build Hydra CLI.
-    overrides = _build_hydra_overrides(
-        sim_params,
-        env_params,
-        selected_backend,
+    graph_overrides = (
         {
             "gm.components.initialize.params.graph.network_type": st.session_state.get(
                 "network_type", "barabasi_albert"
@@ -2191,7 +2252,15 @@ with tab_launch:
             "gm.components.initialize.params.graph.base_followership_probability": st.session_state.get(
                 "follow_prob", 0.3
             ),
-        },
+        }
+        if selected_backend in _SOCIAL_BACKENDS
+        else {}
+    )
+    overrides = _build_hydra_overrides(
+        sim_params,
+        env_params,
+        selected_backend,
+        graph_overrides,
         eval_params,
     )
 

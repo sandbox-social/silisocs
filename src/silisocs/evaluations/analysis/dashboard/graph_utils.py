@@ -5,7 +5,6 @@ import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 
 from silisocs.evaluations.analysis.dashboard.config import (
-    CUSTOM_NAMES,
     INTERACTION_TYPES,
     LINE_COLORS,
     PAST_TENSE_MAP,
@@ -22,55 +21,52 @@ def compute_positions(graph):
 
 
 def probe_plot_preprocessing(probe_data):
-    """Preprocess probe data for plotting vote distribution over time."""
-    candidate1_votes_over_time = []
-    candidate2_votes_over_time = []
-    non_votes_over_time = []
+    """Preprocess probe data for plotting response distribution over time."""
     x_data = sorted(probe_data.keys())
+    response_labels = sorted(
+        {
+            str(response)
+            for episode_responses in probe_data.values()
+            for response in episode_responses.values()
+            if response is not None
+        }
+    )
 
+    graphs_data = []
+    for idx, label in enumerate(response_labels):
+        values = []
+        for ep in x_data:
+            ep_responses = probe_data[ep]
+            total = len(ep_responses)
+            count = sum(1 for response in ep_responses.values() if str(response) == label)
+            values.append((count / total) * 100 if total > 0 else 0)
+        graphs_data.append(
+            {
+                "label": label,
+                "data": {"x": x_data, "y": values},
+                "color": LINE_COLORS[idx % len(LINE_COLORS)],
+            }
+        )
+
+    missing_values = []
     for ep in x_data:
-        ep_votes = probe_data[ep]
-        total_ep_votes = len(ep_votes)
-
-        candidate1_votes = sum(
-            1 for vote in ep_votes.values() if vote == CUSTOM_NAMES[0].split(" ")[0]
+        ep_responses = probe_data[ep]
+        total = len(ep_responses)
+        missing = sum(
+            1 for response in ep_responses.values() if response is None or str(response) == ""
         )
-        candidate2_votes = sum(
-            1 for vote in ep_votes.values() if vote == CUSTOM_NAMES[1].split(" ")[0]
-        )
-
-        candidate1_votes_over_time.append(
-            (candidate1_votes / total_ep_votes) * 100 if total_ep_votes > 0 else 0
-        )
-        candidate2_votes_over_time.append(
-            (candidate2_votes / total_ep_votes) * 100 if total_ep_votes > 0 else 0
-        )
-        non_votes_over_time.append(
-            ((total_ep_votes - candidate2_votes - candidate1_votes) / total_ep_votes) * 100
-            if total_ep_votes > 0
-            else 0
+        missing_values.append((missing / total) * 100 if total > 0 else 0)
+    if any(missing_values):
+        graphs_data.append(
+            {
+                "label": "No response",
+                "data": {"x": x_data, "y": missing_values},
+                "color": "#808080",
+            }
         )
 
-    graphs_data = [
-        {
-            "label": "for " + CUSTOM_NAMES[0].split(" ")[0],
-            "data": {"x": x_data, "y": candidate1_votes_over_time},
-            "color": LINE_COLORS[CUSTOM_NAMES[0]],
-        },
-        {
-            "label": "for " + CUSTOM_NAMES[1].split(" ")[0],
-            "data": {"x": x_data, "y": candidate2_votes_over_time},
-            "color": LINE_COLORS[CUSTOM_NAMES[1]],
-        },
-        {
-            "label": "did not vote",
-            "data": {"x": x_data, "y": non_votes_over_time},
-            "color": LINE_COLORS["did not vote"],
-        },
-    ]
-
-    title_label = "Vote Distribution Over Time"
-    yaxis_label = "Vote Percentage"
+    title_label = "Probe Responses Over Time"
+    yaxis_label = "Response Percentage"
     return graphs_data, title_label, yaxis_label
 
 
@@ -126,7 +122,7 @@ def create_interactions_figure(interactions_by_episode, active_users_by_episode,
     int_episodes = sorted(interactions_by_episode.keys())
 
     for ep in int_episodes:
-        num_active_users = len(active_users_by_episode[ep]) - 1  # Don't count news agent
+        num_active_users = len(active_users_by_episode.get(ep, set()))
         counts = dict.fromkeys(int_types, 0)
 
         # Count interactions
@@ -138,14 +134,9 @@ def create_interactions_figure(interactions_by_episode, active_users_by_episode,
         # Append normalized counts
         for interaction in int_types:
             if interaction in counts:
-                if interaction == "posted":
-                    interactions_over_time[interaction].append(
-                        (counts[interaction] - 1) / num_active_users if num_active_users > 0 else 0
-                    )
-                else:
-                    interactions_over_time[interaction].append(
-                        (counts[interaction]) / num_active_users if num_active_users > 0 else 0
-                    )
+                interactions_over_time[interaction].append(
+                    counts[interaction] / num_active_users if num_active_users > 0 else 0
+                )
 
         # Calculate active user fraction
         active_user_fraction = num_active_users / total_users if total_users > 0 else 0
@@ -155,10 +146,15 @@ def create_interactions_figure(interactions_by_episode, active_users_by_episode,
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
     # Add interaction traces
-    colors = {"liked": "#2ca02c", "boosted": "#ff7f0e", "replied": "#9467bd", "posted": "#1f77b4"}
+    colors = {
+        "liked": "#2ca02c",
+        "reposted": "#ff7f0e",
+        "replied": "#9467bd",
+        "posted": "#1f77b4",
+    }
     markers = {
         "liked": "circle",
-        "boosted": "square",
+        "reposted": "square",
         "replied": "diamond",
         "posted": "triangle-up",
     }
@@ -171,7 +167,7 @@ def create_interactions_figure(interactions_by_episode, active_users_by_episode,
                 mode="lines+markers",
                 name=interaction_type.replace("_", " ").title(),
                 line=dict(color=colors[interaction_type]),
-                marker=dict(symbol=markers[interaction_type.replace("_toot", "")], size=6),
+                marker=dict(symbol=markers[interaction_type], size=6),
                 cliponaxis=False,
             ),
             secondary_y=False,

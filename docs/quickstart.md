@@ -15,10 +15,10 @@ packaged inline personas. It does not require optional Hugging Face dependencies
 uv run silisocs
 ```
 
-For a smoke test without model API calls, disable the LLM:
+For a smoke test without model API calls, use the scripted model provider:
 
 ```sh
-uv run silisocs sim.llm.disabled=true
+uv run silisocs sim.llm.provider=scripted
 ```
 
 This uses the built-in `default` preset with 10 agents for 5 steps. Override the

@@ -17,9 +17,9 @@ backend such as a Twitter-like app, Reddit-like app, real Mastodon instance, or
 generic non-social environment.
 
 You configure everything in YAML: the scenario setting, agent populations,
-social network topology, evaluation probes, and platform type. The framework
-handles the rest — memory initialization, agent turn policys, probe deployment,
-and structured output logging.
+backend, Game Master components, evaluation probes, and run defaults. The
+framework handles the rest — memory initialization, turn policies, probe
+deployment, and structured output logging.
 
 ## Key Features
 
@@ -52,14 +52,14 @@ If your goal is to **design and run scenarios** without writing code:
 
 ## For Developers
 
-If you want to **extend the framework** (new backends, entities, probes, initializers):
+If you want to **extend the framework** (new backends, agents, probes, initializers):
 
 1. Read the [Usage Overview](usage.md) to understand the pipeline
 2. See [Building Agents](building_agents.md) for custom builder classes
 3. See [Concordia Bridge](concordia_bridge.md) for optional legacy interoperability details
 4. See [Memory Initialization](memory_initialization.md) for custom initializers
 5. See [Environment Layer](environment_layer.md) for Engine/GM/component configurability
-6. See [Environment Backends](backends.md#adding-a-new-backend-developer-guide) for new platform backends
+6. See [Environment Backends](backends.md#adding-a-new-backend-developer-guide) for new backend apps
 7. See [Evaluation Probes](probes.md#custom-probe-types) for custom probe types
 8. See [Simulation Extensibility API](simulation_extensibility_api.md) for class/method contracts and extension hooks
 9. Check [Contributing](contributing.md) for code standards and workflows
@@ -137,7 +137,7 @@ graph TD
 ```
 silisocs/
 ├── src/silisocs/
-│   ├── agents/              # Agent entities, builders, memory initialization
+│   ├── agents/              # Agent runtimes
 │   ├── conf/                # Hydra YAML config hierarchy
 │   ├── dashboard/           # Streamlit GUI
 │   ├── environments/        # Social media backends + game master

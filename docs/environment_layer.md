@@ -7,7 +7,7 @@ The environment layer is composed of three parts:
 
 1. **Engine**: step loop, concurrency, probe timing, and action execution orchestration.
 2. **Game Master (GM)**: who acts next, what agents observe, and how action text is resolved.
-3. **Environment Backend**: platform or domain state and executable actions
+3. **Environment Backend**: domain state and executable actions
    (`@app_action` methods).
 
 This page focuses on end-user and developer configurability for Engine/GM/backends.
@@ -36,7 +36,7 @@ Flow controls use two independent settings:
 
 Canonical modules:
 
-- `src/silisocs/environments/gm/game_master.py`: primary GM builder/runtime entry.
+- `src/silisocs/environments/gm/game_master.py`: primary component-GM runtime.
 - `src/silisocs/environments/gm/components/`: native slot components.
 - `src/silisocs/simulation_engines/base_engines.py`: primary runtime engine.
 Import from the `environments/gm/` and `simulation_engines/` packages.
@@ -74,6 +74,7 @@ forwarded observation-settings bag.
 ### Built-in Next-Acting Components
 
 - `activity_markov`: role-conditioned active/inactive transitions (baseline behavior).
+- `activity_probability`: independent per-step activation using role or global probabilities.
 - `all_agents`: all agents are active each step.
 - `fixed_order`: one active agent in cyclic order.
 
@@ -83,6 +84,10 @@ forwarded observation-settings bag.
 - `timeline_every_turn`: fetch timeline whenever observation is requested.
 - `episode_only`: return episode-only observations (for fixed/pre-scripted flows).
 
+`timeline_every_turn` is social-media-specific and lives under
+`silisocs.environments.gm.components.social_media`. `app_observation` and
+`episode_only` are generic baselines for non-social domains.
+
 ### Built-in Resolve Components
 
 - `parsed_action`: parse `ACTION TYPE / TARGET ID / CONTENT / REASONING` output.
@@ -91,19 +96,20 @@ forwarded observation-settings bag.
 
 Fixed-action directive handling:
 
-- Fixed-action entities should emit standard action text directly (for example,
+- Fixed-action agents should emit standard action text directly (for example,
   the existing `ACTION TYPE / TARGET ID / CONTENT / REASONING` format), so
   no resolve-component modification is required.
 - GM observe components can branch by agent flow type and return specialized
   observations (for example `EPISODE: <n>`).
 
-### Runtime Initializers
+### Initialization Components
 
-Backend setup is owned by each runtime game master. The default runtime
-initializer runs agent memory setup, asks each GM to initialize its backend app
-and graph state, then posts seed content before the episode loop starts.
+Engine startup runs agent initialization, Game Master initialization, then
+simulation initialization. Backend setup is owned by each Game Master through
+its `components.initialize` slot. Seed content is simulation initialization and
+is posted later through normal `resolve_action(...)` calls.
 
-Built-in backend initializer slots:
+Built-in Game Master initialize components:
 
 - `social_media`: create users, wire follow/subreddit graphs, and bind social
   action metadata.
@@ -114,6 +120,9 @@ Built-in backend initializer slots:
 
 - `social_recommendation`: update social recommendation state.
 - `disabled` / `none`: no-op component for generic or non-recsys environments.
+
+`social_recommendation` is the social-media update component. Generic backends
+should use `disabled`/`none` or provide their own `UpdateComponent`.
 
 ## Tool-Calling Resolve Mode
 
@@ -159,13 +168,27 @@ uv run silisocs env.gm.components.next_acting.built_in=all_agents
 
 ## Writing Custom GM Components
 
-Each component can be swapped via `class_path`.
+Each component can be swapped via `class_path`. Component constructors should
+use explicit keyword parameters. The factory injects common runtime values
+such as `backend`, `model`, `agent_names`, `sim_roles`, and `agent_flow_tags`
+when the constructor accepts them.
 
-- Observe component: subclass the native observation component base and implement `make_observation(agent_name)`.
-- Resolve component: use the native GM helper bases in `silisocs.environments.gm.components.base` and implement `resolve_action(agent_name, action)`.
-- Next-acting component: subclass the native next-acting component bases and implement `acting_agent_names()`.
-- Game Master initializer: implement `initialize(...)` (used during the
-  Engine's Game Master initialization phase).
+- Initialize component: subclass `InitializeComponent` and implement
+  `initialize(*, agents, gm_context, context) -> None`.
+- Next-acting component: subclass `NextActingComponent` and implement
+  `acting_agent_names() -> list[str]`.
+- Action-prompt component: subclass `ActionPromptComponent` and implement
+  `action_prompt(agent_name) -> ActionSpec`.
+- Observe component: subclass `ObservationComponent` and implement
+  `make_observation(agent_name) -> str`.
+- Resolve component: subclass `ResolveComponent` and implement
+  `resolve_action(agent_name, action) -> str`.
+- Update component: subclass `UpdateComponent` and implement
+  `update(*, step, agents, context=None) -> None`.
+
+Stateful components may override `get_state()` and `set_state(state)` for
+checkpoint resume. Keep backend domain state in the backend; component state is
+for component-local cursors, caches, or policy state.
 
 Use built-ins under `src/silisocs/environments/gm/components/` as templates.
 
@@ -188,13 +211,13 @@ This is not a meaningful runtime-overhead concern; the main tradeoff is API disc
 
 YAML slot switching is ideal for most use cases, but you can still replace the entire GM runtime.
 
-1. Implement a native GM class exposing `initialize`, `acting_agents`,
+1. Implement a native GM class exposing `initialize`, `update`, `acting_agents`,
    `action_prompt`, `make_observation`, and `resolve_action`.
 2. Point config to the GM `class_path` and constructor `params`.
 
 Typical configuration path:
 
-- `env.gamemaster.sim_role.module_path`
+- `env.gm.class_path`
 
 This allows full control over custom inputs/outputs, component graph wiring, and orchestration logic beyond slot-level swaps.
 
@@ -210,9 +233,11 @@ other slots at baseline defaults.
 
 Engine extensibility lives under:
 
-- `src/silisocs/simulation_engines/base.py`
 - `src/silisocs/simulation_engines/base_engines.py`
-- `src/silisocs/simulation_engines/policies/action_chunk.py`
+- `src/silisocs/simulation_engines/runtime_base.py`
+- `src/silisocs/simulation_engines/policies/loops.py`
+- `src/silisocs/simulation_engines/policies/steps.py`
+- `src/silisocs/simulation_engines/policies/turns.py`
 - `src/silisocs/simulation_engines/policies/probe_schedule.py`
 - `src/silisocs/simulation_engines/policies/factory.py`
 
@@ -230,7 +255,8 @@ sim:
     turn_policy:
       built_in: single_action   # single_action | fixed_count | open_ended
       class_path: null
-      params: {}
+      params:
+        observe_before_act: first  # first | always | never
 
 evals:
   probes:
@@ -279,7 +305,7 @@ GM:
   `env.gm.backend.class_path` and `env.gm.backend.params`.
 - Action events are written through the standard action event logger.
 - Game Master initialization receives agent names, simulation roles, and
-  social-network config through the configured initializer component.
+  component-owned initializer params through the configured initializer component.
 - Open-ended turn policies expose `FINISHED` as an enabled backend action.
 
 This keeps simple and shared-flow runs interchangeable from the backend and
@@ -288,9 +314,9 @@ not bypass backend initialization or logging.
 
 ## Recommended Boundary
 
-- Put **phase scheduling and chunk semantics** in Engine policies.
+- Put **loop, step, and turn scheduling** in Engine policies.
 - Put **next actor, observe, resolve, update, and initializer behavior** in GM components.
-- Put **platform action semantics** in backend `@app_action` methods.
+- Put **backend action semantics** in backend `@app_action` methods.
 
 For non-social domains, subclass `BackendApp`, provide generic
 `observe(...)`, use `app_observation`, and disable recommendation scheduling.

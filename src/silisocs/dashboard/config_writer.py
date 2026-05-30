@@ -1,5 +1,6 @@
 """Dashboard scenario config writer."""
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,34 @@ def set_nested_value(payload: dict, dotted_key: str, value: object) -> None:
             cursor[part] = next_cursor
         cursor = next_cursor
     cursor[parts[-1]] = value
+
+
+def _default_env_payload(backend_type: str) -> dict[str, Any]:
+    """Load the packaged env default for a backend."""
+    env_file = Path(__file__).resolve().parents[1] / "conf" / "env" / f"{backend_type}.yaml"
+    if not env_file.exists():
+        return {
+            "gm": {
+                "backend": {
+                    "type": backend_type,
+                    "class_path": None,
+                    "params": {},
+                    "enabled_actions": None,
+                },
+                "class_path": "silisocs.environments.gm.game_master.ComponentGameMaster",
+                "name": f"{backend_type}_gm",
+                "components": {
+                    "initialize": {"built_in": "app_initialize", "class_path": None, "params": {}},
+                    "next_acting": {"built_in": "fixed_order", "class_path": None, "params": {}},
+                    "observe": {"built_in": "app_observation", "class_path": None, "params": {}},
+                    "resolve": {"built_in": "tool_calling", "class_path": None, "params": {}},
+                    "update": {"built_in": "disabled", "class_path": None, "params": {}},
+                    "action_prompt": {"built_in": "default", "class_path": None, "params": {}},
+                },
+            }
+        }
+    loaded = yaml.safe_load(env_file.read_text(encoding="utf-8")) or {}
+    return deepcopy(loaded)
 
 
 def save_scenario(
@@ -65,50 +94,7 @@ def save_scenario(
     if isinstance(scenario_data.get("fixed_action_sets"), dict):
         agent_payload["fixed_action_sets"] = scenario_data.get("fixed_action_sets", {})
 
-    env_payload = {
-        "gm": {
-            "backend": {
-                "type": backend_type or "twitter_like",
-                "class_path": None,
-                "params": {},
-                "enabled_actions": None,
-            },
-            "class_path": "silisocs.environments.gm.game_master.ComponentGameMaster",
-            "name": f"{backend_type or 'twitter_like'}_gm",
-            "components": {
-                "initialize": {
-                    "built_in": "social_media",
-                    "class_path": None,
-                    "params": {"graph": {}},
-                },
-                "next_acting": {
-                    "built_in": "activity_probability",
-                    "class_path": None,
-                    "params": {},
-                },
-                "observe": {
-                    "built_in": "timeline_every_turn",
-                    "class_path": None,
-                    "params": {},
-                },
-                "resolve": {
-                    "built_in": "tool_calling",
-                    "class_path": None,
-                    "params": {},
-                },
-                "update": {
-                    "built_in": "social_recommendation",
-                    "class_path": None,
-                    "params": {},
-                },
-                "action_prompt": {
-                    "built_in": "default",
-                    "class_path": None,
-                    "params": {},
-                },
-            },
-        },
-    }
+    env_payload = _default_env_payload(backend_type or "twitter_like")
     for key, value in env_data.items():
         if value is not None:
             set_nested_value(env_payload, key, value)

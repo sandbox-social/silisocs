@@ -1,6 +1,6 @@
 # Creating a New Scenario
 
-A **scenario** is a shared social world: a setting, a cast of agents, and a platform
+A **scenario** is a shared social world: a setting, a cast of agents, and a backend
 configuration. It lives in `scenarios/<name>/` and can be reused across many studies.
 Think of it as the stage — studies are the experiments you run on it.
 
@@ -16,13 +16,13 @@ scenarios/<name>/
   conf/
     scenario/default.yaml   # Setting, event, probes, run defaults
     agents/default.yaml     # Agent classes, personas, data sources
-    env.yaml                # Platform overrides (optional)
+    env.yaml                # Backend/GM overrides (optional)
     sim.yaml                # Simulation parameter overrides (optional)
   README.md                 # Brief description for discoverability
 ```
 
 You write the first two files. The last two are only needed when you want to
-change something from the defaults (e.g. switch to a Reddit-like platform or
+change something from the defaults (e.g. switch to a Reddit-like backend or
 adjust the LLM).
 
 ---
@@ -137,26 +137,6 @@ shared_memories:
 initial_observations:
   - "{name} opens their social media feed and starts scrolling."
   - "{name} sees new posts about the mill site vote."
-
-gm:
-  components:
-    initialize:
-      params:
-        graph:
-          fully_connected_targets:
-            - council_member
-          base_followership_probability: 0.5
-          network_type: barabasi_albert
-    next_acting:
-      params:
-        activity_transition_rates:
-          council_member:
-            inactive_to_active: 0.9
-            active_to_inactive: 0.1
-          resident:
-            inactive_to_active: 0.6
-            active_to_inactive: 0.3
-  barabasi_albert_m: 2
 ```
 
 **Key choices:**
@@ -167,8 +147,8 @@ gm:
 | `style` | One-line posting voice description — shapes how they write |
 | `goal` | What they are trying to achieve in this simulation |
 | `seed_post` | Their first post (leave blank `''` to let the LLM decide) |
-| `inactive_to_active` | Probability of acting on any given step (0–1) |
-| `fully_connected_targets` | Roles that everyone follows (good for authority/broadcast roles) |
+| `inactive_to_active` | Probability of acting on any given step (configured in `env.yaml`) |
+| `fully_connected_targets` | Roles that everyone follows (configured in `env.yaml`) |
 
 **Data sources:** The examples above use `source: inline` (records embedded directly
 in the YAML). For larger casts you can use `source: local_json` (a JSON file) or
@@ -199,7 +179,7 @@ uv run streamlit run src/silisocs/dashboard/launch_app.py
 
 Check that the config loads without error:
 ```bash
-uv run silisocs --config-path scenarios/my_scenario/conf num_steps=1 llm.disabled=true
+uv run silisocs --config-path scenarios/my_scenario/conf num_steps=1 sim.llm.provider=scripted
 ```
 
 Add a `scenarios/my_scenario/README.md` so the scenario is discoverable (see
@@ -220,6 +200,29 @@ lurkers. Activity rates go in
 
 Add the role's `sim_role_name` to `fully_connected_targets`. Useful for news bots,
 moderators, or officials.
+
+```yaml
+# scenarios/my_scenario/conf/env.yaml
+gm:
+  components:
+    initialize:
+      params:
+        graph:
+          fully_connected_targets:
+            - council_member
+          base_followership_probability: 0.5
+          network_type: barabasi_albert
+          barabasi_albert_m: 2
+    next_acting:
+      params:
+        activity_transition_rates:
+          council_member:
+            inactive_to_active: 0.9
+            active_to_inactive: 0.1
+          resident:
+            inactive_to_active: 0.6
+            active_to_inactive: 0.3
+```
 
 ### Scripted/deterministic agents
 

@@ -7,21 +7,21 @@ import inspect
 from collections.abc import Mapping
 from typing import Any
 
-from silisocs.simulation_engines.policies.action_chunk import (
-    FixedCountActionChunkPolicy,
-    OpenEndedActionChunkPolicy,
-    SingleActionChunkPolicy,
-)
 from silisocs.simulation_engines.policies.probe_schedule import (
     DisabledProbeSchedulePolicy,
     FixedIntervalProbeSchedulePolicy,
     StepProbeSchedulePolicy,
 )
+from silisocs.simulation_engines.policies.turns import (
+    FixedCountTurnPolicy,
+    OpenEndedTurnPolicy,
+    SingleActionTurnPolicy,
+)
 
-_ACTION_BUILT_INS = {
-    "single_action": SingleActionChunkPolicy,
-    "fixed_count": FixedCountActionChunkPolicy,
-    "open_ended": OpenEndedActionChunkPolicy,
+_TURN_BUILT_INS = {
+    "single_action": SingleActionTurnPolicy,
+    "fixed_count": FixedCountTurnPolicy,
+    "open_ended": OpenEndedTurnPolicy,
 }
 
 _PROBE_BUILT_INS = {
@@ -105,7 +105,7 @@ def _build_policy(
 
 def build_turn_policy(slot_cfg: Mapping[str, Any] | None = None) -> Any:
     """Build turn policy from YAML config."""
-    return _build_policy(slot_cfg, built_ins=_ACTION_BUILT_INS, default_built_in="single_action")
+    return _build_policy(slot_cfg, built_ins=_TURN_BUILT_INS, default_built_in="single_action")
 
 
 def build_probe_schedule_policy(slot_cfg: Mapping[str, Any] | None = None) -> Any:

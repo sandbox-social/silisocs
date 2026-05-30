@@ -48,7 +48,7 @@ engine:
     class_path: null
     params: {}
   step:
-    built_in: base                  # base | flow | multi_gm
+    built_in: base                  # base | sequential | flow | multi_gm
     class_path: null
     params:
       flow_order: [fixed_pre, default]

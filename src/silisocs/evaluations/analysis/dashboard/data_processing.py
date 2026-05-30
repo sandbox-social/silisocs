@@ -1,9 +1,10 @@
-"""Data processing utilities for the Social Sandbox Dashboard."""
+"""Data processing utilities for the analysis dashboard."""
 
 import base64
 import json
 from collections.abc import Generator
 from io import StringIO
+from pathlib import Path
 from typing import Any
 
 import networkx as nx
@@ -12,7 +13,6 @@ import pandas as pd
 from silisocs.evaluations.analysis.dashboard.config import (
     INTERACTION_TYPES,
     PAST_TENSE_MAP,
-    PROBE_LABEL,
 )
 
 
@@ -60,7 +60,7 @@ def post_process_output(df):
 
     int_df = df.loc[df.label.isin(INTERACTION_TYPES), :].reset_index(drop=True)
 
-    act_df = df.loc[df.label == "action", :].reset_index(drop=True)
+    act_df = df.loc[df.event_type == "action", :].reset_index(drop=True)
 
     return probe_df, int_df, edge_df, act_df
 
@@ -86,6 +86,8 @@ def get_post_dict(int_df):
     text_df = int_df.loc[(int_df.label == "post") | (int_df.label == "reply"), :].reset_index(
         drop=True
     )
+    if text_df.empty:
+        return {}, {}
 
     missing_post_id = text_df.data.apply(lambda x: _post_id(x) is None)
     text_df["missing_post_idx"] = -1
@@ -120,6 +122,8 @@ def get_post_dict(int_df):
 
 def get_int_dict(int_df, post_owner_dict):
     """Create interaction dictionary from interactions dataframe."""
+    if int_df.empty:
+        return {}
     int_df["int_data"] = int_df.apply(
         lambda x: {
             "action": PAST_TENSE_MAP[x.label],
@@ -143,10 +147,23 @@ def get_int_dict(int_df, post_owner_dict):
 
 def get_act_dict(act_df):
     """Extract action data grouped by episode."""
+    if act_df.empty:
+        return {}
     data_dict = act_df.groupby("episode")[["source_user", "data"]].apply(
         lambda x: x.to_dict("records")
     )
     return data_dict.to_dict()
+
+
+def get_probe_data(probe_df: pd.DataFrame) -> dict[int, dict[str, str]]:
+    """Extract the first probe response per source user and episode."""
+    if probe_df.empty or "response" not in probe_df:
+        return {}
+    probe_df = probe_df.loc[:, ["source_user", "response", "episode"]]
+    probe_data: dict[int, dict[str, str]] = {}
+    for row in probe_df.itertuples(index=False):
+        probe_data.setdefault(int(row.episode), {})[str(row.source_user)] = row.response
+    return probe_data
 
 
 def load_data_from_folder(folder_contents):
@@ -190,19 +207,7 @@ def load_data_from_folder(folder_contents):
     # Process dataframes
     probe_df_processed, int_df, edge_df, act_df = post_process_output(df)
 
-    # Extract probe data
-    num_entries = len(probe_df_processed.loc[probe_df_processed.label == PROBE_LABEL])
-
-    probe_data = {}
-    if not probe_df_processed.empty and "response" in probe_df_processed:
-        probe_data = (
-            probe_df_processed.loc[
-                probe_df_processed.label == PROBE_LABEL, ["source_user", "response", "episode"]
-            ]
-            .groupby("episode")
-            .apply(lambda x: dict(zip(x.source_user, x.response, strict=False)))
-            .to_dict()
-        )
+    probe_data = get_probe_data(probe_df_processed)
 
     # Build follow network
     follow_graph = nx.from_pandas_edgelist(
@@ -212,7 +217,7 @@ def load_data_from_folder(folder_contents):
     # Get active users by episode
     active_users_by_episode = int_df.groupby("episode")["source_user"].apply(set).to_dict()
 
-    # Get toot and interaction data
+    # Get post and interaction data
     post_dict, post_owner_dict = get_post_dict(int_df.copy())
     int_dict = get_int_dict(int_df.copy(), post_owner_dict)
 
@@ -228,11 +233,51 @@ def load_data_from_folder(folder_contents):
     )
 
 
+def load_data_from_directory(directory_path: str | Path) -> dict[str, Any] | None:
+    """Load serializable dashboard data from a Silisocs output directory."""
+    directory = Path(directory_path)
+    if not directory.exists() or not directory.is_dir():
+        return None
+
+    folder_contents = {}
+    for filename in ("action_events.jsonl", "probe_events.jsonl", "prompts_and_responses.jsonl"):
+        path = directory / filename
+        if path.exists():
+            folder_contents[filename] = path.read_text(encoding="utf-8")
+        elif filename == "action_events.jsonl":
+            return None
+
+    (
+        follow_graph,
+        interactions_by_episode,
+        active_users_by_episode,
+        posts,
+        probe_data,
+        act_data,
+    ) = load_data_from_folder(folder_contents)
+
+    serialized_data = serialize_data(
+        follow_graph,
+        interactions_by_episode,
+        active_users_by_episode,
+        posts,
+        probe_data,
+        act_data,
+    )
+
+    raw_data = []
+    for filename, content in folder_contents.items():
+        if filename.endswith(("action_events.jsonl", "probe_events.jsonl")):
+            raw_data.extend(pd.read_json(StringIO(content), lines=True).to_dict(orient="records"))
+    serialized_data["raw_data"] = raw_data
+    return serialized_data
+
+
 def serialize_data(
     follow_graph,
     interactions_by_episode,
     active_users_by_episode,
-    toots,
+    posts,
     probe_data,
     act_data,
 ):
@@ -242,7 +287,7 @@ def serialize_data(
         "edges": list(follow_graph.edges),
         "interactions_by_episode": interactions_by_episode,
         "active_users_by_episode": {k: list(v) for k, v in active_users_by_episode.items()},
-        "toots": toots,
+        "posts": posts,
         "probe_data": probe_data,
         "act_data": act_data,
     }
@@ -258,7 +303,7 @@ def deserialize_data(serialized):
     active_users_by_episode = {
         int(k): set(v) for k, v in serialized["active_users_by_episode"].items()
     }
-    toots = serialized["toots"]
+    posts = serialized["posts"]
     probe_data = {int(k): v for k, v in serialized["probe_data"].items()}
     act_data = serialized["act_data"]
 
@@ -266,7 +311,7 @@ def deserialize_data(serialized):
         follow_graph,
         interactions_by_episode,
         active_users_by_episode,
-        toots,
+        posts,
         probe_data,
         act_data,
     )

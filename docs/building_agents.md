@@ -14,6 +14,14 @@ scenario needs programmatic logic, set `agents.builder.class_path` explicitly.
 Builders return `AgentConfig` records; the runtime still owns live agent
 construction and model injection.
 
+Builder output contract:
+
+- return `list[AgentConfig]`;
+- set `class_path` to the runtime agent class;
+- put constructor kwargs under `params`;
+- do not construct live `Agent` instances;
+- do not attach a `LanguageModel`; runtime assembly injects it.
+
 ---
 
 ## Method 1: YAML Pipeline (Declarative)
@@ -146,6 +154,11 @@ special cases. That keeps bespoke logic explicit without hiding it behind
 scenario-name auto-detection.
 
 ### Available Helpers in PersonaPipelineAgentBuilder
+
+These helpers are useful when a custom builder wants to reuse the default
+persona-pipeline behavior. If your builder only needs ordinary records and field
+mapping, prefer instantiating `PersonaPipelineAgentBuilder` and appending to its
+result.
 
 | Method | Description |
 |--------|-------------|

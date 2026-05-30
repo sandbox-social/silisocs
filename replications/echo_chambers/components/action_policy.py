@@ -1,4 +1,4 @@
-"""Turn-policy policy for the EchoChamberSim replication."""
+"""Turn policy for the EchoChamberSim replication."""
 
 from __future__ import annotations
 
@@ -19,13 +19,11 @@ class EchoChamberSingleActionPolicy:
         game_master: Any,
         agent: Any,
         action_spec: Any,
-        skip_actions: bool,
         verbose: bool,
     ) -> str:
         return engine.run_agent_step(
             game_master=game_master,
             agent=agent,
             action_spec=action_spec,
-            skip_actions=skip_actions,
             verbose=verbose,
         ).rendered_action

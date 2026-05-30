@@ -27,14 +27,16 @@ from silisocs.environments.gm.components.next_acting import (
 from silisocs.environments.gm.components.observe import (
     AppObservationComponent,
     EpisodeObservation,
-    TimelineMakeObservation,
 )
 from silisocs.environments.gm.components.resolve import (
     GenericActionResolveComponent,
     ParsedActionResolveComponent,
     ToolCallingResolveComponent,
 )
-from silisocs.environments.gm.components.update import SocialRecommendationUpdateComponent
+from silisocs.environments.gm.components.social_media.observe import TimelineMakeObservation
+from silisocs.environments.gm.components.social_media.update import (
+    SocialRecommendationUpdateComponent,
+)
 from silisocs.environments.gm.context import GameMasterContext
 from silisocs.initialization.game_masters.runtime import (
     AppInitializeGameMasterInitializer,

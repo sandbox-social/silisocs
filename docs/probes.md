@@ -6,7 +6,7 @@ quantitative data for analysis.
 
 ## Overview
 
-Probes are configured in the `probes` section of your scenario YAML. The system
+Probes are configured under `evals.probes` in your scenario YAML. The system
 supports multiple probe types, configurable deployment schedules, and concurrent
 execution across large agent populations.
 
@@ -34,7 +34,6 @@ probes:
       probe_data:
         name: Satisfaction
         question: "Return one number from {lo} to {hi}: how satisfied are you with community discussions?"
-        context: "{agentname} rates current discussion quality."
         lo: 1
         hi: 10
 
@@ -44,7 +43,6 @@ probes:
       probe_data:
         name: VoteIntent
         question: "Will you participate in the upcoming vote? Reply yes or no."
-        context: "{agentname} decides whether they intend to vote."
 
     topic_preference:
       probe_name: topic_preference
@@ -52,7 +50,6 @@ probes:
       probe_data:
         name: TopicPreference
         question: "Which topic interests you most?"
-        context: "{agentname} picks a single preferred topic."
         choices: [Technology, Politics, Entertainment]
 ```
 
@@ -95,18 +92,25 @@ probes:
 from silisocs.evaluations.probes.types import ProbeBase
 
 class Favorability(ProbeBase):
-    @property
-    def question_text(self):
-        candidate = self.probe_data["interaction_premise_template"]["candidate"]
-        return f"On a scale of 1-10, how favorable is your view of {candidate}?"
+    def __init__(self, probe_data=None):
+        self.name = "Favorability"
+        self._candidate = (probe_data or {}).get("candidate", "Candidate A")
+
+    def form_question_for_agent(self, agent):
+        return f"On a scale of 1-10, how favorable is your view of {self._candidate}?"
 
     def parse_answer(self, raw_response):
         # Extract numeric value from LLM response
         ...
 ```
 
-Custom types are resolved via `importlib` at runtime. This is optional and most
-scenarios can use the built-in generalist probe types directly.
+Custom types are resolved via `importlib` at runtime. A probe must return a
+question string from `form_question_for_agent(agent)` and a parsed string or
+`None` from `parse_answer(raw_response)`. Probe prompts should contain the
+measurement question and any answer-format constraint only. Agent identity,
+persona, and recent observations should come from the agent runtime itself.
+This is optional and most scenarios can use the built-in generalist probe types
+directly.
 
 ---
 

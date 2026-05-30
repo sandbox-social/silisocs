@@ -103,7 +103,7 @@ gm:
       built_in: default
 ```
 
-All agents use this GM unless the engine step strategy routes by flow.
+All agents use this GM unless the engine step policy routes by flow.
 
 ### Multi-GM: Different GMs for Different Flows
 
@@ -255,7 +255,7 @@ uv run pytest tests/test_runner_processing_mode.py::test_multi_gm_specs_can_use_
 
 **Q: Can agents move between GMs during simulation?**
 A: Flow assignment is configured before the run. Dynamic reassignment requires a
-custom engine strategy.
+custom engine policy.
 
 **Q: Can GMs share state?**
 A: Not as a shared backend object in this release. Use one backend per GM, or

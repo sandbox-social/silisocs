@@ -7,13 +7,9 @@ import pytest
 from omegaconf import OmegaConf
 
 from silisocs.agents.base_agent import Agent
+from silisocs.runtime.construction.engines import build_engine
 from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType, ToolCall
-from silisocs.simulation_engines.base_engines import BaseRuntimeEngine
-from silisocs.simulation_engines.policies.action_chunk import (
-    FixedCountActionChunkPolicy,
-    OpenEndedActionChunkPolicy,
-    SingleActionChunkPolicy,
-)
+from silisocs.simulation_engines.base_engines import BaseRuntimeEngine, RuntimeEngine
 from silisocs.simulation_engines.policies.factory import (
     build_probe_schedule_policy,
     build_turn_policy,
@@ -22,6 +18,12 @@ from silisocs.simulation_engines.policies.probe_schedule import (
     DisabledProbeSchedulePolicy,
     FixedIntervalProbeSchedulePolicy,
     StepProbeSchedulePolicy,
+)
+from silisocs.simulation_engines.policies.steps import SequentialStepStrategy
+from silisocs.simulation_engines.policies.turns import (
+    FixedCountTurnPolicy,
+    OpenEndedTurnPolicy,
+    SingleActionTurnPolicy,
 )
 from silisocs.simulation_engines.runtime_base import AgentStepResult
 
@@ -76,7 +78,7 @@ class _AgentForEngine:
 
 def test_build_turn_policy_defaults_to_single_action() -> None:
     policy = build_turn_policy(None)
-    assert isinstance(policy, SingleActionChunkPolicy)
+    assert isinstance(policy, SingleActionTurnPolicy)
 
 
 def test_packaged_base_turn_policy_policy_builds() -> None:
@@ -90,26 +92,27 @@ def test_packaged_base_turn_policy_policy_builds() -> None:
     action_policy = build_turn_policy(turn_policy)
     probe_policy = build_probe_schedule_policy(probe_schedule)
 
-    assert isinstance(action_policy, SingleActionChunkPolicy)
+    assert isinstance(action_policy, SingleActionTurnPolicy)
     assert isinstance(probe_policy, StepProbeSchedulePolicy)
 
 
 def test_build_turn_policy_supports_fixed_count_params() -> None:
-    policy = build_turn_policy({"built_in": "fixed_count", "params": {"count": 4}})
-    assert isinstance(policy, FixedCountActionChunkPolicy)
+    policy = build_turn_policy(
+        {"built_in": "fixed_count", "params": {"count": 4, "observe_before_act": "always"}}
+    )
+    assert isinstance(policy, FixedCountTurnPolicy)
     assert policy.count == 4
+    assert policy.observe_before_act == "always"
 
 
 def test_build_turn_policy_supports_class_path() -> None:
     policy = build_turn_policy(
         {
-            "class_path": (
-                "silisocs.simulation_engines.policies.action_chunk.FixedCountActionChunkPolicy"
-            ),
+            "class_path": ("silisocs.simulation_engines.policies.turns.FixedCountTurnPolicy"),
             "params": {"count": 3},
         }
     )
-    assert isinstance(policy, FixedCountActionChunkPolicy)
+    assert isinstance(policy, FixedCountTurnPolicy)
     assert policy.count == 3
 
 
@@ -117,9 +120,7 @@ def test_build_turn_policy_rejects_unknown_params() -> None:
     with pytest.raises(ValueError, match="Unsupported config param"):
         build_turn_policy(
             {
-                "class_path": (
-                    "silisocs.simulation_engines.policies.action_chunk.FixedCountActionChunkPolicy"
-                ),
+                "class_path": ("silisocs.simulation_engines.policies.turns.FixedCountTurnPolicy"),
                 "params": {"count": 3, "typo_count": 9},
             }
         )
@@ -182,7 +183,6 @@ def test_engine_single_action_uses_direct_gm_methods_without_name_prefix() -> No
         game_master=cast(Agent, gm),
         agent=cast(Agent, agent),
         action_spec=ActionSpec("Do it", OutputType.TEXT),
-        skip_actions=False,
         verbose=False,
     )
 
@@ -210,18 +210,51 @@ def test_action_policies_count_typed_tool_calls_toward_budget() -> None:
         ]
     )
 
-    policy = FixedCountActionChunkPolicy(count=2)
+    policy = FixedCountTurnPolicy(count=2)
     result = policy.run(
         engine=engine,
         game_master=object(),
         agent=object(),
         action_spec=object(),
-        skip_actions=False,
         verbose=False,
     )
 
     assert result == "agent: multi-1"
     assert len(engine.calls) == 1
+
+
+def test_turn_policy_observe_before_act_modes() -> None:
+    for mode, expected in {
+        "first": [True, False, False],
+        "always": [True, True, True],
+        "never": [False, False, False],
+    }.items():
+        engine = _FakeEngine(["a1", "a2", "a3"])
+        policy = FixedCountTurnPolicy(count=3, observe_before_act=mode)
+
+        policy.run(
+            engine=engine,
+            game_master=object(),
+            agent=object(),
+            action_spec=object(),
+            verbose=False,
+        )
+
+        assert [call["observe_before_action"] for call in engine.calls] == expected
+
+
+def test_turn_policy_rejects_unknown_observe_before_act_mode() -> None:
+    engine = _FakeEngine(["a1"])
+    policy = SingleActionTurnPolicy(observe_before_act="sometimes")
+
+    with pytest.raises(ValueError, match="observe_before_act"):
+        policy.run(
+            engine=engine,
+            game_master=object(),
+            agent=object(),
+            action_spec=object(),
+            verbose=False,
+        )
 
 
 def test_engine_runs_three_initialization_phases_once_before_loop(tmp_path) -> None:
@@ -327,15 +360,89 @@ def test_engine_calls_gm_update_before_actor_selection() -> None:
     assert events[:3] == ["update:7", "acting_agents", "action_prompt:Alice"]
 
 
+def test_build_engine_supports_sequential_step_strategy() -> None:
+    cfg = OmegaConf.create(
+        {
+            "sim": {
+                "engine": {
+                    "step": {"built_in": "sequential", "params": {}},
+                    "turn_policy": {"built_in": "single_action", "params": {}},
+                }
+            }
+        }
+    )
+
+    engine = build_engine(cfg)
+
+    assert isinstance(engine, RuntimeEngine)
+    assert isinstance(engine.step_strategy, SequentialStepStrategy)
+
+
+def test_sequential_step_strategy_runs_one_agent_batches_in_order() -> None:
+    events: list[str] = []
+
+    class _Agent:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def observe(self, observation: str) -> None:
+            events.append(f"observe:{self.name}:{observation}")
+
+        def act(self, action_spec: ActionSpec) -> ActionOutput:
+            events.append(f"act:{self.name}:{action_spec.prompt}")
+            return ActionOutput.from_text(self.name)
+
+    class _GameMaster:
+        name = "gm"
+
+        def update(self, *, step: int, agents: list[Any], context: Any | None = None) -> None:
+            del step, agents, context
+
+        def acting_agents(self, candidate_agents: list[Any]) -> list[str]:
+            return [agent.name for agent in candidate_agents]
+
+        def action_prompt(self, agent_name: str) -> ActionSpec:
+            return ActionSpec(f"prompt:{agent_name}", OutputType.TEXT)
+
+        def make_observation(self, agent_name: str) -> str:
+            return f"obs:{agent_name}"
+
+        def resolve_action(self, agent_name: str, action: ActionOutput) -> str:
+            events.append(f"resolve:{agent_name}:{action.text}")
+            return f"resolved:{agent_name}"
+
+    engine = RuntimeEngine(
+        step_strategy=SequentialStepStrategy(),
+        turn_policy=SingleActionTurnPolicy(),
+    )
+    result = engine.run_step(
+        step_index=0,
+        game_masters=[_GameMaster()],
+        agents=[_Agent("Alice"), _Agent("Bob")],
+        verbose=False,
+    )
+
+    assert result.active_agent_names == ("Alice", "Bob")
+    assert events == [
+        "observe:Alice:obs:Alice",
+        "act:Alice:prompt:Alice",
+        "resolve:Alice:Alice",
+        "observe:Alice:resolved:Alice",
+        "observe:Bob:obs:Bob",
+        "act:Bob:prompt:Bob",
+        "resolve:Bob:Bob",
+        "observe:Bob:resolved:Bob",
+    ]
+
+
 def test_fixed_count_policy_runs_exact_number_of_actions() -> None:
     engine = _FakeEngine(["a1", "a2", "a3"])
-    policy = FixedCountActionChunkPolicy(count=3)
+    policy = FixedCountTurnPolicy(count=3)
     result = policy.run(
         engine=engine,
         game_master=object(),
         agent=object(),
         action_spec=object(),
-        skip_actions=False,
         verbose=False,
     )
 
@@ -360,13 +467,12 @@ def test_open_ended_policy_stops_on_finished_action() -> None:
             "SHOULD_NOT_RUN",
         ]
     )
-    policy = OpenEndedActionChunkPolicy(max_actions=5, finished_action_signal="FINISHED")
+    policy = OpenEndedTurnPolicy(max_actions=5, finished_action_signal="FINISHED")
     result = policy.run(
         engine=engine,
         game_master=object(),
         agent=object(),
         action_spec=object(),
-        skip_actions=False,
         verbose=False,
     )
 
@@ -400,13 +506,12 @@ def test_open_ended_policy_does_not_stop_on_finish_word_in_content() -> None:
             },
         ]
     )
-    policy = OpenEndedActionChunkPolicy(max_actions=5, finished_action_signal="FINISHED")
+    policy = OpenEndedTurnPolicy(max_actions=5, finished_action_signal="FINISHED")
     result = policy.run(
         engine=engine,
         game_master=object(),
         agent=object(),
         action_spec=object(),
-        skip_actions=False,
         verbose=False,
     )
 
@@ -436,13 +541,12 @@ def test_open_ended_policy_counts_multi_tool_calls_toward_cap() -> None:
         ]
     )
 
-    policy = OpenEndedActionChunkPolicy(max_actions=3, finished_action_signal="FINISHED")
+    policy = OpenEndedTurnPolicy(max_actions=3, finished_action_signal="FINISHED")
     result = policy.run(
         engine=engine,
         game_master=object(),
         agent=object(),
         action_spec=object(),
-        skip_actions=False,
         verbose=False,
     )
 
@@ -467,13 +571,12 @@ def test_fixed_count_policy_counts_multi_tool_calls_toward_budget() -> None:
         ]
     )
 
-    policy = FixedCountActionChunkPolicy(count=2)
+    policy = FixedCountTurnPolicy(count=2)
     result = policy.run(
         engine=engine,
         game_master=object(),
         agent=object(),
         action_spec=object(),
-        skip_actions=False,
         verbose=False,
     )
 

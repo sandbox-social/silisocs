@@ -19,7 +19,7 @@ Last reviewed: 2026-05-11.
 | Engine policies | `src/silisocs/simulation_engines/policies/` | [Environment Layer](environment_layer.md), [Simulation Extensibility API](simulation_extensibility_api.md) | Covered after path correction |
 | Evaluation probes and studies | `evaluations/probes/`, study docs | [Probes](probes.md), [Study Guide](study_guide.md), [Study Schema](study_schema.md) | Covered; update when evaluator APIs change |
 | Dashboard | `src/silisocs/dashboard/launch_app.py` | [Dashboard](dashboard.md) | Covered; advanced config controls need periodic UI sync |
-| API generated docs | `docs/api/`, `docs/gen_api.py` | `docs/api/index.md` | Generated but excluded from MkDocs nav; decide whether to publish |
+| Extension API docs | Public extension contracts | [Simulation Extensibility API](simulation_extensibility_api.md) | Curated API reference; generated internal pages are not shipped |
 
 ## Stale or Risky Content Register
 

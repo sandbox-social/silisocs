@@ -41,7 +41,7 @@ def validate_scenario(scenario_root: Path | str) -> ValidationResult:
             "--config-path",
             str(conf_path),
             "num_steps=1",
-            "sim.llm.disabled=true",
+            "sim.llm.provider=scripted",
         ],
         capture_output=True,
         text=True,

@@ -66,7 +66,7 @@ class NetworkConfig(BaseModel):
 class BackendConfig(BaseModel):
     """BackendConfig."""
 
-    backend_type: str = "twitter_like"
+    type: str = "twitter_like"
     timeline_mode: Literal["follower_chronological", "pure_recsys"] = "follower_chronological"
     enabled_actions: list[str] = Field(
         default_factory=lambda: [
@@ -95,7 +95,7 @@ class ScenarioSpec(BaseModel):
     agent_classes: list[AgentClass]
     network: NetworkConfig = Field(default_factory=NetworkConfig)
     backend: BackendConfig = Field(default_factory=BackendConfig)
-    custom_entity_stubs: list[str] = Field(default_factory=list)
+    custom_agent_stubs: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

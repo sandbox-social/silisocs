@@ -226,13 +226,13 @@ def _write_env_yaml(spec: ScenarioSpec, conf: Path) -> None:
     data = {
         "gm": {
             "backend": {
-                "type": spec.backend.backend_type,
+                "type": spec.backend.type,
                 "class_path": None,
                 "params": {},
                 "enabled_actions": spec.backend.enabled_actions,
             },
             "class_path": "silisocs.environments.gm.game_master.ComponentGameMaster",
-            "name": f"{spec.backend.backend_type}_gm",
+            "name": f"{spec.backend.type}_gm",
             "components": {
                 "initialize": {
                     "built_in": "social_media",

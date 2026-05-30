@@ -12,16 +12,17 @@ sequenceDiagram
     participant Config as Hydra Config
     participant Runner as Runner
     participant Builder as Agent Builder
-    participant Init as Memory Initializer
+    participant Init as Initializers
     participant GM as Game Master
     participant Backend as Environment Backend
 
     Config->>Runner: Load & compose YAML configs
-    Runner->>Builder: Build agent entities
-    Runner->>Init: Initialize memories
-    Init->>Runner: Agents have starting knowledge
-    Runner->>Backend: Initialize environment state
-    Runner->>GM: Start simulation loop
+    Runner->>Builder: Build agent configs
+    Runner->>Backend: Construct backend
+    Runner->>GM: Construct Game Master + components
+    Runner->>Init: Agents, Game Masters, simulation setup
+    Init->>GM: Initialize backend state and seed content
+    Runner->>GM: Start Engine loop
     loop Each step
         GM->>Backend: Observe environment state
         GM->>Backend: Execute @app_action
@@ -30,15 +31,14 @@ sequenceDiagram
 ```
 
 **Phase 1 — Config composition**: Hydra merges the base simulation config,
-platform config, and scenario config into a single resolved config tree.
+environment config, and scenario config into a single resolved config tree.
 
 **Phase 2 — Agent construction**: The agent builder reads the persona pipeline
-(or custom builder logic) and creates agent entities with personas, memories,
-and goals.
+(or custom builder logic) and creates agent configs with personas, memories,
+and goals. Runtime construction then creates live agents.
 
-**Phase 3 — Runtime initialization**: The runtime initializer injects shared
-memories, asks each GM to initialize backend state, and posts seed content
-before the main loop.
+**Phase 3 — Runtime initialization**: The Engine runs agent initialization,
+Game Master initialization, then simulation initialization before the main loop.
 
 **Phase 4 — Simulation loop**: Each step, agents observe environment state,
 decide on an action, and the game master executes it against the configured
@@ -63,7 +63,7 @@ uv run silisocs
 # Override parameters via Hydra
 uv run silisocs num_agents=10 num_steps=5 sim.llm.name=gpt-4o
 
-# Use a different platform
+# Use a different backend
 uv run silisocs env=reddit_like
 
 # Run the generic non-social sample backend
@@ -123,7 +123,7 @@ defaults:
   - scenario: default      # Root run params, setting, event, and scenario data
   - agents: default        # Agent construction and personas
   - sim: base              # Simulation parameters
-  - env: twitter_like      # Platform backend
+  - env: twitter_like      # Backend and GM wiring
   - evals: base            # Probes and evaluation config
 ```
 
@@ -675,10 +675,11 @@ users.
 The runtime now includes direct engine step strategies:
 
 - `sim.engine.step.built_in: base` (default): simple execution path, one GM active per episode.
+- `sim.engine.step.built_in: sequential`: one GM, selected agents executed one by one.
 - `sim.engine.step.built_in: flow`: flow-aware execution.
 - `sim.engine.step.built_in: multi_gm`: flow-aware execution with multi-GM routing.
 
-The flow engine (`FlowRuntimeEngine`) is responsible for:
+The engine is responsible for:
 
 - Episode loop orchestration (`run_loop`)
 - Probe scheduling and deployment timing
@@ -695,6 +696,10 @@ Action semantics are policy-driven through `sim.engine.turn_policy`.
 - `single_action`: one resolved action per acting agent per episode.
 - `fixed_count`: a fixed number of resolved actions per acting agent.
 - `open_ended`: continue until stop token or max action budget.
+
+Built-in turn policies also accept `observe_before_act: first | always | never`.
+The default `first` preserves existing behavior by observing before the first
+action in a repeated-action turn.
 
 Probe timing is policy-driven through `evals.probes.schedule`.
 
@@ -715,7 +720,7 @@ and it generalizes to any future specialized class.
 
 The environment GM (`GameMaster` + native components) is responsible for:
 
-- Initializing the active backend app and any seed content
+- Initializing the active backend app through its initialize component
 - Building generic or timeline observations for each acting agent
 - Parsing and dispatching actions (`custom`, `generic`) and tool calls (`none`, `single`, `multi`)
 - Applying action effects through the backend app contract
@@ -737,11 +742,11 @@ Key implementations:
 
 #### GM-side tasks
 
-- Action grammar and parsing (`find_and_parse_action_data`)
-- Action dispatch strategy by mode (`_resolve`, `_resolve_generic`, `_resolve_tool_calling`)
+- Action grammar and parsing through resolve components
+- Action dispatch strategy by resolve mode (`parsed_action`, `generic_action`, `tool_calling`)
 - Observation shaping (`app_observation`, `timeline_every_turn`, or custom component)
-- Activity transition behavior (`update_user_activity_state`)
-- Seed post action handling through `resolve_action`
+- Activity transition behavior through next-acting components
+- Seed posts through simulation initialization, then normal `resolve_action`
 
 ### Backend Contract Tasks
 

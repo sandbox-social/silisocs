@@ -128,7 +128,9 @@ def test_native_code_does_not_import_removed_utility_modules() -> None:
         "silisocs.utils.network",
         "silisocs.utils.misc",
         "silisocs.environments.gm.components.keys",
+        "silisocs.environments.gm.components.update",
         "silisocs.environments.gm.shared_flow_game_master",
+        "silisocs.simulation_engines.policies.action_chunk",
         "silisocs.agents.builders",
     }
     offenders: list[str] = []
@@ -202,7 +204,7 @@ def test_docs_and_configs_do_not_use_removed_checkpoint_or_html_keys() -> None:
         "silisocs.agents.entity",
         "silisocs.agents.fixed_entity",
         "SMAct",
-        "sample_tool_call",
+        "sample_tool_call(",
         "runtime.models",
         "runtime.logs",
         "runtime.html",
@@ -211,6 +213,7 @@ def test_docs_and_configs_do_not_use_removed_checkpoint_or_html_keys() -> None:
         "runtime.factories",
         "runtime.action_prompts",
         "runtime.projection",
+        "policies/action_chunk",
         "sim.engine.action_loop",
         "sim.engine.probe_schedule",
         "engine.probe_schedule",
@@ -333,3 +336,9 @@ def test_config_generators_emit_current_engine_keys() -> None:
     assert "probes.probes" in dashboard_text
     assert "probes_include_agents" in dashboard_text
     assert "probes_exclude_agents" in dashboard_text
+
+
+def test_package_analysis_surface_is_generic() -> None:
+    analysis_root = SRC_ROOT / "evaluations" / "analysis"
+    assert not (analysis_root / "plotting").exists()
+    assert not (analysis_root / "output_proc.py").exists()

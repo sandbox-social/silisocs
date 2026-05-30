@@ -86,7 +86,7 @@ candidates:
     goal: Bradley Carter's goal is to win the election...
 ```
 
-### Social Network
+### GM Component Behavior
 
 Candidates and the news account are fully connected targets — everyone follows them:
 
@@ -104,13 +104,13 @@ gm:
         activity_transition_rates:
           voter:
             inactive_to_active: 0.1     # Voters are mostly passive
-      active_to_inactive: 0.2
-    candidate:
-      inactive_to_active: 0.8     # Candidates are very active
-      active_to_inactive: 0.1
-    news_account:
-      inactive_to_active: 1       # News always posts
-      active_to_inactive: 0
+            active_to_inactive: 0.2
+          candidate:
+            inactive_to_active: 0.8     # Candidates are very active
+            active_to_inactive: 0.1
+          news_account:
+            inactive_to_active: 1       # News always posts
+            active_to_inactive: 0
 ```
 
 ### Probes
@@ -126,7 +126,6 @@ probes:
       probe_data:
         name: VotePref
         question: "In one word, name the candidate you want to vote for."
-        context: "{agentname} is going to cast a vote for either Bill Fredrickson or Bradley Carter."
         choices:
           - Bill Fredrickson
           - Bradley Carter
@@ -136,7 +135,6 @@ probes:
       probe_data:
         name: FavorabilityBill
         question: "Return a single numeric value ranging from {lo} to {hi} for Bill Fredrickson."
-        context: "{agentname} rates their opinion of Bill Fredrickson from {lo} to {hi}."
         lo: 1
         hi: 10
     favorability_bradley:
@@ -145,7 +143,6 @@ probes:
       probe_data:
         name: FavorabilityBradley
         question: "Return a single numeric value ranging from {lo} to {hi} for Bradley Carter."
-        context: "{agentname} rates their opinion of Bradley Carter from {lo} to {hi}."
         lo: 1
         hi: 10
     vote_intent:

@@ -45,7 +45,7 @@ Silisocs separates Engine scheduling from Game Master component routing.
 
 | Choice | Config location | What it controls |
 |---|---|---|
-| Engine step strategy | `sim.engine.step.built_in` | Whether the Engine runs one group or named flow groups in order |
+| Engine step policy | `sim.engine.step.built_in` | Whether the Engine runs one group, one-agent batches, or named flow groups in order |
 | Game Master class/components | `env.gm.class_path` and `env.gm.components` | Whether one GM slot instance serves all agents or per-flow slot instances are routed |
 
 You can use either choice independently:
@@ -343,7 +343,7 @@ Use the smallest extension point that matches the change:
 2. Add or subclass an Agent when behavior needs custom context assembly.
 3. Add a GM component when environment-facing behavior changes for one slot.
 4. Add a Backend when the domain state or operations change.
-5. Add an Engine step strategy only when scheduling semantics change.
+5. Add an Engine step policy only when scheduling semantics change.
 
 The native public surfaces are intentionally direct. Avoid reintroducing hidden
 dispatch strings, implicit global config reads, or Concordia lifecycle methods

@@ -57,6 +57,20 @@ _Avoid_: Putting social methods on `BackendApp`
 The runtime loop that initializes objects, schedules turns, and advances the simulation.
 _Avoid_: Simulation object, runner
 
+**Engine Loop Policy**:
+The Engine subcomponent that owns the outer episode lifecycle.
+_Avoid_: Hiding startup or per-agent action logic in the loop
+
+**Engine Step Policy**:
+The Engine subcomponent that decides which Game Master/agent batches run during
+one episode step. Flow and multi-GM sequencing live here.
+_Avoid_: Turn policy, Game Master component
+
+**Turn Policy**:
+The Engine subcomponent that decides how many observe/act/resolve cycles a
+selected agent may take in one step.
+_Avoid_: Action chunk
+
 **Initializer**:
 A slottable startup object owned by one explicit Engine startup phase.
 _Avoid_: Initializer GM, hidden runtime bootstrap

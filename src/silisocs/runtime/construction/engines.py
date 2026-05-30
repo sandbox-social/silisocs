@@ -11,14 +11,17 @@ from omegaconf import DictConfig, OmegaConf
 
 from silisocs.simulation_engines.base_engines import (
     BaseRuntimeEngine,
-    FixedStepsLoopStrategy,
     FlowRuntimeEngine,
-    FlowStepStrategy,
     MultiGMRuntimeEngine,
-    MultiGMStepStrategy,
     RuntimeEngine,
 )
 from silisocs.simulation_engines.policies.factory import build_turn_policy
+from silisocs.simulation_engines.policies.loops import FixedStepsLoopStrategy
+from silisocs.simulation_engines.policies.steps import (
+    FlowStepStrategy,
+    MultiGMStepStrategy,
+    SequentialStepStrategy,
+)
 
 
 def _load_class(class_path: str) -> type[Any]:
@@ -82,6 +85,8 @@ def _build_step_strategy(step_cfg: Mapping[str, Any]) -> Any:
     flow_order = tuple(str(item) for item in (params.get("flow_order") or ["fixed_pre", "default"]))
     if built_in == "base":
         return None
+    if built_in == "sequential":
+        return SequentialStepStrategy()
     if built_in == "flow":
         return FlowStepStrategy(flow_order=flow_order)
     if built_in == "multi_gm":
@@ -136,6 +141,13 @@ def build_engine(cfg: DictConfig):
     step_built_in = str(step_cfg.get("built_in") or "base").strip()
     if step_built_in == "base":
         return BaseRuntimeEngine(config=cfg, turn_policy=turn_policy)
+    if step_built_in == "sequential":
+        return RuntimeEngine(
+            config=cfg,
+            loop_strategy=_build_loop_strategy(loop_cfg),
+            step_strategy=SequentialStepStrategy(),
+            turn_policy=turn_policy,
+        )
     if step_built_in == "flow":
         return FlowRuntimeEngine(config=cfg, turn_policy=turn_policy)
     if step_built_in == "multi_gm":

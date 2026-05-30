@@ -4,8 +4,10 @@ import pytest
 
 from silisocs.environments.backends.reddit_like.engine import RedditLikePlatform
 from silisocs.environments.backends.twitter_like.engine import TwitterLikePlatform
-from silisocs.environments.gm.components.observe import TimelineMakeObservation
-from silisocs.environments.gm.components.update import SocialRecommendationUpdateComponent
+from silisocs.environments.gm.components.social_media.observe import TimelineMakeObservation
+from silisocs.environments.gm.components.social_media.update import (
+    SocialRecommendationUpdateComponent,
+)
 
 
 class _FakeApp:

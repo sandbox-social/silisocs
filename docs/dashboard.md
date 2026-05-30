@@ -48,7 +48,7 @@ Core simulation parameters:
 Simulation tab scope:
 
 - Run-level controls (agents, steps, seed, model, concurrency)
-- Advanced runtime toggles (memory backend, action mode, timeline/observation limits)
+- Advanced runtime toggles (memory backend, action mode, observation limits)
 
 ### 2. Scenario
 
@@ -66,12 +66,12 @@ Configure the persona pipeline:
 
 - **Add/remove classes**: Dynamic list of agent classes
 - **Agent class**: Dropdown auto-populated by scanning the package for agent classes
-- **Data source**: Choose from HuggingFace dataset, local JSON, config path, or inline
+- **Data source**: Choose from inline records, local JSON, config path, or Hugging Face datasets
 - **File path verification**: Local JSON paths are validated as you type
 - **Field map**: YAML editor for mapping data fields to agent parameters
 - **Per-class LLM model**: Optional model override per agent class
 - **Count**: Number of agents in each class
-- **Sim role name**: Role key used by social network/activity config
+- **Sim role name**: Role key used by GM component params such as activity rates
 - **Flow tag** (advanced only): Class-level action flow used by multi-GM orchestration
 - **Fixed-action agent mode** (optional):
 - Enable fixed actions for a class
@@ -86,27 +86,27 @@ Configure the persona pipeline:
 
 Runtime environment controls:
 
-- **Platform backend**: Twitter-like, Reddit-like, or Mastodon
+- **Backend**: Twitter-like, Reddit-like, Mastodon, or a non-social backend preset
 - **Enabled backend actions**: Optional multi-select whitelist. Empty means all backend actions are available.
 - **Enable advanced configuration** (toggle): reveals orchestration controls.
 
 Environment levers in expanders:
 
 - **GM Components**
-- Next-acting choice: `activity_markov`, `activity_probability`, `all_agents`, `fixed_order`
-- Observe choice: `timeline_every_turn`, `episode_only`
+- Next-acting choice: `activity_probability`, `activity_markov`, `all_agents`, `fixed_order`
+- Observe choice: `timeline_every_turn`, `app_observation`, `episode_only`
 - Resolve choice: `parsed_action`, `generic_action`, `tool_calling`
 - Optional custom class path override field for each GM slot
 
-- **Runtime Initializer**
+- **Initialization**
 - Agent memory choice: `raw_memory`, `formative_memory`, `none`
-- Backend initializer choice: `social_media`, `app_initialize`, `none`
-- Seed-post choice: `llm`, `csv`, `json`, `fallback`, `none`
+- Game Master initialize choice: `social_media`, `app_initialize`, `none`
+- Seed-post choice for social backends: `agent`, `csv`, `json`, `fallback`, `none`
 
 - **Engine Policies**
 - Turn policy choice: `single_action`, `fixed_count`, `open_ended`
 - Probe schedule choice: `step_schedule`, `fixed_interval`, `disabled`
-- Turn-policy params: `count`, `max_actions`, `finished_action_signal`
+- Turn-policy params: `count`, `max_actions`, `finished_action_signal`, `observe_before_act`
 - Probe-schedule params: `start_step`, `every_n_steps`
 - Optional custom class path override for each policy slot
 
@@ -114,17 +114,19 @@ Environment levers in expanders:
 - GM preset: `base` or `shared_flow`
 - YAML editor for `gm_orchestration` (multi-GM flow bindings)
 
-Social network controls (in the same Environment tab):
+Social backend controls (shown only for social backends):
 
 - **Graph type**: Barabasi-Albert, random, LFR benchmark
 - **Parameters**: Edges per node, followership probability
 - **Activity rates**: Per-role transition probabilities
+- **Timeline strategy**: follower chronological, pure recommendation,
+  hybrid recommendation/follower, or curated global where supported
 
 Action filtering behavior:
 
 - The enabled-action whitelist constrains LLM action selection prompts.
 - Tool-calling schemas are generated only for enabled actions.
-- Fixed-action entities are also constrained by this whitelist.
+- Fixed-action agents are also constrained by this whitelist.
 
 ### 5. Probes
 
@@ -193,22 +195,29 @@ uv run python -m silisocs.evaluations.analysis.dashboard.main \
 ### Required Inputs
 
 - `action_events.jsonl`
-- `probe_events.jsonl`
 
-The app loads both files and renders interaction trends, probe trends, and a
-dynamic follow/interactions graph.
+Optional inputs:
+
+- `probe_events.jsonl`
+- `prompts_and_responses.jsonl`
+
+The app renders generic action trends and probe trends. When social follow or
+post/reply/like/repost events are present, it also renders a follow/interactions
+graph and post-level action details.
 
 ### What It Answers Well
 
 - Which actions increased/decreased over time
 - Which users were most active in each episode
-- How follow relationships evolved
+- How follow relationships evolved in social runs
 - How probe responses changed by step
+- What prompts and outputs were logged when prompt logs are available
 
 ### Current Limits
 
 - It does not replace deep custom analysis scripts
-- It assumes expected action/probe event labels
+- Social graph panels require social action labels; non-social runs still show
+  action/probe/prompt summaries
 - Launcher and analytics are not yet a single integrated UI
 
 ---
@@ -216,6 +225,6 @@ dynamic follow/interactions graph.
 ## Recommended End-To-End User Journey
 
 1. Use Streamlit launcher to create or edit scenario and run simulation.
-2. Inspect generated output folder (`action_events.jsonl`, `probe_events.jsonl`, prompt logs, DB).
+2. Inspect generated output folder (`action_events.jsonl`, optional `probe_events.jsonl`, prompt logs, DB).
 3. Open Dash analytics app on that output folder for exploratory analysis.
 4. Use backend visualizer (Twitter-like or Reddit-like) for detailed platform state inspection.

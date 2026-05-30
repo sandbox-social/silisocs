@@ -4,7 +4,6 @@ site_url: https://sandbox-social.github.io/silisocs
 repo_url: https://github.com/sandbox-social/silisocs
 repo_name: sandbox-social/silisocs
 exclude_docs: |
-  api/**
 
 theme:
   name: material

@@ -1,10 +1,9 @@
-"""Main application file for Social Sandbox Dashboard."""
+"""Main application file for the Silisocs analysis dashboard."""
 
 import argparse
 import base64
 import json
 from io import StringIO
-from pathlib import Path
 
 import dash
 import dash_cytoscape as cyto
@@ -14,6 +13,7 @@ from dash import Input, Output, State, html
 
 from silisocs.evaluations.analysis.dashboard.data_processing import (
     deserialize_data,
+    load_data_from_directory,
     load_data_from_folder,
     serialize_data,
 )
@@ -40,108 +40,13 @@ def initialize_data(args):
 
     if args.output_dir:
         serialized_initial_data = load_from_directory(args.output_dir)
-    elif args.output_file:
-        print("Legacy single file mode not implemented")
 
     return serialized_initial_data
 
 
 def load_from_directory(directory_path):
     """Load data from a directory containing JSONL files."""
-    directory_path = Path(directory_path)
-
-    if not directory_path.exists() or not directory_path.is_dir():
-        print(f"Error: Invalid directory {directory_path}")
-        return None
-
-    folder_contents = {}
-    required_files = ["action_events.jsonl", "probe_events.jsonl"]
-
-    for file_pattern in required_files:
-        file_path = directory_path / file_pattern
-        if file_path.exists():
-            with open(file_path, encoding="utf-8") as f:
-                folder_contents[file_pattern] = f.read()
-            print(f"Loaded {file_pattern}")
-        elif file_pattern in required_files:
-            print(f"Error: Required file {file_pattern} not found")
-            return None
-
-    try:
-        (
-            follow_graph,
-            interactions_by_episode,
-            active_users_by_episode,
-            toots,
-            probe_data,
-            act_data,
-        ) = load_data_from_folder(folder_contents)
-
-        serialized_data = serialize_data(
-            follow_graph,
-            interactions_by_episode,
-            active_users_by_episode,
-            toots,
-            probe_data,
-            act_data,
-        )
-
-        # Add raw data for heatmap
-        raw_data_combined = []
-        for filename, content in folder_contents.items():
-            if filename.endswith("action_events.jsonl") or filename.endswith("probe_events.jsonl"):
-                df = pd.read_json(StringIO(content), lines=True)
-                raw_data_combined.extend(df.to_dict(orient="records"))
-
-        serialized_data["raw_data"] = raw_data_combined
-
-        print(f"Successfully loaded data from directory: {directory_path}")
-        return serialized_data
-
-    except Exception as e:
-        print(f"Error loading data from directory: {e}")
-        return None
-
-
-# def process_folder_contents(contents_list, filename_list):
-#     """Debug version: Prints file discovery details to the terminal."""
-#     print("\n" + "=" * 50)
-#     print("DEBUG: process_folder_contents started")
-
-#     if not contents_list:
-#         print("DEBUG ERROR: contents_list is None or Empty")
-#         return None
-#     if not filename_list:
-#         print("DEBUG ERROR: filename_list is None or Empty")
-#         return None
-
-#     print(f"DEBUG: Browser sent {len(contents_list)} total items from the folder.")
-
-#     folder_contents = {}
-#     for i, (content, filename) in enumerate(zip(contents_list, filename_list, strict=False)):
-#         # Normalize paths for Windows/Mac/Linux
-#         filename_only = filename.replace("\\", "/").split("/")[-1]
-
-#         print(f"  [{i}] Checking file: {filename} -> (Parsed as: {filename_only})")
-
-#         if filename_only.endswith(".jsonl"):
-#             try:
-#                 content_type, content_string = content.split(",")
-#                 decoded = base64.b64decode(content_string)
-#                 content_str = decoded.decode("utf-8")
-
-#                 folder_contents[filename_only] = content_str
-#                 print(f"      ✅ SUCCESS: {filename_only} (Size: {len(content_str)} chars)")
-#             except Exception as e:
-#                 print(f"      ❌ DECODE ERROR on {filename_only}: {e}")
-#         else:
-#             print(f"      ⏩ SKIPPING: {filename_only} (Not a .jsonl file)")
-
-#     print(f"DEBUG: Total valid .jsonl files collected: {len(folder_contents)}")
-#     print("DEBUG: Files keys found: " + ", ".join(folder_contents.keys()))
-#     print("=" * 50 + "\n")
-
-#     return folder_contents if folder_contents else None
+    return load_data_from_directory(directory_path)
 
 
 def create_app(serialized_initial_data=None):
@@ -158,71 +63,6 @@ def create_app(serialized_initial_data=None):
 
 def register_callbacks(app):
     """Register all callbacks for the dashboard."""
-    # @app.callback(
-    #     Output("jsonl-output", "children"),
-    #     [
-    #         Input("data-store", "data"),
-    #         Input("name-selector", "value"),
-    #         Input("episode-slider", "value"),
-    #     ],
-    #     prevent_initial_call=True,
-    # )
-    # def process_jsonl_data(data_store, selected_name, selected_episode):
-    #     """Process JSONL data with streaming and filtering."""
-    #     if not data_store or "prompts_content" not in data_store:
-    #         return html.Div(
-    #             [
-    #                 html.P("No prompts_and_responses.jsonl file found."),
-    #                 html.P("This file is needed to display agent thoughts."),
-    #             ]
-    #         )
-
-    #     prompts_content = data_store["prompts_content"]
-    #     if not prompts_content:
-    #         return html.Div([html.P("Prompts content is empty.")])
-
-    #     try:
-    #         encoded_content = base64.b64encode(prompts_content.encode("utf-8")).decode("utf-8")
-    #         mock_contents = "data:text/plain;base64," + encoded_content
-
-    #         return [
-    #             create_display(record)
-    #             for record in stream_filtered_jsonl(mock_contents, selected_name, selected_episode)
-    #         ]
-    #     except Exception as e:
-    #         return html.Div([html.P(f"Error processing prompts data: {e!s}")])
-
-    # @app.callback(
-    #     Output("plan-output", "children"),
-    #     [Input("data-store", "data"), Input("episode-slider", "value")],
-    #     prevent_initial_call=True,
-    # )
-    # def process_action_data(data, selected_episode):
-    #     """Process action data with filtering."""
-    #     if not data:
-    #         return None
-
-    #     try:
-    #         print(data["act_data"].keys())
-    #         act_data = data["act_data"][selected_episode]
-
-    #         # Group by agent and create displays
-    #         agents = {}
-    #         for entry in act_data:
-    #             agent_name = entry["source_user"]
-    #             if agent_name not in agents:
-    #                 agents[agent_name] = []
-    #             agents[agent_name].append(entry["data"])
-
-    #         # Create display for each agent
-    #         objs = []
-    #         for agent_name in sorted(agents.keys()):
-    #             objs.append(create_display_plan(agent_name, agents[agent_name]))
-
-    #         return objs
-    #     except Exception as e:
-    #         print(f"Error processing actions: {e!s}")
-    #         return None
 
     @app.callback(
         [
@@ -271,10 +111,7 @@ def register_callbacks(app):
             raise dash.exceptions.PreventUpdate
         for filename in filenames:
             if "~" in filename:
-                # Log a warning or handle the legacy name
-                print(f"Warning: Received legacy 8.3 filename: {filename}")
-        print(f"DEBUG: Processing {len(filenames)} files...")
-        print(filenames)
+                return dash.no_update, dash.no_update, f"Unsupported short filename: {filename}", ""
         try:
             # Map filenames to contents
             folder_contents = {
@@ -285,7 +122,6 @@ def register_callbacks(app):
             # Decode the contents
             decoded_contents = {}
             for name, content_str in folder_contents.items():
-                print(name)
                 if name.endswith(".jsonl"):
                     _, content_b64 = content_str.split(",")
                     decoded_contents[name] = base64.b64decode(content_b64).decode("utf-8")
@@ -295,7 +131,7 @@ def register_callbacks(app):
                 follow_graph,
                 interactions_by_episode,
                 active_users_by_episode,
-                toots,
+                posts,
                 probe_data,
                 act_data,
             ) = load_data_from_folder(decoded_contents)
@@ -304,7 +140,7 @@ def register_callbacks(app):
                 follow_graph,
                 interactions_by_episode,
                 active_users_by_episode,
-                toots,
+                posts,
                 probe_data,
                 act_data,
             )
@@ -321,7 +157,6 @@ def register_callbacks(app):
             return "Data Loaded Successfully", serialized_data, "", ""
 
         except Exception as e:
-            print(f"DEBUG ERROR: {e}")
             return dash.no_update, dash.no_update, f"Error: {e!s}", ""
 
     @app.callback(Output("heatmap-graph", "figure"), Input("data-store", "data"))
@@ -346,10 +181,7 @@ def register_callbacks(app):
                 data=[], layout=go.Layout(title="No action records with suggested_action found")
             )
 
-        # Convert "toot" to "post"
-        dft["suggested_action"] = dft["data"].apply(
-            lambda x: "post" if x.get("suggested_action") == "toot" else x.get("suggested_action")
-        )
+        dft["suggested_action"] = dft["data"].apply(lambda x: x.get("suggested_action"))
 
         # Create contingency table
         contingency = pd.crosstab(dft["label"], dft["suggested_action"])
@@ -419,7 +251,7 @@ def register_callbacks(app):
             follow_graph,
             interactions_by_episode,
             active_users_by_episode,
-            toots,
+            posts,
             probe_data,
             act_data,
         ) = deserialize_data(data_store)
@@ -440,7 +272,7 @@ def register_callbacks(app):
         probe_fig = create_probe_data_figure(probe_data)
 
         # Create interactions figure
-        total_users = len(follow_graph.nodes) - 1
+        total_users = len(follow_graph.nodes)
         interactions_fig = create_interactions_figure(
             interactions_by_episode, active_users_by_episode, total_users
         )
@@ -458,7 +290,7 @@ def register_callbacks(app):
 
             if interactions:
                 for interaction in interactions:
-                    interactions_content.append(create_interaction_display(interaction, toots))
+                    interactions_content.append(create_interaction_display(interaction, posts))
             else:
                 interactions_content.append(
                     html.P("No interactions found for this agent in the selected episode.")
@@ -494,12 +326,6 @@ def main():
     """Main entry point for the dashboard."""
     parser = argparse.ArgumentParser(
         description="Run the Dash app with specific data file or directory."
-    )
-    parser.add_argument(
-        "--output_file",
-        type=str,
-        default=None,
-        help="Path to output log file (legacy mode).",
     )
     parser.add_argument(
         "--output_dir",

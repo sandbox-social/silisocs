@@ -64,17 +64,17 @@ def create_display_plan(agent_name, entry_acts):
     )
 
 
-def create_interaction_display(interaction, toots):
+def create_interaction_display(interaction, posts):
     """Create HTML display for a single interaction."""
     action = interaction["action"]
 
-    if action in ["liked", "boosted"]:
-        toot_id = interaction["toot_id"]
-        content = toots.get(toot_id, {}).get("content", "No content available.")
-        user = toots.get(toot_id, {}).get("user", "No user available.")
+    if action in ["liked", "reposted"]:
+        post_id = interaction["post_id"]
+        content = posts.get(post_id, {}).get("content", "No content available.")
+        user = posts.get(post_id, {}).get("user", "No user available.")
         return html.Div(
             [
-                html.H4(f"{action.capitalize()} a toot (ID: {toot_id}) by {user}"),
+                html.H4(f"{action.capitalize()} a post (ID: {post_id}) by {user}"),
                 html.P(content),
             ],
             style={
@@ -85,16 +85,16 @@ def create_interaction_display(interaction, toots):
         )
 
     if action == "replied":
-        parent_toot_id = interaction.get("parent_toot_id")
-        reply_toot_id = interaction.get("toot_id")
-        parent_content = toots.get(parent_toot_id, {}).get("content", "No content available.")
-        reply_content = toots.get(reply_toot_id, {}).get("content", "No content available.")
-        user = toots.get(parent_toot_id, {}).get("user", "No user available.")
+        parent_post_id = interaction.get("parent_post_id")
+        reply_post_id = interaction.get("post_id")
+        parent_content = posts.get(parent_post_id, {}).get("content", "No content available.")
+        reply_content = posts.get(reply_post_id, {}).get("content", "No content available.")
+        user = posts.get(parent_post_id, {}).get("user", "No user available.")
         return html.Div(
             [
-                html.H4(f"Replied to toot (ID: {parent_toot_id}) by {user}"),
+                html.H4(f"Replied to post (ID: {parent_post_id}) by {user}"),
                 html.P(parent_content),
-                html.H5(f"Reply (ID: {reply_toot_id}):"),
+                html.H5(f"Reply (ID: {reply_post_id}):"),
                 html.P(reply_content),
             ],
             style={
@@ -105,11 +105,11 @@ def create_interaction_display(interaction, toots):
         )
 
     if action == "posted":
-        toot_id = interaction["toot_id"]
-        content = toots.get(toot_id, {}).get("content", "No content available.")
+        post_id = interaction["post_id"]
+        content = posts.get(post_id, {}).get("content", "No content available.")
         return html.Div(
             [
-                html.H4(f"Posted a toot (ID: {toot_id})"),
+                html.H4(f"Posted a post (ID: {post_id})"),
                 html.P(content),
             ],
             style={

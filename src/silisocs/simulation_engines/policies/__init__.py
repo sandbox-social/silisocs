@@ -1,26 +1,38 @@
-"""Engine policies package."""
+"""Engine selectable policy package."""
 
-from silisocs.simulation_engines.policies.action_chunk import (
-    FixedCountActionChunkPolicy,
-    OpenEndedActionChunkPolicy,
-    SingleActionChunkPolicy,
-)
 from silisocs.simulation_engines.policies.factory import (
     build_probe_schedule_policy,
     build_turn_policy,
 )
+from silisocs.simulation_engines.policies.loops import FixedStepsLoopStrategy
 from silisocs.simulation_engines.policies.probe_schedule import (
     DisabledProbeSchedulePolicy,
     FixedIntervalProbeSchedulePolicy,
     StepProbeSchedulePolicy,
 )
+from silisocs.simulation_engines.policies.steps import (
+    BaseStepStrategy,
+    FlowStepStrategy,
+    MultiGMStepStrategy,
+    SequentialStepStrategy,
+)
+from silisocs.simulation_engines.policies.turns import (
+    FixedCountTurnPolicy,
+    OpenEndedTurnPolicy,
+    SingleActionTurnPolicy,
+)
 
 __all__ = [
+    "BaseStepStrategy",
     "DisabledProbeSchedulePolicy",
-    "FixedCountActionChunkPolicy",
+    "FixedCountTurnPolicy",
     "FixedIntervalProbeSchedulePolicy",
-    "OpenEndedActionChunkPolicy",
-    "SingleActionChunkPolicy",
+    "FixedStepsLoopStrategy",
+    "FlowStepStrategy",
+    "MultiGMStepStrategy",
+    "OpenEndedTurnPolicy",
+    "SequentialStepStrategy",
+    "SingleActionTurnPolicy",
     "StepProbeSchedulePolicy",
     "build_probe_schedule_policy",
     "build_turn_policy",

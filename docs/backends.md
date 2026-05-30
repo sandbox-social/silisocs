@@ -2,7 +2,7 @@
 
 The simulation supports generic environment backends plus social-media
 specializations. Each backend implements `BackendApp`, so agent logic stays
-platform-agnostic and executable actions are discovered from `@app_action`
+backend-agnostic and executable actions are discovered from `@app_action`
 methods.
 
 ## Backend Selection
@@ -203,8 +203,8 @@ All backends implement a common interface defined in
 
 ```mermaid
 graph TD
-    A[Game Master] --> B[Engine]
-    B --> C{Backend Factory}
+    B[Engine] --> A[Game Master]
+    A --> C{Backend Factory}
     C --> D[TwitterLikeApp]
     C --> E[RedditLikeApp]
     C --> F[MastodonApp]
@@ -231,9 +231,23 @@ environment-specific API. Each backend handles:
 - Backend app (`BackendApp` implementation): environment state transitions,
   action execution, optional timeline retrieval/formatting, persistence
 
-When changing platform behavior (feeds, post/reply semantics, vote rules), make
-those changes in the backend first. When changing action grammar or dispatch,
-change GM components. When changing who acts and how often, change the engine.
+When changing backend behavior (feeds, post/reply semantics, vote rules), make
+those changes in the backend first. When changing action grammar, prompt shape,
+observation assembly, or dispatch, change GM components. When changing who acts
+and how often, change GM next-acting components or Engine policies depending on
+whether the concern is actor selection or scheduling.
+
+### Custom Backend Contract
+
+Subclass `BackendApp` for generic environments. Implement `initialize(...)`,
+optionally implement `observe(...)`, and expose actions with `@app_action`.
+Those actions are automatically available to `generic_action` and
+`tool_calling` resolve components.
+
+Subclass `SocialBackendApp` only for social environments that need timeline,
+feed, social parsing, or recommendation hooks. Social observation and
+recommendation GM components expect this interface and fail loudly for generic
+backends.
 
 ---
 
@@ -280,13 +294,13 @@ Opens at `http://localhost:8001`. Features:
 
 To implement a new generic environment:
 
-1. **Create a package** under `environments/backends/your_platform/`
+1. **Create a package** under `environments/backends/your_backend/`
 2. **Subclass `BackendApp`** from `environments.backends.base`:
 
     ```python
     from silisocs.environments.backends.base import BackendApp, app_action
 
-    class YourPlatformApp(BackendApp):
+    class YourBackendApp(BackendApp):
         def initialize(self, agent_names: list[str], **kwargs):
             # Set up domain state
             ...

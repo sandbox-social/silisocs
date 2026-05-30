@@ -18,6 +18,15 @@ class AgentStepResult:
     resolved_result: str
 
 
+@dataclass(frozen=True)
+class StepBatch:
+    """One group of agent turns executed together inside a step strategy."""
+
+    flow_name: str
+    game_master: Any
+    turns: list[tuple[Any, ActionSpec]]
+
+
 @dataclass
 class StepResult:
     """Per-episode step summary emitted by step strategies."""
@@ -50,7 +59,6 @@ class TurnPolicy(Protocol):
         game_master: Any,
         agent: Any,
         action_spec: ActionSpec,
-        skip_actions: bool,
         verbose: bool,
     ) -> str: ...
 
@@ -137,7 +145,6 @@ class RuntimeEngineBase:
         game_master: Any,
         agent: Any,
         action_spec: ActionSpec,
-        skip_actions: bool,
         verbose: bool,
         observe_before_action: bool = True,
     ) -> AgentStepResult:

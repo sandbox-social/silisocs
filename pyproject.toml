@@ -216,49 +216,6 @@ convention = "numpy"
 
 [tool.poe.tasks]  # https://github.com/nat-n/poethepoet
 
-  [tool.poe.tasks.api]
-  help = "Serve the REST API"
-  shell = """
-    if [ $dev ]
-    then {
-      uvicorn \
-        --host $host \
-        --port $port \
-        --reload \
-        silisocs.api:app
-    } else {
-      gunicorn \
-        --access-logfile - \
-        --bind $host:$port \
-        --graceful-timeout 10 \
-        --keep-alive 10 \
-        --log-file - \
-        --timeout 30 \
-        --worker-class uvicorn.workers.UvicornWorker \
-        --worker-tmp-dir /dev/shm \
-        --workers 2 \
-        silisocs.api:app
-    } fi
-    """
-
-    [[tool.poe.tasks.api.args]]
-    help = "Bind socket to this host (default: 0.0.0.0)"
-    name = "host"
-    options = ["--host"]
-    default = "0.0.0.0"
-
-    [[tool.poe.tasks.api.args]]
-    help = "Bind socket to this port (default: 8000)"
-    name = "port"
-    options = ["--port"]
-    default = "8000"
-
-    [[tool.poe.tasks.api.args]]
-    help = "Enable development mode"
-    type = "boolean"
-    name = "dev"
-    options = ["--dev"]
-
   [tool.poe.tasks.docs]
   help = "Build the documentation site"
   cmd = "properdocs build --strict"

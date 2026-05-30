@@ -13,7 +13,7 @@ Configuration is split across named groups, each with a base preset in
 | `scenario` | `scenario/default.yaml` | Run parameters, setting, event, data |
 | `agents` | `agents/default.yaml` | Persona pipeline, shared memories, initial observations |
 | `sim` | `sim/base.yaml` | LLM (model, API, temperature), engine, tool-calling, checkpoint |
-| `env` | `env/twitter_like.yaml` | Platform backend, GM components, social network |
+| `env` | `env/twitter_like.yaml` | Backend construction and GM component wiring |
 | `evals` | `evals/base.yaml` | Probes and evaluation timing |
 
 ---
@@ -90,7 +90,7 @@ Run parameters live in the `scenario` config group (placed at config root via
 | `sim.checkpoint.explicit_steps` | `[]` | Additional explicit checkpoint steps |
 | `sim.checkpoint.source_run` | `null` | Previous output directory to restore from |
 | `sim.checkpoint.restore.built_in` | `social_action_event_replay` | Checkpoint restore strategy when `source_run` is set |
-| `sim.engine.step.built_in` | `base` | Engine step strategy: `base`, `flow`, or `multi_gm` |
+| `sim.engine.step.built_in` | `base` | Engine step policy: `base`, `sequential`, `flow`, or `multi_gm` |
 | `sim.roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |
 
 ---
@@ -137,7 +137,7 @@ partial-override flat files that don't replace their group wholesale:
 
 **Priority order** (highest → lowest):
 
-1. CLI overrides (`num_steps=1 sim.llm.disabled=true`)
+1. CLI overrides (`num_steps=1 sim.llm.provider=scripted`)
 2. Scenario flat files merged in Layer 2 (`env.yaml`, `sim.yaml`, …)
 3. Scenario `scenario/default.yaml` and `agents/default.yaml` (via plugin searchpath)
 4. Package defaults in `src/silisocs/conf/`
@@ -161,7 +161,7 @@ uv run silisocs --config-path scenarios/ai_conference/conf \
 
 # Dry-run with no LLM calls (for testing)
 uv run silisocs --config-path scenarios/misinformation/conf \
-    num_steps=1 sim.llm.disabled=true
+    num_steps=1 sim.llm.provider=scripted
 
 # View merged config before running
 uv run silisocs --config-path scenarios/election/conf --cfg job
@@ -235,7 +235,7 @@ initial_observations:
   - "{name} opens their social media feed."
 ```
 
-**`scenarios/my_scenario/conf/env.yaml`** — optional platform overrides:
+**`scenarios/my_scenario/conf/env.yaml`** — optional backend/GM overrides:
 ```yaml
 gm:
   components:
@@ -553,7 +553,7 @@ the simulation starts unless the target component accepts `**kwargs`. Observe
 components that explicitly accept `observation_params` can use `params` as
 forwarded observation settings.
 
-### Social Network
+### Social Setup and Activity Components
 
 Graph fields are owned by the GM initialize component. Activity rates are owned
 by the GM next-acting component.
@@ -577,7 +577,7 @@ gm:
             active_to_inactive: 0.3
 ```
 
-### Timeline Mode
+### Timeline Observation
 
 ```yaml
 gm:
@@ -587,7 +587,7 @@ gm:
         timeline_mode: follower_chronological
 ```
 
-| Strategy | Platforms | Description |
+| Mode | Backends | Description |
 |----------|-----------|-------------|
 | `follower_chronological` | All | Recent posts from followed users, no algorithm |
 | `pure_recsys` | Twitter, Reddit | Algorithm-selected posts only |
@@ -606,7 +606,7 @@ probes: {}              # See Probes section below
 
 ```yaml
 probes:
-  query_lib_module: null   # Optional custom probe type module
+  probe_lib_module: null   # Optional custom probe type module
 
   deployment:
     enabled: true
@@ -622,7 +622,6 @@ probes:
       probe_data:
         name: Favorability
         question: "Return a single rating from {lo} to {hi}."
-        context: "{agentname} rates favorability toward the current event."
         lo: 1
         hi: 10
 ```
@@ -648,7 +647,7 @@ Tool-calling output style is automatically stripped from the base prompt when
 
 ---
 
-## Engine Action Loop Policies
+## Engine Turn Policies
 
 | Policy | Option | Behavior |
 |--------|--------|----------|
@@ -668,10 +667,14 @@ sim:
       built_in: fixed_count
       params:
         count: 3
+        observe_before_act: first   # first | always | never
 ```
 
 Policy `params` are strict constructor arguments. Unknown keys fail before the
 simulation starts unless the target policy accepts `**kwargs`.
+`observe_before_act` controls whether repeated-action policies refresh the GM
+observation only before the first action, before every action, or never.
+Omit it to preserve the default `first` behavior.
 
 Flow scheduling (requires `engine.step.built_in: flow`):
 
@@ -687,6 +690,18 @@ sim:
 
 The turn policy is global for the engine. Flow mode only controls which
 agent groups act together and in what order.
+
+Sequential scheduling:
+
+```yaml
+sim:
+  engine:
+    step:
+      built_in: sequential
+```
+
+`sequential` uses the same GM actor selection as `base`, but executes each
+selected agent in its own batch so turns are strictly ordered.
 
 ---
 

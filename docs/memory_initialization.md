@@ -38,6 +38,20 @@ class MyAgentInitializer(AgentInitializer):
             agent.initialize({"memories": [f"Welcome, {agent.name}."]})
 ```
 
+Contract details:
+
+- input `agents`: live native or adapter-wrapped agents;
+- input `model`: initializer model, used only when the initializer needs LLM
+  generation;
+- input `context`: `AgentInitializationContext` with shared memories,
+  per-agent memories, initial observations, roles, bios, and scenario data;
+- output: `None`; mutate agents by calling `agent.initialize(...)` or
+  `agent.observe(...)`.
+
+Do not create backend users, social graphs, or seed posts here. Backend setup
+belongs to the Game Master's initialize component; seed posts belong to
+simulation initialization.
+
 Then configure it:
 
 ```yaml

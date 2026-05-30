@@ -1,6 +1,6 @@
 # /new-scenario — Design a new silisocs scenario
 
-A scenario is a **shared social world**: a setting, a cast of agents, and a platform
+A scenario is a **shared social world**: a setting, a cast of agents, and a backend
 configuration. It lives in `scenarios/<name>/` and can be used as the substrate for
 many different research studies. Think of it as community-owned common ground.
 
@@ -96,7 +96,7 @@ them into concrete agents yourself and ask for confirmation.
 
 ---
 
-## Step 4 — Network and platform
+## Step 4 — Network and backend
 
 Ask:
 > "What actions can agents take, and how should they be connected to each other?"
@@ -106,13 +106,16 @@ Collect or confirm:
   surface, or list the exact actions this scenario should allow. For a small
   Twitter-like social run, use `[create_tweet, reply_to_tweet, like_tweet,
   repost_tweet, FINISHED]`. `FINISHED` signals the end of an open-ended turn.
-- `timeline_mode`: `follower_chronological` (default) or `pure_recsys`
+- `env.gm.components.observe.params.timeline_mode`: `follower_chronological`
+  (default) or `pure_recsys`
 - Network topology:
   - Any roles that should follow *everyone* (bridge/journalist roles)?
   - `base_followership_probability` (default 0.5)
   - `network_type`: `barabasi_albert` (scale-free, default) or `fully_connected`
-  - Per-role `inactive_to_active` and `active_to_inactive` transition rates
-    (higher = more active; suggest 0.6–0.9 for key roles, 0.1–0.3 for passive ones)
+  - Per-role activity rates under
+    `env.gm.components.next_acting.params.activity_transition_rates`
+    (`inactive_to_active` / `active_to_inactive`; higher = more active; suggest
+    0.6–0.9 for key roles, 0.1–0.3 for passive ones)
 
 ---
 

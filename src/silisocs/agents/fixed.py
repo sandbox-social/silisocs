@@ -447,7 +447,7 @@ class FixedAgent(Agent):
 
         target_id = str(item.get("target_id", "") or "")
         content = str(item.get("content", "") or "")
-        reasoning = str(item.get("reasoning", "Fixed action entity response.") or "")
+        reasoning = str(item.get("reasoning", "Fixed action agent response.") or "")
         tool_kwargs = item.get("tool_kwargs", {})
 
         action_output = self._format_action(

@@ -1,7 +1,5 @@
 """Cytoscape stylesheet generation for the dashboard."""
 
-from silisocs.evaluations.analysis.dashboard.config import CUSTOM_NAMES, NODE_COLORS
-
 
 def get_base_stylesheet():
     """Get the base stylesheet for Cytoscape."""
@@ -66,20 +64,6 @@ def get_base_stylesheet():
             },
         },
         {
-            "selector": f'[id="{CUSTOM_NAMES[0]}"]',
-            "style": {
-                "background-color": "blue",
-                "border-color": "#000000",
-            },
-        },
-        {
-            "selector": f'[id="{CUSTOM_NAMES[1]}"]',
-            "style": {
-                "background-color": "orange",
-                "border-color": "#000000",
-            },
-        },
-        {
             "selector": ".highlighted",
             "style": {
                 "background-color": "#98FF98",
@@ -106,15 +90,14 @@ def build_stylesheet(
             }
         )
 
-    # Update node border colors based on probe_data
+    # Mark nodes with probe responses in the selected episode.
     episode_probe_data = probe_data.get(selected_episode, {})
     for node in follow_graph.nodes:
         if node in episode_probe_data:
-            node_label = node if node in CUSTOM_NAMES else "Other"
             stylesheet.append(
                 {
                     "selector": f'[id="{node}"]',
-                    "style": {"border-color": NODE_COLORS[node_label]},
+                    "style": {"border-color": "#1f77b4"},
                 }
             )
 

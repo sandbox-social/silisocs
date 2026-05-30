@@ -1,4 +1,4 @@
-"""Turn-policy policies for loose Echo Chamber social-media studies."""
+"""Turn policies for loose Echo Chamber social-media studies."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType
-from silisocs.simulation_engines.policies.action_chunk import _count_structured_actions
+from silisocs.simulation_engines.policies.turns import _count_structured_actions
 
 
 def _extract_contact_ids(action_text: str) -> list[int]:
@@ -103,13 +103,9 @@ class FixedActionsThenBeliefProbePolicy:
         game_master: Any,
         agent: Any,
         action_spec: Any,
-        skip_actions: bool,
         verbose: bool,
     ) -> str:
         """Execute social actions and record exactly one terminal belief event."""
-        if skip_actions:
-            return ""
-
         last_action = ""
         last_result = ""
         raw_actions: list[str] = []
@@ -120,7 +116,6 @@ class FixedActionsThenBeliefProbePolicy:
                 game_master=game_master,
                 agent=agent,
                 action_spec=action_spec,
-                skip_actions=False,
                 verbose=verbose,
                 observe_before_action=not bool(last_action),
             )

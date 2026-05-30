@@ -7,7 +7,7 @@ This guide is for LLM agents helping design and create new simulation scenarios 
 A complete scenario consists of:
 
 1. **Persona Pipeline** — Define agent populations (classes, counts, data sources, personas)
-2. **Social Network** — Define followership patterns, activity rates, network topology
+2. **GM component behavior** — Define followership graph setup, activity rates, observation, and update settings
 3. **Probes** — Define evaluation questions to ask agents during/after simulation
 4. **Setting & Event** — Provide narrative context for the simulation
 5. **Optional sim/backend overrides** — Customize sim parameters or backend type for this scenario
@@ -132,9 +132,10 @@ persona_pipeline:
 | Inline YAML | `source: inline`<br>`records: [{name: Alice, bio: "..."}]` | Defined directly in scenario |
 | Config Reference | `source: config_path`<br>`path: candidates` | Dot-path into this YAML file |
 
-### File 3: GM Component Behavior
+### File 3: GM Component Behavior (`env.yaml`)
 
-Controls how agents follow each other:
+Controls followership graph setup and activity selection through the GM's
+initialize and next-acting component params:
 
 ```yaml
 gm:
@@ -222,7 +223,7 @@ probes:
         question: "Will you cast a vote?"
 ```
 
-### File 7: Scenario-Specific Entities (Optional)
+### File 7: Scenario-Specific Agent Data (Optional)
 
 Define special agents referenced in classes:
 

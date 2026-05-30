@@ -136,7 +136,7 @@ def create_upload_section(show=False):
         },
         children=[
             html.H3("Upload Data Files"),
-            html.P("Select all .jsonl files (Action, Probe, and Prompts) together:"),
+            html.P("Select action_events.jsonl, plus optional probe and prompt logs:"),
             dcc.Upload(
                 id="upload-app-logger",
                 children=html.Div(
@@ -188,7 +188,7 @@ def create_dashboard_section(show=False):
             html.Div(
                 className="plot-row",
                 children=[
-                    create_plot_container("probe-data-line", "Vote Distribution Over Time"),
+                    create_plot_container("probe-data-line", "Probe Responses Over Time"),
                     create_plot_container("interactions-line-graph", "Interactions Over Time"),
                     create_plot_container("heatmap-graph", "Action Alignment Histogram"),
                 ],
@@ -317,7 +317,7 @@ def create_detail_panel():
         id="detail-panel",
         className="detail-container hidden",
         children=[
-            html.H3("Platform Interactions"),
+            html.H3("Action Details"),
             html.Div(id="interactions-window", style={"overflowY": "auto", "height": "500px"}),
         ],
     )
@@ -333,7 +333,7 @@ def create_app_layout(serialized_initial_data=None):
             # Header
             html.Div(
                 className="dashboard-header",
-                children=[html.H1(id="dashboard-title", children="Social Sandbox Dashboard")],
+                children=[html.H1(id="dashboard-title", children="Silisocs Analysis Dashboard")],
             ),
             # Upload section in header (for re-uploading)
             html.Div(
