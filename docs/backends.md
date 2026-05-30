@@ -191,8 +191,9 @@ exercising the same `SocialBackendApp` action interface. Use this mode for tests
 documentation examples, and local development that should not require Mastodon
 credentials.
 
-See the [infrastructure/](https://github.com/sandbox-social/silisocs/tree/main/infrastructure)
-directory for instructions on deploying your own Mastodon instance.
+Live Mastodon deployment scaffolding is intentionally not part of the public
+Python package. Use your own managed Mastodon instance, then point the backend
+at it with the environment variables above.
 
 ---
 
