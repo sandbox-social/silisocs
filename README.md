@@ -1,9 +1,11 @@
 [![CI](https://github.com/sandbox-social/silisocs/actions/workflows/test.yml/badge.svg)](https://github.com/sandbox-social/silisocs/actions/workflows/test.yml)
 [![Docs](https://github.com/sandbox-social/silisocs/actions/workflows/docs.yml/badge.svg)](https://sandbox-social.github.io/silisocs/)
 
+**NOTE: This repository is currently in alpha development, and we expect to ship further stability updates over the coming weeks**
+
 # SiliSoCS
 
-SiliSoCS (Silicon Society Sandbox) is a configurable, extensible framework for multi-agent
+SiliSoCS (Silicon Society Sandbox) is an easy-to-use, configurable, and extensible framework for multi-agent
 social simulation and experimentation. It is structured around the EASE decomposition —
 Environment, Agents, Simulation engine, and Evaluation — providing a principled,
 reproducible configuration layer for simulated societies. It offers scenario-driven 
@@ -131,7 +133,7 @@ making Concordia part of the default install:
 - Legacy Concordia-shaped components are isolated behind
   `silisocs.adapters.concordia`.
 - Scenario YAML selects builders, backends, policies, probes, and prompts so
-  most experiment design does not require Python edits.
+  most experiment designs do not require Python edits.
 
 See [docs/concordia_bridge.md](docs/concordia_bridge.md) and
 [docs/building_agents.md](docs/building_agents.md) for the extension contracts.
