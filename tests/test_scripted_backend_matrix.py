@@ -61,7 +61,7 @@ class RedditPostCommentVoteBehavior:
 
 
 class ResourceMarketBehavior:
-    """List food when no listing exists, then buy listing 1."""
+    """Exercise role production, transfers, listings, purchases, and upkeep."""
 
     def sample_tool_calls(
         self,
@@ -70,19 +70,31 @@ class ResourceMarketBehavior:
         *,
         model: Any,
     ) -> list[ToolCall]:
-        del model
         tool_names = {_tool_name(spec) for spec in tools}
-        if "Open listings: none" not in prompt and "BUY_LISTING" in tool_names:
-            return [ToolCall("BUY_LISTING", {"listing_id": 1})]
-        if "LIST_RESOURCE" in tool_names:
+        agent = str(model.meta_data.get("agent_name", "") or "")
+        if "Role: woodworker" in prompt and "TRANSFER_RESOURCE" in tool_names:
+            return [
+                ToolCall("PRODUCE_RESOURCE", {"resource": "wood", "quantity": 1}),
+                ToolCall(
+                    "TRANSFER_RESOURCE",
+                    {"target_user": "Alex Farmer", "resource": "wood", "quantity": 1},
+                ),
+            ]
+        if "Role: farmer" in prompt and "LIST_RESOURCE" in tool_names:
             return [ToolCall("LIST_RESOURCE", {"resource": "food", "quantity": 1, "price": 1})]
+        if (
+            agent != "Alex Farmer"
+            and "Open listings: none" not in prompt
+            and "BUY_LISTING" in tool_names
+        ):
+            return [ToolCall("BUY_LISTING", {"listing_id": 1})]
         if "PRODUCE_RESOURCE" in tool_names:
             return [ToolCall("PRODUCE_RESOURCE", {"resource": "food", "quantity": 1})]
         return [ToolCall("INSPECT_MARKET", {})] if "INSPECT_MARKET" in tool_names else []
 
 
 class VirtualSpaceBehavior:
-    """Talk to co-located agents, otherwise move to the garden."""
+    """Exercise room tasks, persistent notes, and co-located talk."""
 
     def sample_tool_calls(
         self,
@@ -93,6 +105,16 @@ class VirtualSpaceBehavior:
     ) -> list[ToolCall]:
         del model
         tool_names = {_tool_name(spec) for spec in tools}
+        if "welcome_board:" in prompt and "[complete]" not in prompt:
+            calls: list[ToolCall] = []
+            if "WORK_ON_TASK" in tool_names:
+                calls.append(ToolCall("WORK_ON_TASK", {"task_id": "welcome_board", "effort": 1}))
+            if "LEAVE_NOTE" in tool_names:
+                calls.append(
+                    ToolCall("LEAVE_NOTE", {"message": "I helped with the welcome board."})
+                )
+            if calls:
+                return calls
         present_match = re.search(r"Present here:\s*([^\n]+)", prompt)
         present = present_match.group(1).strip() if present_match else ""
         if present and present.lower() != "none" and "TALK" in tool_names:
@@ -241,16 +263,24 @@ def test_resource_market_scripted_list_and_buy(tmp_path: Path) -> None:
         agents="resource_market",
         scenario="resource_market",
         behavior="tests.test_scripted_backend_matrix.ResourceMarketBehavior",
-        extra_overrides=["num_steps=2"],
+        extra_overrides=[
+            "num_steps=2",
+            "env.gm.components.next_acting.built_in=all_agents",
+            "env.gm.backend.params.upkeep_interval=1",
+        ],
     )
 
     rows = _read_jsonl(output_dir / "action_events.jsonl")
     messages = "\n".join(str(row.get("message", "")) for row in rows)
     assert "Listing 1 created" in messages
+    assert "transferred 1 wood to Alex Farmer" in messages
     assert "bought 1 food" in messages
+    assert "met upkeep needs" in messages
 
     prompts = _read_jsonl(output_dir / "prompts_and_responses.jsonl")
     assert any("RESOURCE MARKET STATE" in str(row.get("prompt", "")) for row in prompts)
+    assert any("Production capabilities:" in str(row.get("prompt", "")) for row in prompts)
+    assert any("Upkeep needs:" in str(row.get("prompt", "")) for row in prompts)
 
 
 def test_virtual_space_scripted_talks_from_observation(tmp_path: Path) -> None:
@@ -260,15 +290,22 @@ def test_virtual_space_scripted_talks_from_observation(tmp_path: Path) -> None:
         agents="virtual_space",
         scenario="virtual_space",
         behavior="tests.test_scripted_backend_matrix.VirtualSpaceBehavior",
-        extra_overrides=["num_steps=1"],
+        extra_overrides=[
+            "num_steps=2",
+            "env.gm.components.next_acting.built_in=all_agents",
+        ],
     )
 
     rows = _read_jsonl(output_dir / "action_events.jsonl")
     messages = "\n".join(str(row.get("message", "")) for row in rows)
+    assert "left a note" in messages
+    assert "completed task welcome_board" in messages
     assert "told" in messages
 
     prompts = _read_jsonl(output_dir / "prompts_and_responses.jsonl")
     assert any("VIRTUAL SPACE STATE" in str(row.get("prompt", "")) for row in prompts)
+    assert any("Room tasks:" in str(row.get("prompt", "")) for row in prompts)
+    assert any("Room notes:" in str(row.get("prompt", "")) for row in prompts)
 
 
 def test_dashboard_saved_config_runs_with_scripted_model(tmp_path: Path) -> None:

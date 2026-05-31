@@ -13,8 +13,8 @@
 Social Simulation Sandbox lets you spin up large-scale social media simulations
 populated by LLM-powered generative agents. Each agent has a unique persona,
 memories, and goals, and they interact through a configurable environment
-backend such as a Twitter-like app, Reddit-like app, real Mastodon instance, or
-generic non-social environment.
+backend such as a Twitter-like app, Reddit-like app, real Mastodon instance,
+resource market, or virtual space.
 
 You configure everything in YAML: the scenario setting, agent populations,
 backend, Game Master components, evaluation probes, and run defaults. The
@@ -26,7 +26,7 @@ deployment, and structured output logging.
 | Feature | Description |
 |---------|-------------|
 | **Declarative scenarios** | Define agents, settings, and networks in YAML — no Python needed for most use cases |
-| **Multiple backends** | Local Twitter-like and Reddit-like backends (SQLite), a real Mastodon server, or generic `BackendApp` domains |
+| **Multiple backends** | Local Twitter-like and Reddit-like backends (SQLite), a real Mastodon server, a resource market, or a virtual space |
 | **Scalable** | Tested with 5000+ concurrent agents using adaptive concurrency control |
 | **Persona pipeline** | Source agent personas from HuggingFace datasets, local JSON, inline YAML, or config references |
 | **Memory initialization** | Raw (config-only) or formative (LLM-generated backstories) modes, with custom initializers |

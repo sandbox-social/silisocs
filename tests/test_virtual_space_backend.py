@@ -66,6 +66,55 @@ def test_virtual_space_talk_requires_same_room_and_records_message() -> None:
     assert "Can you hear me?" not in app.observe("Casey")
 
 
+def test_virtual_space_notes_and_room_tasks_change_observations() -> None:
+    app = VirtualSpaceApp(
+        rooms=["atrium", "garden"],
+        starting_room="atrium",
+        room_tasks=[
+            {
+                "task_id": "welcome_board",
+                "room": "atrium",
+                "description": "Prepare a welcome board.",
+                "required_effort": 2,
+                "completion_message": "The board is ready.",
+            }
+        ],
+    )
+    app.initialize(agent_names=["Alice", "Bob"])
+
+    note_result = app.invoke_action_with_kwargs(
+        "LEAVE_NOTE",
+        {
+            "current_user": "Alice",
+            "message": "Meet by the welcome board.",
+        },
+    )
+    partial_result = app.invoke_action_with_kwargs(
+        "WORK_ON_TASK",
+        {
+            "current_user": "Alice",
+            "task_id": "welcome_board",
+            "effort": 1,
+        },
+    )
+    complete_result = app.invoke_action_with_kwargs(
+        "WORK_ON_TASK",
+        {
+            "current_user": "Bob",
+            "task_id": "welcome_board",
+            "effort": 1,
+        },
+    )
+
+    observation = app.observe("Bob")
+    assert "Alice left a note" in note_result
+    assert "welcome_board (1/2)" in partial_result
+    assert "completed task welcome_board" in complete_result
+    assert "Alice: Meet by the welcome board." in observation
+    assert "welcome_board: Prepare a welcome board. [complete]" in observation
+    assert "The board is ready" in observation
+
+
 def test_virtual_space_factory_and_finished_action() -> None:
     app = create_backend_app(
         "virtual_space",

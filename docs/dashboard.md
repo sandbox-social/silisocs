@@ -86,7 +86,7 @@ Configure the persona pipeline:
 
 Runtime environment controls:
 
-- **Backend**: Twitter-like, Reddit-like, Mastodon, or a non-social backend preset
+- **Backend**: Twitter-like, Reddit-like, Mastodon, resource market, or virtual space
 - **Enabled backend actions**: Optional multi-select whitelist. Empty means all backend actions are available.
 - **Enable advanced configuration** (toggle): reveals orchestration controls.
 
@@ -216,8 +216,8 @@ graph and post-level action details.
 ### Current Limits
 
 - It does not replace deep custom analysis scripts
-- Social graph panels require social action labels; non-social runs still show
-  action/probe/prompt summaries
+- Social graph panels require social action labels; other backend runs still
+  show action/probe/prompt summaries
 - Launcher and analytics are not yet a single integrated UI
 
 ---

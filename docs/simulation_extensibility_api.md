@@ -83,17 +83,19 @@ records. Runtime assembly remains responsible for loading classes, injecting the
 The core backend contract is `BackendApp` in
 `src/silisocs/environments/backends/base.py`.
 
-Required method for generic backends:
+Common backend setup hook:
 
 ```python
 def initialize(self, agent_names: list[str], **kwargs: Any) -> None: ...
 ```
 
-Common generic optional method:
+Common optional hooks:
 
 - `observe(actor_name: str, **kwargs) -> str`
+- `update(step: int, agent_names: Sequence[str], context=None) -> None`
 
-Social-only methods live on `SocialBackendApp`, not on plain `BackendApp`:
+Timeline/recommendation capability methods live on `SocialBackendApp`, not on
+plain `BackendApp`:
 
 - `get_timeline(user_name: str, limit: int = 10) -> list[dict]`
 - `get_timeline_mode(...) -> list[dict]`
@@ -103,9 +105,9 @@ Social-only methods live on `SocialBackendApp`, not on plain `BackendApp`:
 Expose executable actions with `@app_action`. `generic_action` and
 `tool_calling` resolve modes discover those actions automatically.
 
-`SocialBackendApp` subclasses `BackendApp` for backends with social timelines,
-feeds, social action parsing, or recommendation updates. Generic environments
-should subclass `BackendApp` directly.
+`SocialBackendApp` subclasses `BackendApp` for backends that use the
+timeline/recommendation GM components. Backends that do not need those
+components should subclass `BackendApp` directly.
 
 Custom app config:
 
@@ -205,16 +207,17 @@ Subcomponent interfaces in `components/base.py`:
 - `ResolveComponent.resolve_action(agent_name, action)`
 - `UpdateComponent.update(step, agents, context)`
 
-Default generic baselines are available for non-social environments:
+Default baselines are available for backends that only need `BackendApp`:
 
-- `AppInitializeComponent` calls a generic backend's `initialize(...)`.
+- `AppInitializeComponent` calls a backend's `initialize(...)`.
 - `AllAgentsNextActing`, `FixedOrderNextActing`, `ActivityProbabilityNextActing`,
   and `ActivityMarkovNextActing` select agents without social timeline logic.
 - `AppObservationComponent` delegates to `BackendApp.observe(...)`.
 - `EpisodeObservation` returns episode-index observations for scripted flows.
 - generic action and tool-calling resolvers dispatch backend actions discovered
   through `@app_action`.
-- `NoOpUpdateComponent` is the baseline update slot for environments that do
+- `AppUpdateComponent` delegates to `BackendApp.update(...)`.
+- `NoOpUpdateComponent` is the explicit update slot for environments that do
   not need pre-turn state refresh.
 
 Social-media-specific defaults are intentionally isolated under
@@ -349,8 +352,9 @@ Add a custom backend app:
 
 1. Subclass `BackendApp`.
 2. Implement `initialize(...)`.
-3. Add `@app_action` methods.
-4. Configure `env.gm.backend.class_path` and `env.gm.backend.params`.
+3. Implement `observe(...)` and optionally `update(...)`.
+4. Add `@app_action` methods.
+5. Configure `env.gm.backend.class_path` and `env.gm.backend.params`.
 
 Add a custom GM component:
 

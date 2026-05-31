@@ -11,9 +11,9 @@ Last reviewed: 2026-05-11.
 |---|---|---|---|
 | Runtime entrypoint and config composition | `src/silisocs/runtime/runner.py`, `src/silisocs/conf/` | [Configuration](configuration.md), [Usage](usage.md) | Covered; keep examples synced with packaged defaults |
 | Agent runtime and persona pipeline | `src/silisocs/agents/` | [Building Agents](building_agents.md), [Simulation Extensibility API](simulation_extensibility_api.md) | Covered; custom runtime checkpointing should stay visible |
-| Generic backend app contract | `src/silisocs/environments/backends/base.py`, `factory.py` | [Backends](backends.md), [Environment Layer](environment_layer.md) | Needs emphasis; `BackendApp` is now the core contract |
-| Social backend capabilities | `twitter_like/`, `reddit_like/`, `mastodon/` | [Backends](backends.md), [Configuration](configuration.md) | Covered; ensure social-only language is scoped correctly |
-| Non-social sample backend | `resource_market/`, `conf/env/resource_market.yaml` | [Backends](backends.md), [Environment Layer](environment_layer.md) | Newly documented; keep as the minimal extension example |
+| Backend app contract | `src/silisocs/environments/backends/base.py`, `factory.py` | [Backends](backends.md), [Environment Layer](environment_layer.md) | Covered; `BackendApp` is the core contract |
+| Timeline/recsys capability interface | `twitter_like/`, `reddit_like/`, `mastodon/` | [Backends](backends.md), [Configuration](configuration.md) | Covered; `SocialBackendApp` wording is capability-scoped |
+| Reference-world backends | `resource_market/`, `virtual_space/`, packaged env/agent/scenario configs | [Backends](backends.md), [Environment Layer](environment_layer.md) | Covered; keep examples synced with packaged defaults |
 | GM component slots | `environments/gm/components/` | [Environment Layer](environment_layer.md), [Simulation Extensibility API](simulation_extensibility_api.md) | Covered; strict `params` behavior must be called out |
 | Flow and multi-GM routing | `gm/game_master.py`, `simulation_engines/multi_gm.py` | [Multi-GM Architecture](multi_gm_architecture.md), `agent_docs/architecture.md` | Covered but duplicated; public docs should be canonical |
 | Engine policies | `src/silisocs/simulation_engines/policies/` | [Environment Layer](environment_layer.md), [Simulation Extensibility API](simulation_extensibility_api.md) | Covered after path correction |
@@ -26,7 +26,7 @@ Last reviewed: 2026-05-11.
 | Issue | Impact | Required action |
 |---|---|---|
 | Old `src/silisocs/engines/...` paths | Misleads contributors; code now lives under `simulation_engines` | Replace stale paths in public docs |
-| Social-only backend wording | Hides the generic environment direction | Reframe backends around `BackendApp`, with `SocialBackendApp` as a specialization |
+| Backend capability wording | Hides that all backends are peer environment choices | Reframe docs around named backends; mention `SocialBackendApp` only for timeline/recsys component requirements |
 | `sim.enable_engine_multi_flow` references | Incorrect config knob | Use `sim.engine.step.built_in: flow` |
 | Prompt addition key mismatch | Users may set a no-op key | Document `sim.prompt_additions.action_count_guidance` |
 | Advanced flow docs duplicated across `docs/` and `agent_docs/` | Divergence risk | Keep public docs canonical; use `agent_docs` as agent-facing deep dives |
@@ -38,11 +38,12 @@ Each extensible simulator part should have one documented shape:
 
 - Agent: implements `name`, `observe(str)`, `act(action_spec) -> ActionOutput`; optional
   `get_state()` and `set_state()` for checkpoint restore.
-- Environment app: subclasses `BackendApp`, implements
-  `initialize(agent_names, **kwargs)`, optionally overrides `observe(...)`, and
-  exposes actions with `@app_action`.
-- Social app: subclasses `SocialBackendApp` when timelines, feed formatting,
-  recommendation updates, or social action parsing are needed.
+- Backend app: subclasses `BackendApp`, implements
+  `initialize(agent_names, **kwargs)`, optionally overrides `update(...)` and
+  `observe(...)`, and exposes actions with `@app_action`.
+- Timeline/recsys backend capability: subclasses `SocialBackendApp` when
+  timeline, feed formatting, recommendation update, or parsed social action
+  components are needed.
 - GM component: selected from `env.gm.components.<slot>`, receives YAML
   `params`, and implements direct native methods for its slot. Native
   components do not expose Concordia lifecycle hooks.

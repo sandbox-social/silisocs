@@ -2,7 +2,6 @@
 default_install_hook_types: [commit-msg, pre-commit]
 default_stages: [pre-commit, manual]
 fail_fast: true
-exclude: ^infrastructure/mastodon-on-aws/mastodon.yaml$
 repos:
   - repo: meta
     hooks:

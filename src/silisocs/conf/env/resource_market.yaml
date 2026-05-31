@@ -9,6 +9,30 @@ gm:
         food: 1
         wood: 0
         ore: 0
+      production_capabilities:
+        farmer:
+          food: 2
+        woodworker:
+          wood: 2
+        miner:
+          ore: 2
+        merchant:
+          food: 1
+          wood: 1
+          ore: 1
+      role_needs:
+        farmer:
+          wood: 1
+        woodworker:
+          food: 1
+        miner:
+          food: 1
+        merchant:
+          food: 1
+      upkeep_interval: 2
+      initial_satisfaction: 0
+      fulfilled_need_reward: 1
+      shortage_penalty: 1
       resources:
       - food
       - wood
@@ -31,7 +55,7 @@ gm:
       class_path: null
       params: {}
     update:
-      built_in: disabled
+      built_in: app_update
       class_path: null
       params: {}
     observe:

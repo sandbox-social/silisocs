@@ -42,9 +42,9 @@ Game Master initialization, then simulation initialization before the main loop.
 
 **Phase 4 — Simulation loop**: Each step, agents observe environment state,
 decide on an action, and the game master executes it against the configured
-backend. Social backends provide timelines; generic backends can provide any
-domain observation through `BackendApp.observe(...)`. Probes are deployed
-on schedule.
+backend. Each backend provides its own observations through the GM component
+slots; `app_observation` delegates directly to `BackendApp.observe(...)`.
+Probes are deployed on schedule.
 
 ---
 
@@ -66,7 +66,7 @@ uv run silisocs num_agents=10 num_steps=5 sim.llm.name=gpt-4o
 # Use a different backend
 uv run silisocs env=reddit_like
 
-# Run the generic non-social sample backend
+# Run the resource-market sample backend
 uv run silisocs scenario=resource_market agents=resource_market env=resource_market
 
 # Run the virtual-space sample backend

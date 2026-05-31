@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from typing import Any, cast
 
 from silisocs.environments.gm.components.action_prompt import DefaultActionPromptComponent
+from silisocs.environments.gm.components.app_update import AppUpdateComponent
 from silisocs.environments.gm.components.base import (
     ActionPromptComponent,
     InitializeComponent,
@@ -75,6 +76,7 @@ _NEXT_ACTING_BUILT_INS = {
 }
 
 _UPDATE_BUILT_INS = {
+    "app_update": AppUpdateComponent,
     "disabled": NoOpUpdateComponent,
     "none": NoOpUpdateComponent,
     "social_recommendation": SocialRecommendationUpdateComponent,

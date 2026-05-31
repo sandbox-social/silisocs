@@ -80,13 +80,13 @@ forwarded observation-settings bag.
 
 ### Built-in Observe Components
 
-- `app_observation`: call `BackendApp.observe(...)` for generic backends.
+- `app_observation`: call `BackendApp.observe(...)`.
 - `timeline_every_turn`: fetch timeline whenever observation is requested.
 - `episode_only`: return episode-only observations (for fixed/pre-scripted flows).
 
 `timeline_every_turn` is social-media-specific and lives under
 `silisocs.environments.gm.components.social_media`. `app_observation` and
-`episode_only` are generic baselines for non-social domains.
+`episode_only` are generic baselines for backends that do not use timeline components.
 
 ### Built-in Resolve Components
 
@@ -113,16 +113,20 @@ Built-in Game Master initialize components:
 
 - `social_media`: create users, wire follow/subreddit graphs, and bind social
   action metadata.
-- `app_initialize`: call `app.initialize(...)` for generic non-social backends.
+- `app_initialize`: call `BackendApp.initialize(...)`.
 - `none`: skip backend setup.
 
 ### Built-in Recommendation Components
 
-- `social_recommendation`: update social recommendation state.
-- `disabled` / `none`: no-op component for generic or non-recsys environments.
+- `app_update`: call `BackendApp.update(...)` for backend-owned world ticks.
+- `social_recommendation`: update recommendation state through the backend
+  capability methods.
+- `disabled` / `none`: explicit no-op update component.
 
-`social_recommendation` is the social-media update component. Generic backends
-should use `disabled`/`none` or provide their own `UpdateComponent`.
+Use `app_update` when world state should advance before actor selection.
+Use `disabled`/`none` when no per-step update is needed. Components such as
+`social_recommendation` may call backend-specific capability methods instead of
+the generic update hook.
 
 ## Tool-Calling Resolve Mode
 
@@ -318,10 +322,11 @@ not bypass backend initialization or logging.
 - Put **next actor, observe, resolve, update, and initializer behavior** in GM components.
 - Put **backend action semantics** in backend `@app_action` methods.
 
-For non-social domains, subclass `BackendApp`, provide generic
-`observe(...)`, use `app_observation`, and disable recommendation scheduling.
-Use `SocialBackendApp` only when the backend needs social timeline, feed, or
-recommendation capabilities.
+For new environment domains, subclass `BackendApp`, expose actions with
+`@app_action`, provide `observe(...)`, and use `app_observation`. Add
+`update(...)` plus `app_update` when the world needs a per-step tick. Use
+`SocialBackendApp` only when the backend needs the timeline, feed, parsed
+social action, or recommendation capability surface.
 
 ## Action Prompt Pipeline Implementation
 

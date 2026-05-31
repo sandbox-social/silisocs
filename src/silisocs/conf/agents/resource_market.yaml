@@ -16,18 +16,53 @@ persona_pipeline:
       - They are participating in a local resource market.
       - ${event.context}
   classes:
-    trader:
-      count: ${num_agents}
+    farmer:
+      count: 1
       class_path: silisocs.agents.native.NativeAgent
-      sim_role_name: trader
+      sim_role_name: farmer
       data:
         source: inline
         records:
-          - persona: Alex is careful with cash and prefers to build a reserve before buying.
-          - persona: Blair looks for useful trades and is willing to sell surplus inventory.
-          - persona: Casey tries to keep enough food on hand while producing extra resources.
-          - persona: Devon watches prices closely and avoids overpaying for scarce goods.
+          - name: Alex Farmer
+            persona: Alex can produce food reliably and needs wood to keep their stall running.
       field_map:
+        name: name
+        context: persona
+    woodworker:
+      count: 1
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: woodworker
+      data:
+        source: inline
+        records:
+          - name: Blair Woodworker
+            persona: Blair can produce wood and needs food to stay productive.
+      field_map:
+        name: name
+        context: persona
+    miner:
+      count: 1
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: miner
+      data:
+        source: inline
+        records:
+          - name: Casey Miner
+            persona: Casey can produce ore and needs food during market day.
+      field_map:
+        name: name
+        context: persona
+    merchant:
+      count: 1
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: merchant
+      data:
+        source: inline
+        records:
+          - name: Devon Merchant
+            persona: Devon can produce small amounts of several goods and looks for arbitrage.
+      field_map:
+        name: name
         context: persona
 
 shared_memories:

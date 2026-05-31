@@ -67,7 +67,7 @@ Run a bundled external scenario:
 uv run silisocs --config-path scenarios/election/conf
 ```
 
-Run the generic non-social sample backend:
+Run the resource-market sample backend:
 
 ```sh
 uv run silisocs scenario=resource_market agents=resource_market env=resource_market

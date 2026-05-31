@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 import pytest
@@ -10,6 +11,7 @@ from silisocs.environments.backends.reddit_like.app import RedditLikeApp
 from silisocs.environments.backends.resource_market.app import ResourceMarketApp
 from silisocs.environments.backends.twitter_like.app import TwitterLikeApp
 from silisocs.environments.backends.virtual_space.app import VirtualSpaceApp
+from silisocs.environments.gm.components.app_update import AppUpdateComponent
 from silisocs.environments.gm.components.observe import AppObservationComponent
 
 
@@ -18,12 +20,13 @@ class _GenericTestApp(BackendApp):
         super().__init__()
         self.initialized_with: dict[str, Any] | None = None
         self.observed_with: list[dict[str, Any]] = []
+        self.updated_with: list[dict[str, Any]] = []
 
     def name(self) -> str:
         return "generic_test"
 
     def description(self) -> str:
-        return "A generic non-social test app"
+        return "A generic test app"
 
     def initialize(self, agent_names: list[str], **kwargs: Any) -> None:
         self.initialized_with = {"agent_names": agent_names, **kwargs}
@@ -31,6 +34,11 @@ class _GenericTestApp(BackendApp):
     def observe(self, actor_name: str, **kwargs: Any) -> str:
         self.observed_with.append({"actor_name": actor_name, **kwargs})
         return f"{actor_name} sees generic state"
+
+    def update(self, *, step: int, agent_names: Sequence[str], context: Any | None = None) -> None:
+        self.updated_with.append(
+            {"step": step, "agent_names": list(agent_names), "context": context}
+        )
 
     @app_action(selectable_name="WORK", description="Do work")
     def do_work(self, current_user: str, amount: int) -> str:
@@ -106,6 +114,26 @@ def test_app_observation_component_delegates_to_environment_observe() -> None:
             "step": 0,
             "flow_tag": "market",
             "limit": 4,
+        }
+    ]
+
+
+def test_app_update_component_delegates_to_backend_update() -> None:
+    class Agent:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    app = _GenericTestApp()
+    component = AppUpdateComponent(backend=app)
+    context = object()
+
+    component.update(step=3, agents=[Agent("Alice"), Agent("Bob")], context=context)
+
+    assert app.updated_with == [
+        {
+            "step": 3,
+            "agent_names": ["Alice", "Bob"],
+            "context": context,
         }
     ]
 

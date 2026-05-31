@@ -1,9 +1,10 @@
 # Environment Backends
 
-The simulation supports generic environment backends plus social-media
-specializations. Each backend implements `BackendApp`, so agent logic stays
-backend-agnostic and executable actions are discovered from `@app_action`
-methods.
+The simulation ships several peer environment backends. Each backend implements
+`BackendApp`, so agent logic stays backend-agnostic and executable actions are
+discovered from `@app_action` methods. Components that need extra capabilities
+state those requirements explicitly, for example timeline and recommendation
+components require the `SocialBackendApp` interface.
 
 ## Backend Selection
 
@@ -33,13 +34,15 @@ pip install "silisocs[mastodon]"
 
 ---
 
-## Generic Resource Market (Local)
+## Resource Market (Local)
 
-A minimal in-memory non-social backend that demonstrates the generic
-`BackendApp` contract.
+A small in-memory trade ecology where agents produce, list, transfer, buy, and
+consume resources. Role-specific production and upkeep needs make exchange
+useful even in short runs.
 
 **Actions**: `INSPECT_MARKET`, `PRODUCE_RESOURCE`, `LIST_RESOURCE`,
-`BUY_LISTING`, `CONSUME_RESOURCE`, `FINISHED`
+`CANCEL_LISTING`, `BUY_LISTING`, `TRANSFER_RESOURCE`, `CONSUME_RESOURCE`,
+`FINISHED`
 
 **Config**: `env/resource_market.yaml`
 
@@ -54,23 +57,33 @@ gm:
         food: 1
         wood: 0
         ore: 0
+      production_capabilities:
+        farmer: {food: 2}
+        woodworker: {wood: 2}
+        miner: {ore: 2}
+      role_needs:
+        farmer: {wood: 1}
+        woodworker: {food: 1}
+        miner: {food: 1}
+      upkeep_interval: 2
 ```
 
 Features:
 
-- Cash, inventory, open listings, and recent market events
+- Cash, inventory, role, satisfaction, open listings, and recent market events
+- Role-specific production capabilities and upkeep needs
+- Direct transfers and priced market listings
 - Generic observations through `BackendApp.observe(...)`
 - Tool-calling and generic-action resolution through `@app_action`
-- No social network, timeline, feed, or recommendation requirement
 
 ---
 
 ## Virtual Space (Local)
 
-A minimal in-memory non-social backend where agents occupy rooms, move between
-rooms, and talk only to agents present in the same room.
+An in-memory room environment where agents move, talk, leave durable notes, and
+work on configurable room tasks.
 
-**Actions**: `LOOK`, `MOVE`, `TALK`, `FINISHED`
+**Actions**: `LOOK`, `MOVE`, `LEAVE_NOTE`, `WORK_ON_TASK`, `TALK`, `FINISHED`
 
 **Config**: `env/virtual_space.yaml`
 
@@ -86,6 +99,11 @@ gm:
         atrium: A bright central hall with paths to every other room.
         garden: A quiet garden for private conversations.
         workshop: A practical room filled with tools and shared projects.
+      room_tasks:
+        - task_id: welcome_board
+          room: atrium
+          description: Prepare a shared welcome board for later arrivals.
+          required_effort: 2
 ```
 
 Features:
@@ -93,8 +111,9 @@ Features:
 - Per-agent room location
 - Co-location-aware observations
 - Movement validation through configured rooms or explicit connections
+- Persistent room notes
+- Durable room tasks with progress and completion events
 - Talk actions that require both agents to be in the same room
-- No social network, timeline, feed, or recommendation requirement
 
 ---
 
@@ -221,16 +240,16 @@ environment-specific API. Each backend handles:
 
 - **`initialize()`**: Create runtime state for the agent set
 - **`@app_action` methods**: Execute domain actions selected by agents
-- **`observe()`**: Return generic observations for non-social environments
-- **Optional social methods**: `get_timeline()`, `get_timeline_mode()`,
-  `format_timeline_for_observation()`, and `parse_and_resolve_action()`
+- **`observe()`**: Return backend-specific observations
+- **Optional capability methods**: timeline, feed, social setup, and
+  recommendation methods required by social-media-oriented GM components
 
 ### Responsibility Boundary
 
 - Engine (`BaseRuntimeEngine` / `FlowRuntimeEngine`): episode loop, actor concurrency, probe timing
 - GM (`GameMaster` + native GM components): timeline observation, action parsing, dispatch
 - Backend app (`BackendApp` implementation): environment state transitions,
-  action execution, optional timeline retrieval/formatting, persistence
+  action execution, optional capability surfaces, persistence
 
 When changing backend behavior (feeds, post/reply semantics, vote rules), make
 those changes in the backend first. When changing action grammar, prompt shape,
@@ -240,15 +259,14 @@ whether the concern is actor selection or scheduling.
 
 ### Custom Backend Contract
 
-Subclass `BackendApp` for generic environments. Implement `initialize(...)`,
-optionally implement `observe(...)`, and expose actions with `@app_action`.
-Those actions are automatically available to `generic_action` and
-`tool_calling` resolve components.
+Subclass `BackendApp` for a new environment. Implement `initialize(...)`,
+optionally implement `update(...)` and `observe(...)`, and expose actions with
+`@app_action`. Those actions are automatically available to `generic_action`
+and `tool_calling` resolve components.
 
-Subclass `SocialBackendApp` only for social environments that need timeline,
-feed, social parsing, or recommendation hooks. Social observation and
-recommendation GM components expect this interface and fail loudly for generic
-backends.
+Subclass `SocialBackendApp` only when your backend needs to satisfy the
+timeline, feed, parsed-social-action, or recommendation hooks used by the
+social-media-oriented GM components.
 
 ---
 
@@ -315,8 +333,9 @@ To implement a new generic environment:
             ...
     ```
 
-    Use `SocialBackendApp` instead if your backend needs timelines, feed
-    formatting, social action parsing, or recommendation updates.
+    Use `SocialBackendApp` instead if your backend needs the timeline, feed,
+    parsed-social-action, or recommendation capability methods used by the
+    social-media-oriented GM components.
 
 3. **Configure the class path and params**:
 

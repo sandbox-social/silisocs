@@ -47,7 +47,7 @@ def test_dashboard_writer_uses_social_defaults_for_social_backend(tmp_path: Path
     assert env_cfg["gm"]["components"]["update"]["built_in"] == "social_recommendation"
 
 
-def test_dashboard_writer_uses_packaged_defaults_for_non_social_backend(tmp_path: Path) -> None:
+def test_dashboard_writer_uses_packaged_defaults_for_reference_backend(tmp_path: Path) -> None:
     conf_dir = save_scenario(
         "market",
         _base_scenario(),
@@ -63,4 +63,4 @@ def test_dashboard_writer_uses_packaged_defaults_for_non_social_backend(tmp_path
     assert env_cfg["gm"]["components"]["initialize"]["built_in"] == "app_initialize"
     assert env_cfg["gm"]["components"]["next_acting"]["built_in"] == "fixed_order"
     assert env_cfg["gm"]["components"]["observe"]["built_in"] == "app_observation"
-    assert env_cfg["gm"]["components"]["update"]["built_in"] == "disabled"
+    assert env_cfg["gm"]["components"]["update"]["built_in"] == "app_update"

@@ -12,7 +12,7 @@ Silisocs should make each simulator layer replaceable through a defined shape:
 | Scenario | Hydra config groups plus scenario-local overrides | Add scenario files, agent variants, study overrides |
 | Agent | `Agent` runtime plus optional compatibility adapter | Custom agent module or custom builder |
 | Environment app | `BackendApp` plus `@app_action` methods | Built-in `env.gm.backend.type` or `env.gm.backend.class_path` |
-| Social app | `SocialBackendApp` optional timeline/recsys capabilities | Twitter-like, Reddit-like, Mastodon, or custom social backend |
+| Timeline/recsys capability | `SocialBackendApp` optional timeline/recsys interface | Twitter-like, Reddit-like, Mastodon, or custom backend using those components |
 | GM | Component-slotted game master | Override component slots before replacing the full GM |
 | GM component | Slot config with `built_in`, `class_path`, `params`, optional `flows` | Custom initialize, next-acting, action_prompt, observe, resolve, update |
 | Engine | Runtime loop plus policy objects | Custom turn-policy or probe-schedule policy first; custom engine only when needed |
@@ -36,9 +36,9 @@ Silisocs should make each simulator layer replaceable through a defined shape:
 
 3. **Generic simulator boundary**
    - Keep `BackendApp` domain-neutral.
-   - Keep social-media-only assumptions inside `SocialBackendApp`, social observe
-     components, social resolve components, and recommendation components.
-   - Use `resource_market` as the minimal non-social reference backend.
+   - Keep timeline/recommendation assumptions inside `SocialBackendApp`, social
+     observe components, social resolve components, and recommendation components.
+   - Use `resource_market` and `virtual_space` as small reference-world backends.
 
 4. **Contract tests**
    - Test each extension shape with one small custom implementation.
@@ -56,7 +56,7 @@ Silisocs should make each simulator layer replaceable through a defined shape:
 | Priority | Feature | Why it matters |
 |---|---|---|
 | P0 | Strict constructor validation for extension `params` | Prevents silent YAML typos and broken custom components |
-| P0 | Generic backend docs and sample | Proves Silisocs is a simulator framework, not only social media |
+| P0 | Reference-world backend docs and samples | Proves Silisocs is a simulator framework, not only social media |
 | P1 | Capability matrix for backends | Makes optional timeline/recsys/live-server features explicit |
 | P1 | Public/internal API labels | Helps extension authors avoid unstable modules |
 | P1 | Typed config schema or generated config reference | Reduces drift between YAML defaults and docs |
@@ -75,7 +75,7 @@ The framework is in good V1 shape when:
 - A new GM component or engine policy can be configured with documented
   `params`, and typos fail before simulation starts.
 - Public docs describe every stable extension surface.
-- A non-social smoke scenario runs without social network, timeline, or recsys
+- Reference-world smoke scenarios run without timeline or recommendation
   assumptions.
 - `uv run pytest` and `uv run properdocs build --strict` pass in the contributor
   environment.

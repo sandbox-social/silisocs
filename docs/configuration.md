@@ -418,7 +418,7 @@ gm:
 Requires environment variables for server URL and API credentials.
 See [Installation](installation.md) for `.env` setup.
 
-**Resource market (generic non-social)**
+**Resource market**
 ```yaml
 gm:
   backend:
@@ -430,9 +430,18 @@ gm:
         food: 1
         wood: 0
         ore: 0
+      production_capabilities:
+        farmer: {food: 2}
+        woodworker: {wood: 2}
+        miner: {ore: 2}
+      role_needs:
+        farmer: {wood: 1}
+        woodworker: {food: 1}
+        miner: {food: 1}
+      upkeep_interval: 2
 ```
 
-**Virtual space (generic non-social)**
+**Virtual space**
 ```yaml
 gm:
   backend:
@@ -441,6 +450,11 @@ gm:
     params:
       rooms: [atrium, garden, workshop]
       starting_room: atrium
+      room_tasks:
+        - task_id: welcome_board
+          room: atrium
+          description: Prepare a shared welcome board.
+          required_effort: 2
 ```
 
 Custom backend apps can be loaded without editing the factory:
@@ -546,6 +560,8 @@ gm:
         episode_observation_flow: fixed_pre
     resolve:
       built_in: tool_calling          # parsed_action | generic_action | tool_calling
+    update:
+      built_in: app_update            # app_update | social_recommendation | disabled | none
 ```
 
 Component `params` are strict constructor arguments. Unknown keys fail before

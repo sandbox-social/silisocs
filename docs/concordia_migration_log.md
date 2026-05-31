@@ -17,9 +17,9 @@ Agents, Environment, Evaluations, and Engine.
   extra_args)` and native responses use typed `ActionOutput` values.
 - Native game masters own one `backend` plus typed component slots:
   initialize, update, next acting, action prompt, observation, and resolution.
-- Backends own domain state and executable `@app_action` methods. Social
-  timeline behavior lives in `SocialBackendApp`; generic backends subclass
-  `BackendApp`.
+- Backends own domain state and executable `@app_action` methods.
+  `SocialBackendApp` remains only as the capability interface required by
+  timeline/recommendation components.
 - Engine startup is explicit: agent initialization, game-master initialization,
   simulation initialization, then the main loop.
 - Seed posts moved into simulation initialization and are posted through normal

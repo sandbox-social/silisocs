@@ -1,7 +1,6 @@
 """Backend app base class and action infrastructure for simulations.
 
-Provides the shared backend action infrastructure for social and non-social
-environment backends.
+Provides the shared backend action infrastructure for environment backends.
 """
 
 import abc
@@ -329,6 +328,10 @@ class BackendApp(metaclass=abc.ABCMeta):
         """
         del agent_names, kwargs
 
+    def update(self, *, step: int, agent_names: Sequence[str], context: Any | None = None) -> None:
+        """Optional per-step world update hook for backend-owned state."""
+        del step, agent_names, context
+
     def observe(self, actor_name: str, **kwargs: Any) -> str:
         """Return a domain-specific observation string for an actor."""
         del actor_name, kwargs
@@ -641,11 +644,11 @@ def _param_to_json_schema(param: "Parameter") -> dict:
 
 
 class SocialBackendApp(BackendApp):
-    """Base class for social-media backends.
+    """Backend capability interface for timeline and recommendation components.
 
-    Social backends add explicit timeline, feed, action parsing, and optional
-    recommendation hooks on top of the domain-neutral :class:`BackendApp`.
-    Non-social backends should subclass :class:`BackendApp` directly.
+    Backends that use timeline observation, social state setup, parsed social
+    actions, or recommendation update components implement this interface on
+    top of the domain-neutral :class:`BackendApp`.
     """
 
     def setup_social_state(

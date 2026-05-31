@@ -14,6 +14,22 @@ gm:
         garden: A quiet garden for private conversations.
         workshop: A practical room filled with tools and shared projects.
       connections: null
+      room_tasks:
+      - task_id: welcome_board
+        room: atrium
+        description: Prepare a shared welcome board for later arrivals.
+        required_effort: 2
+        completion_message: The welcome board now summarizes the group's first impressions.
+      - task_id: garden_map
+        room: garden
+        description: Sketch a map of quiet places in the garden.
+        required_effort: 2
+        completion_message: The garden map now helps visitors find calm corners.
+      - task_id: repair_bench
+        room: workshop
+        description: Repair the central workbench for future collaboration.
+        required_effort: 3
+        completion_message: The repaired workbench is ready for group projects.
       perform_operations: false
       app_description: 'You are operating in a virtual space. Agents can look around
         their current

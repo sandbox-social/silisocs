@@ -49,8 +49,10 @@ discovery, action schemas, and action invocation.
 _Avoid_: Social timeline contract
 
 **SocialBackendApp**:
-A backend specialization for social platforms that need timelines, feed
-formatting, parsed social actions, and recommendation hooks.
+A backend capability interface for timeline, feed formatting, parsed social
+actions, social setup, and recommendation hooks. Backends remain peer
+environment choices; this interface only marks the extra surface needed by
+timeline and recommendation components.
 _Avoid_: Putting social methods on `BackendApp`
 
 **Engine**:
