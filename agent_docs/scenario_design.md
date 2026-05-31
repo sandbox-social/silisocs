@@ -608,7 +608,7 @@ hypotheses:
     conditions:
       case1:
         overrides:
-          sim.timeline_mode: follower_chronological
+          env.gm.components.observe.params.timeline_mode: follower_chronological
       case2:
         execution:
           mode: run
@@ -621,7 +621,7 @@ hypotheses:
             - --config-path
             - scenarios/election_recsys_engagement/conf
             - scenario={scenario}
-            - sim.seed={seed}
+            - seed={seed}
 ```
 
 ### Key fields
@@ -636,7 +636,7 @@ hypotheses:
 | `study.scenarios` | list[string] | recommended | Base scenario loop for all conditions. |
 | `study.run_defaults` | mapping | optional | Shared config path, seed settings, and overrides. |
 | `evaluations` | list[mapping] | optional | Global evaluators executed for each run. |
-| `hypotheses` | mapping | yes | Hypothesis tree with conditions/cases. |
+| `hypotheses` | mapping | yes | Hypothesis tree with `conditions`. |
 
 #### `study.run_defaults` seed controls
 
@@ -654,7 +654,7 @@ Use one of these patterns:
 | `execution.re_evaluate: true` | In reuse mode, run evaluators again over referenced outputs. |
 
 Condition-level path controls:
-- `run_name_template`: Optional placeholder template for `sim.run_name`.
+- `run_name_template`: Optional placeholder template for top-level `run_name`.
 - `output_root_override`: Optional placeholder template for `sim.output_rootname`.
 - `sub_experiment`: Optional label to group/run subsets of conditions.
 - `config_path`: Optional per-condition override for Hydra `--config-path`.

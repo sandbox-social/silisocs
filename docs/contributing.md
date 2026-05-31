@@ -17,6 +17,7 @@ Thank you for considering contributing to this project! We appreciate your effor
 - `test` is the default uv group for this repository. A plain `uv sync` installs the project plus the test, lint, and type-checking tools used in CI.
 - `dev` adds local contributor tooling on top of the default environment, including `poethepoet`, `commitizen`, notebooks, and documentation generation helpers.
 - `docs` is optional and only needed when building the documentation site (ProperDocs).
+- `hpc` is optional and only needed when testing Submitit/Slurm submission helpers.
 - Full release validation assumes all optional library extras are installed. Tests
   that need a real external service or LLM endpoint remain explicitly skipped or
   opt-in, but pure optional-library coverage is expected in contributor
@@ -49,7 +50,7 @@ than the current enforced contributor contract.
 The repository includes opt-in real-LLM integration tests under the `llm_e2e`
 marker. These tests launch short simulation runs and validate runtime artifacts.
 
-- Start an OpenAI-compatible server (for example vLLM).
+- Start or point to any OpenAI-compatible server.
 - Set `LLM_SERVER_URL`, for example: `http://localhost:30000/v1`.
 - Run only expensive LLM tests:
 

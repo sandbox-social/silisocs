@@ -45,7 +45,7 @@ study:
       num_agents: 50
       num_steps: 10
 
-evals:
+evaluations:
   - id: action_metrics
     preset: builtin.action_metrics_detailed
   - id: probe_metrics
@@ -80,7 +80,7 @@ execution:
     - silisocs.runtime.runner
     - --config-path
     - scenarios/election_recsys_engagement/conf
-    - scenario_name={scenario}
+    - scenario={scenario}
     - seed={seed}
 ```
 
@@ -133,7 +133,7 @@ Extension hook mechanism (for custom plotting/post-processing):
 Example:
 
 ```yaml
-evals:
+evaluations:
   - id: probe_metrics
     preset: builtin.probe_metrics_detailed
     static_args:
@@ -221,7 +221,7 @@ uv run python -m experiments.run_study --study experiments/studies/election_opin
 Sample study file:
 - `experiments/studies/election_opinion_program_v1/study.yaml`
 
-## HPC Array Launch
+## Public HPC Usage
 
 Local orchestration does **not** require Slurm/HPC:
 
@@ -229,26 +229,78 @@ Local orchestration does **not** require Slurm/HPC:
 uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1 run --only-hypothesis h1_initial_news_bias_shift
 ```
 
-Use the following only when dispatching to a Slurm cluster.
+For clusters, keep site-specific account, partition, module, cache, and model
+startup choices outside the repository. The public templates only wire Silisocs
+study/runner commands into Slurm; they do not launch any specific model server.
+If you use a local OpenAI-compatible server, configure `sim.llm.provider` and
+`sim.llm.api_base` in your study overrides or scenario config.
 
-Cluster wrappers:
-- `slurm_scripts/narval-hpc-4GPU-array.sh`
-- `slurm_scripts/tamia-hpc-4GPU-array.sh`
+### Submitit study submission
 
-Shared execution logic:
-- `slurm_scripts/study-array-worker.sh`
+Install the optional HPC dependencies:
 
-Use `slurm-array` to compute array size from filtered study runs and print/submit `sbatch`:
+```sh
+uv sync --extra hpc --group dev
+```
+
+Then submit study run groups through the study runner:
+
+```sh
+uv run python -m experiments.run_study \
+  --study experiments/studies/election_opinion_program_v1 \
+  submitit \
+  --array-mode case \
+  --partition <partition> \
+  --account <account> \
+  --gpus-per-node 0 \
+  --only-hypothesis h1_initial_news_bias_shift
+```
+
+By default, submitted jobs assume any LLM endpoint already exists. If your
+cluster requires job-local setup, pass explicit hooks:
+
+```sh
+uv run python -m experiments.run_study \
+  --study experiments/studies/election_opinion_program_v1 \
+  submitit \
+  --array-mode seed \
+  --setup-command 'module load cuda && source .venv/bin/activate' \
+  --server-command './scripts/start-my-llm-server.sh' \
+  --server-ready-url 'http://127.0.0.1:8000/v1/models'
+```
+
+Silisocs treats those hooks as user-owned shell commands; it does not ship
+model-specific vLLM or cluster defaults.
+
+### Generic Slurm templates
+
+Use `slurm-array` when you want to keep using direct `sbatch` scripts. It
+computes array size from filtered study runs and prints/submits the command:
 
 ```sh
 uv run python -m experiments.run_study \
   --study experiments/studies/election_opinion_program_v1 \
   slurm-array \
-  --base-script slurm_scripts/narval-hpc-4GPU-array.sh \
+  --base-script slurm_scripts/study-array-template.sh \
   --array-mode case \
   --only-hypothesis h1_initial_news_bias_shift \
   --submit
 ```
+
+For one direct runner job, copy or submit `slurm_scripts/runner-template.sh`.
+Both templates support the same optional hook environment variables:
+
+- `SILISOCS_HPC_SETUP_COMMAND`
+- `SILISOCS_HPC_SERVER_COMMAND`
+- `SILISOCS_HPC_SERVER_READY_URL`
+- `SILISOCS_HPC_SERVER_TIMEOUT_SECONDS`
+
+The `slurm-array` command preserves the same study filters as local execution:
+`--only-hypothesis`, `--only-condition`, `--only-sub-experiment`,
+`--only-seed`, and `--only-run-id`. It also accepts `--runner-python` and the
+same hook options (`--setup-command`, `--server-command`,
+`--server-ready-url`, `--server-timeout-seconds`) and exports them to the
+generic template.
 
 Array modes:
 - `case` (default): one task per case, all case seeds executed inside that task.

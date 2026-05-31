@@ -26,9 +26,9 @@ study:
 
     # Shared override map for all run-mode conditions.
     overrides:
-      sim.num_agents: 50
-      sim.num_steps: 10
-      scenario.persona_pipeline.classes.voter.count: 47
+      num_agents: 50
+      num_steps: 10
+      agents.persona_pipeline.classes.voter.count: 47
 
   # Human/LLM fillable context fields.
   notes:
@@ -86,8 +86,8 @@ hypotheses:
     conditions:
       case1_chronological:
         overrides:
-          sim.timeline_mode: follower_chronological
-          sim.gm.components.recommend.params.default_recsys_type: twitter
+          env.gm.components.observe.params.timeline_mode: follower_chronological
+          env.gm.components.update.params.default_recsys_type: twitter
         analysis:
           condition_notes: ""
           observed_effects: ""
@@ -95,20 +95,20 @@ hypotheses:
 
       case2_recsys_twitter:
         overrides:
-          sim.timeline_mode: pure_recsys
-          sim.gm.components.recommend.params.default_recsys_type: twitter
-          sim.enabled_actions:
-            - post
-            - reply
-            - like_toot
-            - boost_toot
+          env.gm.components.observe.params.timeline_mode: pure_recsys
+          env.gm.components.update.params.default_recsys_type: twitter
+          env.gm.backend.enabled_actions:
+            - create_tweet
+            - reply_to_tweet
+            - like_tweet
+            - repost_tweet
 
       case3_recsys_twhin_high_context:
         overrides:
-          sim.timeline_mode: pure_recsys
-          sim.gm.components.recommend.params.default_recsys_type: twhin
-          sim.gm.components.recommend.params.user_context_recent_posts: 5
-          sim.gm.components.recommend.params.like_trace_weight: 0.3
+          env.gm.components.observe.params.timeline_mode: pure_recsys
+          env.gm.components.update.params.default_recsys_type: twhin
+          env.gm.components.update.params.user_context_recent_posts: 5
+          env.gm.components.update.params.like_trace_weight: 0.3
 
       case4_exact_command_mode:
         execution:
@@ -125,11 +125,11 @@ hypotheses:
             - --config-path
             - scenarios/election_recsys_engagement/conf
             - scenario={scenario}
-            - sim.seed={seed}
-            - sim.num_agents=50
-            - sim.num_steps=8
-            - sim.timeline_mode=follower_chronological
-            - sim.run_name={run_id}
+            - seed={seed}
+            - num_agents=50
+            - num_steps=8
+            - env.gm.components.observe.params.timeline_mode=follower_chronological
+            - run_name={run_id}
             - experiment_name={study_name}
 
   h2_followup_from_h1:
@@ -155,9 +155,9 @@ hypotheses:
         execution:
           mode: run
         overrides:
-          sim.num_steps: 20
-          sim.timeline_mode: pure_recsys
-          sim.gm.components.recommend.params.default_recsys_type: twitter
+          num_steps: 20
+          env.gm.components.observe.params.timeline_mode: pure_recsys
+          env.gm.components.update.params.default_recsys_type: twitter
 
       case2_reuse_parent_runs:
         execution:
@@ -178,5 +178,5 @@ hypotheses:
             preset: builtin.probe_summary
             output_subpath: probes/local_probe_summary.json
         overrides:
-          sim.timeline_mode: pure_recsys
-          sim.gm.components.recommend.params.default_recsys_type: twhin
+          env.gm.components.observe.params.timeline_mode: pure_recsys
+          env.gm.components.update.params.default_recsys_type: twhin
