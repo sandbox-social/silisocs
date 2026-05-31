@@ -1,5 +1,8 @@
 name: Deploy
 
+permissions:
+  contents: read
+  packages: write
 on:
   push:
     tags:
@@ -48,6 +51,6 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ github.repository_owner }}/${{ github.repository }}:${{ github.event.inputs.environment || env.DEFAULT_DEPLOYMENT_ENVIRONMENT }}
-            ${{ env.DOCKER_REGISTRY }}/${{ github.repository_owner }}/${{ github.repository }}:${{ env.GIT_TAG }}
+            ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}:${{ github.event.inputs.environment || env.DEFAULT_DEPLOYMENT_ENVIRONMENT }}
+            ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}:${{ env.GIT_TAG }}
           target: app
