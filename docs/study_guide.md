@@ -139,8 +139,10 @@ uv run python -m experiments.run_study \
     --only-hypothesis h1_persona_richness
 ```
 
-The runner skips any (condition × scenario × seed) combination that already has a
-registered run, so it is safe to re-run after partial completion.
+The runner writes deterministic run records and organized artifacts. To reuse
+existing outputs instead of running a condition again, set
+`execution.mode: reuse_existing` and list the prior output paths under
+`reuse.runs` in `study.yaml`.
 
 Outputs land in:
 ```

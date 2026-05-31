@@ -122,7 +122,7 @@ The study file defines the hypothesis sequence used in the paper:
 Dry-run any condition before spending API budget:
 
 ```bash
-uv run python experiments/run_study.py \
+uv run python -m experiments.run_study \
   --study replications/echo_chambers/study.yaml \
   run \
   --only-hypothesis h3_loose_action_structure \
@@ -134,7 +134,7 @@ uv run python experiments/run_study.py \
 Run a condition:
 
 ```bash
-uv run python experiments/run_study.py \
+uv run python -m experiments.run_study \
   --study replications/echo_chambers/study.yaml \
   run \
   --only-hypothesis h3_loose_action_structure \
@@ -145,7 +145,7 @@ uv run python experiments/run_study.py \
 Run all conditions for one hypothesis:
 
 ```bash
-uv run python experiments/run_study.py \
+uv run python -m experiments.run_study \
   --study replications/echo_chambers/study.yaml \
   run \
   --only-hypothesis h5_simple_social_agents \

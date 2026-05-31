@@ -95,8 +95,10 @@ def test_active_study_plan_command_runs_for_each_study(tmp_path: Path) -> None:
 
 def test_study_docs_use_current_schema_terms() -> None:
     docs = [
+        PROJECT_ROOT / "README.md",
         PROJECT_ROOT / "docs" / "experiments.md",
         PROJECT_ROOT / "docs" / "study_schema.md",
+        PROJECT_ROOT / "docs" / "study_guide.md",
         PROJECT_ROOT / "agent_docs" / "scenario_design.md",
     ]
     removed = (
@@ -113,6 +115,12 @@ def test_study_docs_use_current_schema_terms() -> None:
         "sim.engine.action_loop",
         "evals:",
         "scenario_name={scenario}",
+        "uv run python experiments/run_study.py",
+        "uv run properdocs build --strict",
+        "Concordia-like game master",
+        "registered run",
+        "sim.checkpoint.every_n_steps=1",
+        "probe_results.jsonl",
     )
     offenders: dict[str, list[str]] = {}
     for path in docs:

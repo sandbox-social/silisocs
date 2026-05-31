@@ -107,6 +107,27 @@ CLI selection knobs:
 - `--only-hypothesis`
 - `--only-condition`
 - `--only-sub-experiment`
+- `--only-seed`
+- `--only-run-id`
+
+## Where To Plug In Custom Commands
+
+Most studies should use the default runner path and vary behavior with Hydra
+overrides in `study.run_defaults.overrides` or
+`hypotheses.<id>.conditions.<condition>.overrides`.
+
+Use explicit commands only where the default runtime is not the thing you want
+to execute:
+
+- Simulation command replacement: set
+  `hypotheses.<id>.conditions.<condition>.execution.command`.
+- Existing run reuse: set `execution.mode: reuse_existing` and list prior runs
+  under `reuse.runs`.
+- Evaluation and post-processing: add entries under `evaluations` with a
+  `preset` or explicit `command`, plus `static_args` when needed.
+- Local/HPC setup: use `submitit` or `slurm-array` with `--setup-command`,
+  `--server-command`, and `--server-ready-url`, or export the matching
+  `SILISOCS_HPC_*` environment variables for the generic Slurm templates.
 
 ## Default Evaluators
 
