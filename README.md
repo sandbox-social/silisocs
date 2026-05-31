@@ -11,6 +11,7 @@ optional bridge extra.
 
 - 2024 NeurIPS Workshop Paper: [arXiv:2410.13915](http://arxiv.org/abs/2410.13915)
 - 2025 IJCAI Demo Paper: [IJCAI 2025](https://www.ijcai.org/proceedings/2025/1271)
+- 2026 ICML Position Paper [ICML 2026](https://www.complexdatalab.com/stamina/papers/puelmatouzel_CloseEvalGap.pdf)
 - 2026 EASE Configuration: [arXiv:2605.30258](https://arxiv.org/abs/2605.30258)
 - Documentation: [sandbox-social.github.io/silisocs](https://sandbox-social.github.io/silisocs)
 
