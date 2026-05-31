@@ -66,11 +66,15 @@ uv run silisocs num_agents=10 num_steps=5 sim.llm.name=gpt-4o
 # Use a different backend
 uv run silisocs env=reddit_like
 
-# Run the resource-market sample backend
+# Run the packaged resource-market preset
 uv run silisocs scenario=resource_market agents=resource_market env=resource_market
 
-# Run the virtual-space sample backend
+# Run the packaged virtual-space preset
 uv run silisocs scenario=virtual_space agents=virtual_space env=virtual_space
+
+# Run curated external backend examples
+uv run silisocs --config-path scenarios/resource_market/conf scenario=resource_market agents=resource_market env=resource_market
+uv run silisocs --config-path scenarios/virtual_space/conf scenario=virtual_space agents=virtual_space env=virtual_space
 
 # Run an external scenario
 uv run silisocs --config-path scenarios/election/conf

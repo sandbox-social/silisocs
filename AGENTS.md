@@ -39,14 +39,13 @@ Core runtime layers:
 
 ### 3. Game Master Layer (Component-Slotted Architecture)
 - `src/silisocs/environments/gm/base_game_master.py` — Base coordinator
-- `src/silisocs/environments/gm/game_master.py` — Simple preset (single components)
-- `src/silisocs/environments/gm/shared_flow_game_master.py` — Multi-flow preset (multi-instance routing)
+- `src/silisocs/environments/gm/game_master.py` — ComponentGameMaster and MultiFlowGameMaster
 - `src/silisocs/environments/gm/components/` — Pluggable components:
   - `next_acting.py` — Determine which agent acts next
   - `observe.py` — Generate timeline/episode observations
   - `resolve.py` — Parse agent output into backend actions
-  - `recommend.py` — Schedule recommendation algorithm updates
-- To add custom component: implement `Component` interface, set in `sim.gm.components.{role}.class_path`
+  - `app_update.py` — Schedule backend/recommendation updates
+- To add custom component: implement `Component` interface, set in `env.gm.components.{role}.class_path`
 
 ### 4. Engine Layer (Execution Policies)
 - `src/silisocs/simulation_engines/base_engines.py` — BaseRuntimeEngine, FlowRuntimeEngine (multi-flow scheduling)
@@ -62,7 +61,7 @@ Core runtime layers:
 - `src/silisocs/environments/backends/reddit_like/` — RedditLikeApp
 - `src/silisocs/environments/backends/mastodon/` — Real Mastodon server integration
 - Actions discovered via `@app_action(name=..., description=...)` decorator
-- To add custom backend: subclass `SocialMediaApp`, implement action methods, register in app factory
+- To add custom backend: subclass `SocialBackendApp`, implement action methods, register in app factory
 
 ### 6. Runtime Orchestration
 - `src/silisocs/runtime/runner.py` — CLI entrypoint, Hydra config composition
@@ -95,8 +94,8 @@ Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 | `sim.llm.disabled` | false | No-op model for testing |
 | `sim.action_mode` | custom | Prompt style (`custom` or `generic`) |
 | `sim.tool_calling.mode` | single | `none` \| `single` \| `multi` |
-| `sim.engine.preset` | base | `base` or `flow` (flow-aware scheduling) |
-| `sim.engine.action_loop.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended` |
+| `sim.engine.step.built_in` | base | `base`, `sequential`, `flow`, or `multi_gm` |
+| `sim.engine.turn_policy.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended` |
 | `sim.checkpoint.every_n_steps` | null | Checkpoint frequency (run_study.py sets 1 by default) |
 
 Key run params live in `scenario/default.yaml` (at config root via `@package _global_`):
@@ -108,7 +107,8 @@ Key run params live in `scenario/default.yaml` (at config root via `@package _gl
 | `scenario_name` | default | Used in output path |
 | `seed` | 1 | Random seed |
 
-`enable_gm_multi_flow` controls GM component routing (`env.gm.preset: shared_flow`).
+GM component routing is enabled with
+`env.gm.class_path=silisocs.environments.gm.game_master.MultiFlowGameMaster`.
 
 Scenario content lives under:
 
@@ -130,22 +130,22 @@ Use class-level behavior flows instead of adding custom manager branches:
 - `persona_pipeline.classes.<class>.flow_tag`
 
 2. Define flow order:
-- `sim.engine.flow_routing.flow_order`
+- `sim.engine.step.params.flow_order`
 
 3. Optional per-entity override:
-- `sim.engine.flow_routing.entity_to_flow`
+- `sim.engine.step.params.agent_to_flow`
 
 4. Optional observe specialization for selected flows:
-- `sim.gm.components.observe.params.episode_observation_flow`
+- `env.gm.components.observe.params.episode_observation_flows`
 
 5. Advanced multi-GM orchestration (optional):
-- `sim.gm_orchestration.gms`
-- `sim.gm_orchestration.flow_bindings.flow_to_gm`
-- `sim.gm_orchestration.flow_bindings.flow_to_gms`
-- `sim.gm_orchestration.flow_bindings.gm_to_flows`
+- `env.gm_orchestration.gms`
+- `env.gm_orchestration.flow_bindings.flow_to_gm`
+- `env.gm_orchestration.flow_bindings.flow_to_gms`
+- `env.gm_orchestration.flow_bindings.gm_to_flows`
 
 Default UX rule:
-- Keep users on simple mode (`gm.preset=simple`, advanced dashboard toggle off).
+- Keep users on the default `ComponentGameMaster`, with advanced dashboard toggles off.
 - Only expose flow tags and multi-GM controls behind advanced mode.
 
 Fixed agents (`silisocs.agents.fixed.FixedAgent`) are the reference example.
@@ -307,7 +307,7 @@ Runner validates direct class construction, so **missing methods fail fast**.
 
 ### Multi-Action Support (Open-Ended Policy)
 
-When using `engine.action_loop.built_in: open_ended`:
+When using `sim.engine.turn_policy.built_in: open_ended`:
 
 - Agent's `act()` method is called repeatedly within one step
 - Agent should output valid actions OR the special "Finished action episode" signal
@@ -466,6 +466,6 @@ Start from these files to understand the flow:
 2. **Simulation orchestration**: `src/silisocs/runtime/simulation.py` — Full workflow
 3. **Engine execution**: `src/silisocs/simulation_engines/base_engines.py` — Episode loop
 4. **Game master**: `src/silisocs/environments/gm/game_master.py` — Simple preset
-5. **Multi-flow GM**: `src/silisocs/environments/gm/shared_flow_game_master.py` — Advanced preset
+5. **Multi-flow GM**: `src/silisocs/environments/gm/game_master.py` — Advanced component routing
 6. **Component slots**: `src/silisocs/environments/gm/components/` — Pluggable behavior
 7. **Backend actions**: `src/silisocs/environments/backends/twitter_like/app.py` — Example backend

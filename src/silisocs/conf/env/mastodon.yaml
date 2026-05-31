@@ -4,7 +4,8 @@ gm:
     type: mastodon
     class_path: null
     params:
-      perform_operations: true
+      perform_operations: false
+      reset_server_on_setup: false
       app_description: 'Mastodon is a social media application.
 
         To share content on Mastodon, users write a ''toot'' (equivalent to a tweet

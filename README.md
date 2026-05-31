@@ -67,16 +67,23 @@ Run a bundled external scenario:
 uv run silisocs --config-path scenarios/election/conf
 ```
 
-Run the resource-market sample backend:
+Run the packaged resource-market preset:
 
 ```sh
 uv run silisocs scenario=resource_market agents=resource_market env=resource_market
 ```
 
-Run the virtual-space sample backend:
+Run the packaged virtual-space preset:
 
 ```sh
 uv run silisocs scenario=virtual_space agents=virtual_space env=virtual_space
+```
+
+The same backends also have curated external examples under `scenarios/`:
+
+```sh
+uv run silisocs --config-path scenarios/resource_market/conf scenario=resource_market agents=resource_market env=resource_market
+uv run silisocs --config-path scenarios/virtual_space/conf scenario=virtual_space agents=virtual_space env=virtual_space
 ```
 
 Outputs are written under `outputs/<scenario_name>/<jobname>/` and include

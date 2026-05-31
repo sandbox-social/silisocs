@@ -412,10 +412,14 @@ gm:
     type: mastodon
     class_path: null
     params:
-      perform_operations: true   # Requires a running Mastodon server
+      perform_operations: false
+      reset_server_on_setup: false
 ```
 
-Requires environment variables for server URL and API credentials.
+Dry-run is the packaged default. Live mutation requires `silisocs[mastodon]`,
+server URL/API credentials, and an explicit
+`env.gm.backend.params.perform_operations=true` override. Server clearing is
+separately gated by `env.gm.backend.params.reset_server_on_setup=true`.
 See [Installation](installation.md) for `.env` setup.
 
 **Resource market**

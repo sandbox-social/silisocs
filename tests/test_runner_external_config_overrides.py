@@ -5,6 +5,7 @@ import sys
 
 from omegaconf import OmegaConf
 
+from silisocs.runtime.config_dry_run import DryRunTarget, _build_command
 from silisocs.runtime.configuration.external import merge_external_group_overrides
 from silisocs.runtime.execution.session import _inject_external_config_path
 
@@ -96,3 +97,21 @@ persona_pipeline:
     assert user_cfg.count == 1
     assert user_cfg.data.records[0].name == "user_1"
     assert user_cfg.data.records[0].persona == "Benchmark-specific persona."
+
+
+def test_config_dry_run_selects_matching_external_agent_and_env_groups(tmp_path) -> None:
+    conf_dir = tmp_path / "scenario" / "conf"
+    (conf_dir / "agents").mkdir(parents=True)
+    (conf_dir / "env").mkdir()
+    (conf_dir / "agents" / "resource_market.yaml").write_text("{}\n", encoding="utf-8")
+    (conf_dir / "env" / "resource_market.yaml").write_text("{}\n", encoding="utf-8")
+    target = DryRunTarget(
+        label="scenario/resource_market",
+        config_path=conf_dir,
+        scenario_variant="resource_market",
+    )
+
+    command = _build_command(target, output_dir=tmp_path / "out", hydra_dir=tmp_path / "hydra")
+
+    assert "agents=resource_market" in command
+    assert "env=resource_market" in command

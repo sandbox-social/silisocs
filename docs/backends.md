@@ -19,6 +19,14 @@ uv run silisocs scenario=resource_market agents=resource_market env=resource_mar
 uv run silisocs scenario=virtual_space agents=virtual_space env=virtual_space
 ```
 
+Curated external examples live under `scenarios/resource_market/` and
+`scenarios/virtual_space/`:
+
+```sh
+uv run silisocs --config-path scenarios/resource_market/conf scenario=resource_market agents=resource_market env=resource_market
+uv run silisocs --config-path scenarios/virtual_space/conf scenario=virtual_space agents=virtual_space env=virtual_space
+```
+
 Or in the top-level Hydra defaults:
 
 ```yaml
@@ -190,7 +198,8 @@ gm:
     type: mastodon
     class_path: null
     params:
-      perform_operations: true
+      perform_operations: false
+      reset_server_on_setup: false
 ```
 
 Live server operations require environment variables in `.env`:
@@ -203,12 +212,24 @@ EMAIL_PREFIX=user_email_prefix
 USER001_PASSWORD=password_for_user_001
 ```
 
-For public-package and CI usage, `perform_operations: false` constructs the Mastodon
-backend in dry-run mode. Dry-run mode is non-interactive, does not clear or
-mutate a Mastodon server, and returns empty/mock timeline data while still
-exercising the same `SocialBackendApp` action interface. Use this mode for tests,
-documentation examples, and local development that should not require Mastodon
-credentials.
+For public-package and CI usage, `perform_operations: false` constructs the
+Mastodon backend in dry-run mode. This is the packaged default. Dry-run mode is
+non-interactive, does not import the optional Mastodon client dependencies, does
+not clear or mutate a Mastodon server, and returns empty/mock timeline data while
+still exercising the same `SocialBackendApp` action interface. Use this mode for
+tests, documentation examples, and local development that should not require
+Mastodon credentials.
+
+Live server mutation requires `silisocs[mastodon]` and an explicit override:
+
+```sh
+uv run --extra mastodon silisocs env=mastodon \
+  env.gm.backend.params.perform_operations=true
+```
+
+Clearing/resetting a live Mastodon server during setup is separately gated by
+`env.gm.backend.params.reset_server_on_setup=true`. Only enable that flag for an
+isolated disposable server.
 
 Live Mastodon deployment scaffolding is intentionally not part of the public
 Python package. Use your own managed Mastodon instance, then point the backend

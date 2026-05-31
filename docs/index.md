@@ -122,7 +122,7 @@ graph TD
     C --> D[Agent Builder]
     C --> E[Memory Initializer]
     C --> F[Environment Backend]
-    D --> G[Agent Entities]
+    D --> G[Agents]
     E --> G
     F --> H[Game Master]
     G --> H
@@ -140,10 +140,12 @@ silisocs/
 │   ├── agents/              # Agent runtimes
 │   ├── conf/                # Hydra YAML config hierarchy
 │   ├── dashboard/           # Streamlit GUI
-│   ├── environments/        # Social media backends + game master
+│   ├── environments/        # Environment backends + game masters
 │   ├── evaluations/         # Evaluation probes
+│   ├── initialization/      # Agent, GM, and simulation initialization
 │   ├── runtime/             # Runner, config, simulation orchestration
-│   └── utils/               # Network generation utilities
+│   ├── scenario_gen/        # Scenario generation helpers
+│   └── simulation_engines/  # Runtime engine and policy implementations
 ├── scenarios/               # External scenario directories
 ├── docs/                    # This documentation
 └── tests/                   # Test suite

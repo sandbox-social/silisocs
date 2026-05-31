@@ -1,0 +1,44 @@
+# @package agents
+
+builder:
+  class_path: null
+  params: {}
+
+persona_pipeline:
+  defaults:
+    params:
+      seed_post: ""
+      bio: ""
+      style: ""
+      goal: null
+      scenario_context: ${event.context}
+    shared_memories:
+      - They are participating in a virtual commons.
+      - ${event.context}
+  classes:
+    participant:
+      count: ${num_agents}
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: participant
+      data:
+        source: inline
+        records:
+          - name: Alex
+            persona: Alex likes to explore spaces before starting conversations.
+          - name: Blair
+            persona: Blair enjoys meeting others and asking what they notice.
+          - name: Casey
+            persona: Casey prefers quiet rooms and short direct messages.
+          - name: Devon
+            persona: Devon looks for active rooms with several people present.
+      field_map:
+        name: name
+        context: persona
+
+shared_memories:
+  - They are participating in a virtual commons.
+  - ${event.context}
+
+initial_observations:
+  - "{name} enters the virtual commons."
+  - "{name} can look around, move between rooms, leave notes, work on tasks, or talk to someone nearby."

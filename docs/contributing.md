@@ -32,6 +32,18 @@ Thank you for considering contributing to this project! We appreciate your effor
 - Install git hooks: `uv run pre-commit install`
 - Create a commit with Commitizen: `uv run cz c`
 
+## Lint Policy
+
+The contributor lint contract is the configured pre-commit workflow:
+`uv run poe lint`. That workflow runs Ruff in the same mode as
+`.pre-commit-config.yaml`, including auto-fix-only Ruff checks, Ruff format,
+lock-file validation, and mypy.
+
+Do not treat an ad hoc `uv run ruff check --no-fix .` run as the release gate
+unless the project first scopes or cleans the historical Ruff backlog. It is a
+useful diagnostic when planning lint debt work, but it is intentionally broader
+than the current enforced contributor contract.
+
 ## LLM E2E Testing
 
 The repository includes opt-in real-LLM integration tests under the `llm_e2e`

@@ -95,7 +95,13 @@ def _build_command(
     agents_variant_file = target.config_path / "agents" / f"{target.scenario_variant}.yaml"
     if agents_variant_file.is_file():
         command.append(f"agents={target.scenario_variant}")
-    command.extend(target.extra_overrides)
+    env_variant_file = target.config_path / "env" / f"{target.scenario_variant}.yaml"
+    if env_variant_file.is_file():
+        command.append(f"env={target.scenario_variant}")
+    existing_overrides = set(command)
+    command.extend(
+        override for override in target.extra_overrides if override not in existing_overrides
+    )
     command.extend(
         [
             "++sim.llm.provider=scripted",

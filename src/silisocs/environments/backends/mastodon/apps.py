@@ -25,10 +25,45 @@ from silisocs.environments.backends.base import (  # noqa: F401
     SocialBackendApp,
     app_action,
 )
-from silisocs.environments.backends.mastodon.mastodon_ops import (
-    check_env,
-    clear_mastodon_server,
+
+_MASTODON_EXTRA_INSTALL_HINT = (
+    "Mastodon live operations require the optional Mastodon dependencies. "
+    "Install them with `pip install 'silisocs[mastodon]'` or "
+    "`uv sync --extra mastodon` before setting "
+    "`env.gm.backend.params.perform_operations=true`."
 )
+
+
+def _load_mastodon_ops() -> Any:
+    """Import the optional Mastodon operations module only for live mode."""
+    try:
+        from silisocs.environments.backends.mastodon import mastodon_ops
+    except ModuleNotFoundError as exc:
+        if exc.name in {"loguru", "mastodon"} or str(exc.name).startswith("mastodon."):
+            raise RuntimeError(_MASTODON_EXTRA_INSTALL_HINT) from exc
+        raise
+    return mastodon_ops
+
+
+def _display_name_key(display_name: str) -> str:
+    """Return the historical Mastodon account lookup key for a display name."""
+    parts = str(display_name).strip().split()
+    if len(parts) >= 2:
+        return f"{parts[0]}{parts[1]}"
+    if parts:
+        return parts[0]
+    return ""
+
+
+def _display_name_aliases(display_name: str) -> set[str]:
+    """Return all display-name aliases accepted by the Mastodon backend."""
+    raw_name = str(display_name).strip()
+    parts = raw_name.split()
+    aliases = {raw_name, _display_name_key(raw_name)}
+    if parts:
+        aliases.add(parts[0])
+    return {alias for alias in aliases if alias}
+
 
 # region[Mastodon Social Network App]
 
@@ -52,6 +87,7 @@ class SocialNetworkApp(SocialBackendApp):
 
     action_logger: Any = None
     perform_operations: bool = False
+    reset_server_on_setup: bool = False
     app_description: str = "MastodonSocialNetworkApp"
     _log_color: COLOR_TYPE = dataclasses.field(default="blue", init=False)
     _mastodon_ops: Any = dataclasses.field(default=None, init=False)
@@ -60,9 +96,7 @@ class SocialNetworkApp(SocialBackendApp):
     def __post_init__(self) -> None:  # noqa: D105
         super().__init__()
         if self.perform_operations:
-            from silisocs.environments.backends.mastodon import mastodon_ops
-
-            self._mastodon_ops = mastodon_ops
+            self._mastodon_ops = _load_mastodon_ops()
 
     def name(self) -> str:
         """Define the name of the app."""
@@ -72,10 +106,26 @@ class SocialNetworkApp(SocialBackendApp):
         """Define the description of the app."""
         return self.app_description
 
-    def _log_action_event(self, event: dict[str, Any]) -> None:
+    def _log_action_event(self, *args: Any, **kwargs: Any) -> None:
         """Write an action event when the runtime provided an action logger."""
+        if len(args) == 1 and isinstance(args[0], dict) and not kwargs:
+            event = args[0]
+        elif len(args) >= 3:
+            event = {
+                "source_user": args[0],
+                "label": args[1],
+                "data": args[2],
+            }
+        else:
+            event = dict(kwargs)
         if self.action_logger is not None and hasattr(self.action_logger, "log"):
             self.action_logger.log(event)
+
+    def _require_mastodon_ops(self) -> Any:
+        """Return the live Mastodon operations module, importing it if needed."""
+        if self._mastodon_ops is None:
+            self._mastodon_ops = _load_mastodon_ops()
+        return self._mastodon_ops
 
     # ------------------------------------------------------------------ #
     # SocialBackendApp interface
@@ -102,12 +152,9 @@ class SocialNetworkApp(SocialBackendApp):
         # Build user mapping.
         user_mapping = {}
         for i, display_name in enumerate(agent_names):
-            parts = display_name.strip().split()
-            short_name = parts[0] if parts else display_name
-            concat_name = f"{parts[0]}{parts[1]}" if len(parts) >= 2 else parts[0]
             username = f"user{i + 1:04d}"
-            user_mapping[short_name] = username
-            user_mapping[concat_name] = username
+            for alias in _display_name_aliases(display_name):
+                user_mapping[alias] = username
         self.set_user_mapping(user_mapping)
 
         # Set bios/profiles.
@@ -152,10 +199,10 @@ class SocialNetworkApp(SocialBackendApp):
         """
         try:
             # Re-use the existing get_own_timeline logic
-            current_user = f"{user_name.split(maxsplit=1)[0]}{user_name.split()[1]}"
+            current_user = _display_name_key(user_name)
             username = self._get_username(current_user)
             if self.perform_operations:
-                timeline = self._mastodon_ops.get_own_timeline(username, limit=limit)
+                timeline = self._require_mastodon_ops().get_own_timeline(username, limit=limit)
             else:
                 timeline = []
             return timeline or []
@@ -278,11 +325,16 @@ class SocialNetworkApp(SocialBackendApp):
 
     def set_user_mapping(self, mapping: dict[str, str]) -> None:
         """Set the mapping of display names to usernames."""
-        self._user_mapping = mapping
+        expanded_mapping = {}
+        for display_name, username in mapping.items():
+            for alias in _display_name_aliases(display_name):
+                expanded_mapping[alias] = username
+        self._user_mapping = expanded_mapping
         self._print(f"Updated user mapping with {len(mapping)} entries", emoji="🔄")
-        if self.perform_operations:
-            check_env()
-            clear_mastodon_server(len(self._user_mapping) + 1)
+        if self.perform_operations and self.reset_server_on_setup:
+            mastodon_ops = self._require_mastodon_ops()
+            mastodon_ops.check_env()
+            mastodon_ops.clear_mastodon_server(len(set(self._user_mapping.values())) + 1)
 
     def get_user_mapping(self) -> dict[str, str]:
         """Get the mapping of display names to usernames."""
@@ -290,8 +342,11 @@ class SocialNetworkApp(SocialBackendApp):
 
     def _get_username(self, display_name: str) -> str:
         """Get the username for a given display name."""
-        current_user = display_name.split(maxsplit=1)[0]
-        username = self._user_mapping.get(current_user)
+        username = None
+        for alias in _display_name_aliases(display_name):
+            username = self._user_mapping.get(alias)
+            if username:
+                break
         # self._print(f"Mapped {display_name} to @{username}", emoji="🔗")
         if not username:
             raise ValueError(f"No username found for display name: {display_name}")
@@ -305,12 +360,12 @@ class SocialNetworkApp(SocialBackendApp):
     def update_profile(self, current_user: str, bio: str) -> str:
         """Update the user's bio."""
         current_user_full = str(current_user)
-        current_user = f"{current_user.split(maxsplit=1)[0]}{current_user.split()[1]}"
+        current_user = _display_name_key(current_user)
 
         username = self._get_username(current_user)
         self._print(f"Updating profile for @{username}: {current_user}", emoji="✏️")
         if self.perform_operations:
-            self._mastodon_ops.update_bio(username, current_user, bio)
+            self._require_mastodon_ops().update_bio(username, current_user, bio)
         else:
             self._print(
                 "Skipping real Mastodon API call since perform_operations is set to False",
@@ -328,16 +383,18 @@ class SocialNetworkApp(SocialBackendApp):
     def read_profile(self, current_user: str, target_user: str) -> tuple[str, str]:
         """Read a user's profile on Mastodon social network."""
         current_user_full = str(current_user)
-        current_user = f"{current_user.split(maxsplit=1)[0]}{current_user.split()[1]}"
+        current_user = _display_name_key(current_user)
         target_user_full = str(target_user)
-        target_user = f"{target_user.split(maxsplit=1)[0]}{target_user.split()[1]}"
+        target_user = _display_name_key(target_user)
 
         current_username = self._get_username(current_user)
         target_username = self._get_username(target_user)
         self._print(f"@{current_username} reading profile of @{target_username}", emoji="👀")
         if self.perform_operations:
             try:
-                display_name, bio = self._mastodon_ops.read_bio(current_username, target_username)
+                display_name, bio = self._require_mastodon_ops().read_bio(
+                    current_username, target_username
+                )
             except Exception as e:
                 self._print(f"Error reading profile of @{target_username}: {e}", color="red")
                 display_name, bio = "Error", "Error fetching profile"
@@ -362,13 +419,13 @@ class SocialNetworkApp(SocialBackendApp):
     def follow_user(self, current_user: str, target_user: str) -> str:
         """Follow a user on Mastodon social network."""
         current_user_full = str(current_user)
-        current_user = f"{current_user.split(maxsplit=1)[0]}{current_user.split()[1]}"
+        current_user = _display_name_key(current_user)
         target_user_full = str(target_user)
-        target_user = f"{target_user.split(maxsplit=1)[0]}{target_user.split()[1]}"
+        target_user = _display_name_key(target_user)
         current_username = self._get_username(current_user)
         target_username = self._get_username(target_user)
         if self.perform_operations:
-            self._mastodon_ops.follow(current_username, target_username)
+            self._require_mastodon_ops().follow(current_username, target_username)
         else:
             self._print(
                 "Skipping real Mastodon API call since perform_operations is set to False",
@@ -391,9 +448,9 @@ class SocialNetworkApp(SocialBackendApp):
     def unfollow_user(self, current_user: str, target_user: str) -> str:
         """Unfollow a user."""
         current_user_full = str(current_user)
-        current_user = f"{current_user.split(maxsplit=1)[0]}{current_user.split()[1]}"
+        current_user = _display_name_key(current_user)
         target_user_full = str(target_user)
-        target_user = f"{target_user.split(maxsplit=1)[0]}{target_user.split()[1]}"
+        target_user = _display_name_key(target_user)
         current_username = self._get_username(current_user)
         target_username = self._get_username(target_user)
         self._print(
@@ -401,7 +458,7 @@ class SocialNetworkApp(SocialBackendApp):
             emoji="➖",  # noqa: RUF001
         )
         if self.perform_operations:
-            self._mastodon_ops.unfollow(current_username, target_username)
+            self._require_mastodon_ops().unfollow(current_username, target_username)
         else:
             self._print(
                 "Skipping real Mastodon API call since perform_operations is set to False",
@@ -542,10 +599,10 @@ class SocialNetworkApp(SocialBackendApp):
         return_val = None
         current_user_full = str(current_user)
         try:
-            current_user = f"{current_user.split(maxsplit=1)[0]}{current_user.split()[1]}"
+            current_user = _display_name_key(current_user)
             username = self._get_username(current_user)
             if self.perform_operations:
-                return_val = self._mastodon_ops.post_status(
+                return_val = self._require_mastodon_ops().post_status(
                     login_user=username,
                     status=status,
                     media_files=media_links,
@@ -672,10 +729,10 @@ class SocialNetworkApp(SocialBackendApp):
         return_val = None
         try:
             current_user_full = str(current_user)
-            current_user = f"{current_user.split(maxsplit=1)[0]}{current_user.split()[1]}"
+            current_user = _display_name_key(current_user)
             username = self._get_username(current_user)
             if self.perform_operations:
-                return_val = self._mastodon_ops.post_status(
+                return_val = self._require_mastodon_ops().post_status(
                     login_user=username,
                     status=status,
                     in_reply_to_id=in_reply_to_id,
@@ -718,7 +775,7 @@ class SocialNetworkApp(SocialBackendApp):
                 and self._mastodon_ops is not None
                 and "username" in locals()
             ):
-                self._mastodon_ops.post_status(
+                self._require_mastodon_ops().post_status(
                     login_user=username,
                     status=status,
                 )
@@ -731,7 +788,7 @@ class SocialNetworkApp(SocialBackendApp):
                 and self._mastodon_ops is not None
                 and "username" in locals()
             ):
-                self._mastodon_ops.post_status(
+                self._require_mastodon_ops().post_status(
                     login_user=username,
                     status=status,
                 )
@@ -799,7 +856,7 @@ class SocialNetworkApp(SocialBackendApp):
     def get_own_timeline(self, current_user: str, limit: int, return_str: bool = False) -> str:
         """Read the Mastodon social network feed for the current user."""
         current_user_full = str(current_user)
-        current_user = f"{current_user.split(maxsplit=1)[0]}{current_user.split()[1]}"
+        current_user = _display_name_key(current_user)
         username = self._get_username(current_user)
         self._print(
             f"Fetching @{username}'s timeline (limit: {limit})",
@@ -808,7 +865,7 @@ class SocialNetworkApp(SocialBackendApp):
 
         if self.perform_operations:
             try:
-                timeline = self._mastodon_ops.get_own_timeline(username, limit=limit)
+                timeline = self._require_mastodon_ops().get_own_timeline(username, limit=limit)
             except Exception as e:
                 self._print(f"Error fetching timeline for @{username}: {e}", color="red")
                 timeline = []
@@ -894,7 +951,7 @@ class SocialNetworkApp(SocialBackendApp):
     def read_notifications(self, current_user: str, clear: bool, limit: int) -> str:
         """Read Mastodon social network notifications."""
         current_user_full = str(current_user)
-        current_user = f"{current_user.split(maxsplit=1)[0]}{current_user.split()[1]}"
+        current_user = _display_name_key(current_user)
 
         username = self._get_username(current_user)
         self._print(
@@ -902,7 +959,7 @@ class SocialNetworkApp(SocialBackendApp):
             emoji="🔔",
         )
         if self.perform_operations:
-            notifications = self._mastodon_ops.read_notifications(
+            notifications = self._require_mastodon_ops().read_notifications(
                 username, clear=clear, limit=limit
             )
         else:
@@ -934,7 +991,7 @@ class SocialNetworkApp(SocialBackendApp):
     def like_toot(self, current_user: str, toot_id: str) -> str:
         """Like (favorite) a toot."""
         current_user_full = str(current_user)
-        current_user = f"{current_user.split(maxsplit=1)[0]}{current_user.split()[1]}"
+        current_user = _display_name_key(current_user)
         current_username = self._get_username(current_user)
         # self._print(
         #     f"@{current_username} liking post {toot_id}",
@@ -943,9 +1000,10 @@ class SocialNetworkApp(SocialBackendApp):
         try:
             like_message = f"{current_user} (@{current_username}) liked post {toot_id}"
             if self.perform_operations:
-                check = self._mastodon_ops.like_check(current_username, toot_id)
+                mastodon_ops = self._require_mastodon_ops()
+                check = mastodon_ops.like_check(current_username, toot_id)
                 if not check:
-                    self._mastodon_ops.like_toot(current_username, toot_id)
+                    mastodon_ops.like_toot(current_username, toot_id)
                 else:
                     like_message = f"{current_user} (@{current_username}) has previously liked post {toot_id}. Please conduct a different action!!"
             else:
@@ -977,7 +1035,7 @@ class SocialNetworkApp(SocialBackendApp):
     def boost_toot(self, current_user: str, toot_id: str) -> str:
         """Boost (reblog) a toot."""
         current_user_full = str(current_user)
-        current_user = f"{current_user.split(maxsplit=1)[0]}{current_user.split()[1]}"
+        current_user = _display_name_key(current_user)
         current_username = self._get_username(current_user)
         self._print(
             f"@{current_username} boosting post {toot_id}",
@@ -986,9 +1044,10 @@ class SocialNetworkApp(SocialBackendApp):
         try:
             boost_message = f"{current_user} (@{current_username}) boosted post {toot_id}"
             if self.perform_operations:
-                check = self._mastodon_ops.boost_check(current_username, toot_id)
+                mastodon_ops = self._require_mastodon_ops()
+                check = mastodon_ops.boost_check(current_username, toot_id)
                 if not check:
-                    self._mastodon_ops.boost_toot(current_username, toot_id)
+                    mastodon_ops.boost_toot(current_username, toot_id)
                 else:
                     boost_message = f"{current_user} (@{current_username}) has previously boosted post {toot_id}. Please conduct a different action!!"
             self._print(

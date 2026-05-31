@@ -31,14 +31,14 @@ Install optional integrations only when needed:
 | `mastodon` | `mastodon.py`, loguru, pyvis | Real Mastodon server integration |
 | `aws` | `boto3` | AWS storage and services |
 | `docs` | ProperDocs, mkdocstrings, MkDocs plugins | Building the documentation site |
-| `all` | all of the above except `aws` and `docs` | Full runtime feature set |
+| `all` | all of the above except `aws` | Full runtime and documentation feature set |
 
 ```sh
 pip install "silisocs[dashboard]"           # Streamlit scenario launcher
 pip install "silisocs[analysis]"            # Dash analysis app and analysis utilities
 pip install "silisocs[mastodon]"            # real Mastodon server integration
-pip install "silisocs[all]"                 # all runtime extras
-pip install "silisocs[all,aws]"             # all runtime extras + AWS
+pip install "silisocs[all]"                 # all non-AWS extras, including docs
+pip install "silisocs[all,aws]"             # all extras + AWS
 ```
 
 ## Contributor Setup

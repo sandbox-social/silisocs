@@ -48,7 +48,6 @@ Configure GM behavior from `env.gm.components`:
 ```yaml
 env:
   gm:
-    preset: base
     components:
       next_acting:
         built_in: activity_markov
