@@ -1,9 +1,9 @@
 [![CI](https://github.com/sandbox-social/silisocs/actions/workflows/test.yml/badge.svg)](https://github.com/sandbox-social/silisocs/actions/workflows/test.yml)
 [![Docs](https://github.com/sandbox-social/silisocs/actions/workflows/docs.yml/badge.svg)](https://sandbox-social.github.io/silisocs/)
 
-# Silisocs
+# SiliSoCS
 
-Silisocs is a native simulation framework for configurable social and
+SiliSoCS (Silicon Society Sandbox) is a native simulation framework for configurable social and
 agent-environment experiments. It provides a YAML-first scenario layer,
 environment game masters, local and live backends, evaluation probes, runtime
 telemetry, and study tooling. Concordia interoperability is available through an
@@ -11,12 +11,13 @@ optional bridge extra.
 
 - 2024 NeurIPS Workshop Paper: [arXiv:2410.13915](http://arxiv.org/abs/2410.13915)
 - 2025 IJCAI Demo Paper: [IJCAI 2025](https://www.ijcai.org/proceedings/2025/1271)
+- 2026 EASE Configuration: [arXiv:2605.30258](https://arxiv.org/abs/2605.30258)
 - Documentation: [sandbox-social.github.io/silisocs](https://sandbox-social.github.io/silisocs)
 
 ## Install
 
 The default package is intentionally lean and supports local simulations without
-dashboard, Mastodon, Hugging Face, or analysis dependencies:
+dashboard, Mastodon, HuggingFace, or analysis dependencies:
 
 ```sh
 pip install silisocs
@@ -30,7 +31,7 @@ pip install "silisocs[mastodon]"  # real Mastodon backend
 pip install "silisocs[dashboard]" # Streamlit launcher
 pip install "silisocs[analysis]"  # plotting and analysis dashboards
 pip install "silisocs[viz]"       # local backend web visualizers
-pip install "silisocs[concordia]" # optional legacy Concordia bridge
+pip install "silisocs[concordia]" # optional Concordia bridge
 ```
 
 For contributor work from a checkout:
@@ -116,8 +117,8 @@ silisocs/
 
 ## Optional Concordia Bridge
 
-Silisocs runs on native runtime contracts by default. The optional Concordia
-bridge is for porting older Concordia-designed agents or components without
+SiliSoCS runs on native runtime contracts by default. The optional Concordia
+bridge is for porting Concordia-designed agents or components without
 making Concordia part of the default install:
 
 - All runtime agents satisfy `silisocs.agents.base_agent.Agent`.
@@ -140,7 +141,3 @@ uv run poe lint
 uv build --sdist --wheel
 uv run properdocs build --strict
 ```
-
-Do not commit `.env` files, credentials, live-service tokens, or generated
-secrets. Mastodon credentials should be provided only through local environment
-variables when using the optional `mastodon` extra.
