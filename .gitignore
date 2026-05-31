@@ -16,10 +16,11 @@ reports/
 *.xls*
 *.zip*
 data/
-examples/election/outputs/
+outputs/
 
 # direnv
 .envrc
+store.env*
 
 # Hypothesis
 .hypothesis/
@@ -34,7 +35,7 @@ examples/election/outputs/
 .dmypy.json
 .mypy_cache/
 
-# Poetry
+# Python virtual environments
 .venv/
 
 # PyCharm
@@ -45,7 +46,7 @@ examples/election/outputs/
 
 # pytest
 .pytest_cache/
-
+.tmp_pytest_llm/
 # Python
 __pycache__/
 *.py[cdo]
@@ -58,6 +59,9 @@ __pycache__/
 
 # VS Code
 .vscode/
+
+# Developing Code
+.developing/
 
 # ====== Mastodon-on-AWS Project Ignores ======
 
@@ -187,3 +191,53 @@ notes.txt
 .yamllint
 
 .venv
+
+# Hugging Face dataset cache persisted
+.hf_cache/
+
+# Local oversized HF cache artifact
+scenarios/election/input/personas/.hf_cache/nvidia_Nemotron-Personas-USA__default__train.json
+
+# MkDocs build output
+site/
+
+# Generated study orchestration artifacts (keep authored study.yaml files tracked)
+experiments/*/generated/
+experiments/studies/*/generated/
+
+# Replication outputs and local run artifacts
+replications/**/generated/
+replications/**/runs/
+replications/**/plots/
+replications/**/graph_experiments/
+replications/**/original_runs/
+replications/**/studies/
+replications/**/running_plan.MD
+slurm-*.out
+
+# Large generated study analysis artifacts
+experiments/studies/**/*.ipynb
+experiments/studies/**/*.pdf
+experiments/studies/**/*.png
+
+# Raw simulation output files within study run dirs (too large for git)
+experiments/studies/**/prompts_and_responses.jsonl
+experiments/studies/**/action_events.jsonl
+experiments/studies/**/probe_events.jsonl
+experiments/studies/**/run_stats.log
+experiments/studies/**/*.db
+experiments/studies/**/*.db-shm
+experiments/studies/**/*.db-wal
+
+# SQLite transient files from local backend tests
+*.db-shm
+*.db-wal
+*.egg-info/
+SESSION_STATE.md
+
+refactor_notes.md
+
+#LLM-Coding files
+.claude
+.codex
+.agents

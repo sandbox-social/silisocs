@@ -1,0 +1,46 @@
+probes:
+  deployment:
+    enabled: true
+    start_step: 1
+    every_n_steps: 1
+    exclude_classes:
+    - news_account
+  probes:
+    vote_choice:
+      probe_name: vote_choice
+      probe_type: ChoiceProbe
+      probe_data:
+        name: VoteChoice
+        question: 'Which candidate would you vote for right now? Choose exactly one
+          option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer
+          and nothing else.'
+        choices:
+        - Bill Fredrickson
+        - Bradley Carter
+    favorability_bill:
+      probe_name: favorability_bill
+      probe_type: NumericRatingProbe
+      probe_data:
+        name: FavorabilityBill
+        question: Rate your favorability toward Bill Fredrickson from {lo} to {hi}.
+          Respond with just the answer and nothing else.
+        lo: 1
+        hi: 10
+    favorability_bradley:
+      probe_name: favorability_bradley
+      probe_type: NumericRatingProbe
+      probe_data:
+        name: FavorabilityBradley
+        question: Rate your favorability toward Bradley Carter from {lo} to {hi}.
+          Respond with just the answer and nothing else.
+        lo: 1
+        hi: 10
+    polarization:
+      probe_name: polarization
+      probe_type: NumericRatingProbe
+      probe_data:
+        name: Polarization
+        question: On a scale from {lo} to {hi}, how polarized do you feel about this
+          election? Respond with just the answer and nothing else.
+        lo: 0
+        hi: 10

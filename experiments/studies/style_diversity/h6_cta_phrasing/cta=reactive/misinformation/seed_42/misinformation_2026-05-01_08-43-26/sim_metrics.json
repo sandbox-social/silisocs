@@ -1,0 +1,978 @@
+{
+  "system": {
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "python": "3.11.0rc1",
+    "cpu_count_logical": 8,
+    "cpu_count_physical": 4,
+    "total_ram_mb": 24034.2
+  },
+  "meta": {
+    "num_agents": 6,
+    "num_game_masters": 2,
+    "num_steps": 10,
+    "seed": 42,
+    "scenario": "misinformation",
+    "llm_name": "gpt-4o-mini",
+    "output_dir": "/mnt/c/Users/maxpu/Dropbox/scripts/Projects/socialsandbox/mastodon-sim/outputs/misinformation/Misinfo_N6_T10_style_diversity_h4_cta_phrasing_cta=reactive_misinformation_seed42/misinformation_2026-05-01_08-43-26",
+    "agent_names": [
+      "Alice",
+      "Bob",
+      "Charlie",
+      "Diana",
+      "Eve",
+      "Frank"
+    ]
+  },
+  "total_sim_duration_s": 382.7905,
+  "phase_timings": [
+    {
+      "phase": "config_validation",
+      "duration_s": 0.0103
+    },
+    {
+      "phase": "build_game_masters",
+      "duration_s": 0.0167
+    },
+    {
+      "phase": "build_agents",
+      "duration_s": 0.0209
+    },
+    {
+      "phase": "model_creation",
+      "duration_s": 0.0652
+    },
+    {
+      "phase": "simulation_construction",
+      "duration_s": 3.7015
+    },
+    {
+      "phase": "engine_run_loop",
+      "duration_s": 378.4022
+    },
+    {
+      "phase": "simulation_play",
+      "duration_s": 378.4046
+    },
+    {
+      "phase": "log_writing",
+      "duration_s": 0.0004
+    }
+  ],
+  "episode_metrics": [
+    {
+      "episode": 0,
+      "duration_s": 0.0477,
+      "total_agents": 6,
+      "active_agents": 0,
+      "skipped": true,
+      "game_master": "initial setup rules",
+      "worker_limit": 6,
+      "requested_workers": 6,
+      "phase_timings": {
+        "next_game_master": 0.010633707046508789,
+        "next_acting": 0.032356977462768555,
+        "entity_actions": 0.0015888214111328125
+      },
+      "configured_worker_cap": 1000,
+      "retry_telemetry": {
+        "model_count": 1,
+        "retry_samples": 6,
+        "retry_avg": 0.0,
+        "failure_ratio": 0.0,
+        "per_model": [
+          {
+            "model": "gpt-4o-mini",
+            "retry_samples": 6,
+            "retry_avg": 0.0,
+            "failure_ratio": 0.0,
+            "max_retries": 50,
+            "calls_total": 0,
+            "failed_calls_total": 0,
+            "retries_total": 0,
+            "retry_per_call": 0.0
+          }
+        ],
+        "calls_total": 0,
+        "failed_calls_total": 0,
+        "retries_total": 0,
+        "retry_per_call": 0.0
+      },
+      "probe_phase": {
+        "deployed": false,
+        "total_agents": 6,
+        "selected_agents": 0,
+        "duration_s": 0.0,
+        "retry": {
+          "calls": 0,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 0
+        }
+      },
+      "action_phase": {
+        "active_agents": 0,
+        "duration_s": 0.0016,
+        "retry": {
+          "calls": 0,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 0
+        }
+      }
+    },
+    {
+      "episode": 1,
+      "duration_s": 41.6475,
+      "total_agents": 6,
+      "active_agents": 6,
+      "active_agent_names": [
+        "Alice",
+        "Bob",
+        "Charlie",
+        "Diana",
+        "Eve",
+        "Frank"
+      ],
+      "skipped": false,
+      "game_master": "twitter_like_gm",
+      "worker_limit": 6,
+      "requested_workers": 6,
+      "phase_timings": {
+        "next_game_master": 0.0052509307861328125,
+        "probe_deployment": 3.3466739654541016,
+        "next_acting": 0.07460355758666992,
+        "entity_actions": 38.21221709251404,
+        "checkpoint": 0.00017952919006347656
+      },
+      "configured_worker_cap": 1000,
+      "retry_telemetry": {
+        "model_count": 1,
+        "retry_samples": 30,
+        "retry_avg": 0.0,
+        "failure_ratio": 0.0,
+        "per_model": [
+          {
+            "model": "gpt-4o-mini",
+            "retry_samples": 30,
+            "retry_avg": 0.0,
+            "failure_ratio": 0.0,
+            "max_retries": 50,
+            "calls_total": 18,
+            "failed_calls_total": 0,
+            "retries_total": 0,
+            "retry_per_call": 0.0
+          }
+        ],
+        "calls_total": 18,
+        "failed_calls_total": 0,
+        "retries_total": 0,
+        "retry_per_call": 0.0
+      },
+      "probe_phase": {
+        "deployed": true,
+        "total_agents": 6,
+        "selected_agents": 6,
+        "requested_workers": 6,
+        "dynamic_worker_cap": 6,
+        "worker_limit": 6,
+        "duration_s": 3.3467,
+        "retry": {
+          "calls": 6,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      },
+      "action_phase": {
+        "active_agents": 6,
+        "duration_s": 38.2122,
+        "retry": {
+          "calls": 18,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      }
+    },
+    {
+      "episode": 2,
+      "duration_s": 50.2562,
+      "total_agents": 6,
+      "active_agents": 5,
+      "active_agent_names": [
+        "Bob",
+        "Charlie",
+        "Diana",
+        "Eve",
+        "Frank"
+      ],
+      "skipped": false,
+      "game_master": "twitter_like_gm",
+      "worker_limit": 5,
+      "requested_workers": 5,
+      "phase_timings": {
+        "next_game_master": 0.00501251220703125,
+        "probe_deployment": 9.606647253036499,
+        "next_acting": 0.09148430824279785,
+        "entity_actions": 40.54240107536316,
+        "checkpoint": 9.012222290039062e-05
+      },
+      "configured_worker_cap": 1000,
+      "retry_telemetry": {
+        "model_count": 1,
+        "retry_samples": 49,
+        "retry_avg": 0.0,
+        "failure_ratio": 0.0,
+        "per_model": [
+          {
+            "model": "gpt-4o-mini",
+            "retry_samples": 49,
+            "retry_avg": 0.0,
+            "failure_ratio": 0.0,
+            "max_retries": 50,
+            "calls_total": 31,
+            "failed_calls_total": 0,
+            "retries_total": 0,
+            "retry_per_call": 0.0
+          }
+        ],
+        "calls_total": 31,
+        "failed_calls_total": 0,
+        "retries_total": 0,
+        "retry_per_call": 0.0
+      },
+      "probe_phase": {
+        "deployed": true,
+        "total_agents": 6,
+        "selected_agents": 6,
+        "requested_workers": 6,
+        "dynamic_worker_cap": 6,
+        "worker_limit": 6,
+        "duration_s": 9.6066,
+        "retry": {
+          "calls": 6,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      },
+      "action_phase": {
+        "active_agents": 5,
+        "duration_s": 40.5424,
+        "retry": {
+          "calls": 13,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      }
+    },
+    {
+      "episode": 3,
+      "duration_s": 42.388,
+      "total_agents": 6,
+      "active_agents": 6,
+      "active_agent_names": [
+        "Alice",
+        "Bob",
+        "Charlie",
+        "Diana",
+        "Eve",
+        "Frank"
+      ],
+      "skipped": false,
+      "game_master": "twitter_like_gm",
+      "worker_limit": 5,
+      "requested_workers": 6,
+      "phase_timings": {
+        "next_game_master": 0.003596067428588867,
+        "probe_deployment": 3.3631339073181152,
+        "next_acting": 0.12114810943603516,
+        "entity_actions": 38.89014673233032,
+        "checkpoint": 0.00014400482177734375
+      },
+      "configured_worker_cap": 1000,
+      "retry_telemetry": {
+        "model_count": 1,
+        "retry_samples": 71,
+        "retry_avg": 0.0,
+        "failure_ratio": 0.0,
+        "per_model": [
+          {
+            "model": "gpt-4o-mini",
+            "retry_samples": 71,
+            "retry_avg": 0.0,
+            "failure_ratio": 0.0,
+            "max_retries": 50,
+            "calls_total": 47,
+            "failed_calls_total": 0,
+            "retries_total": 0,
+            "retry_per_call": 0.0
+          }
+        ],
+        "calls_total": 47,
+        "failed_calls_total": 0,
+        "retries_total": 0,
+        "retry_per_call": 0.0
+      },
+      "probe_phase": {
+        "deployed": true,
+        "total_agents": 6,
+        "selected_agents": 6,
+        "requested_workers": 6,
+        "dynamic_worker_cap": 6,
+        "worker_limit": 6,
+        "duration_s": 3.3631,
+        "retry": {
+          "calls": 6,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      },
+      "action_phase": {
+        "active_agents": 6,
+        "duration_s": 38.8901,
+        "retry": {
+          "calls": 16,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      }
+    },
+    {
+      "episode": 4,
+      "duration_s": 30.6535,
+      "total_agents": 6,
+      "active_agents": 4,
+      "active_agent_names": [
+        "Bob",
+        "Diana",
+        "Eve",
+        "Frank"
+      ],
+      "skipped": false,
+      "game_master": "twitter_like_gm",
+      "worker_limit": 4,
+      "requested_workers": 4,
+      "phase_timings": {
+        "next_game_master": 0.0041675567626953125,
+        "probe_deployment": 5.417389869689941,
+        "next_acting": 0.08074331283569336,
+        "entity_actions": 25.14048194885254,
+        "checkpoint": 0.0001628398895263672
+      },
+      "configured_worker_cap": 1000,
+      "retry_telemetry": {
+        "model_count": 1,
+        "retry_samples": 87,
+        "retry_avg": 0.0,
+        "failure_ratio": 0.0,
+        "per_model": [
+          {
+            "model": "gpt-4o-mini",
+            "retry_samples": 87,
+            "retry_avg": 0.0,
+            "failure_ratio": 0.0,
+            "max_retries": 50,
+            "calls_total": 57,
+            "failed_calls_total": 0,
+            "retries_total": 0,
+            "retry_per_call": 0.0
+          }
+        ],
+        "calls_total": 57,
+        "failed_calls_total": 0,
+        "retries_total": 0,
+        "retry_per_call": 0.0
+      },
+      "probe_phase": {
+        "deployed": true,
+        "total_agents": 6,
+        "selected_agents": 6,
+        "requested_workers": 6,
+        "dynamic_worker_cap": 6,
+        "worker_limit": 6,
+        "duration_s": 5.4174,
+        "retry": {
+          "calls": 6,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      },
+      "action_phase": {
+        "active_agents": 4,
+        "duration_s": 25.1405,
+        "retry": {
+          "calls": 10,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      }
+    },
+    {
+      "episode": 5,
+      "duration_s": 41.6123,
+      "total_agents": 6,
+      "active_agents": 4,
+      "active_agent_names": [
+        "Bob",
+        "Charlie",
+        "Diana",
+        "Frank"
+      ],
+      "skipped": false,
+      "game_master": "twitter_like_gm",
+      "worker_limit": 4,
+      "requested_workers": 4,
+      "phase_timings": {
+        "next_game_master": 0.005074024200439453,
+        "probe_deployment": 4.63392448425293,
+        "next_acting": 0.040180206298828125,
+        "entity_actions": 36.926472902297974,
+        "checkpoint": 8.821487426757812e-05
+      },
+      "configured_worker_cap": 1000,
+      "retry_telemetry": {
+        "model_count": 1,
+        "retry_samples": 105,
+        "retry_avg": 0.0,
+        "failure_ratio": 0.0,
+        "per_model": [
+          {
+            "model": "gpt-4o-mini",
+            "retry_samples": 105,
+            "retry_avg": 0.0,
+            "failure_ratio": 0.0,
+            "max_retries": 50,
+            "calls_total": 69,
+            "failed_calls_total": 0,
+            "retries_total": 0,
+            "retry_per_call": 0.0
+          }
+        ],
+        "calls_total": 69,
+        "failed_calls_total": 0,
+        "retries_total": 0,
+        "retry_per_call": 0.0
+      },
+      "probe_phase": {
+        "deployed": true,
+        "total_agents": 6,
+        "selected_agents": 6,
+        "requested_workers": 6,
+        "dynamic_worker_cap": 6,
+        "worker_limit": 6,
+        "duration_s": 4.6339,
+        "retry": {
+          "calls": 6,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      },
+      "action_phase": {
+        "active_agents": 4,
+        "duration_s": 36.9265,
+        "retry": {
+          "calls": 12,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      }
+    },
+    {
+      "episode": 6,
+      "duration_s": 27.5747,
+      "total_agents": 6,
+      "active_agents": 4,
+      "active_agent_names": [
+        "Bob",
+        "Charlie",
+        "Eve",
+        "Frank"
+      ],
+      "skipped": false,
+      "game_master": "twitter_like_gm",
+      "worker_limit": 4,
+      "requested_workers": 4,
+      "phase_timings": {
+        "next_game_master": 0.003069639205932617,
+        "probe_deployment": 3.8604073524475098,
+        "next_acting": 0.07315874099731445,
+        "entity_actions": 23.630817890167236,
+        "checkpoint": 9.393692016601562e-05
+      },
+      "configured_worker_cap": 1000,
+      "retry_telemetry": {
+        "model_count": 1,
+        "retry_samples": 121,
+        "retry_avg": 0.0,
+        "failure_ratio": 0.0,
+        "per_model": [
+          {
+            "model": "gpt-4o-mini",
+            "retry_samples": 121,
+            "retry_avg": 0.0,
+            "failure_ratio": 0.0,
+            "max_retries": 50,
+            "calls_total": 79,
+            "failed_calls_total": 0,
+            "retries_total": 0,
+            "retry_per_call": 0.0
+          }
+        ],
+        "calls_total": 79,
+        "failed_calls_total": 0,
+        "retries_total": 0,
+        "retry_per_call": 0.0
+      },
+      "probe_phase": {
+        "deployed": true,
+        "total_agents": 6,
+        "selected_agents": 6,
+        "requested_workers": 6,
+        "dynamic_worker_cap": 6,
+        "worker_limit": 6,
+        "duration_s": 3.8604,
+        "retry": {
+          "calls": 6,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      },
+      "action_phase": {
+        "active_agents": 4,
+        "duration_s": 23.6308,
+        "retry": {
+          "calls": 10,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      }
+    },
+    {
+      "episode": 7,
+      "duration_s": 33.8325,
+      "total_agents": 6,
+      "active_agents": 4,
+      "active_agent_names": [
+        "Bob",
+        "Diana",
+        "Eve",
+        "Frank"
+      ],
+      "skipped": false,
+      "game_master": "twitter_like_gm",
+      "worker_limit": 4,
+      "requested_workers": 4,
+      "phase_timings": {
+        "next_game_master": 0.0034558773040771484,
+        "probe_deployment": 4.70396614074707,
+        "next_acting": 0.08782172203063965,
+        "entity_actions": 29.02638840675354,
+        "checkpoint": 0.000263214111328125
+      },
+      "configured_worker_cap": 1000,
+      "retry_telemetry": {
+        "model_count": 1,
+        "retry_samples": 139,
+        "retry_avg": 0.0,
+        "failure_ratio": 0.0,
+        "per_model": [
+          {
+            "model": "gpt-4o-mini",
+            "retry_samples": 139,
+            "retry_avg": 0.0,
+            "failure_ratio": 0.0,
+            "max_retries": 50,
+            "calls_total": 91,
+            "failed_calls_total": 0,
+            "retries_total": 0,
+            "retry_per_call": 0.0
+          }
+        ],
+        "calls_total": 91,
+        "failed_calls_total": 0,
+        "retries_total": 0,
+        "retry_per_call": 0.0
+      },
+      "probe_phase": {
+        "deployed": true,
+        "total_agents": 6,
+        "selected_agents": 6,
+        "requested_workers": 6,
+        "dynamic_worker_cap": 6,
+        "worker_limit": 6,
+        "duration_s": 4.704,
+        "retry": {
+          "calls": 6,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      },
+      "action_phase": {
+        "active_agents": 4,
+        "duration_s": 29.0264,
+        "retry": {
+          "calls": 12,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      }
+    },
+    {
+      "episode": 8,
+      "duration_s": 67.313,
+      "total_agents": 6,
+      "active_agents": 6,
+      "active_agent_names": [
+        "Alice",
+        "Bob",
+        "Charlie",
+        "Diana",
+        "Eve",
+        "Frank"
+      ],
+      "skipped": false,
+      "game_master": "twitter_like_gm",
+      "worker_limit": 4,
+      "requested_workers": 6,
+      "phase_timings": {
+        "next_game_master": 0.008106231689453125,
+        "probe_deployment": 7.744173288345337,
+        "next_acting": 0.10115242004394531,
+        "entity_actions": 59.45132374763489,
+        "checkpoint": 9.870529174804688e-05
+      },
+      "configured_worker_cap": 1000,
+      "retry_telemetry": {
+        "model_count": 1,
+        "retry_samples": 161,
+        "retry_avg": 0.0,
+        "failure_ratio": 0.0,
+        "per_model": [
+          {
+            "model": "gpt-4o-mini",
+            "retry_samples": 161,
+            "retry_avg": 0.0,
+            "failure_ratio": 0.0,
+            "max_retries": 50,
+            "calls_total": 107,
+            "failed_calls_total": 0,
+            "retries_total": 0,
+            "retry_per_call": 0.0
+          }
+        ],
+        "calls_total": 107,
+        "failed_calls_total": 0,
+        "retries_total": 0,
+        "retry_per_call": 0.0
+      },
+      "probe_phase": {
+        "deployed": true,
+        "total_agents": 6,
+        "selected_agents": 6,
+        "requested_workers": 6,
+        "dynamic_worker_cap": 6,
+        "worker_limit": 6,
+        "duration_s": 7.7442,
+        "retry": {
+          "calls": 6,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      },
+      "action_phase": {
+        "active_agents": 6,
+        "duration_s": 59.4513,
+        "retry": {
+          "calls": 16,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      }
+    },
+    {
+      "episode": 9,
+      "duration_s": 42.933,
+      "total_agents": 6,
+      "active_agents": 5,
+      "active_agent_names": [
+        "Alice",
+        "Bob",
+        "Charlie",
+        "Diana",
+        "Eve"
+      ],
+      "skipped": false,
+      "game_master": "twitter_like_gm",
+      "worker_limit": 5,
+      "requested_workers": 5,
+      "phase_timings": {
+        "next_game_master": 0.002746105194091797,
+        "probe_deployment": 3.830115556716919,
+        "next_acting": 0.05068159103393555,
+        "entity_actions": 39.043123722076416,
+        "checkpoint": 8.7738037109375e-05
+      },
+      "configured_worker_cap": 1000,
+      "retry_telemetry": {
+        "model_count": 1,
+        "retry_samples": 179,
+        "retry_avg": 0.0,
+        "failure_ratio": 0.0,
+        "per_model": [
+          {
+            "model": "gpt-4o-mini",
+            "retry_samples": 179,
+            "retry_avg": 0.0,
+            "failure_ratio": 0.0,
+            "max_retries": 50,
+            "calls_total": 119,
+            "failed_calls_total": 0,
+            "retries_total": 0,
+            "retry_per_call": 0.0
+          }
+        ],
+        "calls_total": 119,
+        "failed_calls_total": 0,
+        "retries_total": 0,
+        "retry_per_call": 0.0
+      },
+      "probe_phase": {
+        "deployed": true,
+        "total_agents": 6,
+        "selected_agents": 6,
+        "requested_workers": 6,
+        "dynamic_worker_cap": 6,
+        "worker_limit": 6,
+        "duration_s": 3.8301,
+        "retry": {
+          "calls": 6,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      },
+      "action_phase": {
+        "active_agents": 5,
+        "duration_s": 39.0431,
+        "retry": {
+          "calls": 12,
+          "failed_calls": 0,
+          "retries": 0,
+          "retry_per_call": 0.0,
+          "failure_ratio": 0.0,
+          "models_with_activity": 1
+        }
+      }
+    }
+  ],
+  "resource_snapshots": [
+    {
+      "cpu_percent_process": 0.0,
+      "cpu_percent_system": 8.2,
+      "memory_rss_mb": 154.421875,
+      "memory_vms_mb": 634.1328125,
+      "memory_percent": 0.6425086115852435,
+      "system_memory_percent": 8.9,
+      "open_file_descriptors": 1,
+      "thread_count": 9,
+      "gpus": [],
+      "label": "sim_start",
+      "timestamp": 1777639406.2636144
+    },
+    {
+      "cpu_percent_process": 0.0,
+      "cpu_percent_system": 3.4,
+      "memory_rss_mb": 169.421875,
+      "memory_vms_mb": 1723.62109375,
+      "memory_percent": 0.7049196474166545,
+      "system_memory_percent": 9.0,
+      "open_file_descriptors": 7,
+      "thread_count": 12,
+      "gpus": [],
+      "label": "episode_0_end",
+      "timestamp": 1777639410.6858642
+    },
+    {
+      "cpu_percent_process": 0.0,
+      "cpu_percent_system": 1.0,
+      "memory_rss_mb": 172.046875,
+      "memory_vms_mb": 1731.640625,
+      "memory_percent": 0.7158415786871514,
+      "system_memory_percent": 9.0,
+      "open_file_descriptors": 8,
+      "thread_count": 13,
+      "gpus": [],
+      "label": "episode_1_end",
+      "timestamp": 1777639452.383403
+    },
+    {
+      "cpu_percent_process": 0.0,
+      "cpu_percent_system": 1.2,
+      "memory_rss_mb": 174.296875,
+      "memory_vms_mb": 1924.79296875,
+      "memory_percent": 0.725203234061863,
+      "system_memory_percent": 8.9,
+      "open_file_descriptors": 8,
+      "thread_count": 13,
+      "gpus": [],
+      "label": "episode_2_end",
+      "timestamp": 1777639502.6468325
+    },
+    {
+      "cpu_percent_process": 0.0,
+      "cpu_percent_system": 1.2,
+      "memory_rss_mb": 175.921875,
+      "memory_vms_mb": 1924.79296875,
+      "memory_percent": 0.7319644296102659,
+      "system_memory_percent": 8.9,
+      "open_file_descriptors": 8,
+      "thread_count": 13,
+      "gpus": [],
+      "label": "episode_3_end",
+      "timestamp": 1777639545.0436692
+    },
+    {
+      "cpu_percent_process": 0.0,
+      "cpu_percent_system": 1.2,
+      "memory_rss_mb": 177.796875,
+      "memory_vms_mb": 1988.79296875,
+      "memory_percent": 0.7397658090891922,
+      "system_memory_percent": 8.9,
+      "open_file_descriptors": 8,
+      "thread_count": 13,
+      "gpus": [],
+      "label": "episode_4_end",
+      "timestamp": 1777639575.713126
+    },
+    {
+      "cpu_percent_process": 0.0,
+      "cpu_percent_system": 0.9,
+      "memory_rss_mb": 178.921875,
+      "memory_vms_mb": 1989.79296875,
+      "memory_percent": 0.744446636776548,
+      "system_memory_percent": 8.9,
+      "open_file_descriptors": 8,
+      "thread_count": 13,
+      "gpus": [],
+      "label": "episode_5_end",
+      "timestamp": 1777639617.3324459
+    },
+    {
+      "cpu_percent_process": 0.0,
+      "cpu_percent_system": 1.0,
+      "memory_rss_mb": 180.296875,
+      "memory_vms_mb": 1989.79296875,
+      "memory_percent": 0.7501676483944273,
+      "system_memory_percent": 8.9,
+      "open_file_descriptors": 8,
+      "thread_count": 13,
+      "gpus": [],
+      "label": "episode_6_end",
+      "timestamp": 1777639644.9149466
+    },
+    {
+      "cpu_percent_process": 0.0,
+      "cpu_percent_system": 1.2,
+      "memory_rss_mb": 181.921875,
+      "memory_vms_mb": 1990.79296875,
+      "memory_percent": 0.7569288439428302,
+      "system_memory_percent": 8.9,
+      "open_file_descriptors": 8,
+      "thread_count": 13,
+      "gpus": [],
+      "label": "episode_7_end",
+      "timestamp": 1777639678.773119
+    },
+    {
+      "cpu_percent_process": 0.0,
+      "cpu_percent_system": 0.8,
+      "memory_rss_mb": 183.546875,
+      "memory_vms_mb": 1990.9296875,
+      "memory_percent": 0.763690039491233,
+      "system_memory_percent": 8.9,
+      "open_file_descriptors": 8,
+      "thread_count": 13,
+      "gpus": [],
+      "label": "episode_8_end",
+      "timestamp": 1777639746.0923588
+    },
+    {
+      "cpu_percent_process": 0.0,
+      "cpu_percent_system": 0.8,
+      "memory_rss_mb": 186.171875,
+      "memory_vms_mb": 2055.9296875,
+      "memory_percent": 0.7746119707617299,
+      "system_memory_percent": 8.9,
+      "open_file_descriptors": 8,
+      "thread_count": 13,
+      "gpus": [],
+      "label": "episode_9_end",
+      "timestamp": 1777639789.0312974
+    },
+    {
+      "cpu_percent_process": 0.0,
+      "cpu_percent_system": 0.0,
+      "memory_rss_mb": 186.171875,
+      "memory_vms_mb": 2055.9296875,
+      "memory_percent": 0.7746119707617299,
+      "system_memory_percent": 8.9,
+      "open_file_descriptors": 8,
+      "thread_count": 13,
+      "gpus": [],
+      "label": "sim_end",
+      "timestamp": 1777639789.0590365
+    }
+  ]
+}

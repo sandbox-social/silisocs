@@ -1,0 +1,8 @@
+probes:
+  schedule:
+    built_in: disabled
+    class_path: null
+    params: {}
+  deployment:
+    enabled: false
+  probes: {}

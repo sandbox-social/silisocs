@@ -1,0 +1,193 @@
+{
+  "checkpoint": "/mnt/c/Users/maxpu/Dropbox/scripts/Projects/socialsandbox/mastodon-sim/outputs/ai_conference_thin_experiment/2026-03-31_19-56-45/ai_conference_thin_2026-03-31_19-56-48/checkpoints/step_10_checkpoint.json",
+  "agents": {
+    "Derek Okafor": {
+      "self_bleu": 0.13203756848632084,
+      "near_duplicate_rate": 0.5833333333333334,
+      "target_fixation": 0.2571428571428571,
+      "action_entropy": null,
+      "lexical_diversity": 0.14362272240085744,
+      "content_evolution": 0.3173705048152787,
+      "opener_variety": 0.4166666666666667,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Dr. Amara Osei": {
+      "self_bleu": 0.05514667678483754,
+      "near_duplicate_rate": 0.38235294117647056,
+      "target_fixation": 0.15151515151515152,
+      "action_entropy": null,
+      "lexical_diversity": 0.19872611464968154,
+      "content_evolution": 0.6053018080407472,
+      "opener_variety": 0.6176470588235294,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Dr. Victor Huang": {
+      "self_bleu": 0.05227206148550905,
+      "near_duplicate_rate": 0.39705882352941174,
+      "target_fixation": 0.11940298507462686,
+      "action_entropy": null,
+      "lexical_diversity": 0.12734990903577925,
+      "content_evolution": 0.6993377333050548,
+      "opener_variety": 0.5441176470588235,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Jordan Ellis": {
+      "self_bleu": 0.078046994061037,
+      "near_duplicate_rate": 0.45454545454545453,
+      "target_fixation": 0.1875,
+      "action_entropy": null,
+      "lexical_diversity": 0.18018018018018017,
+      "content_evolution": 0.7051822215028123,
+      "opener_variety": 0.5454545454545454,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Lisa Tanaka": {
+      "self_bleu": 0.11620114331092034,
+      "near_duplicate_rate": 0.2222222222222222,
+      "target_fixation": 0.29411764705882354,
+      "action_entropy": null,
+      "lexical_diversity": 0.24669603524229075,
+      "content_evolution": 0.4585749786358787,
+      "opener_variety": 0.6111111111111112,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Marcus Rivera": {
+      "self_bleu": 0.1335564021600075,
+      "near_duplicate_rate": 0.36363636363636365,
+      "target_fixation": 0.2,
+      "action_entropy": null,
+      "lexical_diversity": 0.2147239263803681,
+      "content_evolution": 0.3608137261225736,
+      "opener_variety": 0.5454545454545454,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Priya Sharma": {
+      "self_bleu": 0.0616297621559651,
+      "near_duplicate_rate": 0.2692307692307692,
+      "target_fixation": 0.125,
+      "action_entropy": null,
+      "lexical_diversity": 0.2112,
+      "content_evolution": 0.5035471437538093,
+      "opener_variety": 0.7307692307692307,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Sam Nakamura": {
+      "self_bleu": 0.05817910362602211,
+      "near_duplicate_rate": 0.6511627906976745,
+      "target_fixation": 0.15476190476190477,
+      "action_entropy": null,
+      "lexical_diversity": 0.09858442871587463,
+      "content_evolution": 0.7203371713378685,
+      "opener_variety": 0.37209302325581395,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Zoe Chen": {
+      "self_bleu": 0.1149016498351434,
+      "near_duplicate_rate": 0.6164383561643836,
+      "target_fixation": 0.06944444444444445,
+      "action_entropy": null,
+      "lexical_diversity": 0.08148148148148149,
+      "content_evolution": 0.6191425870179774,
+      "opener_variety": 0.3561643835616438,
+      "action_diversity": null,
+      "new_post_rate": null
+    }
+  },
+  "aggregated": {
+    "self_bleu": 0.0891079291006403,
+    "near_duplicate_rate": 0.4377756727262315,
+    "target_fixation": 0.17320944333308982,
+    "action_entropy": null,
+    "lexical_diversity": 0.1669516442318348,
+    "content_evolution": 0.554400874948,
+    "opener_variety": 0.5266086902395455,
+    "action_diversity": null,
+    "new_post_rate": null,
+    "inter_agent_distinctiveness": 0.1918100588821624
+  },
+  "summary": {
+    "total_posts": 525,
+    "seed_posts": 0,
+    "model_posts": 525,
+    "replies": 384,
+    "boosts": 129,
+    "original_posts": 12,
+    "total_actions": 0,
+    "agents": 9,
+    "steps": 9
+  },
+  "probe_diversity": {
+    "most_influential_post": {
+      "inter_agent": {
+        "self_bleu": 0.341551139247199,
+        "lexical_diversity": 0.09474389019082692,
+        "opener_variety": 0.8888888888888888,
+        "content_evolution": 0.14220149121291287
+      },
+      "mean_per_agent": {
+        "self_bleu": 0.2307678349266853,
+        "lexical_diversity": 0.30806270634935884,
+        "opener_variety": 0.45679012345679015,
+        "content_evolution": 0.32411465367690767
+      },
+      "n_agents": 9,
+      "total_responses": 81
+    },
+    "narrative_alignment": {
+      "inter_agent": {
+        "self_bleu": 0.4569904756933279,
+        "lexical_diversity": 0.09907120743034056,
+        "opener_variety": 0.4444444444444444,
+        "content_evolution": 0.0937145769742718
+      },
+      "mean_per_agent": {
+        "self_bleu": 0.22900735296261607,
+        "lexical_diversity": 0.30509469191701527,
+        "opener_variety": 0.5061728395061729,
+        "content_evolution": 0.3346141114180205
+      },
+      "n_agents": 9,
+      "total_responses": 81
+    },
+    "reasoning_view": {
+      "inter_agent": {
+        "self_bleu": 0.23283607695650993,
+        "lexical_diversity": 0.11425206124852769,
+        "opener_variety": 1.0,
+        "content_evolution": 0.26006773700318275
+      },
+      "mean_per_agent": {
+        "self_bleu": 0.14026663363402683,
+        "lexical_diversity": 0.35245931951202275,
+        "opener_variety": 0.5432098765432098,
+        "content_evolution": 0.45822340660470673
+      },
+      "n_agents": 9,
+      "total_responses": 81
+    },
+    "private_journal": {
+      "inter_agent": {
+        "self_bleu": 0.21575660256478063,
+        "lexical_diversity": 0.11822338340953625,
+        "opener_variety": 0.6666666666666666,
+        "content_evolution": 0.13088332473720193
+      },
+      "mean_per_agent": {
+        "self_bleu": 0.129947072404192,
+        "lexical_diversity": 0.3523747117274322,
+        "opener_variety": 0.34567901234567905,
+        "content_evolution": 0.39779143649086696
+      },
+      "n_agents": 9,
+      "total_responses": 81
+    }
+  }
+}

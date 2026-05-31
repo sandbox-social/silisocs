@@ -1,0 +1,11 @@
+id: h3_persona_richness
+statement: Richer agent personas produce more diverse post behavior and reasoning,
+  testing whether LLMs faithfully instantiate identity variation or compress distinct
+  personas into a generic voice.
+independent_variable: persona_richness
+prediction: rich > thin on inter_agent_distinctiveness; reasoning probe diversity
+  mirrors post diversity for rich personas but not thin.
+status: testing
+conditions:
+- rich
+- thin

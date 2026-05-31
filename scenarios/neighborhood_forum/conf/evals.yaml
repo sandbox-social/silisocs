@@ -1,0 +1,8 @@
+probes:
+  deployment:
+    enabled: true
+    start_step: 1
+    every_n_steps: 1
+    include_agents: []
+    exclude_agents: []
+  probes: {}

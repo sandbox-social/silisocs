@@ -1,0 +1,102 @@
+observation_history: 100
+gm:
+  backend:
+    type: reddit_like
+    class_path: null
+    params:
+      perform_operations: false
+      app_description: Reddit-like social backend organized around communities called
+        subreddits. Users can create posts, comment, vote, inspect feeds/comments,
+        mute/unmute users, search, inspect trends, report posts, update/view profiles,
+        and finish an open-ended turn. By default all backend actions exposed with
+        @app_action are available; restrict them with env.gm.backend.enabled_actions
+        when a scenario needs a smaller action surface. Actions that engage existing
+        content require real post/comment IDs from observations or action results.
+    enabled_actions: null
+  components:
+    initialize:
+      built_in: social_media
+      class_path: null
+      params:
+        graph:
+          fully_connected_targets: []
+          base_followership_probability: 0.3
+          network_type: barabasi_albert
+          barabasi_albert_m: 10
+          subreddits:
+          - name: general
+            description: General discussion for all topics
+            roles: all
+          default_subreddit: general
+    next_acting:
+      built_in: activity_probability
+      class_path: null
+      params:
+        active_probability: null
+        min_active_agents: 1
+        activity_transition_rates:
+          user:
+            inactive_to_active: 0.3
+            active_to_inactive: 0.3
+    update:
+      built_in: social_recommendation
+      class_path: null
+      params:
+        default_recsys_type: null
+        update_every_n_steps: 1
+        lazy: true
+        max_posts: 10
+        user_context_recent_posts: 10
+        include_like_trace: true
+        like_trace_window: 10
+        like_trace_weight: 0.5
+        include_like_trace_in_context: false
+    observe:
+      built_in: timeline_every_turn
+      class_path: null
+      params:
+        recsys_type: null
+        timeline_mode: hybrid_recsys_follower
+        timeline_posts: 10
+        timeline_config:
+          recsys_ratio: 0.6
+          follower_ratio: 0.4
+    resolve:
+      built_in: tool_calling
+      class_path: null
+      params: {}
+    action_prompt:
+      built_in: default
+      class_path: null
+      params:
+        action_prompt: 'You are operating on a Reddit-like social backend organized
+          around communities called subreddits.
+
+          The backend exposes actions as typed tools. By default, every @app_action
+          on the backend is available. Scenarios can restrict the action surface with
+          env.gm.backend.enabled_actions using canonical function names or selectable
+          aliases.
+
+          Common actions include create_reddit_post, create_comment, upvote, downvote,
+          like_post, unlike_post, dislike_post, undo_dislike_post, get_home_feed,
+          get_post_comments, search_subreddits, get_trending_posts, report_post, mute_user,
+          unmute_user, update_profile, view_profile, do_nothing, and FINISHED.
+
+          Use only real post/comment IDs from feed observations or action results;
+          do not fabricate IDs. Omit optional parameters you do not want to use.
+
+          Determine what one action {name} would take next based on their character,
+          memories, goals, current context, feed, and recent actions.
+
+          [OUTPUT STYLE]'
+        output_style: 'FINAL DECISION:
+
+          ACTION TYPE: [chosen backend action]
+
+          TARGET ID: [Include post or comment ID if applicable]
+
+          CONTENT: [For posts/comments, exact text {name} would write]
+
+          REASONING: [Brief explanation of why this action fits {name}''s character]'
+  name: reddit_like_gm
+  class_path: silisocs.environments.gm.game_master.ComponentGameMaster

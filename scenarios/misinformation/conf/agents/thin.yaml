@@ -1,0 +1,58 @@
+# @package agents
+persona_pipeline:
+  defaults:
+    params:
+      seed_post: ''
+      bio: ''
+      style: ''
+      goal: null
+      scenario_context: ${event.context}
+    shared_memories:
+    - ${event.context}
+  classes:
+    user:
+      count: 6
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: user
+      data:
+        source: inline
+        records:
+        - name: Alice
+          username: alice
+          context: Alice is a social media user.
+          seed_post: 'BREAKING: Scientists confirm that common household item causes
+            serious health issues! Share before they delete this! #health #mustread'
+        - name: Bob
+          username: bob
+          context: Bob is a social media user.
+          seed_post: Beautiful sunset today. Sometimes it's good to just appreciate
+            the simple things. 🌅
+        - name: Charlie
+          username: charlie
+          context: Charlie is a social media user.
+          seed_post: Just read an interesting article about critical thinking. Always
+            verify claims before sharing — most viral health scares are misleading
+            or outright false.
+        - name: Diana
+          username: diana
+          context: Diana is a social media user.
+          seed_post: ''
+        - name: Eve
+          username: eve
+          context: Eve is a social media user.
+          seed_post: ''
+        - name: Frank
+          username: frank
+          context: Frank is a social media user who is new to the platform.
+          seed_post: ''
+      field_map:
+        name: name
+        username: username
+        context: context
+        seed_post: seed_post
+shared_memories:
+- ${event.context}
+- ${setting.background}
+initial_observations:
+- '{name} opens their social media feed and starts scrolling.'
+- '{name} notices some new posts from people they follow.'

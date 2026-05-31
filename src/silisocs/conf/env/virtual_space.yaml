@@ -1,0 +1,89 @@
+observation_history: 100
+gm:
+  backend:
+    type: virtual_space
+    class_path: null
+    params:
+      rooms:
+      - atrium
+      - garden
+      - workshop
+      starting_room: atrium
+      room_descriptions:
+        atrium: A bright central hall with paths to every other room.
+        garden: A quiet garden for private conversations.
+        workshop: A practical room filled with tools and shared projects.
+      connections: null
+      room_tasks:
+      - task_id: welcome_board
+        room: atrium
+        description: Prepare a shared welcome board for later arrivals.
+        required_effort: 2
+        completion_message: The welcome board now summarizes the group's first impressions.
+      - task_id: garden_map
+        room: garden
+        description: Sketch a map of quiet places in the garden.
+        required_effort: 2
+        completion_message: The garden map now helps visitors find calm corners.
+      - task_id: repair_bench
+        room: workshop
+        description: Repair the central workbench for future collaboration.
+        required_effort: 3
+        completion_message: The repaired workbench is ready for group projects.
+      perform_operations: false
+      app_description: 'You are operating in a virtual space. Agents can look around
+        their current
+
+        room, move to another reachable room, talk to another agent present in the
+
+        same room, or finish the current action episode.'
+    enabled_actions: null
+  components:
+    initialize:
+      built_in: app_initialize
+      class_path: null
+      params: {}
+    next_acting:
+      built_in: fixed_order
+      class_path: null
+      params: {}
+    update:
+      built_in: disabled
+      class_path: null
+      params: {}
+    observe:
+      built_in: app_observation
+      class_path: null
+      params:
+        limit: 8
+    resolve:
+      built_in: tool_calling
+      class_path: null
+      params: {}
+    action_prompt:
+      built_in: default
+      class_path: null
+      params:
+        action_prompt: 'You are operating in a virtual space. Agents can look around
+          their current
+
+          room, move to another reachable room, talk to another agent present in the
+
+          same room, or finish the current action episode.
+
+
+          ## AVAILABLE ACTIONS
+
+          Choose one available virtual-space action based on the current room state.
+
+
+          [OUTPUT STYLE]'
+        output_style: '## OUTPUT FORMAT
+
+          ACTION: <action_name>
+
+          <param_name>: <value>
+
+          '
+  name: virtual_space_gm
+  class_path: silisocs.environments.gm.game_master.ComponentGameMaster

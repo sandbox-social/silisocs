@@ -1,0 +1,93 @@
+# @package agents
+shared_memories:
+- They are a long-time active user on Storhampton.social, a Mastodon instance popular
+  with the residents of Storhampton.
+- ${event.context}
+- ${setting.background}
+candidates:
+  conservative:
+    name: Bill Fredrickson
+    partisan_type: conservative
+    policy_proposals:
+    - providing tax breaks to local industry and creating jobs to help grow the economy.
+    persona: Bill Fredrickson is a 45 year old local businessman with conservative politics and an outgoing personality.
+    style: Bill Fredrickson uses direct language, writes about local political issues, and comments playfully on sports.
+    goal: Bill Fredrickson's goal is to win the election and become the mayor of Storhampton.
+  progressive:
+    name: Bradley Carter
+    partisan_type: progressive
+    policy_proposals:
+    - increasing regulation to protect the environment and expanding social programs.
+    persona: Bradley Carter is a 35 year old high school teacher with progressive politics and an activist personality.
+    style: Bradley Carter uses inviting language, writes about local political issues, and comments on local nature.
+    goal: Bradley Carter's goal is to win the election and become the mayor of Storhampton.
+news_account:
+  name: Storhampton Gazette
+  username: storhampton_gazette
+  bio: Providing local news to the users of Storhampton.social.
+  context: A small-town newspaper covering local politics
+  seed_post: Good morning, Storhampton! Tune in for the latest local news updates.
+persona_pipeline:
+  defaults:
+    params:
+      seed_post: ''
+      bio: ''
+      style: ''
+      goal: null
+      scenario_context: ${event.context}
+    shared_memories:
+    - They are a long-time active user on Storhampton.social, a Mastodon instance
+      popular with the residents of Storhampton.
+    - ${event.context}
+  classes:
+    voter:
+      count: 497
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: voter
+      data:
+        source: hf_dataset
+        dataset: nvidia/Nemotron-Personas-USA
+        split: train
+      field_map:
+        context: persona
+      params:
+        goal: Their goal is have a good day and vote in the election.
+      shared_memories: Voters care about the town's election and local quality of
+        life.
+      specific_memories_field: specific_memories
+    candidate:
+      count: 2
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: candidate
+      data:
+        source: config_path
+        path: candidates
+        expand_values: true
+      field_map:
+        name: name
+        context: persona
+        style: style
+        goal: goal
+      shared_memories:
+      - Candidates are actively campaigning in the Storhampton election.
+    news_account:
+      count: 1
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: news_account
+      data:
+        source: config_path
+        path: news_account
+      field_map:
+        name: name
+        context: context
+        bio: bio
+        seed_post: seed_post
+      params:
+        style: ''
+        goal: null
+      use_news_file_posts: true
+      include_news_images: true
+initial_observations:
+- '{name} is at home, they have just woken up.'
+- '{name} remembers they want to update their social media account bio.'
+- '{name} remembers they want to read their social media feed to catch up on news'

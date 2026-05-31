@@ -1,0 +1,467 @@
+schema_version: 1
+
+study:
+  name: style_diversity
+  study_id: style_diversity
+  question: >-
+    What gives an agent population's language its stylistic diversity, and how
+    do LLM generation parameters (model size, temperature, persona richness,
+    CTA framing) interact with scenario structure to produce or suppress it?
+  scenarios:
+    - ai_conference
+    - misinformation
+    - neighborhood_forum
+    - science_qa
+    - hobby_collective
+    - intergenerational_community
+  study_summary_path: experiments/studies/style_diversity/SUMMARY.md
+  summary_log_path: experiments/studies/style_diversity/generated/summary_log.jsonl
+
+  run_defaults:
+    config_path: scenarios/{scenario}/conf
+    runner_module: silisocs.runtime.runner
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
+    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+    seeds:
+      - 42
+      - 7
+      - 123
+    overrides:
+      num_steps: 10
+
+  notes:
+    context: >-
+      All runs completed under the prior repo schema (study_schema.md).
+      Migrated to silisocs schema_version 1 for compatibility with run_study.py.
+      Comparison artifact at outputs/eval_style_diversity/h1_model_capacity/comparison/eval_comparison.json.
+
+evaluations:
+  - id: action_metrics
+    preset: builtin.action_metrics_detailed
+
+hypotheses:
+  h1_model_capacity:
+    statement: >-
+      Larger language models produce more diverse agent behavior (higher lexical
+      diversity, lower self-BLEU, more varied actions).
+    independent_variable: model
+    prediction: >-
+      gpt4o outperforms gpt4o-mini on diversity metrics across scenarios.
+    status: testing
+    overrides: {}
+    conditions:
+      model=gpt4o-mini:
+        execution:
+          mode: reuse_existing
+        overrides:
+          sim.llm.name: gpt-4o-mini
+        reuse:
+          runs:
+            - scenario: ai_conference
+              seed: 42
+              source: outputs/ai_conference_experiment/2026-03-29_23-44-40
+              eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/ai_conference/seed_42/eval.json
+            - scenario: ai_conference
+              seed: 7
+              source: outputs/ai_conference_experiment/2026-03-30_00-01-15
+              eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/ai_conference/seed_7/eval.json
+            - scenario: ai_conference
+              seed: 123
+              source: outputs/ai_conference_experiment/2026-03-30_00-19-49
+              eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/ai_conference/seed_123/eval.json
+            - scenario: misinformation
+              seed: 42
+              source: outputs/misinformation_experiment/2026-03-30_00-35-20
+              eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/misinformation/seed_42/eval.json
+            - scenario: misinformation
+              seed: 7
+              source: outputs/misinformation_experiment/2026-03-30_00-41-37
+              eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/misinformation/seed_7/eval.json
+            - scenario: misinformation
+              seed: 123
+              source: outputs/misinformation_experiment/2026-03-30_00-46-34
+              eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/misinformation/seed_123/eval.json
+
+      model=gpt4o:
+        execution:
+          mode: reuse_existing
+        overrides:
+          sim.llm.name: gpt-4o
+        reuse:
+          runs:
+            - scenario: ai_conference
+              seed: 42
+              source: outputs/ai_conference_experiment/2026-03-30_00-51-23
+              eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/ai_conference/seed_42/eval.json
+            - scenario: ai_conference
+              seed: 7
+              source: outputs/ai_conference_experiment/2026-03-30_00-57-29
+              eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/ai_conference/seed_7/eval.json
+            - scenario: ai_conference
+              seed: 123
+              source: outputs/ai_conference_experiment/2026-03-30_01-04-30
+              eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/ai_conference/seed_123/eval.json
+            - scenario: misinformation
+              seed: 42
+              source: outputs/misinformation_experiment/2026-03-30_01-11-08
+              eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/misinformation/seed_42/eval.json
+            - scenario: misinformation
+              seed: 7
+              source: outputs/misinformation_experiment/2026-03-30_01-13-13
+              eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/misinformation/seed_7/eval.json
+            - scenario: misinformation
+              seed: 123
+              source: outputs/misinformation_experiment/2026-03-30_01-14-59
+              eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/misinformation/seed_123/eval.json
+
+      model=gpt4o-mini__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
+
+      model=gpt4o__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
+
+  h2_temperature:
+    follows_from: h1_model_capacity
+    motivation: >-
+      H1 tested model size as the driver of diversity. H2 asks whether sampling
+      temperature alone can close the gap, holding model fixed at gpt4o-mini.
+    statement: >-
+      Higher sampling temperature produces more diverse agent behavior in gpt4o-mini,
+      partially closing the gap with gpt4o.
+    independent_variable: temperature
+    prediction: >-
+      gpt4o-mini at temperature=1.5 outperforms gpt4o-mini at temperature=0.5
+      on diversity metrics across scenarios.
+    status: testing
+    overrides:
+      sim.llm.name: gpt-4o-mini
+    conditions:
+      temperature=0.5:
+        execution:
+          mode: reuse_existing
+        overrides:
+          sim.llm.temperature: 0.5
+        reuse:
+          runs:
+            - scenario: ai_conference
+              seed: 42
+              source: outputs/ai_conference_experiment/2026-03-31_02-52-51
+              eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/ai_conference/seed_42/eval.json
+            - scenario: ai_conference
+              seed: 7
+              source: outputs/ai_conference_experiment/2026-03-31_03-09-08
+              eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/ai_conference/seed_7/eval.json
+            - scenario: ai_conference
+              seed: 123
+              source: outputs/ai_conference_experiment/2026-03-31_03-27-32
+              eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/ai_conference/seed_123/eval.json
+            - scenario: misinformation
+              seed: 42
+              source: outputs/misinformation_experiment/2026-03-31_03-45-08
+              eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/misinformation/seed_42/eval.json
+            - scenario: misinformation
+              seed: 7
+              source: outputs/misinformation_experiment/2026-03-31_03-50-45
+              eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/misinformation/seed_7/eval.json
+            - scenario: misinformation
+              seed: 123
+              source: outputs/misinformation_experiment/2026-03-31_03-56-34
+              eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/misinformation/seed_123/eval.json
+
+      temperature=1.5:
+        execution:
+          mode: reuse_existing
+        overrides:
+          sim.llm.temperature: 1.5
+        reuse:
+          runs:
+            - scenario: ai_conference
+              seed: 42
+              source: outputs/ai_conference_experiment/2026-03-31_09-57-15
+              eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/ai_conference/seed_42/eval.json
+            - scenario: ai_conference
+              seed: 7
+              source: outputs/ai_conference_experiment/2026-03-31_10-16-16
+              eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/ai_conference/seed_7/eval.json
+            - scenario: ai_conference
+              seed: 123
+              source: outputs/ai_conference_experiment/2026-03-31_10-34-14
+              eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/ai_conference/seed_123/eval.json
+            - scenario: misinformation
+              seed: 42
+              source: outputs/misinformation_experiment/2026-03-31_10-49-26
+              eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/misinformation/seed_42/eval.json
+            - scenario: misinformation
+              seed: 7
+              source: outputs/misinformation_experiment/2026-03-31_10-55-37
+              eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/misinformation/seed_7/eval.json
+            - scenario: misinformation
+              seed: 123
+              source: outputs/misinformation_experiment/2026-03-31_11-04-12
+              eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/misinformation/seed_123/eval.json
+
+      temperature=0.5__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+          sim.llm.temperature: 0.5
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
+
+      temperature=1.5__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+          sim.llm.temperature: 1.5
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
+
+  h3_persona_richness:
+    statement: >-
+      Richer agent personas produce more diverse post behavior and reasoning,
+      testing whether LLMs faithfully instantiate identity variation or compress
+      distinct personas into a generic voice.
+    independent_variable: persona_richness
+    prediction: >-
+      rich > thin on inter_agent_distinctiveness; reasoning probe diversity mirrors
+      post diversity for rich personas but not thin.
+    status: testing
+    overrides:
+      sim.llm.name: gpt-4o-mini
+    conditions:
+      persona=rich:
+        execution:
+          mode: reuse_existing
+        reuse:
+          runs:
+            - scenario: ai_conference
+              seed: 42
+              source: outputs/ai_conference_experiment/2026-03-31_18-46-31
+              eval: outputs/eval_style_diversity/h3_persona_richness/rich/ai_conference/seed_42/eval.json
+            - scenario: ai_conference
+              seed: 7
+              source: outputs/ai_conference_experiment/2026-03-31_18-59-59
+              eval: outputs/eval_style_diversity/h3_persona_richness/rich/ai_conference/seed_7/eval.json
+            - scenario: ai_conference
+              seed: 123
+              source: outputs/ai_conference_experiment/2026-03-31_19-19-00
+              eval: outputs/eval_style_diversity/h3_persona_richness/rich/ai_conference/seed_123/eval.json
+            - scenario: misinformation
+              seed: 42
+              source: outputs/misinformation_experiment/2026-03-31_19-37-02
+              eval: outputs/eval_style_diversity/h3_persona_richness/rich/misinformation/seed_42/eval.json
+            - scenario: misinformation
+              seed: 7
+              source: outputs/misinformation_experiment/2026-03-31_19-43-06
+              eval: outputs/eval_style_diversity/h3_persona_richness/rich/misinformation/seed_7/eval.json
+            - scenario: misinformation
+              seed: 123
+              source: outputs/misinformation_experiment/2026-03-31_19-50-27
+              eval: outputs/eval_style_diversity/h3_persona_richness/rich/misinformation/seed_123/eval.json
+
+      # thin personas use agents/thin.yaml instead of agents/default.yaml.
+      # Runs were executed against scenario variants named ai_conference_thin /
+      # misinformation_thin in the prior repo — source paths preserved as-is.
+      persona=thin:
+        execution:
+          mode: reuse_existing
+        overrides:
+          agents: thin
+        reuse:
+          runs:
+            - scenario: ai_conference
+              seed: 42
+              source: outputs/ai_conference_thin_experiment/2026-03-31_19-56-45
+              eval: outputs/eval_style_diversity/h3_persona_richness/thin/ai_conference_thin/seed_42/eval.json
+            - scenario: ai_conference
+              seed: 7
+              source: outputs/ai_conference_thin_experiment/2026-03-31_20-14-50
+              eval: outputs/eval_style_diversity/h3_persona_richness/thin/ai_conference_thin/seed_7/eval.json
+            - scenario: ai_conference
+              seed: 123
+              source: outputs/ai_conference_thin_experiment/2026-03-31_20-34-21
+              eval: outputs/eval_style_diversity/h3_persona_richness/thin/ai_conference_thin/seed_123/eval.json
+            - scenario: misinformation
+              seed: 42
+              source: outputs/misinformation_thin_experiment/2026-03-31_20-52-48
+              eval: outputs/eval_style_diversity/h3_persona_richness/thin/misinformation_thin/seed_42/eval.json
+            - scenario: misinformation
+              seed: 7
+              source: outputs/misinformation_thin_experiment/2026-03-31_20-59-39
+              eval: outputs/eval_style_diversity/h3_persona_richness/thin/misinformation_thin/seed_7/eval.json
+            - scenario: misinformation
+              seed: 123
+              source: outputs/misinformation_thin_experiment/2026-03-31_21-06-49
+              eval: outputs/eval_style_diversity/h3_persona_richness/thin/misinformation_thin/seed_123/eval.json
+
+      persona=rich__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
+
+      persona=thin__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+          agents: thin
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
+
+  h6_cta_phrasing:
+    statement: >-
+      The framing of the action call-to-action prompt systematically shifts agent
+      behaviour: reactive framing increases impulsive spread; engagement framing
+      increases reach-seeking actions; deliberate framing produces the most
+      character-consistent responses.
+    independent_variable: env.action_prompt
+    prediction: >-
+      cta=reactive produces higher repost rates; cta=engagement produces more
+      original posts targeting broad audiences; cta=deliberate produces the most
+      persona-faithful behaviour measured by inter-agent distinctiveness.
+    status: complete
+    finding: >-
+      Prediction partially refuted. On style diversity metrics: reactive CTA produced
+      the highest lexical diversity (mean 0.34) and inter-agent distinctiveness (0.31),
+      not deliberate as predicted. Engagement CTA produced the highest self-BLEU in one
+      seed (0.44) indicating repetition, but also the highest inter-agent distinctiveness
+      overall (0.43 mean) driven by high variance across seeds. Deliberate CTA was most
+      consistent across seeds (lowest variance) with moderate diversity scores. The
+      predicted persona-faithfulness advantage of deliberate framing is not clearly
+      supported by lexical or inter-agent distinctiveness metrics.
+    overrides:
+      num_steps: 10
+      sim.llm.name: gpt-4o-mini
+    conditions:
+      cta=deliberate:
+        scenarios:
+          - misinformation
+        execution:
+          mode: reuse_existing
+        overrides:
+          env: cta_deliberate
+        reuse:
+          runs:
+            - scenario: misinformation
+              seed: 42
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=deliberate/misinformation/seed_42/misinformation_2026-05-01_08-22-55
+              eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=deliberate/misinformation/seed_42/style_diversity_eval/eval.json
+            - scenario: misinformation
+              seed: 7
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=deliberate/misinformation/seed_7/misinformation_2026-05-01_08-30-48
+              eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=deliberate/misinformation/seed_7/style_diversity_eval/eval.json
+            - scenario: misinformation
+              seed: 123
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=deliberate/misinformation/seed_123/misinformation_2026-05-01_08-37-28
+              eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=deliberate/misinformation/seed_123/style_diversity_eval/eval.json
+      cta=reactive:
+        scenarios:
+          - misinformation
+        execution:
+          mode: reuse_existing
+        overrides:
+          env: cta_reactive
+        reuse:
+          runs:
+            - scenario: misinformation
+              seed: 42
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=reactive/misinformation/seed_42/misinformation_2026-05-01_08-43-26
+              eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=reactive/misinformation/seed_42/style_diversity_eval/eval.json
+            - scenario: misinformation
+              seed: 7
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=reactive/misinformation/seed_7/misinformation_2026-05-01_08-49-52
+              eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=reactive/misinformation/seed_7/style_diversity_eval/eval.json
+            - scenario: misinformation
+              seed: 123
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=reactive/misinformation/seed_123/misinformation_2026-05-01_08-56-30
+              eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=reactive/misinformation/seed_123/style_diversity_eval/eval.json
+      cta=engagement:
+        scenarios:
+          - misinformation
+        execution:
+          mode: reuse_existing
+        overrides:
+          env: cta_engagement
+        reuse:
+          runs:
+            - scenario: misinformation
+              seed: 42
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=engagement/misinformation/seed_42/misinformation_2026-05-01_09-03-48
+              eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=engagement/misinformation/seed_42/style_diversity_eval/eval.json
+            - scenario: misinformation
+              seed: 7
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=engagement/misinformation/seed_7/misinformation_2026-05-01_09-11-29
+              eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=engagement/misinformation/seed_7/style_diversity_eval/eval.json
+            - scenario: misinformation
+              seed: 123
+              source: experiments/studies/style_diversity/h6_cta_phrasing/cta=engagement/misinformation/seed_123/misinformation_2026-05-01_09-19-24
+              eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=engagement/misinformation/seed_123/style_diversity_eval/eval.json
+
+      cta=deliberate__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+          env: cta_deliberate
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
+
+      cta=reactive__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+          env: cta_reactive
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community
+
+      cta=engagement__suite:
+        execution:
+          mode: run
+        overrides:
+          sim.llm.name: gpt-4o-mini
+          env: cta_engagement
+        scenarios:
+          - neighborhood_forum
+          - science_qa
+          - hobby_collective
+          - intergenerational_community

@@ -1,0 +1,21 @@
+# Top-level Hydra configuration for Silisocs
+# Choose between preset configurations using Hydra overrides:
+#   python -m silisocs.runtime.runner --config-path scenarios/misinformation/conf
+#   python -m silisocs.runtime.runner --config-path scenarios/misinformation/conf agents=thin
+
+defaults:
+  - scenario: default
+  - agents: default
+  - sim: base
+  - env: twitter_like
+  - evals: base
+  - _self_
+
+hydra:
+  job:
+    name: ${scenario_name}_${now:%Y-%m-%d_%H-%M-%S}
+  run:
+    dir: outputs/${scenario_name}/${jobname_format}
+  output_subdir: configs/${jobname_format}
+
+experiment_name: independent

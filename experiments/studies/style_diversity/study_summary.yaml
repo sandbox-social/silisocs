@@ -1,0 +1,10 @@
+name: style_diversity
+question: Does increasing LLM capacity reduce repetitive/groupthink behavior in multi-agent
+  social media simulations?
+scenarios:
+- ai_conference
+- misinformation
+hypotheses:
+- h1_model_capacity
+- h2_temperature
+- h3_persona_richness

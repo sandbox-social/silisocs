@@ -1,0 +1,97 @@
+observation_history: 100
+gm:
+  backend:
+    type: resource_market
+    class_path: null
+    params:
+      initial_cash: 20
+      initial_inventory:
+        food: 1
+        wood: 0
+        ore: 0
+      production_capabilities:
+        farmer:
+          food: 2
+        woodworker:
+          wood: 2
+        miner:
+          ore: 2
+        merchant:
+          food: 1
+          wood: 1
+          ore: 1
+      role_needs:
+        farmer:
+          wood: 1
+        woodworker:
+          food: 1
+        miner:
+          food: 1
+        merchant:
+          food: 1
+      upkeep_interval: 2
+      initial_satisfaction: 0
+      fulfilled_need_reward: 1
+      shortage_penalty: 1
+      resources:
+      - food
+      - wood
+      - ore
+      perform_operations: false
+      app_description: 'You are operating in a resource market environment. Agents
+        can inspect the
+
+        market, produce resources, list resources for sale, buy open listings, consume
+
+        inventory, or finish the current action episode.'
+    enabled_actions: null
+  components:
+    initialize:
+      built_in: app_initialize
+      class_path: null
+      params: {}
+    next_acting:
+      built_in: fixed_order
+      class_path: null
+      params: {}
+    update:
+      built_in: app_update
+      class_path: null
+      params: {}
+    observe:
+      built_in: app_observation
+      class_path: null
+      params:
+        limit: 8
+    resolve:
+      built_in: tool_calling
+      class_path: null
+      params: {}
+    action_prompt:
+      built_in: default
+      class_path: null
+      params:
+        action_prompt: 'You are operating in a resource market environment. Agents
+          can inspect the
+
+          market, produce resources, list resources for sale, buy open listings, consume
+
+          inventory, or finish the current action episode.
+
+
+          ## AVAILABLE ACTIONS
+
+          Choose one available market action based on the current resource market
+          state.
+
+
+          [OUTPUT STYLE]'
+        output_style: '## OUTPUT FORMAT
+
+          ACTION: <action_name>
+
+          <param_name>: <value>
+
+          '
+  name: resource_market_gm
+  class_path: silisocs.environments.gm.game_master.ComponentGameMaster

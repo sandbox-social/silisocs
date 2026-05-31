@@ -1,0 +1,9 @@
+id: h1_model_capacity
+statement: Larger language models produce more diverse agent behavior (higher lexical
+  diversity, lower self-BLEU, more varied actions).
+independent_variable: model
+prediction: gpt4o outperforms gpt4o-mini on diversity metrics across scenarios.
+status: testing
+conditions:
+- gpt4o-mini
+- gpt4o

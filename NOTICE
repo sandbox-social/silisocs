@@ -1,0 +1,15 @@
+Silisocs
+========
+
+Silisocs is licensed under the MIT License. See LICENSE.
+
+Optional Concordia compatibility
+--------------------------------
+
+Silisocs does not vendor Concordia. The optional `silisocs[concordia]` extra
+depends on `gdm-concordia`, which is distributed by Google DeepMind under the
+Apache License 2.0.
+
+Compatibility code under `silisocs.adapters.concordia` is intentionally
+quarantined and exists only to interoperate with Concordia-shaped legacy agents
+and game masters.

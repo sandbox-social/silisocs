@@ -1,0 +1,72 @@
+{
+  "checkpoint": "/mnt/c/Users/maxpu/Dropbox/scripts/Projects/socialsandbox/mastodon-sim/outputs/misinformation_experiment/2026-03-30_01-13-13/misinformation_2026-03-30_01-13-16/checkpoints/step_10_checkpoint.json",
+  "agents": {
+    "Bob": {
+      "self_bleu": 0.0,
+      "near_duplicate_rate": 0.0,
+      "target_fixation": 0.5,
+      "action_entropy": null,
+      "lexical_diversity": 0.75,
+      "content_evolution": 0.49871958817239703,
+      "opener_variety": 1.0,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Charlie": {
+      "self_bleu": 0.0,
+      "near_duplicate_rate": 0.0,
+      "target_fixation": 0.6666666666666666,
+      "action_entropy": null,
+      "lexical_diversity": 0.6962025316455697,
+      "content_evolution": 0.6311068128531625,
+      "opener_variety": 1.0,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Diana": {
+      "self_bleu": 0.03571428571428571,
+      "near_duplicate_rate": 0.125,
+      "target_fixation": 0.25,
+      "action_entropy": null,
+      "lexical_diversity": 0.5371900826446281,
+      "content_evolution": 0.6008113401357001,
+      "opener_variety": 0.875,
+      "action_diversity": null,
+      "new_post_rate": null
+    },
+    "Frank": {
+      "self_bleu": null,
+      "near_duplicate_rate": null,
+      "target_fixation": null,
+      "action_entropy": null,
+      "lexical_diversity": null,
+      "content_evolution": null,
+      "opener_variety": null,
+      "action_diversity": null,
+      "new_post_rate": null
+    }
+  },
+  "aggregated": {
+    "self_bleu": 0.011904761904761904,
+    "near_duplicate_rate": 0.041666666666666664,
+    "target_fixation": 0.47222222222222215,
+    "action_entropy": null,
+    "lexical_diversity": 0.661130871430066,
+    "content_evolution": 0.5768792470537533,
+    "opener_variety": 0.9583333333333334,
+    "action_diversity": null,
+    "new_post_rate": null,
+    "inter_agent_distinctiveness": 0.45383094874619917
+  },
+  "summary": {
+    "total_posts": 30,
+    "seed_posts": 0,
+    "model_posts": 30,
+    "replies": 13,
+    "boosts": 17,
+    "original_posts": 0,
+    "total_actions": 0,
+    "agents": 4,
+    "steps": 8
+  }
+}

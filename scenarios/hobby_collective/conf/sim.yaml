@@ -1,0 +1,19 @@
+action_mode: generic
+tool_calling:
+  mode: multi
+engine:
+  step:
+    built_in: base
+    class_path: null
+    params:
+      flow_order:
+      - fixed_pre
+      - default
+      agent_to_flow: {}
+  turn_policy:
+    built_in: open_ended
+    class_path: null
+    params:
+      max_actions: 10
+      finished_action_signal: FINISHED
+      finished_action_signal: FINISHED

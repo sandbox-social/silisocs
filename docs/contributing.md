@@ -5,9 +5,81 @@ Thank you for considering contributing to this project! We appreciate your effor
 ## Developing
 
 - This project follows the [Conventional Commits](https://www.conventionalcommits.org/) standard to automate [Semantic Versioning](https://semver.org/) and [Keep A Changelog](https://keepachangelog.com/) with [Commitizen](https://github.com/commitizen-tools/commitizen).
-- Run `poetry add {package}` from within the development environment to install a run time dependency and add it to `pyproject.toml` and `poetry.lock`. Add `--group test` or `--group dev` to install a CI or development dependency, respectively.
-- Run `poetry update` from within the development environment to upgrade all dependencies to the latest versions allowed by `pyproject.toml`.
-- Run `cz bump` to bump the app's version, update the `CHANGELOG.md`, and create a git tag.
+- Use `uv add <package>` to add a runtime dependency to `pyproject.toml` and refresh `uv.lock`.
+- Use `uv add --group test <package>` to add a CI or quality dependency such as `pytest`, `mypy`, or `ruff`.
+- Use `uv add --group dev <package>` to add a local development dependency such as `poethepoet`, `commitizen`, or notebook tooling.
+- Use `uv add --group docs <package>` to add an optional documentation dependency.
+- Run `uv lock --upgrade` to upgrade dependencies to the newest versions allowed by `pyproject.toml`.
+- Run `uv run cz bump` to bump the app version, update `CHANGELOG.md`, and create a git tag.
+
+## Dependency Groups
+
+- `test` is the default uv group for this repository. A plain `uv sync` installs the project plus the test, lint, and type-checking tools used in CI.
+- `dev` adds local contributor tooling on top of the default environment, including `poethepoet`, `commitizen`, notebooks, and documentation generation helpers.
+- `docs` is optional and only needed when building the documentation site (ProperDocs).
+- Full release validation assumes all optional library extras are installed. Tests
+  that need a real external service or LLM endpoint remain explicitly skipped or
+  opt-in, but pure optional-library coverage is expected in contributor
+  environments.
+
+## Common Commands
+
+- Sync the standard contributor environment: `uv sync --group dev`
+- Sync the full release-test environment: `uv sync --all-extras --group dev --group docs`
+- Run the pre-commit suite: `uv run poe lint`
+- Run tests with coverage (defaults to non-LLM tests): `uv run poe test`
+- Build the documentation site: `uv run --group docs properdocs build --strict`
+- Install git hooks: `uv run pre-commit install`
+- Create a commit with Commitizen: `uv run cz c`
+
+## Lint Policy
+
+The contributor lint contract is the configured pre-commit workflow:
+`uv run poe lint`. That workflow runs Ruff in the same mode as
+`.pre-commit-config.yaml`, including auto-fix-only Ruff checks, Ruff format,
+lock-file validation, and mypy.
+
+Do not treat an ad hoc `uv run ruff check --no-fix .` run as the release gate
+unless the project first scopes or cleans the historical Ruff backlog. It is a
+useful diagnostic when planning lint debt work, but it is intentionally broader
+than the current enforced contributor contract.
+
+## LLM E2E Testing
+
+The repository includes opt-in real-LLM integration tests under the `llm_e2e`
+marker. These tests launch short simulation runs and validate runtime artifacts.
+
+- Start an OpenAI-compatible server (for example vLLM).
+- Set `LLM_SERVER_URL`, for example: `http://localhost:30000/v1`.
+- Run only expensive LLM tests:
+
+    ```sh
+    LLM_SERVER_URL=http://localhost:30000/v1 \
+    uv run pytest -m llm_e2e tests/test_e2e_multi_gm_llm.py -v -s
+    ```
+
+- Note: `uv run poe test` excludes the `llm_e2e` marker by default.
+
+- Run deterministic simulation-contract mirrors (default CI-safe set):
+
+    ```sh
+    uv run pytest tests/test_fixed_runtime.py tests/test_backend_feed_contracts.py -v
+    ```
+
+### Required Artifact Checks
+
+Every `llm_e2e` test should verify these generated files:
+
+- `action_events.jsonl`: parseable JSONL and expected event fields (`episode`, `event_type`, `event_index`, action payload fields).
+- `prompts_and_responses.jsonl`: parseable JSONL with prompt/output records.
+- `run_stats.log`: file exists and contains run output.
+- Backend SQLite DB (for example `twitter_like.db` or `reddit_like.db`): file exists and is readable.
+
+### Isolation and Cleanup Policy
+
+- Use per-test temporary output roots (for example pytest `tmp_path`) via Hydra overrides.
+- Do not write test artifacts into repository root directories.
+- Keep expensive tests assertion-dense and low in count; move broad combinatorics into deterministic tests.
 
 ## Contributing Steps
 
@@ -17,10 +89,10 @@ Thank you for considering contributing to this project! We appreciate your effor
     git checkout -b feature/my-new-feature
     ```
 
-2. If you updated `pyproject.toml` manually, update the lock file:
+2. If you updated `pyproject.toml` manually, refresh the lock file:
 
     ```sh
-    poetry lock
+    uv lock
     ```
 
 3. Stage your changes:
@@ -29,30 +101,42 @@ Thank you for considering contributing to this project! We appreciate your effor
     git add <file>
     ```
 
-4. Install dependencies:
+4. Install dependencies and local contributor tooling:
 
     ```sh
-    poetry install --with dev
+    uv sync --all-extras --group dev --group docs
+    ```
+
+    If you intentionally want a lean environment, `uv sync --group dev` is fine
+    for core work, but full `uv run pytest` may skip or fail optional-library
+    tests until extras are installed. For missing-extra failures, install the
+    package with `silisocs[all]` or rerun the all-extras sync command above.
+
+    If you only need to add docs tooling to a lean environment, use:
+
+    ```sh
+    uv sync --group dev --group docs
     ```
 
 5. Install pre-commit hooks:
 
     ```sh
-    poetry run pre-commit install
+    uv run pre-commit install
     ```
 
 6. Run (and rerun) pre-commit hooks command, fixing issues until all tests pass:
 
     ```sh
-    poetry run pre-commit run --all-files --verbose
+    uv run pre-commit run --all-files --verbose
     ```
 
     - This will automatically fix issues where possible, but some issues may require manual fixing.
+    - You can also run `uv run poe lint` for the configured lint workflow and `uv run poe test` for the coverage workflow.
 
 7. Commit using Commitizen:
 
     ```sh
-    poetry run cz c
+    uv run cz c
     ```
 
     - Follow the prompts to create a conventional commit.

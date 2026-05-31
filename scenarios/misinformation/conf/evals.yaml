@@ -1,0 +1,65 @@
+probes:
+  deployment:
+    enabled: true
+    start_step: 1
+    every_n_steps: 1
+    include_agents: []
+    exclude_agents: []
+  probes:
+    believed_claim:
+      probe_name: believed_claim
+      probe_type: BinaryProbe
+      probe_data:
+        name: BelievedClaim
+        question: Do you currently believe that a common household item causes serious
+          health issues, based on what you have seen on social media? Answer yes or
+          no.
+        context: '{agentname} is asked whether they believe the health claim circulating
+          on the platform.'
+    shared_misinfo:
+      probe_name: shared_misinfo
+      probe_type: BinaryProbe
+      probe_data:
+        name: SharedMisinfo
+        question: Have you posted or boosted any content claiming that a household
+          item causes health issues? Answer yes or no.
+        context: '{agentname} is asked whether they have spread the health claim.'
+    source_trust:
+      probe_name: source_trust
+      probe_type: NumericRatingProbe
+      probe_data:
+        name: SourceTrust
+        question: Return a single number from {lo} to {hi} reflecting how much you
+          trust posts from accounts you don't personally know.
+        context: '{agentname} rates their general trust in unfamiliar social media
+          sources, from {lo} (no trust at all) to {hi} (complete trust).'
+        lo: 1
+        hi: 10
+    misinfo_exposure:
+      probe_name: misinfo_exposure
+      probe_type: FreeTextProbe
+      probe_data:
+        name: MisinfoExposure
+        question: Describe any health-related content you have seen on social media
+          recently and what you think about it.
+        context: '{agentname} reflects on health-related posts they have encountered.'
+    reasoning_view:
+      probe_name: reasoning_view
+      probe_type: FreeTextProbe
+      probe_data:
+        name: ReasoningView
+        question: In 1-2 sentences, state your current personal view on the main topic
+          being discussed on social media today, and identify the one thing that most
+          shaped that view.
+        context: '{agentname} reflects on their current position and what influenced
+          it.'
+    private_journal:
+      probe_name: private_journal
+      probe_type: FreeTextProbe
+      probe_data:
+        name: PrivateJournal
+        question: Write a private journal entry about your experience on social media
+          today. This is completely private — no character limit, no audience. Be
+          candid about what you actually think and feel.
+        context: '{agentname} writes freely without concern for how others will perceive
+          them.'

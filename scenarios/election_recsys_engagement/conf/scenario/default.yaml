@@ -1,0 +1,47 @@
+# @package _global_
+description: >-
+  The Storhampton election scenario extended with a recommendation system layer.
+  Studies how timeline algorithm choice (chronological vs. recsys) shifts voter
+  engagement, interaction rates, and partisan content amplification.
+scenario_name: election_recsys_engagement
+jobname_format: "ElectionRecsys_N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
+num_agents: 20
+num_steps: 15
+seed: 11
+run_name: election_recsys_engagement
+
+setting:
+  name: Storhampton
+  background:
+  - Storhampton is a small town with a population of approximately 2,500 people.
+  - Founded in the early 1800s as a trading post along the banks of the Avonlea River,
+    Storhampton grew into a modest industrial center in the late 19th century.
+  - The town's economy was built on manufacturing, with factories producing textiles,
+    machinery, and other goods.
+  - Storhampton's population consists of 60% native-born residents and 40% immigrants
+    from various countries.
+  - Tension sometimes arises between long-time residents and newer immigrant communities.
+  - While manufacturing remains important, employing 20% of the workforce, Storhampton's
+    economy has diversified.
+  - A significant portion of the population has been left behind as higher-paying
+    blue collar jobs have declined.
+  - The Storhampton poverty rate stands at 15%.
+
+event:
+  name: Election day
+  context: 'Storhampton Mayoral Election Campaign: Bill Fredrickson campaigns on providing
+    tax breaks to local industry and creating jobs to help grow the economy.
+
+    Bradley Carter campaigns on increasing regulation to protect the environment and
+    expanding social programs.
+
+    The upcoming election has become a heated affair.
+
+    Social media has emerged as a key battleground in the race, with both candidates
+    actively promoting themselves and engaging with voters.
+
+    Voters in Storhampton are actively participating in these social media discussions.
+
+    '
+
+data: {}

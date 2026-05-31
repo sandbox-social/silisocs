@@ -1,8 +1,7 @@
 # https://pre-commit.com
 default_install_hook_types: [commit-msg, pre-commit]
-default_stages: [commit, manual]
+default_stages: [pre-commit, manual]
 fail_fast: true
-exclude: ^infrastructure/mastodon-on-aws/mastodon.yaml$
 repos:
   - repo: meta
     hooks:
@@ -32,6 +31,7 @@ repos:
       - id: check-vcs-permalinks
       - id: check-xml
       - id: check-yaml
+        args: [--unsafe]
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
@@ -66,13 +66,14 @@ repos:
         require_serial: true
         language: system
         types_or: [python, pyi]
-      - id: poetry-check
-        name: poetry check
-        entry: poetry check
+      - id: uv-lock
+        name: uv lock --check
+        entry: uv lock --check
         language: system
         pass_filenames: false
       - id: mypy
         name: mypy
         entry: mypy
         language: system
-        types: [python]
+        pass_filenames: false
+        args: [src/silisocs, tests]

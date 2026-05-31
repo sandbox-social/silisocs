@@ -1,0 +1,42 @@
+# @package agents
+
+shared_memories:
+  - Agents are participating in a social-media opinion simulation.
+  - ${event.context}
+
+persona_pipeline:
+  defaults:
+    params:
+      scenario_context: ${event.context}
+      goal: "Participate naturally in the discussion while staying faithful to your persona and current stance."
+    shared_memories:
+      - Agents are participating in a social-media opinion simulation.
+      - ${event.context}
+  classes:
+    echo_user:
+      count: ${num_agents}
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: echo_user
+      data:
+        source: local_json
+        path: ${echo_agent_records_path}
+      field_map:
+        name: name
+        context: |
+          Persona:
+          {context}
+
+          Initial measured stance:
+          belief={initial_belief}
+          opinion={initial_opinion}
+        agent_id: agent_id
+        initial_belief: initial_belief
+        initial_opinion: initial_opinion
+        initial_reasoning: initial_reasoning
+        traits: traits
+        age: age
+        gender: gender
+        education_level: education_level
+
+initial_observations:
+  - "{name} opens their social-media feed for the daily discussion."

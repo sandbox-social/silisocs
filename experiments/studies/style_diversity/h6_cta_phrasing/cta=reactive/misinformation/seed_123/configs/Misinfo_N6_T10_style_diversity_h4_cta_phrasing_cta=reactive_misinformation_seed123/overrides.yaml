@@ -1,0 +1,6 @@
+- seed=123
+- run_name="style_diversity_h4_cta_phrasing_cta=reactive_misinformation_seed123"
+- experiment_name=style_diversity
+- env=cta_reactive
+- num_steps=10
+- sim.llm.name=gpt-4o-mini

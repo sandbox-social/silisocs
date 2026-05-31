@@ -1,0 +1,176 @@
+0:
+- action_type: create_tweet
+  content: 'BREAKING: Carter''s clean-growth jobs agenda is hailed as Storhampton''s
+    best path to durable prosperity'
+  reasoning: Pro-Bradley bias headline 0
+  target_id: ''
+1:
+- action_type: create_tweet
+  content: 'ALERT: Analysts warn Fredrickson''s deregulation push could gut safeguards
+    and destabilize local communities'
+  reasoning: Pro-Bradley bias headline 1
+  target_id: ''
+2:
+- action_type: create_tweet
+  content: Workers rally behind Carter after a high-energy town hall on wages, training,
+    and long-term job security
+  reasoning: Pro-Bradley bias headline 2
+  target_id: ''
+3:
+- action_type: create_tweet
+  content: 'Editorial: Fredrickson still lacks a credible plan beyond short-term tax
+    gimmicks'
+  reasoning: Pro-Bradley bias headline 3
+  target_id: ''
+4:
+- action_type: create_tweet
+  content: Carter highlights a practical permitting overhaul and targeted investment
+    strategy to create resilient jobs
+  reasoning: Pro-Bradley bias headline 4
+  target_id: ''
+5:
+- action_type: create_tweet
+  content: 'Debate fallout: Fredrickson slammed for vague answers on affordability
+    and worker protections'
+  reasoning: Pro-Bradley bias headline 5
+  target_id: ''
+6:
+- action_type: create_tweet
+  content: Civic and business leaders call Carter's platform the clearest roadmap
+    to stable, inclusive growth
+  reasoning: Pro-Bradley bias headline 6
+  target_id: ''
+7:
+- action_type: create_tweet
+  content: Voters question whether Fredrickson's rollback agenda would put health
+    and environmental standards at risk
+  reasoning: Pro-Bradley bias headline 7
+  target_id: ''
+8:
+- action_type: create_tweet
+  content: Carter rallies pack working neighborhoods as turnout surges around his
+    fairness-and-investment message
+  reasoning: Pro-Bradley bias headline 8
+  target_id: ''
+9:
+- action_type: create_tweet
+  content: Budget experts warn Fredrickson's cuts-first approach could weaken essential
+    local services
+  reasoning: Pro-Bradley bias headline 9
+  target_id: ''
+10:
+- action_type: create_tweet
+  content: Carter touts apprenticeships, neighborhood hiring, and modern infrastructure
+    as a complete jobs package
+  reasoning: Pro-Bradley bias headline 10
+  target_id: ''
+11:
+- action_type: create_tweet
+  content: 'Debate recap: Fredrickson repeatedly pressed on missing details and unrealistic
+    assumptions'
+  reasoning: Pro-Bradley bias headline 11
+  target_id: ''
+12:
+- action_type: create_tweet
+  content: New polling shows Carter gaining clear momentum among undecided late voters
+  reasoning: Pro-Bradley bias headline 12
+  target_id: ''
+13:
+- action_type: create_tweet
+  content: Fredrickson accused of ignoring transition costs communities would pay
+    under his plan
+  reasoning: Pro-Bradley bias headline 13
+  target_id: ''
+14:
+- action_type: create_tweet
+  content: Carter frames race as a choice between responsible progress and Fredrickson's
+    risky rollback politics
+  reasoning: Pro-Bradley bias headline 14
+  target_id: ''
+15:
+- action_type: create_tweet
+  content: Local leaders praise Carter's execution-ready blueprint after final forum
+  reasoning: Pro-Bradley bias headline 15
+  target_id: ''
+16:
+- action_type: create_tweet
+  content: 'Commentary: Fredrickson''s agenda could favor insiders while leaving ordinary
+    families exposed'
+  reasoning: Pro-Bradley bias headline 16
+  target_id: ''
+17:
+- action_type: create_tweet
+  content: Carter promises immediate affordability relief and targeted payroll support
+    in his first 100 days
+  reasoning: Pro-Bradley bias headline 17
+  target_id: ''
+18:
+- action_type: create_tweet
+  content: Fredrickson campaign challenged over weak financing assumptions and budget
+    gaps
+  reasoning: Pro-Bradley bias headline 18
+  target_id: ''
+19:
+- action_type: create_tweet
+  content: Final campaign push spotlights Carter's broad recovery strategy for workers,
+    schools, and neighborhoods
+  reasoning: Pro-Bradley bias headline 19
+  target_id: ''
+20:
+- action_type: create_tweet
+  content: Swing voters report rising confidence after Carter's detailed policy Q&A
+  reasoning: Pro-Bradley bias headline 20
+  target_id: ''
+21:
+- action_type: create_tweet
+  content: Local forums raise alarms that Fredrickson's agenda puts short-term gains
+    over long-term community resilience
+  reasoning: Pro-Bradley bias headline 21
+  target_id: ''
+22:
+- action_type: create_tweet
+  content: Carter campaign says targeted relief and smart safeguards can grow wages
+    without sacrificing future stability
+  reasoning: Pro-Bradley bias headline 22
+  target_id: ''
+23:
+- action_type: create_tweet
+  content: Analysts question whether Fredrickson's promises are feasible once real
+    implementation costs are counted
+  reasoning: Pro-Bradley bias headline 23
+  target_id: ''
+24:
+- action_type: create_tweet
+  content: Late polling shows Carter dominating in key districts as his coalition
+    expands
+  reasoning: Pro-Bradley bias headline 24
+  target_id: ''
+25:
+- action_type: create_tweet
+  content: Fredrickson's messaging fails to reassure voters demanding real job security
+    and service protections
+  reasoning: Pro-Bradley bias headline 25
+  target_id: ''
+26:
+- action_type: create_tweet
+  content: Carter emphasizes predictable permitting, accountable oversight, and faster
+    approvals for community-backed projects
+  reasoning: Pro-Bradley bias headline 26
+  target_id: ''
+27:
+- action_type: create_tweet
+  content: Editorial board flags unresolved cost estimates throughout Fredrickson's
+    headline proposals
+  reasoning: Pro-Bradley bias headline 27
+  target_id: ''
+28:
+- action_type: create_tweet
+  content: Late debate spin favors Carter's practical, fact-backed governing approach
+  reasoning: Pro-Bradley bias headline 28
+  target_id: ''
+29:
+- action_type: create_tweet
+  content: 'Election eve: Carter closes with an emphatic message of fairness, competence,
+    and long-term stability'
+  reasoning: Pro-Bradley bias headline 29
+  target_id: ''

@@ -1,0 +1,592 @@
+schema_version: 1
+
+study:
+  name: election_opinion_program_v1
+  study_id: election_opinion_program_v1
+  study_version: v1
+  question: >-
+    How do timeline regimes and recommendation context settings affect candidate-opinion
+    evolution over repeated episodes in the election scenario?
+  scenarios:
+    - election_recsys_engagement
+  parent_studies: []
+  derived_from_runs: []
+  study_summary_path: experiments/studies/election_opinion_program_v1/SUMMARY.md
+  summary_log_path: experiments/studies/election_opinion_program_v1/generated/summary_log.jsonl
+
+  run_defaults:
+    config_path: scenarios/election_recsys_engagement/conf
+    runner_module: silisocs.runtime.runner
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
+    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+
+    seed_start: 11
+    seed_repeats: 10
+
+    overrides:
+      sim.num_agents: 50
+      sim.num_steps: 30
+      sim.action_mode: generic
+      sim.tool_calling.mode: multi
+      sim.engine.action_loop.built_in: open_ended
+      sim.engine.action_loop.params.max_actions: 6
+      sim.timeline_posts: 10
+      scenario.persona_pipeline.classes.voter.count: 47
+      scenario.probes.deployment.enabled: true
+      scenario.probes.deployment.start_step: 1
+      scenario.probes.deployment.every_n_steps: 1
+
+  notes:
+    objective: "Establish broad baseline regime effects before narrower follow-up tests."
+    context: "Election candidate opinion and engagement dynamics under timeline interventions."
+    constraints: "Run initial hypotheses first, then iterate using follow-up hypotheses only."
+    path_conventions:
+      run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
+      run_output_template: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+      generated_artifacts_root: "experiments/studies/{study_id}/generated"
+      eval_output_template: "{run_output_template}/{eval_output_subpath}"
+      repro_lock_jsonl: "experiments/studies/{study_id}/generated/repro_lock.jsonl"
+      repro_lock_json: "experiments/studies/{study_id}/generated/repro_lock.json"
+      study_index_json: "experiments/studies/{study_id}/generated/study_index.json"
+      enriched_study_yaml: "experiments/studies/{study_id}/generated/study_enriched.yaml"
+
+# Detailed eval outputs for per-episode/per-agent trend analysis.
+evaluations:
+  - id: action_metrics
+    preset: builtin.action_metrics_detailed
+
+  - id: probe_metrics
+    preset: builtin.probe_metrics_detailed
+    static_args:
+      - --postprocessor
+      - scenarios/election_recsys_engagement/postprocessors.py:cross_seed_case_ci
+
+  - id: probe_numeric
+    preset: builtin.probe_numeric_detailed
+
+  - id: probe_choice
+    preset: builtin.probe_choice_detailed
+
+hypotheses:
+  # Stage 1: initial hypothesis with three bias conditions.
+  h1_initial_news_bias_shift:
+    statement: >-
+      Opinion trajectories differ when the deterministic news account is pro-Bill,
+      pro-Bradley, or neutral.
+    independent_variable: headline_bias_direction
+    prediction: >-
+      Pro-Bill headlines increase Bill vote share/favorability, pro-Bradley headlines
+      increase Bradley support, and neutral headlines yield the smallest directional shift.
+    status: completed
+
+    analysis:
+      rationale: >-
+        We tested whether deterministic headline framing (pro-Bill, pro-Bradley, neutral)
+        produces directional differences in vote share and opinion probes over 10 seeds
+        (11-20), using follower-chronological timelines and fixed recommender settings.
+      observations_summary: >-
+        Directionally, the pro-Bradley condition reduced Bill final vote share vs pro-Bill
+        and neutral conditions (Bill final share mean: 0.7019 Bradley-bias vs 0.7898 Bill-bias
+        and 0.7800 neutral). However, paired sign-flip tests were not statistically significant
+        (e.g., Bill-bias minus Bradley-bias: mean delta +0.0879, p=0.3594; Bradley-bias minus
+        neutral: mean delta -0.0781, p=0.2813). Favorability and polarization differences were
+        also non-significant (all p > 0.43 for key comparisons).
+      interpretation: >-
+        H1 is only partially supported directionally and not validated statistically at the
+        current sample size. A strong shared baseline appears in all cases: Bill starts with
+        substantial initial vote share and remains ahead in every condition, indicating
+        initialization priors/persona composition may dominate over headline perturbations.
+      confidence: medium
+      next_step_recommendation: >-
+        Test initialization carryover explicitly by swapping the voter persona source to a
+        labeled Bill/Bradley persona file while keeping the same three news-bias conditions
+        (new H2).
+
+    conditions:
+      case1_bill_bias:
+        sub_experiment: bill_bias
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
+
+      case2_bradley_bias:
+        sub_experiment: bradley_bias
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bradley_bias.yaml
+
+      case3_unbiased_news:
+        sub_experiment: unbiased_news
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/unbiased.yaml
+
+  # Stage 2: test initialization carryover using fixed Bill/Bradley-labeled personas.
+  h2_initial_persona_prior_carryover:
+    follows_from:
+      - h1_initial_news_bias_shift
+    motivation: >-
+      H1 showed weak/non-significant condition deltas alongside strong common baseline Bill
+      advantage, suggesting initial persona priors may dominate subsequent dynamics.
+    statement: >-
+      Initial persona-level voting priors exert a strong carryover effect that dominates
+      deterministic news-bias treatments across episodes.
+    independent_variable: voter_persona_source_with_initial_vote_prior
+    prediction: >-
+      Replacing Nemotron with bill_bradley_personas_50 will preserve stronger baseline
+      preference structure across all three news-bias conditions and reduce sensitivity to
+      headline direction.
+    status: testing
+
+    overrides:
+      scenario.persona_pipeline.classes.voter.data.source: jsonl
+      +scenario.persona_pipeline.classes.voter.data.path: bill_bradley_personas_50.jsonl
+      +scenario.persona_pipeline.classes.voter.field_map.name: name
+      scenario.persona_pipeline.classes.voter.field_map.context: processed_persona
+
+    analysis:
+      rationale: ""
+      observations_summary: ""
+      interpretation: ""
+      confidence: ""
+      next_step_recommendation: ""
+
+    conditions:
+      case1_bill_bias:
+        sub_experiment: bill_bias
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
+
+      case2_bradley_bias:
+        sub_experiment: bradley_bias
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bradley_bias.yaml
+
+      case3_unbiased_news:
+        sub_experiment: unbiased_news
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/unbiased.yaml
+
+  # Stage 3: repeat H2 with smaller 2B model for capacity/sensitivity follow-up.
+  h3_2b_model_followup:
+    follows_from:
+      - h2_initial_persona_prior_carryover
+    motivation: >-
+      Validate whether the H2 prior-carryover pattern is robust to reduced model capacity
+      by repeating the same setup with Qwen 3.5 2B.
+    statement: >-
+      Under the same data and condition setup as H2, switching the model to qwen3.5-2b
+      preserves the broad prior-carryover dynamics while potentially attenuating regime separation.
+    independent_variable: model_size
+    prediction: >-
+      H3 (2B) will retain H2-style directional ordering but with similarly weak between-regime
+      significance at current seed count.
+    status: testing
+
+    overrides:
+      scenario.persona_pipeline.classes.voter.data.source: jsonl
+      +scenario.persona_pipeline.classes.voter.data.path: bill_bradley_personas_50.jsonl
+      +scenario.persona_pipeline.classes.voter.field_map.name: name
+      scenario.persona_pipeline.classes.voter.field_map.context: processed_persona
+      sim.llm_name: qwen3.5-2b
+
+    analysis:
+      rationale: ""
+      observations_summary: ""
+      interpretation: ""
+      confidence: ""
+      next_step_recommendation: ""
+
+    conditions:
+      case1_bill_bias:
+        sub_experiment: bill_bias
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
+
+      case2_bradley_bias:
+        sub_experiment: bradley_bias
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bradley_bias.yaml
+
+      case3_unbiased_news:
+        sub_experiment: unbiased_news
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/unbiased.yaml
+
+  # Stage 4: timeline-effect follow-up informed by Stage-1 and Stage-2 outcomes.
+  h4_followup_timeline_effects:
+    follows_from:
+      - h1_initial_news_bias_shift
+      - h2_initial_persona_prior_carryover
+    motivation: >-
+      After estimating bias-direction effects in h1, test how timeline assembly mode
+      changes those effects under a selected news condition.
+    statement: >-
+      Under H2-style initialization settings with qwen3.5-4b, switching to a twhin
+      recommendation timeline changes downstream vote-share and favorability trajectories.
+    independent_variable: recommendation_timeline_algorithm
+    prediction: >-
+      twhin recommendation dynamics will produce measurably different end-state vote/favorability
+      outcomes than follower-chronological timeline delivery.
+    status: testing
+
+    overrides:
+      scenario.persona_pipeline.classes.voter.data.source: jsonl
+      +scenario.persona_pipeline.classes.voter.data.path: bill_bradley_personas_50.jsonl
+      +scenario.persona_pipeline.classes.voter.field_map.name: name
+      scenario.persona_pipeline.classes.voter.field_map.context: processed_persona
+      sim.llm_name: qwen3.5-4b
+
+    analysis:
+      rationale: ""
+      observations_summary: ""
+      interpretation: ""
+      confidence: ""
+      next_step_recommendation: ""
+
+    conditions:
+      case1_bill_bias_twhin:
+        sub_experiment: bill_bias_twhin
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: pure_recsys
+          sim.gm.components.recommend.params.default_recsys_type: twhin
+          sim.gm.components.recommend.params.user_context_recent_posts: 10
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
+
+      case2_bradley_bias_twhin:
+        sub_experiment: bradley_bias_twhin
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: pure_recsys
+          sim.gm.components.recommend.params.default_recsys_type: twhin
+          sim.gm.components.recommend.params.user_context_recent_posts: 10
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bradley_bias.yaml
+
+      case3_unbiased_news_twhin:
+        sub_experiment: unbiased_news_twhin
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: pure_recsys
+          sim.gm.components.recommend.params.default_recsys_type: twhin
+          sim.gm.components.recommend.params.user_context_recent_posts: 10
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/unbiased.yaml
+
+  # Stage 5: rerun H3 with swapped vote-choice option order to test ordering effects.
+  h5_probe_choice_order_followup:
+    follows_from:
+      - h3_2b_model_followup
+    motivation: >-
+      H3 with 2B showed unexpectedly Bill-favored initial distribution. Test whether probe
+      choice order contributes by swapping candidate option order only.
+    statement: >-
+      Under the same H3 setup and follower-chronological timeline, changing vote-choice probe
+      options to list Bradley Carter before Bill Fredrickson alters measured choice outcomes.
+    independent_variable: vote_choice_option_order
+    prediction: >-
+      Swapping option order reduces order-induced bias and shifts initial vote-choice distribution.
+    status: testing
+
+    overrides:
+      scenario.persona_pipeline.classes.voter.data.source: jsonl
+      +scenario.persona_pipeline.classes.voter.data.path: bill_bradley_personas_50.jsonl
+      +scenario.persona_pipeline.classes.voter.field_map.name: name
+      scenario.persona_pipeline.classes.voter.field_map.context: processed_persona
+      sim.llm_name: qwen3.5-2b
+      scenario.probes.queries.vote_choice.query_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bradley Carter, or Bill Fredrickson. Respond with the exact answer and nothing else."
+      scenario.probes.queries.vote_choice.query_data.choices:
+        - Bradley Carter
+        - Bill Fredrickson
+
+    analysis:
+      rationale: ""
+      observations_summary: ""
+      interpretation: ""
+      confidence: ""
+      next_step_recommendation: ""
+
+    conditions:
+      case1_bill_bias:
+        sub_experiment: bill_bias
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
+
+      case2_bradley_bias:
+        sub_experiment: bradley_bias
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bradley_bias.yaml
+
+      case3_unbiased_news:
+        sub_experiment: unbiased_news
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/unbiased.yaml
+
+  # Smoke check: 2-episode 4B run with Bradley-first probe ordering on 50-50 personas.
+  h6_smoke_4b_orderflip_2ep:
+    follows_from:
+      - h2_initial_persona_prior_carryover
+    motivation: >-
+      Quick diagnostic to test whether vote-choice response ordering alone can shift initial
+      probe outcomes when using 4B with the same 50-50 persona source.
+    statement: >-
+      In a short 2-episode run, listing Bradley Carter before Bill Fredrickson in the vote-choice
+      probe may alter observed initial vote share.
+    independent_variable: vote_choice_option_order
+    prediction: >-
+      Bradley-first ordering changes measured initial vote split relative to Bill-first ordering.
+    status: testing
+
+    overrides:
+      sim.num_steps: 2
+      scenario.persona_pipeline.classes.voter.data.source: jsonl
+      +scenario.persona_pipeline.classes.voter.data.path: bill_bradley_personas_50.jsonl
+      +scenario.persona_pipeline.classes.voter.field_map.name: name
+      scenario.persona_pipeline.classes.voter.field_map.context: processed_persona
+      sim.llm_name: qwen3.5-4b
+      scenario.probes.queries.vote_choice.query_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bradley Carter, or Bill Fredrickson. Respond with the exact answer and nothing else."
+      scenario.probes.queries.vote_choice.query_data.choices:
+        - Bradley Carter
+        - Bill Fredrickson
+
+    analysis:
+      rationale: ""
+      observations_summary: ""
+      interpretation: ""
+      confidence: ""
+      next_step_recommendation: ""
+
+    conditions:
+      case1_bill_bias:
+        sub_experiment: bill_bias
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
+
+  # H7: 9B short-run probe-order comparison (Bill-first vs Bradley-first).
+  h7_smoke_9b_probe_order_compare:
+    follows_from:
+      - h6_smoke_4b_orderflip_2ep
+    motivation: >-
+      Test whether probe option ordering effects persist with a larger 9B model under
+      the same short-run setup and 50-50 persona source.
+    statement: >-
+      In 2-episode runs with one seed, changing vote-choice option order (Bill-first vs
+      Bradley-first) shifts measured vote-choice outcomes under qwen3.5-9b.
+    independent_variable: vote_choice_option_order
+    prediction: >-
+      Bradley-first ordering will reduce measured Bill vote share relative to Bill-first ordering.
+    status: testing
+
+    overrides:
+      sim.num_steps: 2
+      scenario.persona_pipeline.classes.voter.data.source: jsonl
+      +scenario.persona_pipeline.classes.voter.data.path: bill_bradley_personas_50.jsonl
+      +scenario.persona_pipeline.classes.voter.field_map.name: name
+      scenario.persona_pipeline.classes.voter.field_map.context: processed_persona
+      sim.llm_name: qwen3.5-9b
+
+    analysis:
+      rationale: ""
+      observations_summary: ""
+      interpretation: ""
+      confidence: ""
+      next_step_recommendation: ""
+
+    conditions:
+      case1_bill_then_bradley:
+        sub_experiment: bill_then_bradley
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
+          scenario.probes.queries.vote_choice.query_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
+          scenario.probes.queries.vote_choice.query_data.choices:
+            - Bill Fredrickson
+            - Bradley Carter
+
+      case2_bradley_then_bill:
+        sub_experiment: bradley_then_bill
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
+          scenario.probes.queries.vote_choice.query_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bradley Carter, or Bill Fredrickson. Respond with the exact answer and nothing else."
+          scenario.probes.queries.vote_choice.query_data.choices:
+            - Bradley Carter
+            - Bill Fredrickson
+
+  # H8: H7 rerun on Nemotron base personas, executed in hypothesis mode.
+  h8_smoke_9b_probe_order_compare_nemotron:
+    follows_from:
+      - h7_smoke_9b_probe_order_compare
+    motivation: >-
+      Re-run the 9B probe-order smoke using Nemotron base personas to isolate order effects
+      under the default scenario persona source.
+    statement: >-
+      In 2-episode runs with one seed and Nemotron base personas, changing vote-choice option
+      order (Bill-first vs Bradley-first) may shift measured vote-choice outcomes under qwen3.5-9b.
+    independent_variable: vote_choice_option_order
+    prediction: >-
+      Bradley-first ordering will reduce measured Bill vote share relative to Bill-first ordering.
+    status: testing
+
+    overrides:
+      sim.num_steps: 2
+      sim.llm_name: qwen3.5-9b
+
+    analysis:
+      rationale: ""
+      observations_summary: ""
+      interpretation: ""
+      confidence: ""
+      next_step_recommendation: ""
+
+    conditions:
+      case1_bill_then_bradley:
+        sub_experiment: bill_then_bradley_nemotron
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
+          scenario.probes.queries.vote_choice.query_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
+          scenario.probes.queries.vote_choice.query_data.choices:
+            - Bill Fredrickson
+            - Bradley Carter
+
+      case2_bradley_then_bill:
+        sub_experiment: bradley_then_bill_nemotron
+        config_path: scenarios/election_recsys_engagement/conf
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
+          scenario.probes.queries.vote_choice.query_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bradley Carter, or Bill Fredrickson. Respond with the exact answer and nothing else."
+          scenario.probes.queries.vote_choice.query_data.choices:
+            - Bradley Carter
+            - Bill Fredrickson
+
+  # H10: recsys algorithm comparison under Nemotron personas (bill/bradley biased only).
+  h10_recsys_drives_polarization:
+    follows_from:
+      - h1_initial_news_bias_shift
+    motivation: >-
+      Test whether switching timeline/recommender regime from follower-chronological to twhin
+      increases polarization under otherwise comparable settings.
+    statement: >-
+      With Nemotron personas and 9B model, twhin timeline produces higher polarization than
+      follower-chronological timeline in both Bill-biased and Bradley-biased scenarios.
+    independent_variable: timeline_recsys_algorithm
+    prediction: >-
+      twhin runs show higher polarization probes than follower-chronological runs.
+    status: testing
+
+    seed_start: 11
+    seed_repeats: 5
+
+    overrides:
+      sim.num_steps: 30
+      sim.llm_name: qwen3.5-9b
+
+    analysis:
+      rationale: ""
+      observations_summary: ""
+      interpretation: ""
+      confidence: ""
+      next_step_recommendation: ""
+
+    conditions:
+      case1_follower_chronological_bill:
+        sub_experiment: follower_chronological_bill
+        config_path: scenarios/election_recsys_engagement/conf
+        seed_start: 11
+        seed_repeats: 5
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
+          scenario.probes.queries.vote_choice.query_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
+          scenario.probes.queries.vote_choice.query_data.choices:
+            - Bill Fredrickson
+            - Bradley Carter
+
+      case2_follower_chronological_bradley:
+        sub_experiment: follower_chronological_bradley
+        config_path: scenarios/election_recsys_engagement/conf
+        seed_start: 11
+        seed_repeats: 5
+        overrides:
+          sim.timeline_mode: follower_chronological
+          sim.gm.components.recommend.params.default_recsys_type: twitter
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bradley_bias.yaml
+          scenario.probes.queries.vote_choice.query_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
+          scenario.probes.queries.vote_choice.query_data.choices:
+            - Bill Fredrickson
+            - Bradley Carter
+
+      case3_twhin_bill:
+        sub_experiment: twhin_bill
+        config_path: scenarios/election_recsys_engagement/conf
+        seed_start: 11
+        seed_repeats: 5
+        overrides:
+          sim.timeline_mode: pure_recsys
+          sim.gm.components.recommend.params.default_recsys_type: twhin
+          sim.gm.components.recommend.params.user_context_recent_posts: 10
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
+          scenario.probes.queries.vote_choice.query_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
+          scenario.probes.queries.vote_choice.query_data.choices:
+            - Bill Fredrickson
+            - Bradley Carter
+
+      case4_twhin_bradley:
+        sub_experiment: twhin_bradley
+        config_path: scenarios/election_recsys_engagement/conf
+        seed_start: 11
+        seed_repeats: 5
+        overrides:
+          sim.timeline_mode: pure_recsys
+          sim.gm.components.recommend.params.default_recsys_type: twhin
+          sim.gm.components.recommend.params.user_context_recent_posts: 10
+          scenario.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bradley_bias.yaml
+          scenario.probes.queries.vote_choice.query_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
+          scenario.probes.queries.vote_choice.query_data.choices:
+            - Bill Fredrickson
+            - Bradley Carter

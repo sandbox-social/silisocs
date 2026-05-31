@@ -1,8 +1,9 @@
-"""Test Mastodon Sim."""
+"""Test Silisocs package imports."""
 
-import mastodon_sim
+import silisocs
 
 
 def test_import() -> None:
     """Test that the app can be imported."""
-    assert isinstance(mastodon_sim.__name__, str)
+    assert isinstance(silisocs.__name__, str)
+    assert isinstance(silisocs.__version__, str)

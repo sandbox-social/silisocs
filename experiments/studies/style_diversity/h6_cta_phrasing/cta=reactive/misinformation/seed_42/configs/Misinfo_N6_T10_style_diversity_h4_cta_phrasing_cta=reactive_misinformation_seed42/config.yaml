@@ -1,0 +1,375 @@
+description: A small social media community where a false health claim circulates.
+  Studies how misinformation propagates, gets countered, or amplifies across a network
+  of spreaders, skeptics, and passive bystanders.
+scenario_name: misinformation
+jobname_format: Misinfo_N${num_agents}_T${num_steps}_${run_name}
+num_agents: 6
+num_steps: 10
+seed: 42
+run_name: style_diversity_h4_cta_phrasing_cta=reactive_misinformation_seed42
+setting:
+  name: Social Media Platform
+  background:
+  - A small social media community of six users with distinct personalities and habits.
+  - Users follow each other selectively, creating an asymmetric information flow.
+  - The platform allows posting, replying, liking, and boosting content.
+  - Misinformation about health topics circulates alongside neutral everyday content.
+event:
+  name: Misinformation Spread Study
+  context: 'A false health claim has been posted on the platform claiming that a common
+    household
+
+    item causes serious health issues. The post urges users to share before it gets
+    deleted.
+
+    Some users are primed to spread sensational content uncritically. Others are skeptical
+
+    fact-checkers. Most fall somewhere in between — trusting what their friends share,
+
+    swayed by emotion, or passively observing trends. The simulation studies how the
+
+    false claim propagates, gets countered, or is amplified across this small network.
+
+    '
+data: {}
+agents:
+  shared_memories:
+  - ${event.context}
+  - ${setting.background}
+  persona_pipeline:
+    processing_mode: raw
+    defaults:
+      params:
+        seed_post: ''
+        bio: ''
+        style: ''
+        goal: null
+        scenario_context: ${event.context}
+      shared_memories:
+      - ${event.context}
+    classes:
+      user:
+        count: 6
+        prefab_module: silisocs.agents.entity
+        sim_role_name: user
+        data:
+          source: inline
+          records:
+          - name: Alice
+            username: alice
+            context: 'Alice is a sensationalist social media user who loves sharing
+              shocking and surprising news. She rarely fact-checks before posting
+              — the more surprising a claim sounds, the more compelling it feels to
+              her. She thrives on engagement and gets excited when her posts get attention.
+
+              '
+            style: Breathless, urgent, uses ALL CAPS and exclamation marks. Frames
+              everything as breaking news.
+            goal: Alice's goal is to get as much engagement as possible by sharing
+              interesting and shocking content.
+            seed_post: 'BREAKING: Scientists confirm that common household item causes
+              serious health issues! Share before they delete this! #health #mustread'
+          - name: Bob
+            username: bob
+            context: 'Bob is a laid-back user who mostly posts about his daily life
+              — sunsets, weekend plans, food. He trusts his friends and tends to believe
+              what people he follows share without scrutinizing it too hard. He''s
+              not malicious, just uncritical.
+
+              '
+            style: Warm, casual, conversational. Posts about everyday moments. Uses
+              simple language.
+            goal: Bob's goal is to stay connected with friends and share positive,
+              feel-good content.
+            seed_post: Beautiful sunset today. Sometimes it's good to just appreciate
+              the simple things. 🌅
+          - name: Charlie
+            username: charlie
+            context: 'Charlie is a skeptical fact-checker who gets frustrated by misinformation.
+              When he sees a dubious claim, he instinctively looks for holes in it
+              and posts counter-evidence. He believes critical thinking is a civic
+              duty and is not afraid to push back even when it''s unpopular.
+
+              '
+            style: Measured, precise, uses evidence and sources. Asks rhetorical questions
+              to expose weak claims.
+            goal: Charlie's goal is to promote critical thinking and counter misinformation
+              wherever he sees it.
+            seed_post: Just read an interesting article about critical thinking. Always
+              verify claims before sharing — most viral health scares are misleading
+              or outright false.
+          - name: Diana
+            username: diana
+            context: 'Diana is an active commenter who loves engaging with controversial
+              topics. She forms opinions quickly based on what seems emotionally credible
+              and can be swayed by how confidently something is stated. She engages
+              with controversy but is not ideologically fixed — she can be convinced
+              by a good argument.
+
+              '
+            style: Opinionated, reactive, uses strong emotional language. Replies
+              frequently and directly.
+            goal: Diana's goal is to form and express opinions based on what seems
+              credible and to be part of the conversation.
+            seed_post: ''
+          - name: Eve
+            username: eve
+            context: 'Eve is a casual lurker who mostly observes. She occasionally
+              likes posts that resonate with her and watches trends without contributing
+              much. She is risk-averse about sharing unverified content but can be
+              nudged into action when something appears widely accepted.
+
+              '
+            style: Quiet, occasional. Short posts when she does write. Mostly likes
+              rather than replies.
+            goal: Eve's goal is to stay informed about trends without getting too
+              personally involved.
+            seed_post: ''
+          - name: Frank
+            username: frank
+            context: 'Frank is a new user still learning the platform. He trusts popular
+              accounts and high-engagement posts as proxies for credibility — if a
+              lot of people liked something, it must be worth believing. He hasn''t
+              developed a critical filter yet and is highly susceptible to social
+              proof.
+
+              '
+            style: Enthusiastic newbie energy. Asks questions, defers to others, uses
+              platform features eagerly.
+            goal: Frank's goal is to learn the platform, find interesting content,
+              and connect with people.
+            seed_post: ''
+        field_map:
+          name: name
+          username: username
+          context: context
+          style: style
+          goal: goal
+          seed_post: seed_post
+  initial_observations:
+  - '{name} opens their social media feed and starts scrolling.'
+  - '{name} notices some new posts from people they follow.'
+sim:
+  llm:
+    name: gpt-4o-mini
+    temperature: 0.5
+    api_base: null
+    api_key: null
+    disabled: false
+  max_concurrent_actions: 1000
+  sentence_encoder: sentence-transformers/all-MiniLM-L6-v2
+  memory_backend: list
+  action_mode: custom
+  tool_calling:
+    mode: single
+  prompt_additions:
+    action_count_guidance: true
+  checkpoint:
+    every_n_steps: null
+    explicit_steps: []
+    resume_file: null
+    resume_step: null
+  engine:
+    preset: base
+    action_loop:
+      built_in: single_action
+      class_path: null
+      params:
+        count: 2
+        max_actions: 3
+        done_token: DONE
+    probe_schedule:
+      built_in: step_schedule
+      class_path: null
+      params:
+        start_step: 0
+        every_n_steps: 1
+    flow_routing:
+      flow_order:
+      - fixed_pre
+      - default
+      entity_to_flow: {}
+    flow_policies: {}
+  roleplaying_instructions: '<general_instructions>
+
+    You are simulating {name}, a character in a social science experiment.
+
+    Always use third-person limited perspective when describing {name}''s thoughts
+    and actions.
+
+    Your goal is to determine the most appropriate actions {name} would take next.
+
+    </general_instructions>
+
+    '
+env:
+  platform_type: twitter_like
+  app_module_path: silisocs.environments.backends.twitter_like
+  use_server: false
+  enable_gm_multi_flow: false
+  timeline_posts: 10
+  timeline_mode: follower_chronological
+  timeline_config:
+    recsys_ratio: 0.6
+    follower_ratio: 0.4
+  observation_history: 100
+  seed_posts:
+    type: llm
+  enabled_actions:
+  - create_tweet
+  - reply_to_tweet
+  - like_tweet
+  - repost_tweet
+  - FINISHED
+  gamemaster:
+    filename: social_media
+    name: twitter_like_gm
+    sim_role:
+      name: social media game master
+      module_path: silisocs.environments.gm.game_master
+  gm:
+    preset: base
+    components:
+      next_acting:
+        built_in: activity_probability
+        class_path: null
+        params: {}
+      observe:
+        built_in: timeline_every_turn
+        class_path: null
+        params: {}
+      resolve:
+        built_in: tool_calling
+        class_path: null
+        params: {}
+  gm_orchestration:
+    gms: []
+    flow_bindings:
+      flow_to_gm: {}
+      flow_to_gms: {}
+      gm_to_flows: {}
+  social_network:
+    network_type: predefined
+    predefined_graph:
+      Alice:
+      - Bob
+      - Charlie
+      - Diana
+      Bob:
+      - Alice
+      - Charlie
+      Charlie:
+      - Alice
+      - Bob
+      - Diana
+      Diana:
+      - Alice
+      - Bob
+      - Charlie
+      - Eve
+      Eve:
+      - Alice
+      - Diana
+      Frank:
+      - Bob
+      - Charlie
+      - Eve
+    activity_transition_rates:
+      user:
+        inactive_to_active: 0.8
+        active_to_inactive: 0.1
+    fully_connected_targets: []
+    base_followership_probability: 0.0
+  usage_instructions: 'You are currently operating on a Twitter like platform.
+
+    You are allowed to perform the given actions, descriptions, and instructions on
+    how to perform them will follow.
+
+    Generally, to share content, you can write a ''tweet'' (a short post).
+
+    Tweets can be up to 280 characters long.
+
+    You can reply to tweets, creating threaded conversations., and you can
+
+    like (favorite) them to show appreciation, or
+
+    repost (retweet) tweets to share them with your followers.
+
+    You can mention other users in your tweets using their @username.
+
+    You can follow other users to see their tweets in your home timeline.
+
+    You can unfollow users if they no longer wish to see their content.
+
+    Generally, if you don''t want to take actions, or are done taking actions for
+    a given step, you can use the finished action to stop.
+
+    Some of the above listed actions, may not be available at thus step, or some other
+    actions may also be available, as described below.
+
+    current_user is always the full display name (e.g. "Alice Smith").
+
+    Only use real post IDs from timeline/feed observations; do not fabricate IDs.
+
+    For status/content fields, write in first person as the character.
+
+    Omit optional parameters you do not want to use.
+
+    Choose actions from those that are available:
+
+    '
+  action_prompt: '## AVAILABLE ACTIONS
+
+    1. POST - Share new content by creating a new tweet
+
+    2. REPLY - Engage existing content by responding to a tweet (needs post ID)
+
+    3. REPOST - Extend the reach of content by reposting someone''s tweet (needs post
+    ID)
+
+    4. LIKE - Show the world you appreciate content by liking a tweet (needs post
+    ID)
+
+
+    ## INSTRUCTIONS
+
+    React to what {name} just saw in their feed. What is their immediate impulse?
+
+    - What jumped out at them from the timeline?
+
+    - What do they feel compelled to do right now?
+
+    - Act on that instinct — don''t overthink it.
+
+    If text-based, the text must reflect their posting style description.
+
+
+    [OUTPUT STYLE]
+
+    '
+  output_style: '## OUTPUT FORMAT
+
+    Answer: {name}
+
+    STEP 1: [Analyze {name}''s motivation based on their character]
+
+    STEP 2: [Consider which posts/actions align with {name}''s values]
+
+    STEP 3: [Determine the single most authentic action]
+
+
+    FINAL DECISION:
+
+    ACTION TYPE: [POST/REPLY/REPOST/LIKE]
+
+    TARGET ID: [Include post ID if applicable]
+
+    CONTENT: [For posts/replies, exact text {name} would write]
+
+    REASONING: [Brief explanation of why this action fits {name}''s character]
+
+    '
+evals:
+  write_html_log: true
+  probes: {}
+experiment_name: style_diversity

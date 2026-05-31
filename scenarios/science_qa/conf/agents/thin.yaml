@@ -1,0 +1,102 @@
+# @package agents
+persona_pipeline:
+  defaults:
+    params:
+      seed_post: ''
+      bio: ''
+      style: ''
+      goal: null
+      scenario_context: ${event.context}
+    shared_memories:
+    - ${event.context}
+  classes:
+    researcher:
+      count: 2
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: researcher
+      data:
+        source: inline
+        records:
+        - name: Dr. Priya Nair
+          username: priya_nair
+          context: Dr. Priya Nair is a social media user.
+          seed_post: ''
+        - name: Dr. Marcus Johansson
+          username: marcus_johansson
+          context: Dr. Marcus Johansson is a social media user.
+          seed_post: ''
+      field_map:
+        name: name
+        username: username
+        context: context
+        seed_post: seed_post
+    science_communicator:
+      count: 2
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: science_communicator
+      data:
+        source: inline
+        records:
+        - name: Leila Okafor
+          username: leila_okafor
+          context: Leila Okafor is a social media user.
+          seed_post: ''
+        - name: Sam Brightwell
+          username: sam_brightwell
+          context: Sam Brightwell is a social media user.
+          seed_post: ''
+      field_map:
+        name: name
+        username: username
+        context: context
+        seed_post: seed_post
+    curious_learner:
+      count: 3
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: curious_learner
+      data:
+        source: inline
+        records:
+        - name: Mei Suzuki
+          username: mei_suzuki
+          context: Mei Suzuki is a social media user.
+          seed_post: ''
+        - name: Greg Hoffman
+          username: greg_hoffman
+          context: Greg Hoffman is a social media user.
+          seed_post: ''
+        - name: Fatima El-Amin
+          username: fatima_elamin
+          context: Fatima El-Amin is a social media user.
+          seed_post: ''
+      field_map:
+        name: name
+        username: username
+        context: context
+        seed_post: seed_post
+    skeptic:
+      count: 2
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: skeptic
+      data:
+        source: inline
+        records:
+        - name: David Chen
+          username: david_chen
+          context: David Chen is a social media user.
+          seed_post: ''
+        - name: Beatrice Santos
+          username: beatrice_santos
+          context: Beatrice Santos is a social media user.
+          seed_post: ''
+      field_map:
+        name: name
+        username: username
+        context: context
+        seed_post: seed_post
+shared_memories:
+- ${event.context}
+- ${setting.background}
+initial_observations:
+- '{name} opens their social media feed and starts scrolling.'
+- '{name} notices some new posts from people they follow.'

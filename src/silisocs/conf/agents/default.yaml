@@ -1,0 +1,61 @@
+# @package agents
+
+builder:
+  class_path: null
+  params: {}
+
+persona_pipeline:
+  defaults:
+    params:
+      seed_post: ""
+      bio: ""
+      style: ""
+      goal: null
+      scenario_context: ${event.context}
+    shared_memories:
+      - They are an active user on a social media platform.
+      - ${event.context}
+  classes:
+    user:
+      count: ${num_agents}
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: user
+      data:
+        source: inline
+        records:
+          - persona: Alex is a local organizer who posts about public services, neighborhood events, and practical ways to help.
+          - persona: Blair is a software developer who follows technology news and likes concise, evidence-based discussions.
+          - persona: Casey is a teacher who often shares education resources and asks thoughtful questions.
+          - persona: Devon is a small business owner who tracks local policy, transit, and community safety.
+          - persona: Ellis is a healthcare worker who cares about public health, mutual aid, and trustworthy information.
+          - persona: Frankie is a student who follows science, culture, and campus issues with curiosity.
+          - persona: Gray is a journalist who looks for source quality and tries to summarize debates clearly.
+          - persona: Harper is a hobbyist photographer who shares local scenes and friendly replies.
+          - persona: Indigo is a parent who follows school updates, civic meetings, and neighborhood recommendations.
+          - persona: Jules is a retiree who enjoys history, gardening, and long-running community conversations.
+      field_map:
+        context: persona
+    fixed_seed:
+      count: 0
+      class_path: silisocs.agents.fixed.FixedAgent
+      sim_role_name: fixed_seed
+      flow_tag: null
+      params: {}
+    llm_user:
+      count: 0
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: llm_user
+      flow_tag: null
+      data:
+        source: inline
+        records: []
+      field_map:
+        context: persona
+
+shared_memories:
+  - They are an active user on a social media platform.
+  - ${event.context}
+
+initial_observations:
+  - "{name} is at home checking their social media feed."
+  - "{name} decides to browse and maybe post something."

@@ -1,0 +1,74 @@
+# @package agents
+
+builder:
+  class_path: null
+  params: {}
+
+persona_pipeline:
+  defaults:
+    params:
+      seed_post: ""
+      bio: ""
+      style: ""
+      goal: null
+      scenario_context: ${event.context}
+    shared_memories:
+      - They are participating in a local resource market.
+      - ${event.context}
+  classes:
+    farmer:
+      count: 1
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: farmer
+      data:
+        source: inline
+        records:
+          - name: Alex Farmer
+            persona: Alex can produce food reliably and needs wood to keep their stall running.
+      field_map:
+        name: name
+        context: persona
+    woodworker:
+      count: 1
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: woodworker
+      data:
+        source: inline
+        records:
+          - name: Blair Woodworker
+            persona: Blair can produce wood and needs food to stay productive.
+      field_map:
+        name: name
+        context: persona
+    miner:
+      count: 1
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: miner
+      data:
+        source: inline
+        records:
+          - name: Casey Miner
+            persona: Casey can produce ore and needs food during market day.
+      field_map:
+        name: name
+        context: persona
+    merchant:
+      count: 1
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: merchant
+      data:
+        source: inline
+        records:
+          - name: Devon Merchant
+            persona: Devon can produce small amounts of several goods and looks for arbitrage.
+      field_map:
+        name: name
+        context: persona
+
+shared_memories:
+  - They are participating in a local resource market.
+  - ${event.context}
+
+initial_observations:
+  - "{name} reviews their current cash and inventory."
+  - "{name} considers whether to produce, sell, buy, consume, or wait."

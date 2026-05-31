@@ -1,0 +1,27 @@
+# @package _global_
+scenario_name: neighborhood_forum
+jobname_format: NeighForum_N${num_agents}_T${num_steps}_${run_name}
+num_agents: 9
+num_steps: 10
+seed: 42
+run_name: neighborhood_forum
+setting:
+  name: Riverside Heights Community Board
+  background:
+  - |-
+    Riverside Heights is a mid-sized urban neighborhood undergoing rapid change: longtime homeowners coexist uneasily with a growing renter population and newly arrived young professionals.
+  - |-
+    The neighborhood's central gathering point is its community social media board, where residents use real names and are accountable to neighbors — platform culture is civil but direct.
+  - |-
+    A proposed mixed-use development on the old Riverside Mill site has become the dominant topic: 240 apartments, ground-floor retail, and a new transit stop are all on the table.
+  - |-
+    Longtime residents worry about neighborhood character and displacement; renters see an opportunity for more affordable supply; business owners are split on foot traffic vs. parking loss.
+  - |-
+    A city council member represents the ward and must balance all factions; newcomers bring technocratic optimism but limited community tenure.
+  - |-
+    The stakes are local and personal, not ideological: everyone knows their neighbors, yet they speak about the same proposal in strikingly different registers.
+event:
+  name: Mill Site Development Vote
+  context: |-
+    The Riverside Heights city council vote on the Mill Site redevelopment plan is scheduled for next Tuesday. The community board has been active for days as residents process the 180-page environmental impact review. The council member has posted the official timeline; longtime residents have been sharing memories of the mill and worries about what the neighborhood will look like in five years; renters have been running housing cost math; business owners are debating parking and foot traffic. Newcomers who moved in during the last two years are cautiously optimistic about the transit access the project would bring. No one is shouting, but the voices filling the board are unmistakably distinct — shaped by how long they've lived here, what they own, and what they need.
+data: {}
