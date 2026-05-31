@@ -3,17 +3,21 @@
 
 # SiliSoCS
 
-SiliSoCS (Silicon Society Sandbox) is a native simulation framework for configurable social and
-agent-environment experiments. It provides a YAML-first scenario layer,
-environment game masters, local and live backends, evaluation probes, runtime
-telemetry, and study tooling. Concordia interoperability is available through an
-optional bridge extra.
+SiliSoCS (Silicon Society Sandbox) is a configurable, extensible framework for multi-agent
+social simulation and experimentation. It is structured around the EASE decomposition —
+Environment, Agents, Simulation engine, and Evaluation — providing a principled,
+reproducible configuration layer for simulated societies. It offers scenario-driven 
+social grounding, Concordia-like game master-mediated environments, local and served 
+backends, evaluation probes, runtime telemetry, and experimental study tooling. Concordia 
+interoperability is available through an optional bridge extra.
 
-- 2024 NeurIPS Workshop Paper: [arXiv:2410.13915](http://arxiv.org/abs/2410.13915)
-- 2025 IJCAI Demo Paper: [IJCAI 2025](https://www.ijcai.org/proceedings/2025/1271)
 - 2026 ICML Position Paper [ICML 2026](https://www.complexdatalab.com/stamina/papers/puelmatouzel_CloseEvalGap.pdf)
 - 2026 EASE Configuration: [arXiv:2605.30258](https://arxiv.org/abs/2605.30258)
 - Documentation: [sandbox-social.github.io/silisocs](https://sandbox-social.github.io/silisocs)
+
+Papers on a previous version centered on a served Mastodon social media network:
+- 2024 NeurIPS Workshop Paper: [arXiv:2410.13915](http://arxiv.org/abs/2410.13915)
+- 2025 IJCAI Demo Paper: [IJCAI 2025](https://www.ijcai.org/proceedings/2025/1271)
 
 ## Install
 
