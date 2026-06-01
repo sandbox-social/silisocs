@@ -246,10 +246,10 @@ classes:
 Or per-agent via field mapping (your data source must include a model field):
 
 ```yaml
-    field_map:
-      name: name
-      context: persona
-      model: model_name          # Maps data field → per-agent model
+field_map:
+  name: name
+  context: persona
+  model: model_name          # Maps data field → per-agent model
 ```
 
 See [Usage Overview](usage.md#per-agent-llm-models) for the full priority chain.
