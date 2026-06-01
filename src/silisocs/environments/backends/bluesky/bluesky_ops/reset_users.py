@@ -1,24 +1,43 @@
 from pathlib import Path
-import subprocess
 import os
+import base64
+import requests
 from dotenv import load_dotenv
 from .create_accounts import create_bluesky_account
 from .list_users import list_users
-
+from .get_client import get_authenticated_client, get_admin_client
 load_dotenv()
+
+ADMIN_PW = os.getenv("BLUESKY_ADMIN_PW")
+PDS_URL = os.getenv("BLUESKY_BASE_URL")
 
 def delete_user(did: str) -> None:
     """Deletes a user corresponding to the given did (decentralized identifier)."""
-    script = Path(__file__).parent / "pdsadmin.sh"
-    result = subprocess.run(
-        [str(script), "account", "delete", did],
-        capture_output=True,
-        text=True,
+
+    credentials = base64.b64encode(
+        f"admin:{ADMIN_PW}".encode()
+    ).decode()
+
+    headers = {
+        "Authorization": f"Basic {credentials}",
+        "Content-Type": "application/json",
+    }
+
+    response = requests.post(
+        f"{PDS_URL}/xrpc/com.atproto.admin.deleteAccount",
+        headers=headers,
+        json={"did": did},
     )
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to delete {did}:\n{result.stderr}")
-    print(f"Deleted {did}")
-    
+
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"Failed to delete {did}:\n"
+            f"{response.status_code}\n"
+            f"{response.text}"
+        )
+
+    print(f"{did} deleted")
+        
 def reset_user(handle: str, password: str, email: str, did: str) -> dict:
     """Resets a user by deleting and recreating it."""
     delete_user(did)
@@ -31,11 +50,6 @@ def reset_bluesky_server() -> None:
     users = list_users()
 
     for user in users:
-        delete_user(user["did"])
-        create_bluesky_account(
-            handle=user["handle"],
-            password="password",
-            email=user["email"],
-        )
+        reset_user(handle=user["handle"], password="password", email=user["email"], did=user["did"])
 
     print(f"Cleared and reset {len(users)} accounts")

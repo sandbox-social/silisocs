@@ -21,15 +21,18 @@ from silisocs.utils.network import generate_follow_network
 
 from urllib.parse import urlparse
 import os
+import dataclasses
 
 load_dotenv()
 
 PDS_URL = os.getenv("BLUESKY_BASE_URL")
 DEFAULT_AGENT_PW = os.getenv("BLUESKY_AGENT_PASSWORD")
 
+@dataclasses.dataclass
 class BlueskyApp(SocialMediaApp):
     
-    app_description = "Self hosted Bluesky application."
+    action_logger: Any = None
+    app_description: str = "Self hosted Bluesky application."
     
     def initialize(self, agent_names: list[str], **kwargs: Any):
         sim_roles = kwargs.get("sim_roles", {})
@@ -90,6 +93,82 @@ class BlueskyApp(SocialMediaApp):
         self._print(f"Updated user mapping with {num_agents} entries", emoji="🔄")
         self._print("Resetting server")
         reset_bluesky_server()
+      
+    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
+        """Dispatch a parsed action to the correct Bluesky app_action method."""
+        action_type = action_data.get("action_type", "").lower().strip()
+
+        content = action_data.get("content", "") or action_data.get("post_text", "")
+        target = action_data.get("target", "") or action_data.get("target_user", "")
+
+        post_uri = action_data.get("post_uri", "") or action_data.get("parent_uri", "")
+        post_cid = action_data.get("post_cid", "") or action_data.get("parent_cid", "")
+
+        parent_uri = action_data.get("parent_uri", "") or post_uri
+        parent_cid = action_data.get("parent_cid", "") or post_cid
+        root_uri = action_data.get("root_uri")
+        root_cid = action_data.get("root_cid")
+
+        try:
+            if action_type in {"finished", "finish", "finish_action_episode"}:
+                return self.finish_action_episode()
+
+            if action_type in {"post", "create_post"}:
+                result = self.post(user_name, content)
+                return f"{user_name} posted: {content}\nResult: {result}"
+
+            if action_type == "reply":
+                result = self.reply(
+                    display_name=user_name,
+                    post_text=content,
+                    parent_uri=parent_uri,
+                    parent_cid=parent_cid,
+                    root_uri=root_uri,
+                    root_cid=root_cid,
+                )
+                return f"{user_name} replied to {parent_uri}: {content}\nResult: {result}"
+
+            if action_type in {"like", "like_post"}:
+                result = self.like_post(
+                    display_name=user_name,
+                    post_uri=post_uri,
+                    post_cid=post_cid,
+                )
+                return f"{user_name} liked post {post_uri}\nResult: {result}"
+
+            if action_type in {"repost", "boost"}:
+                result = self.repost(
+                    display_name=user_name,
+                    post_uri=post_uri,
+                    post_cid=post_cid,
+                )
+                return f"{user_name} reposted {post_uri}\nResult: {result}"
+
+            if action_type == "follow":
+                self.follow(user_name, target)
+                return f"{user_name} followed {target}"
+
+            if action_type == "unfollow":
+                self.unfollow(user_name, target)
+                return f"{user_name} unfollowed {target}"
+
+            if action_type in {"read_profile", "profile"}:
+                result = self.read_profile(user_name, target)
+                return f"{user_name} read profile of {target}\nResult: {result}"
+
+            if action_type in {"read_notifications", "notifications"}:
+                result = self.read_notifications(user_name)
+                return f"{user_name} read notifications\nResult: {result}"
+
+            if action_type in {"timeline", "get_timeline", "read_timeline"}:
+                result = self.get_timeline(user_name)
+                return f"{user_name} read timeline\nResult: {result}"
+
+            return f"Unknown action type: {action_type}"
+
+        except Exception as e:
+            self._print(f"Error resolving action {action_type}: {e}", color="red")
+            return f"Error performing {action_type}: {e}"  
         
     @app_action
     def update_profile(self, display_name: str, bio: str) -> None:
