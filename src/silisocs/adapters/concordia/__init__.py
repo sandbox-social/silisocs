@@ -244,12 +244,7 @@ class SocialConcatActComponent(concat_act_component.ConcatActComponent):
                 tools,
                 mode=str(native_extra_args.get("tool_mode") or "single"),
             )
-            normalized = [
-                ToolCall(
-                    call.name, {"current_user": self.get_entity().name, **dict(call.arguments)}
-                )
-                for call in calls
-            ]
+            normalized = [ToolCall(call.name, dict(call.arguments)) for call in calls]
             return ActionOutput.from_tool_calls(normalized, raw=calls)
         if native_output_type == OutputType.STRUCTURED:
             schema = dict(native_extra_args.get("schema") or {})

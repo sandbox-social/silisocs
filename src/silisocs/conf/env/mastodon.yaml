@@ -40,8 +40,6 @@ gm:
         of a real `toot_id`. If you don''t know a `toot_id`, you can''t perform actions
         that require it. `toot_id`''s can be retrieved using the `get_timeline` action.
 
-        - current_user is always the full display name (e.g. "Alice Smith").
-
         - Only use real toot IDs from timeline/feed observations; do not fabricate
         IDs.
 
@@ -133,8 +131,6 @@ gm:
           of a real `toot_id`. If you don''t know a `toot_id`, you can''t perform
           actions that require it. `toot_id`''s can be retrieved using the `get_timeline`
           action.
-
-          - current_user is always the full display name (e.g. "Alice Smith").
 
           - Only use real toot IDs from timeline/feed observations; do not fabricate
           IDs.

@@ -26,12 +26,12 @@ def build_agent_params(
     sim_role: str,
     class_path: str,
     shared: list[str],
-    derive_name_from_context: bool,
-    name_words: int,
     news_posts: dict[str, str] | None,
     class_model: Any,
     *,
     resolve_file_path: Callable[[str], Path],
+    derive_name_from_context: bool = False,
+    name_words: int = 2,
 ) -> dict[str, Any]:
     """Build one runtime agent params dict from one persona record."""
     mapped: dict[str, Any] = {}
@@ -62,7 +62,16 @@ def build_agent_params(
     if not name and derive_name_from_context:
         name = derive_name(context, words=name_words)
     if not name:
-        name = f"{class_name}_{idx}"
+        fields = (
+            ", ".join(sorted(str(k) for k in record))
+            if isinstance(record, Mapping)
+            else type(record).__name__
+        )
+        raise ValueError(
+            f"Class `{class_name}` record {idx} missing `name` "
+            "(the builder must map or derive a unique Agent Name) "
+            f"(field_map.name={field_map.get('name')!r}). Fields: {fields}"
+        )
 
     if "specific_memories" not in params and mem_field:
         params["specific_memories"] = extract_path(record, mem_field)

@@ -87,7 +87,9 @@ persona_pipeline:
         split: train
       field_map:
         context: persona
-        name: full_name              # Map HF dataset field to agent field
+        # Name is derived for nvidia/Nemotron-Personas-USA by the default builder.
+        # Other HF datasets should map a real name field or set
+        # derive_name_from_context: true intentionally.
       params:
         goal: "Have a good day and vote in the election"
       shared_memories:

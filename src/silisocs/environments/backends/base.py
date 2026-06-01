@@ -28,6 +28,9 @@ _ARGUMENT_REGEX = re.compile(r"(?P<param>\w+):\s*(?P<value>[^\n]+)")
 ParserFunc = Callable[[str], Any]
 
 _ACTION_PROPERTY = "__app_action__"
+RUNTIME_AGENT_PARAM = "agent_name"
+LEGACY_RUNTIME_AGENT_PARAMS = frozenset({"current_user"})
+RUNTIME_OWNED_ACTION_PARAMS = frozenset({RUNTIME_AGENT_PARAM})
 
 COLOR_TYPE = (
     Literal[
@@ -115,6 +118,11 @@ def app_action(
 
 class ActionArgumentError(Exception):
     """An error that is raised when argument parsing fails."""
+
+
+def is_runtime_owned_parameter(name: str) -> bool:
+    """Return whether a backend action parameter is supplied by the runtime."""
+    return name in RUNTIME_OWNED_ACTION_PARAMS
 
 
 # --------------------------------------------------------------------------- #
@@ -205,10 +213,16 @@ class ActionDescriptor:
     def __post_init__(self, docstring: docstring_parser.Docstring):  # noqa: D105
         pass
 
+    @property
+    def agent_visible_parameters(self) -> Sequence[Parameter]:
+        """Parameters an agent may provide in a tool call or generic action."""
+        return [p for p in self.parameters if not is_runtime_owned_parameter(p.name)]
+
     def instructions(self):
         """Return a string containing instructions for using the action."""
-        required_params = [p for p in self.parameters if p.required]
-        optional_params = [p for p in self.parameters if not p.required]
+        visible_params = self.agent_visible_parameters
+        required_params = [p for p in visible_params if p.required]
+        optional_params = [p for p in visible_params if not p.required]
 
         instructions = f"The {self.name} action expects the following parameters:\n"
 
@@ -234,7 +248,9 @@ class ActionDescriptor:
         from first person perspective and makes sense as a realistic user post based on their information.
         Do not post any statuses from 3rd person perspective.
 
-        Note: current_user, target_user or the username field is ALWAYS the full name of the agents in the format: "Firstname Lastname".
+        Note: target_user or a username field is the full name of another agent
+        when the action asks for a target. The acting agent is supplied by the
+        runtime and should not be included in your response.
 
         Bad examples:
             `bio`: Updated my bio and checking notifications!
@@ -377,7 +393,7 @@ class BackendApp(metaclass=abc.ABCMeta):
                             "kind": str(p.kind),
                             "description": p.description,
                         }
-                        for p in action.parameters
+                        for p in action.agent_visible_parameters
                     ],
                 }
             )
@@ -530,7 +546,7 @@ class BackendApp(metaclass=abc.ABCMeta):
         for action in actions:
             params_desc = ", ".join(
                 f"{p.name} ({'required' if p.required else 'optional'}, {p.kind})"
-                for p in action.parameters
+                for p in action.agent_visible_parameters
             )
             lines.append(f"  {action.selectable_name}({params_desc})")
             lines.append(f"    {action.description.strip()}")
@@ -554,7 +570,7 @@ class BackendApp(metaclass=abc.ABCMeta):
         for action in self.actions():
             properties: dict[str, Any] = {}
             required: list[str] = []
-            for param in action.parameters:
+            for param in action.agent_visible_parameters:
                 prop = _param_to_json_schema(param)
                 if param.description:
                     prop = dict(prop, description=param.description)

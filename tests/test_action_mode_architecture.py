@@ -331,8 +331,8 @@ class _GenericPromptApp(SocialBackendApp):
         del agent_names, kwargs
 
     @app_action(selectable_name="POST", description="Create a new post")
-    def create_post(self, current_user: str, content: str) -> str:
-        del current_user, content
+    def create_post(self, agent_name: str, content: str) -> str:
+        del agent_name, content
         return "ok"
 
 
@@ -383,31 +383,30 @@ class TestResolveComponentFormatMatching:
 
     def test_tool_calling_expects_typed_tool_calls(self):
         """ToolCallingResolveComponent expects typed tool calls."""
-        mock_app = MagicMock()
-        mock_app.invoke_action_with_kwargs.return_value = "success"
+        app = _GenericPromptApp()
 
         component = ToolCallingResolveComponent(
-            backend=mock_app,
+            backend=app,
             model=MagicMock(),
         )
 
         result = component.resolve(
             active_agent="Alice",
-            action=ActionOutput.from_tool_calls(
-                [ToolCall("post", {"content": "Hello", "current_user": "Alice"})]
-            ),
+            action=ActionOutput.from_tool_calls([ToolCall("POST", {"content": "Hello"})]),
         )
-        assert result == "success"
-        mock_app.invoke_action_with_kwargs.assert_called_once_with(
-            "post",
-            {"content": "Hello", "current_user": "Alice"},
-        )
+        assert result == "ok"
 
         # Should fail loudly on other formats
-        mock_app.reset_mock()
         with pytest.raises(TypeError, match="ActionOutput.TOOL_CALLS"):
             component.resolve(active_agent="Alice", action=ActionOutput.from_text("Not JSON"))
-        mock_app.invoke_action_with_kwargs.assert_not_called()
+
+        with pytest.raises(ValueError, match="runtime-owned actor"):
+            component.resolve(
+                active_agent="Alice",
+                action=ActionOutput.from_tool_calls(
+                    [ToolCall("POST", {"content": "Hello", "agent_name": "Alice"})]
+                ),
+            )
 
 
 def test_finished_routes_through_backend_across_all_resolve_modes() -> None:

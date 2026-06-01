@@ -51,13 +51,13 @@ class _IntegrationTestApp(SocialBackendApp):
         return "ok"
 
     @app_action(selectable_name="POST", description="Create a post")
-    def create_post(self, current_user: str, content: str) -> str:
-        del current_user, content
+    def create_post(self, agent_name: str, content: str) -> str:
+        del agent_name, content
         return "ok"
 
     @app_action(selectable_name="LIKE", description="Like a post")
-    def like_post(self, current_user: str, post_id: str) -> str:
-        del current_user, post_id
+    def like_post(self, agent_name: str, post_id: str) -> str:
+        del agent_name, post_id
         return "ok"
 
 

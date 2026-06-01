@@ -89,7 +89,7 @@ class EchoSocialToolResolve(ToolCallingResolveComponent):
             result = f"Recorded terminal belief probe for {active_agent}."
             return result
 
-        social_result = self.resolve(active_entity=active_agent, action_text=action_text)
+        social_result = self.resolve(active_agent=active_agent, action=action)
         if self._probe_belief:
             episode = int(getattr(getattr(self.backend, "action_logger", None), "episode_idx", 0))
             replication_episode = max(0, episode - 1)

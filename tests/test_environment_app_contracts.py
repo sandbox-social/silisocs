@@ -41,8 +41,8 @@ class _GenericTestApp(BackendApp):
         )
 
     @app_action(selectable_name="WORK", description="Do work")
-    def do_work(self, current_user: str, amount: int) -> str:
-        return f"{current_user} worked {amount}"
+    def do_work(self, agent_name: str, amount: int) -> str:
+        return f"{agent_name} worked {amount}"
 
 
 def test_environment_app_keeps_action_catalog_generic() -> None:
@@ -53,10 +53,12 @@ def test_environment_app_keeps_action_catalog_generic() -> None:
 
     assert "WORK" in selectable
     assert "FINISHED" in selectable
+    work = next(item for item in catalog if item["selectable_name"] == "WORK")
+    assert [param["name"] for param in work["parameters"]] == ["amount"]
     assert (
         app.invoke_action_with_kwargs(
             "WORK",
-            {"current_user": "Alice", "amount": "3"},
+            {"agent_name": "Alice", "amount": "3"},
         )
         == "Alice worked 3"
     )

@@ -1,6 +1,9 @@
 from typing import Any
 
+import pytest
+
 from silisocs.agents.native import NativeAgent
+from silisocs.environments.backends.base import BackendApp, app_action
 from silisocs.environments.gm.components.resolve import ToolCallingResolveComponent
 from silisocs.evaluations.probes.types import StructuredProbe
 from silisocs.runtime import types as entity_lib
@@ -44,28 +47,20 @@ class _FakeModel(LanguageModel):
         return {"belief": 1, "opinion": "I somewhat support this.", "reasoning": "Because."}
 
 
-class _FakeApp:
-    def generate_tool_schemas(self) -> list[dict]:
-        return [
-            {
-                "type": "function",
-                "function": {
-                    "name": "toot",
-                    "description": "Post a toot",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "status": {"type": "string"},
-                            "current_user": {"type": "string"},
-                        },
-                        "required": ["status"],
-                    },
-                },
-            }
-        ]
+class _FakeApp(BackendApp):
+    def name(self) -> str:
+        return "fake"
 
-    def invoke_action_with_kwargs(self, name: str, payload: dict) -> str:
-        return f"{name}:{payload.get('current_user')}:{payload.get('status')}"
+    def description(self) -> str:
+        return "Fake backend"
+
+    @app_action(selectable_name="toot", description="Post a toot")
+    def toot(self, agent_name: str, status: str) -> str:
+        return f"toot:{agent_name}:{status}"
+
+    @app_action(selectable_name="like", description="Like a post")
+    def like(self, agent_name: str, post_id: int) -> str:
+        return f"like:{agent_name}:{post_id}"
 
 
 def test_native_agent_returns_typed_tool_calls_from_extra_args() -> None:
@@ -165,7 +160,7 @@ def test_tool_calling_resolve_executes_tool_kwargs() -> None:
         [
             entity_lib.ToolCall(
                 "toot",
-                {"current_user": "Alice", "status": "Hello from tool mode"},
+                {"status": "Hello from tool mode"},
             )
         ]
     )
@@ -180,7 +175,7 @@ def test_tool_calling_resolve_allows_finished_tool_call() -> None:
     action = entity_lib.ActionOutput.from_tool_calls([entity_lib.ToolCall("FINISHED", {})])
 
     result = resolve.resolve(active_agent="Alice", action=action)
-    assert result == "FINISHED:None:None"
+    assert result == "Finished action episode"
 
 
 def test_tool_calling_resolve_executes_multi_tool_calls_in_order() -> None:
@@ -188,10 +183,28 @@ def test_tool_calling_resolve_executes_multi_tool_calls_in_order() -> None:
 
     action = entity_lib.ActionOutput.from_tool_calls(
         [
-            entity_lib.ToolCall("toot", {"current_user": "Alice", "status": "First"}),
-            entity_lib.ToolCall("toot", {"current_user": "Alice", "status": "Second"}),
+            entity_lib.ToolCall("toot", {"status": "First"}),
+            entity_lib.ToolCall("toot", {"status": "Second"}),
         ]
     )
 
     result = resolve.resolve(active_agent="Alice", action=action)
     assert result == "toot:Alice:First\ntoot:Alice:Second"
+
+
+def test_tool_calling_resolve_rejects_agent_authored_actor_identity() -> None:
+    resolve = ToolCallingResolveComponent(backend=_FakeApp())
+
+    action = entity_lib.ActionOutput.from_tool_calls(
+        [entity_lib.ToolCall("toot", {"agent_name": "Mallory", "status": "Nope"})]
+    )
+
+    with pytest.raises(ValueError, match="runtime-owned actor"):
+        resolve.resolve(active_agent="Alice", action=action)
+
+    legacy_action = entity_lib.ActionOutput.from_tool_calls(
+        [entity_lib.ToolCall("toot", {"current_user": "Mallory", "status": "Nope"})]
+    )
+
+    with pytest.raises(ValueError, match="runtime-owned actor"):
+        resolve.resolve(active_agent="Alice", action=legacy_action)

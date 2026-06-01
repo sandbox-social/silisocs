@@ -363,24 +363,22 @@ class RedditLikeApp(SocialBackendApp):
     # ------------------------------------------------------------------ #
 
     @app_action
-    def create_reddit_post(
-        self, current_user: str, subreddit: str, title: str, content: str
-    ) -> str:
+    def create_reddit_post(self, agent_name: str, subreddit: str, title: str, content: str) -> str:
         """Create a new post in a subreddit.
 
         Args:
-            current_user: The full display name of the user posting.
+            agent_name: The full display name of the user posting.
             subreddit: The name of the subreddit to post in (e.g. "general").
             title: The title of the post.
             content: The body text content of the post.
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         post_id = self._platform.create_post(username, subreddit, title, content)
-        result_msg = f'{current_user_full} posted in r/{subreddit} (ID: {post_id}): "{title}"'
+        result_msg = f'{actor_display_name} posted in r/{subreddit} (ID: {post_id}): "{title}"'
         self._print(result_msg, emoji="📝")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="post",
             data={
                 "post_id": str(post_id),
@@ -393,29 +391,27 @@ class RedditLikeApp(SocialBackendApp):
 
     @app_action
     def create_comment(
-        self, current_user: str, post_id: int, content: str, parent_id: int | None = None
+        self, agent_name: str, post_id: int, content: str, parent_id: int | None = None
     ) -> str:
         """Comment on a post or reply to an existing comment.
 
         Args:
-            current_user: The full display name of the user commenting.
+            agent_name: The full display name of the user commenting.
             post_id: The ID of the post to comment on.
             content: The text content of the comment.
             parent_id: The ID of the parent comment if replying to a comment
                 (omit for top-level comments on a post).
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         comment_id = self._platform.create_comment(username, post_id, content, parent_id=parent_id)
         if parent_id:
-            result_msg = (
-                f'{current_user_full} replied to comment {parent_id} on post {post_id}: "{content}"'
-            )
+            result_msg = f'{actor_display_name} replied to comment {parent_id} on post {post_id}: "{content}"'
         else:
-            result_msg = f'{current_user_full} commented on post {post_id}: "{content}"'
+            result_msg = f'{actor_display_name} commented on post {post_id}: "{content}"'
         self._print(result_msg, emoji="💬")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="comment",
             data={
                 "comment_id": str(comment_id),
@@ -427,101 +423,101 @@ class RedditLikeApp(SocialBackendApp):
         return result_msg
 
     @app_action
-    def upvote(self, current_user: str, target_id: int, target_type: str) -> str:
+    def upvote(self, agent_name: str, target_id: int, target_type: str) -> str:
         """Upvote a post or comment to increase its score.
 
         Args:
-            current_user: The full display name of the user voting.
+            agent_name: The full display name of the user voting.
             target_id: The ID of the post or comment to upvote.
             target_type: Either "post" or "comment".
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         try:
             self._platform.vote(username, target_id, target_type, 1)
-            result_msg = f"{current_user_full} upvoted {target_type} {target_id}."
+            result_msg = f"{actor_display_name} upvoted {target_type} {target_id}."
         except Exception as e:
             result_msg = f"Error upvoting {target_type} {target_id}: {e}"
         self._print(result_msg, emoji="⬆️")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="upvote",
             data={"target_id": str(target_id), "target_type": target_type},
         )
         return result_msg
 
     @app_action
-    def downvote(self, current_user: str, target_id: int, target_type: str) -> str:
+    def downvote(self, agent_name: str, target_id: int, target_type: str) -> str:
         """Downvote a post or comment to decrease its score.
 
         Args:
-            current_user: The full display name of the user voting.
+            agent_name: The full display name of the user voting.
             target_id: The ID of the post or comment to downvote.
             target_type: Either "post" or "comment".
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         try:
             self._platform.vote(username, target_id, target_type, -1)
-            result_msg = f"{current_user_full} downvoted {target_type} {target_id}."
+            result_msg = f"{actor_display_name} downvoted {target_type} {target_id}."
         except Exception as e:
             result_msg = f"Error downvoting {target_type} {target_id}: {e}"
         self._print(result_msg, emoji="⬇️")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="downvote",
             data={"target_id": str(target_id), "target_type": target_type},
         )
         return result_msg
 
     @app_action
-    def get_home_feed(self, current_user: str, limit: int) -> str:
+    def get_home_feed(self, agent_name: str, limit: int) -> str:
         """Read your home feed showing posts from subreddits you've joined.
 
         Args:
-            current_user: The full display name of the user reading the feed.
+            agent_name: The full display name of the user reading the feed.
             limit: Maximum number of posts to retrieve.
         """
-        current_user_full = str(current_user)
-        timeline = self.get_timeline(current_user, limit)
+        actor_display_name = str(agent_name)
+        timeline = self.get_timeline(agent_name, limit)
         str_timeline = self.format_timeline_for_observation(timeline)
-        self._print(f"Retrieved {len(timeline)} posts for {current_user_full}", emoji="📊")
+        self._print(f"Retrieved {len(timeline)} posts for {actor_display_name}", emoji="📊")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="get_home_feed",
             data={"num_posts_retrieved": len(timeline)},
         )
-        return f"Reddit Home Feed for {current_user_full}:\n{str_timeline}"
+        return f"Reddit Home Feed for {actor_display_name}:\n{str_timeline}"
 
     @app_action
-    def update_profile(self, current_user: str, bio: str) -> str:
+    def update_profile(self, agent_name: str, bio: str) -> str:
         """Update your profile bio.
 
         Args:
-            current_user: The full display name of the user updating their profile.
+            agent_name: The full display name of the user updating their profile.
             bio: The new bio text for the profile.
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         try:
             self._platform.update_profile(username, bio)
-            msg = f'Profile updated for {current_user_full}: "{bio}"'
+            msg = f'Profile updated for {actor_display_name}: "{bio}"'
         except Exception as e:
             msg = f"Error updating profile: {e}"
         self._print(msg, emoji="✏️")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="update_profile",
             data={"new_bio": bio},
         )
         return msg
 
     @app_action
-    def view_profile(self, current_user: str, target_user: str) -> str:
+    def view_profile(self, agent_name: str, target_user: str) -> str:
         """View a user's profile including their bio and stats.
 
         Args:
-            current_user: The full display name of the user viewing the profile.
+            agent_name: The full display name of the user viewing the profile.
             target_user: The full display name of the user whose profile to view.
         """
         target_user_full = str(target_user)
@@ -543,15 +539,15 @@ class RedditLikeApp(SocialBackendApp):
         return msg
 
     @app_action
-    def get_post_comments(self, current_user: str, post_id: int, limit: int = 20) -> str:
+    def get_post_comments(self, agent_name: str, post_id: int, limit: int = 20) -> str:
         """Read the comments on a specific post.
 
         Args:
-            current_user: The full display name of the user reading comments.
+            agent_name: The full display name of the user reading comments.
             post_id: The ID of the post to read comments for.
             limit: Maximum number of comments to retrieve.
         """
-        current_user_full = str(current_user)
+        actor_display_name = str(agent_name)
         try:
             comments = self._platform.get_post_comments(post_id, limit=limit, as_tree=False)
             if comments:
@@ -570,18 +566,18 @@ class RedditLikeApp(SocialBackendApp):
             msg = f"Error fetching comments for post {post_id}: {e}"
         self._print(msg, emoji="💬")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="get_post_comments",
             data={"post_id": str(post_id)},
         )
         return msg
 
     @app_action
-    def search_subreddits(self, current_user: str, query: str, limit: int = 20) -> str:
+    def search_subreddits(self, agent_name: str, query: str, limit: int = 20) -> str:
         """Search for subreddits by name or description.
 
         Args:
-            current_user: The full display name of the user searching.
+            agent_name: The full display name of the user searching.
             query: The search text to look for.
             limit: Maximum number of results to return.
         """
@@ -603,108 +599,104 @@ class RedditLikeApp(SocialBackendApp):
     # ================================================================ #
 
     @app_action
-    def unlike_post(self, current_user: str, post_id: int) -> str:
+    def unlike_post(self, agent_name: str, post_id: int) -> str:
         """Remove an upvote from a post.
 
         Args:
-            current_user: The full display name of the user removing the upvote.
+            agent_name: The full display name of the user removing the upvote.
             post_id: The ID of the post to unlike.
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         result = self._platform.unlike_post(username, post_id)
-        msg = f"{current_user_full} {'removed upvote from' if result else 'could not remove upvote from'} post {post_id}."
+        msg = f"{actor_display_name} {'removed upvote from' if result else 'could not remove upvote from'} post {post_id}."
         self._print(msg, emoji="🚫⬆️")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="unlike_post",
             data={"post_id": str(post_id)},
         )
         return msg
 
     @app_action
-    def dislike_post(self, current_user: str, post_id: int) -> str:
+    def dislike_post(self, agent_name: str, post_id: int) -> str:
         """Downvote a post (negative reaction).
 
         Args:
-            current_user: The full display name of the user downvoting.
+            agent_name: The full display name of the user downvoting.
             post_id: The ID of the post to downvote.
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         result = self._platform.dislike_post(username, post_id)
-        msg = (
-            f"{current_user_full} {'downvoted' if result else 'could not downvote'} post {post_id}."
-        )
+        msg = f"{actor_display_name} {'downvoted' if result else 'could not downvote'} post {post_id}."
         self._print(msg, emoji="⬇️")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="dislike_post",
             data={"post_id": str(post_id)},
         )
         return msg
 
     @app_action
-    def undo_dislike_post(self, current_user: str, post_id: int) -> str:
+    def undo_dislike_post(self, agent_name: str, post_id: int) -> str:
         """Remove a downvote from a post.
 
         Args:
-            current_user: The full display name of the user removing the downvote.
+            agent_name: The full display name of the user removing the downvote.
             post_id: The ID of the post to undo downvote for.
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         result = self._platform.undo_dislike_post(username, post_id)
-        msg = f"{current_user_full} {'removed downvote from' if result else 'could not remove downvote from'} post {post_id}."
+        msg = f"{actor_display_name} {'removed downvote from' if result else 'could not remove downvote from'} post {post_id}."
         self._print(msg, emoji="🆗")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="undo_dislike_post",
             data={"post_id": str(post_id)},
         )
         return msg
 
     @app_action
-    def mute_user(self, current_user: str, target_user: str) -> str:
+    def mute_user(self, agent_name: str, target_user: str) -> str:
         """Mute another user to hide their posts.
 
         Args:
-            current_user: The full display name of the user doing the muting.
+            agent_name: The full display name of the user doing the muting.
             target_user: The full display name of the user to mute.
         """
-        current_user_full = str(current_user)
+        actor_display_name = str(agent_name)
         target_user_full = str(target_user)
-        src_username = self._get_username(current_user)
+        src_username = self._get_username(agent_name)
         tgt_username = self._get_username(target_user)
         result = self._platform.mute_user(src_username, tgt_username)
-        msg = f"{current_user_full} {'muted' if result else 'could not mute'} {target_user_full}."
+        msg = f"{actor_display_name} {'muted' if result else 'could not mute'} {target_user_full}."
         self._print(msg, emoji="🔇")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="mute_user",
             data={"target_user": target_user_full},
         )
         return msg
 
     @app_action
-    def unmute_user(self, current_user: str, target_user: str) -> str:
+    def unmute_user(self, agent_name: str, target_user: str) -> str:
         """Unmute a user.
 
         Args:
-            current_user: The full display name of the user doing the unmuting.
+            agent_name: The full display name of the user doing the unmuting.
             target_user: The full display name of the user to unmute.
         """
-        current_user_full = str(current_user)
+        actor_display_name = str(agent_name)
         target_user_full = str(target_user)
-        src_username = self._get_username(current_user)
+        src_username = self._get_username(agent_name)
         tgt_username = self._get_username(target_user)
         result = self._platform.unmute_user(src_username, tgt_username)
-        msg = (
-            f"{current_user_full} {'unmuted' if result else 'could not unmute'} {target_user_full}."
-        )
+        msg = f"{actor_display_name} {'unmuted' if result else 'could not unmute'} {target_user_full}."
         self._print(msg, emoji="🔊")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="unmute_user",
             data={"target_user": target_user_full},
         )
@@ -712,37 +704,37 @@ class RedditLikeApp(SocialBackendApp):
 
     @app_action
     def report_post(
-        self, current_user: str, post_id: int, reason: str = "Inappropriate content"
+        self, agent_name: str, post_id: int, reason: str = "Inappropriate content"
     ) -> str:
         """Report a post for moderation.
 
         Args:
-            current_user: The full display name of the user reporting.
+            agent_name: The full display name of the user reporting.
             post_id: The ID of the post to report.
             reason: The reason for reporting.
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         result = self._platform.report_post(username, post_id, reason)
-        msg = f"{current_user_full} {'reported' if result else 'could not report'} post {post_id} ({reason})."
+        msg = f"{actor_display_name} {'reported' if result else 'could not report'} post {post_id} ({reason})."
         self._print(msg, emoji="⚠️")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="report_post",
             data={"post_id": str(post_id), "reason": reason},
         )
         return msg
 
     @app_action
-    def get_trending_posts(self, current_user: str, limit: int = 10, days: int = 7) -> str:
+    def get_trending_posts(self, agent_name: str, limit: int = 10, days: int = 7) -> str:
         """Get trending posts from the last N days.
 
         Args:
-            current_user: The full display name of the user requesting trends.
+            agent_name: The full display name of the user requesting trends.
             limit: Maximum number of posts to return.
             days: Number of days to consider for trending.
         """
-        current_user_full = str(current_user)
+        actor_display_name = str(agent_name)
         try:
             results = self._platform.get_trending_posts(limit=limit, days=days)
             if results:
@@ -759,23 +751,23 @@ class RedditLikeApp(SocialBackendApp):
             msg = f"Error getting trending posts: {e}"
         self._print(msg, emoji="🔥")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="get_trending",
             data={"limit": limit, "days": days},
         )
         return msg
 
     @app_action
-    def do_nothing(self, current_user: str) -> str:
+    def do_nothing(self, agent_name: str) -> str:
         """Take no action (used as a baseline or filler action).
 
         Args:
-            current_user: The full display name of the user.
+            agent_name: The full display name of the user.
         """
-        current_user_full = str(current_user)
-        msg = f"{current_user_full} did nothing."
+        actor_display_name = str(agent_name)
+        msg = f"{actor_display_name} did nothing."
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="do_nothing",
             data={},
         )
@@ -786,99 +778,99 @@ class RedditLikeApp(SocialBackendApp):
     # ------------------------------------------------------------------ #
 
     # @app_action
-    # def create_subreddit(self, current_user: str, subreddit_name: str, description: str) -> str:
+    # def create_subreddit(self, agent_name: str, subreddit_name: str, description: str) -> str:
     #     """Create a new subreddit.
     #
     #     Args:
-    #         current_user: The full display name of the user creating the subreddit.
+    #         agent_name: The full display name of the user creating the subreddit.
     #         subreddit_name: The name for the new subreddit.
     #         description: A description of the subreddit's purpose and topic.
     #     """
-    #     current_user_full = str(current_user)
+    #     actor_display_name = str(agent_name)
     #     try:
     #         sub_id = self._platform.create_subreddit(subreddit_name, description)
-    #         msg = f"{current_user_full} created subreddit r/{subreddit_name} (ID: {sub_id})."
+    #         msg = f"{actor_display_name} created subreddit r/{subreddit_name} (ID: {sub_id})."
     #     except Exception as e:
     #         msg = f"Error creating subreddit: {e}"
     #     self._print(msg, emoji="🏠")
     #     if self.action_logger:
     #         self.action_logger.log({
-    #             "source_user": current_user_full,
+    #             "source_user": actor_display_name,
     #             "label": "create_subreddit",
     #             "data": {"subreddit_name": subreddit_name, "description": description},
     #         })
     #     return msg
 
     # @app_action
-    # def join_subreddit(self, current_user: str, subreddit_name: str) -> str:
+    # def join_subreddit(self, agent_name: str, subreddit_name: str) -> str:
     #     """Join a subreddit to see its posts in your home feed.
     #
     #     Args:
-    #         current_user: The full display name of the user joining.
+    #         agent_name: The full display name of the user joining.
     #         subreddit_name: The name of the subreddit to join.
     #     """
-    #     current_user_full = str(current_user)
-    #     username = self._get_username(current_user)
+    #     actor_display_name = str(agent_name)
+    #     username = self._get_username(agent_name)
     #     try:
     #         self._platform.join_subreddit(username, subreddit_name)
-    #         msg = f"{current_user_full} joined r/{subreddit_name}."
+    #         msg = f"{actor_display_name} joined r/{subreddit_name}."
     #     except Exception as e:
     #         msg = f"Error joining subreddit: {e}"
     #     self._print(msg, emoji="📌")
     #     if self.action_logger:
     #         self.action_logger.log({
-    #             "source_user": current_user_full,
+    #             "source_user": actor_display_name,
     #             "label": "join_subreddit",
     #             "data": {"subreddit_name": subreddit_name},
     #         })
     #     return msg
 
     # @app_action
-    # def leave_subreddit(self, current_user: str, subreddit_name: str) -> str:
+    # def leave_subreddit(self, agent_name: str, subreddit_name: str) -> str:
     #     """Leave a subreddit to stop seeing its posts.
     #
     #     Args:
-    #         current_user: The full display name of the user leaving.
+    #         agent_name: The full display name of the user leaving.
     #         subreddit_name: The name of the subreddit to leave.
     #     """
-    #     current_user_full = str(current_user)
-    #     username = self._get_username(current_user)
+    #     actor_display_name = str(agent_name)
+    #     username = self._get_username(agent_name)
     #     try:
     #         self._platform.leave_subreddit(username, subreddit_name)
-    #         msg = f"{current_user_full} left r/{subreddit_name}."
+    #         msg = f"{actor_display_name} left r/{subreddit_name}."
     #     except Exception as e:
     #         msg = f"Error leaving subreddit: {e}"
     #     self._print(msg, emoji="🚪")
     #     if self.action_logger:
     #         self.action_logger.log({
-    #             "source_user": current_user_full,
+    #             "source_user": actor_display_name,
     #             "label": "leave_subreddit",
     #             "data": {"subreddit_name": subreddit_name},
     #         })
     #     return msg
 
     # @app_action
-    # def get_subreddit_feed(self, current_user: str, subreddit_name: str, limit: int) -> str:
+    # def get_subreddit_feed(self, agent_name: str, subreddit_name: str, limit: int) -> str:
     #     """Read the feed for a specific subreddit.
     #
     #     Args:
-    #         current_user: The full display name of the user browsing.
+    #         agent_name: The full display name of the user browsing.
     #         subreddit_name: The name of the subreddit to browse.
     #         limit: Maximum number of posts to retrieve.
     #     """
-    #     current_user_full = str(current_user)
-    #     username = self._get_username(current_user)
+    #     actor_display_name = str(agent_name)
+    #     username = self._get_username(agent_name)
     #     try:
     #         feed = self._platform.get_subreddit_feed(subreddit_name, limit=limit)
     #         posts = feed.get("posts", [])
     #         str_feed = self.format_timeline_for_observation(posts)
-    #         msg = f"r/{subreddit_name} Feed for {current_user_full}:\n{str_feed}"
+    #         msg = f"r/{subreddit_name} Feed for {actor_display_name}:\n{str_feed}"
     #     except Exception as e:
     #         msg = f"Error fetching subreddit feed: {e}"
     #     self._print(msg, emoji="📰")
     #     if self.action_logger:
     #         self.action_logger.log({
-    #             "source_user": current_user_full,
+    #             "source_user": actor_display_name,
     #             "label": "get_subreddit_feed",
     #             "data": {"subreddit_name": subreddit_name},
     #         })

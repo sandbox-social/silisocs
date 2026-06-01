@@ -12,6 +12,7 @@ from silisocs.runtime.construction.agent_builders import (
     AgentBuilder,
     PersonaPipelineAgentBuilder,
 )
+from silisocs.runtime.construction.agent_builders.common import validate_unique_agent_names
 from silisocs.runtime.construction.specs import AgentConfig
 
 _RESERVED_BUILDER_PARAMS = {"scenario_name", "project_root"}
@@ -22,7 +23,7 @@ def build_agent_configs(cfg: DictConfig) -> list[AgentConfig]:
     builder_cls = _resolve_builder_class(OmegaConf.select(cfg, "agents.builder.class_path"))
     params = _builder_params(cfg)
     builder = builder_cls(cfg.agents, params=params)
-    return builder.build_agent_configs()
+    return validate_unique_agent_names(builder.build_agent_configs())
 
 
 def _resolve_builder_class(class_path: str | None) -> type[AgentBuilder]:

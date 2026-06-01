@@ -6,6 +6,10 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from silisocs.environments.backends.base import (
+    LEGACY_RUNTIME_AGENT_PARAMS,
+    RUNTIME_AGENT_PARAM,
+)
 from silisocs.environments.gm.components.base import (
     ComponentState,
     ResolveComponent,
@@ -37,6 +41,13 @@ _TARGET_REQUIRED_ACTIONS = {
     "retweet",
     "boost",
 }
+_RUNTIME_ARG_PATTERN = re.compile(
+    r"(?im)^\s*(?:"
+    + "|".join(
+        re.escape(name) for name in sorted({RUNTIME_AGENT_PARAM, *LEGACY_RUNTIME_AGENT_PARAMS})
+    )
+    + r")\s*:"
+)
 
 
 def _normalize_target_id(action_type: str, target_id: str) -> str:
@@ -156,11 +167,15 @@ class GenericActionResolveComponent(_BaseResolveComponent):
             return ""
         action_name = action_match.group(1).strip()
         args_text = action_text[action_match.end() :].strip()
-        if self._action_has_parameter(action_name, "current_user") and not re.search(
-            r"(?im)^\s*current_user\s*:",
-            args_text,
-        ):
-            args_text = f"current_user: {active_agent}" + (f"\n{args_text}" if args_text else "")
+        if _RUNTIME_ARG_PATTERN.search(args_text):
+            raise ValueError(
+                "Agent action output must not include runtime-owned actor arguments "
+                f"({RUNTIME_AGENT_PARAM} or legacy current_user)."
+            )
+        if self._action_has_parameter(action_name, RUNTIME_AGENT_PARAM):
+            args_text = f"{RUNTIME_AGENT_PARAM}: {active_agent}" + (
+                f"\n{args_text}" if args_text else ""
+            )
         return self.backend.invoke_action_by_name(action_name, args_text) or ""
 
 
@@ -177,11 +192,16 @@ class ToolCallingResolveComponent(_BaseResolveComponent):
             normalized_calls: list[tuple[str, dict[str, Any]]] = []
             for tool_name, payload in tool_calls:
                 payload = dict(payload)
-                if (
-                    self._action_has_parameter(tool_name, "current_user")
-                    and "current_user" not in payload
-                ):
-                    payload["current_user"] = active_agent
+                provided_actor_args = sorted(
+                    set(payload) & ({RUNTIME_AGENT_PARAM} | set(LEGACY_RUNTIME_AGENT_PARAMS))
+                )
+                if provided_actor_args:
+                    raise ValueError(
+                        "Agent tool calls must not include runtime-owned actor arguments: "
+                        + ", ".join(provided_actor_args)
+                    )
+                if self._action_has_parameter(tool_name, RUNTIME_AGENT_PARAM):
+                    payload[RUNTIME_AGENT_PARAM] = active_agent
                 normalized_calls.append((tool_name, payload))
             results = [
                 str(self.backend.invoke_action_with_kwargs(tool_name, payload))

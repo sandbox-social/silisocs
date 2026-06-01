@@ -160,25 +160,25 @@ class ResourceMarketApp(BackendApp):
         if callable(log_fn):
             log_fn({"event_type": "resource_market", "message": event})
 
-    def _ensure_agent(self, current_user: str) -> str | None:
-        if current_user not in self._cash:
-            return f"Unknown market participant: {current_user}"
+    def _ensure_agent(self, agent_name: str) -> str | None:
+        if agent_name not in self._cash:
+            return f"Unknown market participant: {agent_name}"
         return None
 
-    def _inventory_count(self, current_user: str, resource: str) -> int:
-        return int(self._inventory.setdefault(current_user, {}).get(resource, 0))
+    def _inventory_count(self, agent_name: str, resource: str) -> int:
+        return int(self._inventory.setdefault(agent_name, {}).get(resource, 0))
 
-    def _needs_for_agent(self, current_user: str) -> dict[str, int]:
-        role = self._roles.get(current_user, "")
-        raw = self.role_needs.get(current_user, self.role_needs.get(role, {}))
+    def _needs_for_agent(self, agent_name: str) -> dict[str, int]:
+        role = self._roles.get(agent_name, "")
+        raw = self.role_needs.get(agent_name, self.role_needs.get(role, {}))
         if not isinstance(raw, dict):
-            raise TypeError(f"role_needs for {role or current_user!r} must be a mapping.")
+            raise TypeError(f"role_needs for {role or agent_name!r} must be a mapping.")
         return {
             str(resource): int(quantity) for resource, quantity in raw.items() if int(quantity) > 0
         }
 
-    def _production_capabilities_for_agent(self, current_user: str) -> dict[str, int] | None:
-        raw = self._capability_config(current_user)
+    def _production_capabilities_for_agent(self, agent_name: str) -> dict[str, int] | None:
+        raw = self._capability_config(agent_name)
         if raw is None:
             return None
         if isinstance(raw, list):
@@ -194,10 +194,10 @@ class ResourceMarketApp(BackendApp):
             "or lists of resource names."
         )
 
-    def _capability_config(self, current_user: str) -> Any:
-        role = self._roles.get(current_user, "")
-        if current_user in self.production_capabilities:
-            return self.production_capabilities[current_user]
+    def _capability_config(self, agent_name: str) -> Any:
+        role = self._roles.get(agent_name, "")
+        if agent_name in self.production_capabilities:
+            return self.production_capabilities[agent_name]
         if role in self.production_capabilities:
             return self.production_capabilities[role]
         if "default" in self.production_capabilities:
@@ -205,40 +205,40 @@ class ResourceMarketApp(BackendApp):
         return None
 
     @app_action(selectable_name="INSPECT_MARKET", description="Inspect current market state")
-    def inspect_market(self, current_user: str) -> str:
+    def inspect_market(self, agent_name: str) -> str:
         """Inspect current cash, inventory, listings, and recent events."""
-        error = self._ensure_agent(current_user)
+        error = self._ensure_agent(agent_name)
         if error:
             return error
-        return self.observe(current_user)
+        return self.observe(agent_name)
 
     @app_action(selectable_name="PRODUCE_RESOURCE", description="Produce a resource")
-    def produce_resource(self, current_user: str, resource: str, quantity: int = 1) -> str:
+    def produce_resource(self, agent_name: str, resource: str, quantity: int = 1) -> str:
         """Add newly produced resource units to the current user's inventory."""
-        error = self._ensure_agent(current_user)
+        error = self._ensure_agent(agent_name)
         if error:
             return error
         quantity = int(quantity)
         if quantity <= 0:
             return "Quantity must be positive."
-        capabilities = self._production_capabilities_for_agent(current_user)
+        capabilities = self._production_capabilities_for_agent(agent_name)
         if capabilities is not None:
             max_quantity = capabilities.get(resource)
             if max_quantity is None:
                 allowed = ", ".join(sorted(capabilities)) or "none"
-                return f"{current_user} cannot produce {resource}. Allowed resources: {allowed}."
+                return f"{agent_name} cannot produce {resource}. Allowed resources: {allowed}."
             if quantity > max_quantity:
-                return f"{current_user} can produce at most {max_quantity} {resource} per action."
-        inventory = self._inventory.setdefault(current_user, {})
+                return f"{agent_name} can produce at most {max_quantity} {resource} per action."
+        inventory = self._inventory.setdefault(agent_name, {})
         inventory[resource] = int(inventory.get(resource, 0)) + quantity
-        event = f"{current_user} produced {quantity} {resource}."
+        event = f"{agent_name} produced {quantity} {resource}."
         self._record(event)
         return event
 
     @app_action(selectable_name="LIST_RESOURCE", description="List a resource for sale")
-    def list_resource(self, current_user: str, resource: str, quantity: int, price: int) -> str:
+    def list_resource(self, agent_name: str, resource: str, quantity: int, price: int) -> str:
         """Move a resource quantity into an open listing for sale."""
-        error = self._ensure_agent(current_user)
+        error = self._ensure_agent(agent_name)
         if error:
             return error
         quantity = int(quantity)
@@ -247,14 +247,14 @@ class ResourceMarketApp(BackendApp):
             return "Quantity must be positive."
         if price <= 0:
             return "Price must be positive."
-        available = self._inventory_count(current_user, resource)
+        available = self._inventory_count(agent_name, resource)
         if available < quantity:
-            return f"{current_user} does not have {quantity} {resource} to list."
+            return f"{agent_name} does not have {quantity} {resource} to list."
 
-        self._inventory[current_user][resource] = available - quantity
+        self._inventory[agent_name][resource] = available - quantity
         listing = Listing(
             listing_id=self._next_listing_id,
-            seller=current_user,
+            seller=agent_name,
             resource=resource,
             quantity=quantity,
             price=price,
@@ -262,54 +262,54 @@ class ResourceMarketApp(BackendApp):
         self._listings[listing.listing_id] = listing
         self._next_listing_id += 1
         event = (
-            f"Listing {listing.listing_id} created: {current_user} sells "
+            f"Listing {listing.listing_id} created: {agent_name} sells "
             f"{quantity} {resource} for {price}."
         )
         self._record(event)
         return event
 
     @app_action(selectable_name="CANCEL_LISTING", description="Cancel one of the user's listings")
-    def cancel_listing(self, current_user: str, listing_id: int) -> str:
+    def cancel_listing(self, agent_name: str, listing_id: int) -> str:
         """Cancel an open listing and return the resource to the seller."""
-        error = self._ensure_agent(current_user)
+        error = self._ensure_agent(agent_name)
         if error:
             return error
         listing = self._listings.get(int(listing_id))
         if listing is None or not listing.open:
             return f"Listing {listing_id} is not open."
-        if listing.seller != current_user:
-            return f"{current_user} cannot cancel listing {listing_id}."
-        inventory = self._inventory.setdefault(current_user, {})
+        if listing.seller != agent_name:
+            return f"{agent_name} cannot cancel listing {listing_id}."
+        inventory = self._inventory.setdefault(agent_name, {})
         inventory[listing.resource] = int(inventory.get(listing.resource, 0)) + listing.quantity
         listing.open = False
-        event = f"{current_user} cancelled listing {listing.listing_id}."
+        event = f"{agent_name} cancelled listing {listing.listing_id}."
         self._record(event)
         return event
 
     @app_action(selectable_name="BUY_LISTING", description="Buy an open market listing")
-    def buy_listing(self, current_user: str, listing_id: int) -> str:
+    def buy_listing(self, agent_name: str, listing_id: int) -> str:
         """Buy an open listing by ID."""
-        error = self._ensure_agent(current_user)
+        error = self._ensure_agent(agent_name)
         if error:
             return error
         listing_id = int(listing_id)
         listing = self._listings.get(listing_id)
         if listing is None or not listing.open:
             return f"Listing {listing_id} is not open."
-        if listing.seller == current_user:
+        if listing.seller == agent_name:
             return "Agents cannot buy their own listing."
-        if self._cash[current_user] < listing.price:
-            return f"{current_user} does not have enough cash to buy listing {listing_id}."
+        if self._cash[agent_name] < listing.price:
+            return f"{agent_name} does not have enough cash to buy listing {listing_id}."
 
-        self._cash[current_user] -= listing.price
+        self._cash[agent_name] -= listing.price
         self._cash[listing.seller] += listing.price
-        buyer_inventory = self._inventory.setdefault(current_user, {})
+        buyer_inventory = self._inventory.setdefault(agent_name, {})
         buyer_inventory[listing.resource] = (
             int(buyer_inventory.get(listing.resource, 0)) + listing.quantity
         )
         listing.open = False
         event = (
-            f"{current_user} bought {listing.quantity} {listing.resource} "
+            f"{agent_name} bought {listing.quantity} {listing.resource} "
             f"from {listing.seller} for {listing.price}."
         )
         self._record(event)
@@ -318,46 +318,46 @@ class ResourceMarketApp(BackendApp):
     @app_action(selectable_name="TRANSFER_RESOURCE", description="Give inventory to another agent")
     def transfer_resource(
         self,
-        current_user: str,
+        agent_name: str,
         target_user: str,
         resource: str,
         quantity: int,
     ) -> str:
         """Transfer a resource quantity directly to another market participant."""
-        error = self._ensure_agent(current_user)
+        error = self._ensure_agent(agent_name)
         if error:
             return error
         target_error = self._ensure_agent(target_user)
         if target_error:
             return target_error
-        if current_user == target_user:
+        if agent_name == target_user:
             return "Agents cannot transfer resources to themselves."
         quantity = int(quantity)
         if quantity <= 0:
             return "Quantity must be positive."
-        available = self._inventory_count(current_user, resource)
+        available = self._inventory_count(agent_name, resource)
         if available < quantity:
-            return f"{current_user} does not have {quantity} {resource} to transfer."
-        self._inventory[current_user][resource] = available - quantity
+            return f"{agent_name} does not have {quantity} {resource} to transfer."
+        self._inventory[agent_name][resource] = available - quantity
         target_inventory = self._inventory.setdefault(target_user, {})
         target_inventory[resource] = int(target_inventory.get(resource, 0)) + quantity
-        event = f"{current_user} transferred {quantity} {resource} to {target_user}."
+        event = f"{agent_name} transferred {quantity} {resource} to {target_user}."
         self._record(event)
         return event
 
     @app_action(selectable_name="CONSUME_RESOURCE", description="Consume inventory")
-    def consume_resource(self, current_user: str, resource: str, quantity: int = 1) -> str:
+    def consume_resource(self, agent_name: str, resource: str, quantity: int = 1) -> str:
         """Consume a resource from the current user's inventory."""
-        error = self._ensure_agent(current_user)
+        error = self._ensure_agent(agent_name)
         if error:
             return error
         quantity = int(quantity)
         if quantity <= 0:
             return "Quantity must be positive."
-        available = self._inventory_count(current_user, resource)
+        available = self._inventory_count(agent_name, resource)
         if available < quantity:
-            return f"{current_user} does not have {quantity} {resource} to consume."
-        self._inventory[current_user][resource] = available - quantity
-        event = f"{current_user} consumed {quantity} {resource}."
+            return f"{agent_name} does not have {quantity} {resource} to consume."
+        self._inventory[agent_name][resource] = available - quantity
+        event = f"{agent_name} consumed {quantity} {resource}."
         self._record(event)
         return event

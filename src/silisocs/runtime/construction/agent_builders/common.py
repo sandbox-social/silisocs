@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import re
 from collections.abc import Mapping
 from typing import Any
@@ -10,8 +9,6 @@ from typing import Any
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from silisocs.runtime.construction.specs import AgentConfig
-
-logger = logging.getLogger(__name__)
 
 
 def to_plain(data: Any) -> Any:
@@ -45,6 +42,12 @@ def coerce_text(value: Any, *, joiner: str = "\n") -> str:
     if isinstance(value, list):
         return joiner.join(str(item).strip() for item in value if str(item).strip())
     return str(value).strip()
+
+
+def derive_name(context: str, *, words: int = 2) -> str:
+    """Derive a compact display name from persona text."""
+    tokens = re.findall(r"[A-Za-z0-9']+", context or "")
+    return " ".join(tokens[: max(1, words)]).strip()
 
 
 def extract_path(record: Any, dotted_path: Any) -> Any:
@@ -90,12 +93,6 @@ def resolve_source(record: Any, spec: Any) -> Any:
     return re.sub(r"\{([^{}]+)\}", _sub, spec)
 
 
-def derive_name(context: str, words: int = 2) -> str:
-    """Derive a stable fallback name from the first words of context."""
-    tokens = re.findall(r"[A-Za-z0-9']+", context or "")
-    return " ".join(tokens[: max(1, words)]) if tokens else ""
-
-
 def safe_path_exists(candidate: Any) -> bool:
     """Check path existence while treating OS path errors as absence."""
     try:
@@ -104,28 +101,33 @@ def safe_path_exists(candidate: Any) -> bool:
         return False
 
 
-def deduplicate_agent_configs(configs: list[AgentConfig]) -> list[AgentConfig]:
-    """Drop duplicate named agents while preserving first occurrence."""
-    result: list[AgentConfig] = []
+def validate_unique_agent_names(configs: list[AgentConfig]) -> list[AgentConfig]:
+    """Validate that every agent spec has a unique, explicit name."""
     seen: set[str] = set()
-    skipped: list[str] = []
-    for cfg in configs:
+    duplicates: list[str] = []
+    missing: list[int] = []
+    for idx, cfg in enumerate(configs, start=1):
         name = str((cfg.params or {}).get("name", "")).strip()
         if not name:
-            result.append(cfg)
+            missing.append(idx)
             continue
         if name in seen:
-            skipped.append(name)
+            duplicates.append(name)
             continue
         seen.add(name)
-        result.append(cfg)
-    if skipped:
-        unique = sorted(set(skipped))
-        preview = ", ".join(unique[:10]) + (", ..." if len(unique) > 10 else "")
-        logger.warning(
-            "Skipped %d duplicate agent names (%d unique): %s",
-            len(skipped),
-            len(unique),
-            preview,
+
+    errors: list[str] = []
+    if missing:
+        errors.append(
+            "missing names at spec index "
+            + ", ".join(str(index) for index in missing[:10])
+            + (", ..." if len(missing) > 10 else "")
         )
-    return result
+    if duplicates:
+        unique = sorted(set(duplicates))
+        errors.append(
+            "duplicate names: " + ", ".join(unique[:10]) + (", ..." if len(unique) > 10 else "")
+        )
+    if errors:
+        raise ValueError("Agent names must be explicit and unique: " + "; ".join(errors))
+    return configs

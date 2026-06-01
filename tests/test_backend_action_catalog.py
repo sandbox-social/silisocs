@@ -18,12 +18,12 @@ class _FakeApp(SocialBackendApp):
         del agent_names, kwargs
 
     @app_action(selectable_name="post_message", description="Post a message")
-    def create_tweet(self, current_user: str, status: str) -> str:
-        return f"{current_user}:{status}"
+    def create_tweet(self, agent_name: str, status: str) -> str:
+        return f"{agent_name}:{status}"
 
     @app_action
-    def like_tweet(self, current_user: str, post_id: int) -> str:
-        return f"{current_user}:{post_id}"
+    def like_tweet(self, agent_name: str, post_id: int) -> str:
+        return f"{agent_name}:{post_id}"
 
 
 def test_action_catalog_exposes_selectable_names() -> None:
@@ -35,6 +35,8 @@ def test_action_catalog_exposes_selectable_names() -> None:
 
     assert "create_tweet" in names
     assert "post_message" in selectable
+    post = next(item for item in catalog if item["selectable_name"] == "post_message")
+    assert [param["name"] for param in post["parameters"]] == ["status"]
 
 
 def test_enabled_action_filtering_accepts_aliases() -> None:
@@ -50,10 +52,23 @@ def test_invoke_action_with_kwargs_supports_selectable_name() -> None:
     app = _FakeApp()
     output = app.invoke_action_with_kwargs(
         "post_message",
-        {"current_user": "Alice Smith", "status": "Hello"},
+        {"agent_name": "Alice Smith", "status": "Hello"},
     )
 
     assert output == "Alice Smith:Hello"
+
+
+def test_agent_facing_prompts_and_tools_omit_runtime_actor_arg() -> None:
+    app = _FakeApp()
+
+    prompt = app.generate_generic_action_prompt()
+    tools = app.generate_tool_schemas()
+
+    assert "agent_name" not in prompt
+    post_schema = next(tool for tool in tools if tool["function"]["name"] == "post_message")
+    params = post_schema["function"]["parameters"]
+    assert list(params["properties"]) == ["status"]
+    assert params["required"] == ["status"]
 
 
 def test_finished_action_is_available_and_invokable() -> None:

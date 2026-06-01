@@ -34,6 +34,34 @@ class _ExplicitCustomBuilder(AgentBuilder):
         ]
 
 
+class _DuplicateCustomBuilder(AgentBuilder):
+    """Custom builder that violates the unique-name contract."""
+
+    def build_agent_configs(self) -> list[AgentConfig]:
+        return [
+            AgentConfig(
+                class_path="silisocs.agents.native.NativeAgent",
+                params={"name": "Duplicate", "context": "First."},
+            ),
+            AgentConfig(
+                class_path="silisocs.agents.native.NativeAgent",
+                params={"name": "Duplicate", "context": "Second."},
+            ),
+        ]
+
+
+class _MissingNameCustomBuilder(AgentBuilder):
+    """Custom builder that violates the explicit-name contract."""
+
+    def build_agent_configs(self) -> list[AgentConfig]:
+        return [
+            AgentConfig(
+                class_path="silisocs.agents.native.NativeAgent",
+                params={"context": "No runtime identity."},
+            )
+        ]
+
+
 def test_hf_dataset_builds_expected_agent_params(monkeypatch) -> None:
     """Build from hf_dataset and verify mapped/normalized params in AgentConfig."""
 
@@ -203,8 +231,8 @@ def test_field_map_template_combines_multiple_fields() -> None:
     )
 
 
-def test_hf_dataset_derives_name_from_context(monkeypatch) -> None:
-    """Name can be derived from HF context when class omits explicit name mapping."""
+def test_nemotron_hf_dataset_derives_name_from_persona(monkeypatch) -> None:
+    """The default builder preserves Nemotron-specific name derivation."""
 
     def fake_load_dataset(dataset: str, split: str):
         assert dataset == "nvidia/Nemotron-Personas-USA"
@@ -230,7 +258,6 @@ def test_hf_dataset_derives_name_from_context(monkeypatch) -> None:
                             "dataset": "nvidia/Nemotron-Personas-USA",
                             "split": "train",
                         },
-                        "name_from_context_words": 2,
                         "field_map": {
                             "context": "persona",
                         },
@@ -245,7 +272,103 @@ def test_hf_dataset_derives_name_from_context(monkeypatch) -> None:
 
     assert len(agents) == 1
     assert agents[0].params["name"] == "Jordan Rivera"
-    assert agents[0].params["context"].startswith("Jordan Rivera is a civic-minded")
+    assert agents[0].params["context"] == (
+        "Jordan Rivera is a civic-minded resident focused on local policy."
+    )
+
+
+def test_unknown_hf_dataset_requires_mapped_or_derived_name(monkeypatch) -> None:
+    """Other HF datasets fail unless they map or explicitly derive a name."""
+
+    def fake_load_dataset(dataset: str, split: str):
+        assert dataset == "example/UnnamedPersonas"
+        assert split == "train"
+        return [{"persona": "Jordan Rivera is a civic-minded resident."}]
+
+    monkeypatch.setitem(sys.modules, "datasets", SimpleNamespace(load_dataset=fake_load_dataset))
+
+    scenario_cfg = OmegaConf.create(
+        {
+            "scenario_name": "election",
+            "persona_pipeline": {
+                "classes": {
+                    "voter": {
+                        "count": 1,
+                        "class_path": "silisocs.agents.native.NativeAgent",
+                        "data": {
+                            "source": "hf_dataset",
+                            "dataset": "example/UnnamedPersonas",
+                            "split": "train",
+                        },
+                        "field_map": {
+                            "context": "persona",
+                        },
+                    }
+                },
+            },
+        }
+    )
+
+    with pytest.raises(ValueError, match="missing `name`"):
+        _TestBuilder(scenario_cfg).build_agent_configs()
+
+
+def test_explicit_name_derivation_option_for_inline_records() -> None:
+    """Scenario builders can request name derivation as intentional builder logic."""
+    scenario_cfg = OmegaConf.create(
+        {
+            "scenario_name": "election",
+            "persona_pipeline": {
+                "classes": {
+                    "voter": {
+                        "count": 1,
+                        "class_path": "silisocs.agents.native.NativeAgent",
+                        "derive_name_from_context": True,
+                        "name_from_context_words": 3,
+                        "data": {
+                            "source": "inline",
+                            "records": [
+                                {
+                                    "persona": "Jordan Rivera volunteers at the local library.",
+                                }
+                            ],
+                        },
+                        "field_map": {
+                            "context": "persona",
+                        },
+                    }
+                },
+            },
+        }
+    )
+
+    agents = _TestBuilder(scenario_cfg).build_agent_configs()
+
+    assert len(agents) == 1
+    assert agents[0].params["name"] == "Jordan Rivera volunteers"
+
+
+def test_empty_mapped_name_fails_loudly() -> None:
+    scenario_cfg = OmegaConf.create(
+        {
+            "scenario_name": "election",
+            "persona_pipeline": {
+                "classes": {
+                    "voter": {
+                        "class_path": "silisocs.agents.native.NativeAgent",
+                        "data": {
+                            "source": "inline",
+                            "records": [{"name": "  ", "persona": "Has context."}],
+                        },
+                        "field_map": {"name": "name", "context": "persona"},
+                    }
+                },
+            },
+        }
+    )
+
+    with pytest.raises(ValueError, match="missing `name`"):
+        _TestBuilder(scenario_cfg).build_agent_configs()
 
 
 def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
@@ -256,6 +379,7 @@ def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
         if dataset == "nvidia/Nemotron-Personas-USA":
             return [
                 {
+                    "name": "Taylor Brooks",
                     "persona": (
                         "Taylor Brooks is a community volunteer and follows municipal policy debates."
                     ),
@@ -264,6 +388,7 @@ def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
         if dataset == "Salesforce/SCOPE-Persona":
             return [
                 {
+                    "name": "Maya Patel",
                     "demographic_information": "Age 42, lives in Storhampton.",
                     "personal_identity_and_life_narratives": "Former teacher, now runs a local nonprofit.",
                     "personality_traits": "Pragmatic, empathetic, detail-oriented.",
@@ -288,6 +413,7 @@ def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
                             "split": "train",
                         },
                         "field_map": {
+                            "name": "name",
                             "context": "persona",
                         },
                     },
@@ -300,12 +426,13 @@ def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
                             "split": "train",
                         },
                         "field_map": {
+                            "name": "name",
                             "context": (
                                 "{demographic_information}\n\n"
                                 "{personal_identity_and_life_narratives}\n\n"
                                 "{personality_traits}\n\n"
                                 "{sociodemographic_behavior}"
-                            )
+                            ),
                         },
                     },
                 },
@@ -323,7 +450,7 @@ def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
     assert nemotron_agent.params["context"].startswith("Taylor Brooks is a community volunteer")
 
     scope_agent = agents[1]
-    assert scope_agent.params["name"] == "scope_voter_1"
+    assert scope_agent.params["name"] == "Maya Patel"
     assert scope_agent.params["context"] == (
         "Age 42, lives in Storhampton.\n\n"
         "Former teacher, now runs a local nonprofit.\n\n"
@@ -347,7 +474,7 @@ def test_hf_dataset_materializes_only_requested_count(monkeypatch) -> None:
             # Capture requested select size; return only selected rows.
             rows = list(indices)
             self.selected_n = len(rows)
-            return [{"persona": f"Person {i} from dataset"} for i in rows]
+            return [{"name": f"Person {i}", "persona": f"Person {i} from dataset"} for i in rows]
 
     fake_dataset = _FakeDataset(size=1_000_000)
 
@@ -372,6 +499,7 @@ def test_hf_dataset_materializes_only_requested_count(monkeypatch) -> None:
                             "split": "train",
                         },
                         "field_map": {
+                            "name": "name",
                             "context": "persona",
                         },
                     }
@@ -482,10 +610,14 @@ def test_field_map_case_mismatch_still_resolves_context() -> None:
                         "data": {
                             "source": "inline",
                             "records": [
-                                {"persona": "Local resident who follows city council updates."}
+                                {
+                                    "name": "Morgan",
+                                    "persona": "Local resident who follows city council updates.",
+                                }
                             ],
                         },
                         "field_map": {
+                            "name": "Name",
                             "context": "Persona",
                         },
                     }
@@ -501,8 +633,8 @@ def test_field_map_case_mismatch_still_resolves_context() -> None:
     assert agents[0].params["context"] == "Local resident who follows city council updates."
 
 
-def test_class_pipeline_duplicate_names_are_skipped() -> None:
-    """Class pipeline should skip duplicate names before simulation instantiation."""
+def test_class_pipeline_duplicate_names_fail_loudly() -> None:
+    """Class pipeline should reject duplicate runtime agent names."""
     scenario_cfg = OmegaConf.create(
         {
             "scenario_name": "election",
@@ -530,10 +662,8 @@ def test_class_pipeline_duplicate_names_are_skipped() -> None:
     )
 
     builder = _TestBuilder(scenario_cfg)
-    agents = builder.build_agent_configs()
-
-    assert [a.params["name"] for a in agents] == ["Alex Kim", "Jordan Lee"]
-    assert len(agents) == 2
+    with pytest.raises(ValueError, match="duplicate names: Alex Kim"):
+        builder.build_agent_configs()
 
 
 def test_agent_builder_contract_allows_custom_subclass() -> None:
@@ -571,6 +701,33 @@ def test_explicit_builder_class_path_is_used() -> None:
     agents = build_agent_configs(cfg)
 
     assert [agent.params["name"] for agent in agents] == ["Custom Builder Agent"]
+
+
+@pytest.mark.parametrize(
+    ("builder_class", "message"),
+    [
+        ("_DuplicateCustomBuilder", "duplicate names: Duplicate"),
+        ("_MissingNameCustomBuilder", "missing names"),
+    ],
+)
+def test_custom_builder_outputs_must_have_unique_names(
+    builder_class: str,
+    message: str,
+) -> None:
+    cfg = OmegaConf.create(
+        {
+            "scenario_name": "election",
+            "agents": {
+                "builder": {
+                    "class_path": f"{__name__}.{builder_class}",
+                    "params": {},
+                }
+            },
+        }
+    )
+
+    with pytest.raises(ValueError, match=message):
+        build_agent_configs(cfg)
 
 
 def test_builder_params_cannot_override_reserved_runtime_values() -> None:
