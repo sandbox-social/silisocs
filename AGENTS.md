@@ -418,10 +418,9 @@ If instead you want to **design and run experiments via config only**:
 **Detailed architecture deep dive** (multi-flow, multi-GM, component routing):
 → See [agent_docs/architecture.md](agent_docs/architecture.md) — Reference for complex orchestration patterns
 
-**Guided workflows** (interactive design skills — readable by any coding agent):
+**Guided workflows** (interactive design workflows — readable by any coding agent):
 → [agent_docs/skills/new-scenario.md](agent_docs/skills/new-scenario.md) — Step-by-step scenario design assistant
 → [agent_docs/skills/new-study.md](agent_docs/skills/new-study.md) — Step-by-step study design assistant
-_(Claude Code users: invoke as `/new-scenario` or `/new-study`)_
 
 **Public documentation** (for end users):
 - `docs/index.md` — Hub for all documentation
@@ -469,3 +468,42 @@ Start from these files to understand the flow:
 5. **Multi-flow GM**: `src/silisocs/environments/gm/game_master.py` — Advanced component routing
 6. **Component slots**: `src/silisocs/environments/gm/components/` — Pluggable behavior
 7. **Backend actions**: `src/silisocs/environments/backends/twitter_like/app.py` — Example backend
+
+## 13) Session State
+
+Use a `SESSION_STATE.md` file (gitignored) to maintain context across a work session.
+
+- **At session start**: check if `SESSION_STATE.md` exists and read it to restore context.
+- **After significant subtasks** (commits, refactors, feature completion): offer to update it.
+- **Clear** when starting unrelated work or after a clean commit.
+
+Template:
+```markdown
+# Session State
+
+## Current Focus
+Brief description of current task
+
+## Modified Files
+- path/to/file.py - what changed
+
+## Decisions Made
+- Chose approach X because Y
+
+## Next Steps
+- [ ] Pending task 1
+- [ ] Pending task 2
+
+## Open Questions
+- Question for user about X?
+```
+
+## 14) Environment Notes
+
+- Use `uv run` prefix for all commands.
+- Run pre-commit before committing (see section 7 for workflow).
+- **WSL users**: if imports are slow (1+ min), the venv is likely on `/mnt/c`. Use a WSL-native venv:
+  ```bash
+  export UV_PROJECT_ENVIRONMENT=~/venvs/simulator
+  uv sync
+  ```

@@ -1,10 +1,10 @@
-# /new-scenario — Design a new silisocs scenario
+# Scenario Design Workflow
 
 A scenario is a **shared social world**: a setting, a cast of agents, and a backend
 configuration. It lives in `scenarios/<name>/` and can be used as the substrate for
 many different research studies. Think of it as community-owned common ground.
 
-You are guiding the user through designing one. Work conversationally — one section
+Guide the user through designing one. Work conversationally — one section
 at a time. Never ask for more than 2–3 things at once. After collecting and confirming
 all sections, write the files by calling the CLI.
 

@@ -1,4 +1,4 @@
-# /new-study — Design a new silisocs study
+# Study Design Workflow
 
 A study is a **research question asked on top of a scenario**. It defines hypotheses,
 conditions (what you vary), evaluators (what you measure), and seed replication.
