@@ -1,0 +1,124 @@
+# @package env
+
+platform_type: bluesky
+app_module_path: silisocs.environments.backends.bluesky
+app_class_path: silisocs.environments.backends.bluesky.app.BlueskyApp
+
+use_server: true
+
+enabled_actions: null
+enable_gm_multi_flow: false
+timeline_posts: 10
+timeline_mode: follower_chronological
+timeline_config: {}
+observation_history: 100
+seed_posts: {}
+
+social_network:
+  activity_transition_rates:
+    user:
+      inactive_to_active: 0.3
+      active_to_inactive: 0.3
+  fully_connected_targets: []
+  base_followership_probability: 0.3
+  network_type: barabasi_albert
+  barabasi_albert_m: 10
+
+gamemaster:
+  filename: social_media
+  name: bluesky_gm
+  sim_role:
+    name: social media game master
+    module_path: silisocs.environments.gm.game_master
+
+gm:
+  preset: base
+  components:
+    next_acting:
+      built_in: activity_probability
+      class_path: null
+      params:
+        active_probability: null
+        min_active_agents: 1
+
+    recommend:
+      built_in: recommendation_component
+      class_path: null
+      params:
+        default_recsys_type: null
+        update_every_n_steps: 1
+        lazy: true
+        max_posts: 10
+        user_context_recent_posts: 10
+        include_like_trace: true
+        like_trace_window: 10
+        like_trace_weight: 0.5
+        include_like_trace_in_context: false
+
+    observe:
+      built_in: timeline_every_turn
+      class_path: null
+      params:
+        recsys_type: null
+
+    resolve:
+      built_in: tool_calling
+      class_path: null
+      params: {}
+
+    initializer:
+      built_in: backend_default
+      class_path: null
+      params: {}
+
+gm_orchestration:
+  gms: []
+  flow_bindings:
+    flow_to_gm: {}
+    flow_to_gms: {}
+    gm_to_flows: {}
+
+usage_instructions: |
+  Bluesky is a social media application built on the AT Protocol.
+  Users create posts, reply to posts, like posts, repost posts, follow users, and read timelines.
+  Posts are identified by an AT URI and CID, not a Mastodon toot ID.
+  Operations such as liking, reposting, and replying require real post_uri and post_cid values.
+  These values should come from timeline observations or previous action results.
+  Do not fabricate post_uri or post_cid values.
+  current_user/display_name is always the full display name, such as "Alice Smith".
+  For post_text fields, write in first person as the character.
+  Omit optional parameters you do not want to use.
+
+action_prompt: |
+  ## AVAILABLE ACTIONS
+  1. POST - Share new content by creating a Bluesky post.
+  2. REPLY - Respond to an existing post. Requires parent_uri and parent_cid.
+  3. REPOST - Share another user's post. Requires post_uri and post_cid.
+  4. LIKE_POST - Like another user's post. Requires post_uri and post_cid.
+  5. FOLLOW - Follow another user.
+  6. UNFOLLOW - Unfollow another user.
+  7. READ_PROFILE - Read another user's profile.
+  8. READ_NOTIFICATIONS - Read notifications.
+
+  ## INSTRUCTIONS
+  Determine what ONE action {name} would take next based on:
+  - Their character and values
+  - The current context and timeline
+  - Not repeating recent actions
+  - Only using real post_uri/post_cid values from observations
+
+  [OUTPUT STYLE]
+
+output_style: |
+  ## OUTPUT FORMAT
+  Answer: {name}
+  STEP 1: [Analyze {name}'s motivation]
+  STEP 2: [Consider relevant timeline posts or social actions]
+  STEP 3: [Choose the single most authentic action]
+
+  FINAL DECISION:
+  ACTION TYPE: [POST/REPLY/REPOST/LIKE_POST/FOLLOW/UNFOLLOW/READ_PROFILE/READ_NOTIFICATIONS]
+  POST URI: [Required for reply/repost/like, otherwise omit]
+  POST CID: [Required for reply/repost/like, otherwise omit]
+  CONTENT: [Required for post/reply]
+  REASONING: [Brief explanation]
