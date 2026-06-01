@@ -26,6 +26,8 @@ import shlex
 import subprocess
 import sys
 import threading
+import time
+import urllib.request
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -482,25 +484,17 @@ def _merge_eval_specs(
     if norm_mode not in {"append", "replace"}:
         raise StudyConfigError("evaluation_mode must be 'append' or 'replace'")
     if norm_mode == "replace":
-        dedup: dict[str, EvalSpec] = {spec.eval_id: spec for spec in extra}
-        return tuple(dedup.values())
+        replacement_specs: dict[str, EvalSpec] = {spec.eval_id: spec for spec in extra}
+        return tuple(replacement_specs.values())
 
-    dedup: dict[str, EvalSpec] = {spec.eval_id: spec for spec in base}
+    merged_specs: dict[str, EvalSpec] = {spec.eval_id: spec for spec in base}
     for spec in extra:
-        dedup[spec.eval_id] = spec
-    return tuple(dedup.values())
+        merged_specs[spec.eval_id] = spec
+    return tuple(merged_specs.values())
 
 
 def _resolve_eval_specs(study_root: Path, study_data: dict[str, Any]) -> tuple[EvalSpec, ...]:
     raw_items: list[dict[str, Any]] = []
-
-    legacy = study_data.get("evaluation")
-    if legacy is not None:
-        if not isinstance(legacy, dict):
-            raise StudyConfigError("evaluation must be a mapping")
-        legacy_item = copy.deepcopy(legacy)
-        legacy_item.setdefault("id", "default")
-        raw_items.append(legacy_item)
 
     multi = study_data.get("evaluations")
     if multi is not None:
@@ -553,6 +547,8 @@ def _validate_schema(study_data: dict[str, Any]) -> None:  # noqa: C901, PLR0912
         raise StudyConfigError(
             f"Unsupported schema_version={schema_version}; expected {SCHEMA_VERSION}"
         )
+    if "evaluation" in study_data:
+        raise StudyConfigError("Use top-level evaluations: [...] instead of evaluation")
 
     study = _ensure_mapping("study", study_data.get("study"))
     if not isinstance(study.get("name"), str) or not study["name"].strip():
@@ -592,10 +588,10 @@ def _validate_schema(study_data: dict[str, Any]) -> None:  # noqa: C901, PLR0912
     for hyp_id, hyp_node in hypotheses.items():
         if not isinstance(hyp_node, dict):
             raise StudyConfigError(f"hypotheses.{hyp_id} must be a mapping")
-        if "conditions" not in hyp_node and "cases" not in hyp_node:
-            raise StudyConfigError(f"hypotheses.{hyp_id} must define conditions (or cases)")
+        if "conditions" not in hyp_node:
+            raise StudyConfigError(f"hypotheses.{hyp_id} must define conditions")
 
-        cond_map = hyp_node.get("conditions", hyp_node.get("cases"))
+        cond_map = hyp_node.get("conditions")
         if not isinstance(cond_map, dict) or not cond_map:
             raise StudyConfigError(f"hypotheses.{hyp_id}.conditions must be a non-empty mapping")
 
@@ -680,8 +676,10 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
     for hyp_id, hyp_node_any in hypotheses.items():
         hyp_node = _ensure_mapping(f"hypotheses.{hyp_id}", hyp_node_any)
         hyp_overrides = _ensure_mapping(f"hypotheses.{hyp_id}.overrides", hyp_node.get("overrides"))
-        conds = hyp_node.get("conditions", hyp_node.get("cases"))
-        cond_map = _ensure_mapping(f"hypotheses.{hyp_id}.conditions", conds)
+        cond_map = _ensure_mapping(
+            f"hypotheses.{hyp_id}.conditions",
+            hyp_node.get("conditions"),
+        )
 
         for cond_id, cond_node_any in cond_map.items():
             cond_node = _ensure_mapping(f"hypotheses.{hyp_id}.conditions.{cond_id}", cond_node_any)
@@ -1032,7 +1030,7 @@ def _resolve_eval_command(
         explicit_map: dict[str, Path | None] = {
             "checkpoint": checkpoint,
             "effective_config": run_dir / "effective_config.yaml",
-            "metrics": run_dir / "metrics.json",
+            "metrics": run_dir / "sim_metrics.json",
             "prompts": run_dir / "prompts_and_responses.jsonl",
             "run_stats": run_dir / "run_stats.log",
         }
@@ -1268,8 +1266,12 @@ def _filter_run_specs(
     only_condition: str | None,
     only_sub_experiment: str | None,
     only_seed: str | None,
+    only_run_id: str | None = None,
 ) -> list[RunSpec]:
     filtered = run_specs
+    if only_run_id:
+        allowed = {part.strip() for part in only_run_id.split(",") if part.strip()}
+        filtered = [spec for spec in filtered if spec.run_id in allowed]
     if only_hypothesis:
         allowed = {part.strip() for part in only_hypothesis.split(",") if part.strip()}
         filtered = [spec for spec in filtered if spec.hypothesis_id in allowed]
@@ -1281,10 +1283,10 @@ def _filter_run_specs(
         filtered = [spec for spec in filtered if spec.sub_experiment in allowed]
     if only_seed:
         try:
-            allowed = {int(part.strip()) for part in only_seed.split(",") if part.strip()}
+            allowed_seeds = {int(part.strip()) for part in only_seed.split(",") if part.strip()}
         except ValueError as e:
             raise StudyConfigError("--only-seed must be a comma-separated list of integers") from e
-        filtered = [spec for spec in filtered if spec.seed in allowed]
+        filtered = [spec for spec in filtered if spec.seed in allowed_seeds]
     return filtered
 
 
@@ -1399,6 +1401,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         args.only_condition,
         args.only_sub_experiment,
         args.only_seed,
+        getattr(args, "only_run_id", None),
     )
 
     print(f"Study: {study['name']}")
@@ -1434,6 +1437,7 @@ def cmd_generate_bash(args: argparse.Namespace) -> int:
         args.only_condition,
         args.only_sub_experiment,
         args.only_seed,
+        getattr(args, "only_run_id", None),
     )
 
     out = Path(args.output).resolve()
@@ -1460,6 +1464,7 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
         args.only_condition,
         args.only_sub_experiment,
         args.only_seed,
+        getattr(args, "only_run_id", None),
     )
 
     generated_dir = _study_generated_dir(repo_root, study)
@@ -1624,15 +1629,242 @@ def _count_array_tasks(run_specs: list[RunSpec], array_mode: str) -> int:
     if array_mode == "run":
         return len(run_specs)
     if array_mode == "case":
-        keys = {(spec.hypothesis_id, spec.condition_id) for spec in run_specs}
-        return len(keys)
+        case_keys = {(spec.hypothesis_id, spec.condition_id) for spec in run_specs}
+        return len(case_keys)
     if array_mode == "seed":
-        keys = {(spec.hypothesis_id, spec.condition_id, spec.seed) for spec in run_specs}
-        return len(keys)
+        seed_keys = {(spec.hypothesis_id, spec.condition_id, spec.seed) for spec in run_specs}
+        return len(seed_keys)
     if array_mode == "hypothesis":
-        keys = {spec.hypothesis_id for spec in run_specs}
-        return len(keys)
+        hypothesis_keys = {spec.hypothesis_id for spec in run_specs}
+        return len(hypothesis_keys)
     raise StudyConfigError(f"Unsupported array mode: {array_mode}")
+
+
+def _submitit_group_filters(run_specs: list[RunSpec], array_mode: str) -> list[dict[str, str]]:
+    """Return study-runner filters for each submitted group."""
+    groups: list[dict[str, str]] = []
+    seen: set[tuple[str, ...]] = set()
+    if array_mode == "run":
+        return [{"only_run_id": spec.run_id} for spec in run_specs]
+    if array_mode == "case":
+        for spec in run_specs:
+            case_key = (spec.hypothesis_id, spec.condition_id)
+            if case_key not in seen:
+                seen.add(case_key)
+                groups.append({"only_hypothesis": case_key[0], "only_condition": case_key[1]})
+        return groups
+    if array_mode == "seed":
+        for spec in run_specs:
+            seed_key = (spec.hypothesis_id, spec.condition_id, str(spec.seed))
+            if seed_key not in seen:
+                seen.add(seed_key)
+                groups.append(
+                    {
+                        "only_hypothesis": seed_key[0],
+                        "only_condition": seed_key[1],
+                        "only_seed": seed_key[2],
+                    }
+                )
+        return groups
+    if array_mode == "hypothesis":
+        for spec in run_specs:
+            hypothesis_key = (spec.hypothesis_id,)
+            if hypothesis_key not in seen:
+                seen.add(hypothesis_key)
+                groups.append({"only_hypothesis": hypothesis_key[0]})
+        return groups
+    raise StudyConfigError(f"Unsupported array mode: {array_mode}")
+
+
+def _filter_args_from_mapping(filters: dict[str, str]) -> list[str]:
+    options = {
+        "only_run_id": "--only-run-id",
+        "only_hypothesis": "--only-hypothesis",
+        "only_condition": "--only-condition",
+        "only_sub_experiment": "--only-sub-experiment",
+        "only_seed": "--only-seed",
+    }
+    out: list[str] = []
+    for key, option in options.items():
+        value = filters.get(key, "")
+        if value:
+            out.extend([option, value])
+    return out
+
+
+def _build_submitit_job_commands(
+    *,
+    study_path: Path,
+    repo_root: Path,
+    groups: list[dict[str, str]],
+    max_concurrent: int,
+    timeout_seconds: int,
+) -> list[list[str]]:
+    study_arg = os.path.relpath(study_path, repo_root)
+    commands: list[list[str]] = []
+    for filters in groups:
+        command = [
+            sys.executable,
+            "-m",
+            "experiments.run_study",
+            "--study",
+            study_arg,
+            "--repo-root",
+            str(repo_root),
+            "run",
+            "--max-concurrent",
+            str(max_concurrent),
+        ]
+        if timeout_seconds > 0:
+            command.extend(["--timeout-seconds", str(timeout_seconds)])
+        command.extend(_filter_args_from_mapping(filters))
+        commands.append(command)
+    return commands
+
+
+def _wait_for_ready_url(url: str, timeout_seconds: int) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=5) as response:
+                if 200 <= int(response.status) < 500:
+                    return
+        except Exception as e:
+            last_error = e
+        time.sleep(2)
+    detail = f": {last_error}" if last_error else ""
+    raise RuntimeError(f"Server hook did not become ready at {url}{detail}")
+
+
+def _run_command_with_optional_hooks(
+    command: list[str],
+    cwd: str,
+    setup_command: str | None,
+    server_command: str | None,
+    server_ready_url: str | None,
+    server_timeout_seconds: int,
+) -> int:
+    """Run one submitted study command with user-owned setup/server hooks."""
+    server_proc: subprocess.Popen[str] | None = None
+    try:
+        if setup_command:
+            subprocess.run(setup_command, cwd=cwd, shell=True, check=True, text=True)
+        if server_command:
+            server_proc = subprocess.Popen(
+                server_command,
+                cwd=cwd,
+                shell=True,
+                text=True,
+                start_new_session=True,
+            )
+            if server_ready_url:
+                _wait_for_ready_url(server_ready_url, server_timeout_seconds)
+        result = subprocess.run(command, cwd=cwd, check=False, text=True)
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(result.returncode, command)
+        return int(result.returncode)
+    finally:
+        if server_proc is not None and server_proc.poll() is None:
+            server_proc.terminate()
+            try:
+                server_proc.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                server_proc.kill()
+
+
+def _submitit_parameters(args: argparse.Namespace) -> dict[str, Any]:
+    params: dict[str, Any] = {
+        "name": str(args.job_name),
+        "timeout_min": int(args.timeout_minutes),
+        "cpus_per_task": int(args.cpus_per_task),
+    }
+    if args.nodes:
+        params["nodes"] = int(args.nodes)
+    if args.tasks_per_node:
+        params["tasks_per_node"] = int(args.tasks_per_node)
+    if args.gpus_per_node:
+        params["gpus_per_node"] = int(args.gpus_per_node)
+    if args.mem_gb:
+        params["mem_gb"] = int(args.mem_gb)
+    if args.partition:
+        params["slurm_partition"] = str(args.partition)
+    if args.account:
+        params["slurm_account"] = str(args.account)
+    if args.constraint:
+        params["slurm_constraint"] = str(args.constraint)
+    if args.slurm_comment:
+        params["slurm_comment"] = str(args.slurm_comment)
+    return params
+
+
+def cmd_submitit(args: argparse.Namespace) -> int:
+    """Submit study run groups with Submitit while preserving study-runner semantics."""
+    study_path = resolve_study_definition_path(Path(args.study).resolve())
+    repo_root = Path(args.repo_root).resolve()
+    study_data = _load_yaml(study_path)
+    run_specs, _, study = _expand_runs(study_path, study_data)
+    run_specs = _filter_run_specs(
+        run_specs,
+        args.only_hypothesis,
+        args.only_condition,
+        args.only_sub_experiment,
+        args.only_seed,
+        args.only_run_id,
+    )
+    if not run_specs:
+        print("No runs matched filters; nothing to submit.")
+        return 0
+
+    array_mode = str(args.array_mode).strip().lower()
+    groups = _submitit_group_filters(run_specs, array_mode)
+    commands = _build_submitit_job_commands(
+        study_path=study_path,
+        repo_root=repo_root,
+        groups=groups,
+        max_concurrent=int(args.max_concurrent),
+        timeout_seconds=int(args.timeout_seconds),
+    )
+
+    print(f"Study: {study['name']}")
+    print(f"Matched expanded runs: {len(run_specs)}")
+    print(f"Submitit groups ({array_mode}): {len(commands)}")
+    for command in commands[: min(len(commands), PLAN_PREVIEW_ROWS)]:
+        print(" ".join(shlex.quote(part) for part in command))
+    if len(commands) > PLAN_PREVIEW_ROWS:
+        print(f"... and {len(commands) - PLAN_PREVIEW_ROWS} more")
+    if args.dry_run:
+        print("Dry mode: no Submitit jobs were submitted.")
+        return 0
+
+    try:
+        import submitit
+    except ImportError as e:  # pragma: no cover - exercised when optional extra missing
+        raise StudyConfigError(
+            "Submitit support requires the optional hpc dependencies. "
+            "Install with `uv sync --extra hpc` or `pip install silisocs[hpc]`."
+        ) from e
+
+    folder = Path(args.folder).resolve()
+    folder.mkdir(parents=True, exist_ok=True)
+    executor = submitit.AutoExecutor(folder=str(folder))
+    executor.update_parameters(**_submitit_parameters(args))
+    jobs = [
+        executor.submit(
+            _run_command_with_optional_hooks,
+            command,
+            str(repo_root),
+            args.setup_command,
+            args.server_command,
+            args.server_ready_url,
+            int(args.server_timeout_seconds),
+        )
+        for command in commands
+    ]
+    print(f"Submitted {len(jobs)} Submitit jobs")
+    for job in jobs:
+        print(f"- {job.job_id}")
+    return 0
 
 
 def cmd_slurm_array(args: argparse.Namespace) -> int:
@@ -1652,6 +1884,7 @@ def cmd_slurm_array(args: argparse.Namespace) -> int:
         args.only_condition,
         args.only_sub_experiment,
         args.only_seed,
+        getattr(args, "only_run_id", None),
     )
 
     if not run_specs:
@@ -1671,7 +1904,6 @@ def cmd_slurm_array(args: argparse.Namespace) -> int:
 
     export_parts = {
         "REPO_ROOT": str(repo_root),
-        "UV_HOME": str(Path(args.uv_home).resolve()),
         "STUDY_FILE": study_rel,
         "PLAN_JSON": str(plan_json),
         "ARRAY_MODE": array_mode,
@@ -1679,7 +1911,13 @@ def cmd_slurm_array(args: argparse.Namespace) -> int:
         "CONDITION_IDS": _csv_compact(args.only_condition),
         "SUB_EXPERIMENT_IDS": _csv_compact(args.only_sub_experiment),
         "SEED_IDS": _csv_compact(args.only_seed),
+        "RUN_IDS": _csv_compact(args.only_run_id),
         "MAX_CONCURRENT": str(int(args.max_concurrent)),
+        "RUNNER_PYTHON": str(args.runner_python),
+        "SILISOCS_HPC_SETUP_COMMAND": str(args.setup_command or ""),
+        "SILISOCS_HPC_SERVER_COMMAND": str(args.server_command or ""),
+        "SILISOCS_HPC_SERVER_READY_URL": str(args.server_ready_url or ""),
+        "SILISOCS_HPC_SERVER_TIMEOUT_SECONDS": str(int(args.server_timeout_seconds)),
     }
     export_arg = ",".join(f"{k}={v}" for k, v in export_parts.items())
 
@@ -1755,6 +1993,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional comma-separated seed values to include",
     )
+    p_plan.add_argument(
+        "--only-run-id",
+        default=None,
+        help="Optional comma-separated expanded run IDs to include",
+    )
     p_plan.set_defaults(func=cmd_plan)
 
     p_bash = sub.add_parser("generate-bash", help="Generate runnable bash script")
@@ -1778,6 +2021,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--only-seed",
         default=None,
         help="Optional comma-separated seed values to include",
+    )
+    p_bash.add_argument(
+        "--only-run-id",
+        default=None,
+        help="Optional comma-separated expanded run IDs to include",
     )
     p_bash.set_defaults(func=cmd_generate_bash)
 
@@ -1813,6 +2061,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--only-seed",
         default=None,
         help="Optional comma-separated seed values to include",
+    )
+    p_run.add_argument(
+        "--only-run-id",
+        default=None,
+        help="Optional comma-separated expanded run IDs to include",
     )
     p_run.set_defaults(func=cmd_run)
 
@@ -1851,9 +2104,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="run_study --max-concurrent passed to each array task",
     )
     p_slurm.add_argument(
-        "--uv-home",
-        default=str(Path.home()),
-        help="Path where uv env with vLLM is available (default: $HOME)",
+        "--runner-python",
+        default=sys.executable,
+        help="Python executable used by the generic array template",
     )
     p_slurm.add_argument(
         "--only-hypothesis",
@@ -1876,11 +2129,98 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional comma-separated seed values to include",
     )
     p_slurm.add_argument(
+        "--only-run-id",
+        default=None,
+        help="Optional comma-separated expanded run IDs to include",
+    )
+    p_slurm.add_argument(
         "--submit",
         action="store_true",
         help="Submit to Slurm via sbatch. Otherwise prints command only.",
     )
+    p_slurm.add_argument(
+        "--setup-command",
+        default=None,
+        help="Optional user-owned shell command run before each array task",
+    )
+    p_slurm.add_argument(
+        "--server-command",
+        default=None,
+        help="Optional user-owned long-running server command started before each array task",
+    )
+    p_slurm.add_argument(
+        "--server-ready-url",
+        default=None,
+        help="Optional URL polled before running each array task",
+    )
+    p_slurm.add_argument("--server-timeout-seconds", type=int, default=600)
     p_slurm.set_defaults(func=cmd_slurm_array)
+
+    p_submitit = sub.add_parser(
+        "submitit",
+        help="Submit study run groups with optional hpc dependencies",
+    )
+    p_submitit.add_argument(
+        "--array-mode",
+        choices=["case", "seed", "hypothesis", "run"],
+        default="case",
+        help="Submission granularity: case(default), seed, hypothesis, or run",
+    )
+    p_submitit.add_argument(
+        "--folder",
+        default="logs/submitit",
+        help="Submitit log/checkpoint folder",
+    )
+    p_submitit.add_argument(
+        "--max-concurrent",
+        type=int,
+        default=1,
+        help="run_study --max-concurrent passed inside each submitted group",
+    )
+    p_submitit.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=0,
+        help="Per subprocess timeout passed inside each submitted group",
+    )
+    p_submitit.add_argument("--job-name", default="silisocs-study")
+    p_submitit.add_argument("--timeout-minutes", type=int, default=240)
+    p_submitit.add_argument("--cpus-per-task", type=int, default=4)
+    p_submitit.add_argument("--nodes", type=int, default=1)
+    p_submitit.add_argument("--tasks-per-node", type=int, default=1)
+    p_submitit.add_argument("--gpus-per-node", type=int, default=0)
+    p_submitit.add_argument("--mem-gb", type=int, default=0)
+    p_submitit.add_argument("--partition", default=None)
+    p_submitit.add_argument("--account", default=None)
+    p_submitit.add_argument("--constraint", default=None)
+    p_submitit.add_argument("--slurm-comment", default=None)
+    p_submitit.add_argument(
+        "--setup-command",
+        default=None,
+        help="Optional user-owned shell command run before each submitted group",
+    )
+    p_submitit.add_argument(
+        "--server-command",
+        default=None,
+        help="Optional user-owned long-running server command started for each submitted group",
+    )
+    p_submitit.add_argument(
+        "--server-ready-url",
+        default=None,
+        help="Optional URL polled before running the submitted group",
+    )
+    p_submitit.add_argument("--server-timeout-seconds", type=int, default=600)
+    p_submitit.add_argument("--only-hypothesis", default=None)
+    p_submitit.add_argument("--only-condition", default=None)
+    p_submitit.add_argument("--only-sub-experiment", default=None)
+    p_submitit.add_argument("--only-seed", default=None)
+    p_submitit.add_argument("--only-run-id", default=None)
+    p_submitit.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print planned Submitit commands without submitting jobs",
+    )
+    p_submitit.set_defaults(func=cmd_submitit)
 
     p_summary = sub.add_parser("summary-append", help="Append a study summary entry")
     p_summary.add_argument("--author", required=True, help="Author label for this summary entry")

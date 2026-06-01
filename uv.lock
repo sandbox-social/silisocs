@@ -524,6 +524,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cloudpickle"
+version = "3.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/27/fb/576f067976d320f5f0114a8d9fa1215425441bb35627b1993e5afd8111e5/cloudpickle-3.1.2.tar.gz", hash = "sha256:7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414", size = 22330, upload-time = "2025-11-03T09:25:26.604Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/39/799be3f2f0f38cc727ee3b4f1445fe6d5e4133064ec2e4115069418a5bb6/cloudpickle-3.1.2-py3-none-any.whl", hash = "sha256:9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a", size = 22228, upload-time = "2025-11-03T09:25:25.534Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -2215,6 +2224,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/6d/8e/07e42bc434a847154083b315779b0a81d567154504624e181caf2c71cd98/hydra-core-1.3.2.tar.gz", hash = "sha256:8a878ed67216997c3e9d88a8e72e7b4767e81af37afb4ea3334b269a4390a824", size = 3263494, upload-time = "2023-02-23T18:33:43.03Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c6/50/e0edd38dcd63fb26a8547f13d28f7a008bc4a3fd4eb4ff030673f22ad41a/hydra_core-1.3.2-py3-none-any.whl", hash = "sha256:fa0238a9e31df3373b35b0bfb672c34cc92718d21f81311d8996a16de1141d8b", size = 154547, upload-time = "2023-02-23T18:33:40.801Z" },
+]
+
+[[package]]
+name = "hydra-submitit-launcher"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "hydra-core" },
+    { name = "submitit" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4f/93/8f19eba16318fe79f17ae5a86ed4efc9641c33151f67a0f172fbd15ddd41/hydra-submitit-launcher-1.2.0.tar.gz", hash = "sha256:e14c8eb46d020fac60ba25f82bcc368dc55851d2683dc95c88631ffcf15e4a34", size = 4875, upload-time = "2022-05-17T22:19:47.548Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d1/9b/0ea17f1780004c52f83566b5ca78a0844c93f5abdbbf625e40962af1ffcc/hydra_submitit_launcher-1.2.0-py3-none-any.whl", hash = "sha256:51ce468fbc91211c3a46677eefde94bbb9f721c9545af0be6dd0a95658515613", size = 5207, upload-time = "2022-05-17T22:19:45.664Z" },
 ]
 
 [[package]]
@@ -5798,6 +5820,7 @@ all = [
     { name = "fastapi", extra = ["all"] },
     { name = "gdm-concordia" },
     { name = "gunicorn" },
+    { name = "hydra-submitit-launcher" },
     { name = "ipympl" },
     { name = "jinja2" },
     { name = "loguru" },
@@ -5820,6 +5843,7 @@ all = [
     { name = "seaborn" },
     { name = "sentence-transformers" },
     { name = "streamlit" },
+    { name = "submitit" },
     { name = "tiktoken" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -5856,6 +5880,10 @@ docs = [
 ]
 hf = [
     { name = "datasets" },
+]
+hpc = [
+    { name = "hydra-submitit-launcher" },
+    { name = "submitit" },
 ]
 mastodon = [
     { name = "loguru" },
@@ -5915,6 +5943,7 @@ requires-dist = [
     { name = "gdm-concordia", marker = "extra == 'concordia'", specifier = ">=2.1.0,<2.2.0" },
     { name = "gunicorn", marker = "extra == 'viz'", specifier = ">=21.2.0" },
     { name = "hydra-core", specifier = ">=1.3.2,<2.0.0" },
+    { name = "hydra-submitit-launcher", marker = "extra == 'hpc'", specifier = ">=1.2.0,<2.0.0" },
     { name = "ipympl", marker = "extra == 'analysis'", specifier = ">=0.9.4,<0.10.0" },
     { name = "jinja2", marker = "extra == 'viz'", specifier = ">=3.1.4,<4.0.0" },
     { name = "loguru", marker = "extra == 'mastodon'", specifier = ">=0.7.2,<0.8.0" },
@@ -5946,15 +5975,16 @@ requires-dist = [
     { name = "scipy", marker = "extra == 'recsys'", specifier = ">=1.14.1,<2.0.0" },
     { name = "seaborn", marker = "extra == 'analysis'", specifier = ">=0.13.2,<0.14.0" },
     { name = "sentence-transformers", marker = "extra == 'recsys'", specifier = ">=3.0.1,<4.0.0" },
-    { name = "silisocs", extras = ["analysis", "concordia", "dashboard", "docs", "hf", "mastodon", "recsys", "viz"], marker = "extra == 'all'" },
+    { name = "silisocs", extras = ["analysis", "concordia", "dashboard", "docs", "hf", "hpc", "mastodon", "recsys", "viz"], marker = "extra == 'all'" },
     { name = "streamlit", marker = "extra == 'dashboard'", specifier = ">=1.45.1,<2.0.0" },
+    { name = "submitit", marker = "extra == 'hpc'", specifier = ">=1.5.1,<2.0.0" },
     { name = "termcolor", specifier = ">=2.4.0,<3.0.0" },
     { name = "tiktoken", marker = "extra == 'analysis'", specifier = ">=0.7.0,<0.8.0" },
     { name = "tqdm", specifier = ">=4.66.4,<5.0.0" },
     { name = "typer", specifier = ">=0.12.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'viz'", specifier = ">=0.29.0" },
 ]
-provides-extras = ["concordia", "analysis", "dashboard", "docs", "hf", "mastodon", "recsys", "viz", "aws", "all"]
+provides-extras = ["concordia", "analysis", "dashboard", "docs", "hf", "mastodon", "hpc", "recsys", "viz", "aws", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -6120,6 +6150,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/03/85/7c669b3a1336d34ef39fa9760fbd343185f3b15db2ad0838fd78423d1c7f/streamlit-1.56.0.tar.gz", hash = "sha256:1176acfa89ae1318b79078e8efe689a9d02e8d58e325c00fc0e55fa2f3fe8d6a", size = 8559239, upload-time = "2026-03-31T22:29:38.59Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e4/91/cb6f13a89e376ef179309d74f37a70ea0041d5e4b5ba5c4836dbf6e020ad/streamlit-1.56.0-py3-none-any.whl", hash = "sha256:8677a335734a30a51bc57ad0ec910e365d95f7c456fc02c60032927cd0729dc5", size = 9052089, upload-time = "2026-03-31T22:29:36.342Z" },
+]
+
+[[package]]
+name = "submitit"
+version = "1.5.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cloudpickle" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/47/86/497018fb3b74e71bef45df82762b176e6b3d159f29941c20d2f141ec4096/submitit-1.5.4.tar.gz", hash = "sha256:7100848bd1cdda79c7196e54ee830793ae75fd7adde0c5bef738d72360a07508", size = 81538, upload-time = "2025-12-17T19:20:03.396Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ea/bb/711e1c2ebd18a21202c972dd5d5c8e09a921f2d3560e3a53d6350c808ab7/submitit-1.5.4-py3-none-any.whl", hash = "sha256:c26f3a7c8d4150eaf70b1da71e2023e9e9936c93e8342ed7db910f29158561c5", size = 76043, upload-time = "2025-12-17T19:20:01.941Z" },
 ]
 
 [[package]]

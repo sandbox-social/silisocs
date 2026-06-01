@@ -122,7 +122,7 @@ The study file defines the hypothesis sequence used in the paper:
 Dry-run any condition before spending API budget:
 
 ```bash
-uv run python experiments/run_study.py \
+uv run python -m experiments.run_study \
   --study replications/echo_chambers/study.yaml \
   run \
   --only-hypothesis h3_loose_action_structure \
@@ -134,7 +134,7 @@ uv run python experiments/run_study.py \
 Run a condition:
 
 ```bash
-uv run python experiments/run_study.py \
+uv run python -m experiments.run_study \
   --study replications/echo_chambers/study.yaml \
   run \
   --only-hypothesis h3_loose_action_structure \
@@ -145,7 +145,7 @@ uv run python experiments/run_study.py \
 Run all conditions for one hypothesis:
 
 ```bash
-uv run python experiments/run_study.py \
+uv run python -m experiments.run_study \
   --study replications/echo_chambers/study.yaml \
   run \
   --only-hypothesis h5_simple_social_agents \
@@ -159,17 +159,18 @@ replications/echo_chambers/generated/runs/<hypothesis>/<condition>/seed_<seed>/r
 replications/echo_chambers/generated/analysis/<hypothesis>/
 ```
 
-## Qwen / Local vLLM Runs
+## OpenAI-compatible local endpoint runs
 
-The Qwen hypotheses use an OpenAI-compatible local endpoint:
+The local-model hypotheses use an OpenAI-compatible endpoint, for example:
 
 ```text
 http://127.0.0.1:30000/v1
 ```
 
-On the Narval cluster, use the study array worker scripts from
-`slurm_scripts/`. For the Qwen echo-chamber runs we used a 4-GPU vLLM server,
-`VLLM_MAX_LEN=50000`, and `MAX_CONCURRENT=5` for the study runner.
+For HPC execution, use the generic study runner `submitit` command or the
+templates in `slurm_scripts/`. Model-server startup is user-owned: set
+`SILISOCS_HPC_SETUP_COMMAND`, `SILISOCS_HPC_SERVER_COMMAND`, and
+`SILISOCS_HPC_SERVER_READY_URL` if each job needs to start its own server.
 
 ## Analysis
 

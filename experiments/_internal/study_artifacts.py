@@ -81,37 +81,41 @@ def create_relative_symlink(target: Path, link: Path, *, dry_run: bool = False) 
     link.symlink_to(rel_target)
 
 
-def extract_run_metadata(source_dir: Path, base_config: str | None = None) -> dict[str, Any]:
+def extract_run_metadata(source_dir: Path, config_path: str | None = None) -> dict[str, Any]:
     """Extract reproducibility metadata from a run directory."""
     metadata: dict[str, Any] = {"source": str(source_dir)}
-    hydra_config = source_dir / ".hydra" / "config.yaml"
-    if not hydra_config.is_file():
+    effective_config = source_dir / "effective_config.yaml"
+    if not effective_config.is_file():
         return metadata
 
-    with hydra_config.open("r", encoding="utf-8") as f:
+    with effective_config.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 
-    model = cfg.get("model", {})
-    metadata["model_name"] = model.get("model_name", model.get("name"))
-    metadata["model_config"] = model.get("name")
+    sim = cfg.get("sim", {})
+    llm = sim.get("llm", {}) if isinstance(sim, dict) else {}
+    metadata["model_name"] = llm.get("name")
+    metadata["model_config"] = llm.get("provider")
 
-    scenario = cfg.get("scenario", {})
-    metadata["scenario"] = scenario.get("name")
-    metadata["scenario_description"] = scenario.get("description")
+    metadata["scenario"] = cfg.get("scenario_name")
 
-    execution = cfg.get("simulation", {}).get("execution", {})
-    metadata["max_steps"] = execution.get("max_steps")
+    setting = cfg.get("setting", {}) if isinstance(cfg.get("setting"), dict) else {}
+    event = cfg.get("event", {}) if isinstance(cfg.get("event"), dict) else {}
+    metadata["scenario_description"] = (
+        event.get("context") or setting.get("background") or setting.get("name")
+    )
 
-    metadata["seed"] = cfg.get("experiment", {}).get("seed")
+    metadata["max_steps"] = cfg.get("num_steps")
+    metadata["num_agents"] = cfg.get("num_agents")
+    metadata["seed"] = cfg.get("seed")
 
-    overrides_path = source_dir / ".hydra" / "overrides.yaml"
-    if overrides_path.is_file():
+    overrides_path = next((source_dir / "configs").glob("*/overrides.yaml"), None)
+    if overrides_path is not None and overrides_path.is_file():
         with overrides_path.open("r", encoding="utf-8") as f:
             cli_overrides: list[str] = yaml.safe_load(f) or []
         metadata["cli_overrides"] = cli_overrides
-        entry_point = "uv run python run_experiment.py"
-        if base_config:
-            entry_point += f"  # defaults from {base_config}"
+        entry_point = "uv run python -m silisocs.runtime.runner"
+        if config_path:
+            entry_point += f" --config-path {config_path}"
         metadata["run_command"] = entry_point + " " + " ".join(cli_overrides)
 
     return metadata
@@ -273,14 +277,14 @@ def organize_study_outputs(
             "independent_variable": hyp.get("independent_variable"),
             "prediction": hyp.get("prediction"),
             "status": hyp.get("status", "testing"),
-            "conditions": sorted((hyp.get("conditions") or hyp.get("cases") or {}).keys()),
+            "conditions": sorted((hyp.get("conditions") or {}).keys()),
         }
         _write_yaml(hyp_dir / "hypothesis.yaml", hypothesis_summary, dry_run=dry_run)
 
         hyp_records = [record for record in records if record.get("hypothesis") == hyp_id]
         hyp_rows: list[dict[str, Any]] = []
 
-        cond_map = hyp.get("conditions") or hyp.get("cases") or {}
+        cond_map = hyp.get("conditions") or {}
         for cond_id, _cond in cond_map.items():
             cond_records = [record for record in hyp_records if record.get("condition") == cond_id]
             for record in cond_records:

@@ -78,6 +78,10 @@ mastodon = [
   "mastodon-py>=1.8.1,<2.0.0",
   "pyvis==0.3.1",
 ]
+hpc = [
+  "submitit>=1.5.1,<2.0.0",
+  "hydra-submitit-launcher>=1.2.0,<2.0.0",
+]
 recsys = [
   "scikit-learn>=1.5.0,<2.0.0",
   "scipy>=1.14.1,<2.0.0",
@@ -93,7 +97,7 @@ aws = [
   "boto3>=1.34.139,<2.0.0",
 ]
 all = [
-  "silisocs[analysis,concordia,dashboard,docs,hf,mastodon,recsys,viz]",
+  "silisocs[analysis,concordia,dashboard,docs,hf,hpc,mastodon,recsys,viz]",
 ]
 
 [project.urls]

@@ -225,7 +225,6 @@ def main() -> None:
                 f"replication_days={args.replication_days}",
                 f"num_steps={args.replication_days + 1}",
                 f"seed={replicate_seed}",
-                f"sim.seed={replicate_seed}",
                 f"sim.llm.name={args.model}",
                 f"sim.llm.temperature={args.temperature}",
                 f"sim.max_concurrent_actions={args.max_concurrent_actions}",

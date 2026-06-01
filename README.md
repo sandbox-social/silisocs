@@ -1,15 +1,16 @@
 [![CI](https://github.com/sandbox-social/silisocs/actions/workflows/test.yml/badge.svg)](https://github.com/sandbox-social/silisocs/actions/workflows/test.yml)
 [![Docs](https://github.com/sandbox-social/silisocs/actions/workflows/docs.yml/badge.svg)](https://sandbox-social.github.io/silisocs/)
 
+**NOTE: This repository is currently in alpha development, and we expect to ship further stability updates over the coming weeks**
+
 # SiliSoCS
 
-SiliSoCS (Silicon Society Sandbox) is a configurable, extensible framework for multi-agent
+SiliSoCS (Silicon Society Sandbox) is an easy-to-use, configurable, and extensible framework for multi-agent
 social simulation and experimentation. It is structured around the EASE decomposition —
-Environment, Agents, Simulation engine, and Evaluation — providing a principled,
+Environment, Agents, Simulation engine, and Evaluation — taking inspiration from the Concordia framework, and providing a principled,
 reproducible configuration layer for simulated societies. It offers scenario-driven 
 social grounding, Concordia-like game master-mediated environments, local and served 
-backends, evaluation probes, runtime telemetry, and experimental study tooling. Concordia 
-interoperability is available through an optional bridge extra.
+backends, evaluation probes, runtime telemetry, and experimental study tooling. Interoperability for Concordia designed agents is available through an optional bridge extra.
 
 - 2026 ICML Position Paper [ICML 2026](https://www.complexdatalab.com/stamina/papers/puelmatouzel_CloseEvalGap.pdf)
 - 2026 EASE Configuration: [arXiv:2605.30258](https://arxiv.org/abs/2605.30258)
@@ -37,6 +38,7 @@ pip install "silisocs[dashboard]" # Streamlit launcher
 pip install "silisocs[analysis]"  # plotting and analysis dashboards
 pip install "silisocs[viz]"       # local backend web visualizers
 pip install "silisocs[concordia]" # optional Concordia bridge
+pip install "silisocs[hpc]"       # optional Submitit/Slurm study helpers
 ```
 
 For contributor work from a checkout:
@@ -97,6 +99,25 @@ Outputs are written under `outputs/<scenario_name>/<jobname>/` and include
 `sim_metrics.json`, a resolved Hydra config snapshot, and a local
 SQLite backend database for local platforms.
 
+## Studies and Experiments
+
+Study orchestration lives in `experiments/run_study.py`. It expands hypotheses,
+conditions, scenarios, and seeds into reproducible simulation runs, then executes
+the configured evaluators and writes organized artifacts under the study's
+`generated/` directory.
+
+```sh
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 plan
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 run --only-hypothesis h1_timeline_mechanism
+uv run python -m experiments.run_study --study experiments/studies/study_template_v1 summary-append --author analyst --hypothesis h1_timeline_mechanism --note "Initial finding"
+```
+
+Custom commands plug in through `conditions.<id>.execution.command`, evaluator
+commands through the `evaluations` list, and optional HPC setup through the
+study runner's `submitit` or `slurm-array` commands. See
+[docs/experiments.md](docs/experiments.md) and
+[docs/study_schema.md](docs/study_schema.md).
+
 ## Architecture
 
 The canonical runtime entry point is `src/silisocs/runtime/runner.py`. It
@@ -131,7 +152,7 @@ making Concordia part of the default install:
 - Legacy Concordia-shaped components are isolated behind
   `silisocs.adapters.concordia`.
 - Scenario YAML selects builders, backends, policies, probes, and prompts so
-  most experiment design does not require Python edits.
+  most experiment designs do not require Python edits.
 
 See [docs/concordia_bridge.md](docs/concordia_bridge.md) and
 [docs/building_agents.md](docs/building_agents.md) for the extension contracts.
@@ -142,7 +163,17 @@ Common commands:
 
 ```sh
 uv run pytest
+uv run silisocs-config-dry-run --project-root .
 uv run poe lint
 uv build --sdist --wheel
-uv run properdocs build --strict
+uv run --group docs properdocs build --strict
 ```
+
+- `uv run pytest` runs the test suite in the current environment.
+- `uv run silisocs-config-dry-run --project-root .` composes shipped scenario
+  and replication configs without running LLM calls.
+- `uv run poe lint` runs the configured formatting, static checks, and type
+  checks.
+- `uv build --sdist --wheel` builds release artifacts in `dist/`.
+- `uv run --group docs properdocs build --strict` builds the documentation site
+  and fails on broken links or stale navigation.

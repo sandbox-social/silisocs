@@ -286,38 +286,6 @@ class TestActionCallToActionBuilder:
         assert "[OUTPUT STYLE]" in result
 
 
-@pytest.mark.skip(reason="Validation function moved or removed in refactor")
-def test_validate_action_tool_calling_contract_rejects_deprecated_action_mode() -> None:
-    cfg = OmegaConf.create(
-        {
-            "sim": {
-                "action_mode": "tool_calling",
-                "tool_calling": {"mode": "single"},
-                "gm": {"components": {"resolve": {"built_in": "tool_calling"}}},
-            }
-        }
-    )
-
-    with pytest.raises(ValueError, match="deprecated"):
-        pass  # _validate_action_tool_calling_contract(cfg)
-
-
-@pytest.mark.skip(reason="Validation function moved or removed in refactor")
-def test_validate_action_tool_calling_contract_requires_resolve_match() -> None:
-    cfg = OmegaConf.create(
-        {
-            "sim": {
-                "action_mode": "custom",
-                "tool_calling": {"mode": "multi"},
-                "gm": {"components": {"resolve": {"built_in": "parsed_action"}}},
-            }
-        }
-    )
-
-    with pytest.raises(ValueError, match="must match resolver"):
-        pass  # _validate_action_tool_calling_contract(cfg)
-
-
 class MockBackend(BackendApp):
     """Mock backend for testing."""
 

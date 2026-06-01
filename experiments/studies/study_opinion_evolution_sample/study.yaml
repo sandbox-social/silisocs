@@ -24,8 +24,8 @@ study:
     seed_repeats: 3
 
     overrides:
-      sim.num_agents: 50
-      sim.num_steps: 12
+      num_agents: 50
+      num_steps: 12
 
   notes:
     objective: "Measure direction and stability of opinion change across regimes."
@@ -64,21 +64,21 @@ hypotheses:
     conditions:
       case1_chronological:
         overrides:
-          sim.timeline_mode: follower_chronological
-          sim.gm.components.recommend.params.default_recsys_type: twitter
+          env.gm.components.observe.params.timeline_mode: follower_chronological
+          env.gm.components.update.params.default_recsys_type: twitter
 
       case2_recsys_twitter:
         overrides:
-          sim.timeline_mode: pure_recsys
-          sim.gm.components.recommend.params.default_recsys_type: twitter
+          env.gm.components.observe.params.timeline_mode: pure_recsys
+          env.gm.components.update.params.default_recsys_type: twitter
 
       case3_recsys_twhin:
         overrides:
-          sim.timeline_mode: pure_recsys
-          sim.gm.components.recommend.params.default_recsys_type: twhin
-          sim.gm.components.recommend.params.user_context_recent_posts: 10
-          sim.gm.components.recommend.params.include_like_trace: true
-          sim.gm.components.recommend.params.like_trace_weight: 0.5
+          env.gm.components.observe.params.timeline_mode: pure_recsys
+          env.gm.components.update.params.default_recsys_type: twhin
+          env.gm.components.update.params.user_context_recent_posts: 10
+          env.gm.components.update.params.include_like_trace: true
+          env.gm.components.update.params.like_trace_weight: 0.5
 
   h2_followup_strengthen_context:
     follows_from: h1_timeline_impacts_opinion_trajectory
@@ -103,10 +103,10 @@ hypotheses:
         execution:
           mode: run
         overrides:
-          sim.timeline_mode: pure_recsys
-          sim.gm.components.recommend.params.default_recsys_type: twhin
-          sim.gm.components.recommend.params.user_context_recent_posts: 20
-          sim.gm.components.recommend.params.like_trace_weight: 0.6
+          env.gm.components.observe.params.timeline_mode: pure_recsys
+          env.gm.components.update.params.default_recsys_type: twhin
+          env.gm.components.update.params.user_context_recent_posts: 20
+          env.gm.components.update.params.like_trace_weight: 0.6
 
       case2_reuse_h1_seed11:
         execution:

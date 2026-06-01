@@ -11,14 +11,19 @@ tension between native-born and immigrant communities.
 
 ## Agent roles
 
-| Role | Count | Prefab |
+| Role | Count | Default agent class |
 |---|---|---|
 | `voter` | N-3 | `silisocs.agents.native` (external persona pipeline) |
-| `candidate` | 2 | custom `input/entity_lib/candidate.py` |
-| `news_account` | 1 | custom `input/entity_lib/` (fixed posting schedule) |
+| `candidate` | 2 | `silisocs.agents.native.NativeAgent` |
+| `news_account` | 1 | `silisocs.agents.native.NativeAgent` with fixed news action plans |
 
 Voter personas drawn from external HuggingFace dataset pipeline (`input/personas/`).
 News agent posts real-time headlines from `input/news_data/` with configurable bias.
+
+The default config is native. The files under `input/entity_lib/` are preserved
+as optional Concordia-compatible scenario agents for legacy experiments. To use
+them, configure the relevant persona-pipeline class with `compat: concordia`
+and the explicit `class_path`; they are not imported by the native default run.
 
 ## Key dynamics
 
