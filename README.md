@@ -26,26 +26,26 @@ The default package is intentionally lean and supports local simulations without
 dashboard, Mastodon, HuggingFace, or analysis dependencies:
 
 ```sh
-pip install 
+pip install silisocs
 ```
 
 Optional integrations are exposed as extras:
 
 ```sh
-pip install "[hf]"        # Hugging Face persona sources
-pip install "[mastodon]"  # real Mastodon backend
-pip install "[dashboard]" # Streamlit launcher
-pip install "[analysis]"  # plotting and analysis dashboards
-pip install "[viz]"       # local backend web visualizers
-pip install "[concordia]" # optional Concordia bridge
-pip install "[hpc]"       # optional Submitit/Slurm study helpers
+pip install "silisocs[hf]"        # Hugging Face persona sources
+pip install "silisocs[mastodon]"  # real Mastodon backend
+pip install "silisocs[dashboard]" # Streamlit launcher
+pip install "silisocs[analysis]"  # plotting and analysis dashboards
+pip install "silisocs[viz]"       # local backend web visualizers
+pip install "silisocs[concordia]" # optional Concordia bridge
+pip install "silisocs[hpc]"       # optional Submitit/Slurm study helpers
 ```
 
 For contributor work from a checkout:
 
 ```sh
-git clone https://github.com/sandbox-social/.git
-cd 
+git clone https://github.com/sandbox-social/silisocs.git
+cd silisocs
 uv sync --all-extras --group dev --group docs
 ```
 
@@ -54,44 +54,44 @@ uv sync --all-extras --group dev --group docs
 Run the built-in package default scenario:
 
 ```sh
-uv run 
+uv run silisocs
 ```
 
 For a local smoke test without model API calls:
 
 ```sh
-uv run  sim.llm.provider=scripted
+uv run silisocs sim.llm.provider=scripted
 ```
 
 Override scale or model settings with Hydra dot notation:
 
 ```sh
-uv run  num_agents=10 num_steps=5 sim.llm.name=gpt-4o
+uv run silisocs num_agents=10 num_steps=5 sim.llm.name=gpt-4o
 ```
 
 Run a bundled external scenario:
 
 ```sh
-uv run  --config-path scenarios/election/conf
+uv run silisocs --config-path scenarios/election/conf
 ```
 
 Run the packaged resource-market preset:
 
 ```sh
-uv run  scenario=resource_market agents=resource_market env=resource_market
+uv run silisocs scenario=resource_market agents=resource_market env=resource_market
 ```
 
 Run the packaged virtual-space preset:
 
 ```sh
-uv run  scenario=virtual_space agents=virtual_space env=virtual_space
+uv run silisocs scenario=virtual_space agents=virtual_space env=virtual_space
 ```
 
 The same backends also have curated external examples under `scenarios/`:
 
 ```sh
-uv run  --config-path scenarios/resource_market/conf scenario=resource_market agents=resource_market env=resource_market
-uv run  --config-path scenarios/virtual_space/conf scenario=virtual_space agents=virtual_space env=virtual_space
+uv run silisocs --config-path scenarios/resource_market/conf scenario=resource_market agents=resource_market env=resource_market
+uv run silisocs --config-path scenarios/virtual_space/conf scenario=virtual_space agents=virtual_space env=virtual_space
 ```
 
 Outputs are written under `outputs/<scenario_name>/<jobname>/` and include
@@ -120,14 +120,14 @@ study runner's `submitit` or `slurm-array` commands. See
 
 ## Architecture
 
-The canonical runtime entry point is `src//runtime/runner.py`. It
+The canonical runtime entry point is `src/silisocs/runtime/runner.py`. It
 composes Hydra configuration, builds agents, initializes memory, constructs the
 environment backend and game master, runs the simulation engine, and writes
 artifacts.
 
 ```text
-/
-├── src//
+silisocs/
+├── src/silisocs/
 │   ├── agents/              # Native and bridge-compatible runtime agents
 │   ├── conf/                # Packaged Hydra defaults
 │   ├── dashboard/           # Optional Streamlit scenario launcher
