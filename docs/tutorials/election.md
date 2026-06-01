@@ -38,7 +38,7 @@ setting:
 
 ### Agent Classes
 
-**Voters** use a named persona source:
+**Voters** use the HuggingFace persona dataset:
 
 ```yaml
 classes:
@@ -47,10 +47,10 @@ classes:
     class_path: silisocs.agents.native.NativeAgent
     sim_role_name: voter
     data:
-      source: local_json
-      path: input/voters.json
+      source: hf_dataset
+      dataset: nvidia/Nemotron-Personas-USA
+      split: train
     field_map:
-      name: name
       context: persona
     params:
       goal: Their goal is have a good day and vote in the election.
