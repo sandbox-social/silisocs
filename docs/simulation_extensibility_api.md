@@ -104,6 +104,10 @@ plain `BackendApp`:
 
 Expose executable actions with `@app_action`. `generic_action` and
 `tool_calling` resolve modes discover those actions automatically.
+If an action needs the acting identity, include an `agent_name: str` parameter;
+the resolver injects it from the active Agent Name and omits it from
+agent-facing prompts/tool schemas. Target parameters such as `target_user`
+remain agent-visible.
 
 `SocialBackendApp` subclasses `BackendApp` for backends that use the
 timeline/recommendation GM components. Backends that do not need those

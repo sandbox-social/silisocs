@@ -346,13 +346,19 @@ To implement a new generic environment:
             ...
 
         @app_action
-        def act(self, current_user: str, value: int) -> str:
+        def act(self, agent_name: str, value: int) -> str:
             """Execute a domain action."""
             ...
 
         def observe(self, actor_name: str, **kwargs) -> str:
             ...
     ```
+
+    Use `agent_name` for the acting agent when an action needs actor identity.
+    Silisocs injects it from the active runtime Agent Name; it is not exposed in
+    tool schemas or generic action prompts, and agents should not provide it.
+    Keep target choices such as `target_user` as normal agent-visible
+    parameters.
 
     Use `SocialBackendApp` instead if your backend needs the timeline, feed,
     parsed-social-action, or recommendation capability methods used by the

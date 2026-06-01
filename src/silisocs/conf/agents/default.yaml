@@ -23,17 +23,28 @@ persona_pipeline:
       data:
         source: inline
         records:
-          - persona: Alex is a local organizer who posts about public services, neighborhood events, and practical ways to help.
-          - persona: Blair is a software developer who follows technology news and likes concise, evidence-based discussions.
-          - persona: Casey is a teacher who often shares education resources and asks thoughtful questions.
-          - persona: Devon is a small business owner who tracks local policy, transit, and community safety.
-          - persona: Ellis is a healthcare worker who cares about public health, mutual aid, and trustworthy information.
-          - persona: Frankie is a student who follows science, culture, and campus issues with curiosity.
-          - persona: Gray is a journalist who looks for source quality and tries to summarize debates clearly.
-          - persona: Harper is a hobbyist photographer who shares local scenes and friendly replies.
-          - persona: Indigo is a parent who follows school updates, civic meetings, and neighborhood recommendations.
-          - persona: Jules is a retiree who enjoys history, gardening, and long-running community conversations.
+          - name: Alex
+            persona: Alex is a local organizer who posts about public services, neighborhood events, and practical ways to help.
+          - name: Blair
+            persona: Blair is a software developer who follows technology news and likes concise, evidence-based discussions.
+          - name: Casey
+            persona: Casey is a teacher who often shares education resources and asks thoughtful questions.
+          - name: Devon
+            persona: Devon is a small business owner who tracks local policy, transit, and community safety.
+          - name: Ellis
+            persona: Ellis is a healthcare worker who cares about public health, mutual aid, and trustworthy information.
+          - name: Frankie
+            persona: Frankie is a student who follows science, culture, and campus issues with curiosity.
+          - name: Gray
+            persona: Gray is a journalist who looks for source quality and tries to summarize debates clearly.
+          - name: Harper
+            persona: Harper is a hobbyist photographer who shares local scenes and friendly replies.
+          - name: Indigo
+            persona: Indigo is a parent who follows school updates, civic meetings, and neighborhood recommendations.
+          - name: Jules
+            persona: Jules is a retiree who enjoys history, gardening, and long-running community conversations.
       field_map:
+        name: name
         context: persona
     fixed_seed:
       count: 0
@@ -50,6 +61,7 @@ persona_pipeline:
         source: inline
         records: []
       field_map:
+        name: name
         context: persona
 
 shared_memories:

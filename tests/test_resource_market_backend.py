@@ -21,7 +21,7 @@ def test_resource_market_listing_and_purchase_updates_state() -> None:
     listing_result = app.invoke_action_with_kwargs(
         "LIST_RESOURCE",
         {
-            "current_user": "Alice",
+            "agent_name": "Alice",
             "resource": "food",
             "quantity": 1,
             "price": 7,
@@ -30,7 +30,7 @@ def test_resource_market_listing_and_purchase_updates_state() -> None:
     buy_result = app.invoke_action_with_kwargs(
         "BUY_LISTING",
         {
-            "current_user": "Bob",
+            "agent_name": "Bob",
             "listing_id": 1,
         },
     )
@@ -62,15 +62,15 @@ def test_resource_market_role_capabilities_and_upkeep_change_state() -> None:
 
     blocked = app.invoke_action_with_kwargs(
         "PRODUCE_RESOURCE",
-        {"current_user": "Alice", "resource": "wood", "quantity": 1},
+        {"agent_name": "Alice", "resource": "wood", "quantity": 1},
     )
     produced = app.invoke_action_with_kwargs(
         "PRODUCE_RESOURCE",
-        {"current_user": "Bob", "resource": "wood", "quantity": 1},
+        {"agent_name": "Bob", "resource": "wood", "quantity": 1},
     )
     transferred = app.invoke_action_with_kwargs(
         "TRANSFER_RESOURCE",
-        {"current_user": "Bob", "target_user": "Alice", "resource": "wood", "quantity": 1},
+        {"agent_name": "Bob", "target_user": "Alice", "resource": "wood", "quantity": 1},
     )
     app.update(step=1, agent_names=["Alice", "Bob"])
 
@@ -87,12 +87,12 @@ def test_resource_market_role_capabilities_and_upkeep_change_state() -> None:
 def test_resource_market_can_cancel_open_listing() -> None:
     app = ResourceMarketApp(initial_cash=20, initial_inventory={"food": 2})
     app.initialize(agent_names=["Alice"])
-    app.list_resource(current_user="Alice", resource="food", quantity=1, price=5)
+    app.list_resource(agent_name="Alice", resource="food", quantity=1, price=5)
 
     result = app.invoke_action_with_kwargs(
         "CANCEL_LISTING",
         {
-            "current_user": "Alice",
+            "agent_name": "Alice",
             "listing_id": 1,
         },
     )
@@ -110,18 +110,18 @@ def test_resource_market_rejects_invalid_market_actions() -> None:
     list_result = app.invoke_action_with_kwargs(
         "LIST_RESOURCE",
         {
-            "current_user": "Alice",
+            "agent_name": "Alice",
             "resource": "food",
             "quantity": 1,
             "price": 3,
         },
     )
-    app.produce_resource(current_user="Alice", resource="food", quantity=1)
-    app.list_resource(current_user="Alice", resource="food", quantity=1, price=6)
+    app.produce_resource(agent_name="Alice", resource="food", quantity=1)
+    app.list_resource(agent_name="Alice", resource="food", quantity=1, price=6)
     buy_result = app.invoke_action_with_kwargs(
         "BUY_LISTING",
         {
-            "current_user": "Bob",
+            "agent_name": "Bob",
             "listing_id": 1,
         },
     )
@@ -137,7 +137,7 @@ def test_resource_market_consume_and_finished_actions() -> None:
     consume_result = app.invoke_action_with_kwargs(
         "CONSUME_RESOURCE",
         {
-            "current_user": "Alice",
+            "agent_name": "Alice",
             "resource": "food",
             "quantity": 1,
         },

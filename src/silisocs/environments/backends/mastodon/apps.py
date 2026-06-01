@@ -199,8 +199,8 @@ class SocialNetworkApp(SocialBackendApp):
         """
         try:
             # Re-use the existing get_own_timeline logic
-            current_user = _display_name_key(user_name)
-            username = self._get_username(current_user)
+            agent_name = _display_name_key(user_name)
+            username = self._get_username(agent_name)
             if self.perform_operations:
                 timeline = self._require_mastodon_ops().get_own_timeline(username, limit=limit)
             else:
@@ -357,15 +357,15 @@ class SocialNetworkApp(SocialBackendApp):
         return self._get_username(display_name)
 
     @app_action
-    def update_profile(self, current_user: str, bio: str) -> str:
+    def update_profile(self, agent_name: str, bio: str) -> str:
         """Update the user's bio."""
-        current_user_full = str(current_user)
-        current_user = _display_name_key(current_user)
+        actor_display_name = str(agent_name)
+        agent_name = _display_name_key(agent_name)
 
-        username = self._get_username(current_user)
-        self._print(f"Updating profile for @{username}: {current_user}", emoji="✏️")
+        username = self._get_username(agent_name)
+        self._print(f"Updating profile for @{username}: {agent_name}", emoji="✏️")
         if self.perform_operations:
-            self._require_mastodon_ops().update_bio(username, current_user, bio)
+            self._require_mastodon_ops().update_bio(username, agent_name, bio)
         else:
             self._print(
                 "Skipping real Mastodon API call since perform_operations is set to False",
@@ -374,20 +374,20 @@ class SocialNetworkApp(SocialBackendApp):
         bio_message = f'Profile updated successfully: "{bio}"'
         self._print(bio_message, emoji="✅")
         self._log_action_event(
-            {"source_user": current_user_full, "label": "update_profile", "data": {"new_bio": bio}}
+            {"source_user": actor_display_name, "label": "update_profile", "data": {"new_bio": bio}}
         )
 
         return bio_message
 
     @app_action
-    def read_profile(self, current_user: str, target_user: str) -> tuple[str, str]:
+    def read_profile(self, agent_name: str, target_user: str) -> tuple[str, str]:
         """Read a user's profile on Mastodon social network."""
-        current_user_full = str(current_user)
-        current_user = _display_name_key(current_user)
+        actor_display_name = str(agent_name)
+        agent_name = _display_name_key(agent_name)
         target_user_full = str(target_user)
         target_user = _display_name_key(target_user)
 
-        current_username = self._get_username(current_user)
+        current_username = self._get_username(agent_name)
         target_username = self._get_username(target_user)
         self._print(f"@{current_username} reading profile of @{target_username}", emoji="👀")
         if self.perform_operations:
@@ -408,7 +408,7 @@ class SocialNetworkApp(SocialBackendApp):
 
         self._log_action_event(
             {
-                "source_user": current_user_full,
+                "source_user": actor_display_name,
                 "label": "read_profile",
                 "data": {"target_user": target_user_full, "bio": bio},
             }
@@ -416,13 +416,13 @@ class SocialNetworkApp(SocialBackendApp):
         return display_name, bio
 
     @app_action
-    def follow_user(self, current_user: str, target_user: str) -> str:
+    def follow_user(self, agent_name: str, target_user: str) -> str:
         """Follow a user on Mastodon social network."""
-        current_user_full = str(current_user)
-        current_user = _display_name_key(current_user)
+        actor_display_name = str(agent_name)
+        agent_name = _display_name_key(agent_name)
         target_user_full = str(target_user)
         target_user = _display_name_key(target_user)
-        current_username = self._get_username(current_user)
+        current_username = self._get_username(agent_name)
         target_username = self._get_username(target_user)
         if self.perform_operations:
             self._require_mastodon_ops().follow(current_username, target_username)
@@ -431,13 +431,11 @@ class SocialNetworkApp(SocialBackendApp):
                 "Skipping real Mastodon API call since perform_operations is set to False",
                 color="light_grey",
             )
-        follow_message = (
-            f"current_user (@{current_username}) followed target_user (@{target_username})"
-        )
+        follow_message = f"{actor_display_name} (@{current_username}) followed {target_user_full} (@{target_username})"
         self._print(follow_message, emoji="➕")  # noqa: RUF001
         self._log_action_event(
             {
-                "source_user": current_user_full,
+                "source_user": actor_display_name,
                 "label": "follow",
                 "data": {"target_user": target_user_full},
             }
@@ -445,13 +443,13 @@ class SocialNetworkApp(SocialBackendApp):
         return follow_message
 
     @app_action
-    def unfollow_user(self, current_user: str, target_user: str) -> str:
+    def unfollow_user(self, agent_name: str, target_user: str) -> str:
         """Unfollow a user."""
-        current_user_full = str(current_user)
-        current_user = _display_name_key(current_user)
+        actor_display_name = str(agent_name)
+        agent_name = _display_name_key(agent_name)
         target_user_full = str(target_user)
         target_user = _display_name_key(target_user)
-        current_username = self._get_username(current_user)
+        current_username = self._get_username(agent_name)
         target_username = self._get_username(target_user)
         self._print(
             f"@{current_username} unfollowing user: @{target_username}",
@@ -464,13 +462,11 @@ class SocialNetworkApp(SocialBackendApp):
                 "Skipping real Mastodon API call since perform_operations is set to False",
                 color="light_grey",
             )
-        unfollow_message = (
-            f"current_user (@{current_username}) unfollowed target_user (@{target_username})"
-        )
+        unfollow_message = f"{actor_display_name} (@{current_username}) unfollowed {target_user_full} (@{target_username})"
         self._print(unfollow_message, emoji="✅")
         self._log_action_event(
             {
-                "source_user": current_user_full,
+                "source_user": actor_display_name,
                 "label": "unfollow",
                 "data": {"target_user": target_user_full},
             }
@@ -480,7 +476,7 @@ class SocialNetworkApp(SocialBackendApp):
     # @app_action
     # def post_status(
     #     self,
-    #     current_user: str,
+    #     agent_name: str,
     #     status: str,
     #     visibility: (Literal["private", "public", "unlisted", "direct"] | None) = None,
     #     sensitive: bool = False,
@@ -500,7 +496,7 @@ class SocialNetworkApp(SocialBackendApp):
     #     """Post a new status update to the Mastodon-like social network.
 
     #     Args:
-    #         current_user (str): The username of the user posting the status.
+    #         agent_name (str): The username of the user posting the status.
     #         status (str): The text content of the status update.
     #         visibility (str | None): The visibility level of the post ('direct', 'private', 'unlisted', or 'public').
     #         sensitive (bool): Whether the post should be marked as sensitive content.
@@ -523,7 +519,7 @@ class SocialNetworkApp(SocialBackendApp):
     #         Exception: For any other unexpected errors during posting.
     #     """
     #     try:
-    #         username = self._get_username(current_user)
+    #         username = self._get_username(agent_name)
     #         if self.perform_operations:
     #             self._mastodon_ops.post_status(
     #                 login_user=username,
@@ -553,12 +549,12 @@ class SocialNetworkApp(SocialBackendApp):
     #         if scheduled_at:
     #             self._print(
     #                 "Status scheduled successfully for user:"
-    #                 f' {current_user} ({username}) at {scheduled_at}: "{status}"',
+    #                 f' {agent_name} ({username}) at {scheduled_at}: "{status}"',
     #                 emoji="🕒",
     #             )
     #         else:
     #             self._print(
-    #                 f'Status posted for user: {current_user} ({username}): "{status}"',
+    #                 f'Status posted for user: {agent_name} ({username}): "{status}"',
     #                 emoji="📝",
     #             )
 
@@ -575,20 +571,20 @@ class SocialNetworkApp(SocialBackendApp):
     #     except Exception as e:
     #         self._print(f"An unexpected error occurred: {e!s}", emoji="❌")
     #         raise
-    #     return_msg = f'Status posted for user: {current_user} ({username}): "{status}"'
+    #     return_msg = f'Status posted for user: {agent_name} ({username}): "{status}"'
     #     return return_msg
 
     @app_action
     def post_toot(
         self,
-        current_user: str,
+        agent_name: str,
         status: str,
         media_links: list[str] | None = None,
     ) -> str:
         """Post a new toot to the Mastodon-like social network.
 
         Args:
-            current_user (str): The username of the user posting the status.
+            agent_name (str): The username of the user posting the status.
             status (str): The text content of the status update.
 
         Raises
@@ -597,10 +593,10 @@ class SocialNetworkApp(SocialBackendApp):
             Exception: For any other unexpected errors during posting.
         """
         return_val = None
-        current_user_full = str(current_user)
+        actor_display_name = str(agent_name)
         try:
-            current_user = _display_name_key(current_user)
-            username = self._get_username(current_user)
+            agent_name = _display_name_key(agent_name)
+            username = self._get_username(agent_name)
             if self.perform_operations:
                 return_val = self._require_mastodon_ops().post_status(
                     login_user=username,
@@ -614,7 +610,7 @@ class SocialNetworkApp(SocialBackendApp):
                 )
 
             self._print(
-                f'Status posted for user: {current_user} ({username}): "{status}"',
+                f'Status posted for user: {agent_name} ({username}): "{status}"',
                 emoji="📝",
             )
             # self._print(return_val)
@@ -629,14 +625,14 @@ class SocialNetworkApp(SocialBackendApp):
         toot_id = None
         if return_val:
             return_msg = (
-                f"{current_user} posted a toot with Toot ID: {return_val['id']} --- {status}\n"
+                f"{agent_name} posted a toot with Toot ID: {return_val['id']} --- {status}\n"
             )
             toot_id = return_val["id"]
         else:
-            return_msg = f'{current_user} posted a toot!: "{status}"\n'
+            return_msg = f'{agent_name} posted a toot!: "{status}"\n'
         self._log_action_event(
             {
-                "source_user": current_user_full,
+                "source_user": actor_display_name,
                 "label": "post",
                 "data": {"toot_id": str(toot_id), "post_text": status},
             }
@@ -646,14 +642,14 @@ class SocialNetworkApp(SocialBackendApp):
     # @app_action
     # def post_media_toot(
     #     self,
-    #     current_user: str,
+    #     agent_name: str,
     #     status: str,
     #     media_link: str,
     # ) -> str:
     #     """Post a new toot to the Mastodon-like social network.
 
     #     Args:
-    #         current_user (str): The username of the user posting the status.
+    #         agent_name (str): The username of the user posting the status.
     #         status (str): The text content of the status update.
 
     #     Raises
@@ -662,10 +658,10 @@ class SocialNetworkApp(SocialBackendApp):
     #         Exception: For any other unexpected errors during posting.
     #     """
     #     return_val = None
-    #     current_user_full = str(current_user)
+    #     actor_display_name = str(agent_name)
     #     try:
-    #         current_user = f"{current_user.split()[0]}{current_user.split()[1]}"
-    #         username = self._get_username(current_user)
+    #         agent_name = f"{agent_name.split()[0]}{agent_name.split()[1]}"
+    #         username = self._get_username(agent_name)
     #         if self.perform_operations:
     #             return_val = self._mastodon_ops.post_status(
     #                 login_user=username,
@@ -678,7 +674,7 @@ class SocialNetworkApp(SocialBackendApp):
     #             )
 
     #         self._print(
-    #             f'Status posted for user: {current_user} ({username}): "{status}"',
+    #             f'Status posted for user: {agent_name} ({username}): "{status}"',
     #             emoji="📝",
     #         )
     #         # self._print(return_val)
@@ -693,14 +689,14 @@ class SocialNetworkApp(SocialBackendApp):
     #     toot_id = None
     #     if return_val:
     #         return_msg = (
-    #             f"{current_user} posted a toot with Toot ID: {return_val['id']} --- {status}\n"
+    #             f"{agent_name} posted a toot with Toot ID: {return_val['id']} --- {status}\n"
     #         )
     #         toot_id = return_val["id"]
     #     else:
-    #         return_msg = f'{current_user} posted a toot!: "{status}"\n'
+    #         return_msg = f'{agent_name} posted a toot!: "{status}"\n'
     #     self.action_logger.log(
     #         {
-    #             "source_user": current_user_full,
+    #             "source_user": actor_display_name,
     #             "label": "post",
     #             "data": {"toot_id": toot_id, "post_text": status},
     #         }
@@ -710,14 +706,14 @@ class SocialNetworkApp(SocialBackendApp):
     @app_action
     def reply_to_toot(
         self,
-        current_user: str,
+        agent_name: str,
         status: str,
         in_reply_to_id: int,
     ) -> str:
         """Post a new status update to the Mastodon-like social network.
 
         Args:
-            current_user (str): The username of the user posting the status.
+            agent_name (str): The username of the user posting the status.
             status (str): The text content of the status update.
             in_reply_to_id (int): The `toot_id` of the status this post is replying to.
 
@@ -728,9 +724,9 @@ class SocialNetworkApp(SocialBackendApp):
         """
         return_val = None
         try:
-            current_user_full = str(current_user)
-            current_user = _display_name_key(current_user)
-            username = self._get_username(current_user)
+            actor_display_name = str(agent_name)
+            agent_name = _display_name_key(agent_name)
+            username = self._get_username(agent_name)
             if self.perform_operations:
                 return_val = self._require_mastodon_ops().post_status(
                     login_user=username,
@@ -753,12 +749,10 @@ class SocialNetworkApp(SocialBackendApp):
                 f"You replied to the toot with toot id {in_reply_to_id} : {status}",
                 emoji="📝",
             )
-            return_msg = (
-                f"{current_user} replied to a toot with toot id {in_reply_to_id} : {status}"
-            )
+            return_msg = f"{agent_name} replied to a toot with toot id {in_reply_to_id} : {status}"
             self._log_action_event(
                 {
-                    "source_user": current_user_full,
+                    "source_user": actor_display_name,
                     "label": "reply",
                     "data": {
                         "reply_to": {"toot_id": in_reply_to_id},
@@ -769,7 +763,7 @@ class SocialNetworkApp(SocialBackendApp):
             )
         except ValueError as e:
             self._print(f"Invalid input, regular toot posted: {e!s}", emoji="❌")
-            return_msg = f'''There was an error in posting {current_user}'s reply, response was posted as a new toot!: "{status}"'''
+            return_msg = f'''There was an error in posting {agent_name}'s reply, response was posted as a new toot!: "{status}"'''
             if (
                 self.perform_operations
                 and self._mastodon_ops is not None
@@ -782,7 +776,7 @@ class SocialNetworkApp(SocialBackendApp):
 
         except Exception as e:
             self._print(f"An unexpected error occurred, regular toot posted: {e!s}", emoji="❌")
-            return_msg = f'''There was an error in posting {current_user}'s reply, response was posted as a new toot!: "{status}"'''
+            return_msg = f'''There was an error in posting {agent_name}'s reply, response was posted as a new toot!: "{status}"'''
             if (
                 self.perform_operations
                 and self._mastodon_ops is not None
@@ -853,11 +847,11 @@ class SocialNetworkApp(SocialBackendApp):
         return str_timeline
 
     @app_action
-    def get_own_timeline(self, current_user: str, limit: int, return_str: bool = False) -> str:
+    def get_own_timeline(self, agent_name: str, limit: int, return_str: bool = False) -> str:
         """Read the Mastodon social network feed for the current user."""
-        current_user_full = str(current_user)
-        current_user = _display_name_key(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        agent_name = _display_name_key(agent_name)
+        username = self._get_username(agent_name)
         self._print(
             f"Fetching @{username}'s timeline (limit: {limit})",
             emoji="🏠",
@@ -882,7 +876,7 @@ class SocialNetworkApp(SocialBackendApp):
 
         self._log_action_event(
             {
-                "source_user": current_user_full,
+                "source_user": actor_display_name,
                 "label": "get_own_timeline",
                 "data": {"num_posts_retreived": len(timeline)},  # TODO: add timeline here
             }
@@ -894,9 +888,9 @@ class SocialNetworkApp(SocialBackendApp):
         return timeline
 
     # @app_action
-    # def get_user_timeline(self, current_user: str, target_user: str, limit: int) -> str:
+    # def get_user_timeline(self, agent_name: str, target_user: str, limit: int) -> str:
     #     """Read a specific user's timeline on Mastodon social network."""
-    #     current_username = self._get_username(current_user.split()[0])
+    #     current_username = self._get_username(agent_name.split()[0])
     #     target_username = self._get_username(target_user.split()[0])
     #     self._print(
     #         f"@{current_username} fetching @{target_username}'s timeline (limit: {limit})",
@@ -948,12 +942,12 @@ class SocialNetworkApp(SocialBackendApp):
         return "\n".join(notification_lines)
 
     @app_action
-    def read_notifications(self, current_user: str, clear: bool, limit: int) -> str:
+    def read_notifications(self, agent_name: str, clear: bool, limit: int) -> str:
         """Read Mastodon social network notifications."""
-        current_user_full = str(current_user)
-        current_user = _display_name_key(current_user)
+        actor_display_name = str(agent_name)
+        agent_name = _display_name_key(agent_name)
 
-        username = self._get_username(current_user)
+        username = self._get_username(agent_name)
         self._print(
             f"Reading notifications for @{username} (clear: {clear}, limit: {limit})",
             emoji="🔔",
@@ -969,7 +963,7 @@ class SocialNetworkApp(SocialBackendApp):
                 color="light_grey",
             )
 
-        retrieval_message = f"Retrieved {len(notifications)} notifications for {current_user}:"
+        retrieval_message = f"Retrieved {len(notifications)} notifications for {agent_name}:"
         self._print(retrieval_message, emoji="📬")
 
         notifications_string = self.print_notifications(notifications)
@@ -977,7 +971,7 @@ class SocialNetworkApp(SocialBackendApp):
         self._print(full_output)
         self._log_action_event(
             {
-                "source_user": current_user_full,
+                "source_user": actor_display_name,
                 "label": "read_notification",
                 "data": {
                     "num_notifications_retreived": len(notifications)
@@ -988,24 +982,24 @@ class SocialNetworkApp(SocialBackendApp):
         return full_output
 
     @app_action
-    def like_toot(self, current_user: str, toot_id: str) -> str:
+    def like_toot(self, agent_name: str, toot_id: str) -> str:
         """Like (favorite) a toot."""
-        current_user_full = str(current_user)
-        current_user = _display_name_key(current_user)
-        current_username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        agent_name = _display_name_key(agent_name)
+        current_username = self._get_username(agent_name)
         # self._print(
         #     f"@{current_username} liking post {toot_id}",
         #     emoji="❤️",
         # )
         try:
-            like_message = f"{current_user} (@{current_username}) liked post {toot_id}"
+            like_message = f"{agent_name} (@{current_username}) liked post {toot_id}"
             if self.perform_operations:
                 mastodon_ops = self._require_mastodon_ops()
                 check = mastodon_ops.like_check(current_username, toot_id)
                 if not check:
                     mastodon_ops.like_toot(current_username, toot_id)
                 else:
-                    like_message = f"{current_user} (@{current_username}) has previously liked post {toot_id}. Please conduct a different action!!"
+                    like_message = f"{agent_name} (@{current_username}) has previously liked post {toot_id}. Please conduct a different action!!"
             else:
                 self._print(
                     "Skipping real Mastodon API call since perform_operations is set to False",
@@ -1014,7 +1008,7 @@ class SocialNetworkApp(SocialBackendApp):
             self._print(like_message, emoji="✅")
             self._log_action_event(
                 {
-                    "source_user": current_user_full,
+                    "source_user": actor_display_name,
                     "label": "like_toot",
                     "data": {"toot_id": str(toot_id)},
                 }
@@ -1032,31 +1026,31 @@ class SocialNetworkApp(SocialBackendApp):
     # region[additional methods]
 
     @app_action
-    def boost_toot(self, current_user: str, toot_id: str) -> str:
+    def boost_toot(self, agent_name: str, toot_id: str) -> str:
         """Boost (reblog) a toot."""
-        current_user_full = str(current_user)
-        current_user = _display_name_key(current_user)
-        current_username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        agent_name = _display_name_key(agent_name)
+        current_username = self._get_username(agent_name)
         self._print(
             f"@{current_username} boosting post {toot_id}",
             emoji="🔁",
         )
         try:
-            boost_message = f"{current_user} (@{current_username}) boosted post {toot_id}"
+            boost_message = f"{agent_name} (@{current_username}) boosted post {toot_id}"
             if self.perform_operations:
                 mastodon_ops = self._require_mastodon_ops()
                 check = mastodon_ops.boost_check(current_username, toot_id)
                 if not check:
                     mastodon_ops.boost_toot(current_username, toot_id)
                 else:
-                    boost_message = f"{current_user} (@{current_username}) has previously boosted post {toot_id}. Please conduct a different action!!"
+                    boost_message = f"{agent_name} (@{current_username}) has previously boosted post {toot_id}. Please conduct a different action!!"
             self._print(
                 f"@{current_username} boosted post {toot_id}",
                 emoji="✅",
             )
             self._log_action_event(
                 {
-                    "source_user": current_user_full,
+                    "source_user": actor_display_name,
                     "label": "boost_toot",
                     "data": {"toot_id": str(toot_id)},
                 }
@@ -1071,9 +1065,9 @@ class SocialNetworkApp(SocialBackendApp):
         return boost_message
 
     # @app_action
-    # def block_user(self, current_user: str, target_user: str) -> None:
+    # def block_user(self, agent_name: str, target_user: str) -> None:
     #   """Block a user."""
-    #   current_username = self._get_username(current_user)
+    #   current_username = self._get_username(agent_name)
     #   target_username = self._get_username(target_user)
     #   self._print(
     #       f"@{current_username} blocking user: @{target_username}", emoji="🚫"
@@ -1085,9 +1079,9 @@ class SocialNetworkApp(SocialBackendApp):
     #   )
 
     # @app_action
-    # def unblock_user(self, current_user: str, target_user: str) -> None:
+    # def unblock_user(self, agent_name: str, target_user: str) -> None:
     #   """Unblock a user."""
-    #   current_username = self._get_username(current_user)
+    #   current_username = self._get_username(agent_name)
     #   target_username = self._get_username(target_user)
     #   self._print(
     #       f"@{current_username} unblocking user: @{target_username}", emoji="✅"
@@ -1101,13 +1095,13 @@ class SocialNetworkApp(SocialBackendApp):
     # @app_action
     # def mute_account(
     #     self,
-    #     current_user: str,
+    #     agent_name: str,
     #     target_user: str,
     #     notifications: bool,
     #     duration: int,
     # ) -> None:
     #   """Mute an account."""
-    #   current_username = self._get_username(current_user)
+    #   current_username = self._get_username(agent_name)
     #   target_username = self._get_username(target_user)
     #   self._print(
     #       f"@{current_username} muting @{target_username} (notifications:"
@@ -1124,9 +1118,9 @@ class SocialNetworkApp(SocialBackendApp):
     #   self._print(f"@{current_username} muted @{target_username}", emoji="✅")
 
     # @app_action
-    # def unmute_account(self, current_user: str, target_user: str) -> None:
+    # def unmute_account(self, agent_name: str, target_user: str) -> None:
     #   """Unmute an account."""
-    #   current_username = self._get_username(current_user)
+    #   current_username = self._get_username(agent_name)
     #   target_username = self._get_username(target_user)
     #   self._print(f"@{current_username} unmuting @{target_username}", emoji="🔊")
     #   if self.perform_operations:
@@ -1136,13 +1130,13 @@ class SocialNetworkApp(SocialBackendApp):
     # @app_action
     # def delete_posts(
     #     self,
-    #     current_user: str,
+    #     agent_name: str,
     #     post_ids: list[str],
     #     recent_count: int,
     #     delete_all: bool,
     # ) -> None:
     #   """Delete posts for a user."""
-    #   username = self._get_username(current_user)
+    #   username = self._get_username(agent_name)
     #   if delete_all:
     #     self._print(f"Deleting all posts for @{username}", emoji="🗑️")
     #   elif recent_count:
@@ -1166,10 +1160,10 @@ class SocialNetworkApp(SocialBackendApp):
 
     # @app_action
     # def send_direct_message(
-    #     self, current_user: str, target_user: str, message: str
+    #     self, agent_name: str, target_user: str, message: str
     # ) -> None:
     #   """Send a direct message to another user."""
-    #   current_username = self._get_username(current_user)
+    #   current_username = self._get_username(agent_name)
     #   target_username = self._get_username(target_user)
     #   self._print(
     #       f"@{current_username} sending DM to @{target_username}", emoji="✉️"

@@ -327,41 +327,41 @@ class TwitterLikeApp(SocialBackendApp):
     # ------------------------------------------------------------------ #
 
     @app_action
-    def create_tweet(self, current_user: str, status: str) -> str:
+    def create_tweet(self, agent_name: str, status: str) -> str:
         """Post a new tweet to the timeline.
 
         Args:
-            current_user: The display name of the character you are currently simulating.
+            agent_name: The display name of the character you are currently simulating.
             status: The text content of the tweet (max 280 characters).
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         post_id = self._platform.create_post(username, status)
-        result_msg = f'{current_user_full} posted a tweet (ID: {post_id}): "{status}"'
+        result_msg = f'{actor_display_name} posted a tweet (ID: {post_id}): "{status}"'
         self._print(result_msg, emoji="📝")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="post",
             data={"post_id": str(post_id), "post_text": status},
         )
         return result_msg
 
     @app_action
-    def reply_to_tweet(self, current_user: str, status: str, post_id: int) -> str:
+    def reply_to_tweet(self, agent_name: str, status: str, post_id: int) -> str:
         """Reply to an existing tweet.
 
         Args:
-            current_user: The full display name of the user replying.
+            agent_name: The full display name of the user replying.
             status: The text content of the reply.
             post_id: The ID of the tweet being replied to.
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         reply_id = self._platform.create_post(username, status, reply_to_id=post_id)
-        result_msg = f'{current_user_full} replied to tweet {post_id}: "{status}"'
+        result_msg = f'{actor_display_name} replied to tweet {post_id}: "{status}"'
         self._print(result_msg, emoji="💬")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="reply",
             data={
                 "post_id": str(reply_id),
@@ -372,155 +372,155 @@ class TwitterLikeApp(SocialBackendApp):
         return result_msg
 
     @app_action
-    def like_tweet(self, current_user: str, post_id: int) -> str:
+    def like_tweet(self, agent_name: str, post_id: int) -> str:
         """Like (favorite) a tweet.
 
         Args:
-            current_user: The full display name of the user liking the tweet.
+            agent_name: The full display name of the user liking the tweet.
             post_id: The ID of the tweet to like.
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         try:
             result = self._platform.like(username, post_id)
             if result is False:
-                like_msg = f"{current_user_full} has already liked tweet {post_id}."
+                like_msg = f"{actor_display_name} has already liked tweet {post_id}."
             else:
-                like_msg = f"{current_user_full} liked tweet {post_id}."
+                like_msg = f"{actor_display_name} liked tweet {post_id}."
         except Exception as e:
             like_msg = f"Error liking tweet {post_id}: {e}"
         self._print(like_msg, emoji="❤️")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="like",
             data={"post_id": str(post_id)},
         )
         return like_msg
 
     @app_action
-    def repost_tweet(self, current_user: str, post_id: int) -> str:
+    def repost_tweet(self, agent_name: str, post_id: int) -> str:
         """Repost (retweet) an existing tweet to share it with your followers.
 
         Args:
-            current_user: The full display name of the user reposting.
+            agent_name: The full display name of the user reposting.
             post_id: The ID of the tweet to repost.
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         try:
             repost_id = self._platform.repost(username, post_id)
-            repost_msg = f"{current_user_full} reposted tweet {post_id} (new ID: {repost_id})."
+            repost_msg = f"{actor_display_name} reposted tweet {post_id} (new ID: {repost_id})."
         except Exception as e:
             repost_msg = f"Error reposting tweet {post_id}: {e}"
         self._print(repost_msg, emoji="🔁")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="repost",
             data={"post_id": str(post_id)},
         )
         return repost_msg
 
     @app_action
-    def follow_user(self, current_user: str, target_user: str) -> str:
+    def follow_user(self, agent_name: str, target_user: str) -> str:
         """Follow another user to see their tweets in your timeline.
 
         Args:
-            current_user: The full display name of the user who wants to follow.
+            agent_name: The full display name of the user who wants to follow.
             target_user: The full display name of the user to follow.
         """
-        current_user_full = str(current_user)
+        actor_display_name = str(agent_name)
         target_user_full = str(target_user)
-        src_username = self._get_username(current_user)
+        src_username = self._get_username(agent_name)
         tgt_username = self._get_username(target_user)
         try:
             self._platform.follow(src_username, tgt_username)
-            follow_msg = f"{current_user_full} followed {target_user_full}."
+            follow_msg = f"{actor_display_name} followed {target_user_full}."
         except Exception as e:
             follow_msg = f"Error following {target_user_full}: {e}"
         self._print(follow_msg, emoji="➕")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="follow",
             data={"target_user": target_user_full},
         )
         return follow_msg
 
     @app_action
-    def unfollow_user(self, current_user: str, target_user: str) -> str:
+    def unfollow_user(self, agent_name: str, target_user: str) -> str:
         """Unfollow a user to stop seeing their tweets.
 
         Args:
-            current_user: The full display name of the user who wants to unfollow.
+            agent_name: The full display name of the user who wants to unfollow.
             target_user: The full display name of the user to unfollow.
         """
-        current_user_full = str(current_user)
+        actor_display_name = str(agent_name)
         target_user_full = str(target_user)
-        src_username = self._get_username(current_user)
+        src_username = self._get_username(agent_name)
         tgt_username = self._get_username(target_user)
         try:
             self._platform.unfollow(src_username, tgt_username)
-            msg = f"{current_user_full} unfollowed {target_user_full}."
+            msg = f"{actor_display_name} unfollowed {target_user_full}."
         except Exception as e:
             msg = f"Error unfollowing {target_user_full}: {e}"
         self._print(msg, emoji="➖")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="unfollow",
             data={"target_user": target_user_full},
         )
         return msg
 
     @app_action
-    def get_own_timeline(self, current_user: str, limit: int) -> str:
+    def get_own_timeline(self, agent_name: str, limit: int) -> str:
         """Read your home timeline showing tweets from users you follow.
 
         Args:
-            current_user: The full display name of the user reading the timeline.
+            agent_name: The full display name of the user reading the timeline.
             limit: Maximum number of tweets to retrieve.
         """
-        current_user_full = str(current_user)
-        timeline = self.get_timeline(current_user, limit)
+        actor_display_name = str(agent_name)
+        timeline = self.get_timeline(agent_name, limit)
         str_timeline = self.format_timeline_for_observation(timeline)
-        self._print(f"Retrieved {len(timeline)} tweets for {current_user_full}", emoji="📊")
+        self._print(f"Retrieved {len(timeline)} tweets for {actor_display_name}", emoji="📊")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="get_own_timeline",
             data={"num_posts_retrieved": len(timeline)},
         )
-        return f"Twitter Timeline for {current_user_full}:\n{str_timeline}"
+        return f"Twitter Timeline for {actor_display_name}:\n{str_timeline}"
 
     @app_action
-    def update_profile(self, current_user: str, bio: str) -> str:
+    def update_profile(self, agent_name: str, bio: str) -> str:
         """Update your profile bio.
 
         Args:
-            current_user: The full display name of the user updating their profile.
+            agent_name: The full display name of the user updating their profile.
             bio: The new bio text for the profile.
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         # TwitterLikePlatform doesn't have update_profile, use raw SQL
         try:
             with self._platform.get_connection() as conn:
                 conn.execute("UPDATE users SET bio = ? WHERE username = ?", (bio, username))
                 conn.commit()
-            msg = f'Profile updated for {current_user_full}: "{bio}"'
+            msg = f'Profile updated for {actor_display_name}: "{bio}"'
         except Exception as e:
             msg = f"Error updating profile: {e}"
         self._print(msg, emoji="✏️")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="update_profile",
             data={"new_bio": bio},
         )
         return msg
 
     @app_action
-    def view_profile(self, current_user: str, target_user: str) -> str:
+    def view_profile(self, agent_name: str, target_user: str) -> str:
         """View a user's profile including their bio and stats.
 
         Args:
-            current_user: The full display name of the user viewing the profile.
+            agent_name: The full display name of the user viewing the profile.
             target_user: The full display name of the user whose profile to view.
         """
         target_user_full = str(target_user)
@@ -543,64 +543,62 @@ class TwitterLikeApp(SocialBackendApp):
         return msg
 
     @app_action
-    def unlike_tweet(self, current_user: str, post_id: int) -> str:
+    def unlike_tweet(self, agent_name: str, post_id: int) -> str:
         """Remove your like from a tweet.
 
         Args:
-            current_user: The full display name of the user unliking.
+            agent_name: The full display name of the user unliking.
             post_id: The ID of the tweet to unlike.
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         try:
             self._platform.unlike(username, post_id)
-            msg = f"{current_user_full} unliked tweet {post_id}."
+            msg = f"{actor_display_name} unliked tweet {post_id}."
         except Exception as e:
             msg = f"Error unliking tweet {post_id}: {e}"
         self._print(msg, emoji="💔")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="unlike",
             data={"post_id": str(post_id)},
         )
         return msg
 
     @app_action
-    def quote_repost_tweet(self, current_user: str, post_id: int, status: str) -> str:
+    def quote_repost_tweet(self, agent_name: str, post_id: int, status: str) -> str:
         """Quote-repost a tweet, adding your own commentary.
 
         Args:
-            current_user: The full display name of the user quote-reposting.
+            agent_name: The full display name of the user quote-reposting.
             post_id: The ID of the tweet to quote.
             status: Your commentary text to add above the quoted tweet.
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         try:
             new_id = self._platform.quote_repost(username, post_id, status)
-            msg = (
-                f'{current_user_full} quote-reposted tweet {post_id} (new ID: {new_id}): "{status}"'
-            )
+            msg = f'{actor_display_name} quote-reposted tweet {post_id} (new ID: {new_id}): "{status}"'
         except Exception as e:
             msg = f"Error quote-reposting tweet {post_id}: {e}"
         self._print(msg, emoji="🔁💬")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="quote_repost",
             data={"post_id": str(post_id), "content": status},
         )
         return msg
 
     @app_action
-    def search_posts(self, current_user: str, query: str, limit: int = 20) -> str:
+    def search_posts(self, agent_name: str, query: str, limit: int = 20) -> str:
         """Search for tweets containing specific text.
 
         Args:
-            current_user: The full display name of the user searching.
+            agent_name: The full display name of the user searching.
             query: The search text to look for in tweet content.
             limit: Maximum number of results to return.
         """
-        current_user_full = str(current_user)
+        actor_display_name = str(agent_name)
         try:
             results = self._platform.search_posts(query, limit=limit)
             if results:
@@ -622,106 +620,106 @@ class TwitterLikeApp(SocialBackendApp):
     # ================================================================ #
 
     @app_action
-    def unlike_post(self, current_user: str, post_id: int) -> str:
+    def unlike_post(self, agent_name: str, post_id: int) -> str:
         """Remove a like from a previously liked post.
 
         Args:
-            current_user: The full display name of the user removing the like.
+            agent_name: The full display name of the user removing the like.
             post_id: The ID of the post to unlike.
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         result = self._platform.unlike_post(username, post_id)
-        msg = f"{current_user_full} {'unliked' if result else 'could not unlike'} post {post_id}."
+        msg = f"{actor_display_name} {'unliked' if result else 'could not unlike'} post {post_id}."
         self._print(msg, emoji="🚫❤️")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="unlike_post",
             data={"post_id": str(post_id)},
         )
         return msg
 
     @app_action
-    def dislike_post(self, current_user: str, post_id: int) -> str:
+    def dislike_post(self, agent_name: str, post_id: int) -> str:
         """Dislike (downvote) a post.
 
         Args:
-            current_user: The full display name of the user disliking the post.
+            agent_name: The full display name of the user disliking the post.
             post_id: The ID of the post to dislike.
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         result = self._platform.dislike_post(username, post_id)
-        msg = f"{current_user_full} {'disliked' if result else 'could not dislike'} post {post_id}."
+        msg = (
+            f"{actor_display_name} {'disliked' if result else 'could not dislike'} post {post_id}."
+        )
         self._print(msg, emoji="👎")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="dislike_post",
             data={"post_id": str(post_id)},
         )
         return msg
 
     @app_action
-    def undo_dislike_post(self, current_user: str, post_id: int) -> str:
+    def undo_dislike_post(self, agent_name: str, post_id: int) -> str:
         """Remove a dislike from a post.
 
         Args:
-            current_user: The full display name of the user removing the dislike.
+            agent_name: The full display name of the user removing the dislike.
             post_id: The ID of the post to undo dislike for.
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         result = self._platform.undo_dislike_post(username, post_id)
-        msg = f"{current_user_full} {'removed dislike from' if result else 'could not remove dislike from'} post {post_id}."
+        msg = f"{actor_display_name} {'removed dislike from' if result else 'could not remove dislike from'} post {post_id}."
         self._print(msg, emoji="🆗")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="undo_dislike_post",
             data={"post_id": str(post_id)},
         )
         return msg
 
     @app_action
-    def mute_user(self, current_user: str, target_user: str) -> str:
+    def mute_user(self, agent_name: str, target_user: str) -> str:
         """Mute another user to hide their posts from your timeline.
 
         Args:
-            current_user: The full display name of the user doing the muting.
+            agent_name: The full display name of the user doing the muting.
             target_user: The full display name of the user to mute.
         """
-        current_user_full = str(current_user)
+        actor_display_name = str(agent_name)
         target_user_full = str(target_user)
-        src_username = self._get_username(current_user)
+        src_username = self._get_username(agent_name)
         tgt_username = self._get_username(target_user)
         result = self._platform.mute_user(src_username, tgt_username)
-        msg = f"{current_user_full} {'muted' if result else 'could not mute'} {target_user_full}."
+        msg = f"{actor_display_name} {'muted' if result else 'could not mute'} {target_user_full}."
         self._print(msg, emoji="🔇")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="mute_user",
             data={"target_user": target_user_full},
         )
         return msg
 
     @app_action
-    def unmute_user(self, current_user: str, target_user: str) -> str:
+    def unmute_user(self, agent_name: str, target_user: str) -> str:
         """Unmute a previously muted user.
 
         Args:
-            current_user: The full display name of the user doing the unmuting.
+            agent_name: The full display name of the user doing the unmuting.
             target_user: The full display name of the user to unmute.
         """
-        current_user_full = str(current_user)
+        actor_display_name = str(agent_name)
         target_user_full = str(target_user)
-        src_username = self._get_username(current_user)
+        src_username = self._get_username(agent_name)
         tgt_username = self._get_username(target_user)
         result = self._platform.unmute_user(src_username, tgt_username)
-        msg = (
-            f"{current_user_full} {'unmuted' if result else 'could not unmute'} {target_user_full}."
-        )
+        msg = f"{actor_display_name} {'unmuted' if result else 'could not unmute'} {target_user_full}."
         self._print(msg, emoji="🔊")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="unmute_user",
             data={"target_user": target_user_full},
         )
@@ -729,37 +727,37 @@ class TwitterLikeApp(SocialBackendApp):
 
     @app_action
     def report_post(
-        self, current_user: str, post_id: int, reason: str = "Inappropriate content"
+        self, agent_name: str, post_id: int, reason: str = "Inappropriate content"
     ) -> str:
         """Report a post for violation of community guidelines.
 
         Args:
-            current_user: The full display name of the user reporting.
+            agent_name: The full display name of the user reporting.
             post_id: The ID of the post to report.
             reason: The reason for reporting (default: Inappropriate content).
         """
-        current_user_full = str(current_user)
-        username = self._get_username(current_user)
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
         result = self._platform.report_post(username, post_id, reason)
-        msg = f"{current_user_full} {'reported' if result else 'could not report'} post {post_id} ({reason})."
+        msg = f"{actor_display_name} {'reported' if result else 'could not report'} post {post_id} ({reason})."
         self._print(msg, emoji="⚠️")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="report_post",
             data={"post_id": str(post_id), "reason": reason},
         )
         return msg
 
     @app_action
-    def get_trending_posts(self, current_user: str, limit: int = 10, days: int = 7) -> str:
+    def get_trending_posts(self, agent_name: str, limit: int = 10, days: int = 7) -> str:
         """Get trending posts from the last N days.
 
         Args:
-            current_user: The full display name of the user requesting trends.
+            agent_name: The full display name of the user requesting trends.
             limit: Maximum number of posts to return.
             days: Number of days to consider for trending.
         """
-        current_user_full = str(current_user)
+        actor_display_name = str(agent_name)
         try:
             results = self._platform.get_trending_posts(limit=limit, days=days)
             if results:
@@ -776,23 +774,23 @@ class TwitterLikeApp(SocialBackendApp):
             msg = f"Error getting trending posts: {e}"
         self._print(msg, emoji="🔥")
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="get_trending",
             data={"limit": limit, "days": days},
         )
         return msg
 
     @app_action
-    def do_nothing(self, current_user: str) -> str:
+    def do_nothing(self, agent_name: str) -> str:
         """Take no action (used as a baseline or filler action).
 
         Args:
-            current_user: The full display name of the user.
+            agent_name: The full display name of the user.
         """
-        current_user_full = str(current_user)
-        msg = f"{current_user_full} did nothing."
+        actor_display_name = str(agent_name)
+        msg = f"{actor_display_name} did nothing."
         self._log_action_event(
-            source_user=current_user_full,
+            source_user=actor_display_name,
             label="do_nothing",
             data={},
         )

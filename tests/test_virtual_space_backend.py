@@ -27,7 +27,7 @@ def test_virtual_space_move_updates_location_and_observations() -> None:
     result = app.invoke_action_with_kwargs(
         "MOVE",
         {
-            "current_user": "Alice",
+            "agent_name": "Alice",
             "destination": "garden",
         },
     )
@@ -41,12 +41,12 @@ def test_virtual_space_move_updates_location_and_observations() -> None:
 def test_virtual_space_talk_requires_same_room_and_records_message() -> None:
     app = VirtualSpaceApp(rooms=["atrium", "garden"], starting_room="atrium")
     app.initialize(agent_names=["Alice", "Bob", "Casey"])
-    app.move(current_user="Casey", destination="garden")
+    app.move(agent_name="Casey", destination="garden")
 
     talk_result = app.invoke_action_with_kwargs(
         "TALK",
         {
-            "current_user": "Alice",
+            "agent_name": "Alice",
             "target_user": "Bob",
             "message": "Want to explore the garden?",
         },
@@ -54,7 +54,7 @@ def test_virtual_space_talk_requires_same_room_and_records_message() -> None:
     blocked_result = app.invoke_action_with_kwargs(
         "TALK",
         {
-            "current_user": "Alice",
+            "agent_name": "Alice",
             "target_user": "Casey",
             "message": "Can you hear me?",
         },
@@ -85,14 +85,14 @@ def test_virtual_space_notes_and_room_tasks_change_observations() -> None:
     note_result = app.invoke_action_with_kwargs(
         "LEAVE_NOTE",
         {
-            "current_user": "Alice",
+            "agent_name": "Alice",
             "message": "Meet by the welcome board.",
         },
     )
     partial_result = app.invoke_action_with_kwargs(
         "WORK_ON_TASK",
         {
-            "current_user": "Alice",
+            "agent_name": "Alice",
             "task_id": "welcome_board",
             "effort": 1,
         },
@@ -100,7 +100,7 @@ def test_virtual_space_notes_and_room_tasks_change_observations() -> None:
     complete_result = app.invoke_action_with_kwargs(
         "WORK_ON_TASK",
         {
-            "current_user": "Bob",
+            "agent_name": "Bob",
             "task_id": "welcome_board",
             "effort": 1,
         },
@@ -123,5 +123,5 @@ def test_virtual_space_factory_and_finished_action() -> None:
     app.initialize(agent_names=["Alice"])
 
     assert isinstance(app, VirtualSpaceApp)
-    assert "Location: lab" in app.invoke_action_with_kwargs("LOOK", {"current_user": "Alice"})
+    assert "Location: lab" in app.invoke_action_with_kwargs("LOOK", {"agent_name": "Alice"})
     assert app.invoke_action_with_kwargs("FINISHED", {}) == "Finished action episode"

@@ -32,8 +32,6 @@ gm:
         Some of the above listed actions, may not be available at thus step, or some
         other actions may also be available, as described below.
 
-        current_user is always the full display name (e.g. "Alice Smith").
-
         Only use real post IDs from timeline/feed observations; do not fabricate IDs.
 
         For status/content fields, write in first person as the character.
@@ -125,8 +123,6 @@ gm:
 
           Some of the above listed actions, may not be available at thus step, or
           some other actions may also be available, as described below.
-
-          current_user is always the full display name (e.g. "Alice Smith").
 
           Only use real post IDs from timeline/feed observations; do not fabricate
           IDs.

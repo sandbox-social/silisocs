@@ -93,7 +93,9 @@ def add_agent(
     """Build and add one agent."""
     if spec.role != RuntimeRole.AGENT:
         raise ValueError("Runtime spec role must be agent.")
-    name = str(spec.params["name"])
+    name = str((spec.params or {}).get("name", "")).strip()
+    if not name:
+        raise ValueError("Agent runtime specs must include a non-empty `name` param.")
     if any(agent.name == name for agent in runtime.agents):
         raise ValueError(f"Duplicate agent name: {name}")
     model = models[object_to_model[name]]

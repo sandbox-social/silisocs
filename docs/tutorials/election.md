@@ -38,7 +38,7 @@ setting:
 
 ### Agent Classes
 
-**Voters** use the HuggingFace persona dataset:
+**Voters** use a named persona source:
 
 ```yaml
 classes:
@@ -47,14 +47,19 @@ classes:
     class_path: silisocs.agents.native.NativeAgent
     sim_role_name: voter
     data:
-      source: hf_dataset
-      dataset: nvidia/Nemotron-Personas-USA
-      split: train
+      source: local_json
+      path: input/voters.json
     field_map:
+      name: name
       context: persona
     params:
       goal: Their goal is have a good day and vote in the election.
 ```
+
+Every final agent spec must have a unique `name`. This scenario can use the
+default builder's built-in name derivation for `nvidia/Nemotron-Personas-USA`;
+other persona-only datasets should map a name field, set
+`derive_name_from_context: true`, or provide a custom Agent Builder.
 
 **Candidates** are defined inline via `config_path` referencing the `candidates`
 section:

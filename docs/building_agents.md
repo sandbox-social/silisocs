@@ -51,9 +51,12 @@ persona_pipeline:
       data:
         source: inline
         records:
-          - persona: Alex follows local policy and posts practical updates.
-          - persona: Blair follows technology news and likes concise debates.
+          - name: Alex
+            persona: Alex follows local policy and posts practical updates.
+          - name: Blair
+            persona: Blair follows technology news and likes concise debates.
       field_map:
+        name: name
         context: persona
 ```
 
@@ -76,6 +79,15 @@ field_map:
   context: persona             # Maps "persona" field → agent "context"
   bio: "{role}\n{interests}"   # Template combining multiple fields
 ```
+
+`context` is required. The final `AgentConfig` records must also contain a
+unique `name`; Silisocs uses agent names as runtime identities for observations,
+backend state, flows, probes, logs, and checkpoints. Most data sources should map
+`field_map.name` explicitly. The default builder also derives names for the
+known `nvidia/Nemotron-Personas-USA` persona dataset, and classes can opt into
+the same behavior with `derive_name_from_context: true`. Custom builders may
+derive names however they need, but runtime construction rejects unnamed or
+duplicate specs.
 
 Supported target fields: `name`, `context`, `style`, `goal`, `bio`, `seed_post`.
 
@@ -169,6 +181,7 @@ result.
 | `self._normalize_memories(value)` | Normalize to `list[str]` |
 | `self._extract_path(record, "a.b.c")` | Extract nested value from dict |
 | `self._resolve_source(record, spec)` | Resolve dot-path or `{template}` |
+| `self._derive_name(context, words=2)` | Derive a compact name when a source intentionally has persona text but no name field |
 
 ---
 
@@ -233,9 +246,10 @@ classes:
 Or per-agent via field mapping (your data source must include a model field):
 
 ```yaml
-field_map:
-  context: persona
-  model: model_name          # Maps data field → per-agent model
+    field_map:
+      name: name
+      context: persona
+      model: model_name          # Maps data field → per-agent model
 ```
 
 See [Usage Overview](usage.md#per-agent-llm-models) for the full priority chain.

@@ -30,8 +30,8 @@ class _GenericApp(BackendApp):
         return f"{actor_name} observes app state"
 
     @app_action(selectable_name="ACT", description="Act")
-    def act(self, current_user: str) -> str:
-        return f"{current_user} acted"
+    def act(self, agent_name: str) -> str:
+        return f"{agent_name} acted"
 
 
 @dataclass

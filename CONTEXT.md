@@ -13,6 +13,12 @@ Default agents use `NativeAgent`: they assemble semantic context from
 instructions, persona, scenario, goal, style, recent observations, and memory,
 then route through `Agent._call_model(context, action_spec)`.
 
+**Agent Name**:
+The unique simulation identity for an Agent. The same name is used to route
+observations and actions, connect the Agent to backend state, select flows, run
+probes, and write logs/checkpoints.
+_Avoid_: Treating names as optional labels or deriving runtime identity silently
+
 **Agent Builder**:
 The config-to-agent-spec translator that returns `AgentConfig` records for
 runtime construction. The default builder reads `agents.persona_pipeline`, and

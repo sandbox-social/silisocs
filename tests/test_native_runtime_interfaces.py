@@ -234,6 +234,47 @@ def test_non_native_agent_class_requires_explicit_concordia_compat() -> None:
         raise AssertionError("Non-native agent prefab should require explicit compat.")
 
 
+def test_agent_runtime_spec_requires_non_empty_name() -> None:
+    spec = AgentConfig(
+        class_path="silisocs.agents.native.NativeAgent",
+        params={"name": " ", "context": "No identity."},
+    )
+
+    with pytest.raises(ValueError, match="non-empty `name`"):
+        add_agent(
+            runtime=RuntimeObjects(),
+            spec=spec,
+            models={"default": NoLanguageModel()},
+            object_to_model={"": "default"},
+        )
+
+
+def test_agent_runtime_spec_rejects_duplicate_name() -> None:
+    runtime = RuntimeObjects()
+    spec = AgentConfig(
+        class_path="silisocs.agents.native.NativeAgent",
+        params={"name": "Alice", "context": "One Alice."},
+    )
+
+    add_agent(
+        runtime=runtime,
+        spec=spec,
+        models={"default": NoLanguageModel()},
+        object_to_model={"Alice": "default"},
+    )
+
+    with pytest.raises(ValueError, match="Duplicate agent name: Alice"):
+        add_agent(
+            runtime=runtime,
+            spec=AgentConfig(
+                class_path="silisocs.agents.native.NativeAgent",
+                params={"name": "Alice", "context": "Another Alice."},
+            ),
+            models={"default": NoLanguageModel()},
+            object_to_model={"Alice": "default"},
+        )
+
+
 def test_concordia_agent_compat_builds_through_adapter() -> None:
     pytest.importorskip("concordia")
     from silisocs.adapters.concordia import ConcordiaAgentAdapter

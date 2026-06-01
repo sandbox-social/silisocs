@@ -35,9 +35,53 @@ class DryRunResult:
     skip_reason: str = ""
 
 
-def _discover_targets(project_root: Path) -> list[DryRunTarget]:
-    """Discover dry-run targets under `scenarios/` and `replications/`."""
+def _discover_config_root_targets(
+    *,
+    conf_dir: Path,
+    label_root: str,
+) -> list[DryRunTarget]:
+    """Discover dry-run targets from one config root containing scenario/env groups."""
     candidates: list[DryRunTarget] = []
+    if not conf_dir.is_dir():
+        return candidates
+    for scenario_file in sorted((conf_dir / "scenario").glob("*.yaml")):
+        candidates.append(
+            DryRunTarget(
+                label=f"{label_root}/{scenario_file.stem}",
+                config_path=conf_dir,
+                scenario_variant=scenario_file.stem,
+            )
+        )
+    for env_file in sorted((conf_dir / "env").glob("*.yaml")):
+        scenario_dir = conf_dir / "scenario"
+        default_scenario = scenario_dir / "default.yaml"
+        matching_scenario = scenario_dir / f"{env_file.stem}.yaml"
+        if matching_scenario.is_file():
+            scenario_variant = env_file.stem
+        elif default_scenario.is_file():
+            scenario_variant = "default"
+        else:
+            continue
+        candidates.append(
+            DryRunTarget(
+                label=f"{label_root}/{scenario_variant} [env={env_file.stem}]",
+                config_path=conf_dir,
+                scenario_variant=scenario_variant,
+                extra_overrides=(f"env={env_file.stem}",),
+            )
+        )
+    return candidates
+
+
+def _discover_targets(project_root: Path) -> list[DryRunTarget]:
+    """Discover dry-run targets under packaged, scenario, and replication configs."""
+    candidates: list[DryRunTarget] = []
+    candidates.extend(
+        _discover_config_root_targets(
+            conf_dir=project_root / "src" / "silisocs" / "conf",
+            label_root="packaged",
+        )
+    )
     roots = [
         project_root / "scenarios",
         project_root / "replications",

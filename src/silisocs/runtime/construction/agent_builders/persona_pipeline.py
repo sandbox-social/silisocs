@@ -18,13 +18,13 @@ from typing import Any
 from silisocs.runtime.construction.agent_builders.base import AgentBuilder
 from silisocs.runtime.construction.agent_builders.common import (
     coerce_text,
-    deduplicate_agent_configs,
     derive_name,
     extract_path,
     normalize_memories,
     resolve_source,
     safe_path_exists,
     to_plain,
+    validate_unique_agent_names,
 )
 from silisocs.runtime.construction.agent_builders.fixed_actions import FixedActionBuilder
 from silisocs.runtime.construction.agent_builders.params import build_agent_params
@@ -48,7 +48,7 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
         """Build all agent specs from the class-based persona pipeline."""
         pipeline = getattr(self.config, "persona_pipeline", None)
         if pipeline and getattr(pipeline, "classes", None):
-            return self._deduplicate(self._build_from_classes())
+            return validate_unique_agent_names(self._build_from_classes())
         raise ValueError("Scenario must define persona_pipeline.classes.")
 
     def load_news_data(self, news_file: str) -> dict[str, Any]:
@@ -120,11 +120,11 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
 
         field_map = {**default_field_map, **(class_cfg.get("field_map", {}) or {})}
         mem_field = class_cfg.get("specific_memories_field", default_mem_field)
-        derive_name_from_context = self._should_derive_name(class_cfg, data_cfg)
-        name_words = int(class_cfg.get("name_from_context_words", 2))
         news_posts = self._load_news_posts(class_name, class_cfg)
         class_model = class_cfg.get("model") or default_params.get("model")
         fixed_action_cfg = class_cfg.get("fixed_action") if isinstance(class_cfg, Mapping) else None
+        derive_name_from_context = self._should_derive_name(class_cfg, data_cfg)
+        name_words = int(class_cfg.get("name_from_context_words", 2) or 2)
 
         agents: list[AgentConfig] = []
         for idx, record in enumerate(records, start=1):
@@ -139,11 +139,11 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
                 sim_role,
                 class_path,
                 shared,
-                derive_name_from_context,
-                name_words,
                 news_posts,
                 class_model,
                 resolve_file_path=self._resolve_file_path,
+                derive_name_from_context=derive_name_from_context,
+                name_words=name_words,
             )
             self._attach_fixed_action(
                 params,
@@ -158,6 +158,17 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
             )
         return agents
 
+    def _should_derive_name(
+        self, class_cfg: Mapping[str, Any], data_cfg: Mapping[str, Any]
+    ) -> bool:
+        """Return whether this class intentionally derives names from context."""
+        if bool(class_cfg.get("derive_name_from_context", False)):
+            return True
+        if str(data_cfg.get("source", "")).strip().lower() != "hf_dataset":
+            return False
+        dataset = str(data_cfg.get("dataset", "")).strip().lower()
+        return dataset == "nvidia/nemotron-personas-usa"
+
     def _normalize_compat(self, class_name: str, value: Any) -> str:
         compat = str(value or "").strip().lower()
         if compat and compat != "concordia":
@@ -166,13 +177,6 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
                 "Supported value: concordia."
             )
         return compat
-
-    def _should_derive_name(self, class_cfg: dict[str, Any], data_cfg: dict[str, Any]) -> bool:
-        derive = bool(class_cfg.get("derive_name_from_context", False))
-        if data_cfg.get("source") == "hf_dataset":
-            dataset = str(data_cfg.get("dataset", "")).strip().lower()
-            derive = derive or dataset == "nvidia/nemotron-personas-usa"
-        return derive
 
     def _load_news_posts(self, class_name: str, class_cfg: dict[str, Any]) -> dict[str, str] | None:
         if not bool(class_cfg.get("use_news_file_posts", False)):
@@ -279,10 +283,6 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
 
     def _load_memories(self, value: Any) -> list[str]:
         return self.records.load_memories(value)
-
-    @staticmethod
-    def _deduplicate(configs: list[AgentConfig]) -> list[AgentConfig]:
-        return deduplicate_agent_configs(configs)
 
     _to_plain = staticmethod(to_plain)
     _normalize_memories = staticmethod(normalize_memories)

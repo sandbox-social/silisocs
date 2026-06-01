@@ -204,8 +204,10 @@ persona_pipeline:
       data:
         source: inline
         records:
-          - persona: Alex is a local organizer who posts about public services.
+          - name: Alex
+            persona: Alex is a local organizer who posts about public services.
       field_map:
+        name: name
         context: persona
 ```
 
@@ -270,6 +272,7 @@ classes:
       source: local_json
       path: agents.json       # Must have a "model" field per record
     field_map:
+      name: name
       context: persona
       model: model_name       # Maps to per-agent model assignment
 ```
@@ -578,9 +581,12 @@ persona_pipeline:
       data:
         source: inline
         records:
-          - persona: Alex follows product launches and asks practical questions.
-          - persona: Blair studies developer tools and compares alternatives.
+          - name: Alex
+            persona: Alex follows product launches and asks practical questions.
+          - name: Blair
+            persona: Blair studies developer tools and compares alternatives.
       field_map:
+        name: name
         context: persona
 
 shared_memories:

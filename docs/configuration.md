@@ -223,9 +223,12 @@ persona_pipeline:
       data:
         source: inline
         records:
-          - persona: Alex follows local policy and posts practical updates.
-          - persona: Blair follows technology news and likes concise debates.
+          - name: Alex
+            persona: Alex follows local policy and posts practical updates.
+          - name: Blair
+            persona: Blair follows technology news and likes concise debates.
       field_map:
+        name: name
         context: persona
 
 shared_memories:
@@ -234,6 +237,14 @@ shared_memories:
 initial_observations:
   - "{name} opens their social media feed."
 ```
+
+Every final agent spec must have a unique `name`. For most persona-pipeline
+sources, map it with `field_map.name`. The default builder can derive names for
+the known `nvidia/Nemotron-Personas-USA` persona dataset, and custom builders can
+derive names as part of their own config-to-spec logic. Runtime construction
+still rejects unnamed or duplicate specs before the simulation starts. Agent
+names are the runtime identities used by GMs, backends, flows, probes, logs, and
+checkpoints.
 
 **`scenarios/my_scenario/conf/env.yaml`** — optional backend/GM overrides:
 ```yaml
@@ -329,6 +340,7 @@ persona_pipeline:
     shared_memories:
       - "A shared memory for all agents."
     field_map:
+      name: name
       context: persona
 
   classes:
@@ -341,8 +353,10 @@ persona_pipeline:
       data:
         source: inline                 # inline | config_path | local_json | hf_dataset
         records:
-          - persona: Alex follows local policy and posts practical updates.
+          - name: Alex
+            persona: Alex follows local policy and posts practical updates.
       field_map:
+        name: name
         context: persona
       params:
         goal: "Have a productive discussion."

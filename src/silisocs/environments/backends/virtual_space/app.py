@@ -97,9 +97,9 @@ class VirtualSpaceApp(BackendApp):
         if callable(log_fn):
             log_fn({"event_type": "virtual_space", "message": event})
 
-    def _ensure_agent(self, current_user: str) -> str | None:
-        if current_user not in self._locations:
-            return f"Unknown virtual-space participant: {current_user}"
+    def _ensure_agent(self, agent_name: str) -> str | None:
+        if agent_name not in self._locations:
+            return f"Unknown virtual-space participant: {agent_name}"
         return None
 
     def _exits(self, room: str) -> list[str]:
@@ -140,60 +140,60 @@ class VirtualSpaceApp(BackendApp):
         return f"{task.task_id}: {task.description} [{status}]"
 
     @app_action(selectable_name="LOOK", description="Inspect the current room")
-    def look(self, current_user: str) -> str:
+    def look(self, agent_name: str) -> str:
         """Inspect the current room, nearby agents, exits, and recent events."""
-        error = self._ensure_agent(current_user)
+        error = self._ensure_agent(agent_name)
         if error:
             return error
-        return self.observe(current_user)
+        return self.observe(agent_name)
 
     @app_action(selectable_name="MOVE", description="Move to another room")
-    def move(self, current_user: str, destination: str) -> str:
+    def move(self, agent_name: str, destination: str) -> str:
         """Move the current user to an adjacent destination room."""
-        error = self._ensure_agent(current_user)
+        error = self._ensure_agent(agent_name)
         if error:
             return error
         destination = str(destination)
-        current_room = self._locations[current_user]
+        current_room = self._locations[agent_name]
         if destination == current_room:
-            return f"{current_user} is already in {destination}."
+            return f"{agent_name} is already in {destination}."
         if destination not in self.rooms:
             return f"Unknown destination: {destination}. Available rooms: {', '.join(self.rooms)}"
         if destination not in self._exits(current_room):
             return f"{destination} is not reachable from {current_room}."
 
-        self._locations[current_user] = destination
-        event = f"{current_user} moved from {current_room} to {destination}."
+        self._locations[agent_name] = destination
+        event = f"{agent_name} moved from {current_room} to {destination}."
         self._record(event)
         return event
 
     @app_action(selectable_name="LEAVE_NOTE", description="Leave a note in the current room")
-    def leave_note(self, current_user: str, message: str) -> str:
+    def leave_note(self, agent_name: str, message: str) -> str:
         """Leave a persistent note visible to later room occupants."""
-        error = self._ensure_agent(current_user)
+        error = self._ensure_agent(agent_name)
         if error:
             return error
         message = str(message).strip()
         if not message:
             return "Message must not be empty."
-        room = self._locations[current_user]
-        note = f"{current_user}: {message}"
+        room = self._locations[agent_name]
+        note = f"{agent_name}: {message}"
         self._notes.setdefault(room, []).append(note)
-        event = f"{current_user} left a note in {room}: {message}"
+        event = f"{agent_name} left a note in {room}: {message}"
         self._record(event)
         return event
 
     @app_action(selectable_name="WORK_ON_TASK", description="Work on a room task")
-    def work_on_task(self, current_user: str, task_id: str, effort: int = 1) -> str:
+    def work_on_task(self, agent_name: str, task_id: str, effort: int = 1) -> str:
         """Contribute effort to an incomplete task in the current room."""
-        error = self._ensure_agent(current_user)
+        error = self._ensure_agent(agent_name)
         if error:
             return error
         task_id = str(task_id).strip()
         task = self._tasks.get(task_id)
         if task is None:
             return f"Unknown task: {task_id}."
-        room = self._locations[current_user]
+        room = self._locations[agent_name]
         if task.room != room:
             return f"Task {task_id} is in {task.room}, not {room}."
         if task.complete:
@@ -205,34 +205,34 @@ class VirtualSpaceApp(BackendApp):
         if task.progress >= task.required_effort:
             task.complete = True
             message = task.completion_message or f"Task {task.task_id} is complete."
-            event = f"{current_user} completed task {task.task_id}: {message}"
+            event = f"{agent_name} completed task {task.task_id}: {message}"
         else:
             event = (
-                f"{current_user} worked on task {task.task_id} "
+                f"{agent_name} worked on task {task.task_id} "
                 f"({task.progress}/{task.required_effort})."
             )
         self._record(event)
         return event
 
     @app_action(selectable_name="TALK", description="Talk to another agent in the same room")
-    def talk(self, current_user: str, target_user: str, message: str) -> str:
+    def talk(self, agent_name: str, target_user: str, message: str) -> str:
         """Send a message to another agent who is present in the same room."""
-        error = self._ensure_agent(current_user)
+        error = self._ensure_agent(agent_name)
         if error:
             return error
         target_error = self._ensure_agent(target_user)
         if target_error:
             return target_error
-        if current_user == target_user:
+        if agent_name == target_user:
             return "Agents cannot talk to themselves."
-        current_room = self._locations[current_user]
+        current_room = self._locations[agent_name]
         target_room = self._locations[target_user]
         if current_room != target_room:
-            return f"{target_user} is not in the same room as {current_user}."
+            return f"{target_user} is not in the same room as {agent_name}."
         message = str(message).strip()
         if not message:
             return "Message must not be empty."
 
-        event = f"{current_user} told {target_user}: {message}"
+        event = f"{agent_name} told {target_user}: {message}"
         self._record(event)
         return event

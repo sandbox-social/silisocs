@@ -23,11 +23,16 @@ persona_pipeline:
       data:
         source: inline
         records:
-          - persona: Alex likes to explore spaces before starting conversations.
-          - persona: Blair enjoys meeting others and asking what they notice.
-          - persona: Casey prefers quiet rooms and short direct messages.
-          - persona: Devon looks for active rooms with several people present.
+          - name: Alex
+            persona: Alex likes to explore spaces before starting conversations.
+          - name: Blair
+            persona: Blair enjoys meeting others and asking what they notice.
+          - name: Casey
+            persona: Casey prefers quiet rooms and short direct messages.
+          - name: Devon
+            persona: Devon looks for active rooms with several people present.
       field_map:
+        name: name
         context: persona
 
 shared_memories:
@@ -36,4 +41,4 @@ shared_memories:
 
 initial_observations:
   - "{name} enters the virtual commons."
-  - "{name} can look around, move between rooms, or talk to someone nearby."
+  - "{name} can look around, move between rooms, leave notes, work on tasks, or talk to someone nearby."
