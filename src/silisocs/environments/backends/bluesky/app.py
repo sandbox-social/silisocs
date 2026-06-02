@@ -46,7 +46,7 @@ class BlueskyApp(SocialMediaApp):
         for i, display_name in enumerate(agent_names):
             parts = display_name.strip().split()
             short_name = parts[0] if parts else display_name
-            concat_name = f"{parts[0]}{parts[1]}" if len(parts) >= 2 else parts[0]
+            concat_name = f"{parts[0]} {parts[1]}" if len(parts) >= 2 else parts[0]
             username = f"agent{i}.{domain}"
             user_mapping[short_name] = username
             user_mapping[concat_name] = username
@@ -60,6 +60,7 @@ class BlueskyApp(SocialMediaApp):
                     self._print(f"Error setting bio for {display_name}: {e}", color="red")
         
         following = generate_follow_network(agent_names, sim_roles, social_network)
+        
         for display_name, followees in following.items():
             for followee in followees:
                 try:
@@ -90,6 +91,7 @@ class BlueskyApp(SocialMediaApp):
     def set_user_mapping(self, mapping: dict[str, str]) -> None:
         self._user_mapping = mapping
         num_agents = len(mapping)
+        self._print(mapping)
         self._print(f"Updated user mapping with {num_agents} entries", emoji="🔄")
         self._print("Resetting server")
         reset_bluesky_server()
