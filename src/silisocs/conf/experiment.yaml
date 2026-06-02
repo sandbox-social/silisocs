@@ -7,7 +7,7 @@ defaults:
   - scenario: default
   - agents: default
   - sim: base
-  - env: twitter_like
+  - env: bluesky
   - evals: base
   - _self_
 
