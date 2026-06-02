@@ -591,7 +591,6 @@ class BackendApp(metaclass=abc.ABCMeta):
                     },
                 }
             )
-        print("schemas, blah  lah  lahs", schemas)
         return schemas
 
     @app_action(

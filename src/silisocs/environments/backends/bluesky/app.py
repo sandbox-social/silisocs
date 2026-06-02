@@ -1,14 +1,14 @@
 from datetime import datetime, timezone
 from dotenv import load_dotenv
-from typing import Any    
+from typing import Any
 
 from silisocs.environments.backends.base import (  # noqa: F401 – re-exported for backward compat
     COLOR_TYPE,
     ActionArgumentError,
     ActionDescriptor,
     Parameter,
-    PhoneApp,
-    SocialMediaApp,
+    BackendApp,
+    SocialBackendApp,
     app_action,
 )
 from silisocs.environments.backends.bluesky.bluesky_ops.reset_users import reset_bluesky_server
@@ -17,7 +17,6 @@ from silisocs.environments.backends.bluesky.bluesky_ops.follow_user import follo
 from silisocs.environments.backends.bluesky.bluesky_ops.post import post, reply_to_post, like_post, repost_post
 from silisocs.environments.backends.bluesky.bluesky_ops.timeline import get_timeline
 from silisocs.environments.backends.bluesky.bluesky_ops.notifications import read_notifications
-from silisocs.utils.network import generate_follow_network
 
 from urllib.parse import urlparse
 import os
@@ -29,16 +28,52 @@ PDS_URL = os.getenv("BLUESKY_BASE_URL")
 DEFAULT_AGENT_PW = os.getenv("BLUESKY_AGENT_PASSWORD")
 
 @dataclasses.dataclass
-class BlueskyApp(SocialMediaApp):
+class BlueskyApp(SocialBackendApp):
     
     action_logger: Any = None
     app_description: str = "Self hosted Bluesky application."
     
-    def initialize(self, agent_names: list[str], **kwargs: Any):
-        sim_roles = kwargs.get("sim_roles", {})
-        seed_posts = kwargs.get("seed_posts", {})
-        social_network = kwargs.get("social_network", {})
-        agent_bios = kwargs.get("agent_bios", {})
+    # ------------------------------------------------------------------ #
+    # SocialBackendApp required interface
+    # ------------------------------------------------------------------ #
+
+    def initialize(self, agent_names: list[str], **kwargs: Any) -> None:
+        """Compatibility entrypoint for legacy callers.
+
+        The native runtime uses `setup_social_state` + simulation initializers,
+        but some older workflows call `initialize` directly.
+        """
+        self.setup_social_state(
+            agent_names=agent_names,
+            sim_roles=dict(kwargs.get("sim_roles") or {}),
+            graph_config=dict(kwargs.get("social_network") or {}),
+            following_graph=None,
+            agent_bios=dict(kwargs.get("agent_bios") or {}),
+        )
+
+        seed_posts = dict(kwargs.get("seed_posts") or {})
+        for display_name, post_text in seed_posts.items():
+            post_text = str(post_text or "").strip()
+            if not post_text:
+                continue
+            try:
+                self.post(display_name, post_text)
+            except Exception as e:
+                self._print(f"Seed post error for {display_name}: {e}", color="red")
+
+    def setup_social_state(
+        self,
+        *,
+        agent_names: list[str],
+        sim_roles: dict[str, str] | None = None,
+        graph_config: dict[str, Any] | None = None,
+        following_graph: dict[str, list[str]] | None = None,
+        agent_bios: dict[str, str] | None = None,
+    ) -> None:
+        """Create users, bios, and follows for Bluesky simulations."""
+        sim_roles = dict(sim_roles or {})
+        graph_config = dict(graph_config or {})
+        agent_bios = dict(agent_bios or {})
 
         # Build user mapping.
         domain = urlparse(PDS_URL).netloc
@@ -51,34 +86,76 @@ class BlueskyApp(SocialMediaApp):
             user_mapping[short_name] = username
             user_mapping[concat_name] = username
         self.set_user_mapping(user_mapping)
-        
+
         for display_name, bio in agent_bios.items():
             if bio:
                 try:
                     self.update_profile(display_name, bio)
                 except Exception as e:
                     self._print(f"Error setting bio for {display_name}: {e}", color="red")
-        
-        following = generate_follow_network(agent_names, sim_roles, social_network)
-        
-        for display_name, followees in following.items():
+
+        print(following_graph)
+        for display_name, followees in following_graph.items():
             for followee in followees:
                 try:
                     self.follow(display_name, followee)
                 except Exception as e:
                     self._print(f"Follow error ({display_name}->{followee}): {e}", color="red")
-        
-        for display_name, post_text in seed_posts.items():
-            if post_text:
-                try:
-                    self.post(display_name, post_text)
-                except Exception as e:
-                    self._print(f"Seed post error for {display_name}: {e}", color="red")
-    
-        follow_edges = sum(len(v) for v in following.values())
+
+        follow_edges = sum(len(v) for v in following_graph.values())
+        self._last_initialization_stats = {
+            "platform": "bluesky",
+            "num_users": len(agent_names),
+            "num_follow_edges": follow_edges,
+        }
         self._print(
-            f"Initialized {len(agent_names)} users on Mastodon ({follow_edges} follow edges)",
+            f"Initialized {len(agent_names)} users on Bluesky ({follow_edges} follow edges)",
         )
+
+    TIMELINE_MODES = {
+        "follower_chronological": {
+            "description": "Home timeline returned by Bluesky (chronological)",
+        }
+    }
+
+    def get_timeline_mode(
+        self,
+        timeline_mode: str,
+        user_name: str,
+        limit: int = 10,
+        recsys_type: str | None = None,
+        **timeline_config: dict,
+    ) -> list[dict]:
+        del timeline_mode, recsys_type, timeline_config
+        try:
+            return list(self.get_timeline(user_name, limit=limit) or [])
+        except Exception as e:
+            self._print(f"Error fetching timeline for {user_name}: {e}", color="red")
+            return []
+
+    def format_timeline_for_observation(self, timeline: list[dict]) -> str:
+        lines: list[str] = []
+        for idx, item in enumerate(timeline or [], start=1):
+            if not isinstance(item, dict):
+                continue
+            author = (
+                (item.get("author") or {}).get("displayName")
+                if isinstance(item.get("author"), dict)
+                else item.get("author")
+            )
+            record = item.get("record") if isinstance(item.get("record"), dict) else {}
+            text = record.get("text") if isinstance(record, dict) else item.get("text")
+            uri = item.get("uri") or item.get("post_uri") or ""
+            cid = item.get("cid") or item.get("post_cid") or ""
+            header = f"{idx}. {author or 'Unknown'}"
+            meta = " ".join(part for part in [f"uri={uri}" if uri else "", f"cid={cid}" if cid else ""] if part)
+            if meta:
+                header = f"{header} ({meta})"
+            lines.append(header)
+            if text:
+                lines.append(str(text))
+            lines.append("")
+        return "\n".join(lines).strip()
         
     def name(self) -> str:
         """Define the name of the app."""
@@ -185,29 +262,31 @@ class BlueskyApp(SocialMediaApp):
     def read_profile(self, display_name: str, target: str) -> tuple:
         """Reads the profile of the target user. Returns target name and bio."""
         handle = self._user_mapping.get(display_name)
+        target_handle = self._user_mapping.get(target)
         if not handle:
             raise ActionArgumentError(f"No handle found for display name: {display_name}")
 
-        read_profile(handle, DEFAULT_AGENT_PW, target)
+        read_profile(handle, DEFAULT_AGENT_PW, target_handle)
         
     @app_action
     def follow(self, display_name: str, target: str) -> None:
         """Makes the account with the given display name follow the target."""
         handle = self._user_mapping.get(display_name)
+        target_handle = self._user_mapping.get(target)
         if not handle:
             raise ActionArgumentError(f"No handle found for display name: {display_name}")
 
-        follow_user(handle, DEFAULT_AGENT_PW, target)
+        follow_user(handle, DEFAULT_AGENT_PW, target_handle)
     
     @app_action
     def unfollow(self, display_name: str, target: str) -> None:
         """Unfollows the target on the account with the given display name."""
-        
         handle = self._user_mapping.get(display_name)
+        target_handle = self._user_mapping.get(target)
         if not handle:
             raise ActionArgumentError(f"No handle found for display name: {display_name}")
 
-        unfollow_user(handle, DEFAULT_AGENT_PW, target)
+        unfollow_user(handle, DEFAULT_AGENT_PW, target_handle)
         
     @app_action
     def post(self, display_name: str, post_text: str) -> dict:

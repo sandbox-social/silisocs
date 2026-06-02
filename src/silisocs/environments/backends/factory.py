@@ -19,6 +19,7 @@ _BUILTIN_BACKENDS: dict[str, str] = {
     "twitter_like": "silisocs.environments.backends.twitter_like.app.TwitterLikeApp",
     "reddit_like": "silisocs.environments.backends.reddit_like.app.RedditLikeApp",
     "mastodon": "silisocs.environments.backends.mastodon.apps.SocialNetworkApp",
+    "bluesky": "silisocs.environments.backends.bluesky.app.BlueskyApp",
     "resource_market": "silisocs.environments.backends.resource_market.app.ResourceMarketApp",
     "virtual_space": "silisocs.environments.backends.virtual_space.app.VirtualSpaceApp",
 }
