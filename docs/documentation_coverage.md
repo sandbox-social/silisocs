@@ -49,9 +49,9 @@ Each extensible simulator part should have one documented shape:
   components do not expose Concordia lifecycle hooks.
 - Engine turn policy: selected from `sim.engine.turn_policy`, receives YAML
   `params`, and implements the turn policy interface.
-- Probe schedule: selected from `evals.probes.schedule`, receives YAML
+- Probe schedule: selected from `eval.probes.schedule`, receives YAML
   `params`, and implements the probe schedule interface.
-- Probe/evaluator: configured under `evals.probes` or study evaluator presets,
+- Probe/evaluator: configured under `eval.probes` or study evaluator presets,
   with output written to probe event artifacts.
 
 ## Freshness Process

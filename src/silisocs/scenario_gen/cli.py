@@ -53,7 +53,7 @@ def cmd_new_scenario(
     typer.echo("  conf/scenario/default.yaml")
     typer.echo("  conf/agents/default.yaml")
     typer.echo("  conf/env.yaml")
-    typer.echo("  conf/evals.yaml")
+    typer.echo("  conf/eval.yaml")
     typer.echo("  conf/sim.yaml")
 
     typer.echo("\nValidating config (dry run)...")

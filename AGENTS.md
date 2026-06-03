@@ -73,7 +73,7 @@ Core runtime layers:
 
 Top-level config composition (`src/silisocs/conf/experiment.yaml`):
 
-- Defaults: `scenario: default`, `agents: default`, `sim: base`, `env: twitter_like`, `evals: base`
+- Defaults: `scenario: default`, `agents: default`, `sim: base`, `env: twitter_like`, `eval: base`
 
 Config groups and their base files:
 
@@ -83,7 +83,7 @@ Config groups and their base files:
 | `agents` | `agents/default.yaml` (`@package agents`) | Persona pipeline, shared memories |
 | `sim` | `sim/base.yaml` (`@package sim`) | LLM, engine, tool-calling, memory, checkpoint |
 | `env` | `env/twitter_like.yaml` (`@package env`) | Platform backend, GM components, social network |
-| `evals` | `evals/base.yaml` (`@package evals`) | Probes, HTML log writing |
+| `eval` | `eval/base.yaml` (`@package eval`) | Probes, HTML log writing |
 
 Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 

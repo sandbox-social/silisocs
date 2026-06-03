@@ -14,7 +14,7 @@ Configuration is split across named groups, each with a base preset in
 | `agents` | `agents/default.yaml` | Persona pipeline, shared memories, initial observations |
 | `sim` | `sim/base.yaml` | LLM (model, API, temperature), engine, tool-calling, checkpoint |
 | `env` | `env/twitter_like.yaml` | Backend construction and GM component wiring |
-| `evals` | `evals/base.yaml` | Probes and evaluation timing |
+| `eval` | `eval/base.yaml` | Probes and evaluation timing |
 
 ---
 
@@ -26,7 +26,7 @@ defaults:
   - agents: default
   - sim: base
   - env: twitter_like
-  - evals: base
+  - eval: base
   - _self_
 
 hydra:
@@ -116,7 +116,7 @@ scenarios/
         │   ├── default.yaml             # Persona pipeline, shared memories
         │   └── thin.yaml                # Lightweight variant (optional)
         ├── env.yaml                     # Platform/GM overrides (optional)
-        ├── evals.yaml                   # Probe config overrides (optional)
+        ├── eval.yaml                   # Probe config overrides (optional)
         └── sim.yaml                     # LLM + engine overrides (optional)
 ```
 
@@ -133,7 +133,7 @@ higher priority than the package defaults, so they replace the package
 **Layer 2 — Manual merge** (runs inside `main()` after Hydra composes): handles
 partial-override flat files that don't replace their group wholesale:
 
-- `env.yaml`, `evals.yaml`, `sim.yaml` → merged into their named groups
+- `env.yaml`, `eval.yaml`, `sim.yaml` → merged into their named groups
 
 **Priority order** (highest → lowest):
 
@@ -630,7 +630,7 @@ gm:
 
 ---
 
-## Evals Config (`evals/base.yaml`)
+## Evals Config (`eval/base.yaml`)
 
 ```yaml
 probes: {}              # See Probes section below

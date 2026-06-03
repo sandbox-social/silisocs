@@ -32,9 +32,9 @@ study:
       sim.engine.turn_policy.params.max_actions: 6
       env.gm.components.observe.params.timeline_posts: 10
       agents.persona_pipeline.classes.voter.count: 47
-      evals.probes.deployment.enabled: true
-      evals.probes.deployment.start_step: 1
-      evals.probes.deployment.every_n_steps: 1
+      eval.probes.deployment.enabled: true
+      eval.probes.deployment.start_step: 1
+      eval.probes.deployment.every_n_steps: 1
 
   notes:
     objective: "Establish broad baseline regime effects before narrower follow-up tests."
@@ -317,8 +317,8 @@ hypotheses:
       +agents.persona_pipeline.classes.voter.field_map.name: name
       agents.persona_pipeline.classes.voter.field_map.context: processed_persona
       sim.llm.name: qwen3.5-2b
-      evals.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bradley Carter, or Bill Fredrickson. Respond with the exact answer and nothing else."
-      evals.probes.probes.vote_choice.probe_data.choices:
+      eval.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bradley Carter, or Bill Fredrickson. Respond with the exact answer and nothing else."
+      eval.probes.probes.vote_choice.probe_data.choices:
         - Bradley Carter
         - Bill Fredrickson
 
@@ -376,8 +376,8 @@ hypotheses:
       +agents.persona_pipeline.classes.voter.field_map.name: name
       agents.persona_pipeline.classes.voter.field_map.context: processed_persona
       sim.llm.name: qwen3.5-4b
-      evals.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bradley Carter, or Bill Fredrickson. Respond with the exact answer and nothing else."
-      evals.probes.probes.vote_choice.probe_data.choices:
+      eval.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bradley Carter, or Bill Fredrickson. Respond with the exact answer and nothing else."
+      eval.probes.probes.vote_choice.probe_data.choices:
         - Bradley Carter
         - Bill Fredrickson
 
@@ -435,8 +435,8 @@ hypotheses:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
           agents.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
-          evals.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
-          evals.probes.probes.vote_choice.probe_data.choices:
+          eval.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
+          eval.probes.probes.vote_choice.probe_data.choices:
             - Bill Fredrickson
             - Bradley Carter
 
@@ -447,8 +447,8 @@ hypotheses:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
           agents.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
-          evals.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bradley Carter, or Bill Fredrickson. Respond with the exact answer and nothing else."
-          evals.probes.probes.vote_choice.probe_data.choices:
+          eval.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bradley Carter, or Bill Fredrickson. Respond with the exact answer and nothing else."
+          eval.probes.probes.vote_choice.probe_data.choices:
             - Bradley Carter
             - Bill Fredrickson
 
@@ -486,8 +486,8 @@ hypotheses:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
           agents.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
-          evals.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
-          evals.probes.probes.vote_choice.probe_data.choices:
+          eval.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
+          eval.probes.probes.vote_choice.probe_data.choices:
             - Bill Fredrickson
             - Bradley Carter
 
@@ -498,8 +498,8 @@ hypotheses:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
           agents.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
-          evals.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bradley Carter, or Bill Fredrickson. Respond with the exact answer and nothing else."
-          evals.probes.probes.vote_choice.probe_data.choices:
+          eval.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bradley Carter, or Bill Fredrickson. Respond with the exact answer and nothing else."
+          eval.probes.probes.vote_choice.probe_data.choices:
             - Bradley Carter
             - Bill Fredrickson
 
@@ -542,8 +542,8 @@ hypotheses:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
           agents.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
-          evals.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
-          evals.probes.probes.vote_choice.probe_data.choices:
+          eval.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
+          eval.probes.probes.vote_choice.probe_data.choices:
             - Bill Fredrickson
             - Bradley Carter
 
@@ -556,8 +556,8 @@ hypotheses:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
           agents.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bradley_bias.yaml
-          evals.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
-          evals.probes.probes.vote_choice.probe_data.choices:
+          eval.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
+          eval.probes.probes.vote_choice.probe_data.choices:
             - Bill Fredrickson
             - Bradley Carter
 
@@ -571,8 +571,8 @@ hypotheses:
           env.gm.components.update.params.default_recsys_type: twhin
           env.gm.components.update.params.user_context_recent_posts: 10
           agents.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bill_bias.yaml
-          evals.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
-          evals.probes.probes.vote_choice.probe_data.choices:
+          eval.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
+          eval.probes.probes.vote_choice.probe_data.choices:
             - Bill Fredrickson
             - Bradley Carter
 
@@ -586,7 +586,7 @@ hypotheses:
           env.gm.components.update.params.default_recsys_type: twhin
           env.gm.components.update.params.user_context_recent_posts: 10
           agents.persona_pipeline.classes.fixed_news.params.fixed_action_plan_file: input/news_action_plans/bradley_bias.yaml
-          evals.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
-          evals.probes.probes.vote_choice.probe_data.choices:
+          eval.probes.probes.vote_choice.probe_data.question: "Which candidate would you vote for right now? Choose exactly one option: Bill Fredrickson, or Bradley Carter. Respond with the exact answer and nothing else."
+          eval.probes.probes.vote_choice.probe_data.choices:
             - Bill Fredrickson
             - Bradley Carter

@@ -8,7 +8,7 @@ defaults:
   - agents: default
   - sim: base
   - env: twitter_like
-  - evals: base
+  - eval: base
   - _self_
 
 hydra:

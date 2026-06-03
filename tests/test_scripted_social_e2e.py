@@ -58,7 +58,7 @@ def test_scripted_social_posts_and_likes_with_timeline_context(tmp_path: Path) -
     """End-to-end scripted social run with timeline context checks."""
     overlay = tmp_path / "conf"
     overlay.mkdir()
-    (overlay / "evals.yaml").write_text(
+    (overlay / "eval.yaml").write_text(
         yaml.safe_dump(
             {
                 "probes": {

@@ -109,7 +109,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
 
     evals_yaml = textwrap.dedent(
         """
-        # @package evals
+        # @package eval
 
         probes: {}
         """
@@ -160,7 +160,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
 
     (conf_dir / "sim.yaml").write_text(sim_yaml + "\n", encoding="utf-8")
     (conf_dir / "agents.yaml").write_text(agent_yaml + "\n", encoding="utf-8")
-    (conf_dir / "evals.yaml").write_text(evals_yaml + "\n", encoding="utf-8")
+    (conf_dir / "eval.yaml").write_text(evals_yaml + "\n", encoding="utf-8")
     (conf_dir / "env.yaml").write_text(env_yaml + "\n", encoding="utf-8")
 
 

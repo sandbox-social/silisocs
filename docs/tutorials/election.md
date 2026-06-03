@@ -22,7 +22,7 @@ The scenario is now split across:
 
 - `scenarios/election/conf/scenario/default.yaml` (run params, setting, event, data)
 - `scenarios/election/conf/agents/default.yaml` (persona pipeline)
-- `scenarios/election/conf/evals/default.yaml` (probe config)
+- `scenarios/election/conf/eval/default.yaml` (probe config)
 
 ### Setting
 

@@ -135,7 +135,7 @@ def main(cfg: DictConfig):
     cfg:
         Composed Hydra :class:`omegaconf.DictConfig` representing the
         experiment configuration. The config includes grouped sections such
-        as ``sim``, ``agents``, ``env`` and ``evals``.
+        as ``sim``, ``agents``, ``env`` and ``eval``.
 
     Notes
     -----
@@ -436,9 +436,7 @@ def main(cfg: DictConfig):
             checkpoint=checkpoint_meta,
         )
 
-    probes_cfg = OmegaConf.select(cfg, "evals.probes") or OmegaConf.select(
-        cfg, "evaluations.probes"
-    )
+    probes_cfg = OmegaConf.select(cfg, "eval.probes") or OmegaConf.select(cfg, "evaluations.probes")
     probes_cfg_map = (
         cast(dict[str, Any], OmegaConf.to_container(probes_cfg, resolve=True))
         if isinstance(probes_cfg, DictConfig)
