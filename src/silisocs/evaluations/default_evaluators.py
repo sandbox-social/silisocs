@@ -183,7 +183,9 @@ def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
     with cfg_path.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 
-    evaluations = cfg.get("evals", cfg.get("evaluations")) if isinstance(cfg, dict) else {}
+    evaluations = (
+        cfg.get("eval", cfg.get("evals", cfg.get("evaluations"))) if isinstance(cfg, dict) else {}
+    )
     if not isinstance(evaluations, dict):
         return {}
 
@@ -237,7 +239,9 @@ def _load_probe_hold_last_response(run_dir: Path) -> bool:
     with cfg_path.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 
-    evaluations = cfg.get("evals", cfg.get("evaluations")) if isinstance(cfg, dict) else {}
+    evaluations = (
+        cfg.get("eval", cfg.get("evals", cfg.get("evaluations"))) if isinstance(cfg, dict) else {}
+    )
     if not isinstance(evaluations, dict):
         return False
     probes = evaluations.get("probes", {})
