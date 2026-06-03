@@ -324,7 +324,7 @@ def organize_study_outputs(
                 if run_dir is not None and run_dir.exists():
                     create_relative_symlink(run_dir, seed_dir / "run", dry_run=dry_run)
 
-                eval_dir = seed_dir / "evals"
+                eval_dir = seed_dir / "eval"
                 if not dry_run:
                     eval_dir.mkdir(parents=True, exist_ok=True)
 
