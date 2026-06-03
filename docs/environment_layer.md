@@ -244,7 +244,7 @@ Engine extensibility lives under:
 - `src/silisocs/simulation_engines/policies/probe_schedule.py`
 - `src/silisocs/simulation_engines/policies/factory.py`
 
-Configure engine turn policy from `sim.engine` and probe timing from `evals`:
+Configure engine turn policy from `sim.engine` and probe timing from `eval`:
 
 ```yaml
 sim:
@@ -261,7 +261,7 @@ sim:
       params:
         observe_before_act: first  # first | always | never
 
-evals:
+eval:
   probes:
     schedule:
       built_in: step_schedule   # step_schedule | fixed_interval | disabled

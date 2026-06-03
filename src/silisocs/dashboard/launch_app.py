@@ -271,9 +271,7 @@ def _split_loaded_config(
         )
         loaded_sim = loaded_cfg.get("sim", {}) if isinstance(loaded_cfg.get("sim"), dict) else {}
         loaded_env = loaded_cfg.get("env", {}) if isinstance(loaded_cfg.get("env"), dict) else {}
-        loaded_eval = (
-            loaded_cfg.get("evals", {}) if isinstance(loaded_cfg.get("evals"), dict) else {}
-        )
+        loaded_eval = loaded_cfg.get("eval", {}) if isinstance(loaded_cfg.get("eval"), dict) else {}
         gm_components = (loaded_env.get("gm") or {}).get("components") or {}
         graph_cfg = ((gm_components.get("initialize") or {}).get("params") or {}).get("graph")
 
@@ -522,7 +520,7 @@ def _build_hydra_overrides(
     env: dict,
     backend_group: str,
     scenario: dict,
-    evals: dict | None = None,
+    eval_cfg: dict | None = None,
 ) -> list[str]:
     """_build_hydra_overrides.
 
@@ -570,21 +568,21 @@ def _build_hydra_overrides(
             overrides.append(f'env.{key}="{val}"')
         else:
             overrides.append(f"env.{key}={val}")
-    for key, val in (evals or {}).items():
+    for key, val in (eval_cfg or {}).items():
         if val is None:
-            overrides.append(f"evals.{key}=null")
+            overrides.append(f"eval.{key}=null")
         elif isinstance(val, bool):
-            overrides.append(f"evals.{key}={'true' if val else 'false'}")
+            overrides.append(f"eval.{key}={'true' if val else 'false'}")
         elif isinstance(val, list):
             if not val:
-                overrides.append(f"evals.{key}=[]")
+                overrides.append(f"eval.{key}=[]")
             else:
                 inner = ",".join(str(item) for item in val)
-                overrides.append(f"evals.{key}=[{inner}]")
+                overrides.append(f"eval.{key}=[{inner}]")
         elif isinstance(val, str) and " " in val:
-            overrides.append(f'evals.{key}="{val}"')
+            overrides.append(f'eval.{key}="{val}"')
         else:
-            overrides.append(f"evals.{key}={val}")
+            overrides.append(f"eval.{key}={val}")
     for key, val in scenario.items():
         if val is None:
             continue
@@ -785,7 +783,7 @@ _sim_loaded_defaults = st.session_state.get("_loaded_sim_defaults", {})
 if not isinstance(_sim_loaded_defaults, dict):
     _sim_loaded_defaults = {}
 _sim_defaults = _deep_merge_dict(_sim_base_defaults, _sim_loaded_defaults)
-_evals_base_defaults = _load_yaml(_CONF_DIR / "evals" / "base.yaml")
+_eval_base_defaults = _load_yaml(_CONF_DIR / "eval" / "base.yaml")
 _environment_defaults = st.session_state.get("_loaded_environment_defaults", {})
 if not isinstance(_environment_defaults, dict):
     _environment_defaults = {}
@@ -813,8 +811,8 @@ _engine_action_defaults = (
 _engine_probe_defaults = (
     (_scenario_cfg.get("probes", {}) or {}).get("schedule", {})
     if isinstance((_scenario_cfg.get("probes", {}) or {}).get("schedule", {}), dict)
-    else (_evals_base_defaults.get("probes", {}) or {}).get("schedule", {})
-    if isinstance((_evals_base_defaults.get("probes", {}) or {}).get("schedule", {}), dict)
+    else (_eval_base_defaults.get("probes", {}) or {}).get("schedule", {})
+    if isinstance((_eval_base_defaults.get("probes", {}) or {}).get("schedule", {}), dict)
     else {}
 )
 _llm_defaults = (

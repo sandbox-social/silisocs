@@ -389,7 +389,7 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
         "sim.engine",
         {"class_path", "params", "loop", "step", "turn_policy"},
     )
-    _assert_allowed_keys(cfg, "evals", {"probes"})
+    _assert_allowed_keys(cfg, "eval", {"probes"})
     print("✓ Runtime section validation passed")
 
 

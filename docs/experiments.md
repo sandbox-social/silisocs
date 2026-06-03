@@ -213,7 +213,7 @@ experiments/studies/{study_id}/generated/organized/
       config.yaml
       run -> <symlink to the run directory when available>
       eval.json -> <symlink to the first evaluator output>
-      evals/{eval_id}/...
+      eval/{eval_id}/...
 ```
 
 `run` builds both the raw and organized outputs. `organize` can be called later

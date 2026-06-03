@@ -6,7 +6,7 @@ quantitative data for analysis.
 
 ## Overview
 
-Probes are configured under `evals.probes` in your scenario YAML. The system
+Probes are configured under `eval.probes` in your scenario YAML. The system
 supports multiple probe types, configurable deployment schedules, and concurrent
 execution across large agent populations.
 

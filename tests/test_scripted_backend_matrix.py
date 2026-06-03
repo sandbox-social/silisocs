@@ -178,7 +178,7 @@ def _run_scripted(
 ) -> Path:
     overlay = tmp_path / f"conf_{env}"
     overlay.mkdir()
-    (overlay / "evals.yaml").write_text(
+    (overlay / "eval.yaml").write_text(
         yaml.safe_dump({"probes": {"deployment": {"enabled": False}, "probes": {}}}),
         encoding="utf-8",
     )

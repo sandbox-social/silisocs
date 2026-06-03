@@ -476,7 +476,7 @@ The game master automatically routes each agent to the correct component instanc
    - `src/silisocs/conf/agents/default.yaml` (`@package agents`)
    - `src/silisocs/conf/sim/base.yaml` (`@package sim`)
    - `src/silisocs/conf/env/twitter_like.yaml` (`@package env`)
-   - `src/silisocs/conf/evals/base.yaml` (`@package evals`)
+   - `src/silisocs/conf/eval/base.yaml` (`@package eval`)
 
 2. **Your scenario overrides** (higher priority via SearchPath plugin)
    - `scenarios/my_scenario/conf/scenario/default.yaml` (replaces package scenario group)
@@ -782,7 +782,7 @@ experiments/studies/{study_id}/generated/organized/
       config.yaml
       run -> <symlink to simulation output>
       eval.json -> <symlink to first evaluator output>
-      evals/{eval_id}/...
+      eval/{eval_id}/...
 ```
 ```
 

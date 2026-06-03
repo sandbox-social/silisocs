@@ -16,7 +16,7 @@ def test_scripted_model_runs_real_runner_engine_backend_path(tmp_path: Path) -> 
     """Run a tiny public smoke test without external LLM or network access."""
     overlay = tmp_path / "conf"
     overlay.mkdir()
-    (overlay / "evals.yaml").write_text(
+    (overlay / "eval.yaml").write_text(
         yaml.safe_dump(
             {
                 "probes": {
@@ -79,7 +79,7 @@ def test_scripted_model_runs_real_runner_engine_backend_path(tmp_path: Path) -> 
             "scenario=default",
             "agents=default",
             "env=twitter_like",
-            "evals=base",
+            "eval=base",
             "num_agents=2",
             "num_steps=1",
             "sim.llm.provider=scripted",

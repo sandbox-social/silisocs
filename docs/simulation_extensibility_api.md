@@ -399,13 +399,13 @@ class MySequentialStepPolicy:
 ```
 
 Add a custom probe schedule policy by implementing `should_run_probe_phase(...)`
-and configuring `evals.probes.schedule.class_path`.
+and configuring `eval.probes.schedule.class_path`.
 
 Add a custom probe type:
 
 1. Subclass `ProbeBase`.
 2. Implement `form_question_for_agent(agent)` and `parse_answer(raw_response)`.
-3. Register the module with `evals.probes.probe_lib_module`.
+3. Register the module with `eval.probes.probe_lib_module`.
 
 Probe prompts should ask the measurement question and any answer-format
 constraint. Do not inject agent identity text into probes; agents supply their

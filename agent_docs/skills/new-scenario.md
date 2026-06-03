@@ -148,7 +148,7 @@ scenarios/<name>/
     scenario/default.yaml   # @package _global_
     agents/default.yaml     # @package agents
     env.yaml
-    evals.yaml
+    eval.yaml
   input/agent_lib/          # only if custom agent stubs were requested
     __init__.py
     <role>.py

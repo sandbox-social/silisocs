@@ -128,7 +128,7 @@ defaults:
   - agents: default        # Agent construction and personas
   - sim: base              # Simulation parameters
   - env: twitter_like      # Backend and GM wiring
-  - evals: base            # Probes and evaluation config
+  - eval: base            # Probes and evaluation config
 ```
 
 ### Config Hierarchy
@@ -146,7 +146,7 @@ src/silisocs/conf/
 │   ├── twitter_like.yaml    # Local Twitter-like backend
 │   ├── reddit_like.yaml     # Local Reddit-like backend
 │   └── mastodon.yaml        # Remote Mastodon server
-└── evals/
+└── eval/
     └── base.yaml            # Probe and logging defaults
 ```
 
@@ -166,7 +166,7 @@ scenarios/election/
 │   ├── agents/default.yaml   # @package agents
 │   ├── sim.yaml              # Optional partial sim override
 │   ├── env.yaml              # Optional partial env override
-│   └── evals.yaml            # Optional partial evals override
+│   └── eval.yaml            # Optional partial eval override
 ├── builders.py              # Optional importable custom agent builder
 └── outputs/                 # Simulation output (auto-created)
 ```
@@ -711,7 +711,7 @@ Built-in turn policies also accept `observe_before_act: first | always | never`.
 The default `first` preserves existing behavior by observing before the first
 action in a repeated-action turn.
 
-Probe timing is policy-driven through `evals.probes.schedule`.
+Probe timing is policy-driven through `eval.probes.schedule`.
 
 #### Defining New Agent Behavior Flows
 
@@ -747,7 +747,7 @@ Key implementations:
 
 - Multi-action-per-episode turn policy (`sim.engine.turn_policy`)
 - Alternative actor scheduling policies
-- Probe timing policy (`evals.probes.schedule`)
+- Probe timing policy (`eval.probes.schedule`)
 - Concurrency and retry throttling strategy
 
 #### GM-side tasks

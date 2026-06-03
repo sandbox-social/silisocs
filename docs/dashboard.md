@@ -148,7 +148,7 @@ Evaluation probe configuration:
 
 1. In the sidebar, go to **Create New Scenario**
 2. Enter a scenario name
-3. The dashboard creates grouped config files under `scenarios/<name>/conf/` (`scenario/default.yaml`, `agents/default.yaml`, `sim.yaml`, `env.yaml`, `evals.yaml`)
+3. The dashboard creates grouped config files under `scenarios/<name>/conf/` (`scenario/default.yaml`, `agents/default.yaml`, `sim.yaml`, `env.yaml`, `eval.yaml`)
 4. Configure the scenario across all tabs
 5. Click **Run Simulation** in Launch tab — the dashboard auto-saves and runs with `--config-path`
 

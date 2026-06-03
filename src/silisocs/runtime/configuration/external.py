@@ -31,7 +31,7 @@ def merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
     for raw_dir in [p for p in paths_csv.split(":") if p]:
         conf_dir = Path(raw_dir)
 
-        for group in ("agents", "env", "evals", "sim"):
+        for group in ("agents", "env", "eval", "sim"):
             file_path = conf_dir / f"{group}.yaml"
             if not file_path.is_file():
                 continue
@@ -44,7 +44,7 @@ def merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
             )
 
         if scenario_variant:
-            for group in ("env", "sim", "evals"):
+            for group in ("env", "sim", "eval"):
                 variant_path = conf_dir / group / f"{scenario_variant}.yaml"
                 if not variant_path.is_file():
                     continue
@@ -60,7 +60,7 @@ def merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
 
     try:
         task_overrides = list(HydraConfig.get().overrides.task)
-        external_group_overrides = {"scenario", "agents", "env", "evals", "sim"}
+        external_group_overrides = {"scenario", "agents", "env", "eval", "sim"}
         value_overrides = []
         for item in task_overrides:
             text = str(item)

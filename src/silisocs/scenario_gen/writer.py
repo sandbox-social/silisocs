@@ -103,7 +103,7 @@ def write_scenario(spec: ScenarioSpec, root: Path | str) -> None:
     _write_scenario_yaml(spec, conf)
     _write_agents_yaml(spec, conf)
     _write_env_yaml(spec, conf)
-    _write_evals_yaml(conf)
+    _write_eval_yaml(conf)
     _write_sim_yaml(conf)
 
 
@@ -280,8 +280,8 @@ def _write_env_yaml(spec: ScenarioSpec, conf: Path) -> None:
     _write(conf / "env.yaml", _dump(data))
 
 
-def _write_evals_yaml(conf: Path) -> None:
-    """_write_evals_yaml.
+def _write_eval_yaml(conf: Path) -> None:
+    """_write_eval_yaml.
 
     :param Path conf:
     :type conf: Path
@@ -301,7 +301,7 @@ def _write_evals_yaml(conf: Path) -> None:
             "probes": {},
         },
     }
-    _write(conf / "evals.yaml", _dump(data))
+    _write(conf / "eval.yaml", _dump(data))
 
 
 def _write_sim_yaml(conf: Path) -> None:

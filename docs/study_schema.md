@@ -30,7 +30,7 @@ experiments/
               config.yaml               # Run configuration (frozen at launch)
               run -> <simulation output directory>
               eval.json -> <primary evaluator output>
-              evals/{eval_id}/...
+              eval/{eval_id}/...
       runs/                             # Optional study-owned simulation output root
 
 outputs/                                # Default simulation output root (gitignored)

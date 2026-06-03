@@ -55,7 +55,7 @@ def save_scenario(
     env_data: dict[str, Any],
     backend_type: str,
     scenarios_root: Path,
-    evals_data: dict[str, Any] | None = None,
+    eval_data: dict[str, Any] | None = None,
 ) -> Path:
     """Save scenario config to Hydra group layout in scenarios/<name>/conf/."""
     conf_dir = scenarios_root / name / "conf"
@@ -100,7 +100,7 @@ def save_scenario(
             set_nested_value(env_payload, key, value)
 
     evals_payload = {"probes": scenario_data.get("probes", {})}
-    for key, value in (evals_data or {}).items():
+    for key, value in (eval_data or {}).items():
         if value is not None:
             set_nested_value(evals_payload, key, value)
 
@@ -108,7 +108,7 @@ def save_scenario(
         (conf_dir / "scenario" / "default.yaml", "# @package _global_\n\n", sim_payload),
         (conf_dir / "agents" / "default.yaml", "# @package agents\n\n", agent_payload),
         (conf_dir / "env.yaml", "# @package env\n\n", env_payload),
-        (conf_dir / "evals.yaml", "# @package evals\n\n", evals_payload),
+        (conf_dir / "eval.yaml", "# @package eval\n\n", evals_payload),
     ]
     if sim_section:
         files_to_write.append((conf_dir / "sim.yaml", "# @package sim\n\n", sim_section))

@@ -83,7 +83,7 @@ def test_build_turn_policy_defaults_to_single_action() -> None:
 
 def test_packaged_base_turn_policy_policy_builds() -> None:
     sim_cfg_path = Path("src/silisocs/conf/sim/base.yaml")
-    evals_cfg_path = Path("src/silisocs/conf/evals/base.yaml")
+    evals_cfg_path = Path("src/silisocs/conf/eval/base.yaml")
     sim_cfg = OmegaConf.load(sim_cfg_path)
     evals_cfg = OmegaConf.load(evals_cfg_path)
     turn_policy = cast(dict[str, Any], OmegaConf.to_container(sim_cfg.engine.turn_policy))
@@ -267,7 +267,7 @@ def test_engine_runs_three_initialization_phases_once_before_loop(tmp_path) -> N
                     "step": {"built_in": "base", "params": {}},
                 }
             },
-            "evals": {"probes": {}},
+            "eval": {"probes": {}},
         }
     )
 
