@@ -455,7 +455,13 @@ When adding features, update docs in:
 - Lint/pre-commit workflow passes
 - New behavior has tests
 - Docs updated for config + usage + architecture
-- Commit message follows Conventional Commits (Commitizen workflow)
+- Commit message uses gitmoji prefix (see §14)
+
+## 11.5) Branching Rules
+
+- **Never commit code changes directly to `main`.** All code changes must go through a `dev` branch (or feature branch) and be merged via PR.
+- **Documentation-only changes** (edits to `docs/`, `agent_docs/`, `AGENTS.md`, `README.md`) may be committed directly to `main`.
+- When starting new work, create a branch: `git checkout -b dev` (or a descriptive feature branch name).
 
 ## 12) Entry Points for Quick Exploration
 
@@ -502,6 +508,12 @@ Brief description of current task
 
 - Use `uv run` prefix for all commands.
 - Run pre-commit before committing (see section 7 for workflow).
+- Commit messages must use gitmoji prefixes (repo uses `cz_gitmoji` schema):
+  - `♻️ refactor(...):` — renames, restructuring
+  - `🐛 fix(...):` — bug fixes
+  - `✨ feat(...):` — new features
+  - `📝 docs(...):` — documentation
+  - `🧹 chore(...):` — maintenance
 - **WSL users**: if imports are slow (1+ min), the venv is likely on `/mnt/c`. Use a WSL-native venv:
   ```bash
   export UV_PROJECT_ENVIRONMENT=~/venvs/simulator
