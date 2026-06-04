@@ -1,0 +1,23 @@
+# @package _global_
+
+# Generic world defaults — overridden by world-specific world/default.yaml
+world_name: default
+jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
+num_agents: 10
+num_steps: 5
+run_name: run1
+seed: 1
+output_rootname: ""
+
+setting:
+  name: Generic Community
+  background:
+    - A general-purpose social media community where people discuss everyday topics.
+
+event:
+  name: Daily discussion
+  context: |
+    Users are participating in everyday social media discussions.
+    They share opinions, news, and engage with each other's content.
+
+data: {}

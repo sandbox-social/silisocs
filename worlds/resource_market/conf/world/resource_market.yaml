@@ -1,0 +1,24 @@
+# @package _global_
+
+world_name: resource_market
+jobname_format: "resource_market_N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
+num_agents: 4
+num_steps: 6
+run_name: run1
+seed: 1
+output_rootname: ""
+
+setting:
+  name: Local Resource Exchange
+  background:
+    - Participants manage small inventories and trade resources in a local exchange.
+    - The market has role-specific production, open listings, direct transfers, and upkeep needs.
+
+event:
+  name: Market day
+  context: |
+    A short market session has begun. Participants should use their role strengths,
+    observe current listings, and decide whether to produce, sell, transfer, buy,
+    consume, or finish their turn.
+
+data: {}

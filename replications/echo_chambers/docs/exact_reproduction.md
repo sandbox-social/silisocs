@@ -6,7 +6,7 @@ imports stay stable, but the conceptual boundary is:
 
 | Layer | Exact reproduction path |
 |---|---|
-| Scenario config | `replications/echo_chambers/conf/scenario/default.yaml` |
+| Scenario config | `replications/echo_chambers/conf/world/default.yaml` |
 | Agent config | `replications/echo_chambers/conf/agents/default.yaml` |
 | Environment config | `replications/echo_chambers/conf/env.yaml` |
 | Engine config | `replications/echo_chambers/conf/sim.yaml` |

@@ -158,7 +158,7 @@ env:
   gm:
     components:
       initialize:
-        class_path: my_scenario.gm.CustomInitializer
+        class_path: my_world.gm.CustomInitializer
         params:
           graph_strategy: role_weighted
 ```

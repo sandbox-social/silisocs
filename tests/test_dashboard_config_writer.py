@@ -4,12 +4,12 @@ from pathlib import Path
 
 import yaml
 
-from silisocs.dashboard.config_writer import save_scenario
+from silisocs.dashboard.config_writer import save_world
 
 
-def _base_scenario() -> dict:
+def _base_world() -> dict:
     return {
-        "scenario_name": "dashboard_config",
+        "world_name": "dashboard_config",
         "setting": {"name": "Dashboard Config", "background": []},
         "event": {"name": "Config", "context": "Check dashboard config writing."},
         "persona_pipeline": {
@@ -30,9 +30,9 @@ def _load_yaml(path: Path) -> dict:
 
 
 def test_dashboard_writer_uses_social_defaults_for_social_backend(tmp_path: Path) -> None:
-    conf_dir = save_scenario(
+    conf_dir = save_world(
         "social",
-        _base_scenario(),
+        _base_world(),
         {"llm.provider": "scripted"},
         {},
         "twitter_like",
@@ -48,9 +48,9 @@ def test_dashboard_writer_uses_social_defaults_for_social_backend(tmp_path: Path
 
 
 def test_dashboard_writer_uses_packaged_defaults_for_reference_backend(tmp_path: Path) -> None:
-    conf_dir = save_scenario(
+    conf_dir = save_world(
         "market",
-        _base_scenario(),
+        _base_world(),
         {"llm.provider": "scripted"},
         {},
         "resource_market",

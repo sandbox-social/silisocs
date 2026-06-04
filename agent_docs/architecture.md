@@ -2,7 +2,7 @@
 
 **This guide is for LLM agents helping understand or extend the framework's architecture.**
 
-**For designing experiments via configuration:** See [scenario_design.md](scenario_design.md)
+**For designing experiments via configuration:** See [world_design.md](world_design.md)
 
 **For code extension points:** See [AGENTS.md](../AGENTS.md)
 
@@ -155,7 +155,7 @@ env:
           update_every_n_steps: 1
 ```
 
-This is the right default for most scenarios: all agents share the same
+This is the right default for most worlds: all agents share the same
 observation style, prompt style, resolver, and update behavior.
 
 ### Flow-Routed Game Master
@@ -354,7 +354,7 @@ adapter package.
 
 ## Summary
 
-The flow architecture gives scenario authors two independent controls:
+The flow architecture gives world authors two independent controls:
 
 | Capability | Engine flow scheduling | GM component routing |
 |---|---|---|

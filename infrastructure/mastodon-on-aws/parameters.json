@@ -1,0 +1,22 @@
+[
+  {
+    "ParameterKey": "SecretKeyBase",
+    "ParameterValue": "3452348f3ac5b5d64491a02b885ab06076945bd4b0e0866bd00ca6cf003e0164208235a7e13e871903755ecc776170d9e85556011bfcb27d6c052a220de6d8b8"
+  },
+  {
+    "ParameterKey": "DomainName",
+    "ParameterValue": "socialsandbox2.com"
+  },
+  {
+    "ParameterKey": "OtpSecret",
+    "ParameterValue": "8b1a6888284685ab5f40cab82df75b61c20fd975926fe68cbdb0b94572a0ee3a33d931f7624001fe4286545c2ea742eb49c2ccebff569e59cf2000ec13ed399f"
+  },
+  {
+    "ParameterKey": "VapidPublicKey",
+    "ParameterValue": "BHeJ4uLVFHWNeBlHI2ENBULZ7hK4pM8hPQZbcm_C08k_KDRX2GeeVd1pspKzr3Rr4HZ5Ud4m8pNn9DdwUtoIxXM"
+  },
+  {
+    "ParameterKey": "VapidPrivateKey",
+    "ParameterValue": "NWfmVcormd8Joo503P14SHpZUF-9EY8M_bAKs3FxCvo"
+  }
+]

@@ -33,7 +33,7 @@ from silisocs.runtime import language_models as language_model
 
 INSTRUCTIONS_COMPONENT_KEY = "__Roleplaying Instructions__"
 PERSONA_INFORMATION_KEY = "__Persona Information__"
-SCENARIO_CONTEXT_KEY = "__Scenario Context__"
+WORLD_CONTEXT_KEY = "__World Context__"
 DEFAULT_GOAL_COMPONENT_KEY = "__Goal__"
 
 MEMORY_COMPONENT_KEY = agent_components.memory.DEFAULT_MEMORY_COMPONENT_KEY
@@ -839,9 +839,9 @@ class EchoSocialToolEntity(prefab_lib.Prefab):
             initial_belief_value = 0
 
         topic = "Should we use euthanasia?"
-        scenario_context = str(params.get("scenario_context", "") or "")
-        if scenario_context.strip():
-            topic = scenario_context.strip()
+        world_context = str(params.get("world_context", "") or "")
+        if world_context.strip():
+            topic = world_context.strip()
 
         components: dict[str, entity_component.ContextComponent] = {
             INSTRUCTIONS_COMPONENT_KEY: instructions,
@@ -872,12 +872,12 @@ class EchoSocialToolEntity(prefab_lib.Prefab):
             )
             component_order.insert(1, PERSONA_INFORMATION_KEY)
 
-        if scenario_context:
-            components[SCENARIO_CONTEXT_KEY] = agent_components.constant.Constant(
-                state=scenario_context,
-                pre_act_label="Scenario Information",
+        if world_context:
+            components[WORLD_CONTEXT_KEY] = agent_components.constant.Constant(
+                state=world_context,
+                pre_act_label="World Information",
             )
-            component_order.insert(1, SCENARIO_CONTEXT_KEY)
+            component_order.insert(1, WORLD_CONTEXT_KEY)
 
         initial_opinion = str(params.get("initial_opinion", "") or "")
         initial_belief = str(params.get("initial_belief", "") or "")

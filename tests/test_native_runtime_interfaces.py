@@ -284,7 +284,7 @@ def test_concordia_agent_compat_builds_through_adapter() -> None:
         params={
             "name": "Alice",
             "context": "Alice is a compat test participant.",
-            "scenario_context": "A compatibility test is running.",
+            "world_context": "A compatibility test is running.",
             "goal": "Act naturally.",
         },
         compat="concordia",

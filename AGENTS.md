@@ -7,12 +7,12 @@ This file is a contributor guide for LLM coding agents working in this repositor
 Silisocs is a native social simulation framework with an optional Concordia
 compatibility bridge for legacy scenarios. It has:
 
-- YAML-first scenario and runtime configuration (Hydra + OmegaConf)
+- YAML-first world and runtime configuration (Hydra + OmegaConf)
 - A social-media game-master/environment layer
 - Multiple platform backends (Twitter-like, Reddit-like, Mastodon)
 - Declarative persona pipeline plus custom builder extension path
 - Probe-based evaluation and rich runtime telemetry
-- Streamlit dashboard for scenario creation and launch
+- Streamlit dashboard for world creation and launch
 
 The runtime entrypoint is:
 
@@ -24,7 +24,7 @@ Core runtime layers:
 
 ### 1. Agent Construction Layer
 - `src/silisocs/agents/builders.py`
-- Builds agents from `scenario.persona_pipeline` and class data sources
+- Builds agents from `agents.persona_pipeline` and class data sources
 - Supports fixed-action set loading and template rendering
 - Entry point: `EntityBuilder.build_agents(cfg, model)`
 
@@ -73,13 +73,13 @@ Core runtime layers:
 
 Top-level config composition (`src/silisocs/conf/experiment.yaml`):
 
-- Defaults: `scenario: default`, `agents: default`, `sim: base`, `env: twitter_like`, `eval: base`
+- Defaults: `world: default`, `agents: default`, `sim: base`, `env: twitter_like`, `eval: base`
 
 Config groups and their base files:
 
 | Group | Base file | Controls |
 |-------|-----------|----------|
-| `scenario` | `scenario/default.yaml` (`@package _global_`) | Run params, setting, event, data |
+| `world` | `world/default.yaml` (`@package _global_`) | Run params, setting, event, data |
 | `agents` | `agents/default.yaml` (`@package agents`) | Persona pipeline, shared memories |
 | `sim` | `sim/base.yaml` (`@package sim`) | LLM, engine, tool-calling, memory, checkpoint |
 | `env` | `env/twitter_like.yaml` (`@package env`) | Platform backend, GM components, social network |
@@ -98,27 +98,27 @@ Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 | `sim.engine.turn_policy.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended` |
 | `sim.checkpoint.every_n_steps` | null | Checkpoint frequency (run_study.py sets 1 by default) |
 
-Key run params live in `scenario/default.yaml` (at config root via `@package _global_`):
+Key run params live in `world/default.yaml` (at config root via `@package _global_`):
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
 | `num_agents` | 100 | Number of agents |
 | `num_steps` | 50 | Simulation episodes |
-| `scenario_name` | default | Used in output path |
+| `world_name` | default | Used in output path |
 | `seed` | 1 | Random seed |
 
 GM component routing is enabled with
 `env.gm.class_path=silisocs.environments.gm.game_master.MultiFlowGameMaster`.
 
-Scenario content lives under:
+World content lives under:
 
-- `scenarios/<name>/conf/scenario/default.yaml` (`@package _global_`) — run params + setting/event/data
-- `scenarios/<name>/conf/agents/default.yaml` (`@package agents`) — persona pipeline
-- **Optional**: `scenarios/<name>/conf/sim.yaml` — partial sim overrides (merged, not replaced)
-- **Optional**: `scenarios/<name>/conf/env.yaml` — partial env overrides
-- **Optional**: `scenarios/<name>/conf/agents/thin.yaml` — alternate agents variant (select with `agents=thin`)
+- `worlds/<name>/conf/world/default.yaml` (`@package _global_`) — run params + setting/event/data
+- `worlds/<name>/conf/agents/default.yaml` (`@package agents`) — persona pipeline
+- **Optional**: `worlds/<name>/conf/sim.yaml` — partial sim overrides (merged, not replaced)
+- **Optional**: `worlds/<name>/conf/env.yaml` — partial env overrides
+- **Optional**: `worlds/<name>/conf/agents/thin.yaml` — alternate agents variant (select with `agents=thin`)
 
-**For designing experiments via config (no code changes):** See [agent_docs/scenario_design.md](agent_docs/scenario_design.md)
+**For designing experiments via config (no code changes):** See [agent_docs/world_design.md](agent_docs/world_design.md)
 
 **For understanding config structure deeply:** See [docs/configuration.md](docs/configuration.md)
 
@@ -225,7 +225,7 @@ class FixedAgent(Agent):
            return self._call_model(self._context, action_spec)
    ```
 
-2. Reference in scenario config:
+2. Reference in world config:
    ```yaml
    persona_pipeline:
      classes:
@@ -337,12 +337,12 @@ sim:
 
 Each mode corresponds to how the agent's responses are interpreted and executed:
 
-- **custom**: Custom parsing format determined by the scenario
+- **custom**: Custom parsing format determined by the world
 - **generic**: Generic action name + parameters format
 
 Tool-calling is configured separately via `sim.tool_calling.mode`.
 
-The specific action format and response interpretation is determined by the resolve component and scenario configuration, not by the agent. Agents simply return strings; the platform interprets them according to the active mode.
+The specific action format and response interpretation is determined by the resolve component and world configuration, not by the agent. Agents simply return strings; the platform interprets them according to the active mode.
 
 For **tool-calling mode** specifically: The entity layer is responsible for calling `sample_tool_call()` when the action_spec indicates tool-calling is needed. The resolve component then processes the result. This architecture keeps tool-calling logic in the entity/act layer, not in resolve.
 
@@ -413,13 +413,13 @@ backend action catalogs, and checkpoint policy tests.
 This guide (AGENTS.md) is for you if you're **extending the framework** — writing new components, backends, agents, or changing architecture.
 
 If instead you want to **design and run experiments via config only**:
-→ See [agent_docs/scenario_design.md](agent_docs/scenario_design.md) — Scenario design guide for config-based users
+→ See [agent_docs/world_design.md](agent_docs/world_design.md) — World design guide for config-based users
 
 **Detailed architecture deep dive** (multi-flow, multi-GM, component routing):
 → See [agent_docs/architecture.md](agent_docs/architecture.md) — Reference for complex orchestration patterns
 
 **Guided workflows** (interactive design workflows — readable by any coding agent):
-→ [agent_docs/skills/new-scenario.md](agent_docs/skills/new-scenario.md) — Step-by-step scenario design assistant
+→ [agent_docs/skills/new-world.md](agent_docs/skills/new-world.md) — Step-by-step world design assistant
 → [agent_docs/skills/new-study.md](agent_docs/skills/new-study.md) — Step-by-step study design assistant
 
 **Public documentation** (for end users):
@@ -447,7 +447,7 @@ When adding features, update docs in:
 - Forgetting to keep docs aligned with runtime defaults
 - Assuming dashboard run snapshot loading equals checkpoint state replay
 - Relying on non-uv environment when reproducing tests
-- Not understanding fallback config behavior (Hydra merges scenario overrides with base defaults)
+- Not understanding fallback config behavior (Hydra merges world overrides with base defaults)
 
 ## 11) PR Readiness Checklist
 

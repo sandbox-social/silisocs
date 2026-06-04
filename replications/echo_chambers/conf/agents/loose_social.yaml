@@ -7,7 +7,7 @@ shared_memories:
 persona_pipeline:
   defaults:
     params:
-      scenario_context: ${event.context}
+      world_context: ${event.context}
       goal: "Participate naturally in the discussion while staying faithful to your persona and current stance."
       llm_response_mode: ${echo_llm_response_mode}
       prompt_variant: ${echo_prompt_variant}

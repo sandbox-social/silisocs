@@ -7,7 +7,7 @@ study:
   question: >-
     How do timeline regimes and recommendation context settings affect candidate-opinion
     evolution over repeated episodes in the election scenario?
-  scenarios:
+  worlds:
     - election_recsys_engagement
   parent_studies: []
   derived_from_runs: []
@@ -15,10 +15,10 @@ study:
   summary_log_path: experiments/studies/election_opinion_program_v1/generated/summary_log.jsonl
 
   run_defaults:
-    config_path: scenarios/election_recsys_engagement/conf
+    config_path: worlds/election_recsys_engagement/conf
     runner_module: silisocs.runtime.runner
-    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
-    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{world}_seed{seed}"
+    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{world}/seed_{seed}/run"
 
     seed_start: 11
     seed_repeats: 10
@@ -41,8 +41,8 @@ study:
     context: "Election candidate opinion and engagement dynamics under timeline interventions."
     constraints: "Run initial hypotheses first, then iterate using follow-up hypotheses only."
     path_conventions:
-      run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
-      run_output_template: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+      run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{world}_seed{seed}"
+      run_output_template: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{world}/seed_{seed}/run"
       generated_artifacts_root: "experiments/studies/{study_id}/generated"
       eval_output_template: "{run_output_template}/{eval_output_subpath}"
       repro_lock_jsonl: "experiments/studies/{study_id}/generated/repro_lock.jsonl"
@@ -59,7 +59,7 @@ evaluations:
     preset: builtin.probe_metrics_detailed
     static_args:
       - --postprocessor
-      - scenarios/election_recsys_engagement/postprocessors.py:cross_seed_case_ci
+      - worlds/election_recsys_engagement/postprocessors.py:cross_seed_case_ci
 
   - id: probe_numeric
     preset: builtin.probe_numeric_detailed
@@ -105,7 +105,7 @@ hypotheses:
     conditions:
       case1_bill_bias:
         sub_experiment: bill_bias
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -113,7 +113,7 @@ hypotheses:
 
       case2_bradley_bias:
         sub_experiment: bradley_bias
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -121,7 +121,7 @@ hypotheses:
 
       case3_unbiased_news:
         sub_experiment: unbiased_news
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -160,7 +160,7 @@ hypotheses:
     conditions:
       case1_bill_bias:
         sub_experiment: bill_bias
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -168,7 +168,7 @@ hypotheses:
 
       case2_bradley_bias:
         sub_experiment: bradley_bias
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -176,7 +176,7 @@ hypotheses:
 
       case3_unbiased_news:
         sub_experiment: unbiased_news
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -215,7 +215,7 @@ hypotheses:
     conditions:
       case1_bill_bias:
         sub_experiment: bill_bias
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -223,7 +223,7 @@ hypotheses:
 
       case2_bradley_bias:
         sub_experiment: bradley_bias
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -231,7 +231,7 @@ hypotheses:
 
       case3_unbiased_news:
         sub_experiment: unbiased_news
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -271,7 +271,7 @@ hypotheses:
     conditions:
       case1_bill_bias_twhin:
         sub_experiment: bill_bias_twhin
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: pure_recsys
           env.gm.components.update.params.default_recsys_type: twhin
@@ -280,7 +280,7 @@ hypotheses:
 
       case2_bradley_bias_twhin:
         sub_experiment: bradley_bias_twhin
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: pure_recsys
           env.gm.components.update.params.default_recsys_type: twhin
@@ -289,7 +289,7 @@ hypotheses:
 
       case3_unbiased_news_twhin:
         sub_experiment: unbiased_news_twhin
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: pure_recsys
           env.gm.components.update.params.default_recsys_type: twhin
@@ -332,7 +332,7 @@ hypotheses:
     conditions:
       case1_bill_bias:
         sub_experiment: bill_bias
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -340,7 +340,7 @@ hypotheses:
 
       case2_bradley_bias:
         sub_experiment: bradley_bias
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -348,7 +348,7 @@ hypotheses:
 
       case3_unbiased_news:
         sub_experiment: unbiased_news
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -391,7 +391,7 @@ hypotheses:
     conditions:
       case1_bill_bias:
         sub_experiment: bill_bias
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -430,7 +430,7 @@ hypotheses:
     conditions:
       case1_bill_then_bradley:
         sub_experiment: bill_then_bradley
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -442,7 +442,7 @@ hypotheses:
 
       case2_bradley_then_bill:
         sub_experiment: bradley_then_bill
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -481,7 +481,7 @@ hypotheses:
     conditions:
       case1_bill_then_bradley:
         sub_experiment: bill_then_bradley_nemotron
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -493,7 +493,7 @@ hypotheses:
 
       case2_bradley_then_bill:
         sub_experiment: bradley_then_bill_nemotron
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         overrides:
           env.gm.components.observe.params.timeline_mode: follower_chronological
           env.gm.components.update.params.default_recsys_type: twitter
@@ -535,7 +535,7 @@ hypotheses:
     conditions:
       case1_follower_chronological_bill:
         sub_experiment: follower_chronological_bill
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         seed_start: 11
         seed_repeats: 5
         overrides:
@@ -549,7 +549,7 @@ hypotheses:
 
       case2_follower_chronological_bradley:
         sub_experiment: follower_chronological_bradley
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         seed_start: 11
         seed_repeats: 5
         overrides:
@@ -563,7 +563,7 @@ hypotheses:
 
       case3_twhin_bill:
         sub_experiment: twhin_bill
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         seed_start: 11
         seed_repeats: 5
         overrides:
@@ -578,7 +578,7 @@ hypotheses:
 
       case4_twhin_bradley:
         sub_experiment: twhin_bradley
-        config_path: scenarios/election_recsys_engagement/conf
+        config_path: worlds/election_recsys_engagement/conf
         seed_start: 11
         seed_repeats: 5
         overrides:

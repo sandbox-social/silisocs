@@ -5,7 +5,7 @@ configurations with Hydra and launch simulations. It exposes :func:`main`,
 which is decorated with :func:`hydra.main` and expects the composed
 ``experiment`` configuration group.
 
-The CLI accepts a ``--config-path`` allowing external scenario directories to
+The CLI accepts a ``--config-path`` allowing external world directories to
 override package defaults. Use repeated ``--overlay-config-path`` flags to
 layer additional override trees.
 """
@@ -50,7 +50,7 @@ from silisocs.runtime.configuration.external import (
 from silisocs.runtime.configuration.projection import RuntimeProjection
 
 # Local imports
-from silisocs.runtime.configuration.validation import validate_scenario_config
+from silisocs.runtime.configuration.validation import validate_world_config
 from silisocs.runtime.construction.agent_configs import build_agent_configs
 from silisocs.runtime.construction.assembly import construct_runtime_with_metrics
 from silisocs.runtime.construction.engines import build_engine
@@ -165,17 +165,17 @@ def main(cfg: DictConfig):
     cfg = merge_external_group_overrides(cfg)
     RuntimeProjection.from_cfg(cfg)
 
-    # Determine scenario path for file validation.
-    # Check top-level scenarios/ first, fall back to in-package.
+    # Determine world path for file validation.
+    # Check top-level worlds/ first, fall back to in-package.
     project_root = _resolve_project_root()
-    top_scenario = project_root / "scenarios" / cfg.scenario_name
-    pkg_scenario = PACKAGE_ROOT / "scenarios" / cfg.scenario_name
-    scenario_path = top_scenario if top_scenario.is_dir() else pkg_scenario
+    top_world = project_root / "worlds" / cfg.world_name
+    pkg_world = PACKAGE_ROOT / "worlds" / cfg.world_name
+    world_path = top_world if top_world.is_dir() else pkg_world
 
     # Run all config schema validation checks
     with metrics.phase("config_validation"):
         try:
-            validate_scenario_config(cfg, scenario_path)
+            validate_world_config(cfg, world_path)
         except Exception as e:
             logger.error(f"Configuration validation failed: {e}")
             raise
@@ -198,7 +198,7 @@ def main(cfg: DictConfig):
     # Disable struct mode to allow setting new keys
     OmegaConf.set_struct(cfg, False)
     cfg.output_rootname = output_dir
-    cfg.scenario_name = str(getattr(cfg, "scenario_name", "default") or "default")
+    cfg.world_name = str(getattr(cfg, "world_name", "default") or "default")
     OmegaConf.set_struct(cfg, True)
 
     print(f"\nOutput directory: {output_dir}")
@@ -242,7 +242,7 @@ def main(cfg: DictConfig):
         with open(run_stats_path, "a", encoding="utf-8") as f:
             f.write(line + "\n")
 
-    # build gamemasters (scenario agnostic)
+    # build gamemasters (world agnostic)
     t0 = time.time()
     with metrics.phase("build_game_masters"):
         game_masters = build_game_masters(cfg)
@@ -299,7 +299,7 @@ def main(cfg: DictConfig):
     metrics.set_meta("num_game_masters", len(game_masters))
     metrics.set_meta("num_steps", cfg.num_steps)
     metrics.set_meta("seed", SEED)
-    metrics.set_meta("scenario", cfg.scenario_name)
+    metrics.set_meta("world", cfg.world_name)
     metrics.set_meta("llm_name", cfg.sim.llm.name)
     metrics.set_meta("output_dir", output_dir)
     metrics.set_meta("agent_names", [inst.params["name"] for inst in agent_configs])
@@ -531,10 +531,10 @@ def _register_search_path_plugin() -> None:
 
 def cli_main() -> None:
     """CLI entry point: preprocess --config-path flags then run Hydra main."""
-    if len(sys.argv) > 1 and sys.argv[1] in ("new-scenario", "new-study"):
-        from silisocs.scenario_gen.cli import scenario_gen_cli
+    if len(sys.argv) > 1 and sys.argv[1] in ("new-world", "new-study"):
+        from silisocs.world_gen.cli import world_gen_cli
 
-        scenario_gen_cli()
+        world_gen_cli()
         return
     _inject_external_config_path()
     _register_search_path_plugin()

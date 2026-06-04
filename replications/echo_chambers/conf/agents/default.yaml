@@ -7,7 +7,7 @@ shared_memories:
 persona_pipeline:
   defaults:
     params:
-      scenario_context: ${event.context}
+      world_context: ${event.context}
       goal: "Reflect on opinions heard from close contacts and update your belief honestly."
       llm_response_mode: ${echo_llm_response_mode}
       prompt_variant: ${echo_prompt_variant}
