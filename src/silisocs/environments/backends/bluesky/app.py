@@ -17,10 +17,12 @@ from silisocs.environments.backends.bluesky.bluesky_ops.follow_user import follo
 from silisocs.environments.backends.bluesky.bluesky_ops.post import post, reply_to_post, like_post, repost_post
 from silisocs.environments.backends.bluesky.bluesky_ops.timeline import get_timeline
 from silisocs.environments.backends.bluesky.bluesky_ops.notifications import read_notifications
+from silisocs.environments.backends.bluesky.bluesky_ops.recommendations import get_recommendations
 
 from urllib.parse import urlparse
 import os
 import dataclasses
+import requests
 
 load_dotenv()
 
@@ -94,7 +96,6 @@ class BlueskyApp(SocialBackendApp):
                 except Exception as e:
                     self._print(f"Error setting bio for {display_name}: {e}", color="red")
 
-        print(following_graph)
         for display_name, followees in following_graph.items():
             for followee in followees:
                 try:
@@ -249,6 +250,16 @@ class BlueskyApp(SocialBackendApp):
             self._print(f"Error resolving action {action_type}: {e}", color="red")
             return f"Error performing {action_type}: {e}"  
         
+    def get_recommendations(self, display_name: str, feed_name: str) -> list[str]:
+        """Fetches recommended post URIs from the feed generator."""
+        handle = self._user_mapping.get(display_name)
+        if not handle:
+            raise ActionArgumentError(f"No handle found for display name: {display_name}")
+
+        recs = get_recommendations(handle, feed_name)
+        
+        return recs
+    
     @app_action
     def update_profile(self, display_name: str, bio: str) -> None:
         """Updates the bio of the user with the given display name."""
