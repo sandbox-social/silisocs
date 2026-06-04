@@ -11,6 +11,7 @@ from silisocs.runtime.checkpointing.restore import (
 )
 from silisocs.runtime.checkpointing.serialization import json_safe
 from silisocs.runtime.checkpointing.state import (
+    checkpoint_has_backend_state,
     checkpoint_runtime_metadata,
     load_checkpoint_file,
     load_checkpoint_into_runtime,
@@ -25,6 +26,7 @@ __all__ = [
     "CheckpointRestoreStrategy",
     "SocialActionEventReplayRestore",
     "build_checkpoint_restore",
+    "checkpoint_has_backend_state",
     "checkpoint_runtime_metadata",
     "json_safe",
     "load_checkpoint_file",

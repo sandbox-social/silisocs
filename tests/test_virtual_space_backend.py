@@ -125,3 +125,19 @@ def test_virtual_space_factory_and_finished_action() -> None:
     assert isinstance(app, VirtualSpaceApp)
     assert "Location: lab" in app.invoke_action_with_kwargs("LOOK", {"agent_name": "Alice"})
     assert app.invoke_action_with_kwargs("FINISHED", {}) == "Finished action episode"
+
+
+def test_virtual_space_checkpoint_state_restores_world() -> None:
+    app = VirtualSpaceApp(rooms=["atrium", "garden"], starting_room="atrium")
+    app.initialize(agent_names=["Alice", "Bob"])
+    app.move(agent_name="Alice", destination="garden")
+    app.leave_note(agent_name="Alice", message="Meet here.")
+
+    restored = VirtualSpaceApp(rooms=["atrium", "garden"], starting_room="atrium")
+    restored.set_state(app.get_state())
+
+    alice_observation = restored.observe("Alice")
+    bob_observation = restored.observe("Bob")
+    assert "Location: garden" in alice_observation
+    assert "Alice: Meet here." in alice_observation
+    assert "Present here: none" in bob_observation

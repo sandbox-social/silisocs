@@ -750,8 +750,12 @@ uv run silisocs \
 ```
 
 Checkpoints are written to `.../outputs/.../checkpoints/step_<N>_checkpoint.json`.
-Restore selects the latest checkpoint in the source run and replays backend
-action events through `sim.checkpoint.restore`.
+Restore selects the latest checkpoint in the source run, initializes the runtime
+object scaffolding, and then applies checkpointed agent, game-master, component,
+and backend state. Built-in local backends restore their world state directly
+from the checkpoint. `sim.checkpoint.restore` is still required for source runs
+that need a restore strategy, such as older social runs that must rebuild backend
+state from `action_events.jsonl`.
 
 ---
 

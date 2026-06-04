@@ -348,6 +348,14 @@ class BackendApp(metaclass=abc.ABCMeta):
         """Optional per-step world update hook for backend-owned state."""
         del step, agent_names, context
 
+    def get_state(self) -> dict[str, Any]:
+        """Return serializable backend state for checkpoints."""
+        return {}
+
+    def set_state(self, state: dict[str, Any]) -> None:
+        """Restore backend state from a checkpoint payload."""
+        del state
+
     def observe(self, actor_name: str, **kwargs: Any) -> str:
         """Return a domain-specific observation string for an actor."""
         del actor_name, kwargs

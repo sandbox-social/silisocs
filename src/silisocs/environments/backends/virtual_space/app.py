@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -60,6 +62,49 @@ class VirtualSpaceApp(BackendApp):
         self._events = [
             f"Virtual space opened with {len(agent_names)} agents in {self.starting_room}."
         ]
+
+    def get_state(self) -> dict[str, Any]:
+        """Return serializable backend state for checkpoints."""
+        return {
+            "locations": dict(self._locations),
+            "notes": {room: list(notes) for room, notes in self._notes.items()},
+            "tasks": {task_id: dataclasses.asdict(task) for task_id, task in self._tasks.items()},
+            "events": list(self._events),
+        }
+
+    def set_state(self, state: dict[str, Any]) -> None:
+        """Restore backend state from a checkpoint payload."""
+        if not isinstance(state, Mapping):
+            raise TypeError("VirtualSpaceApp checkpoint state must be a mapping.")
+        self._locations = {
+            str(name): str(room) for name, room in dict(state.get("locations", {})).items()
+        }
+        raw_notes = state.get("notes", {})
+        if not isinstance(raw_notes, Mapping):
+            raise TypeError("VirtualSpaceApp checkpoint notes must be a mapping.")
+        self._notes = {
+            str(room): [str(note) for note in notes]
+            for room, notes in raw_notes.items()
+            if isinstance(notes, list)
+        }
+        raw_tasks = state.get("tasks", {})
+        if not isinstance(raw_tasks, Mapping):
+            raise TypeError("VirtualSpaceApp checkpoint tasks must be a mapping.")
+        self._tasks = {}
+        for task_id, raw in raw_tasks.items():
+            if not isinstance(raw, Mapping):
+                raise TypeError("VirtualSpaceApp checkpoint task entries must be mappings.")
+            task = RoomTask(
+                task_id=str(raw.get("task_id") or task_id),
+                room=str(raw.get("room") or ""),
+                description=str(raw.get("description") or ""),
+                required_effort=max(1, int(raw.get("required_effort", 1))),
+                progress=max(0, int(raw.get("progress", 0))),
+                complete=bool(raw.get("complete", False)),
+                completion_message=str(raw.get("completion_message") or ""),
+            )
+            self._tasks[task.task_id] = task
+        self._events = [str(event) for event in state.get("events", [])]
 
     def observe(self, actor_name: str, **kwargs: Any) -> str:
         limit = int(kwargs.get("limit", self.recent_event_limit) or self.recent_event_limit)

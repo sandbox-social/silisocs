@@ -63,6 +63,14 @@ class Agent(ABC):
         """
         del context
 
+    def get_state(self) -> dict[str, Any]:
+        """Return serializable agent state for checkpoints."""
+        return {}
+
+    def set_state(self, state: dict[str, Any]) -> None:
+        """Restore agent state from a checkpoint payload."""
+        del state
+
     @abstractmethod
     def act(self, action_spec: Any) -> ActionOutput:
         """Generate the next action based on the current action specification.

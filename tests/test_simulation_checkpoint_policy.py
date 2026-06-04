@@ -6,11 +6,14 @@ from types import SimpleNamespace
 
 from silisocs.runtime.checkpointing import (
     CHECKPOINT_SCHEMA_VERSION,
+    checkpoint_has_backend_state,
+    make_checkpoint_data,
     restore_rng_state_from_metadata,
     save_checkpoint,
     should_save_checkpoint,
 )
 from silisocs.runtime.construction.assembly import RuntimeObjects
+from silisocs.runtime.construction.specs import RuntimeRole, RuntimeSpec
 
 
 def _checkpoint_config(*, every_n_steps: int | None, explicit_steps: list[int]) -> SimpleNamespace:
@@ -50,6 +53,25 @@ def test_save_checkpoint_writes_step_metadata(tmp_path) -> None:
     assert payload["step"] == 12
     assert "runtime_metadata" in payload
     assert "rng_state_b64" in payload["runtime_metadata"]
+
+
+def test_checkpoint_detects_game_master_backend_state() -> None:
+    class _GameMaster:
+        name = "gm"
+
+        def get_state(self) -> dict:
+            return {"backend": {"backend_type": "test", "state": {"value": 1}}}
+
+    runtime = RuntimeObjects(game_masters=[_GameMaster()])
+    runtime.object_specs["gm"] = RuntimeSpec(
+        class_path="tests.fake.GM",
+        role=RuntimeRole.GAME_MASTER,
+        params={"name": "gm"},
+    )
+
+    checkpoint = make_checkpoint_data(runtime, step=1)
+
+    assert checkpoint_has_backend_state(checkpoint) is True
 
 
 def test_restore_rng_state_from_metadata_restores_python_random() -> None:

@@ -117,8 +117,9 @@ _Avoid_: Passing individual checkpoint files as public resume inputs
 
 **Checkpoint Restore Strategy**:
 A checkpoint-owned object that rebuilds runtime/backend state from a source
-run after the Engine has initialized agents and game masters. The built-in
-social restore replays backend action events through `GameMaster.resolve_action`.
+run after the Engine has initialized agents and game masters. Checkpointed
+object/backend state is authoritative when present; replay strategies are for
+source runs that do not carry enough backend state.
 _Avoid_: Simulation initializer replay, agent-turn replay payloads
 
 **Compatibility Adapter**:

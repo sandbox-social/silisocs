@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import dataclasses
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -107,6 +108,54 @@ class ResourceMarketApp(BackendApp):
                 f"{quantity} {resource}" for resource, quantity in sorted(needs.items())
             )
             self._record(f"{agent_name} met upkeep needs at step {step}: {needs_text}.")
+
+    def get_state(self) -> dict[str, Any]:
+        """Return serializable backend state for checkpoints."""
+        return {
+            "cash": dict(self._cash),
+            "inventory": {name: dict(items) for name, items in self._inventory.items()},
+            "roles": dict(self._roles),
+            "satisfaction": dict(self._satisfaction),
+            "listings": {
+                str(listing_id): dataclasses.asdict(listing)
+                for listing_id, listing in self._listings.items()
+            },
+            "events": list(self._events),
+            "next_listing_id": self._next_listing_id,
+        }
+
+    def set_state(self, state: dict[str, Any]) -> None:
+        """Restore backend state from a checkpoint payload."""
+        if not isinstance(state, Mapping):
+            raise TypeError("ResourceMarketApp checkpoint state must be a mapping.")
+        self._cash = {str(name): int(value) for name, value in dict(state.get("cash", {})).items()}
+        self._inventory = {
+            str(name): {str(resource): int(quantity) for resource, quantity in items.items()}
+            for name, items in dict(state.get("inventory", {})).items()
+            if isinstance(items, Mapping)
+        }
+        self._roles = {str(name): str(role) for name, role in dict(state.get("roles", {})).items()}
+        self._satisfaction = {
+            str(name): int(value) for name, value in dict(state.get("satisfaction", {})).items()
+        }
+        raw_listings = state.get("listings", {})
+        if not isinstance(raw_listings, Mapping):
+            raise TypeError("ResourceMarketApp checkpoint listings must be a mapping.")
+        self._listings = {}
+        for listing_id, raw in raw_listings.items():
+            if not isinstance(raw, Mapping):
+                raise TypeError("ResourceMarketApp checkpoint listing entries must be mappings.")
+            listing = Listing(
+                listing_id=int(raw.get("listing_id", listing_id)),
+                seller=str(raw.get("seller") or ""),
+                resource=str(raw.get("resource") or ""),
+                quantity=int(raw.get("quantity", 0)),
+                price=int(raw.get("price", 0)),
+                open=bool(raw.get("open", True)),
+            )
+            self._listings[listing.listing_id] = listing
+        self._events = [str(event) for event in state.get("events", [])]
+        self._next_listing_id = int(state.get("next_listing_id", 1))
 
     def observe(self, actor_name: str, **kwargs: Any) -> str:
         limit = int(kwargs.get("limit", self.recent_event_limit) or self.recent_event_limit)

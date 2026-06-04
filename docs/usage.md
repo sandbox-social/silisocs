@@ -673,6 +673,12 @@ uv run silisocs \
   sim.checkpoint.restore.built_in=social_action_event_replay
 ```
 
+Current checkpoints store default agent state, game-master component state, and
+the state of built-in local backends. For SQLite-backed backends such as
+`twitter_like` and `reddit_like`, the checkpoint stores a database snapshot. The
+restore strategy is only used when checkpointed backend state is absent and a
+domain-specific replay is needed.
+
 ---
 
 ## Developer Customization Guide

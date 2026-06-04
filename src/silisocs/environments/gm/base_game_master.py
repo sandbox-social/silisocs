@@ -40,3 +40,11 @@ class BaseGameMaster(ABC):
     @abstractmethod
     def resolve_action(self, agent_name: str, action: ActionOutput) -> str:
         """Resolve one agent action through the backend."""
+
+    def get_state(self) -> dict[str, Any]:
+        """Return serializable game-master state for checkpoints."""
+        return {}
+
+    def set_state(self, state: dict[str, Any]) -> None:
+        """Restore game-master state from a checkpoint payload."""
+        del state
