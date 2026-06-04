@@ -1,4 +1,4 @@
-"""Dashboard scenario config writer."""
+"""Dashboard world config writer."""
 
 from copy import deepcopy
 from pathlib import Path
@@ -48,28 +48,28 @@ def _default_env_payload(backend_type: str) -> dict[str, Any]:
     return deepcopy(loaded)
 
 
-def save_scenario(
+def save_world(
     name: str,
-    scenario_data: dict[str, Any],
+    world_data: dict[str, Any],
     sim_data: dict[str, Any],
     env_data: dict[str, Any],
     backend_type: str,
-    scenarios_root: Path,
+    worlds_root: Path,
     eval_data: dict[str, Any] | None = None,
 ) -> Path:
-    """Save scenario config to Hydra group layout in scenarios/<name>/conf/."""
-    conf_dir = scenarios_root / name / "conf"
-    (conf_dir / "scenario").mkdir(parents=True, exist_ok=True)
+    """Save world config to Hydra group layout in worlds/<name>/conf/."""
+    conf_dir = worlds_root / name / "conf"
+    (conf_dir / "world").mkdir(parents=True, exist_ok=True)
     (conf_dir / "agents").mkdir(parents=True, exist_ok=True)
 
     sim_payload = {
-        "scenario_name": scenario_data.get("scenario_name", name),
-        "jobname_format": scenario_data.get("jobname_format"),
-        "setting": scenario_data.get("setting", {}),
-        "event": scenario_data.get("event", {}),
-        "data": scenario_data.get("data", {}),
+        "world_name": world_data.get("world_name", name),
+        "jobname_format": world_data.get("jobname_format"),
+        "setting": world_data.get("setting", {}),
+        "event": world_data.get("event", {}),
+        "data": world_data.get("data", {}),
     }
-    scenario_keys = {
+    world_keys = {
         "num_agents",
         "num_steps",
         "seed",
@@ -80,32 +80,32 @@ def save_scenario(
     sim_section: dict[str, Any] = {}
     for key, value in sim_data.items():
         if value is not None:
-            if key in scenario_keys:
+            if key in world_keys:
                 set_nested_value(sim_payload, key, value)
             else:
                 set_nested_value(sim_section, key, value)
 
     agent_payload = {
-        "builder": scenario_data.get("builder", {"class_path": None, "params": {}}),
-        "persona_pipeline": scenario_data.get("persona_pipeline", {}),
-        "shared_memories": scenario_data.get("shared_memories", []),
-        "initial_observations": scenario_data.get("initial_observations", []),
+        "builder": world_data.get("builder", {"class_path": None, "params": {}}),
+        "persona_pipeline": world_data.get("persona_pipeline", {}),
+        "shared_memories": world_data.get("shared_memories", []),
+        "initial_observations": world_data.get("initial_observations", []),
     }
-    if isinstance(scenario_data.get("fixed_action_sets"), dict):
-        agent_payload["fixed_action_sets"] = scenario_data.get("fixed_action_sets", {})
+    if isinstance(world_data.get("fixed_action_sets"), dict):
+        agent_payload["fixed_action_sets"] = world_data.get("fixed_action_sets", {})
 
     env_payload = _default_env_payload(backend_type or "twitter_like")
     for key, value in env_data.items():
         if value is not None:
             set_nested_value(env_payload, key, value)
 
-    evals_payload = {"probes": scenario_data.get("probes", {})}
+    evals_payload = {"probes": world_data.get("probes", {})}
     for key, value in (eval_data or {}).items():
         if value is not None:
             set_nested_value(evals_payload, key, value)
 
     files_to_write = [
-        (conf_dir / "scenario" / "default.yaml", "# @package _global_\n\n", sim_payload),
+        (conf_dir / "world" / "default.yaml", "# @package _global_\n\n", sim_payload),
         (conf_dir / "agents" / "default.yaml", "# @package agents\n\n", agent_payload),
         (conf_dir / "env.yaml", "# @package env\n\n", env_payload),
         (conf_dir / "eval.yaml", "# @package eval\n\n", evals_payload),

@@ -8,7 +8,7 @@ Make sure you have completed the [Installation](installation.md) steps.
 
 ## 1. Run the Default Scenario
 
-The default scenario simulates a small generic social media community using
+The default world simulates a small generic social media community using
 packaged inline personas. It does not require optional Hugging Face dependencies.
 
 ```sh
@@ -72,7 +72,7 @@ uv sync --extra dashboard
 uv run streamlit run src/silisocs/dashboard/launch_app.py
 ```
 
-The dashboard lets you configure scenarios, agent classes, network topology,
+The dashboard lets you configure worlds, agent classes, network topology,
 and probes — then launch simulations with one click.
 
 ## 5. Analyze a Completed Run
@@ -90,18 +90,18 @@ in that folder.
 
 ## 6. Run an External Scenario
 
-Run the bundled election scenario:
+Run the bundled election world:
 
 ```sh
-uv run silisocs --config-path scenarios/election/conf
+uv run silisocs --config-path worlds/election/conf
 ```
 
-The runner auto-detects the scenario name from the YAML files in the external
-config directory. No need to manually specify a scenario override.
+The runner auto-detects the world name from the YAML files in the external
+config directory. No need to manually specify a world override.
 
 ## Next Steps
 
 - [Usage Overview](usage.md) — Full end-to-end guide
 - [Configuration Reference](configuration.md) — All config options
 - [Building Agents](building_agents.md) — Create custom agent populations
-- [Election Walkthrough](tutorials/election.md) — Complex scenario tutorial
+- [Election Walkthrough](tutorials/election.md) — Complex world tutorial

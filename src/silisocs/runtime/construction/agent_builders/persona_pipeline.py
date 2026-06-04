@@ -39,7 +39,7 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
         super().__init__(agents_config, params)
         self.records = RecordLoader(
             agents_config,
-            scenario_name=str(self.params.get("scenario_name", "default")),
+            world_name=str(self.params.get("world_name", "default")),
             project_root=self.params.get("project_root"),
         )
         self.fixed_actions = FixedActionBuilder(agents_config, self.records.resolve_file_path)
@@ -49,10 +49,10 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
         pipeline = getattr(self.config, "persona_pipeline", None)
         if pipeline and getattr(pipeline, "classes", None):
             return validate_unique_agent_names(self._build_from_classes())
-        raise ValueError("Scenario must define persona_pipeline.classes.")
+        raise ValueError("World config must define persona_pipeline.classes.")
 
     def load_news_data(self, news_file: str) -> dict[str, Any]:
-        """Load news headlines and image metadata from a scenario JSON file."""
+        """Load news headlines and image metadata from a world JSON file."""
         with open(self._resolve_file_path(f"{news_file}.json")) as f:
             return json.load(f)
 
@@ -275,8 +275,8 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
     def _load_jsonl(self, path: str, *, max_records: int | None = None) -> list[dict[str, Any]]:
         return self.records.load_jsonl(path, max_records=max_records)
 
-    def _scenario_paths(self, path_str: str) -> list[Path]:
-        return self.records.scenario_paths(path_str)
+    def _world_paths(self, path_str: str) -> list[Path]:
+        return self.records.world_paths(path_str)
 
     def _resolve_file_path(self, path_str: str) -> Path:
         return self.records.resolve_file_path(path_str)

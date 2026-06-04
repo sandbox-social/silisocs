@@ -5,7 +5,7 @@ Features:
 - schema-version validation
 - case/condition override expansion
 - seed replication
-- multi-scenario loops
+- multi-world loops
 - optional exact run command templates
 - multiple evaluation hooks per run
 - builtin evaluator presets
@@ -220,7 +220,7 @@ class RunSpec:
     hypothesis_id: str
     condition_id: str
     sub_experiment: str
-    scenario: str
+    world: str
     seed: int
     run_name: str
     execution_mode: str
@@ -313,8 +313,8 @@ def _merge_overrides(*parts: dict[str, Any]) -> dict[str, Any]:
 def _extract_inline_overrides(run_defaults: dict[str, Any]) -> dict[str, Any]:
     known = {
         "config_path",
-        "scenario",
-        "scenarios",
+        "world",
+        "worlds",
         "seed",
         "seeds",
         "seed_repeats",
@@ -352,17 +352,17 @@ def _format_command_template(template: tuple[str, ...], context: dict[str, Any])
     return tuple(_format_template_token(token, context) for token in template)
 
 
-def _resolve_scenarios(study: dict[str, Any], run_defaults: dict[str, Any]) -> list[str]:
-    scenarios = _ensure_string_list("study.scenarios", study.get("scenarios"))
-    if not scenarios:
-        scenarios = _ensure_string_list("study.base_scenarios", study.get("base_scenarios"))
-    if not scenarios:
-        scenario = run_defaults.get("scenario")
-        if isinstance(scenario, str) and scenario:
-            scenarios = [scenario]
-    if not scenarios:
-        raise StudyConfigError("No scenarios found. Set study.scenarios or run_defaults.scenario")
-    return scenarios
+def _resolve_worlds(study: dict[str, Any], run_defaults: dict[str, Any]) -> list[str]:
+    worlds = _ensure_string_list("study.worlds", study.get("worlds"))
+    if not worlds:
+        worlds = _ensure_string_list("study.base_worlds", study.get("base_worlds"))
+    if not worlds:
+        world = run_defaults.get("world")
+        if isinstance(world, str) and world:
+            worlds = [world]
+    if not worlds:
+        raise StudyConfigError("No worlds found. Set study.worlds or run_defaults.world")
+    return worlds
 
 
 def _resolve_seeds(run_defaults: dict[str, Any], node: dict[str, Any]) -> list[int]:  # noqa: C901
@@ -640,7 +640,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
     study = _ensure_mapping("study", study_data["study"])
     hypotheses = _ensure_mapping("hypotheses", study_data["hypotheses"])
     run_defaults = _ensure_mapping("study.run_defaults", study.get("run_defaults"))
-    base_scenarios = _resolve_scenarios(study, run_defaults)
+    base_worlds = _resolve_worlds(study, run_defaults)
 
     global_eval_specs = _resolve_eval_specs(study_root, study_data)
 
@@ -664,7 +664,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
     default_run_name_template = str(
         run_defaults.get(
             "run_name_template",
-            "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}",
+            "{study_id}_{hypothesis_id}_{condition_id}_{world}_seed{seed}",
         )
     )
     default_output_root_override = run_defaults.get("output_root_override")
@@ -687,12 +687,12 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                 f"hypotheses.{hyp_id}.conditions.{cond_id}.overrides",
                 cond_node.get("overrides"),
             )
-            cond_scenarios = _ensure_string_list(
-                f"hypotheses.{hyp_id}.conditions.{cond_id}.scenarios",
-                cond_node.get("scenarios"),
+            cond_worlds = _ensure_string_list(
+                f"hypotheses.{hyp_id}.conditions.{cond_id}.worlds",
+                cond_node.get("worlds"),
             )
             sub_experiment = str(cond_node.get("sub_experiment", cond_id)).strip() or cond_id
-            scenarios = cond_scenarios or base_scenarios
+            worlds = cond_worlds or base_worlds
             execution = _ensure_mapping(
                 f"hypotheses.{hyp_id}.conditions.{cond_id}.execution",
                 cond_node.get("execution"),
@@ -744,11 +744,11 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                         raise StudyConfigError(
                             f"hypotheses.{hyp_id}.conditions.{cond_id}.reuse.runs[{idx}].source is required"
                         )
-                    scenario = ref.get("scenario", scenarios[0])
+                    world = ref.get("world", worlds[0])
                     seed = ref.get("seed", run_defaults.get("seed", 1))
-                    if not isinstance(scenario, str) or not scenario:
+                    if not isinstance(world, str) or not world:
                         raise StudyConfigError(
-                            f"hypotheses.{hyp_id}.conditions.{cond_id}.reuse.runs[{idx}].scenario must be non-empty string"
+                            f"hypotheses.{hyp_id}.conditions.{cond_id}.reuse.runs[{idx}].world must be non-empty string"
                         )
                     if not isinstance(seed, int):
                         raise StudyConfigError(
@@ -762,7 +762,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                             hypothesis_id=hyp_id,
                             condition_id=cond_id,
                             sub_experiment=sub_experiment,
-                            scenario=scenario,
+                            world=world,
                             seed=seed,
                             run_name=f"{hyp_id}__{cond_id}__reuse_{idx}",
                             execution_mode=mode,
@@ -781,9 +781,9 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
             seeds = _resolve_seeds(run_defaults, cond_node)
             merged = _merge_overrides(default_overrides, hyp_overrides, cond_overrides)
 
-            for scenario in scenarios:
+            for world in worlds:
                 for seed in seeds:
-                    run_id = f"{hyp_id}__{cond_id}__{scenario}__seed{seed}"
+                    run_id = f"{hyp_id}__{cond_id}__{world}__seed{seed}"
                     template_context = {
                         "run_id": run_id,
                         "study_name": study_name,
@@ -791,7 +791,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                         "hypothesis_id": hyp_id,
                         "condition_id": cond_id,
                         "sub_experiment": sub_experiment,
-                        "scenario": scenario,
+                        "world": world,
                         "seed": seed,
                     }
                     run_name = _format_template_token(run_name_template, template_context)
@@ -802,7 +802,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                     else:
                         output_rootname = (
                             f"experiments/studies/{study_id}/runs/"
-                            f"{hyp_id}/{cond_id}/{scenario}/seed_{seed}/run"
+                            f"{hyp_id}/{cond_id}/{world}/seed_{seed}/run"
                         )
                     command_override = None
                     if command_template is not None:
@@ -825,7 +825,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                             hypothesis_id=hyp_id,
                             condition_id=cond_id,
                             sub_experiment=sub_experiment,
-                            scenario=scenario,
+                            world=world,
                             seed=seed,
                             run_name=run_name,
                             execution_mode=mode,
@@ -860,7 +860,7 @@ def _build_run_command(spec: RunSpec) -> list[str]:
     if spec.config_path:
         cmd.extend(["--config-path", spec.config_path])
 
-    cmd.append(f"scenario={spec.scenario}")
+    cmd.append(f"world={spec.world}")
     cmd.append(f"seed={spec.seed}")
     cmd.append(f"run_name={_normalize_override_value(spec.run_name)}")
     if spec.output_rootname:
@@ -869,7 +869,7 @@ def _build_run_command(spec: RunSpec) -> list[str]:
 
     for key in sorted(spec.overrides):
         if key in {
-            "scenario",
+            "world",
             "seed",
             "run_name",
             "output_rootname",
@@ -977,7 +977,7 @@ def _plan_rows(run_specs: list[RunSpec]) -> list[dict[str, Any]]:
             "hypothesis": spec.hypothesis_id,
             "condition": spec.condition_id,
             "sub_experiment": spec.sub_experiment,
-            "scenario": spec.scenario,
+            "world": spec.world,
             "seed": spec.seed,
             "run_name": spec.run_name,
             "planned_output_rootname": spec.output_rootname,
@@ -1060,7 +1060,7 @@ def _run_evaluations(
             / "eval"
             / spec.hypothesis_id
             / spec.condition_id
-            / spec.scenario
+            / spec.world
             / f"seed_{spec.seed}"
             / eval_spec.eval_id
             / eval_spec.output_subpath
@@ -1072,7 +1072,7 @@ def _run_evaluations(
             "study_id": spec.study_id,
             "hypothesis_id": spec.hypothesis_id,
             "condition_id": spec.condition_id,
-            "scenario": spec.scenario,
+            "world": spec.world,
             "seed": spec.seed,
             "run_dir": str(run_dir),
             "output_path": str(eval_output),
@@ -1130,7 +1130,7 @@ def _run_one_spec(  # noqa: C901, PLR0912, PLR0915
         "hypothesis": spec.hypothesis_id,
         "condition": spec.condition_id,
         "sub_experiment": spec.sub_experiment,
-        "scenario": spec.scenario,
+        "world": spec.world,
         "seed": spec.seed,
         "execution_mode": spec.execution_mode,
         "started_at": started,
@@ -1418,7 +1418,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
     for row in rows[: min(len(rows), PLAN_PREVIEW_ROWS)]:
         print(
             "- "
-            f"{row['run_id']} mode={row['mode']} scenario={row['scenario']} seed={row['seed']} evaluators={row['evaluators']}"
+            f"{row['run_id']} mode={row['mode']} world={row['world']} seed={row['seed']} evaluators={row['evaluators']}"
         )
     if len(rows) > PLAN_PREVIEW_ROWS:
         print(f"... and {len(rows) - PLAN_PREVIEW_ROWS} more")
@@ -1538,7 +1538,7 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
                     "study": spec.study_name,
                     "hypothesis": spec.hypothesis_id,
                     "condition": spec.condition_id,
-                    "scenario": spec.scenario,
+                    "world": spec.world,
                     "seed": spec.seed,
                     "execution_mode": spec.execution_mode,
                     "status": "failed",

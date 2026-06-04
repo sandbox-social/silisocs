@@ -1,0 +1,23 @@
+# @package _global_
+
+world_name: virtual_space
+jobname_format: "virtual_space_N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
+num_agents: 4
+num_steps: 6
+run_name: run1
+seed: 1
+output_rootname: ""
+
+setting:
+  name: Virtual Commons
+  background:
+    - Participants share a small virtual space with multiple rooms.
+    - Rooms contain persistent notes and tasks that change as agents act.
+
+event:
+  name: Open exploration session
+  context: |
+    Participants are exploring a virtual commons. They can look around, move
+    between rooms, leave notes, work on room tasks, talk to someone nearby, or wait.
+
+data: {}

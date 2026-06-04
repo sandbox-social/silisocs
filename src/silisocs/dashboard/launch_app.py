@@ -16,7 +16,7 @@ import streamlit as st
 import yaml
 
 from silisocs.dashboard.config_writer import (
-    save_scenario as _save_scenario,
+    save_world as _save_world,
 )
 from silisocs.environments.backends.base import ActionDescriptor
 
@@ -25,7 +25,7 @@ from silisocs.environments.backends.base import ActionDescriptor
 # ---------------------------------------------------------------------------
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 _CONF_DIR = _PACKAGE_ROOT / "conf"
-_SCENARIOS_DIR = _PACKAGE_ROOT.parents[2] / "scenarios"
+_WORLDS_DIR = _PACKAGE_ROOT.parents[2] / "worlds"
 _PROJECT_ROOT = _PACKAGE_ROOT.parents[2]
 
 _BACKEND_OPTIONS = ["twitter_like", "reddit_like", "mastodon", "resource_market", "virtual_space"]
@@ -174,12 +174,12 @@ def _deep_merge_dict(base: dict, overrides: dict) -> dict:
     return merged
 
 
-def _scenario_root_candidates() -> list[Path]:
-    """Return likely scenario-root candidates in priority order."""
+def _world_root_candidates() -> list[Path]:
+    """Return likely world-root candidates in priority order."""
     candidates = [
-        _PROJECT_ROOT / "scenarios",
-        Path.cwd() / "scenarios",
-        _SCENARIOS_DIR,
+        _PROJECT_ROOT / "worlds",
+        Path.cwd() / "worlds",
+        _WORLDS_DIR,
     ]
     unique: list[Path] = []
     for candidate in candidates:
@@ -189,11 +189,11 @@ def _scenario_root_candidates() -> list[Path]:
     return unique
 
 
-def _resolve_scenarios_root(path_text: str | None) -> Path:
-    """Resolve user-provided scenarios root.
+def _resolve_worlds_root(path_text: str | None) -> Path:
+    """Resolve user-provided worlds root.
 
     If the provided path is a project root that contains a nested
-    `scenarios/` directory, use that nested directory.
+    `worlds/` directory, use that nested directory.
     """
     text = (path_text or "").strip()
     if text:
@@ -204,31 +204,31 @@ def _resolve_scenarios_root(path_text: str | None) -> Path:
             else candidate.resolve()
         )
     else:
-        candidates = _scenario_root_candidates()
+        candidates = _world_root_candidates()
         candidate = next((p for p in candidates if p.is_dir()), candidates[0])
 
-    nested = candidate / "scenarios"
+    nested = candidate / "worlds"
     if nested.is_dir():
         return nested
     return candidate
 
 
-def _discover_external_scenarios(scenarios_root: Path) -> dict[str, Path]:
-    """Discover external scenario YAML files from a scenarios root directory."""
+def _discover_external_worlds(worlds_root: Path) -> dict[str, Path]:
+    """Discover external world YAML files from a worlds root directory."""
     found: dict[str, Path] = {}
-    if scenarios_root.is_dir():
-        for d in sorted(scenarios_root.iterdir()):
+    if worlds_root.is_dir():
+        for d in sorted(worlds_root.iterdir()):
             if not d.is_dir():
                 continue
-            # Preferred layout: scenarios/<name>/conf/scenario/default.yaml
+            # Preferred layout: worlds/<name>/conf/world/default.yaml
             flat_conf = d / "conf"
-            scenario_default = flat_conf / "scenario" / "default.yaml"
-            if scenario_default.is_file():
-                found[d.name] = scenario_default
+            world_default = flat_conf / "world" / "default.yaml"
+            if world_default.is_file():
+                found[d.name] = world_default
                 continue
 
-            # Fallback: any yaml in scenarios/<name>/conf/scenario/
-            hydra_path = flat_conf / "scenario"
+            # Fallback: any yaml in worlds/<name>/conf/world/
+            hydra_path = flat_conf / "world"
             if hydra_path.is_dir():
                 any_yaml = sorted(hydra_path.glob("*.yaml"))
                 if any_yaml:
@@ -237,10 +237,10 @@ def _discover_external_scenarios(scenarios_root: Path) -> dict[str, Path]:
     return found
 
 
-def _discover_run_configs_for_scenario(scenarios_root: Path, scenario_key: str) -> dict[str, Path]:
-    """Discover output-run config snapshots for a given scenario key."""
-    base = scenario_key.split("/", maxsplit=1)[0]
-    outputs_dir = scenarios_root / base / "outputs"
+def _discover_run_configs_for_world(worlds_root: Path, world_key: str) -> dict[str, Path]:
+    """Discover output-run config snapshots for a given world key."""
+    base = world_key.split("/", maxsplit=1)[0]
+    outputs_dir = worlds_root / base / "outputs"
     found: dict[str, Path] = {}
     if not outputs_dir.is_dir():
         return found
@@ -261,7 +261,7 @@ def _discover_run_configs_for_scenario(scenarios_root: Path, scenario_key: str) 
 def _split_loaded_config(
     loaded_cfg: object,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    """Split loaded YAML into (scenario_view, sim, env)."""
+    """Split loaded YAML into (world_view, sim, env)."""
     if not isinstance(loaded_cfg, dict):
         return {}, {}, {}
 
@@ -275,8 +275,8 @@ def _split_loaded_config(
         gm_components = (loaded_env.get("gm") or {}).get("components") or {}
         graph_cfg = ((gm_components.get("initialize") or {}).get("params") or {}).get("graph")
 
-        scenario_view: dict = {
-            "scenario_name": loaded_sim.get("scenario_name", ""),
+        world_view: dict = {
+            "world_name": loaded_sim.get("world_name", ""),
             "jobname_format": loaded_sim.get("jobname_format", ""),
             "setting": loaded_sim.get("setting", {}),
             "event": loaded_sim.get("event", {}),
@@ -293,7 +293,7 @@ def _split_loaded_config(
                 "partisan_types", loaded_sim.get("partisan_types", [])
             ),
         }
-        return scenario_view, loaded_sim, loaded_env
+        return world_view, loaded_sim, loaded_env
 
     return {}, {}, {}
 
@@ -352,9 +352,9 @@ def _discover_agent_modules() -> list[str]:
     fixed_file = _PACKAGE_ROOT / "agents" / "fixed.py"
     if fixed_file.exists():
         modules.append("silisocs.agents.fixed.FixedAgent")
-    # Scenario-specific compatibility agent modules.
-    for scenario_dir in sorted((_PROJECT_ROOT / "scenarios").glob("*/input/entity_lib")):
-        for py_file in sorted(scenario_dir.glob("*.py")):
+    # World-specific compatibility agent modules.
+    for world_dir in sorted((_PROJECT_ROOT / "worlds").glob("*/input/entity_lib")):
+        for py_file in sorted(world_dir.glob("*.py")):
             if py_file.name.startswith("_"):
                 continue
             rel = py_file.relative_to(_PROJECT_ROOT)
@@ -363,26 +363,26 @@ def _discover_agent_modules() -> list[str]:
     return modules
 
 
-def _get_config_path_for_scenario(scenarios_root: Path, scenario_key: str) -> str | None:
-    """Return the --config-path dir for an external scenario, or None for package-bundled."""
-    candidate = scenarios_root / scenario_key / "conf"
+def _get_config_path_for_world(worlds_root: Path, world_key: str) -> str | None:
+    """Return the --config-path dir for an external world, or None for package-bundled."""
+    candidate = worlds_root / world_key / "conf"
     if candidate.is_dir():
         return str(candidate)
     # Handle compound keys like "election/variant"
-    parts = scenario_key.split("/")
+    parts = world_key.split("/")
     if len(parts) > 1:
-        candidate = scenarios_root / parts[0] / "conf"
+        candidate = worlds_root / parts[0] / "conf"
         if candidate.is_dir():
             return str(candidate)
     return None
 
 
-def _build_scenario_config() -> dict:
-    """Build a complete scenario config dict from session state."""
-    scenario_name = st.session_state.get(
-        "scenario_name_edit", st.session_state.get("_loaded_scenario_name", "default")
+def _build_world_config() -> dict:
+    """Build a complete world config dict from session state."""
+    world_name = st.session_state.get(
+        "world_name_edit", st.session_state.get("_loaded_world_name", "default")
     )
-    _sc_cfg = st.session_state.get("_loaded_scenario", {})
+    _sc_cfg = st.session_state.get("_loaded_world", {})
 
     # Build classes config from session state.
     classes_dict: dict[str, dict] = {}
@@ -426,7 +426,7 @@ def _build_scenario_config() -> dict:
     shared_text = st.session_state.get("shared_memories_edit", "")
     shared_list = [line.strip() for line in shared_text.splitlines() if line.strip()]
 
-    # Assemble scenario data.
+    # Assemble world data.
     bg_text = st.session_state.get("setting_background", "")
     bg_list = [line.strip() for line in bg_text.splitlines() if line.strip()]
 
@@ -443,7 +443,7 @@ def _build_scenario_config() -> dict:
             }
 
     config = {
-        "scenario_name": scenario_name,
+        "world_name": world_name,
         "jobname_format": "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}",
         "setting": {
             "name": st.session_state.get("setting_name", ""),
@@ -461,7 +461,7 @@ def _build_scenario_config() -> dict:
                     "bio": "",
                     "style": "",
                     "goal": None,
-                    "scenario_context": "${event.context}",
+                    "world_context": "${event.context}",
                 },
                 "shared_memories": shared_list,
             },
@@ -519,7 +519,7 @@ def _build_hydra_overrides(
     sim: dict,
     env: dict,
     backend_group: str,
-    scenario: dict,
+    world: dict,
     eval_cfg: dict | None = None,
 ) -> list[str]:
     """_build_hydra_overrides.
@@ -530,8 +530,8 @@ def _build_hydra_overrides(
     :type env: dict
     :param str backend_group:
     :type backend_group: str
-    :param dict scenario:
-    :type scenario: dict
+    :param dict world:
+    :type world: dict
 
     :returns: list[str]
     :rtype: list[str]
@@ -583,7 +583,7 @@ def _build_hydra_overrides(
             overrides.append(f'eval.{key}="{val}"')
         else:
             overrides.append(f"eval.{key}={val}")
-    for key, val in scenario.items():
+    for key, val in world.items():
         if val is None:
             continue
         prefix = "env" if key.startswith("gm.") else "sim"
@@ -617,7 +617,7 @@ def _validate_config(sim_params: dict, classes: list[dict]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Sidebar — scenario management
+# Sidebar — world management
 # ---------------------------------------------------------------------------
 with st.sidebar:
     st.title("\U0001f30d Silisocs")
@@ -664,86 +664,84 @@ with st.sidebar:
 
     st.markdown("**Quick Links**")
     st.markdown("- 📖 [Documentation](../../../docs/)")
-    st.markdown("- 📁 [Scenario Folder](../../../scenarios/)")
+    st.markdown("- 📁 [World Folder](../../../worlds/)")
     st.divider()
-    default_scenarios_root = _resolve_scenarios_root(
-        str(st.session_state.get("_loaded_scenarios_root") or "")
+    default_worlds_root = _resolve_worlds_root(
+        str(st.session_state.get("_loaded_worlds_root") or "")
     )
-    scenarios_root_text = st.text_input(
-        "Scenarios directory",
-        value=str(default_scenarios_root),
-        key="scenarios_root_path",
+    worlds_root_text = st.text_input(
+        "Worlds directory",
+        value=str(default_worlds_root),
+        key="worlds_root_path",
         help=(
-            "Directory containing scenario folders (for example, election). "
-            "You can also provide a project root; if it has a nested scenarios/ folder, it will be used."
+            "Directory containing world folders (for example, election). "
+            "You can also provide a project root; if it has a nested worlds/ folder, it will be used."
         ),
     )
-    selected_scenarios_root = _resolve_scenarios_root(scenarios_root_text)
-    if not selected_scenarios_root.is_dir():
-        st.warning(f"Scenarios directory not found: {selected_scenarios_root}")
+    selected_worlds_root = _resolve_worlds_root(worlds_root_text)
+    if not selected_worlds_root.is_dir():
+        st.warning(f"Worlds directory not found: {selected_worlds_root}")
 
-    st.markdown("**Scenario**")
-    external_scenarios = _discover_external_scenarios(selected_scenarios_root)
+    st.markdown("**World**")
+    external_worlds = _discover_external_worlds(selected_worlds_root)
     pkg_default = _CONF_DIR / "sim" / "base.yaml"
-    available_scenarios = {"default": pkg_default, **external_scenarios}
-    scenario_names = list(available_scenarios.keys())
+    available_worlds = {"default": pkg_default, **external_worlds}
+    world_names = list(available_worlds.keys())
 
-    selected_scenario = st.selectbox(
-        "Load scenario",
-        scenario_names,
+    selected_world = st.selectbox(
+        "Load world",
+        world_names,
         index=0,
-        key="sidebar_scenario_select",
-        help="Select a scenario to load.",
+        key="sidebar_world_select",
+        help="Select a world to load.",
     )
 
-    run_configs = _discover_run_configs_for_scenario(selected_scenarios_root, selected_scenario)
-    run_options = ["Scenario definition"] + list(run_configs.keys())
+    run_configs = _discover_run_configs_for_world(selected_worlds_root, selected_world)
+    run_options = ["World definition"] + list(run_configs.keys())
     selected_run_source = st.selectbox(
         "Start from",
         run_options,
         index=0,
         key="sidebar_run_source_select",
-        help="Choose base scenario config or start from a prior run snapshot.",
+        help="Choose base world config or start from a prior run snapshot.",
     )
 
-    if selected_scenario in available_scenarios:
-        if selected_run_source == "Scenario definition":
-            selected_path = available_scenarios[selected_scenario]
-            source_kind = "scenario"
-            source_label = f"{selected_scenario} :: definition"
+    if selected_world in available_worlds:
+        if selected_run_source == "World definition":
+            selected_path = available_worlds[selected_world]
+            source_kind = "world"
+            source_label = f"{selected_world} :: definition"
         else:
             selected_path = run_configs[selected_run_source]
             source_kind = "output_run"
-            source_label = f"{selected_scenario} :: run/{selected_run_source}"
+            source_label = f"{selected_world} :: run/{selected_run_source}"
 
         loaded_cfg = _load_yaml(selected_path)
-        loaded_scenario, loaded_sim, loaded_environment = _split_loaded_config(loaded_cfg)
+        loaded_world, loaded_sim, loaded_environment = _split_loaded_config(loaded_cfg)
 
-        scenario_name = str(loaded_scenario.get("scenario_name") or selected_scenario)
-        st.session_state["_loaded_scenario"] = loaded_scenario
-        st.session_state["_loaded_scenario_name"] = scenario_name
+        world_name = str(loaded_world.get("world_name") or selected_world)
+        st.session_state["_loaded_world"] = loaded_world
+        st.session_state["_loaded_world_name"] = world_name
         st.session_state["_loaded_sim_defaults"] = loaded_sim
         st.session_state["_loaded_environment_defaults"] = loaded_environment
         st.session_state["_loaded_source_label"] = source_label
         st.session_state["_loaded_source_kind"] = source_kind
-        st.session_state["_loaded_source_scenario_key"] = selected_scenario.split("/")[0]
-        st.session_state["_loaded_scenarios_root"] = str(selected_scenarios_root)
+        st.session_state["_loaded_source_world_key"] = selected_world.split("/")[0]
+        st.session_state["_loaded_worlds_root"] = str(selected_worlds_root)
     else:
-        loaded_scenario = {}
+        loaded_world = {}
 
     st.divider()
 
-    # New scenario creation.
-    st.markdown("**Create New Scenario**")
-    new_name = st.text_input(
-        "Scenario name", key="new_scenario_name_input", placeholder="my_scenario"
-    )
-    if st.button("Create", key="create_new_scenario", use_container_width=True):
+    # New world creation.
+    st.markdown("**Create New World**")
+    new_name = st.text_input("World name", key="new_world_name_input", placeholder="my_world")
+    if st.button("Create", key="create_new_world", use_container_width=True):
         if new_name and new_name.strip():
             clean_name = new_name.strip().lower().replace(" ", "_")
             # Create from selected preset default.
             default_cfg = {
-                "scenario_name": clean_name,
+                "world_name": clean_name,
                 "jobname_format": "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}",
                 "setting": {"name": "", "background": []},
                 "event": {"name": "", "context": ""},
@@ -753,19 +751,18 @@ with st.sidebar:
                 "initial_observations": [],
                 "probes": {},
             }
-            default_cfg["scenario_name"] = clean_name
-            save_path = _save_scenario(
+            save_path = _save_world(
                 clean_name,
                 default_cfg,
                 {},
                 {},
                 "twitter_like",
-                selected_scenarios_root,
+                selected_worlds_root,
             )
             st.success(f"Created: `{save_path}`")
             st.rerun()
         else:
-            st.error("Enter a scenario name.")
+            st.error("Enter a world name.")
 
     st.divider()
 
@@ -776,7 +773,7 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 # Load defaults
 # ---------------------------------------------------------------------------
-_scenario_cfg = st.session_state.get("_loaded_scenario", {})
+_world_cfg = st.session_state.get("_loaded_world", {})
 _selected_preset_for_defaults = st.session_state.get("_selected_preset", "default")
 _sim_base_defaults = _load_yaml(_CONF_DIR / "sim" / "base.yaml")
 _sim_loaded_defaults = st.session_state.get("_loaded_sim_defaults", {})
@@ -809,8 +806,8 @@ _engine_action_defaults = (
     else {}
 )
 _engine_probe_defaults = (
-    (_scenario_cfg.get("probes", {}) or {}).get("schedule", {})
-    if isinstance((_scenario_cfg.get("probes", {}) or {}).get("schedule", {}), dict)
+    (_world_cfg.get("probes", {}) or {}).get("schedule", {})
+    if isinstance((_world_cfg.get("probes", {}) or {}).get("schedule", {}), dict)
     else (_eval_base_defaults.get("probes", {}) or {}).get("schedule", {})
     if isinstance((_eval_base_defaults.get("probes", {}) or {}).get("schedule", {}), dict)
     else {}
@@ -823,13 +820,13 @@ _llm_defaults = (
 # MAIN
 # ---------------------------------------------------------------------------
 st.title("Simulation Configuration")
-scenario_display = st.session_state.get("_loaded_scenario_name", "default")
-st.markdown(f"Editing scenario: **{scenario_display}**")
-source_label = st.session_state.get("_loaded_source_label", scenario_display)
+world_display = st.session_state.get("_loaded_world_name", "default")
+st.markdown(f"Editing world: **{world_display}**")
+source_label = st.session_state.get("_loaded_source_label", world_display)
 st.caption(f"Loaded from: {source_label}")
 
-tab_sim, tab_scenario, tab_classes, tab_env, tab_probes, tab_launch = st.tabs(
-    ["Simulation", "Scenario", "Agent Classes", "Environment", "Probes", "Launch"],
+tab_sim, tab_world, tab_classes, tab_env, tab_probes, tab_launch = st.tabs(
+    ["Simulation", "World", "Agent Classes", "Environment", "Probes", "Launch"],
 )
 
 
@@ -994,20 +991,20 @@ with tab_sim:
 
 
 # ---------------------------------------------------------------------------
-# TAB: Scenario
+# TAB: World
 # ---------------------------------------------------------------------------
-with tab_scenario:
-    st.subheader("Scenario Configuration")
+with tab_world:
+    st.subheader("World Configuration")
 
     col1, col2 = st.columns(2)
     with col1:
         st.text_input(
-            "Scenario name",
-            value=_scenario_cfg.get("scenario_name", scenario_display),
-            key="scenario_name_edit",
+            "World name",
+            value=_world_cfg.get("world_name", world_display),
+            key="world_name_edit",
             help="Used for output directory and config resolution.",
         )
-        setting = _scenario_cfg.get("setting", {})
+        setting = _world_cfg.get("setting", {})
         st.text_input(
             "Setting name",
             value=setting.get("name", ""),
@@ -1019,18 +1016,18 @@ with tab_scenario:
         st.text_area("Setting background", value=bg_text, key="setting_background", height=100)
 
     with col2:
-        event = _scenario_cfg.get("event", {})
+        event = _world_cfg.get("event", {})
         st.text_input("Event name", value=event.get("name", ""), key="event_name")
         st.text_area(
             "Event context",
             value=event.get("context", ""),
             key="event_context",
             height=150,
-            help="Main scenario context injected into agent memories.",
+            help="Main world context injected into agent memories.",
         )
 
     # Agent initializer.
-    pipeline = _scenario_cfg.get("persona_pipeline", {})
+    pipeline = _world_cfg.get("persona_pipeline", {})
     initialization_cfg = (
         _sim_defaults.get("initialization", {})
         if isinstance(_sim_defaults.get("initialization", {}), dict)
@@ -1078,9 +1075,9 @@ with tab_classes:
         "and maps fields to agent parameters."
     )
 
-    pipeline_cfg = _scenario_cfg.get("persona_pipeline", {})
+    pipeline_cfg = _world_cfg.get("persona_pipeline", {})
     classes_cfg = pipeline_cfg.get("classes", {})
-    fixed_sets_cfg = _scenario_cfg.get("fixed_action_sets", {})
+    fixed_sets_cfg = _world_cfg.get("fixed_action_sets", {})
 
     if "fixed_action_sets_file" not in st.session_state:
         st.session_state["fixed_action_sets_file"] = str(fixed_sets_cfg.get("file", "") or "")
@@ -1203,12 +1200,12 @@ with tab_classes:
                         "JSON path",
                         value=data.get("path", ""),
                         key=f"cls_path_{i}",
-                        help="Relative to scenario directory.",
+                        help="Relative to world directory.",
                     )
                     # Verify path exists.
                     if data.get("path"):
-                        scenario_name = _scenario_cfg.get("scenario_name", scenario_display)
-                        check_path = _SCENARIOS_DIR / scenario_name / data["path"]
+                        world_name = _world_cfg.get("world_name", world_display)
+                        check_path = _WORLDS_DIR / world_name / data["path"]
                         if check_path.exists():
                             st.success(f"File found: {check_path.name}")
                         else:
@@ -1340,7 +1337,7 @@ with tab_classes:
     st.text_input(
         "Action sets file path (optional)",
         key="fixed_action_sets_file",
-        help="Path relative to scenario directory, e.g. input/fixed_actions/sets.yaml",
+        help="Path relative to world directory, e.g. input/fixed_actions/sets.yaml",
     )
     st.text_area(
         "Inline action sets (YAML)",
@@ -1840,7 +1837,7 @@ with tab_env:
             """)
 
     st.markdown("**Social Graph Configuration**")
-    net_cfg = _scenario_cfg.get("graph", {})
+    net_cfg = _world_cfg.get("graph", {})
 
     nc1, nc2 = st.columns(2)
     with nc1:
@@ -1907,16 +1904,16 @@ with tab_env:
 # ---------------------------------------------------------------------------
 with tab_probes:
     st.subheader("Probe Configuration")
-    probes_cfg = _scenario_cfg.get("probes", {})
+    probes_cfg = _world_cfg.get("probes", {})
     deploy_cfg = probes_cfg.get("deployment", {}) if isinstance(probes_cfg, dict) else {}
 
-    active_probe_scenario = st.session_state.get("_loaded_scenario_name", "default")
+    active_probe_world = st.session_state.get("_loaded_world_name", "default")
     if (
         "_probe_items" not in st.session_state
-        or st.session_state.get("_probe_items_scenario") != active_probe_scenario
+        or st.session_state.get("_probe_items_world") != active_probe_world
     ):
         st.session_state["_probe_items"] = _normalize_probe_items(probes_cfg)
-        st.session_state["_probe_items_scenario"] = active_probe_scenario
+        st.session_state["_probe_items_world"] = active_probe_world
 
     pc1, pc2 = st.columns(2)
     with pc1:
@@ -2214,8 +2211,8 @@ with tab_launch:
             }
         )
 
-    # Build scenario config for saving.
-    scenario_data = _build_scenario_config()
+    # Build world config for saving.
+    world_data = _build_world_config()
 
     # Summary.
     st.markdown("**Configuration summary**")
@@ -2262,14 +2259,14 @@ with tab_launch:
         eval_params,
     )
 
-    # Determine config path for external scenarios.
-    scenario_key_for_paths = st.session_state.get("_loaded_source_scenario_key", scenario_display)
-    loaded_scenarios_root = _resolve_scenarios_root(
-        str(st.session_state.get("_loaded_scenarios_root") or "")
+    # Determine config path for external worlds.
+    world_key_for_paths = st.session_state.get("_loaded_source_world_key", world_display)
+    loaded_worlds_root = _resolve_worlds_root(
+        str(st.session_state.get("_loaded_worlds_root") or "")
     )
-    config_path = _get_config_path_for_scenario(
-        loaded_scenarios_root,
-        str(scenario_key_for_paths),
+    config_path = _get_config_path_for_world(
+        loaded_worlds_root,
+        str(world_key_for_paths),
     )
 
     with st.expander("Hydra CLI command", expanded=False):
@@ -2287,8 +2284,8 @@ with tab_launch:
     btn1, btn2, btn3 = st.columns(3)
 
     with btn1:
-        if st.button("Save Scenario", key="save_scenario", use_container_width=True):
-            name = st.session_state.get("scenario_name_edit", scenario_display)
+        if st.button("Save World", key="save_world", use_container_width=True):
+            name = st.session_state.get("world_name_edit", world_display)
 
             # Build sim_data dict with only non-default overrides
             # Extract from sim_params but filter to only include values that differ from base defaults
@@ -2388,24 +2385,24 @@ with tab_launch:
                 )
 
             selected_backend = st.session_state.get("backend_type", "twitter_like")
-            save_path = _save_scenario(
+            save_path = _save_world(
                 name,
-                scenario_data,
+                world_data,
                 sim_data_to_save,
                 env_data_to_save,
                 selected_backend,
-                loaded_scenarios_root,
+                loaded_worlds_root,
                 eval_params,
             )
             st.success(f"Saved: `{save_path}`")
-            st.info(f"Scenario config files created in `scenarios/{name}/conf/`")
+            st.info(f"World config files created in `worlds/{name}/conf/`")
             st.rerun()
 
     with btn2:
         if st.button("Export as YAML", key="export_yaml", use_container_width=True):
-            yaml_str = yaml.dump(scenario_data, default_flow_style=False, sort_keys=False)
+            yaml_str = yaml.dump(world_data, default_flow_style=False, sort_keys=False)
             st.download_button(
-                "Download", data=yaml_str, file_name="scenario_config.yaml", mime="text/yaml"
+                "Download", data=yaml_str, file_name="world_config.yaml", mime="text/yaml"
             )
 
     with btn3:
@@ -2419,9 +2416,9 @@ with tab_launch:
     # Run simulation.
     if run_clicked:
         # Auto-save before running.
-        name = st.session_state.get("scenario_name_edit", scenario_display)
+        name = st.session_state.get("world_name_edit", world_display)
 
-        # Build sim_data with overrides (same comprehensive list as "Save Scenario" button)
+        # Build sim_data with overrides (same comprehensive list as "Save World" button)
         sim_data_to_save = {}
         env_data_to_save = {}
         for key in [
@@ -2518,13 +2515,13 @@ with tab_launch:
             )
 
         selected_backend = st.session_state.get("backend_type", "twitter_like")
-        _save_scenario(
+        _save_world(
             name,
-            scenario_data,
+            world_data,
             sim_data_to_save,
             env_data_to_save,
             selected_backend,
-            loaded_scenarios_root,
+            loaded_worlds_root,
             eval_params,
         )
 

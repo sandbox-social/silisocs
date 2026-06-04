@@ -1,8 +1,8 @@
 # silisocs/runtime/config.py
-"""Configuration helpers and validators for scenarios.
+"""Configuration helpers and validators for worlds.
 
 This module provides validation helpers used by the experiment runner to ensure
-scenario YAML files conform to expected shapes.
+world YAML files conform to expected shapes.
 
 The validation functions raise :class:`ValueError` or :class:`FileNotFoundError`
 when checks fail.
@@ -20,14 +20,14 @@ from omegaconf import DictConfig, OmegaConf
 
 
 @dataclass
-class BaseScenarioSchema:
+class BaseWorldSchema:
     """
-    Base schema that all scenarios must conform to.
-    Scenario-specific values are defined in scenario YAML files.
+    Base schema that all worlds must conform to.
+    World-specific values are defined in world YAML files.
     """
 
-    # Scenario identification
-    scenario_name: str
+    # World identification
+    world_name: str
 
     # Setting information
     setting: dict[str, Any] = field(
@@ -45,7 +45,7 @@ class BaseScenarioSchema:
         }
     )
 
-    # Data sources (optional, scenario-specific)
+    # Data sources (optional, world-specific)
     data: dict[str, Any] = field(default_factory=dict)
 
     # Agent configuration
@@ -68,12 +68,12 @@ class BaseScenarioSchema:
 # ============================================================================
 
 
-def validate_scenario_structure(cfg: DictConfig) -> None:
+def validate_world_structure(cfg: DictConfig) -> None:
     """
-    Validate that scenario config has all required fields.
+    Validate that world config has all required fields.
 
     Args:
-        cfg: Scenario configuration to validate
+        cfg: World configuration to validate
 
     Raises
     ------
@@ -83,9 +83,9 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
         OmegaConf.select(cfg, "agents.persona_pipeline.classes")
         or OmegaConf.select(cfg, "persona_pipeline.classes")
     )
-    required_fields = ["scenario_name", "setting"]
+    required_fields = ["world_name", "setting"]
     if has_class_pipeline:
-        # Class-pipeline scenarios can define shared memories at the persona
+        # Class-pipeline worlds can define shared memories at the persona
         # defaults level and do not need initial_observations.
         has_top_level_shared = (
             OmegaConf.select(cfg, "agents.shared_memories") is not None
@@ -98,8 +98,8 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
         if not (has_top_level_shared or has_pipeline_shared):
             missing_fields = ["shared_memories or persona_pipeline.defaults.shared_memories"]
             raise ValueError(
-                f"Scenario configuration missing required fields: {', '.join(missing_fields)}\n"
-                "Please ensure your scenario config includes all required fields."
+                f"World configuration missing required fields: {', '.join(missing_fields)}\n"
+                "Please ensure your world config includes all required fields."
             )
     else:
         required_fields.extend(["roles", "shared_memories", "initial_observations"])
@@ -111,8 +111,8 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
 
     if missing_fields:
         raise ValueError(
-            f"Scenario configuration missing required fields: {', '.join(missing_fields)}\n"
-            "Please ensure your scenario config includes all required fields."
+            f"World configuration missing required fields: {', '.join(missing_fields)}\n"
+            "Please ensure your world config includes all required fields."
         )
 
     # Validate nested required fields
@@ -131,10 +131,10 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
 
     if missing_fields:
         raise ValueError(
-            f"Scenario configuration missing required nested fields: {', '.join(missing_fields)}"
+            f"World configuration missing required nested fields: {', '.join(missing_fields)}"
         )
 
-    print("✓ Scenario structure validation passed")
+    print("✓ World structure validation passed")
 
 
 def validate_cross_references(cfg: DictConfig) -> None:
@@ -150,16 +150,16 @@ def validate_cross_references(cfg: DictConfig) -> None:
     """
     errors = []
 
-    scenario_cfg = cfg
+    world_cfg = cfg
 
     # Validate that probe candidate references exist
-    if hasattr(scenario_cfg, "probes"):
-        probes_cfg = scenario_cfg.probes
+    if hasattr(world_cfg, "probes"):
+        probes_cfg = world_cfg.probes
 
         # Get candidate names from refactored structure first.
         candidate_names: list[str] = []
-        if hasattr(scenario_cfg, "candidates"):
-            for _partisan_type, info in scenario_cfg.candidates.items():
+        if hasattr(world_cfg, "candidates"):
+            for _partisan_type, info in world_cfg.candidates.items():
                 if hasattr(info, "name"):
                     candidate_names.append(str(info.name))
                 elif isinstance(info, dict) and "name" in info:
@@ -188,10 +188,10 @@ def validate_cross_references(cfg: DictConfig) -> None:
                                 f"Probe {probe_num} references unknown candidate: {candidate}"
                             )
 
-    roles_cfg = OmegaConf.select(scenario_cfg, "roles") or {}
+    roles_cfg = OmegaConf.select(world_cfg, "roles") or {}
     roles = set(roles_cfg.keys()) if isinstance(roles_cfg, dict) else set()
     activity_rates = OmegaConf.select(
-        scenario_cfg,
+        world_cfg,
         "env.gm.components.next_acting.params.activity_transition_rates",
     )
     if activity_rates and roles:
@@ -199,7 +199,7 @@ def validate_cross_references(cfg: DictConfig) -> None:
             if role not in roles:
                 errors.append(f"Next-acting activity rates reference unknown role: {role}")
 
-    graph_cfg = OmegaConf.select(scenario_cfg, "env.gm.components.initialize.params.graph")
+    graph_cfg = OmegaConf.select(world_cfg, "env.gm.components.initialize.params.graph")
     fully_connected_targets = (
         graph_cfg.get("fully_connected_targets", []) if isinstance(graph_cfg, dict) else []
     )
@@ -210,10 +210,10 @@ def validate_cross_references(cfg: DictConfig) -> None:
             )
 
     # Validate fixed-action set references in class pipeline.
-    class_pipeline = OmegaConf.select(scenario_cfg, "persona_pipeline.classes")
+    class_pipeline = OmegaConf.select(world_cfg, "persona_pipeline.classes")
     if class_pipeline:
-        inline_sets = OmegaConf.select(scenario_cfg, "fixed_action_sets.inline") or {}
-        file_sets = OmegaConf.select(scenario_cfg, "fixed_action_sets.file")
+        inline_sets = OmegaConf.select(world_cfg, "fixed_action_sets.inline") or {}
+        file_sets = OmegaConf.select(world_cfg, "fixed_action_sets.file")
         available_set_names = set(inline_sets.keys()) if isinstance(inline_sets, dict) else set()
 
         # File-based set names are validated at build-time once file is loaded.
@@ -244,13 +244,13 @@ def validate_cross_references(cfg: DictConfig) -> None:
     print("✓ Cross-reference validation passed")
 
 
-def validate_data_files(cfg: DictConfig, scenario_path: Path) -> None:
+def validate_data_files(cfg: DictConfig, world_path: Path) -> None:
     """
     Validate that referenced data files exist.
 
     Args:
-        cfg: Scenario configuration
-        scenario_path: Path to scenario directory
+        cfg: World configuration
+        world_path: Path to world directory
 
     Raises
     ------
@@ -272,10 +272,10 @@ def validate_data_files(cfg: DictConfig, scenario_path: Path) -> None:
             return None
         candidate_paths = [
             Path(raw_path),
-            scenario_path / raw_path,
-            scenario_path / "input" / raw_path,
-            scenario_path / "input" / "personas" / raw_path,
-            scenario_path / "input" / "news_data" / raw_path,
+            world_path / raw_path,
+            world_path / "input" / raw_path,
+            world_path / "input" / "personas" / raw_path,
+            world_path / "input" / "news_data" / raw_path,
         ]
         for candidate in candidate_paths:
             if candidate.exists():
@@ -284,7 +284,7 @@ def validate_data_files(cfg: DictConfig, scenario_path: Path) -> None:
 
     # Validate persona file
     if not class_pipeline and hasattr(cfg, "data") and hasattr(cfg.data, "persona_file"):
-        persona_file = scenario_path / "input" / "personas" / cfg.data.persona_file
+        persona_file = world_path / "input" / "personas" / cfg.data.persona_file
         if not persona_file.exists():
             missing_files.append(str(persona_file))
 
@@ -292,7 +292,7 @@ def validate_data_files(cfg: DictConfig, scenario_path: Path) -> None:
     if hasattr(cfg, "data") and hasattr(cfg.data, "use_news_agent"):
         if cfg.data.use_news_agent and cfg.data.use_news_agent != "none":
             if hasattr(cfg.data, "news_file"):
-                news_file = scenario_path / "input" / "news_data" / f"{cfg.data.news_file}.json"
+                news_file = world_path / "input" / "news_data" / f"{cfg.data.news_file}.json"
                 if not news_file.exists():
                     missing_files.append(str(news_file))
 
@@ -432,32 +432,32 @@ def _assert_component_slot(cfg: DictConfig, path: str) -> None:
             raise ValueError(f"Unsupported config key(s) under {instance_path}: {instance_extras}")
 
 
-def validate_scenario_config(cfg: DictConfig, scenario_path: Path | None = None) -> None:
+def validate_world_config(cfg: DictConfig, world_path: Path | None = None) -> None:
     """
-    Run all validation checks on scenario configuration.
+    Run all validation checks on world configuration.
 
     Args:
         cfg: Configuration to validate
-        scenario_path: Path to scenario directory (for data file validation)
+        world_path: Path to world directory (for data file validation)
 
     Raises
     ------
         Various exceptions if validation fails
     """
     print("\n" + "=" * 60)
-    print("VALIDATING SCENARIO CONFIGURATION")
+    print("VALIDATING WORLD CONFIGURATION")
     print("=" * 60)
 
     # 1. Validate structure
-    validate_scenario_structure(cfg)
+    validate_world_structure(cfg)
     validate_runtime_structure(cfg)
 
     # 2. Validate cross-references
     validate_cross_references(cfg)
 
     # 3. Validate data files (if path provided)
-    if scenario_path:
-        validate_data_files(cfg, scenario_path)
+    if world_path:
+        validate_data_files(cfg, world_path)
 
     print("=" * 60)
     print("✅ ALL VALIDATION CHECKS PASSED")

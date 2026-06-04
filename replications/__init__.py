@@ -1,1 +1,1 @@
-"""Replication scenarios and components."""
+"""Replication worlds and components."""

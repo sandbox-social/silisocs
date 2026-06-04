@@ -104,7 +104,7 @@ def test_probe_metrics_use_configured_probe_types(tmp_path: Path) -> None:
     )
 
     cfg = {
-        "scenario": {
+        "world": {
             "probes": {
                 "probes": {
                     "vote_intent": {
@@ -162,7 +162,7 @@ def test_probe_type_filtered_mode(tmp_path: Path) -> None:
     )
 
     cfg = {
-        "scenario": {
+        "world": {
             "probes": {
                 "probes": {
                     "vote_intent": {
@@ -214,7 +214,7 @@ def test_probe_postprocessor_accepts_nonexistent_output_json_context(tmp_path: P
     )
 
     cfg = {
-        "scenario": {
+        "world": {
             "probes": {
                 "probes": {
                     "vote_choice": {
@@ -241,9 +241,7 @@ def test_probe_postprocessor_accepts_nonexistent_output_json_context(tmp_path: P
         events,
         run_dir,
         output_json,
-        postprocessors=[
-            "scenarios/election_recsys_engagement/postprocessors.py:cross_seed_case_ci"
-        ],
+        postprocessors=["worlds/election_recsys_engagement/postprocessors.py:cross_seed_case_ci"],
     )
 
     ext = plots["extensions"]

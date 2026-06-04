@@ -76,7 +76,7 @@ def test_scripted_model_runs_real_runner_engine_backend_path(tmp_path: Path) -> 
             "silisocs.runtime.runner",
             "--overlay-config-path",
             str(overlay),
-            "scenario=default",
+            "world=default",
             "agents=default",
             "env=twitter_like",
             "eval=base",

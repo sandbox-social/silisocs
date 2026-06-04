@@ -7,7 +7,7 @@ study:
   question: >-
     How do timeline recommendation settings change political engagement behavior
     across scenarios and random seeds?
-  scenarios:
+  worlds:
     - election_recsys_engagement
   parent_studies: []
   derived_from_runs: []
@@ -15,10 +15,10 @@ study:
   summary_log_path: experiments/studies/recsys_behavior_sweep/generated/summary_log.jsonl
 
   run_defaults:
-    config_path: scenarios/election_recsys_engagement/conf
+    config_path: worlds/election_recsys_engagement/conf
     runner_module: silisocs.runtime.runner
-    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
-    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{world}_seed{seed}"
+    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{world}/seed_{seed}/run"
 
     # Seed replication controls.
     seed_start: 11
@@ -115,7 +115,7 @@ hypotheses:
           mode: run
           # Optional exact command template.
           # Placeholders: {study_name}, {hypothesis_id}, {condition_id},
-          # {scenario}, {seed}, {run_id}
+          # {world}, {seed}, {run_id}
           command:
             - uv
             - run
@@ -123,8 +123,8 @@ hypotheses:
             - -m
             - silisocs.runtime.runner
             - --config-path
-            - scenarios/election_recsys_engagement/conf
-            - scenario={scenario}
+            - worlds/election_recsys_engagement/conf
+            - world={world}
             - seed={seed}
             - num_agents=50
             - num_steps=8
@@ -165,7 +165,7 @@ hypotheses:
           re_evaluate: false
         reuse:
           runs:
-            - scenario: election_recsys_engagement
+            - world: election_recsys_engagement
               seed: 11
               source: experiments/recsys_behavior_sweep/runs/h1_timeline_mechanism/case2_recsys_twitter/election_recsys_engagement/seed_11/run
               eval: experiments/recsys_behavior_sweep/generated/eval/h1_timeline_mechanism/case2_recsys_twitter/election_recsys_engagement/seed_11/action_metrics/action_metrics_detailed.json

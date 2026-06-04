@@ -83,9 +83,9 @@ def test_hf_dataset_builds_expected_agent_params(monkeypatch) -> None:
 
     monkeypatch.setitem(sys.modules, "datasets", SimpleNamespace(load_dataset=fake_load_dataset))
 
-    scenario_cfg = OmegaConf.create(
+    world_cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "persona_pipeline": {
                 "defaults": {
                     "params": {
@@ -117,7 +117,7 @@ def test_hf_dataset_builds_expected_agent_params(monkeypatch) -> None:
         }
     )
 
-    builder = _TestBuilder(scenario_cfg)
+    builder = _TestBuilder(world_cfg)
     agents = builder.build_agent_configs()
 
     assert len(agents) == 1
@@ -158,9 +158,9 @@ def test_hf_dataset_preserves_explicit_specific_memories(monkeypatch) -> None:
 
     monkeypatch.setitem(sys.modules, "datasets", SimpleNamespace(load_dataset=fake_load_dataset))
 
-    scenario_cfg = OmegaConf.create(
+    world_cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -185,7 +185,7 @@ def test_hf_dataset_preserves_explicit_specific_memories(monkeypatch) -> None:
         }
     )
 
-    builder = _TestBuilder(scenario_cfg)
+    builder = _TestBuilder(world_cfg)
     agents = builder.build_agent_configs()
 
     assert len(agents) == 1
@@ -194,9 +194,9 @@ def test_hf_dataset_preserves_explicit_specific_memories(monkeypatch) -> None:
 
 def test_field_map_template_combines_multiple_fields() -> None:
     """Template field maps can compose multiple source fields into one target."""
-    scenario_cfg = OmegaConf.create(
+    world_cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -222,7 +222,7 @@ def test_field_map_template_combines_multiple_fields() -> None:
         }
     )
 
-    builder = _TestBuilder(scenario_cfg)
+    builder = _TestBuilder(world_cfg)
     agents = builder.build_agent_configs()
 
     assert len(agents) == 1
@@ -245,9 +245,9 @@ def test_nemotron_hf_dataset_derives_name_from_persona(monkeypatch) -> None:
 
     monkeypatch.setitem(sys.modules, "datasets", SimpleNamespace(load_dataset=fake_load_dataset))
 
-    scenario_cfg = OmegaConf.create(
+    world_cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -267,7 +267,7 @@ def test_nemotron_hf_dataset_derives_name_from_persona(monkeypatch) -> None:
         }
     )
 
-    builder = _TestBuilder(scenario_cfg)
+    builder = _TestBuilder(world_cfg)
     agents = builder.build_agent_configs()
 
     assert len(agents) == 1
@@ -287,9 +287,9 @@ def test_unknown_hf_dataset_requires_mapped_or_derived_name(monkeypatch) -> None
 
     monkeypatch.setitem(sys.modules, "datasets", SimpleNamespace(load_dataset=fake_load_dataset))
 
-    scenario_cfg = OmegaConf.create(
+    world_cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -310,14 +310,14 @@ def test_unknown_hf_dataset_requires_mapped_or_derived_name(monkeypatch) -> None
     )
 
     with pytest.raises(ValueError, match="missing `name`"):
-        _TestBuilder(scenario_cfg).build_agent_configs()
+        _TestBuilder(world_cfg).build_agent_configs()
 
 
 def test_explicit_name_derivation_option_for_inline_records() -> None:
     """Scenario builders can request name derivation as intentional builder logic."""
-    scenario_cfg = OmegaConf.create(
+    world_cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -342,16 +342,16 @@ def test_explicit_name_derivation_option_for_inline_records() -> None:
         }
     )
 
-    agents = _TestBuilder(scenario_cfg).build_agent_configs()
+    agents = _TestBuilder(world_cfg).build_agent_configs()
 
     assert len(agents) == 1
     assert agents[0].params["name"] == "Jordan Rivera volunteers"
 
 
 def test_empty_mapped_name_fails_loudly() -> None:
-    scenario_cfg = OmegaConf.create(
+    world_cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -368,7 +368,7 @@ def test_empty_mapped_name_fails_loudly() -> None:
     )
 
     with pytest.raises(ValueError, match="missing `name`"):
-        _TestBuilder(scenario_cfg).build_agent_configs()
+        _TestBuilder(world_cfg).build_agent_configs()
 
 
 def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
@@ -399,9 +399,9 @@ def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
 
     monkeypatch.setitem(sys.modules, "datasets", SimpleNamespace(load_dataset=fake_load_dataset))
 
-    scenario_cfg = OmegaConf.create(
+    world_cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "nemotron_voter": {
@@ -440,7 +440,7 @@ def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
         }
     )
 
-    builder = _TestBuilder(scenario_cfg)
+    builder = _TestBuilder(world_cfg)
     agents = builder.build_agent_configs()
 
     assert len(agents) == 2
@@ -485,9 +485,9 @@ def test_hf_dataset_materializes_only_requested_count(monkeypatch) -> None:
 
     monkeypatch.setitem(sys.modules, "datasets", SimpleNamespace(load_dataset=fake_load_dataset))
 
-    scenario_cfg = OmegaConf.create(
+    world_cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -508,7 +508,7 @@ def test_hf_dataset_materializes_only_requested_count(monkeypatch) -> None:
         }
     )
 
-    builder = _TestBuilder(scenario_cfg)
+    builder = _TestBuilder(world_cfg)
     agents = builder.build_agent_configs()
 
     assert len(agents) == 3
@@ -524,9 +524,9 @@ def test_jsonl_source_builds_agents_with_name_and_context(tmp_path: Path) -> Non
         encoding="utf-8",
     )
 
-    scenario_cfg = OmegaConf.create(
+    world_cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -546,7 +546,7 @@ def test_jsonl_source_builds_agents_with_name_and_context(tmp_path: Path) -> Non
         }
     )
 
-    builder = _TestBuilder(scenario_cfg)
+    builder = _TestBuilder(world_cfg)
     agents = builder.build_agent_configs()
 
     assert len(agents) == 2
@@ -565,9 +565,9 @@ def test_shared_memories_inline_multiline_text_is_not_treated_as_path() -> None:
     )
     expected_shared_memories = [line.strip() for line in shared_memory_block.splitlines() if line]
 
-    scenario_cfg = OmegaConf.create(
+    world_cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "persona_pipeline": {
                 "defaults": {
                     "shared_memories": [shared_memory_block],
@@ -590,7 +590,7 @@ def test_shared_memories_inline_multiline_text_is_not_treated_as_path() -> None:
         }
     )
 
-    builder = _TestBuilder(scenario_cfg)
+    builder = _TestBuilder(world_cfg)
     agents = builder.build_agent_configs()
 
     assert len(agents) == 1
@@ -599,9 +599,9 @@ def test_shared_memories_inline_multiline_text_is_not_treated_as_path() -> None:
 
 def test_field_map_case_mismatch_still_resolves_context() -> None:
     """Case-only key mismatch in field_map should still resolve source values."""
-    scenario_cfg = OmegaConf.create(
+    world_cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -626,7 +626,7 @@ def test_field_map_case_mismatch_still_resolves_context() -> None:
         }
     )
 
-    builder = _TestBuilder(scenario_cfg)
+    builder = _TestBuilder(world_cfg)
     agents = builder.build_agent_configs()
 
     assert len(agents) == 1
@@ -635,9 +635,9 @@ def test_field_map_case_mismatch_still_resolves_context() -> None:
 
 def test_class_pipeline_duplicate_names_fail_loudly() -> None:
     """Class pipeline should reject duplicate runtime agent names."""
-    scenario_cfg = OmegaConf.create(
+    world_cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -661,7 +661,7 @@ def test_class_pipeline_duplicate_names_fail_loudly() -> None:
         }
     )
 
-    builder = _TestBuilder(scenario_cfg)
+    builder = _TestBuilder(world_cfg)
     with pytest.raises(ValueError, match="duplicate names: Alex Kim"):
         builder.build_agent_configs()
 
@@ -688,7 +688,7 @@ def test_explicit_builder_class_path_is_used() -> None:
     """Runtime construction uses only agents.builder.class_path for custom builders."""
     cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "agents": {
                 "builder": {
                     "class_path": f"{__name__}._ExplicitCustomBuilder",
@@ -716,7 +716,7 @@ def test_custom_builder_outputs_must_have_unique_names(
 ) -> None:
     cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "agents": {
                 "builder": {
                     "class_path": f"{__name__}.{builder_class}",
@@ -734,11 +734,11 @@ def test_builder_params_cannot_override_reserved_runtime_values() -> None:
     """Runtime-supplied builder params are explicit and protected."""
     cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "agents": {
                 "builder": {
                     "class_path": f"{__name__}._ExplicitCustomBuilder",
-                    "params": {"scenario_name": "wrong"},
+                    "params": {"world_name": "wrong"},
                 }
             },
         }
@@ -754,20 +754,20 @@ def test_old_agent_builder_import_path_is_absent() -> None:
         importlib.import_module("silisocs.agents.builders")
 
 
-def test_runtime_builder_selection_has_no_scenario_name_auto_detection() -> None:
+def test_runtime_builder_selection_has_no_world_name_auto_detection() -> None:
     """Custom builders must be selected explicitly with agents.builder.class_path."""
     from silisocs.runtime.construction import agent_configs
 
     source = Path(agent_configs.__file__).read_text(encoding="utf-8")
     assert "spec_from_file_location" not in source
-    assert "scenarios.<name>.builders" not in source
+    assert "worlds.<name>.builders" not in source
 
 
 def test_fixed_action_set_renders_into_fixed_agent_plan() -> None:
     """Fixed-action helper rendering remains available through the builder facade."""
-    scenario_cfg = OmegaConf.create(
+    world_cfg = OmegaConf.create(
         {
-            "scenario_name": "election",
+            "world_name": "election",
             "fixed_action_sets": {
                 "inline": {
                     "news_actions": {
@@ -807,7 +807,7 @@ def test_fixed_action_set_renders_into_fixed_agent_plan() -> None:
         }
     )
 
-    agents = _TestBuilder(scenario_cfg).build_agent_configs()
+    agents = _TestBuilder(world_cfg).build_agent_configs()
 
     assert agents[0].params["fixed_action_plan"] == {
         0: [

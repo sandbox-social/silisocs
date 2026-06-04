@@ -10,7 +10,7 @@ Configuration is split across named groups, each with a base preset in
 | Group | Base file | Controls |
 |---|---|---|
 | *(root)* | `experiment.yaml` | Hydra output paths, experiment label |
-| `scenario` | `scenario/default.yaml` | Run parameters, setting, event, data |
+| `world` | `world/default.yaml` | Run parameters, setting, event, data |
 | `agents` | `agents/default.yaml` | Persona pipeline, shared memories, initial observations |
 | `sim` | `sim/base.yaml` | LLM (model, API, temperature), engine, tool-calling, checkpoint |
 | `env` | `env/twitter_like.yaml` | Backend construction and GM component wiring |
@@ -22,7 +22,7 @@ Configuration is split across named groups, each with a base preset in
 
 ```yaml
 defaults:
-  - scenario: default
+  - world: default
   - agents: default
   - sim: base
   - env: twitter_like
@@ -31,9 +31,9 @@ defaults:
 
 hydra:
   job:
-    name: ${scenario_name}_${now:%Y-%m-%d_%H-%M-%S}
+    name: ${world_name}_${now:%Y-%m-%d_%H-%M-%S}
   run:
-    dir: outputs/${scenario_name}/${jobname_format}
+    dir: outputs/${world_name}/${jobname_format}
   output_subdir: configs/${jobname_format}
 
 experiment_name: independent
@@ -47,9 +47,9 @@ uv run silisocs env=reddit_like num_agents=500
 
 ---
 
-## Run Parameters (`scenario/default.yaml`)
+## Run Parameters (`world/default.yaml`)
 
-Run parameters live in the `scenario` config group (placed at config root via
+Run parameters live in the `world` config group (placed at config root via
 `@package _global_`):
 
 | Parameter | Default | Description |
@@ -58,7 +58,7 @@ Run parameters live in the `scenario` config group (placed at config root via
 | `num_steps` | `50` | Simulation steps to run |
 | `run_name` | `run1` | Run identifier (used in output path) |
 | `seed` | `1` | Random seed |
-| `scenario_name` | `default` | Scenario identifier (used in output path) |
+| `world_name` | `default` | World identifier (used in output path) |
 | `jobname_format` | *(template)* | Output directory name template |
 | `experiment_name` | `independent` | Experiment label used in `jobname_format` |
 
@@ -83,7 +83,7 @@ Run parameters live in the `scenario` config group (placed at config root via
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `sim.max_concurrent_actions` | `1000` | Max parallel LLM calls per step |
-| `sim.action_mode` | `custom` | Prompt style: `custom` (scenario prompt) or `generic` (backend-generated) |
+| `sim.action_mode` | `custom` | Prompt style: `custom` (world prompt) or `generic` (backend-generated) |
 | `sim.tool_calling.mode` | `single` | Tool dispatch mode: `none`, `single`, or `multi` |
 | `sim.prompt_additions.action_count_guidance` | `true` | Add `[ActNum]` marker and action count guidance to prompt |
 | `sim.checkpoint.every_n_steps` | `null` | Save checkpoints every N steps when set |
@@ -97,20 +97,20 @@ Run parameters live in the `scenario` config group (placed at config root via
 
 ## Running and Creating Scenarios
 
-Scenarios live in `scenarios/{name}/conf/` and override package defaults.
+Worlds live in `worlds/{name}/conf/` and override package defaults.
 The run command:
 
 ```bash
-uv run silisocs --config-path scenarios/misinformation/conf
+uv run silisocs --config-path worlds/misinformation/conf
 ```
 
 ### Directory Structure
 
 ```
-scenarios/
-└── my_scenario/
+worlds/
+└── my_world/
     └── conf/
-        ├── scenario/
+        ├── world/
         │   └── default.yaml             # Run parameters + setting/event/data
         ├── agents/
         │   ├── default.yaml             # Persona pipeline, shared memories
@@ -125,10 +125,10 @@ scenarios/
 Two mechanisms layer on top of the package defaults:
 
 **Layer 1 — Hydra SearchPath Plugin**: a registered `SearchPathPlugin` prepends
-the scenario conf dir to Hydra's search path before composition. This gives
-`scenario/default.yaml` and `agents/default.yaml` from the scenario conf dir
+the world conf dir to Hydra's search path before composition. This gives
+`world/default.yaml` and `agents/default.yaml` from the world conf dir
 higher priority than the package defaults, so they replace the package
-`scenario/default.yaml` and `agents/default.yaml` entirely.
+`world/default.yaml` and `agents/default.yaml` entirely.
 
 **Layer 2 — Manual merge** (runs inside `main()` after Hydra composes): handles
 partial-override flat files that don't replace their group wholesale:
@@ -139,32 +139,32 @@ partial-override flat files that don't replace their group wholesale:
 
 1. CLI overrides (`num_steps=1 sim.llm.provider=scripted`)
 2. Scenario flat files merged in Layer 2 (`env.yaml`, `sim.yaml`, …)
-3. Scenario `scenario/default.yaml` and `agents/default.yaml` (via plugin searchpath)
+3. World `world/default.yaml` and `agents/default.yaml` (via plugin searchpath)
 4. Package defaults in `src/silisocs/conf/`
 
 CLI overrides are re-applied after the merge so they always win over
-scenario defaults.
+world defaults.
 
 ### Running a Scenario
 
 ```bash
-# Run with scenario defaults
-uv run silisocs --config-path scenarios/election/conf
+# Run with world defaults
+uv run silisocs --config-path worlds/election/conf
 
 # Override specific parameters
-uv run silisocs --config-path scenarios/election/conf \
+uv run silisocs --config-path worlds/election/conf \
     num_agents=500 num_steps=100
 
 # Use alternate agents variant
-uv run silisocs --config-path scenarios/ai_conference/conf \
+uv run silisocs --config-path worlds/ai_conference/conf \
     agents=thin
 
 # Dry-run with no LLM calls (for testing)
-uv run silisocs --config-path scenarios/misinformation/conf \
+uv run silisocs --config-path worlds/misinformation/conf \
     num_steps=1 sim.llm.provider=scripted
 
 # View merged config before running
-uv run silisocs --config-path scenarios/election/conf --cfg job
+uv run silisocs --config-path worlds/election/conf --cfg job
 ```
 
 ### Creating a New Scenario
@@ -173,25 +173,25 @@ uv run silisocs --config-path scenarios/election/conf --cfg job
 
 1. Start the dashboard: `streamlit run src/silisocs/dashboard/launch_app.py`
 2. Modify all settings (agents, network, probes, etc.)
-3. Enter a new scenario name in the "Scenario Name" field
-4. Click "Save Scenario" — creates files under `scenarios/{name}/conf/`
+3. Enter a new world name in the "World Name" field
+4. Click "Save World" — creates files under `worlds/{name}/conf/`
 5. Click "Run Simulation"
 
 **Option 2: Manual**
 
 ```bash
-mkdir -p scenarios/my_scenario/conf/scenario scenarios/my_scenario/conf/agents
+mkdir -p worlds/my_world/conf/world worlds/my_world/conf/agents
 ```
 
-**`scenarios/my_scenario/conf/scenario/default.yaml`** — run parameters and narrative:
+**`worlds/my_world/conf/world/default.yaml`** — run parameters and narrative:
 ```yaml
 # @package _global_
-scenario_name: my_scenario
+world_name: my_world
 jobname_format: "N${num_agents}_T${num_steps}_${run_name}"
 num_agents: 50
 num_steps: 20
 seed: 42
-run_name: my_scenario
+run_name: my_world
 
 setting:
   name: My Setting
@@ -206,13 +206,13 @@ event:
 data: {}
 ```
 
-**`scenarios/my_scenario/conf/agents/default.yaml`** — personas:
+**`worlds/my_world/conf/agents/default.yaml`** — personas:
 ```yaml
 # @package agents
 persona_pipeline:
   defaults:
     params:
-      scenario_context: ${event.context}
+      world_context: ${event.context}
     shared_memories:
       - ${event.context}
   classes:
@@ -246,7 +246,7 @@ still rejects unnamed or duplicate specs before the simulation starts. Agent
 names are the runtime identities used by GMs, backends, flows, probes, logs, and
 checkpoints.
 
-**`scenarios/my_scenario/conf/env.yaml`** — optional backend/GM overrides:
+**`worlds/my_world/conf/env.yaml`** — optional backend/GM overrides:
 ```yaml
 gm:
   components:
@@ -266,38 +266,38 @@ gm:
 
 ### Output Structure
 
-Simulation outputs go to: `outputs/{scenario_name}/{jobname_format}/`
+Simulation outputs go to: `outputs/{world_name}/{jobname_format}/`
 
 ```
 outputs/
-└── my_scenario/
-    └── N50_T20_my_scenario/
-        ├── my_scenario_2026-01-01_12-00-00/
+└── my_world/
+    └── N50_T20_my_world/
+        ├── my_world_2026-01-01_12-00-00/
         │   ├── effective_config.yaml      # Full resolved config
         │   ├── sim_metrics.json           # Timing and run stats
         │   ├── action_events.jsonl        # Per-step action log
         │   ├── probe_events.jsonl         # Probe outputs
         │   └── checkpoints/               # Step checkpoints (if enabled)
-        └── configs/N50_T20_my_scenario/
+        └── configs/N50_T20_my_world/
             ├── config.yaml                # Hydra-composed config snapshot
             └── effective_config.yaml      # Runtime-resolved config
 ```
 
 ---
 
-## Scenario Config (`scenario/default.yaml`)
+## World Config (`world/default.yaml`)
 
 Defines run parameters and the narrative context. Uses `@package _global_` so
 all keys are placed at the config root. Scenario-specific content lives in
-`scenarios/*/conf/scenario/default.yaml`.
+`worlds/*/conf/world/default.yaml`.
 
 ```yaml
 # @package _global_
-scenario_name: my_scenario
+world_name: my_world
 num_agents: 50
 num_steps: 20
 seed: 42
-run_name: my_scenario
+run_name: my_world
 jobname_format: "N${num_agents}_T${num_steps}_${run_name}"
 
 setting:
@@ -322,7 +322,7 @@ targets in `agents/default.yaml` and other config files.
 
 Defines the persona pipeline, shared memories, and initial observations. Uses
 `@package agents` so all keys are nested under `agents.*`. Scenario-specific
-content lives in `scenarios/*/conf/agents/default.yaml`.
+content lives in `worlds/*/conf/agents/default.yaml`.
 
 ### Persona Pipeline
 
@@ -332,7 +332,7 @@ persona_pipeline:
 
   defaults:                     # Applied to all classes
     params:
-      scenario_context: ${event.context}
+      world_context: ${event.context}
       seed_post: ""
       bio: ""
       style: ""
@@ -391,7 +391,7 @@ agents/
 
 Select at runtime using the Hydra config group override syntax:
 ```bash
-uv run silisocs --config-path scenarios/ai_conference/conf \
+uv run silisocs --config-path worlds/ai_conference/conf \
     agents=thin
 ```
 
@@ -672,7 +672,7 @@ probes:
 
 ### How Action Prompts Are Constructed
 
-1. **Runner startup**: `build_action_prompt_with_app_instance()` compiles the base prompt from the scenario config or backend action catalog (`action_mode: custom` vs `generic`)
+1. **Runner startup**: `build_action_prompt_with_app_instance()` compiles the base prompt from the world config or backend action catalog (`action_mode: custom` vs `generic`)
 2. **GM (`GameMaster.action_prompt`)**: returns a typed `ActionSpec` and includes tool schemas in `extra_args` when `tool_calling.mode != none`
 3. **Agent**: calls the LLM in tool-calling or free-text mode from typed `ActionSpec.output_type` and `extra_args`
 
@@ -743,10 +743,10 @@ selected agent in its own batch so turns are strictly ordered.
 
 ```bash
 uv run silisocs \
-  --config-path scenarios/my_scenario/conf \
+  --config-path worlds/my_world/conf \
   num_steps=200 \
   sim.checkpoint.every_n_steps=10 \
-  sim.checkpoint.source_run=outputs/my_scenario/run1
+  sim.checkpoint.source_run=outputs/my_world/run1
 ```
 
 Checkpoints are written to `.../outputs/.../checkpoints/step_<N>_checkpoint.json`.
@@ -762,9 +762,9 @@ Output paths are controlled by Hydra in `experiment.yaml`:
 ```yaml
 hydra:
   job:
-    name: ${scenario_name}_${now:%Y-%m-%d_%H-%M-%S}
+    name: ${world_name}_${now:%Y-%m-%d_%H-%M-%S}
   run:
-    dir: outputs/${scenario_name}/${jobname_format}
+    dir: outputs/${world_name}/${jobname_format}
   output_subdir: configs/${jobname_format}
 ```
 

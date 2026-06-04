@@ -7,7 +7,7 @@ study:
   question: >-
     Do recommendation-heavy timelines change how quickly candidate opinion probes
     shift over episodes compared to follower-chronological timelines?
-  scenarios:
+  worlds:
     - election
   parent_studies: []
   derived_from_runs: []
@@ -15,10 +15,10 @@ study:
   summary_log_path: experiments/studies/election_opinion_evolution_sample/generated/summary_log.jsonl
 
   run_defaults:
-    config_path: scenarios/election/conf
+    config_path: worlds/election/conf
     runner_module: silisocs.runtime.runner
-    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
-    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{world}_seed{seed}"
+    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{world}/seed_{seed}/run"
 
     seed_start: 11
     seed_repeats: 3
@@ -114,6 +114,6 @@ hypotheses:
           re_evaluate: true
         reuse:
           runs:
-            - scenario: election
+            - world: election
               seed: 11
               source: experiments/studies/election_opinion_evolution_sample/runs/h1_timeline_impacts_opinion_trajectory/case3_recsys_twhin/election/seed_11/run

@@ -15,16 +15,16 @@ Set the backend in your Hydra config:
 uv run silisocs env=twitter_like   # default
 uv run silisocs env=reddit_like
 uv run silisocs env=mastodon
-uv run silisocs scenario=resource_market agents=resource_market env=resource_market
-uv run silisocs scenario=virtual_space agents=virtual_space env=virtual_space
+uv run silisocs world=resource_market agents=resource_market env=resource_market
+uv run silisocs world=virtual_space agents=virtual_space env=virtual_space
 ```
 
-Curated external examples live under `scenarios/resource_market/` and
-`scenarios/virtual_space/`:
+Curated external examples live under `worlds/resource_market/` and
+`worlds/virtual_space/`:
 
 ```sh
-uv run silisocs --config-path scenarios/resource_market/conf scenario=resource_market agents=resource_market env=resource_market
-uv run silisocs --config-path scenarios/virtual_space/conf scenario=virtual_space agents=virtual_space env=virtual_space
+uv run silisocs --config-path worlds/resource_market/conf world=resource_market agents=resource_market env=resource_market
+uv run silisocs --config-path worlds/virtual_space/conf world=virtual_space agents=virtual_space env=virtual_space
 ```
 
 Or in the top-level Hydra defaults:
@@ -419,7 +419,7 @@ Default action surfaces:
 - `env=reddit_like` exposes the full Reddit-like action catalog by default:
     post/comment/vote, feed/comment inspection, mute/unmute, search/trends,
     report, profile actions, `do_nothing`, and `FINISHED`.
-- Set `env.gm.backend.enabled_actions` to a list when a scenario should use a
+- Set `env.gm.backend.enabled_actions` to a list when a world should use a
     smaller action surface. `null` means all backend actions.
 
 Example:

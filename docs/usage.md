@@ -31,7 +31,7 @@ sequenceDiagram
 ```
 
 **Phase 1 — Config composition**: Hydra merges the base simulation config,
-environment config, and scenario config into a single resolved config tree.
+environment config, and world config into a single resolved config tree.
 
 **Phase 2 — Agent construction**: The agent builder reads the persona pipeline
 (or custom builder logic) and creates agent configs with personas, memories,
@@ -67,17 +67,17 @@ uv run silisocs num_agents=10 num_steps=5 sim.llm.name=gpt-4o
 uv run silisocs env=reddit_like
 
 # Run the packaged resource-market preset
-uv run silisocs scenario=resource_market agents=resource_market env=resource_market
+uv run silisocs world=resource_market agents=resource_market env=resource_market
 
 # Run the packaged virtual-space preset
-uv run silisocs scenario=virtual_space agents=virtual_space env=virtual_space
+uv run silisocs world=virtual_space agents=virtual_space env=virtual_space
 
 # Run curated external backend examples
-uv run silisocs --config-path scenarios/resource_market/conf scenario=resource_market agents=resource_market env=resource_market
-uv run silisocs --config-path scenarios/virtual_space/conf scenario=virtual_space agents=virtual_space env=virtual_space
+uv run silisocs --config-path worlds/resource_market/conf world=resource_market agents=resource_market env=resource_market
+uv run silisocs --config-path worlds/virtual_space/conf world=virtual_space agents=virtual_space env=virtual_space
 
-# Run an external scenario
-uv run silisocs --config-path scenarios/election/conf
+# Run an external world
+uv run silisocs --config-path worlds/election/conf
 ```
 
 ### Hydra CLI Overrides
@@ -108,8 +108,8 @@ For a visual interface:
 uv run streamlit run src/silisocs/dashboard/launch_app.py
 ```
 
-The launcher sidebar loads configs in two steps: choose a scenario first, then
-choose whether to start from the scenario definition or a prior run snapshot.
+The launcher sidebar loads configs in two steps: choose a world first, then
+choose whether to start from the world definition or a prior run snapshot.
 
 See [Dashboard](dashboard.md) for details.
 
@@ -124,7 +124,7 @@ with composition. The top-level package config is
 ```yaml
 # experiment.yaml
 defaults:
-  - scenario: default      # Root run params, setting, event, and scenario data
+  - world: default         # Root run params, setting, event, and world data
   - agents: default        # Agent construction and personas
   - sim: base              # Simulation parameters
   - env: twitter_like      # Backend and GM wiring
@@ -138,8 +138,8 @@ src/silisocs/conf/
 ├── experiment.yaml          # Top-level composition
 ├── agents/
 │   └── default.yaml         # Persona pipeline defaults
-├── scenario/
-│   └── default.yaml         # Root run params and default scenario
+├── world/
+│   └── default.yaml         # Root run params and default world
 ├── sim/
 │   └── base.yaml            # LLM, engine, tool-calling, memory, checkpoints
 ├── env/
@@ -157,12 +157,12 @@ For environment-level customization (Engine + GM components + backends), see
 
 ### External Scenarios
 
-Scenarios can live outside the package in `scenarios/<name>/conf/`:
+Worlds can live outside the package in `worlds/<name>/conf/`:
 
 ```
-scenarios/election/
+worlds/election/
 ├── conf/
-│   ├── scenario/default.yaml # @package _global_
+│   ├── world/default.yaml # @package _global_
 │   ├── agents/default.yaml   # @package agents
 │   ├── sim.yaml              # Optional partial sim override
 │   ├── env.yaml              # Optional partial env override
@@ -174,17 +174,17 @@ scenarios/election/
 Run with:
 
 ```sh
-uv run silisocs --config-path scenarios/election/conf
+uv run silisocs --config-path worlds/election/conf
 ```
 
-The runner reads `scenario_name` from the scenario config automatically, so you
-usually do not need a manual scenario override.
+The runner reads `world_name` from the world config automatically, so you
+usually do not need a manual world override.
 
 ---
 
 ## Agent Pipeline
 
-Agents are defined in the `persona_pipeline` section of your scenario config.
+Agents are defined in the `persona_pipeline` section of your world config.
 There are two methods:
 
 ### Method 1: YAML Pipeline (Declarative)
@@ -428,7 +428,7 @@ See [Evaluation Probes](probes.md) for details.
 Each simulation run produces output under the Hydra-managed directory:
 
 ```
-outputs/<scenario_name>/<jobname>/<jobname>_<timestamp>/
+outputs/<world_name>/<jobname>/<jobname>_<timestamp>/
 ```
 
 ### Output Files
@@ -490,7 +490,7 @@ Each line in `probe_events.jsonl`:
   "metadata": {
     "num_agents": 10,
     "num_steps": 5,
-    "scenario": "election",
+    "world": "election",
     "llm": {"name": "gpt-4o"},
     "agent_names": ["Alice Smith", "Bob Jones", "..."]
   },
@@ -520,11 +520,11 @@ state interactively:
 uv sync --extra viz
 
 # Twitter-like
-TWITTER_LIKE_DB=outputs/my_scenario/.../twitter_like.db \
+TWITTER_LIKE_DB=outputs/my_world/.../twitter_like.db \
   python -m silisocs.environments.backends.twitter_like.visualizer.server
 
 # Reddit-like
-REDDIT_LIKE_DB=outputs/my_scenario/.../reddit_like.db \
+REDDIT_LIKE_DB=outputs/my_world/.../reddit_like.db \
   python -m silisocs.environments.backends.reddit_like.visualizer.server
 ```
 
@@ -534,20 +534,20 @@ See [Environment Backends](backends.md#built-in-visualizers) for full details.
 
 ## End-to-End Workflow
 
-Here is the complete workflow for creating and running a custom scenario:
+Here is the complete workflow for creating and running a custom world:
 
 ### 1. Create the Scenario Directory
 
 ```sh
-mkdir -p scenarios/my_scenario/conf/scenario scenarios/my_scenario/conf/agents
+mkdir -p worlds/my_world/conf/world worlds/my_world/conf/agents
 ```
 
 ### 2. Write the Scenario Configs
 
 ```yaml
-# scenarios/my_scenario/conf/scenario/default.yaml
+# worlds/my_world/conf/world/default.yaml
 # @package _global_
-scenario_name: my_scenario
+world_name: my_world
 num_agents: 2
 num_steps: 5
 
@@ -564,12 +564,12 @@ event:
 ```
 
 ```yaml
-# scenarios/my_scenario/conf/agents/default.yaml
+# worlds/my_world/conf/agents/default.yaml
 # @package agents
 persona_pipeline:
   defaults:
     params:
-      scenario_context: ${event.context}
+      world_context: ${event.context}
     shared_memories:
       - They are active on a tech discussion forum.
       - ${event.context}
@@ -599,7 +599,7 @@ initial_observations:
 ```
 
 ```yaml
-# scenarios/my_scenario/conf/env.yaml
+# worlds/my_world/conf/env.yaml
 gm:
   components:
     initialize:
@@ -619,19 +619,19 @@ gm:
 ### 3. Run It
 
 ```sh
-uv run silisocs --config-path scenarios/my_scenario/conf num_agents=20 num_steps=10
+uv run silisocs --config-path worlds/my_world/conf num_agents=20 num_steps=10
 ```
 
 ### 4. Analyze Output
 
-Output appears in `outputs/my_scenario/`.
+Output appears in `outputs/my_world/`.
 
 ### 5. (Optional) Add a Custom Builder
 
 If you need programmatic control over agent construction:
 
 ```python
-# scenarios/my_scenario/builders.py
+# worlds/my_world/builders.py
 from silisocs.runtime.construction.agent_builders import AgentBuilder
 
 class MyScenarioAgentBuilder(AgentBuilder):
@@ -646,7 +646,7 @@ class MyScenarioAgentBuilder(AgentBuilder):
 uv run streamlit run src/silisocs/dashboard/launch_app.py
 ```
 
-Create the scenario visually, configure agents, and launch. Use the sidebar
+Create the world visually, configure agents, and launch. Use the sidebar
 `Start from` selector to load previous run configuration snapshots when needed.
 
 To replay simulation state from a previous run, use `sim.checkpoint.source_run`
@@ -658,7 +658,7 @@ Enable checkpointing during a run:
 
 ```sh
 uv run silisocs \
-  --config-path scenarios/my_scenario/conf \
+  --config-path worlds/my_world/conf \
   num_steps=200 \
   sim.checkpoint.every_n_steps=10
 ```
@@ -667,9 +667,9 @@ Then restore from the previous output directory:
 
 ```sh
 uv run silisocs \
-  --config-path scenarios/my_scenario/conf \
+  --config-path worlds/my_world/conf \
   num_steps=200 \
-  sim.checkpoint.source_run=outputs/my_scenario/run1 \
+  sim.checkpoint.source_run=outputs/my_world/run1 \
   sim.checkpoint.restore.built_in=social_action_event_replay
 ```
 
@@ -775,4 +775,4 @@ optional timeline semantics, and storage/query behavior.
 - [Environment Backends](backends.md) — Generic apps, Twitter-like, Reddit-like, Mastodon
 - [Evaluation Probes](probes.md) — Probe types and deployment
 - [Dashboard](dashboard.md) — Streamlit GUI guide
-- [Election Walkthrough](tutorials/election.md) — Complex real-world scenario
+- [Election Walkthrough](tutorials/election.md) — Complex real-world example

@@ -9,7 +9,7 @@ gm:
         like, repost, follow/unfollow, mute/unmute, search, inspect trends, report
         posts, update/view profiles, and finish an open-ended turn. By default all
         backend actions exposed with @app_action are available; restrict them with
-        env.gm.backend.enabled_actions when a scenario needs a smaller action surface.
+        env.gm.backend.enabled_actions when a world needs a smaller action surface.
     enabled_actions: null
   components:
     initialize:

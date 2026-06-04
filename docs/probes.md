@@ -6,7 +6,7 @@ quantitative data for analysis.
 
 ## Overview
 
-Probes are configured under `eval.probes` in your scenario YAML. The system
+Probes are configured under `eval.probes` in your world YAML. The system
 supports multiple probe types, configurable deployment schedules, and concurrent
 execution across large agent populations.
 
@@ -80,15 +80,15 @@ probes:
 
 ## Custom Probe Types
 
-For scenario-specific probes, create a module and reference it:
+For world-specific probes, create a module and reference it:
 
 ```yaml
 probes:
-  probe_lib_module: my_scenario.probes
+  probe_lib_module: my_world.probes
 ```
 
 ```python
-# my_scenario/probes.py
+# my_world/probes.py
 from silisocs.evaluations.probes.types import ProbeBase
 
 class Favorability(ProbeBase):
@@ -109,7 +109,7 @@ question string from `form_question_for_agent(agent)` and a parsed string or
 `None` from `parse_answer(raw_response)`. Probe prompts should contain the
 measurement question and any answer-format constraint only. Agent identity,
 persona, and recent observations should come from the agent runtime itself.
-This is optional and most scenarios can use the built-in generalist probe types
+This is optional and most worlds can use the built-in generalist probe types
 directly.
 
 ---
@@ -144,7 +144,7 @@ Probe results are saved to `probe_events.jsonl` in the simulation output directo
 }
 ```
 
-The election scenario demonstrates probes in action with named built-in
+The election world demonstrates probes in action with named built-in
 probes (vote preference, favorability, intent) — see the
 [Election Walkthrough](tutorials/election.md).
 

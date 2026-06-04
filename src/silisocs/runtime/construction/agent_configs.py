@@ -15,7 +15,7 @@ from silisocs.runtime.construction.agent_builders import (
 from silisocs.runtime.construction.agent_builders.common import validate_unique_agent_names
 from silisocs.runtime.construction.specs import AgentConfig
 
-_RESERVED_BUILDER_PARAMS = {"scenario_name", "project_root"}
+_RESERVED_BUILDER_PARAMS = {"world_name", "project_root"}
 
 
 def build_agent_configs(cfg: DictConfig) -> list[AgentConfig]:
@@ -56,6 +56,6 @@ def _builder_params(cfg: DictConfig) -> dict[str, Any]:
         )
     return {
         **params,
-        "scenario_name": str(OmegaConf.select(cfg, "scenario_name", default="default")),
+        "world_name": str(OmegaConf.select(cfg, "world_name", default="default")),
         "project_root": str(Path(__file__).resolve().parents[4]),
     }

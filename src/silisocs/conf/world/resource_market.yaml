@@ -1,0 +1,23 @@
+# @package _global_
+
+world_name: resource_market
+jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
+num_agents: 4
+num_steps: 5
+run_name: run1
+seed: 1
+output_rootname: ""
+
+setting:
+  name: Local Resource Exchange
+  background:
+    - Participants manage small inventories and trade resources in a local exchange.
+    - Each participant can produce, list, buy, and consume resources.
+
+event:
+  name: Market day
+  context: |
+    Participants are deciding how to manage their cash and inventory during a short market session.
+    They can inspect open listings, produce resources, list inventory for sale, buy from others, or consume inventory.
+
+data: {}

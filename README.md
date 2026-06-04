@@ -8,7 +8,7 @@
 SiliSocS (Silicon Society Sandbox) is an easy-to-use, configurable, and extensible framework for multi-agent
 social simulation and experimentation. It is structured around the EASE decomposition —
 Environment, Agents, Simulation engine, and Evaluation — taking inspiration from the Concordia framework, and providing a principled,
-reproducible configuration layer for simulated societies. It offers scenario-driven 
+reproducible configuration layer for simulated societies. It offers world-driven 
 social grounding, Concordia-like game master-mediated environments, local and served 
 backends, evaluation probes, runtime telemetry, and experimental study tooling. Interoperability for Concordia designed agents is available through an optional bridge extra.
 
@@ -51,7 +51,7 @@ uv sync --all-extras --group dev --group docs
 
 ## Quick Start
 
-Run the built-in package default scenario:
+Run the built-in package default world:
 
 ```sh
 uv run silisocs
@@ -69,32 +69,32 @@ Override scale or model settings with Hydra dot notation:
 uv run silisocs num_agents=10 num_steps=5 sim.llm.name=gpt-4o
 ```
 
-Run a bundled external scenario:
+Run a bundled external world:
 
 ```sh
-uv run silisocs --config-path scenarios/election/conf
+uv run silisocs --config-path worlds/election/conf
 ```
 
 Run the packaged resource-market preset:
 
 ```sh
-uv run silisocs scenario=resource_market agents=resource_market env=resource_market
+uv run silisocs world=resource_market agents=resource_market env=resource_market
 ```
 
 Run the packaged virtual-space preset:
 
 ```sh
-uv run silisocs scenario=virtual_space agents=virtual_space env=virtual_space
+uv run silisocs world=virtual_space agents=virtual_space env=virtual_space
 ```
 
-The same backends also have curated external examples under `scenarios/`:
+The same backends also have curated external examples under `worlds/`:
 
 ```sh
-uv run silisocs --config-path scenarios/resource_market/conf scenario=resource_market agents=resource_market env=resource_market
-uv run silisocs --config-path scenarios/virtual_space/conf scenario=virtual_space agents=virtual_space env=virtual_space
+uv run silisocs --config-path worlds/resource_market/conf world=resource_market agents=resource_market env=resource_market
+uv run silisocs --config-path worlds/virtual_space/conf world=virtual_space agents=virtual_space env=virtual_space
 ```
 
-Outputs are written under `outputs/<scenario_name>/<jobname>/` and include
+Outputs are written under `outputs/<world_name>/<jobname>/` and include
 `action_events.jsonl`, `probe_events.jsonl`, `prompts_and_responses.jsonl`,
 `sim_metrics.json`, a resolved Hydra config snapshot, and a local
 SQLite backend database for local platforms.
@@ -102,7 +102,7 @@ SQLite backend database for local platforms.
 ## Studies and Experiments
 
 Study orchestration lives in `experiments/run_study.py`. It expands hypotheses,
-conditions, scenarios, and seeds into reproducible simulation runs, then executes
+conditions, worlds, and seeds into reproducible simulation runs, then executes
 the configured evaluators and writes organized artifacts under the study's
 `generated/` directory.
 
@@ -130,12 +130,12 @@ silisocs/
 ├── src/silisocs/
 │   ├── agents/              # Native and bridge-compatible runtime agents
 │   ├── conf/                # Packaged Hydra defaults
-│   ├── dashboard/           # Optional Streamlit scenario launcher
+│   ├── dashboard/           # Optional Streamlit world launcher
 │   ├── environments/        # Game masters and environment backends
 │   ├── evaluations/         # Probes, telemetry, and optional analysis tools
 │   ├── runtime/             # Runner, config projection, and orchestration
 │   └── simulation_engines/  # Engine loop, step, and turn policies
-├── scenarios/               # Scenario configs and curated inputs
+├── worlds/                  # World configs and curated inputs
 ├── experiments/             # Study orchestration and generated study outputs
 ├── docs/                    # ProperDocs documentation
 └── tests/                   # Unit and integration tests
@@ -170,7 +170,7 @@ uv run --group docs properdocs build --strict
 ```
 
 - `uv run pytest` runs the test suite in the current environment.
-- `uv run silisocs-config-dry-run --project-root .` composes shipped scenario
+- `uv run silisocs-config-dry-run --project-root .` composes shipped world
   and replication configs without running LLM calls.
 - `uv run poe lint` runs the configured formatting, static checks, and type
   checks.
