@@ -6,7 +6,7 @@ For API-level contracts for runtime agents and builder hooks, see
 There are two ways to produce agent specs for your simulation:
 
 1. **YAML Pipeline** (recommended for most cases) — define agent classes
-   declaratively in your world YAML
+   declaratively in your scenario YAML
 2. **Custom Builder** — write a Python class for full programmatic control
 
 The default `PersonaPipelineAgentBuilder` reads the YAML pipeline config. If a
@@ -26,14 +26,14 @@ Builder output contract:
 
 ## Method 1: YAML Pipeline (Declarative)
 
-Define a `persona_pipeline` section in your world YAML. The builder
+Define a `persona_pipeline` section in your scenario YAML. The builder
 reads class definitions, loads data from various sources, and maps fields
 to agent parameters — no Python code needed.
 
 ### Minimal Example
 
 ```yaml
-# worlds/my_world/conf/agents/default.yaml
+# scenarios/my_world/conf/agents/default.yaml
 builder:
   class_path: null
   params: {}
@@ -135,7 +135,7 @@ agents:
 ### Example
 
 ```python
-# worlds/my_world/builders.py
+# scenarios/my_world/builders.py
 from silisocs.runtime.construction.agent_builders import AgentBuilder
 from silisocs.runtime.construction.specs import AgentConfig
 

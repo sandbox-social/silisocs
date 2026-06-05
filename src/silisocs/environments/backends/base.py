@@ -11,7 +11,7 @@ import re
 import textwrap
 import types
 import typing
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from typing import Any, Literal, get_type_hints
 
 import docstring_parser
@@ -323,6 +323,7 @@ class BackendApp(metaclass=abc.ABCMeta):
 
     def __init__(self) -> None:
         self._enabled_actions: set[str] | None = None
+        self._excluded_actions: set[str] = set()
 
     @abc.abstractmethod
     def name(self) -> str:
@@ -364,18 +365,28 @@ class BackendApp(metaclass=abc.ABCMeta):
 
     def actions(self) -> Sequence[ActionDescriptor]:
         """Return this app's callable actions."""
-        methods = inspect.getmembers(self, predicate=inspect.ismethod)
-        actions = [
-            ActionDescriptor.from_method(m) for _, m in methods if hasattr(m, _ACTION_PROPERTY)
-        ]
+        actions = self._all_actions()
         enabled_actions = getattr(self, "_enabled_actions", None)
-        if enabled_actions is None:
-            return actions
-        return [
-            action
-            for action in actions
-            if action.name in enabled_actions or action.selectable_name in enabled_actions
-        ]
+        if enabled_actions is not None:
+            actions = [
+                action for action in actions if self._action_matches_filter(action, enabled_actions)
+            ]
+        if self._excluded_actions:
+            actions = [
+                action
+                for action in actions
+                if not self._action_matches_filter(action, self._excluded_actions)
+            ]
+        return actions
+
+    def _all_actions(self) -> list[ActionDescriptor]:
+        """Return all declared backend actions before config-level filtering."""
+        methods = inspect.getmembers(self, predicate=inspect.ismethod)
+        return [ActionDescriptor.from_method(m) for _, m in methods if hasattr(m, _ACTION_PROPERTY)]
+
+    @staticmethod
+    def _action_matches_filter(action: ActionDescriptor, names: set[str]) -> bool:
+        return action.name in names or action.selectable_name in names
 
     def action_catalog(self) -> list[dict[str, Any]]:
         """Return a normalized action catalog for prompting/UI/config validation."""
@@ -404,23 +415,68 @@ class BackendApp(metaclass=abc.ABCMeta):
 
         If ``enabled_actions`` is None, all actions are exposed.
         """
-        if enabled_actions is None:
-            self._enabled_actions = None
-            return
+        self.set_action_filters(
+            enabled_actions=enabled_actions, excluded_actions=self._excluded_actions
+        )
 
-        normalized = {str(name).strip() for name in enabled_actions if str(name).strip()}
-        all_action_names = {action.name for action in self.actions()} | {
-            action.selectable_name for action in self.actions()
+    def set_excluded_actions(self, excluded_actions: Sequence[str] | None) -> None:
+        """Remove actions from prompts/parsers/tool-calling."""
+        self.set_action_filters(
+            enabled_actions=self._enabled_actions, excluded_actions=excluded_actions
+        )
+
+    def set_action_filters(
+        self,
+        *,
+        enabled_actions: Collection[str] | None,
+        excluded_actions: Collection[str] | None = None,
+    ) -> None:
+        """Configure backend action allow/deny lists.
+
+        Action names may be canonical backend method names or selectable aliases.
+        Unknown names and contradictory allow/deny filters fail loudly.
+        """
+        enabled = self._normalize_action_filter(enabled_actions)
+        excluded = self._normalize_action_filter(excluded_actions) or set()
+
+        self._validate_action_filter(enabled, "enabled")
+        self._validate_action_filter(excluded, "excluded")
+
+        if enabled is not None and excluded:
+            conflicts = [
+                action.selectable_name
+                for action in self._all_actions()
+                if self._action_matches_filter(action, enabled)
+                and self._action_matches_filter(action, excluded)
+            ]
+            if conflicts:
+                raise ValueError(
+                    "Actions cannot be both enabled and excluded: " + ", ".join(sorted(conflicts))
+                )
+
+        self._enabled_actions = enabled
+        self._excluded_actions = excluded
+
+    @staticmethod
+    def _normalize_action_filter(actions: Collection[str] | None) -> set[str] | None:
+        if actions is None:
+            return None
+        return {str(name).strip() for name in actions if str(name).strip()}
+
+    def _validate_action_filter(self, actions: set[str] | None, label: str) -> None:
+        if actions is None:
+            return
+        all_action_names = {action.name for action in self._all_actions()} | {
+            action.selectable_name for action in self._all_actions()
         }
-        unknown = sorted(name for name in normalized if name not in all_action_names)
+        unknown = sorted(name for name in actions if name not in all_action_names)
         if unknown:
             available = ", ".join(sorted(all_action_names))
             raise ValueError(
-                "Unknown enabled action(s): "
+                f"Unknown {label} action(s): "
                 + ", ".join(unknown)
                 + f". Available actions: {available}"
             )
-        self._enabled_actions = normalized
 
     def full_description(self):
         """Return a description of the app and all the actions it supports."""

@@ -1,11 +1,11 @@
 # Study Design Workflow
 
-A study is a **research question asked on top of a world**. It defines hypotheses,
+A study is a **research question asked on top of a scenario**. It defines hypotheses,
 conditions (what you vary), evaluators (what you measure), and seed replication.
 Studies live in `experiments/studies/<study_id>/study.yaml` and are version-controlled.
 
-Scenarios are shared social worlds — reusable across studies. Multiple researchers
-can ask different questions on the same world.
+Scenarios are shared social scenarios — reusable across studies. Multiple researchers
+can ask different questions on the same scenario.
 
 Studies are **living documents**: they grow as hypotheses are tested, findings recorded,
 and followup hypotheses added. Design with that lifecycle in mind.
@@ -29,23 +29,23 @@ Use their answer to:
 
 ## Step 2 — Scenario selection
 
-List the available worlds and their descriptions:
+List the available scenarios and their descriptions:
 ```bash
-ls worlds/
+ls scenarios/
 ```
 
-For each world directory that has a `README.md`, read the first two lines of
-description from it. If no README exists, fall back to the `description:` field
-in `worlds/<name>/conf/world/default.yaml`.
+For each scenario directory that has a `README.md`, read the first two lines of
+description from it. If no README exists, fall back to the relevant semantic
+fields in `scenarios/<name>/conf/world/default.yaml`.
 
 Ask:
-> "Which of these worlds best fits your question, or do none of them fit?
-> I can also build a new world if needed."
+> "Which of these scenarios best fits your question, or do none of them fit?
+> I can also build a new scenario if needed."
 
-- If user picks an existing world: note its `conf/` path and proceed.
-- If no world fits: say "Let me help you design one first" and invoke the
-  `/new-world` flow. Once that completes, return here with the new world selected.
-- If a question spans multiple worlds (comparative study): collect all of them.
+- If user picks an existing scenario: note its `conf/` path and proceed.
+- If no scenario fits: say "Let me help you design one first" and invoke the
+  `/new-scenario` flow. Once that completes, return here with the new scenario selected.
+- If a question spans multiple scenarios (comparative study): collect all of them.
 
 ---
 
@@ -83,8 +83,8 @@ variable readable from directory paths alone. For content variations (e.g. news
 bias), use a descriptive label (e.g. `bill_bias`, `bradley_bias`) and set
 `sub_experiment` accordingly.
 
-Help the user translate intent into Hydra override dicts. Reference the world's
-config structure (read `worlds/<name>/conf/`) to suggest valid keys.
+Help the user translate intent into Hydra override dicts. Reference the scenario's
+config structure (read `scenarios/<name>/conf/`) to suggest valid keys.
 
 Common patterns:
 - Timeline: `env.gm.components.observe.params.timeline_mode: follower_chronological` vs `pure_recsys`
@@ -144,7 +144,7 @@ notes:
 Suggest paths:
 - `study_summary_path`: `experiments/studies/<study_id>/SUMMARY.md`
 - `summary_log_path`: `experiments/studies/<study_id>/generated/summary_log.jsonl`
-- `output_root_override`: `experiments/studies/<study_id>/runs/{hypothesis_id}/{condition_id}/{world}/seed_{seed}/run`
+- `output_root_override`: `experiments/studies/<study_id>/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run`
 
 ---
 
@@ -160,7 +160,7 @@ If yes, create `experiments/studies/<study_id>/notebook.ipynb` with these sectio
 3. **Key Metrics Explained** — plain-language definition + why it matters for each metric
 4. **Headline Comparison** — grouped bar chart of key metrics across conditions
 5. **Full Metric Profile** — radar chart, all metrics, both conditions overlaid
-6. **World Consistency** — faceted figure (one panel per world) if multi-world
+6. **Scenario Consistency** — faceted figure (one panel per scenario) if multi-scenario
 7. **Per-Agent Distributions** — strip plots, each agent as a point, colored by condition
 8. **Behavioral Breakdown** — stacked bar of action type counts per condition
 9. **Takeaways** — key findings with numbers, limitations, next steps
@@ -212,16 +212,16 @@ Remind the user of this pattern after writing files:
   "study_id": "snake_case_id",
   "name": "Human Readable Title",
   "question": "One sentence research question?",
-  "worlds": ["world_name"],
+  "scenarios": ["scenario_name"],
   "notes": {
     "objective": "",
     "context": "",
     "constraints": ""
   },
   "run_defaults": {
-    "config_path": "worlds/<name>/conf",
-    "run_name_template": "{study_id}_{hypothesis_id}_{condition_id}_{world}_seed{seed}",
-    "output_root_override": "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{world}/seed_{seed}/run",
+    "config_path": "scenarios/<name>/conf",
+    "run_name_template": "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}",
+    "output_root_override": "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run",
     "seed_start": 42,
     "seed_repeats": 3,
     "overrides": {

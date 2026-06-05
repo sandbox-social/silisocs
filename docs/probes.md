@@ -6,7 +6,7 @@ quantitative data for analysis.
 
 ## Overview
 
-Probes are configured under `eval.probes` in your world YAML. The system
+Probes are configured under `eval.probes` in your scenario YAML. The system
 supports multiple probe types, configurable deployment schedules, and concurrent
 execution across large agent populations.
 
@@ -80,7 +80,7 @@ probes:
 
 ## Custom Probe Types
 
-For world-specific probes, create a module and reference it:
+For scenario-specific probes, create a module and reference it:
 
 ```yaml
 probes:

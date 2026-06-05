@@ -27,14 +27,14 @@ def _llm_server_url() -> str:
     return os.getenv("LLM_SERVER_URL", "http://localhost:30000/v1").strip()
 
 
-def _write_world(conf_dir: Path, world_name: str) -> None:
+def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
     conf_dir.mkdir(parents=True, exist_ok=True)
 
     sim_yaml = textwrap.dedent(
         f"""
         # @package sim
-        world_name: {world_name}
-        jobname_format: "{world_name}_${{num_steps}}"
+        scenario_name: {scenario_name}
+        jobname_format: "{scenario_name}_${{num_steps}}"
 
         setting:
           name: Recsys E2E Setting
@@ -167,15 +167,15 @@ def _write_world(conf_dir: Path, world_name: str) -> None:
 def _run_recsys_simulation(
     *,
     tmp_path: Path,
-    world_name: str,
+    scenario_name: str,
     recsys_type: str,
 ) -> Path:
     conf_dir = tmp_path / "conf"
-    _write_world(conf_dir, world_name)
+    _write_scenario(conf_dir, scenario_name)
 
     llm_url = _llm_server_url()
     hydra_dir = tmp_path / "hydra"
-    job_name = f"{world_name}_{recsys_type}"
+    job_name = f"{scenario_name}_{recsys_type}"
 
     cmd = [
         sys.executable,
@@ -312,7 +312,7 @@ def test_llm_e2e_recsys_generation_and_retrieval_fail_fast(
 ) -> None:
     output_dir = _run_recsys_simulation(
         tmp_path=tmp_path,
-        world_name=f"llm_e2e_recsys_{recsys_type}",
+        scenario_name=f"llm_e2e_recsys_{recsys_type}",
         recsys_type=recsys_type,
     )
     _assert_recommendations_and_retrieval(output_dir, recsys_type)

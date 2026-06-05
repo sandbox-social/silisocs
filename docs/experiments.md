@@ -34,11 +34,11 @@ study:
   question: "How do timeline settings shift engagement?"
   study_summary_path: experiments/studies/recsys_behavior_sweep/SUMMARY.md
   summary_log_path: experiments/studies/recsys_behavior_sweep/generated/summary_log.jsonl
-  worlds: [election_recsys_engagement]
+  scenarios: [election_recsys_engagement]
   run_defaults:
-    config_path: worlds/election_recsys_engagement/conf
-    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{world}_seed{seed}"
-    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{world}/seed_{seed}/run"
+    config_path: scenarios/election_recsys_engagement/conf
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
+    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
     seed_start: 11
     seed_repeats: 3
     overrides:
@@ -79,8 +79,7 @@ execution:
     - -m
     - silisocs.runtime.runner
     - --config-path
-    - worlds/election_recsys_engagement/conf
-    - world={world}
+    - scenarios/election_recsys_engagement/conf
     - seed={seed}
 ```
 
@@ -90,7 +89,7 @@ Supported placeholders:
 - `{study_id}`
 - `{hypothesis_id}`
 - `{condition_id}`
-- `{world}`
+- `{scenario}`
 - `{seed}`
 
 The same placeholders also work in:
@@ -101,7 +100,7 @@ The same placeholders also work in:
 
 Fine-grained run control fields:
 - `conditions.<id>.sub_experiment`: logical run group label (for example `bill_bias`, `bradley_bias`).
-- `conditions.<id>.config_path`: optional per-condition world config root override.
+- `conditions.<id>.config_path`: optional per-condition scenario config root override.
 
 CLI selection knobs:
 - `--only-hypothesis`
@@ -180,16 +179,16 @@ experiments/studies/{study_id}/generated/
   eval/
 ```
 
-Simulation outputs are grouped by hypothesis/condition/world/seed:
+Simulation outputs are grouped by hypothesis/condition/scenario/seed:
 
 ```text
-experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{world}/seed_{seed}/run
+experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run
 ```
 
 Evaluator outputs mirror that hierarchy:
 
 ```text
-experiments/studies/{study_id}/generated/eval/{hypothesis_id}/{condition_id}/{world}/seed_{seed}/{eval_id}/...
+experiments/studies/{study_id}/generated/eval/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/{eval_id}/...
 ```
 
 When you run a study, the workflow is:
@@ -209,7 +208,7 @@ experiments/studies/{study_id}/generated/organized/
   {hypothesis_id}/
     hypothesis.yaml
     runs.json
-    {condition_id}/{world}/seed_{seed}/
+    {condition_id}/{scenario}/seed_{seed}/
       config.yaml
       run -> <symlink to the run directory when available>
       eval.json -> <symlink to the first evaluator output>
@@ -254,7 +253,7 @@ For clusters, keep site-specific account, partition, module, cache, and model
 startup choices outside the repository. The public templates only wire Silisocs
 study/runner commands into Slurm; they do not launch any specific model server.
 If you use a local OpenAI-compatible server, configure `sim.llm.provider` and
-`sim.llm.api_base` in your study overrides or world config.
+`sim.llm.api_base` in your study overrides or scenario config.
 
 ### Submitit study submission
 

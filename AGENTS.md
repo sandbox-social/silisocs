@@ -7,12 +7,12 @@ This file is a contributor guide for LLM coding agents working in this repositor
 Silisocs is a native social simulation framework with an optional Concordia
 compatibility bridge for legacy scenarios. It has:
 
-- YAML-first world and runtime configuration (Hydra + OmegaConf)
+- YAML-first scenario and runtime configuration (Hydra + OmegaConf)
 - A social-media game-master/environment layer
 - Multiple platform backends (Twitter-like, Reddit-like, Mastodon)
 - Declarative persona pipeline plus custom builder extension path
 - Probe-based evaluation and rich runtime telemetry
-- Streamlit dashboard for world creation and launch
+- Streamlit dashboard for scenario creation and launch
 
 The runtime entrypoint is:
 
@@ -23,10 +23,10 @@ The runtime entrypoint is:
 Core runtime layers:
 
 ### 1. Agent Construction Layer
-- `src/silisocs/agents/builders.py`
-- Builds agents from `agents.persona_pipeline` and class data sources
+- `src/silisocs/runtime/construction/agent_builders/`
+- Builds agent construction specs from `agents.persona_pipeline` and class data sources
 - Supports fixed-action set loading and template rendering
-- Entry point: `EntityBuilder.build_agents(cfg, model)`
+- Entry point: `AgentBuilder.build_agent_configs()`
 
 ### 2. Agent Runtime Layer
 - `src/silisocs/agents/base_agent.py` — Abstract Agent interface
@@ -50,10 +50,11 @@ Core runtime layers:
 ### 4. Engine Layer (Execution Policies)
 - `src/silisocs/simulation_engines/base_engines.py` — BaseRuntimeEngine, FlowRuntimeEngine (multi-flow scheduling)
 - `src/silisocs/simulation_engines/multi_gm.py` — MultiGMRuntimeEngine (multi-GM orchestration)
-- `src/silisocs/simulation_engines/policies/` — Action loop & probe schedule policies:
-  - Action loop: `single_action`, `fixed_count`, `open_ended`
-  - Probe schedule: `step_schedule`, `fixed_interval`, `disabled`
-- To add custom policy: create class inheriting from `ActionLoopPolicy` or `ProbeSchedulePolicy`, reference via `class_path`
+- `src/silisocs/simulation_engines/policies/` — loop, step, and turn policies:
+  - Turn policy: `single_action`, `fixed_count`, `open_ended`
+  - Step policy: `base`, `sequential`, `flow`, `multi_gm`
+  - Loop policy: default episode loop
+- To add custom policy: implement the relevant policy ABC and reference it via `class_path`
 
 ### 5. Backend Action Layer
 - `src/silisocs/environments/backends/base.py` — ActionCatalog, base app interface
@@ -82,8 +83,8 @@ Config groups and their base files:
 | `world` | `world/default.yaml` (`@package _global_`) | Run params, setting, event, data |
 | `agents` | `agents/default.yaml` (`@package agents`) | Persona pipeline, shared memories |
 | `sim` | `sim/base.yaml` (`@package sim`) | LLM, engine, tool-calling, memory, checkpoint |
-| `env` | `env/twitter_like.yaml` (`@package env`) | Platform backend, GM components, social network |
-| `eval` | `eval/base.yaml` (`@package eval`) | Probes, HTML log writing |
+| `env` | `env/twitter_like.yaml` (`@package env`) | Backend, GM components, initialization |
+| `eval` | `eval/base.yaml` (`@package eval`) | Probe configuration |
 
 Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 
@@ -104,21 +105,21 @@ Key run params live in `world/default.yaml` (at config root via `@package _globa
 |-----------|---------|-------|
 | `num_agents` | 100 | Number of agents |
 | `num_steps` | 50 | Simulation episodes |
-| `world_name` | default | Used in output path |
+| `scenario_name` | default | Used in output path |
 | `seed` | 1 | Random seed |
 
 GM component routing is enabled with
 `env.gm.class_path=silisocs.environments.gm.game_master.MultiFlowGameMaster`.
 
-World content lives under:
+Scenario content lives under:
 
-- `worlds/<name>/conf/world/default.yaml` (`@package _global_`) — run params + setting/event/data
-- `worlds/<name>/conf/agents/default.yaml` (`@package agents`) — persona pipeline
-- **Optional**: `worlds/<name>/conf/sim.yaml` — partial sim overrides (merged, not replaced)
-- **Optional**: `worlds/<name>/conf/env.yaml` — partial env overrides
-- **Optional**: `worlds/<name>/conf/agents/thin.yaml` — alternate agents variant (select with `agents=thin`)
+- `scenarios/<name>/conf/world/default.yaml` (`@package _global_`) — run params + setting/event/data
+- `scenarios/<name>/conf/agents/default.yaml` (`@package agents`) — persona pipeline
+- **Optional**: `scenarios/<name>/conf/sim.yaml` — partial sim overrides (merged, not replaced)
+- **Optional**: `scenarios/<name>/conf/env.yaml` — partial env overrides
+- **Optional**: `scenarios/<name>/conf/agents/thin.yaml` — alternate agents variant (select with `agents=thin`)
 
-**For designing experiments via config (no code changes):** See [agent_docs/world_design.md](agent_docs/world_design.md)
+**For designing experiments via config (no code changes):** See [agent_docs/scenario_design.md](agent_docs/scenario_design.md)
 
 **For understanding config structure deeply:** See [docs/configuration.md](docs/configuration.md)
 
@@ -413,13 +414,13 @@ backend action catalogs, and checkpoint policy tests.
 This guide (AGENTS.md) is for you if you're **extending the framework** — writing new components, backends, agents, or changing architecture.
 
 If instead you want to **design and run experiments via config only**:
-→ See [agent_docs/world_design.md](agent_docs/world_design.md) — World design guide for config-based users
+→ See [agent_docs/scenario_design.md](agent_docs/scenario_design.md) — Scenario design guide for config-based users
 
 **Detailed architecture deep dive** (multi-flow, multi-GM, component routing):
 → See [agent_docs/architecture.md](agent_docs/architecture.md) — Reference for complex orchestration patterns
 
 **Guided workflows** (interactive design workflows — readable by any coding agent):
-→ [agent_docs/skills/new-world.md](agent_docs/skills/new-world.md) — Step-by-step world design assistant
+→ [agent_docs/skills/new-scenario.md](agent_docs/skills/new-scenario.md) — Step-by-step scenario design assistant
 → [agent_docs/skills/new-study.md](agent_docs/skills/new-study.md) — Step-by-step study design assistant
 
 **Public documentation** (for end users):
@@ -447,7 +448,7 @@ When adding features, update docs in:
 - Forgetting to keep docs aligned with runtime defaults
 - Assuming dashboard run snapshot loading equals checkpoint state replay
 - Relying on non-uv environment when reproducing tests
-- Not understanding fallback config behavior (Hydra merges world overrides with base defaults)
+- Not understanding config composition (Hydra merges scenario-local overrides with base defaults)
 
 ## 11) PR Readiness Checklist
 

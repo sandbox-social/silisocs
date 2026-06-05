@@ -96,7 +96,7 @@ def extract_run_metadata(source_dir: Path, config_path: str | None = None) -> di
     metadata["model_name"] = llm.get("name")
     metadata["model_config"] = llm.get("provider")
 
-    metadata["world"] = cfg.get("world_name")
+    metadata["scenario"] = cfg.get("scenario_name")
 
     setting = cfg.get("setting", {}) if isinstance(cfg.get("setting"), dict) else {}
     event = cfg.get("event", {}) if isinstance(cfg.get("event"), dict) else {}
@@ -202,7 +202,7 @@ def build_summary(eval_results: list[dict[str, Any]]) -> dict[str, Any]:
             {
                 "hypothesis": meta.get("hypothesis"),
                 "condition": meta.get("condition"),
-                "world": meta.get("world"),
+                "scenario": meta.get("scenario"),
                 "aggregated": result.get("aggregated", {}),
                 "summary": result.get("summary", {}),
             }
@@ -259,7 +259,7 @@ def organize_study_outputs(
         "name": study_name,
         "study_id": study_id,
         "question": study.get("question"),
-        "worlds": study.get("worlds", []),
+        "scenarios": study.get("scenarios", []),
         "hypotheses": list(study_data.get("hypotheses", {}).keys()),
     }
     _write_yaml(organized_root / "study_summary.yaml", study_summary, dry_run=dry_run)
@@ -288,10 +288,10 @@ def organize_study_outputs(
         for cond_id, _cond in cond_map.items():
             cond_records = [record for record in hyp_records if record.get("condition") == cond_id]
             for record in cond_records:
-                world = str(record.get("world", "")).strip() or "world"
+                scenario = str(record.get("scenario", "")).strip() or "scenario"
                 seed = record.get("seed")
                 seed_tag = f"seed_{seed}" if seed is not None else "seed_default"
-                seed_dir = hyp_dir / cond_id / world / seed_tag
+                seed_dir = hyp_dir / cond_id / scenario / seed_tag
 
                 run_dir_raw = record.get("run_dir") or record.get("simulation_output_path")
                 run_dir = Path(str(run_dir_raw)) if run_dir_raw else None
@@ -307,7 +307,7 @@ def organize_study_outputs(
                     "study": study_name,
                     "hypothesis": hyp_id,
                     "condition": cond_id,
-                    "world": world,
+                    "scenario": scenario,
                     "seed": seed,
                     "status": record.get("status"),
                     "execution_mode": record.get("execution_mode"),
@@ -375,12 +375,12 @@ def organize_study_outputs(
                 combined["_meta"] = {
                     "hypothesis": hyp_id,
                     "condition": cond_id,
-                    "world": world,
+                    "scenario": scenario,
                 }
                 hyp_rows.append(
                     {
                         "condition": cond_id,
-                        "world": world,
+                        "scenario": scenario,
                         "seed": seed,
                         "run_id": record.get("run_id"),
                         "status": record.get("status"),

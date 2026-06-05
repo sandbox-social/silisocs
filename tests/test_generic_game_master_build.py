@@ -131,3 +131,65 @@ def test_base_environment_gm_rejects_unknown_component_params(tmp_path, monkeypa
             action_mode="generic",
             tool_calling_mode="none",
         )
+
+
+def test_base_environment_gm_rejects_unknown_excluded_actions(tmp_path, monkeypatch) -> None:
+    app = _GenericApp()
+    monkeypatch.setattr(gm_module, "create_backend_app", lambda **kwargs: app)
+
+    with pytest.raises(ValueError, match="Unknown excluded action"):
+        ComponentGameMaster(
+            model=object(),
+            agents=[_Entity("Alice")],
+            name="generic_gm",
+            sim_roles={"Alice": "worker"},
+            agent_flow_tags={"Alice": "default"},
+            backend_config={
+                "backend_type": "resource_market",
+                "output_rootname": str(tmp_path),
+                "enabled_actions": None,
+                "excluded_actions": ["NOT_REAL"],
+                "turn_policy_built_in": "single_action",
+                "app_description": "Generic app",
+            },
+            components={
+                "initialize": {"built_in": "app_initialize", "class_path": None, "params": {}},
+                "next_acting": {"built_in": "fixed_order"},
+                "observe": {"built_in": "app_observation"},
+                "resolve": {"built_in": "generic_action"},
+                "update": {"built_in": "disabled"},
+            },
+            action_mode="generic",
+            tool_calling_mode="none",
+        )
+
+
+def test_base_environment_gm_rejects_action_filter_conflicts(tmp_path, monkeypatch) -> None:
+    app = _GenericApp()
+    monkeypatch.setattr(gm_module, "create_backend_app", lambda **kwargs: app)
+
+    with pytest.raises(ValueError, match="both enabled and excluded"):
+        ComponentGameMaster(
+            model=object(),
+            agents=[_Entity("Alice")],
+            name="generic_gm",
+            sim_roles={"Alice": "worker"},
+            agent_flow_tags={"Alice": "default"},
+            backend_config={
+                "backend_type": "resource_market",
+                "output_rootname": str(tmp_path),
+                "enabled_actions": ["ACT"],
+                "excluded_actions": ["act"],
+                "turn_policy_built_in": "single_action",
+                "app_description": "Generic app",
+            },
+            components={
+                "initialize": {"built_in": "app_initialize", "class_path": None, "params": {}},
+                "next_acting": {"built_in": "fixed_order"},
+                "observe": {"built_in": "app_observation"},
+                "resolve": {"built_in": "generic_action"},
+                "update": {"built_in": "disabled"},
+            },
+            action_mode="generic",
+            tool_calling_mode="none",
+        )

@@ -19,17 +19,17 @@ _PROJECT_ROOT = _PACKAGE_ROOT.parents[1]
 
 
 class RecordLoader:
-    """Load persona records and world-local support files."""
+    """Load persona records and scenario-local support files."""
 
     def __init__(
         self,
         config: Any,
         *,
-        world_name: str | None = None,
+        scenario_name: str | None = None,
         project_root: str | Path | None = None,
     ):
         self.config = config
-        self.world_name = world_name
+        self.scenario_name = scenario_name
         self.project_root = Path(project_root) if project_root is not None else _PROJECT_ROOT
 
     def load_records(
@@ -141,7 +141,7 @@ class RecordLoader:
                 records.append(row if isinstance(row, dict) else {"value": row})
         return records
 
-    def world_paths(self, path_str: str) -> list[Path]:
+    def scenario_paths(self, path_str: str) -> list[Path]:
         try:
             raw = Path(path_str)
         except (TypeError, ValueError, OSError):
@@ -149,18 +149,18 @@ class RecordLoader:
         if raw.is_absolute():
             return [raw]
 
-        world = str(self.world_name or "default")
-        pkg_world = _PACKAGE_ROOT / "worlds" / world
-        top_world = self.project_root / "worlds" / world
+        scenario = str(self.scenario_name or "default")
+        pkg_scenario = _PACKAGE_ROOT / "scenarios" / scenario
+        top_scenario = self.project_root / "scenarios" / scenario
         subdirs = ["", "input", "input/personas", "input/news_data"]
         candidates = [raw, _PACKAGE_ROOT / raw]
-        for base in (pkg_world, top_world):
+        for base in (pkg_scenario, top_scenario):
             for subdir in subdirs:
                 candidates.append(base / subdir / raw if subdir else base / raw)
         return candidates
 
     def resolve_file_path(self, path_str: str) -> Path:
-        for candidate in self.world_paths(path_str):
+        for candidate in self.scenario_paths(path_str):
             if safe_path_exists(candidate):
                 return candidate
         raise FileNotFoundError(f"Unable to resolve path: {path_str}")
@@ -181,7 +181,7 @@ class RecordLoader:
         if not isinstance(value, str):
             return normalize_memories(value)
 
-        for candidate in self.world_paths(value):
+        for candidate in self.scenario_paths(value):
             if safe_path_exists(candidate):
                 if str(candidate).endswith(".json"):
                     with open(candidate) as f:

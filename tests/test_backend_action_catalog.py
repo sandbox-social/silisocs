@@ -3,11 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import pytest
+
 from silisocs.environments.backends.base import SocialBackendApp, app_action
 
 
 @dataclass
 class _FakeApp(SocialBackendApp):
+    def __post_init__(self) -> None:
+        super().__init__()
+
     def name(self) -> str:
         return "FakeApp"
 
@@ -46,6 +51,33 @@ def test_enabled_action_filtering_accepts_aliases() -> None:
     actions = app.actions()
     assert len(actions) == 1
     assert actions[0].name == "create_tweet"
+
+
+def test_excluded_action_filtering_accepts_aliases() -> None:
+    app = _FakeApp()
+    app.set_excluded_actions(["post_message"])
+
+    selectable = {action.selectable_name for action in app.actions()}
+    assert "post_message" not in selectable
+    assert "like_tweet" in selectable
+    assert "FINISHED" in selectable
+
+
+def test_action_filters_reject_unknown_names() -> None:
+    app = _FakeApp()
+
+    with pytest.raises(ValueError, match="Unknown excluded action"):
+        app.set_excluded_actions(["not_an_action"])
+
+
+def test_action_filters_reject_allow_deny_conflicts() -> None:
+    app = _FakeApp()
+
+    with pytest.raises(ValueError, match="both enabled and excluded"):
+        app.set_action_filters(
+            enabled_actions=["create_tweet"],
+            excluded_actions=["post_message"],
+        )
 
 
 def test_invoke_action_with_kwargs_supports_selectable_name() -> None:

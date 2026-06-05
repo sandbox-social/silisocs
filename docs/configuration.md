@@ -31,9 +31,9 @@ defaults:
 
 hydra:
   job:
-    name: ${world_name}_${now:%Y-%m-%d_%H-%M-%S}
+    name: ${scenario_name}_${now:%Y-%m-%d_%H-%M-%S}
   run:
-    dir: outputs/${world_name}/${jobname_format}
+    dir: outputs/${scenario_name}/${jobname_format}
   output_subdir: configs/${jobname_format}
 
 experiment_name: independent
@@ -58,7 +58,7 @@ Run parameters live in the `world` config group (placed at config root via
 | `num_steps` | `50` | Simulation steps to run |
 | `run_name` | `run1` | Run identifier (used in output path) |
 | `seed` | `1` | Random seed |
-| `world_name` | `default` | World identifier (used in output path) |
+| `scenario_name` | `default` | Scenario identifier (used in output path) |
 | `jobname_format` | *(template)* | Output directory name template |
 | `experiment_name` | `independent` | Experiment label used in `jobname_format` |
 
@@ -97,17 +97,17 @@ Run parameters live in the `world` config group (placed at config root via
 
 ## Running and Creating Scenarios
 
-Worlds live in `worlds/{name}/conf/` and override package defaults.
+Scenarios live in `scenarios/{name}/conf/` and override package defaults.
 The run command:
 
 ```bash
-uv run silisocs --config-path worlds/misinformation/conf
+uv run silisocs --config-path scenarios/misinformation/conf
 ```
 
 ### Directory Structure
 
 ```
-worlds/
+scenarios/
 └── my_world/
     └── conf/
         ├── world/
@@ -125,8 +125,8 @@ worlds/
 Two mechanisms layer on top of the package defaults:
 
 **Layer 1 — Hydra SearchPath Plugin**: a registered `SearchPathPlugin` prepends
-the world conf dir to Hydra's search path before composition. This gives
-`world/default.yaml` and `agents/default.yaml` from the world conf dir
+the scenario conf dir to Hydra's search path before composition. This gives
+`world/default.yaml` and `agents/default.yaml` from the scenario conf dir
 higher priority than the package defaults, so they replace the package
 `world/default.yaml` and `agents/default.yaml` entirely.
 
@@ -139,32 +139,32 @@ partial-override flat files that don't replace their group wholesale:
 
 1. CLI overrides (`num_steps=1 sim.llm.provider=scripted`)
 2. Scenario flat files merged in Layer 2 (`env.yaml`, `sim.yaml`, …)
-3. World `world/default.yaml` and `agents/default.yaml` (via plugin searchpath)
+3. Scenario `world/default.yaml` and `agents/default.yaml` (via plugin searchpath)
 4. Package defaults in `src/silisocs/conf/`
 
 CLI overrides are re-applied after the merge so they always win over
-world defaults.
+scenario defaults.
 
 ### Running a Scenario
 
 ```bash
-# Run with world defaults
-uv run silisocs --config-path worlds/election/conf
+# Run with scenario defaults
+uv run silisocs --config-path scenarios/election/conf
 
 # Override specific parameters
-uv run silisocs --config-path worlds/election/conf \
+uv run silisocs --config-path scenarios/election/conf \
     num_agents=500 num_steps=100
 
 # Use alternate agents variant
-uv run silisocs --config-path worlds/ai_conference/conf \
+uv run silisocs --config-path scenarios/ai_conference/conf \
     agents=thin
 
 # Dry-run with no LLM calls (for testing)
-uv run silisocs --config-path worlds/misinformation/conf \
+uv run silisocs --config-path scenarios/misinformation/conf \
     num_steps=1 sim.llm.provider=scripted
 
 # View merged config before running
-uv run silisocs --config-path worlds/election/conf --cfg job
+uv run silisocs --config-path scenarios/election/conf --cfg job
 ```
 
 ### Creating a New Scenario
@@ -173,20 +173,20 @@ uv run silisocs --config-path worlds/election/conf --cfg job
 
 1. Start the dashboard: `streamlit run src/silisocs/dashboard/launch_app.py`
 2. Modify all settings (agents, network, probes, etc.)
-3. Enter a new world name in the "World Name" field
-4. Click "Save World" — creates files under `worlds/{name}/conf/`
+3. Enter a new scenario name in the "Scenario name" field
+4. Click "Save Scenario" — creates files under `scenarios/{name}/conf/`
 5. Click "Run Simulation"
 
 **Option 2: Manual**
 
 ```bash
-mkdir -p worlds/my_world/conf/world worlds/my_world/conf/agents
+mkdir -p scenarios/my_world/conf/world scenarios/my_world/conf/agents
 ```
 
-**`worlds/my_world/conf/world/default.yaml`** — run parameters and narrative:
+**`scenarios/my_world/conf/world/default.yaml`** — run parameters and narrative:
 ```yaml
 # @package _global_
-world_name: my_world
+scenario_name: my_world
 jobname_format: "N${num_agents}_T${num_steps}_${run_name}"
 num_agents: 50
 num_steps: 20
@@ -206,7 +206,7 @@ event:
 data: {}
 ```
 
-**`worlds/my_world/conf/agents/default.yaml`** — personas:
+**`scenarios/my_world/conf/agents/default.yaml`** — personas:
 ```yaml
 # @package agents
 persona_pipeline:
@@ -246,7 +246,7 @@ still rejects unnamed or duplicate specs before the simulation starts. Agent
 names are the runtime identities used by GMs, backends, flows, probes, logs, and
 checkpoints.
 
-**`worlds/my_world/conf/env.yaml`** — optional backend/GM overrides:
+**`scenarios/my_world/conf/env.yaml`** — optional backend/GM overrides:
 ```yaml
 gm:
   components:
@@ -266,7 +266,7 @@ gm:
 
 ### Output Structure
 
-Simulation outputs go to: `outputs/{world_name}/{jobname_format}/`
+Simulation outputs go to: `outputs/{scenario_name}/{jobname_format}/`
 
 ```
 outputs/
@@ -289,11 +289,11 @@ outputs/
 
 Defines run parameters and the narrative context. Uses `@package _global_` so
 all keys are placed at the config root. Scenario-specific content lives in
-`worlds/*/conf/world/default.yaml`.
+`scenarios/*/conf/world/default.yaml`.
 
 ```yaml
 # @package _global_
-world_name: my_world
+scenario_name: my_world
 num_agents: 50
 num_steps: 20
 seed: 42
@@ -322,7 +322,7 @@ targets in `agents/default.yaml` and other config files.
 
 Defines the persona pipeline, shared memories, and initial observations. Uses
 `@package agents` so all keys are nested under `agents.*`. Scenario-specific
-content lives in `worlds/*/conf/agents/default.yaml`.
+content lives in `scenarios/*/conf/agents/default.yaml`.
 
 ### Persona Pipeline
 
@@ -391,7 +391,7 @@ agents/
 
 Select at runtime using the Hydra config group override syntax:
 ```bash
-uv run silisocs --config-path worlds/ai_conference/conf \
+uv run silisocs --config-path scenarios/ai_conference/conf \
     agents=thin
 ```
 
@@ -502,10 +502,14 @@ env:
         - reply_to_tweet
         - like_tweet
         - FINISHED
+      excluded_actions:
+        - report_post
 ```
 
 Action names may be canonical decorated backend function names or selectable
-aliases such as `FINISHED`:
+aliases such as `FINISHED`. Unknown names fail during backend construction. If
+an action is matched by both `enabled_actions` and `excluded_actions`, the run
+fails loudly instead of guessing which list wins.
 
 | Backend | Common actions |
 |---------|----------------|
@@ -743,7 +747,7 @@ selected agent in its own batch so turns are strictly ordered.
 
 ```bash
 uv run silisocs \
-  --config-path worlds/my_world/conf \
+  --config-path scenarios/my_world/conf \
   num_steps=200 \
   sim.checkpoint.every_n_steps=10 \
   sim.checkpoint.source_run=outputs/my_world/run1
@@ -762,9 +766,9 @@ Output paths are controlled by Hydra in `experiment.yaml`:
 ```yaml
 hydra:
   job:
-    name: ${world_name}_${now:%Y-%m-%d_%H-%M-%S}
+    name: ${scenario_name}_${now:%Y-%m-%d_%H-%M-%S}
   run:
-    dir: outputs/${world_name}/${jobname_format}
+    dir: outputs/${scenario_name}/${jobname_format}
   output_subdir: configs/${jobname_format}
 ```
 

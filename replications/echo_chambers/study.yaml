@@ -5,14 +5,14 @@ study:
   study_id: echo_chambers_replication
   study_version: v1
   question: "Can silisocs reproduce EchoChamberSim's graph/recommendation polarization results?"
-  worlds:
+  scenarios:
     - default
   study_summary_path: replications/echo_chambers/SUMMARY.md
   summary_log_path: replications/echo_chambers/generated/summary_log.jsonl
   run_defaults:
     config_path: replications/echo_chambers/conf
     runner_module: silisocs.runtime.runner
-    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{world}_seed{seed}"
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
     output_root_override: "replications/echo_chambers/generated/runs/{hypothesis_id}/{condition_id}/seed_{seed}/run"
     seed_start: 50
     seed_repeats: 1
@@ -109,9 +109,9 @@ hypotheses:
           echo_mitigation_step: 1000
 
   h1_graph_structure:
-    statement: "Small-world and scale-free graphs show echo chamber formation more clearly than random graphs."
+    statement: "Small-scenario and scale-free graphs show echo chamber formation more clearly than random graphs."
     independent_variable: network_type
-    prediction: "Small-world and scale-free runs increase NCI while reducing global disagreement; random does not reduce disagreement."
+    prediction: "Small-scenario and scale-free runs increase NCI while reducing global disagreement; random does not reduce disagreement."
     status: testing
     conditions:
       small_world_similarity:
@@ -177,7 +177,7 @@ hypotheses:
             - source: replications/echo_chambers/graph_experiments/replication_main/scale_free/rep_05/run
               seed: 50
       loose_social_similarity_5seed:
-        worlds: [loose_social]
+        scenarios: [loose_social]
         seeds: [6001, 6002, 6003, 6004, 6005]
         overrides:
           agents: loose_social
@@ -190,7 +190,7 @@ hypotheses:
           echo_include_self_state_feedback: true
           echo_observation_max_posts: 10
       loose_social_follower_chronological_5seed:
-        worlds: [loose_social]
+        scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
           agents: loose_social
@@ -208,7 +208,7 @@ hypotheses:
           echo_update_component_class_path: replications.echo_chambers.components.recommend.NoOpRecommendationUpdate
           echo_update_component_params: null
       loose_social_twhin_recsys_5seed:
-        worlds: [loose_social]
+        scenarios: [loose_social]
         seeds: [6301, 6302, 6303, 6304, 6305]
         overrides:
           agents: loose_social
@@ -250,7 +250,7 @@ hypotheses:
             - source: replications/echo_chambers/generated/runs/h3_loose_action_structure/loose_social_follower_chronological_5seed/seed_6205/run
               seed: 6205
       loose_social_without_self_state_5seed:
-        worlds: [loose_social]
+        scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
           agents: loose_social
@@ -287,7 +287,7 @@ hypotheses:
             - source: replications/echo_chambers/generated/runs/h3_loose_action_structure/loose_social_follower_chronological_5seed/seed_6205/run
               seed: 6205
       loose_social_simple_agent_5seed:
-        worlds: [loose_social]
+        scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
           agents: simple_social
@@ -302,7 +302,7 @@ hypotheses:
           echo_timeline_recsys_type: null
           echo_observation_max_posts: 10
       loose_social_simple_agent_without_self_state_5seed:
-        worlds: [loose_social]
+        scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
           agents: simple_social
@@ -324,7 +324,7 @@ hypotheses:
     status: ready
     conditions:
       qwen_echo_with_self_state_5seed:
-        worlds: [loose_social]
+        scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
           agents: loose_social
@@ -344,7 +344,7 @@ hypotheses:
           echo_timeline_recsys_type: null
           echo_observation_max_posts: 10
       qwen_echo_without_self_state_5seed:
-        worlds: [loose_social]
+        scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
           agents: loose_social
@@ -386,7 +386,7 @@ hypotheses:
             - source: replications/echo_chambers/generated/runs/h6_qwen35_4b_self_state_feedback/qwen_echo_with_self_state_5seed/seed_6205/run
               seed: 6205
       qwen_simple_with_self_state_5seed:
-        worlds: [loose_social]
+        scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
           agents: simple_social
@@ -421,7 +421,7 @@ hypotheses:
             - source: replications/echo_chambers/generated/runs/h6_qwen35_4b_self_state_feedback/qwen_echo_without_self_state_5seed/seed_6205/run
               seed: 6205
       qwen_simple_without_self_state_5seed:
-        worlds: [loose_social]
+        scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
           agents: simple_social
