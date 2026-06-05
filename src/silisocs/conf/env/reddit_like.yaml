@@ -1,4 +1,3 @@
-observation_history: 100
 gm:
   backend:
     type: reddit_like

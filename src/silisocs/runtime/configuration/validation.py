@@ -340,7 +340,7 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
     _assert_allowed_keys(
         cfg,
         "env",
-        {"observation_history", "gm", "gm_orchestration"},
+        {"gm", "gm_orchestration"},
     )
     _assert_allowed_keys(cfg, "env.gm", {"backend", "components", "name", "class_path"})
     _assert_allowed_keys(
