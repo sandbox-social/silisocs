@@ -29,11 +29,13 @@ def build_initializer_context(
     cfg: DictConfig,
     agent_configs: Sequence[RuntimeSpec],
 ) -> InitializationContext:
-    scenario_shared = OmegaConf.select(cfg, "agents.shared_memories")
-    if scenario_shared is None:
-        scenario_shared = OmegaConf.select(cfg, "agents.persona_pipeline.defaults.shared_memories")
+    shared_memories_cfg = OmegaConf.select(cfg, "agents.shared_memories")
+    if shared_memories_cfg is None:
+        shared_memories_cfg = OmegaConf.select(
+            cfg, "agents.persona_pipeline.defaults.shared_memories"
+        )
 
-    shared_memories = _normalize_memories(scenario_shared)
+    shared_memories = _normalize_memories(shared_memories_cfg)
     player_specific_memories: dict[str, tuple[str, ...]] = {}
     player_specific_context: dict[str, str] = {}
     sim_roles: dict[str, str] = {}

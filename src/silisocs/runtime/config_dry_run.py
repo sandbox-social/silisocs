@@ -17,7 +17,7 @@ class DryRunTarget:
 
     label: str
     config_path: Path
-    scenario_variant: str
+    world_variant: str
     extra_overrides: tuple[str, ...] = ()
 
 
@@ -40,33 +40,33 @@ def _discover_config_root_targets(
     conf_dir: Path,
     label_root: str,
 ) -> list[DryRunTarget]:
-    """Discover dry-run targets from one config root containing scenario/env groups."""
+    """Discover dry-run targets from one config root containing world/env groups."""
     candidates: list[DryRunTarget] = []
     if not conf_dir.is_dir():
         return candidates
-    for scenario_file in sorted((conf_dir / "scenario").glob("*.yaml")):
+    for world_file in sorted((conf_dir / "world").glob("*.yaml")):
         candidates.append(
             DryRunTarget(
-                label=f"{label_root}/{scenario_file.stem}",
+                label=f"{label_root}/{world_file.stem}",
                 config_path=conf_dir,
-                scenario_variant=scenario_file.stem,
+                world_variant=world_file.stem,
             )
         )
     for env_file in sorted((conf_dir / "env").glob("*.yaml")):
-        scenario_dir = conf_dir / "scenario"
-        default_scenario = scenario_dir / "default.yaml"
-        matching_scenario = scenario_dir / f"{env_file.stem}.yaml"
-        if matching_scenario.is_file():
-            scenario_variant = env_file.stem
-        elif default_scenario.is_file():
-            scenario_variant = "default"
+        world_dir = conf_dir / "world"
+        default_world = world_dir / "default.yaml"
+        matching_world = world_dir / f"{env_file.stem}.yaml"
+        if matching_world.is_file():
+            world_variant = env_file.stem
+        elif default_world.is_file():
+            world_variant = "default"
         else:
             continue
         candidates.append(
             DryRunTarget(
-                label=f"{label_root}/{scenario_variant} [env={env_file.stem}]",
+                label=f"{label_root}/{world_variant} [env={env_file.stem}]",
                 config_path=conf_dir,
-                scenario_variant=scenario_variant,
+                world_variant=world_variant,
                 extra_overrides=(f"env={env_file.stem}",),
             )
         )
@@ -89,25 +89,25 @@ def _discover_targets(project_root: Path) -> list[DryRunTarget]:
     for root in roots:
         if not root.is_dir():
             continue
-        for scenario_file in sorted(root.glob("**/conf/scenario/*.yaml")):
-            conf_dir = scenario_file.parents[1]
+        for world_file in sorted(root.glob("**/conf/world/*.yaml")):
+            conf_dir = world_file.parents[1]
             label = str(conf_dir.parent.relative_to(project_root))
             candidates.append(
                 DryRunTarget(
                     label=label,
                     config_path=conf_dir,
-                    scenario_variant=scenario_file.stem,
+                    world_variant=world_file.stem,
                 )
             )
         for env_file in sorted(root.glob("**/conf/env/*.yaml")):
             conf_dir = env_file.parents[1]
-            scenario_dir = conf_dir / "scenario"
-            default_scenario = scenario_dir / "default.yaml"
-            matching_scenario = scenario_dir / f"{env_file.stem}.yaml"
-            if matching_scenario.is_file():
-                scenario_variant = env_file.stem
-            elif default_scenario.is_file():
-                scenario_variant = "default"
+            world_dir = conf_dir / "world"
+            default_world = world_dir / "default.yaml"
+            matching_world = world_dir / f"{env_file.stem}.yaml"
+            if matching_world.is_file():
+                world_variant = env_file.stem
+            elif default_world.is_file():
+                world_variant = "default"
             else:
                 continue
             label = str(conf_dir.parent.relative_to(project_root))
@@ -115,7 +115,7 @@ def _discover_targets(project_root: Path) -> list[DryRunTarget]:
                 DryRunTarget(
                     label=f"{label} [env={env_file.stem}]",
                     config_path=conf_dir,
-                    scenario_variant=scenario_variant,
+                    world_variant=world_variant,
                     extra_overrides=(f"env={env_file.stem}",),
                 )
             )
@@ -134,14 +134,14 @@ def _build_command(
         "silisocs.runtime.runner",
         "--config-path",
         str(target.config_path),
-        f"scenario={target.scenario_variant}",
+        f"world={target.world_variant}",
     ]
-    agents_variant_file = target.config_path / "agents" / f"{target.scenario_variant}.yaml"
+    agents_variant_file = target.config_path / "agents" / f"{target.world_variant}.yaml"
     if agents_variant_file.is_file():
-        command.append(f"agents={target.scenario_variant}")
-    env_variant_file = target.config_path / "env" / f"{target.scenario_variant}.yaml"
+        command.append(f"agents={target.world_variant}")
+    env_variant_file = target.config_path / "env" / f"{target.world_variant}.yaml"
     if env_variant_file.is_file():
-        command.append(f"env={target.scenario_variant}")
+        command.append(f"env={target.world_variant}")
     existing_overrides = set(command)
     command.extend(
         override for override in target.extra_overrides if override not in existing_overrides
@@ -163,7 +163,7 @@ def _build_command(
 def _run_target(project_root: Path, target: DryRunTarget, run_root: Path) -> DryRunResult:
     """Run one config target and collect outputs."""
     safe_label = re.sub(r"[^A-Za-z0-9_.-]+", "_", target.label.replace("/", "__")).strip("_")
-    run_dir = run_root / f"{safe_label}__{target.scenario_variant}"
+    run_dir = run_root / f"{safe_label}__{target.world_variant}"
     output_dir = run_dir / "outputs"
     hydra_dir = run_dir / "hydra"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -216,7 +216,7 @@ def _format_failure(result: DryRunResult, max_lines: int = 40) -> str:
     lines = output.splitlines()[-max_lines:]
     tail = "\n".join(lines)
     return (
-        f"[FAIL] {result.target.label} scenario={result.target.scenario_variant}\n"
+        f"[FAIL] {result.target.label} world={result.target.world_variant}\n"
         f"Command: {' '.join(result.command)}\n"
         f"Exit code: {result.returncode}\n"
         f"{tail}"
@@ -254,9 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     if skipped:
         print("\nSkipped targets:")
         for item in skipped:
-            print(
-                f"- {item.target.label} scenario={item.target.scenario_variant}: {item.skip_reason}"
-            )
+            print(f"- {item.target.label} world={item.target.world_variant}: {item.skip_reason}")
     if failed:
         print()
         for failure in failed:

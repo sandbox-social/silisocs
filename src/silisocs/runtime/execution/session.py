@@ -243,7 +243,7 @@ def main(cfg: DictConfig):
         with open(run_stats_path, "a", encoding="utf-8") as f:
             f.write(line + "\n")
 
-    # build gamemasters (scenario agnostic)
+    # build gamemasters (world agnostic)
     t0 = time.time()
     with metrics.phase("build_game_masters"):
         game_masters = build_game_masters(cfg)

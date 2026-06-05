@@ -4,7 +4,7 @@ A study is a **research question asked on top of a scenario**. It defines hypoth
 conditions (what you vary), evaluators (what you measure), and seed replication.
 Studies live in `experiments/studies/<study_id>/study.yaml` and are version-controlled.
 
-Scenarios are shared social worlds — reusable across studies. Multiple researchers
+Scenarios are shared social scenarios — reusable across studies. Multiple researchers
 can ask different questions on the same scenario.
 
 Studies are **living documents**: they grow as hypotheses are tested, findings recorded,
@@ -35,8 +35,8 @@ ls scenarios/
 ```
 
 For each scenario directory that has a `README.md`, read the first two lines of
-description from it. If no README exists, fall back to the `description:` field
-in `scenarios/<name>/conf/scenario/default.yaml`.
+description from it. If no README exists, fall back to the relevant semantic
+fields in `scenarios/<name>/conf/world/default.yaml`.
 
 Ask:
 > "Which of these scenarios best fits your question, or do none of them fit?

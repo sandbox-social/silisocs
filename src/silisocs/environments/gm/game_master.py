@@ -502,6 +502,20 @@ def _create_backend(backend_config: Mapping[str, Any]) -> Any:
         params=dict(cfg.get("params") or {}),
     )
     enabled_actions = cfg.get("enabled_actions")
+    excluded_actions = cfg.get("excluded_actions")
+    excluded = (
+        [str(action).strip() for action in excluded_actions]
+        if isinstance(excluded_actions, Sequence) and not isinstance(excluded_actions, (str, bytes))
+        else [str(excluded_actions).strip()]
+        if excluded_actions is not None
+        else None
+    )
+    if (
+        str(cfg.get("turn_policy_built_in") or "").strip() == "open_ended"
+        and excluded
+        and any(name.upper() == "FINISHED" for name in excluded)
+    ):
+        raise ValueError("open_ended turn policy requires FINISHED; do not exclude it.")
     if enabled_actions is not None:
         actions = (
             [str(action).strip() for action in enabled_actions]
@@ -513,7 +527,9 @@ def _create_backend(backend_config: Mapping[str, Any]) -> Any:
             names = {name.upper() for name in actions if name}
             if "FINISHED" not in names:
                 actions.append("FINISHED")
-        backend.set_enabled_actions(actions)
+        backend.set_action_filters(enabled_actions=actions, excluded_actions=excluded)
+    elif excluded is not None:
+        backend.set_action_filters(enabled_actions=None, excluded_actions=excluded)
     return backend
 
 

@@ -15,16 +15,16 @@ Set the backend in your Hydra config:
 uv run silisocs env=twitter_like   # default
 uv run silisocs env=reddit_like
 uv run silisocs env=mastodon
-uv run silisocs scenario=resource_market agents=resource_market env=resource_market
-uv run silisocs scenario=virtual_space agents=virtual_space env=virtual_space
+uv run silisocs world=resource_market agents=resource_market env=resource_market
+uv run silisocs world=virtual_space agents=virtual_space env=virtual_space
 ```
 
 Curated external examples live under `scenarios/resource_market/` and
 `scenarios/virtual_space/`:
 
 ```sh
-uv run silisocs --config-path scenarios/resource_market/conf scenario=resource_market agents=resource_market env=resource_market
-uv run silisocs --config-path scenarios/virtual_space/conf scenario=virtual_space agents=virtual_space env=virtual_space
+uv run silisocs --config-path scenarios/resource_market/conf world=resource_market agents=resource_market env=resource_market
+uv run silisocs --config-path scenarios/virtual_space/conf world=virtual_space agents=virtual_space env=virtual_space
 ```
 
 Or in the top-level Hydra defaults:
@@ -407,8 +407,9 @@ Action metadata notes:
 - By default, the selectable action name is the Python function name.
 - Backend authors can optionally provide `selectable_name` and `description`
     via `@app_action(...)` to expose more LLM-friendly names/descriptions.
-- Backend-level action filtering (`env.gm.backend.enabled_actions`) accepts either the
-    canonical function name or the selectable alias.
+- Backend-level action filtering accepts either the canonical function name or
+    the selectable alias. Use `env.gm.backend.enabled_actions` as an allow-list
+    and `env.gm.backend.excluded_actions` as a deny-list.
 - Fixed-action agent sets can also reference either canonical names or aliases.
 
 Default action surfaces:
@@ -420,7 +421,10 @@ Default action surfaces:
     post/comment/vote, feed/comment inspection, mute/unmute, search/trends,
     report, profile actions, `do_nothing`, and `FINISHED`.
 - Set `env.gm.backend.enabled_actions` to a list when a scenario should use a
-    smaller action surface. `null` means all backend actions.
+    smaller action surface. Set `env.gm.backend.excluded_actions` to remove
+    specific actions from the exposed surface. `null` means no allow-list or
+    deny-list. Unknown names, and actions present in both lists, fail during
+    backend construction.
 
 Example:
 
@@ -434,6 +438,8 @@ gm:
       - like_tweet
       - repost_tweet
       - FINISHED
+    excluded_actions:
+      - report_post
 ```
 
 ### High-Value Customization Tasks

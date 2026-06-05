@@ -1,0 +1,1 @@
+491085390429.dkr.ecr.us-east-1.amazonaws.com/custom-mastodon:latest

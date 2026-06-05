@@ -11,7 +11,7 @@ persona_pipeline:
       bio: ""
       style: ""
       goal: null
-      scenario_context: ${event.context}
+      world_context: ${event.context}
     shared_memories:
       - They are participating in a virtual commons.
       - ${event.context}

@@ -97,7 +97,8 @@ uv run silisocs --config-path scenarios/election/conf
 ```
 
 The runner auto-detects the scenario name from the YAML files in the external
-config directory. No need to manually specify a scenario override.
+config directory. No need to manually specify a `world=` override unless you are
+choosing a non-default semantic world variant from `conf/world/`.
 
 ## Next Steps
 

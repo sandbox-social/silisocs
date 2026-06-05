@@ -32,6 +32,6 @@ and are the only cross-cutting information conduits.
 uv run silisocs --config-path scenarios/ai_conference/conf num_steps=8
 ```
 
-## Studies using this scenario
+## Studies using this world
 
 _(add links to `experiments/studies/` entries here)_

@@ -30,9 +30,9 @@ class ValidationResult:
         return "\n".join(lines)
 
 
-def validate_scenario(scenario_root: Path | str) -> ValidationResult:
+def validate_scenario(world_root: Path | str) -> ValidationResult:
     """Dry-run a scenario config to confirm it loads and resolves without errors."""
-    conf_path = Path(scenario_root) / "conf"
+    conf_path = Path(world_root) / "conf"
     result = subprocess.run(
         [
             "uv",

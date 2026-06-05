@@ -1,8 +1,10 @@
 # silisocs/runtime/config.py
-"""Configuration helpers and validators for scenarios.
+"""Configuration helpers and validators for composed scenario configs.
 
 This module provides validation helpers used by the experiment runner to ensure
-scenario YAML files conform to expected shapes.
+the composed Hydra scenario configuration conforms to expected shapes. Semantic
+world values come from the ``world`` config group, but validation runs after all
+config groups have been merged.
 
 The validation functions raise :class:`ValueError` or :class:`FileNotFoundError`
 when checks fail.
@@ -23,7 +25,7 @@ from omegaconf import DictConfig, OmegaConf
 class BaseScenarioSchema:
     """
     Base schema that all scenarios must conform to.
-    Scenario-specific values are defined in scenario YAML files.
+    Semantic world values are supplied by the scenario's ``world`` config.
     """
 
     # Scenario identification
@@ -45,7 +47,7 @@ class BaseScenarioSchema:
         }
     )
 
-    # Data sources (optional, scenario-specific)
+    # Data sources (optional, world-specific)
     data: dict[str, Any] = field(default_factory=dict)
 
     # Agent configuration
@@ -73,7 +75,7 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
     Validate that scenario config has all required fields.
 
     Args:
-        cfg: Scenario configuration to validate
+        cfg: scenario configuration to validate
 
     Raises
     ------
@@ -98,7 +100,7 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
         if not (has_top_level_shared or has_pipeline_shared):
             missing_fields = ["shared_memories or persona_pipeline.defaults.shared_memories"]
             raise ValueError(
-                f"Scenario configuration missing required fields: {', '.join(missing_fields)}\n"
+                f"scenario configuration missing required fields: {', '.join(missing_fields)}\n"
                 "Please ensure your scenario config includes all required fields."
             )
     else:
@@ -111,7 +113,7 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
 
     if missing_fields:
         raise ValueError(
-            f"Scenario configuration missing required fields: {', '.join(missing_fields)}\n"
+            f"scenario configuration missing required fields: {', '.join(missing_fields)}\n"
             "Please ensure your scenario config includes all required fields."
         )
 
@@ -131,7 +133,7 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
 
     if missing_fields:
         raise ValueError(
-            f"Scenario configuration missing required nested fields: {', '.join(missing_fields)}"
+            f"scenario configuration missing required nested fields: {', '.join(missing_fields)}"
         )
 
     print("✓ Scenario structure validation passed")
@@ -150,16 +152,16 @@ def validate_cross_references(cfg: DictConfig) -> None:
     """
     errors = []
 
-    scenario_cfg = cfg
+    world_cfg = cfg
 
     # Validate that probe candidate references exist
-    if hasattr(scenario_cfg, "probes"):
-        probes_cfg = scenario_cfg.probes
+    if hasattr(world_cfg, "probes"):
+        probes_cfg = world_cfg.probes
 
         # Get candidate names from refactored structure first.
         candidate_names: list[str] = []
-        if hasattr(scenario_cfg, "candidates"):
-            for _partisan_type, info in scenario_cfg.candidates.items():
+        if hasattr(world_cfg, "candidates"):
+            for _partisan_type, info in world_cfg.candidates.items():
                 if hasattr(info, "name"):
                     candidate_names.append(str(info.name))
                 elif isinstance(info, dict) and "name" in info:
@@ -188,10 +190,10 @@ def validate_cross_references(cfg: DictConfig) -> None:
                                 f"Probe {probe_num} references unknown candidate: {candidate}"
                             )
 
-    roles_cfg = OmegaConf.select(scenario_cfg, "roles") or {}
+    roles_cfg = OmegaConf.select(world_cfg, "roles") or {}
     roles = set(roles_cfg.keys()) if isinstance(roles_cfg, dict) else set()
     activity_rates = OmegaConf.select(
-        scenario_cfg,
+        world_cfg,
         "env.gm.components.next_acting.params.activity_transition_rates",
     )
     if activity_rates and roles:
@@ -199,7 +201,7 @@ def validate_cross_references(cfg: DictConfig) -> None:
             if role not in roles:
                 errors.append(f"Next-acting activity rates reference unknown role: {role}")
 
-    graph_cfg = OmegaConf.select(scenario_cfg, "env.gm.components.initialize.params.graph")
+    graph_cfg = OmegaConf.select(world_cfg, "env.gm.components.initialize.params.graph")
     fully_connected_targets = (
         graph_cfg.get("fully_connected_targets", []) if isinstance(graph_cfg, dict) else []
     )
@@ -210,10 +212,10 @@ def validate_cross_references(cfg: DictConfig) -> None:
             )
 
     # Validate fixed-action set references in class pipeline.
-    class_pipeline = OmegaConf.select(scenario_cfg, "persona_pipeline.classes")
+    class_pipeline = OmegaConf.select(world_cfg, "persona_pipeline.classes")
     if class_pipeline:
-        inline_sets = OmegaConf.select(scenario_cfg, "fixed_action_sets.inline") or {}
-        file_sets = OmegaConf.select(scenario_cfg, "fixed_action_sets.file")
+        inline_sets = OmegaConf.select(world_cfg, "fixed_action_sets.inline") or {}
+        file_sets = OmegaConf.select(world_cfg, "fixed_action_sets.file")
         available_set_names = set(inline_sets.keys()) if isinstance(inline_sets, dict) else set()
 
         # File-based set names are validated at build-time once file is loaded.
@@ -249,7 +251,7 @@ def validate_data_files(cfg: DictConfig, scenario_path: Path) -> None:
     Validate that referenced data files exist.
 
     Args:
-        cfg: Scenario configuration
+        cfg: scenario configuration
         scenario_path: Path to scenario directory
 
     Raises
@@ -344,7 +346,7 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
     _assert_allowed_keys(
         cfg,
         "env.gm.backend",
-        {"type", "class_path", "params", "enabled_actions"},
+        {"type", "class_path", "params", "enabled_actions", "excluded_actions"},
     )
     _assert_allowed_keys(cfg, "env.gm_orchestration", {"gms", "flow_bindings"})
     _assert_allowed_keys(cfg, "env.gm_orchestration.flow_bindings", {"flow_to_gms"})

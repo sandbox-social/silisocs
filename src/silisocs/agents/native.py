@@ -22,7 +22,7 @@ class NativeAgent(Agent):
         instructions: str = "",
         context: str = "",
         persona_context: str = "",
-        scenario_context: str = "",
+        world_context: str = "",
         election_info: str = "",
         goal: str = "",
         style: str = "",
@@ -39,7 +39,7 @@ class NativeAgent(Agent):
         self._name = str(name)
         self._instructions = str(instructions or "")
         self._persona_context = str(persona_context or context or "")
-        self._scenario_context = str(scenario_context or election_info or "")
+        self._world_context = str(world_context or election_info or "")
         self._goal = str(goal or "")
         self._style = str(style or "")
         self.bio = str(bio or "")
@@ -89,7 +89,7 @@ class NativeAgent(Agent):
         sections: list[tuple[str, str]] = [
             ("Instructions", self._instructions),
             ("Persona", self._persona_context),
-            ("Scenario", self._scenario_context),
+            ("World", self._world_context),
             ("Goal", self._goal),
             ("Style", self._style),
             ("Recent observations", "\n".join(self._observations[-self._observation_history :])),

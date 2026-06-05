@@ -65,7 +65,7 @@ immediately. New extensions should target native Silisocs contracts.
   practical.
 - If a legacy component expects Concordia-shaped classes, import them from
   `silisocs.adapters.concordia` as a temporary compatibility step.
-- Keep legacy scenario YAML stable except for the explicit `compat: concordia`
+- Keep legacy world YAML stable except for the explicit `compat: concordia`
   marker.
 - Prefer native agents that build context in `act()` and call
   `self._call_model(context, action_spec)`.

@@ -25,7 +25,7 @@ def _minimal_spec() -> dict:
                     {
                         "name": "Alice",
                         "username": "alice",
-                        "context": "Alice tests the generated scenario.",
+                        "context": "Alice tests the generated world.",
                         "style": "Brief.",
                         "goal": "Run the smoke test.",
                         "seed_post": "",

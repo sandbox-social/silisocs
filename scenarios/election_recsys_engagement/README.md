@@ -1,6 +1,6 @@
 # Scenario: election_recsys_engagement
 
-The Storhampton election scenario extended with a recommendation system layer.
+The Storhampton election world extended with a recommendation system layer.
 Studies how timeline algorithm choice (chronological vs. recsys) shifts voter
 engagement, interaction rates, and partisan content amplification.
 
@@ -26,7 +26,7 @@ agents are unaware of it; it only controls timeline composition.
 uv run silisocs --config-path scenarios/election_recsys_engagement/conf num_steps=15
 ```
 
-## Studies using this scenario
+## Studies using this world
 
 - `experiments/studies/election_opinion_program_v1/` — opinion trajectory under news bias
 - `experiments/studies/recsys_behavior_sweep/` — timeline mode × engagement rate

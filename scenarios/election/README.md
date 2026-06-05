@@ -21,7 +21,7 @@ Voter personas drawn from external HuggingFace dataset pipeline (`input/personas
 News agent posts real-time headlines from `input/news_data/` with configurable bias.
 
 The default config is native. The files under `input/entity_lib/` are preserved
-as optional Concordia-compatible scenario agents for legacy experiments. To use
+as optional Concordia-compatible world agents for legacy experiments. To use
 them, configure the relevant persona-pipeline class with `compat: concordia`
 and the explicit `class_path`; they are not imported by the native default run.
 
@@ -37,6 +37,6 @@ and the explicit `class_path`; they are not imported by the native default run.
 uv run silisocs --config-path scenarios/election/conf num_steps=15
 ```
 
-## Studies using this scenario
+## Studies using this world
 
 _(add links to `experiments/studies/` entries here)_

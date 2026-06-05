@@ -17,14 +17,14 @@ def merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
     if not paths_csv:
         return cfg
 
-    scenario_variant = ""
+    world_variant = ""
     try:
         for item in HydraConfig.get().overrides.task:
-            if str(item).startswith("scenario="):
-                scenario_variant = str(item).split("=", 1)[1].strip()
+            if str(item).startswith("world="):
+                world_variant = str(item).split("=", 1)[1].strip()
                 break
     except Exception:
-        scenario_variant = ""
+        world_variant = ""
 
     OmegaConf.set_struct(cfg, False)
     merged_cfg: DictConfig = cfg
@@ -43,9 +43,9 @@ def merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
                 OmegaConf.merge(merged_cfg, OmegaConf.create({group: loaded})),
             )
 
-        if scenario_variant:
+        if world_variant:
             for group in ("env", "sim", "eval"):
-                variant_path = conf_dir / group / f"{scenario_variant}.yaml"
+                variant_path = conf_dir / group / f"{world_variant}.yaml"
                 if not variant_path.is_file():
                     continue
                 loaded = yaml.safe_load(variant_path.read_text(encoding="utf-8")) or {}
@@ -60,7 +60,7 @@ def merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
 
     try:
         task_overrides = list(HydraConfig.get().overrides.task)
-        external_group_overrides = {"scenario", "agents", "env", "eval", "sim"}
+        external_group_overrides = {"world", "agents", "env", "eval", "sim"}
         value_overrides = []
         for item in task_overrides:
             text = str(item)

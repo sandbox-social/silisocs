@@ -1,4 +1,4 @@
-"""Explicit Concordia-style agent prefab for compatibility scenarios."""
+"""Explicit Concordia-style agent prefab for compatibility worlds."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from silisocs.adapters.concordia import (
 )
 
 OBSERVATION_TO_MEMORY_KEY = "__observation_to_memory__"
-SCENARIO_CONTEXT_KEY = "__Scenario Context__"
+WORLD_CONTEXT_KEY = "__World Context__"
 INSTRUCTIONS_COMPONENT_KEY = "__Roleplaying Instructions__"
 PERSONA_INFORMATION_KEY = "__Persona Information__"
 DEFAULT_GOAL_COMPONENT_KEY = "Goal"
@@ -43,7 +43,7 @@ class ConcordiaAgent(prefab_lib.Prefab):
             "name": "Alice",
             "role": "",
             "goal": "",
-            "scenario_context": "",
+            "world_context": "",
         }
     )
 
@@ -53,8 +53,8 @@ class ConcordiaAgent(prefab_lib.Prefab):
         memory_bank: Any,
     ) -> EntityAgentWithLogging:
         agent_name = str(self.params.get("name", "Alice"))
-        scenario_context = str(
-            self.params.get("scenario_context", "") or self.params.get("election_info", "")
+        world_context = str(
+            self.params.get("world_context", "") or self.params.get("election_info", "")
         )
         persona_context = str(self.params.get("context", ""))
         roleplaying = str(
@@ -83,12 +83,12 @@ class ConcordiaAgent(prefab_lib.Prefab):
         }
         component_order = list(components.keys())
 
-        if scenario_context:
-            components[SCENARIO_CONTEXT_KEY] = constant.Constant(
-                state=scenario_context,
-                pre_act_label="Scenario Information",
+        if world_context:
+            components[WORLD_CONTEXT_KEY] = constant.Constant(
+                state=world_context,
+                pre_act_label="World Information",
             )
-            component_order.insert(1, SCENARIO_CONTEXT_KEY)
+            component_order.insert(1, WORLD_CONTEXT_KEY)
 
         if persona_context:
             components[PERSONA_INFORMATION_KEY] = constant.Constant(

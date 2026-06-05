@@ -25,7 +25,7 @@ The multi-GM architecture provides:
 
 ### When NOT to Use
 
-- Simple single-backend scenario: use one GM.
+- Simple single-backend world: use one GM.
 - Agents only need sequencing: use a single GM with `FlowStepStrategy`.
 
 ---

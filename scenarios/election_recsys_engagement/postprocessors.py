@@ -44,7 +44,7 @@ def cross_seed_case_ci(
     """Build lightweight cross-seed summary artifacts for probe metrics.
 
     This keeps study postprocessor wiring stable and produces deterministic artifacts
-    from available seed outputs without depending on legacy scenario directories.
+    from available seed outputs without depending on legacy world directories.
     """
     _ = records_by_type
     _ = out_dir
@@ -55,11 +55,11 @@ def cross_seed_case_ci(
 
     output_json = Path(output_json_raw)
     seed_dir = output_json.parent.parent
-    scenario_dir = seed_dir.parent
-    aggregate_dir = scenario_dir / "_aggregated_across_seeds"
+    world_dir = seed_dir.parent
+    aggregate_dir = world_dir / "_aggregated_across_seeds"
     aggregate_dir.mkdir(parents=True, exist_ok=True)
 
-    seed_jsons = sorted(scenario_dir.glob("seed_*/probe_metrics/probe_metrics_detailed.json"))
+    seed_jsons = sorted(world_dir.glob("seed_*/probe_metrics/probe_metrics_detailed.json"))
     if not seed_jsons:
         return {"generated_files": []}
 

@@ -54,7 +54,7 @@ of the individual backstory, with role held constant across all agents.
 uv run silisocs --config-path scenarios/hobby_collective/conf num_steps=10
 ```
 
-## Studies using this scenario
+## Studies using this world
 
 - `experiments/studies/style_diversity/` — h1 (model size), h2 (temperature),
   h3 (persona richness), h6 (CTA phrasing)

@@ -1,8 +1,10 @@
 # Creating a New Scenario
 
-A **scenario** is a shared social world: a setting, a cast of agents, and a backend
-configuration. It lives in `scenarios/<name>/` and can be reused across many studies.
-Think of it as the stage — studies are the experiments you run on it.
+A **scenario** is a shared social world: a setting, a cast of agents, and a
+backend configuration. It lives in `scenarios/<name>/` and can be reused across
+many studies. Think of it as the stage — studies are the experiments you run on
+it. The semantic world description for a scenario lives in
+`conf/world/default.yaml`.
 
 **Shortcut:** If you are using a coding agent (Claude Code, Cursor, etc.), you can
 type `/new-scenario` to be guided through this process interactively.
@@ -14,7 +16,7 @@ type `/new-scenario` to be guided through this process interactively.
 ```
 scenarios/<name>/
   conf/
-    scenario/default.yaml   # Setting, event, probes, run defaults
+    world/default.yaml   # Setting, event, probes, run defaults
     agents/default.yaml     # Agent classes, personas, data sources
     env.yaml                # Backend/GM overrides (optional)
     sim.yaml                # Simulation parameter overrides (optional)
@@ -27,19 +29,19 @@ adjust the LLM).
 
 ---
 
-## Step 1 — Define your world (`scenario/default.yaml`)
+## Step 1 — Define your world (`world/default.yaml`)
 
 This file describes where the simulation takes place and what is happening.
 
 ```yaml
 # @package _global_       ← required header, do not omit
 
-scenario_name: my_scenario
+scenario_name: my_world
 jobname_format: "MyScenario_N${num_agents}_T${num_steps}_${run_name}"
 num_agents: 9
 num_steps: 10
 seed: 42
-run_name: my_scenario
+run_name: my_world
 
 setting:
   name: "Riverside Heights Community Forum"
@@ -74,7 +76,7 @@ persona_pipeline:
 
   defaults:
     params:
-      scenario_context: ${event.context}
+      world_context: ${event.context}
     shared_memories:
       - ${event.context}
       - ${setting.background}
@@ -160,12 +162,12 @@ for the full reference.
 ## Step 3 — Run it
 
 ```bash
-uv run silisocs --config-path scenarios/my_scenario/conf
+uv run silisocs --config-path scenarios/my_world/conf
 ```
 
 With overrides:
 ```bash
-uv run silisocs --config-path scenarios/my_scenario/conf num_steps=20 seed=99
+uv run silisocs --config-path scenarios/my_world/conf num_steps=20 seed=99
 ```
 
 Or from the dashboard:
@@ -179,10 +181,10 @@ uv run streamlit run src/silisocs/dashboard/launch_app.py
 
 Check that the config loads without error:
 ```bash
-uv run silisocs --config-path scenarios/my_scenario/conf num_steps=1 sim.llm.provider=scripted
+uv run silisocs --config-path scenarios/my_world/conf num_steps=1 sim.llm.provider=scripted
 ```
 
-Add a `scenarios/my_scenario/README.md` so the scenario is discoverable (see
+Add a `scenarios/my_world/README.md` so the scenario is discoverable (see
 existing scenarios like `scenarios/neighborhood_forum/README.md` for the format).
 
 ---
@@ -202,7 +204,7 @@ Add the role's `sim_role_name` to `fully_connected_targets`. Useful for news bot
 moderators, or officials.
 
 ```yaml
-# scenarios/my_scenario/conf/env.yaml
+# scenarios/my_world/conf/env.yaml
 gm:
   components:
     initialize:
@@ -232,7 +234,7 @@ agents that post from a predefined schedule (news feeds, announcements). See
 
 ### Switching backends
 
-Create `scenarios/my_scenario/conf/env.yaml` with a single line:
+Create `scenarios/my_world/conf/env.yaml` with a single line:
 ```yaml
 gm:
   backend:

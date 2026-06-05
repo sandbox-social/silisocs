@@ -44,7 +44,7 @@ Silisocs should make each simulator layer replaceable through a defined shape:
    - Test each extension shape with one small custom implementation.
    - Include negative tests for bad config keys, unknown actions, and missing
      required app methods.
-   - Keep fast non-LLM smoke tests for packaged sample scenarios.
+   - Keep fast non-LLM smoke tests for packaged sample worlds.
 
 5. **Configuration discoverability**
    - Document `env.gm.backend.class_path` and `env.gm.backend.params`.
@@ -62,7 +62,7 @@ Silisocs should make each simulator layer replaceable through a defined shape:
 | P1 | Typed config schema or generated config reference | Reduces drift between YAML defaults and docs |
 | P1 | Plugin-style discovery for backends/components | Avoids editing core factories for every extension |
 | P2 | Deterministic replay harness | Improves experiment auditability and regression tests |
-| P2 | Benchmark scenario suite | Tracks runtime, cost, scale, and behavioral regressions |
+| P2 | Benchmark world suite | Tracks runtime, cost, scale, and behavioral regressions |
 | P2 | Rich evaluator registry | Makes study analysis as configurable as simulation setup |
 | P2 | Distributed/batched execution | Enables larger experiment grids without custom orchestration |
 
@@ -75,7 +75,7 @@ The framework is in good V1 shape when:
 - A new GM component or engine policy can be configured with documented
   `params`, and typos fail before simulation starts.
 - Public docs describe every stable extension surface.
-- Reference-world smoke scenarios run without timeline or recommendation
+- Reference-world smoke tests run without timeline or recommendation
   assumptions.
 - `uv run pytest` and `uv run --group docs properdocs build --strict` pass in the contributor
   environment.

@@ -49,10 +49,10 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
         pipeline = getattr(self.config, "persona_pipeline", None)
         if pipeline and getattr(pipeline, "classes", None):
             return validate_unique_agent_names(self._build_from_classes())
-        raise ValueError("Scenario must define persona_pipeline.classes.")
+        raise ValueError("Scenario config must define persona_pipeline.classes.")
 
     def load_news_data(self, news_file: str) -> dict[str, Any]:
-        """Load news headlines and image metadata from a scenario JSON file."""
+        """Load news headlines and image metadata from a world JSON file."""
         with open(self._resolve_file_path(f"{news_file}.json")) as f:
             return json.load(f)
 

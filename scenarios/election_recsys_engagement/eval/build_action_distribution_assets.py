@@ -72,7 +72,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 def _extract_fixed_users(cfg: dict[str, Any]) -> set[str]:
     out: set[str] = set()
-    classes = cfg.get("scenario", {}).get("persona_pipeline", {}).get("classes", {})
+    classes = cfg.get("agents", {}).get("persona_pipeline", {}).get("classes", {})
     if not isinstance(classes, dict):
         return out
     for class_cfg in classes.values():

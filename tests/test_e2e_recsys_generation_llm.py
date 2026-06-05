@@ -39,7 +39,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
         setting:
           name: Recsys E2E Setting
           background:
-            - Compact scenario to validate recommendation generation and retrieval.
+            - Compact world to validate recommendation generation and retrieval.
 
         event:
           name: Recsys E2E
@@ -59,7 +59,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
         persona_pipeline:
           defaults:
             params:
-              scenario_context: Agents discuss local election updates.
+              world_context: Agents discuss local election updates.
               seed_post: default seed post
           classes:
             fixed_seed:

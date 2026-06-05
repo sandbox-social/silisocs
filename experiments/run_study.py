@@ -860,7 +860,6 @@ def _build_run_command(spec: RunSpec) -> list[str]:
     if spec.config_path:
         cmd.extend(["--config-path", spec.config_path])
 
-    cmd.append(f"scenario={spec.scenario}")
     cmd.append(f"seed={spec.seed}")
     cmd.append(f"run_name={_normalize_override_value(spec.run_name)}")
     if spec.output_rootname:
@@ -869,7 +868,6 @@ def _build_run_command(spec: RunSpec) -> list[str]:
 
     for key in sorted(spec.overrides):
         if key in {
-            "scenario",
             "seed",
             "run_name",
             "output_rootname",

@@ -1,6 +1,6 @@
 # @package _global_
 description: >-
-  The Storhampton election scenario extended with a recommendation system layer.
+  The Storhampton election world extended with a recommendation system layer.
   Studies how timeline algorithm choice (chronological vs. recsys) shifts voter
   engagement, interaction rates, and partisan content amplification.
 scenario_name: election_recsys_engagement

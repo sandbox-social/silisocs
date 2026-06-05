@@ -1,8 +1,10 @@
 # Scenario Design Workflow
 
-A scenario is a **shared social world**: a setting, a cast of agents, and a backend
-configuration. It lives in `scenarios/<name>/` and can be used as the substrate for
-many different research studies. Think of it as community-owned common ground.
+A scenario is a **shared social world**: a setting, a cast of agents, and a
+backend configuration. It lives in `scenarios/<name>/` and can be used as the
+substrate for many different research studies. Its semantic world description
+lives in `conf/world/default.yaml`. Think of the scenario as community-owned
+common ground.
 
 Guide the user through designing one. Work conversationally — one section
 at a time. Never ask for more than 2–3 things at once. After collecting and confirming
@@ -41,7 +43,7 @@ Ask:
 
 From their answer, use your own reasoning to draft:
 - A **setting**: a named place or context + 4–6 background bullet points grounding
-  the world (history, demographics, tensions, platform culture)
+  the scenario's world (history, demographics, tensions, platform culture)
 - An **event**: a named triggering event + a 3–5 sentence narrative context paragraph
   describing what's happening now and what dynamics to observe
 
@@ -106,6 +108,8 @@ Collect or confirm:
   surface, or list the exact actions this scenario should allow. For a small
   Twitter-like social run, use `[create_tweet, reply_to_tweet, like_tweet,
   repost_tweet, FINISHED]`. `FINISHED` signals the end of an open-ended turn.
+- `env.gm.backend.excluded_actions`: optional deny-list for removing actions
+  while keeping the rest of the backend surface available.
 - `env.gm.components.observe.params.timeline_mode`: `follower_chronological`
   (default) or `pure_recsys`
 - Network topology:
@@ -126,7 +130,7 @@ Ask:
 
 Then confirm or suggest:
 - `num_agents`: total agents (sum of role counts)
-- `num_steps`: default episode length (suggest 8–12 for medium scenarios)
+- `num_steps`: default episode length (suggest 8–12 for medium worlds)
 - `seed`: default random seed (suggest 42)
 - `jobname_format`: suggest `"<ScenarioSlug>_N${num_agents}_T${num_steps}_${run_name}"`
 
@@ -145,7 +149,7 @@ This writes:
 ```
 scenarios/<name>/
   conf/
-    scenario/default.yaml   # @package _global_
+    world/default.yaml   # @package _global_
     agents/default.yaml     # @package agents
     env.yaml
     eval.yaml
@@ -214,7 +218,8 @@ Report the result to the user. If validation fails, diagnose and fix before fini
   "backend": {
     "type": "twitter_like",
     "timeline_mode": "follower_chronological",
-    "enabled_actions": ["create_tweet", "reply_to_tweet", "like_tweet", "repost_tweet", "FINISHED"]
+    "enabled_actions": ["create_tweet", "reply_to_tweet", "like_tweet", "repost_tweet", "FINISHED"],
+    "excluded_actions": []
   },
   "custom_agent_stubs": []
 }

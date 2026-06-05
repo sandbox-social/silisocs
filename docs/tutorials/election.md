@@ -1,11 +1,11 @@
 # Election Scenario Walkthrough
 
-This tutorial walks through the bundled election scenario — a complex simulation
+This tutorial walks through the bundled election world — a complex simulation
 with multiple agent classes, custom probes, and a realistic setting.
 
 ## Overview
 
-The election scenario simulates a mayoral election in **Storhampton**, a
+The election world simulates a mayoral election in **Storhampton**, a
 fictional small town. It has three agent classes:
 
 | Class | Count | Role |
@@ -18,9 +18,9 @@ fictional small town. It has three agent classes:
 
 ## Scenario Config
 
-The scenario is now split across:
+The scenario config is split across:
 
-- `scenarios/election/conf/scenario/default.yaml` (run params, setting, event, data)
+- `scenarios/election/conf/world/default.yaml` (run params, setting, event, data)
 - `scenarios/election/conf/agents/default.yaml` (persona pipeline)
 - `scenarios/election/conf/eval/default.yaml` (probe config)
 
@@ -56,7 +56,7 @@ classes:
       goal: Their goal is have a good day and vote in the election.
 ```
 
-Every final agent spec must have a unique `name`. This scenario can use the
+Every final agent spec must have a unique `name`. This world can use the
 default builder's built-in name derivation for `nvidia/Nemotron-Personas-USA`;
 other persona-only datasets should map a name field, set
 `derive_name_from_context: true`, or provide a custom Agent Builder.
@@ -225,7 +225,7 @@ simulation begins.
 
 ### Add News Bias
 
-The election scenario supports news headline files. Configure in the `data` section:
+The election world supports news headline files. Configure in the `data` section:
 
 ```yaml
 data:
@@ -233,4 +233,4 @@ data:
   use_news_agent: with_images
 ```
 
-Place news JSON files in the scenario's input directory.
+Place news JSON files in the world's input directory.

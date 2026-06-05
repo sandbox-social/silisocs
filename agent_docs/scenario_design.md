@@ -1,6 +1,7 @@
 # Scenario Design Guide
 
-This guide is for LLM agents helping design and create new simulation scenarios using configuration (YAML) — without modifying code.
+This guide is for LLM agents helping design and create new scenarios using
+configuration (YAML) — without modifying code.
 
 ## 1) Scenario Design Workflow
 
@@ -17,7 +18,7 @@ A complete scenario consists of:
 **Directory Structure:**
 ```
 scenarios/{scenario_name}/conf/
-├── scenario/
+├── world/
 │   └── default.yaml                (Required: @package _global_)
 ├── agents/
 │   └── default.yaml                (Required: @package agents)
@@ -25,7 +26,7 @@ scenarios/{scenario_name}/conf/
 └── env.yaml                        (Optional: partial env overrides)
 ```
 
-### File 1: scenario/default.yaml
+### File 1: world/default.yaml
 
 **Required header:**
 ```yaml
@@ -56,7 +57,7 @@ data: {}
 
 **Complete example:**
 
-See `scenarios/election/conf/scenario/default.yaml` for a production scenario with all sections.
+See `scenarios/election/conf/world/default.yaml` for a production world with all sections.
 
 ### File 2: Persona Pipeline (`agents/default.yaml`)
 
@@ -67,7 +68,7 @@ Defines how to construct agents from data sources:
 persona_pipeline:
   defaults:                         # Applied to all classes
     params:
-      scenario_context: ${event.context}
+      world_context: ${event.context}
       bio: ""
       style: ""
       goal: null
@@ -131,7 +132,7 @@ persona_pipeline:
 |--------|--------|---------|
 | HuggingFace Dataset | `source: hf_dataset`<br>`dataset: nvidia/Nemotron-Personas-USA` | Pulls personas from public dataset |
 | Local JSON | `source: local_json`<br>`path: agents.json` | File with array of objects |
-| Inline YAML | `source: inline`<br>`records: [{name: Alice, bio: "..."}]` | Defined directly in scenario |
+| Inline YAML | `source: inline`<br>`records: [{name: Alice, bio: "..."}]` | Defined directly in the scenario |
 | Config Reference | `source: config_path`<br>`path: candidates` | Dot-path into this YAML file |
 
 ### File 3: GM Component Behavior (`env.yaml`)
@@ -257,7 +258,7 @@ candidates:
 ## 2) Optional: Scenario-Specific sim.yaml Overrides
 
 Create `scenarios/{name}/conf/sim.yaml` to customize sim parameters (LLM, engine, tool-calling).
-Run parameters (`num_agents`, `num_steps`, `seed`) belong in `scenario/default.yaml`, not here.
+Run parameters (`num_agents`, `num_steps`, `seed`) belong in `world/default.yaml`, not here.
 
 ```yaml
 # No @package header needed — merged into sim group automatically
@@ -292,6 +293,7 @@ gm:
     class_path: null
     params: {}
     enabled_actions: null   # null = all backend actions; list names to restrict
+    excluded_actions: null  # optional deny-list after enabled_actions
 ```
 
 Default action surfaces:
@@ -304,7 +306,9 @@ Default action surfaces:
   including posting, commenting, voting, feed/comment inspection, muting,
   search/trends, reporting, profile actions, `do_nothing`, and `FINISHED`.
 
-Use `env.gm.backend.enabled_actions` to narrow a scenario to the action set you want.
+Use `env.gm.backend.enabled_actions` to narrow a scenario to the action set you
+want, and `env.gm.backend.excluded_actions` to remove specific actions while
+otherwise keeping the wider surface.
 Entries may be canonical method names or selectable aliases.
 
 ```yaml
@@ -316,6 +320,8 @@ gm:
       - like_tweet
       - repost_tweet
       - FINISHED
+    excluded_actions:
+      - report_post
 ```
 
 ---
@@ -357,7 +363,7 @@ gm:
 
 ### Pattern 2: Different Recommendation Algorithms per Agent Class
 
-Configure in scenario persona_pipeline:
+Configure in the scenario persona pipeline:
 
 ```yaml
 persona_pipeline:
@@ -416,18 +422,18 @@ fixed_action_sets:
 
 **From CLI:**
 ```bash
-uv run silisocs --config-path scenarios/my_scenario/conf
+uv run silisocs --config-path scenarios/my_world/conf
 ```
 
 **With overrides:**
 ```bash
-uv run silisocs --config-path scenarios/my_scenario/conf \
+uv run silisocs --config-path scenarios/my_world/conf \
     num_agents=1000 num_steps=100
 ```
 
 **From Dashboard:**
 1. Open `uv run streamlit run src/silisocs/dashboard/launch_app.py`
-2. Select scenario from dropdown
+2. Select scenario from the dropdown
 3. Modify settings as needed
 4. Click "Save Scenario" to persist
 5. Click "Run Simulation"
@@ -472,17 +478,17 @@ The game master automatically routes each agent to the correct component instanc
 **How Hydra merges configs (in order):**
 
 1. **Package defaults** (lowest priority)
-   - `src/silisocs/conf/scenario/default.yaml` (`@package _global_`)
+   - `src/silisocs/conf/world/default.yaml` (`@package _global_`)
    - `src/silisocs/conf/agents/default.yaml` (`@package agents`)
    - `src/silisocs/conf/sim/base.yaml` (`@package sim`)
    - `src/silisocs/conf/env/twitter_like.yaml` (`@package env`)
    - `src/silisocs/conf/eval/base.yaml` (`@package eval`)
 
 2. **Your scenario overrides** (higher priority via SearchPath plugin)
-   - `scenarios/my_scenario/conf/scenario/default.yaml` (replaces package scenario group)
-   - `scenarios/my_scenario/conf/agents/default.yaml` (replaces package agents group)
-   - `scenarios/my_scenario/conf/sim.yaml` (merged into sim group, if present)
-   - `scenarios/my_scenario/conf/env.yaml` (merged into env group, if present)
+   - `scenarios/my_world/conf/world/default.yaml` (replaces package world group)
+   - `scenarios/my_world/conf/agents/default.yaml` (replaces package agents group)
+   - `scenarios/my_world/conf/sim.yaml` (merged into sim group, if present)
+   - `scenarios/my_world/conf/env.yaml` (merged into env group, if present)
 
 3. **CLI overrides** (highest priority)
    - `num_agents=500`
@@ -490,7 +496,7 @@ The game master automatically routes each agent to the correct component instanc
 
 **Default behavior:**
 - If `sim.yaml` omits `llm.name`, uses `base.yaml` value (`gpt-4o-mini`)
-- If scenario omits a probe, that probe is not deployed
+- If a scenario omits a probe, that probe is not deployed
 
 This means your scenario files only need to specify what's **different** from defaults.
 
@@ -498,7 +504,7 @@ This means your scenario files only need to specify what's **different** from de
 
 ## 7) Reference: Default Values
 
-**From `src/silisocs/conf/scenario/default.yaml`** (at config root):
+**From `src/silisocs/conf/world/default.yaml`** (at config root):
 - `num_agents`: 100
 - `num_steps`: 50
 - `seed`: 1
@@ -521,7 +527,7 @@ This means your scenario files only need to specify what's **different** from de
 ## 8) Troubleshooting
 
 **Problem:** "Scenario file not found"
-- **Check**: `scenarios/{name}/conf/scenario/default.yaml` exists
+- **Check**: `scenarios/{name}/conf/world/default.yaml` exists
 - **Check**: File has `# @package _global_` as first line
 
 **Problem:** "Unknown field in persona_pipeline"
@@ -540,11 +546,11 @@ This means your scenario files only need to specify what's **different** from de
 
 ## 9) Next Steps
 
-1. **Study existing example**: review `scenarios/election/conf/scenario/election.yaml`
+1. **Study existing example**: review `scenarios/election/conf/world/default.yaml`
 2. **Understand defaults**: check `src/silisocs/conf/sim/base.yaml`
 3. **Create your scenario**: mkdir and scaffold with the structure above
 4. **Test it**: run via CLI with `--config-path`
-5. **For complex scenarios**: consult [architecture.md](architecture.md) (multi-flow deep dive) and [AGENTS.md](../AGENTS.md) (custom agents)
+5. **For complex worlds**: consult [architecture.md](architecture.md) (multi-flow deep dive) and [AGENTS.md](../AGENTS.md) (custom agents)
 
 ---
 
@@ -622,7 +628,6 @@ hypotheses:
             - silisocs.runtime.runner
             - --config-path
             - scenarios/election_recsys_engagement/conf
-            - scenario={scenario}
             - seed={seed}
 ```
 

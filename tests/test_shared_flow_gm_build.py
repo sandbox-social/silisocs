@@ -29,10 +29,20 @@ class _DummyEntity:
 class _DummyApp:
     def __init__(self) -> None:
         self.enabled_actions: list[str] | None = None
+        self.excluded_actions: list[str] | None = None
         self.initialized_with: dict[str, Any] | None = None
 
     def set_enabled_actions(self, actions: list[str]) -> None:
         self.enabled_actions = actions
+
+    def set_action_filters(
+        self,
+        *,
+        enabled_actions: list[str] | None,
+        excluded_actions: list[str] | None = None,
+    ) -> None:
+        self.enabled_actions = enabled_actions
+        self.excluded_actions = excluded_actions
 
     def action_catalog(self) -> list[dict[str, str]]:
         return [{"selectable_name": "POST"}, {"selectable_name": "LIKE"}]

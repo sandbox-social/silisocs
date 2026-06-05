@@ -220,15 +220,15 @@ def _discover_external_scenarios(scenarios_root: Path) -> dict[str, Path]:
         for d in sorted(scenarios_root.iterdir()):
             if not d.is_dir():
                 continue
-            # Preferred layout: scenarios/<name>/conf/scenario/default.yaml
+            # Preferred layout: scenarios/<name>/conf/world/default.yaml
             flat_conf = d / "conf"
-            scenario_default = flat_conf / "scenario" / "default.yaml"
-            if scenario_default.is_file():
-                found[d.name] = scenario_default
+            world_default = flat_conf / "world" / "default.yaml"
+            if world_default.is_file():
+                found[d.name] = world_default
                 continue
 
-            # Fallback: any yaml in scenarios/<name>/conf/scenario/
-            hydra_path = flat_conf / "scenario"
+            # Fallback: any yaml in scenarios/<name>/conf/world/
+            hydra_path = flat_conf / "world"
             if hydra_path.is_dir():
                 any_yaml = sorted(hydra_path.glob("*.yaml"))
                 if any_yaml:
@@ -261,7 +261,7 @@ def _discover_run_configs_for_scenario(scenarios_root: Path, scenario_key: str) 
 def _split_loaded_config(
     loaded_cfg: object,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    """Split loaded YAML into (scenario_view, sim, env)."""
+    """Split loaded YAML into (world_view, sim, env)."""
     if not isinstance(loaded_cfg, dict):
         return {}, {}, {}
 
@@ -275,7 +275,7 @@ def _split_loaded_config(
         gm_components = (loaded_env.get("gm") or {}).get("components") or {}
         graph_cfg = ((gm_components.get("initialize") or {}).get("params") or {}).get("graph")
 
-        scenario_view: dict = {
+        world_view: dict = {
             "scenario_name": loaded_sim.get("scenario_name", ""),
             "jobname_format": loaded_sim.get("jobname_format", ""),
             "setting": loaded_sim.get("setting", {}),
@@ -293,7 +293,7 @@ def _split_loaded_config(
                 "partisan_types", loaded_sim.get("partisan_types", [])
             ),
         }
-        return scenario_view, loaded_sim, loaded_env
+        return world_view, loaded_sim, loaded_env
 
     return {}, {}, {}
 
@@ -377,12 +377,12 @@ def _get_config_path_for_scenario(scenarios_root: Path, scenario_key: str) -> st
     return None
 
 
-def _build_scenario_config() -> dict:
-    """Build a complete scenario config dict from session state."""
+def _build_world_config() -> dict:
+    """Build a complete world config dict from session state."""
     scenario_name = st.session_state.get(
         "scenario_name_edit", st.session_state.get("_loaded_scenario_name", "default")
     )
-    _sc_cfg = st.session_state.get("_loaded_scenario", {})
+    _sc_cfg = st.session_state.get("_loaded_world", {})
 
     # Build classes config from session state.
     classes_dict: dict[str, dict] = {}
@@ -426,7 +426,7 @@ def _build_scenario_config() -> dict:
     shared_text = st.session_state.get("shared_memories_edit", "")
     shared_list = [line.strip() for line in shared_text.splitlines() if line.strip()]
 
-    # Assemble scenario data.
+    # Assemble world data.
     bg_text = st.session_state.get("setting_background", "")
     bg_list = [line.strip() for line in bg_text.splitlines() if line.strip()]
 
@@ -461,7 +461,7 @@ def _build_scenario_config() -> dict:
                     "bio": "",
                     "style": "",
                     "goal": None,
-                    "scenario_context": "${event.context}",
+                    "world_context": "${event.context}",
                 },
                 "shared_memories": shared_list,
             },
@@ -519,7 +519,7 @@ def _build_hydra_overrides(
     sim: dict,
     env: dict,
     backend_group: str,
-    scenario: dict,
+    world: dict,
     eval_cfg: dict | None = None,
 ) -> list[str]:
     """_build_hydra_overrides.
@@ -530,8 +530,8 @@ def _build_hydra_overrides(
     :type env: dict
     :param str backend_group:
     :type backend_group: str
-    :param dict scenario:
-    :type scenario: dict
+    :param dict world:
+    :type world: dict
 
     :returns: list[str]
     :rtype: list[str]
@@ -583,7 +583,7 @@ def _build_hydra_overrides(
             overrides.append(f'eval.{key}="{val}"')
         else:
             overrides.append(f"eval.{key}={val}")
-    for key, val in scenario.items():
+    for key, val in world.items():
         if val is None:
             continue
         prefix = "env" if key.startswith("gm.") else "sim"
@@ -693,7 +693,7 @@ with st.sidebar:
         scenario_names,
         index=0,
         key="sidebar_scenario_select",
-        help="Select a scenario to load.",
+        help="Select a scenario package to load.",
     )
 
     run_configs = _discover_run_configs_for_scenario(selected_scenarios_root, selected_scenario)
@@ -717,10 +717,10 @@ with st.sidebar:
             source_label = f"{selected_scenario} :: run/{selected_run_source}"
 
         loaded_cfg = _load_yaml(selected_path)
-        loaded_scenario, loaded_sim, loaded_environment = _split_loaded_config(loaded_cfg)
+        loaded_world, loaded_sim, loaded_environment = _split_loaded_config(loaded_cfg)
 
-        scenario_name = str(loaded_scenario.get("scenario_name") or selected_scenario)
-        st.session_state["_loaded_scenario"] = loaded_scenario
+        scenario_name = str(loaded_world.get("scenario_name") or selected_scenario)
+        st.session_state["_loaded_world"] = loaded_world
         st.session_state["_loaded_scenario_name"] = scenario_name
         st.session_state["_loaded_sim_defaults"] = loaded_sim
         st.session_state["_loaded_environment_defaults"] = loaded_environment
@@ -729,7 +729,7 @@ with st.sidebar:
         st.session_state["_loaded_source_scenario_key"] = selected_scenario.split("/")[0]
         st.session_state["_loaded_scenarios_root"] = str(selected_scenarios_root)
     else:
-        loaded_scenario = {}
+        loaded_world = {}
 
     st.divider()
 
@@ -753,7 +753,6 @@ with st.sidebar:
                 "initial_observations": [],
                 "probes": {},
             }
-            default_cfg["scenario_name"] = clean_name
             save_path = _save_scenario(
                 clean_name,
                 default_cfg,
@@ -776,7 +775,7 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 # Load defaults
 # ---------------------------------------------------------------------------
-_scenario_cfg = st.session_state.get("_loaded_scenario", {})
+_world_cfg = st.session_state.get("_loaded_world", {})
 _selected_preset_for_defaults = st.session_state.get("_selected_preset", "default")
 _sim_base_defaults = _load_yaml(_CONF_DIR / "sim" / "base.yaml")
 _sim_loaded_defaults = st.session_state.get("_loaded_sim_defaults", {})
@@ -809,8 +808,8 @@ _engine_action_defaults = (
     else {}
 )
 _engine_probe_defaults = (
-    (_scenario_cfg.get("probes", {}) or {}).get("schedule", {})
-    if isinstance((_scenario_cfg.get("probes", {}) or {}).get("schedule", {}), dict)
+    (_world_cfg.get("probes", {}) or {}).get("schedule", {})
+    if isinstance((_world_cfg.get("probes", {}) or {}).get("schedule", {}), dict)
     else (_eval_base_defaults.get("probes", {}) or {}).get("schedule", {})
     if isinstance((_eval_base_defaults.get("probes", {}) or {}).get("schedule", {}), dict)
     else {}
@@ -828,8 +827,8 @@ st.markdown(f"Editing scenario: **{scenario_display}**")
 source_label = st.session_state.get("_loaded_source_label", scenario_display)
 st.caption(f"Loaded from: {source_label}")
 
-tab_sim, tab_scenario, tab_classes, tab_env, tab_probes, tab_launch = st.tabs(
-    ["Simulation", "Scenario", "Agent Classes", "Environment", "Probes", "Launch"],
+tab_sim, tab_world, tab_classes, tab_env, tab_probes, tab_launch = st.tabs(
+    ["Simulation", "World", "Agent Classes", "Environment", "Probes", "Launch"],
 )
 
 
@@ -994,20 +993,20 @@ with tab_sim:
 
 
 # ---------------------------------------------------------------------------
-# TAB: Scenario
+# TAB: World
 # ---------------------------------------------------------------------------
-with tab_scenario:
-    st.subheader("Scenario Configuration")
+with tab_world:
+    st.subheader("World Configuration")
 
     col1, col2 = st.columns(2)
     with col1:
         st.text_input(
             "Scenario name",
-            value=_scenario_cfg.get("scenario_name", scenario_display),
+            value=_world_cfg.get("scenario_name", scenario_display),
             key="scenario_name_edit",
             help="Used for output directory and config resolution.",
         )
-        setting = _scenario_cfg.get("setting", {})
+        setting = _world_cfg.get("setting", {})
         st.text_input(
             "Setting name",
             value=setting.get("name", ""),
@@ -1019,18 +1018,18 @@ with tab_scenario:
         st.text_area("Setting background", value=bg_text, key="setting_background", height=100)
 
     with col2:
-        event = _scenario_cfg.get("event", {})
+        event = _world_cfg.get("event", {})
         st.text_input("Event name", value=event.get("name", ""), key="event_name")
         st.text_area(
             "Event context",
             value=event.get("context", ""),
             key="event_context",
             height=150,
-            help="Main scenario context injected into agent memories.",
+            help="Main world context injected into agent memories.",
         )
 
     # Agent initializer.
-    pipeline = _scenario_cfg.get("persona_pipeline", {})
+    pipeline = _world_cfg.get("persona_pipeline", {})
     initialization_cfg = (
         _sim_defaults.get("initialization", {})
         if isinstance(_sim_defaults.get("initialization", {}), dict)
@@ -1078,9 +1077,9 @@ with tab_classes:
         "and maps fields to agent parameters."
     )
 
-    pipeline_cfg = _scenario_cfg.get("persona_pipeline", {})
+    pipeline_cfg = _world_cfg.get("persona_pipeline", {})
     classes_cfg = pipeline_cfg.get("classes", {})
-    fixed_sets_cfg = _scenario_cfg.get("fixed_action_sets", {})
+    fixed_sets_cfg = _world_cfg.get("fixed_action_sets", {})
 
     if "fixed_action_sets_file" not in st.session_state:
         st.session_state["fixed_action_sets_file"] = str(fixed_sets_cfg.get("file", "") or "")
@@ -1207,7 +1206,7 @@ with tab_classes:
                     )
                     # Verify path exists.
                     if data.get("path"):
-                        scenario_name = _scenario_cfg.get("scenario_name", scenario_display)
+                        scenario_name = _world_cfg.get("scenario_name", scenario_display)
                         check_path = _SCENARIOS_DIR / scenario_name / data["path"]
                         if check_path.exists():
                             st.success(f"File found: {check_path.name}")
@@ -1391,13 +1390,24 @@ with tab_env:
     configured_enabled = ((_environment_defaults.get("gm") or {}).get("backend") or {}).get(
         "enabled_actions"
     )
+    configured_excluded = ((_environment_defaults.get("gm") or {}).get("backend") or {}).get(
+        "excluded_actions"
+    )
     default_enabled = configured_enabled if isinstance(configured_enabled, list) else []
+    default_excluded = configured_excluded if isinstance(configured_excluded, list) else []
     st.multiselect(
         "Enabled backend actions (leave empty to allow all)",
         action_labels,
         default=[name for name in default_enabled if name in action_labels],
         key="enabled_actions",
         help="Constrains action prompts, parser/tool choices, and fixed-action agent execution.",
+    )
+    st.multiselect(
+        "Excluded backend actions",
+        action_labels,
+        default=[name for name in default_excluded if name in action_labels],
+        key="excluded_actions",
+        help="Removes actions from prompts, parser/tool choices, and fixed-action execution.",
     )
 
     if selected_backend_for_actions in _SOCIAL_BACKENDS:
@@ -1840,7 +1850,7 @@ with tab_env:
             """)
 
     st.markdown("**Social Graph Configuration**")
-    net_cfg = _scenario_cfg.get("graph", {})
+    net_cfg = _world_cfg.get("graph", {})
 
     nc1, nc2 = st.columns(2)
     with nc1:
@@ -1907,16 +1917,16 @@ with tab_env:
 # ---------------------------------------------------------------------------
 with tab_probes:
     st.subheader("Probe Configuration")
-    probes_cfg = _scenario_cfg.get("probes", {})
+    probes_cfg = _world_cfg.get("probes", {})
     deploy_cfg = probes_cfg.get("deployment", {}) if isinstance(probes_cfg, dict) else {}
 
-    active_probe_scenario = st.session_state.get("_loaded_scenario_name", "default")
+    active_probe_world = st.session_state.get("_loaded_scenario_name", "default")
     if (
         "_probe_items" not in st.session_state
-        or st.session_state.get("_probe_items_scenario") != active_probe_scenario
+        or st.session_state.get("_probe_items_world") != active_probe_world
     ):
         st.session_state["_probe_items"] = _normalize_probe_items(probes_cfg)
-        st.session_state["_probe_items_scenario"] = active_probe_scenario
+        st.session_state["_probe_items_world"] = active_probe_world
 
     pc1, pc2 = st.columns(2)
     with pc1:
@@ -2145,6 +2155,11 @@ with tab_launch:
             if st.session_state.get("enabled_actions")
             else None
         ),
+        "gm.backend.excluded_actions": (
+            st.session_state.get("excluded_actions")
+            if st.session_state.get("excluded_actions")
+            else None
+        ),
         "observation_history": st.session_state.get("observation_history", 100),
         "gm_orchestration": st.session_state.get("gm_orchestration_yaml_parsed", {}),
         "gm.components.initialize.built_in": st.session_state.get(
@@ -2214,8 +2229,8 @@ with tab_launch:
             }
         )
 
-    # Build scenario config for saving.
-    scenario_data = _build_scenario_config()
+    # Build world config for saving.
+    scenario_data = _build_world_config()
 
     # Summary.
     st.markdown("**Configuration summary**")
@@ -2344,6 +2359,11 @@ with tab_launch:
                         if st.session_state.get("enabled_actions")
                         else None
                     ),
+                    "gm.backend.excluded_actions": (
+                        st.session_state.get("excluded_actions")
+                        if st.session_state.get("excluded_actions")
+                        else None
+                    ),
                     "gm.components.initialize.built_in": st.session_state.get(
                         "gm_initializer_built_in", "social_media"
                     ),
@@ -2405,7 +2425,7 @@ with tab_launch:
         if st.button("Export as YAML", key="export_yaml", use_container_width=True):
             yaml_str = yaml.dump(scenario_data, default_flow_style=False, sort_keys=False)
             st.download_button(
-                "Download", data=yaml_str, file_name="scenario_config.yaml", mime="text/yaml"
+                "Download", data=yaml_str, file_name="world_config.yaml", mime="text/yaml"
             )
 
     with btn3:
@@ -2472,6 +2492,11 @@ with tab_launch:
                 "gm.backend.enabled_actions": (
                     st.session_state.get("enabled_actions")
                     if st.session_state.get("enabled_actions")
+                    else None
+                ),
+                "gm.backend.excluded_actions": (
+                    st.session_state.get("excluded_actions")
+                    if st.session_state.get("excluded_actions")
                     else None
                 ),
                 "gm.components.initialize.built_in": st.session_state.get(

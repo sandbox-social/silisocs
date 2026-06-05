@@ -124,7 +124,6 @@ hypotheses:
             - silisocs.runtime.runner
             - --config-path
             - scenarios/election_recsys_engagement/conf
-            - scenario={scenario}
             - seed={seed}
             - num_agents=50
             - num_steps=8

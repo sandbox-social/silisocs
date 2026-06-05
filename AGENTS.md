@@ -23,10 +23,10 @@ The runtime entrypoint is:
 Core runtime layers:
 
 ### 1. Agent Construction Layer
-- `src/silisocs/agents/builders.py`
-- Builds agents from `scenario.persona_pipeline` and class data sources
+- `src/silisocs/runtime/construction/agent_builders/`
+- Builds agent construction specs from `agents.persona_pipeline` and class data sources
 - Supports fixed-action set loading and template rendering
-- Entry point: `EntityBuilder.build_agents(cfg, model)`
+- Entry point: `AgentBuilder.build_agent_configs()`
 
 ### 2. Agent Runtime Layer
 - `src/silisocs/agents/base_agent.py` — Abstract Agent interface
@@ -50,10 +50,11 @@ Core runtime layers:
 ### 4. Engine Layer (Execution Policies)
 - `src/silisocs/simulation_engines/base_engines.py` — BaseRuntimeEngine, FlowRuntimeEngine (multi-flow scheduling)
 - `src/silisocs/simulation_engines/multi_gm.py` — MultiGMRuntimeEngine (multi-GM orchestration)
-- `src/silisocs/simulation_engines/policies/` — Action loop & probe schedule policies:
-  - Action loop: `single_action`, `fixed_count`, `open_ended`
-  - Probe schedule: `step_schedule`, `fixed_interval`, `disabled`
-- To add custom policy: create class inheriting from `ActionLoopPolicy` or `ProbeSchedulePolicy`, reference via `class_path`
+- `src/silisocs/simulation_engines/policies/` — loop, step, and turn policies:
+  - Turn policy: `single_action`, `fixed_count`, `open_ended`
+  - Step policy: `base`, `sequential`, `flow`, `multi_gm`
+  - Loop policy: default episode loop
+- To add custom policy: implement the relevant policy ABC and reference it via `class_path`
 
 ### 5. Backend Action Layer
 - `src/silisocs/environments/backends/base.py` — ActionCatalog, base app interface
@@ -73,17 +74,17 @@ Core runtime layers:
 
 Top-level config composition (`src/silisocs/conf/experiment.yaml`):
 
-- Defaults: `scenario: default`, `agents: default`, `sim: base`, `env: twitter_like`, `eval: base`
+- Defaults: `world: default`, `agents: default`, `sim: base`, `env: twitter_like`, `eval: base`
 
 Config groups and their base files:
 
 | Group | Base file | Controls |
 |-------|-----------|----------|
-| `scenario` | `scenario/default.yaml` (`@package _global_`) | Run params, setting, event, data |
+| `world` | `world/default.yaml` (`@package _global_`) | Run params, setting, event, data |
 | `agents` | `agents/default.yaml` (`@package agents`) | Persona pipeline, shared memories |
 | `sim` | `sim/base.yaml` (`@package sim`) | LLM, engine, tool-calling, memory, checkpoint |
-| `env` | `env/twitter_like.yaml` (`@package env`) | Platform backend, GM components, social network |
-| `eval` | `eval/base.yaml` (`@package eval`) | Probes, HTML log writing |
+| `env` | `env/twitter_like.yaml` (`@package env`) | Backend, GM components, initialization |
+| `eval` | `eval/base.yaml` (`@package eval`) | Probe configuration |
 
 Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 
@@ -98,7 +99,7 @@ Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 | `sim.engine.turn_policy.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended` |
 | `sim.checkpoint.every_n_steps` | null | Checkpoint frequency (run_study.py sets 1 by default) |
 
-Key run params live in `scenario/default.yaml` (at config root via `@package _global_`):
+Key run params live in `world/default.yaml` (at config root via `@package _global_`):
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
@@ -112,7 +113,7 @@ GM component routing is enabled with
 
 Scenario content lives under:
 
-- `scenarios/<name>/conf/scenario/default.yaml` (`@package _global_`) — run params + setting/event/data
+- `scenarios/<name>/conf/world/default.yaml` (`@package _global_`) — run params + setting/event/data
 - `scenarios/<name>/conf/agents/default.yaml` (`@package agents`) — persona pipeline
 - **Optional**: `scenarios/<name>/conf/sim.yaml` — partial sim overrides (merged, not replaced)
 - **Optional**: `scenarios/<name>/conf/env.yaml` — partial env overrides
@@ -225,7 +226,7 @@ class FixedAgent(Agent):
            return self._call_model(self._context, action_spec)
    ```
 
-2. Reference in scenario config:
+2. Reference in world config:
    ```yaml
    persona_pipeline:
      classes:
@@ -337,12 +338,12 @@ sim:
 
 Each mode corresponds to how the agent's responses are interpreted and executed:
 
-- **custom**: Custom parsing format determined by the scenario
+- **custom**: Custom parsing format determined by the world
 - **generic**: Generic action name + parameters format
 
 Tool-calling is configured separately via `sim.tool_calling.mode`.
 
-The specific action format and response interpretation is determined by the resolve component and scenario configuration, not by the agent. Agents simply return strings; the platform interprets them according to the active mode.
+The specific action format and response interpretation is determined by the resolve component and world configuration, not by the agent. Agents simply return strings; the platform interprets them according to the active mode.
 
 For **tool-calling mode** specifically: The entity layer is responsible for calling `sample_tool_call()` when the action_spec indicates tool-calling is needed. The resolve component then processes the result. This architecture keeps tool-calling logic in the entity/act layer, not in resolve.
 
@@ -447,7 +448,7 @@ When adding features, update docs in:
 - Forgetting to keep docs aligned with runtime defaults
 - Assuming dashboard run snapshot loading equals checkpoint state replay
 - Relying on non-uv environment when reproducing tests
-- Not understanding fallback config behavior (Hydra merges scenario overrides with base defaults)
+- Not understanding config composition (Hydra merges scenario-local overrides with base defaults)
 
 ## 11) PR Readiness Checklist
 
@@ -455,7 +456,13 @@ When adding features, update docs in:
 - Lint/pre-commit workflow passes
 - New behavior has tests
 - Docs updated for config + usage + architecture
-- Commit message follows Conventional Commits (Commitizen workflow)
+- Commit message uses gitmoji prefix (see §14)
+
+## 11.5) Branching Rules
+
+- **Never commit code changes directly to `main`.** All code changes must go through a `dev` branch (or feature branch) and be merged via PR.
+- **Documentation-only changes** (edits to `docs/`, `agent_docs/`, `AGENTS.md`, `README.md`) may be committed directly to `main`.
+- When starting new work, create a branch: `git checkout -b dev` (or a descriptive feature branch name).
 
 ## 12) Entry Points for Quick Exploration
 
@@ -502,6 +509,12 @@ Brief description of current task
 
 - Use `uv run` prefix for all commands.
 - Run pre-commit before committing (see section 7 for workflow).
+- Commit messages must use gitmoji prefixes (repo uses `cz_gitmoji` schema):
+  - `♻️ refactor(...):` — renames, restructuring
+  - `🐛 fix(...):` — bug fixes
+  - `✨ feat(...):` — new features
+  - `📝 docs(...):` — documentation
+  - `🧹 chore(...):` — maintenance
 - **WSL users**: if imports are slow (1+ min), the venv is likely on `/mnt/c`. Use a WSL-native venv:
   ```bash
   export UV_PROJECT_ENVIRONMENT=~/venvs/simulator

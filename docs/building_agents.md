@@ -10,7 +10,7 @@ There are two ways to produce agent specs for your simulation:
 2. **Custom Builder** — write a Python class for full programmatic control
 
 The default `PersonaPipelineAgentBuilder` reads the YAML pipeline config. If a
-scenario needs programmatic logic, set `agents.builder.class_path` explicitly.
+world needs programmatic logic, set `agents.builder.class_path` explicitly.
 Builders return `AgentConfig` records; the runtime still owns live agent
 construction and model injection.
 
@@ -33,7 +33,7 @@ to agent parameters — no Python code needed.
 ### Minimal Example
 
 ```yaml
-# scenarios/my_scenario/conf/agents/default.yaml
+# scenarios/my_world/conf/agents/default.yaml
 builder:
   class_path: null
   params: {}
@@ -41,7 +41,7 @@ builder:
 persona_pipeline:
   defaults:
     params:
-      scenario_context: "A community discussion platform."
+      world_context: "A community discussion platform."
     shared_memories:
       - "Users are active on a social media platform."
   classes:
@@ -117,7 +117,7 @@ persona_pipeline:
 
 ## Method 2: Custom Builder (Programmatic)
 
-For scenarios that need logic beyond what YAML can express, create an importable
+For worlds that need logic beyond what YAML can express, create an importable
 Python builder class and point `agents.builder.class_path` at it.
 
 ### Config Slot
@@ -125,7 +125,7 @@ Python builder class and point `agents.builder.class_path` at it.
 ```yaml
 agents:
   builder:
-    class_path: scenarios.my_scenario.builders.MyScenarioAgentBuilder
+    class_path: worlds.my_world.builders.MyWorldAgentBuilder
     params:
       cohort: pilot
 ```
@@ -135,7 +135,7 @@ agents:
 ### Example
 
 ```python
-# scenarios/my_scenario/builders.py
+# scenarios/my_world/builders.py
 from silisocs.runtime.construction.agent_builders import AgentBuilder
 from silisocs.runtime.construction.specs import AgentConfig
 
@@ -163,7 +163,7 @@ class MyScenarioAgentBuilder(AgentBuilder):
 A custom builder can call `PersonaPipelineAgentBuilder` internally for the
 ordinary YAML-defined cohorts, then append custom `AgentConfig` records for
 special cases. That keeps bespoke logic explicit without hiding it behind
-scenario-name auto-detection.
+world-name auto-detection.
 
 ### Available Helpers in PersonaPipelineAgentBuilder
 
@@ -174,7 +174,7 @@ result.
 
 | Method | Description |
 |--------|-------------|
-| `self._resolve_file_path(path)` | Resolve path relative to scenario dir |
+| `self._resolve_file_path(path)` | Resolve path relative to world dir |
 | `self.load_news_data(news_file)` | Load news headlines from JSON |
 | `self._load_memories(value)` | Load memories from string, file path, or list |
 | `self._coerce_text(value)` | Normalize any value to a trimmed string |
@@ -260,5 +260,5 @@ See [Usage Overview](usage.md#per-agent-llm-models) for the full priority chain.
 
 - [Memory Initialization](memory_initialization.md) — How agents get their starting knowledge
 - [Configuration Reference](configuration.md) — Full persona_pipeline config options
-- [Election Walkthrough](tutorials/election.md) — Real-world multi-class scenario
+- [Election Walkthrough](tutorials/election.md) — Real-world multi-class world
 - [Usage Overview](usage.md#developer-customization-guide) — Engine/GM/backend customization map

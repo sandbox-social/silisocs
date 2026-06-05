@@ -99,7 +99,7 @@ class ScenarioSpec(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# StudySpec — research question on top of a scenario
+# StudySpec — research question on top of a world
 # ---------------------------------------------------------------------------
 
 

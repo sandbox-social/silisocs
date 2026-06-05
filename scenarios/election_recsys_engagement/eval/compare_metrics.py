@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare social-action metrics across three experiment arms.
 
-This script is scenario-local so experiment reruns can be evaluated quickly.
+This script is world-local so experiment reruns can be evaluated quickly.
 It computes social action totals and per-agent rates while excluding fixed
 agents (for example, deterministic news accounts).
 """
@@ -63,7 +63,7 @@ def _find_run_dir(path_like: str) -> Path:
 
 def _extract_fixed_usernames_from_config(effective_config: dict[str, Any]) -> set[str]:
     fixed_usernames: set[str] = set()
-    classes = effective_config.get("scenario", {}).get("persona_pipeline", {}).get("classes", {})
+    classes = effective_config.get("agents", {}).get("persona_pipeline", {}).get("classes", {})
     if not isinstance(classes, dict):
         return fixed_usernames
 
@@ -320,7 +320,7 @@ def write_csv(path: Path, results: list[dict[str, Any]]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Compare scenario run metrics across arms.")
+    parser = argparse.ArgumentParser(description="Compare world run metrics across arms.")
     parser.add_argument(
         "--chronological", required=True, help="Path to chronological arm run dir or parent dir"
     )

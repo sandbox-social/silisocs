@@ -100,15 +100,15 @@ persona_pipeline:
 
 
 def test_config_dry_run_selects_matching_external_agent_and_env_groups(tmp_path) -> None:
-    conf_dir = tmp_path / "scenario" / "conf"
+    conf_dir = tmp_path / "world" / "conf"
     (conf_dir / "agents").mkdir(parents=True)
     (conf_dir / "env").mkdir()
     (conf_dir / "agents" / "resource_market.yaml").write_text("{}\n", encoding="utf-8")
     (conf_dir / "env" / "resource_market.yaml").write_text("{}\n", encoding="utf-8")
     target = DryRunTarget(
-        label="scenario/resource_market",
+        label="world/resource_market",
         config_path=conf_dir,
-        scenario_variant="resource_market",
+        world_variant="resource_market",
     )
 
     command = _build_command(target, output_dir=tmp_path / "out", hydra_dir=tmp_path / "hydra")

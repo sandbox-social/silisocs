@@ -31,6 +31,7 @@ def _default_env_payload(backend_type: str) -> dict[str, Any]:
                     "class_path": None,
                     "params": {},
                     "enabled_actions": None,
+                    "excluded_actions": None,
                 },
                 "class_path": "silisocs.environments.gm.game_master.ComponentGameMaster",
                 "name": f"{backend_type}_gm",
@@ -59,7 +60,7 @@ def save_scenario(
 ) -> Path:
     """Save scenario config to Hydra group layout in scenarios/<name>/conf/."""
     conf_dir = scenarios_root / name / "conf"
-    (conf_dir / "scenario").mkdir(parents=True, exist_ok=True)
+    (conf_dir / "world").mkdir(parents=True, exist_ok=True)
     (conf_dir / "agents").mkdir(parents=True, exist_ok=True)
 
     sim_payload = {
@@ -105,7 +106,7 @@ def save_scenario(
             set_nested_value(evals_payload, key, value)
 
     files_to_write = [
-        (conf_dir / "scenario" / "default.yaml", "# @package _global_\n\n", sim_payload),
+        (conf_dir / "world" / "default.yaml", "# @package _global_\n\n", sim_payload),
         (conf_dir / "agents" / "default.yaml", "# @package agents\n\n", agent_payload),
         (conf_dir / "env.yaml", "# @package env\n\n", env_payload),
         (conf_dir / "eval.yaml", "# @package eval\n\n", evals_payload),

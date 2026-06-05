@@ -100,7 +100,7 @@ def extract_run_metadata(source_dir: Path, config_path: str | None = None) -> di
 
     setting = cfg.get("setting", {}) if isinstance(cfg.get("setting"), dict) else {}
     event = cfg.get("event", {}) if isinstance(cfg.get("event"), dict) else {}
-    metadata["scenario_description"] = (
+    metadata["world_description"] = (
         event.get("context") or setting.get("background") or setting.get("name")
     )
 

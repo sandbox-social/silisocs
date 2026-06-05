@@ -70,7 +70,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 def _extract_fixed_usernames_from_config(effective_config: dict[str, Any]) -> set[str]:
     fixed_usernames: set[str] = set()
-    classes = effective_config.get("scenario", {}).get("persona_pipeline", {}).get("classes", {})
+    classes = effective_config.get("agents", {}).get("persona_pipeline", {}).get("classes", {})
     if not isinstance(classes, dict):
         return fixed_usernames
 
@@ -378,7 +378,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--outputs-dir",
         default="scenarios/election_recsys_engagement/outputs",
-        help="Path to scenario outputs directory",
+        help="Path to world outputs directory",
     )
     parser.add_argument(
         "--run-prefix",

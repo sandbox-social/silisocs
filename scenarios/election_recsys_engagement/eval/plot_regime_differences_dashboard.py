@@ -60,7 +60,7 @@ def _load_yaml(path: Path):
 
 def _extract_fixed_usernames_from_config(effective_config):
     fixed_usernames = set()
-    classes = effective_config.get("scenario", {}).get("persona_pipeline", {}).get("classes", {})
+    classes = effective_config.get("agents", {}).get("persona_pipeline", {}).get("classes", {})
     if not isinstance(classes, dict):
         return fixed_usernames
 

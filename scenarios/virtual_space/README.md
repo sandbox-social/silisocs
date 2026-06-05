@@ -4,7 +4,7 @@ A small virtual commons opens for a short collaborative session. Agents can move
 between rooms, inspect their surroundings, leave notes for future visitors, work
 on room tasks, and talk to other agents who are physically co-located.
 
-This scenario is designed to exercise the `virtual_space` backend as a mutable
+This world is designed to exercise the `virtual_space` backend as a mutable
 spatial environment. The interesting state is not a feed: it is room location,
 co-presence, persistent notes, task progress, and room-specific observations.
 
@@ -29,11 +29,11 @@ welcome-board task; other rooms include their own collaborative tasks.
 ## Run
 
 ```bash
-uv run silisocs --config-path scenarios/virtual_space/conf scenario=virtual_space agents=virtual_space env=virtual_space num_steps=6
+uv run silisocs --config-path scenarios/virtual_space/conf world=virtual_space agents=virtual_space env=virtual_space num_steps=6
 ```
 
 For a no-LLM smoke run:
 
 ```bash
-uv run silisocs --config-path scenarios/virtual_space/conf scenario=virtual_space agents=virtual_space env=virtual_space sim.llm.provider=scripted sim.llm.name=scripted num_steps=1
+uv run silisocs --config-path scenarios/virtual_space/conf world=virtual_space agents=virtual_space env=virtual_space sim.llm.provider=scripted sim.llm.name=scripted num_steps=1
 ```

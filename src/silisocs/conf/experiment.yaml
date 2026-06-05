@@ -4,7 +4,7 @@
 #   python -m silisocs.runtime.runner --config-path scenarios/misinformation/conf agents=thin
 
 defaults:
-  - scenario: default
+  - world: default
   - agents: default
   - sim: base
   - env: twitter_like

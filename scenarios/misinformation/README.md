@@ -29,6 +29,6 @@ emotionally-driven sharer, passive observer, moderate engager.
 uv run silisocs --config-path scenarios/misinformation/conf num_steps=10
 ```
 
-## Studies using this scenario
+## Studies using this world
 
 _(add links to `experiments/studies/` entries here)_

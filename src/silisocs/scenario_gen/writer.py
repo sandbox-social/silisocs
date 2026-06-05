@@ -135,7 +135,7 @@ def _write_scenario_yaml(spec: ScenarioSpec, conf: Path) -> None:
         },
         "data": spec.data or {},
     }
-    _write(conf / "scenario" / "default.yaml", _dump(data, header="@package _global_"))
+    _write(conf / "world" / "default.yaml", _dump(data, header="@package _global_"))
 
 
 def _write_agents_yaml(spec: ScenarioSpec, conf: Path) -> None:
@@ -189,7 +189,7 @@ def _write_agents_yaml(spec: ScenarioSpec, conf: Path) -> None:
                     "bio": "",
                     "style": "",
                     "goal": None,
-                    "scenario_context": "${event.context}",
+                    "world_context": "${event.context}",
                 },
                 "shared_memories": ["${event.context}"],
             },

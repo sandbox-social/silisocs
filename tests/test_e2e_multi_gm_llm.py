@@ -44,7 +44,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
                 setting:
                     name: LLM E2E Contract Test
                     background:
-                        - Compact deterministic scenario for artifact and behavior validation.
+                        - Compact deterministic world for artifact and behavior validation.
 
                 event:
                     name: Contract validation run
@@ -64,7 +64,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
                 persona_pipeline:
                     defaults:
                         params:
-                            scenario_context: Agents act in a compact social simulation.
+                            world_context: Agents act in a compact social simulation.
                             seed_post: seeded default post
                     classes:
                         fixed_seed:

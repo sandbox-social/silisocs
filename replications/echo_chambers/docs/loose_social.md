@@ -51,7 +51,7 @@ expects one belief event per agent per day.
 
 Config entrypoints:
 
-- Scenario: `scenario=loose_social`
+- Scenario: `world=loose_social`
 - Concordia social tool agent: `agents=loose_social`
 - Simple default social agent: `agents=simple_social`
 - Environment variant: `conf/env/loose_social.yaml`

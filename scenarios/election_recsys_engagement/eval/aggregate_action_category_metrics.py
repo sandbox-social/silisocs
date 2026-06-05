@@ -168,8 +168,8 @@ def compute_action_category_per_active_agent(
 
 
 def main():
-    scenario_dir = Path(__file__).parent.parent
-    outputs_dir = scenario_dir / "outputs"
+    world_dir = Path(__file__).parent.parent
+    outputs_dir = world_dir / "outputs"
 
     # Define seed files (matching the actual seeds 11-15)
     seeds = [11, 12, 13, 14, 15]

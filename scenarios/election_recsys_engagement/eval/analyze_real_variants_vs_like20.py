@@ -59,7 +59,7 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def _extract_fixed_usernames_from_config(effective_config: dict[str, Any]) -> set[str]:
     fixed_usernames: set[str] = set()
-    classes = effective_config.get("scenario", {}).get("persona_pipeline", {}).get("classes", {})
+    classes = effective_config.get("agents", {}).get("persona_pipeline", {}).get("classes", {})
     if not isinstance(classes, dict):
         return fixed_usernames
 

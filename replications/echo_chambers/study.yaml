@@ -109,9 +109,9 @@ hypotheses:
           echo_mitigation_step: 1000
 
   h1_graph_structure:
-    statement: "Small-world and scale-free graphs show echo chamber formation more clearly than random graphs."
+    statement: "Small-scenario and scale-free graphs show echo chamber formation more clearly than random graphs."
     independent_variable: network_type
-    prediction: "Small-world and scale-free runs increase NCI while reducing global disagreement; random does not reduce disagreement."
+    prediction: "Small-scenario and scale-free runs increase NCI while reducing global disagreement; random does not reduce disagreement."
     status: testing
     conditions:
       small_world_similarity:

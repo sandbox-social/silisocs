@@ -80,7 +80,6 @@ execution:
     - silisocs.runtime.runner
     - --config-path
     - scenarios/election_recsys_engagement/conf
-    - scenario={scenario}
     - seed={seed}
 ```
 

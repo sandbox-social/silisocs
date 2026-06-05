@@ -8,8 +8,8 @@
 SiliSocS (Silicon Society Sandbox) is an easy-to-use, configurable, and extensible framework for multi-agent
 social simulation and experimentation. It is structured around the EASE decomposition —
 Environment, Agents, Simulation engine, and Evaluation — taking inspiration from the Concordia framework, and providing a principled,
-reproducible configuration layer for simulated societies. It offers scenario-driven 
-social grounding, Concordia-like game master-mediated environments, local and served 
+reproducible configuration layer for simulated societies. It offers scenario-driven
+social grounding, Concordia-like game master-mediated environments, local and served
 backends, evaluation probes, runtime telemetry, and experimental study tooling. Interoperability for Concordia designed agents is available through an optional bridge extra.
 
 - 2026 ICML Position Paper [ICML 2026](https://www.complexdatalab.com/stamina/papers/puelmatouzel_CloseEvalGap.pdf)
@@ -78,20 +78,20 @@ uv run silisocs --config-path scenarios/election/conf
 Run the packaged resource-market preset:
 
 ```sh
-uv run silisocs scenario=resource_market agents=resource_market env=resource_market
+uv run silisocs world=resource_market agents=resource_market env=resource_market
 ```
 
 Run the packaged virtual-space preset:
 
 ```sh
-uv run silisocs scenario=virtual_space agents=virtual_space env=virtual_space
+uv run silisocs world=virtual_space agents=virtual_space env=virtual_space
 ```
 
 The same backends also have curated external examples under `scenarios/`:
 
 ```sh
-uv run silisocs --config-path scenarios/resource_market/conf scenario=resource_market agents=resource_market env=resource_market
-uv run silisocs --config-path scenarios/virtual_space/conf scenario=virtual_space agents=virtual_space env=virtual_space
+uv run silisocs --config-path scenarios/resource_market/conf world=resource_market agents=resource_market env=resource_market
+uv run silisocs --config-path scenarios/virtual_space/conf world=virtual_space agents=virtual_space env=virtual_space
 ```
 
 Outputs are written under `outputs/<scenario_name>/<jobname>/` and include
@@ -135,7 +135,7 @@ silisocs/
 │   ├── evaluations/         # Probes, telemetry, and optional analysis tools
 │   ├── runtime/             # Runner, config projection, and orchestration
 │   └── simulation_engines/  # Engine loop, step, and turn policies
-├── scenarios/               # Scenario configs and curated inputs
+├── scenarios/                  # Scenario configs and curated inputs
 ├── experiments/             # Study orchestration and generated study outputs
 ├── docs/                    # ProperDocs documentation
 └── tests/                   # Unit and integration tests

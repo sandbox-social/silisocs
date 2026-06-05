@@ -50,7 +50,7 @@ def cmd_new_scenario(
 
     typer.echo(f"Writing scenario files to {root}/")
     write_scenario(spec, root)
-    typer.echo("  conf/scenario/default.yaml")
+    typer.echo("  conf/world/default.yaml")
     typer.echo("  conf/agents/default.yaml")
     typer.echo("  conf/env.yaml")
     typer.echo("  conf/eval.yaml")

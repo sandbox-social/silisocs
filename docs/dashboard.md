@@ -125,8 +125,10 @@ Social backend controls (shown only for social backends):
 Action filtering behavior:
 
 - The enabled-action whitelist constrains LLM action selection prompts.
-- Tool-calling schemas are generated only for enabled actions.
-- Fixed-action agents are also constrained by this whitelist.
+- The excluded-action deny-list removes actions from the exposed action surface.
+- Tool-calling schemas are generated only for actions that pass both filters.
+- Fixed-action agents are also constrained by these filters.
+- Unknown action names, or actions matched by both filters, fail before launch.
 
 ### 5. Probes
 
@@ -148,14 +150,14 @@ Evaluation probe configuration:
 
 1. In the sidebar, go to **Create New Scenario**
 2. Enter a scenario name
-3. The dashboard creates grouped config files under `scenarios/<name>/conf/` (`scenario/default.yaml`, `agents/default.yaml`, `sim.yaml`, `env.yaml`, `eval.yaml`)
+3. The dashboard creates grouped config files under `scenarios/<name>/conf/` (`world/default.yaml`, `agents/default.yaml`, `sim.yaml`, `env.yaml`, `eval.yaml`)
 4. Configure the scenario across all tabs
 5. Click **Run Simulation** in Launch tab — the dashboard auto-saves and runs with `--config-path`
 
 Scenarios created via the dashboard are immediately available for CLI use:
 
 ```sh
-uv run silisocs --config-path scenarios/my_scenario/conf
+uv run silisocs --config-path scenarios/my_world/conf
 ```
 
 ---
@@ -164,12 +166,12 @@ uv run silisocs --config-path scenarios/my_scenario/conf
 
 The sidebar uses a two-step loader:
 
-1. **Load scenario**: scenario names discovered from `scenarios/*/conf/scenario/default.yaml`
+1. **Load scenario**: scenario names discovered from `scenarios/*/conf/world/default.yaml`
 2. **Start from**: choose one of:
-	- **Scenario definition** (the base scenario YAML)
+	- **Scenario definition** (the base world YAML)
 	- A prior run snapshot from `outputs/<scenario>/<run>/configs/*/config.yaml`
 
-This allows you to start from the latest saved run config while keeping scenario-level selection clean.
+This allows you to start from the latest saved run config while keeping scenario selection clean.
 
 Checkpoint replay note:
 
@@ -224,7 +226,7 @@ graph and post-level action details.
 
 ## Recommended End-To-End User Journey
 
-1. Use Streamlit launcher to create or edit scenario and run simulation.
+1. Use Streamlit launcher to create or edit a scenario and run simulation.
 2. Inspect generated output folder (`action_events.jsonl`, optional `probe_events.jsonl`, prompt logs, DB).
 3. Open Dash analytics app on that output folder for exploratory analysis.
 4. Use backend visualizer (Twitter-like or Reddit-like) for detailed platform state inspection.

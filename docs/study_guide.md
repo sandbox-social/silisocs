@@ -16,7 +16,7 @@ type `/new-study` to be guided through this process interactively.
 
 ## Concepts
 
-**Scenario** — The social world (agents, platform, event). Shared and reusable.
+**Scenario** — A shared social world (agents, backend, event). Reusable across studies.
 
 **Hypothesis** — A falsifiable claim about what will happen if you vary something.
 Example: *"Larger LLMs produce more stylistically diverse posts."*
@@ -24,7 +24,7 @@ Example: *"Larger LLMs produce more stylistically diverse posts."*
 **Condition** — One value of the independent variable. A hypothesis has 2+ conditions.
 Example: `sim.llm.name=gpt-4o-mini` and `sim.llm.name=gpt-4o`.
 
-**Run** — One simulation of one (condition × scenario × seed) combination.
+**Run** — One simulation of one (condition x scenario x seed) combination.
 
 **Evaluation** — A script that reads a completed run and produces metrics (`eval.json`).
 
@@ -59,7 +59,7 @@ study:
   run_defaults:
     config_path: scenarios/{scenario}/conf
     seed_start: 42
-    seed_repeats: 3          # runs seeds 42, 43, 44 for each condition × scenario
+    seed_repeats: 3          # runs seeds 42, 43, 44 for each condition x scenario
     overrides:
       num_steps: 10
 

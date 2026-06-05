@@ -98,6 +98,11 @@ def _backend_config(
     *,
     path: str,
 ) -> dict[str, Any]:
+    unsupported = sorted(
+        set(raw_backend) - {"type", "class_path", "params", "enabled_actions", "excluded_actions"}
+    )
+    if unsupported:
+        raise ValueError(f"Unsupported config key(s) under {path}: {unsupported}")
     backend_type = str(raw_backend.get("type", "") or "").strip()
     if not backend_type:
         raise ValueError(f"{path}.type is required.")
@@ -110,6 +115,7 @@ def _backend_config(
         "class_path": raw_backend.get("class_path"),
         "params": backend_params,
         "enabled_actions": raw_backend.get("enabled_actions"),
+        "excluded_actions": raw_backend.get("excluded_actions"),
         "turn_policy_built_in": str(
             OmegaConf.select(cfg, "sim.engine.turn_policy.built_in", default="") or ""
         ),

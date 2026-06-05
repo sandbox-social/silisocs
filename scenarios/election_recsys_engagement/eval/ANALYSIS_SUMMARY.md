@@ -2,14 +2,14 @@
 
 ## Overview
 
-Completed comprehensive evaluation of mastodon-sim election scenario recommendation algorithms across two action-budget settings. The key finding: **recommendation algorithm effects on reposts are confounded by action budget scarcity**. With tight budgets, repost differences appear significant but are actually artifacts of scarcity; with abundant budgets, these differences vanish, revealing the true algorithmic signal (post/reply balance and engagement diversity).
+Completed comprehensive evaluation of mastodon-sim election world recommendation algorithms across two action-budget settings. The key finding: **recommendation algorithm effects on reposts are confounded by action budget scarcity**. With tight budgets, repost differences appear significant but are actually artifacts of scarcity; with abundant budgets, these differences vanish, revealing the true algorithmic signal (post/reply balance and engagement diversity).
 
 ---
 
 ## Experimental Design
 
 ### Setting A (Original, max_actions=12)
-- **Data:** N50_T10_clean50x10 scenario
+- **Data:** N50_T10_clean50x10 world
 - **Seeds:** 11–35 (25 seeds per arm)
 - **Arms:** Chronological, Twitter-like recsys, Twhin hybrid recsys
 - **Episodes evaluated:** 1–9 (episode 10 excluded per user specification)
@@ -17,7 +17,7 @@ Completed comprehensive evaluation of mastodon-sim election scenario recommendat
 - **Total runs:** 75
 
 ### Setting B (New, max_actions=20)
-- **Data:** N50_T10_clean50x10 scenario with increased action budget
+- **Data:** N50_T10_clean50x10 world with increased action budget
 - **Seeds:** 11–20 (10 seeds per arm)
 - **Arms:** Same three algorithms
 - **Episodes evaluated:** 1–9

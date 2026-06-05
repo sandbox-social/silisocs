@@ -7,7 +7,7 @@ shared_memories:
 persona_pipeline:
   defaults:
     params:
-      scenario_context: ${event.context}
+      world_context: ${event.context}
       goal: "Participate naturally in the discussion while staying faithful to your persona and current stance."
     shared_memories:
       - Agents are participating in a social-media opinion simulation.

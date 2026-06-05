@@ -16,7 +16,7 @@ memories, and goals, and they interact through a configurable environment
 backend such as a Twitter-like app, Reddit-like app, real Mastodon instance,
 resource market, or virtual space.
 
-You configure everything in YAML: the scenario setting, agent populations,
+You configure everything in YAML: the world setting, agent populations,
 backend, Game Master components, evaluation probes, and run defaults. The
 framework handles the rest — memory initialization, turn policies, probe
 deployment, and structured output logging.
@@ -32,14 +32,14 @@ deployment, and structured output logging.
 | **Memory initialization** | Raw (config-only) or formative (LLM-generated backstories) modes, with custom initializers |
 | **Evaluation probes** | Deploy longitudinal surveys (numeric, binary, choice, free-text) to agents during simulation |
 | **Per-agent LLM** | Assign different LLM models per agent class or per individual agent |
-| **Streamlit dashboard** | GUI for creating scenarios, configuring agents, and launching simulations |
+| **Streamlit dashboard** | GUI for creating worlds, configuring agents, and launching simulations |
 | **Hydra config** | Full Hydra composition with CLI overrides, sweep support, and structured logging |
 | **Rich output** | Action events, probe responses, LLM logs, timing telemetry, and structured metrics (JSON) |
 | **Built-in visualizers** | Web UIs for browsing simulated Twitter/Reddit platforms (user profiles, threads, admin stats) |
 
 ## For End Users
 
-If your goal is to **design and run scenarios** without writing code:
+If your goal is to **design and run worlds** without writing code:
 
 1. Start with the [Quick Start](quickstart.md) to run the default scenario
 2. Read the [Usage Overview](usage.md) for the full workflow
@@ -144,9 +144,9 @@ silisocs/
 │   ├── evaluations/         # Evaluation probes
 │   ├── initialization/      # Agent, GM, and simulation initialization
 │   ├── runtime/             # Runner, config, simulation orchestration
-│   ├── scenario_gen/        # Scenario generation helpers
+│   ├── scenario_gen/           # Scenario generation helpers
 │   └── simulation_engines/  # Runtime engine and policy implementations
-├── scenarios/               # External scenario directories
+├── scenarios/                  # External scenario directories
 ├── docs/                    # This documentation
 └── tests/                   # Test suite
 ```

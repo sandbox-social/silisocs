@@ -44,7 +44,7 @@ Contract details:
 - input `model`: initializer model, used only when the initializer needs LLM
   generation;
 - input `context`: `AgentInitializationContext` with shared memories,
-  per-agent memories, initial observations, roles, bios, and scenario data;
+  per-agent memories, initial observations, roles, bios, and world data;
 - output: `None`; mutate agents by calling `agent.initialize(...)` or
   `agent.observe(...)`.
 

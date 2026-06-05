@@ -425,6 +425,6 @@ own identity/persona context when they act.
 - [Documentation Coverage](documentation_coverage.md): coverage and staleness tracker
 - [Framework Roadmap](framework_roadmap.md): near-term framework priorities
 - [Environment Layer](environment_layer.md): architecture and design patterns
-- [Building Agents](building_agents.md): scenario and builder workflows
+- [Building Agents](building_agents.md): world and builder workflows
 - [Configuration Reference](configuration.md): full config keys
 - [Contributing](contributing.md): lint/test workflow and coding standards

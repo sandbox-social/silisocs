@@ -5,7 +5,7 @@ production capacities and different upkeep needs, so cooperation is useful:
 farmers can make food, woodworkers can make wood, miners can make ore, and
 merchants can bridge small gaps.
 
-This scenario is designed to exercise the `resource_market` backend as a
+This world is designed to exercise the `resource_market` backend as a
 state-changing environment rather than a social feed. Agent actions change
 inventory, listings, cash, transfers, and satisfaction over time.
 
@@ -34,11 +34,11 @@ open listings, transfer resources directly, consume resources, or finish a turn.
 ## Run
 
 ```bash
-uv run silisocs --config-path scenarios/resource_market/conf scenario=resource_market agents=resource_market env=resource_market num_steps=6
+uv run silisocs --config-path scenarios/resource_market/conf world=resource_market agents=resource_market env=resource_market num_steps=6
 ```
 
 For a no-LLM smoke run:
 
 ```bash
-uv run silisocs --config-path scenarios/resource_market/conf scenario=resource_market agents=resource_market env=resource_market sim.llm.provider=scripted sim.llm.name=scripted num_steps=1
+uv run silisocs --config-path scenarios/resource_market/conf world=resource_market agents=resource_market env=resource_market sim.llm.provider=scripted sim.llm.name=scripted num_steps=1
 ```
