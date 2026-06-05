@@ -1,6 +1,6 @@
 # @package _global_
 
-world_name: echo_chambers_loose_social
+scenario_name: echo_chambers_loose_social
 jobname_format: "N${num_agents}_T${replication_days}_${experiment_name}_${run_name}"
 num_agents: 50
 replication_days: 30

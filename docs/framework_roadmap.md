@@ -9,7 +9,7 @@ Silisocs should make each simulator layer replaceable through a defined shape:
 
 | Layer | Stable shape | Extension path |
 |---|---|---|
-| World | Hydra config groups plus world-local overrides | Add world files, agent variants, study overrides |
+| Scenario | Hydra config groups plus scenario-local overrides | Add scenario files, agent variants, study overrides |
 | Agent | `Agent` runtime plus optional compatibility adapter | Custom agent module or custom builder |
 | Environment app | `BackendApp` plus `@app_action` methods | Built-in `env.gm.backend.type` or `env.gm.backend.class_path` |
 | Timeline/recsys capability | `SocialBackendApp` optional timeline/recsys interface | Twitter-like, Reddit-like, Mastodon, or custom backend using those components |

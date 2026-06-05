@@ -32,14 +32,14 @@ def _llm_server_url() -> str:
     return url
 
 
-def _write_world(conf_dir: Path, world_name: str) -> None:
+def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
     conf_dir.mkdir(parents=True, exist_ok=True)
 
     sim_yaml = textwrap.dedent(
         f"""
                 # @package sim
-                world_name: {world_name}
-                jobname_format: "{world_name}_${{num_steps}}"
+                scenario_name: {scenario_name}
+                jobname_format: "{scenario_name}_${{num_steps}}"
 
                 setting:
                     name: LLM E2E Contract Test
@@ -175,7 +175,7 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 def _run_simulation(
     *,
     tmp_path: Path,
-    world_name: str,
+    scenario_name: str,
     backend: str,
     engine_preset: str,
     timeline_mode: str,
@@ -186,11 +186,11 @@ def _run_simulation(
     num_steps: int = 3,
 ) -> Path:
     conf_dir = tmp_path / "conf"
-    _write_world(conf_dir, world_name)
+    _write_scenario(conf_dir, scenario_name)
 
     llm_url = _llm_server_url()
     hydra_dir = tmp_path / "hydra"
-    job_name = f"{world_name}_{backend}_{engine_preset}"
+    job_name = f"{scenario_name}_{backend}_{engine_preset}"
     resolved_tool_mode = tool_calling_mode
     if resolved_tool_mode is None:
         resolved_tool_mode = "single" if resolve_built_in == "tool_calling" else "none"
@@ -428,7 +428,7 @@ def _assert_three_agent_activity(action_events: list[dict[str, Any]]) -> None:
 def test_llm_e2e_base_gm_flow_engine_twitter_hybrid_twhin_contracts(tmp_path: Path) -> None:
     output_dir = _run_simulation(
         tmp_path=tmp_path,
-        world_name="llm_e2e_flow_twitter",
+        scenario_name="llm_e2e_flow_twitter",
         backend="twitter_like",
         engine_preset="flow",
         timeline_mode="hybrid_recsys_follower",
@@ -446,7 +446,7 @@ def test_llm_e2e_base_gm_flow_engine_twitter_hybrid_twhin_contracts(tmp_path: Pa
 def test_llm_e2e_base_gm_flow_engine_reddit_default_timeline_contracts(tmp_path: Path) -> None:
     output_dir = _run_simulation(
         tmp_path=tmp_path,
-        world_name="llm_e2e_flow_reddit",
+        scenario_name="llm_e2e_flow_reddit",
         backend="reddit_like",
         engine_preset="flow",
         timeline_mode="follower_chronological",
@@ -464,7 +464,7 @@ def test_llm_e2e_base_gm_flow_engine_reddit_default_timeline_contracts(tmp_path:
 def test_llm_e2e_base_gm_base_engine_no_flow_contracts(tmp_path: Path) -> None:
     output_dir = _run_simulation(
         tmp_path=tmp_path,
-        world_name="llm_e2e_base_twitter",
+        scenario_name="llm_e2e_base_twitter",
         backend="twitter_like",
         engine_preset="base",
         timeline_mode="follower_chronological",
@@ -487,7 +487,7 @@ def test_llm_e2e_base_gm_base_engine_no_flow_contracts(tmp_path: Path) -> None:
 def test_llm_e2e_tool_calling_logs_post_init_actions(tmp_path: Path) -> None:
     output_dir = _run_simulation(
         tmp_path=tmp_path,
-        world_name="llm_e2e_tool_calling_twitter",
+        scenario_name="llm_e2e_tool_calling_twitter",
         backend="twitter_like",
         engine_preset="flow",
         timeline_mode="follower_chronological",
@@ -509,7 +509,7 @@ def test_llm_e2e_tool_calling_logs_post_init_actions(tmp_path: Path) -> None:
 def test_llm_e2e_multi_tool_calling_three_agents_three_steps(tmp_path: Path) -> None:
     output_dir = _run_simulation(
         tmp_path=tmp_path,
-        world_name="llm_e2e_tool_calling_multi_twitter",
+        scenario_name="llm_e2e_tool_calling_multi_twitter",
         backend="twitter_like",
         engine_preset="flow",
         timeline_mode="follower_chronological",

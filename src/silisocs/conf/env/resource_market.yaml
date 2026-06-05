@@ -45,6 +45,7 @@ gm:
 
         inventory, or finish the current action episode.'
     enabled_actions: null
+    excluded_actions: null
   components:
     initialize:
       built_in: app_initialize

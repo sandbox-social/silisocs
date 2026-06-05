@@ -47,6 +47,7 @@ gm:
 
         - Omit optional parameters you do not want to use.'
     enabled_actions: null
+    excluded_actions: null
   components:
     initialize:
       built_in: social_media

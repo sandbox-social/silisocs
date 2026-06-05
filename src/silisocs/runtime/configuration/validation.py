@@ -1,8 +1,10 @@
 # silisocs/runtime/config.py
-"""Configuration helpers and validators for worlds.
+"""Configuration helpers and validators for composed scenario configs.
 
 This module provides validation helpers used by the experiment runner to ensure
-world YAML files conform to expected shapes.
+the composed Hydra scenario configuration conforms to expected shapes. Semantic
+world values come from the ``world`` config group, but validation runs after all
+config groups have been merged.
 
 The validation functions raise :class:`ValueError` or :class:`FileNotFoundError`
 when checks fail.
@@ -20,14 +22,14 @@ from omegaconf import DictConfig, OmegaConf
 
 
 @dataclass
-class BaseWorldSchema:
+class BaseScenarioSchema:
     """
-    Base schema that all worlds must conform to.
-    World-specific values are defined in world YAML files.
+    Base schema that all scenarios must conform to.
+    Semantic world values are supplied by the scenario's ``world`` config.
     """
 
-    # World identification
-    world_name: str
+    # Scenario identification
+    scenario_name: str
 
     # Setting information
     setting: dict[str, Any] = field(
@@ -68,12 +70,12 @@ class BaseWorldSchema:
 # ============================================================================
 
 
-def validate_world_structure(cfg: DictConfig) -> None:
+def validate_scenario_structure(cfg: DictConfig) -> None:
     """
-    Validate that world config has all required fields.
+    Validate that scenario config has all required fields.
 
     Args:
-        cfg: World configuration to validate
+        cfg: scenario configuration to validate
 
     Raises
     ------
@@ -83,9 +85,9 @@ def validate_world_structure(cfg: DictConfig) -> None:
         OmegaConf.select(cfg, "agents.persona_pipeline.classes")
         or OmegaConf.select(cfg, "persona_pipeline.classes")
     )
-    required_fields = ["world_name", "setting"]
+    required_fields = ["scenario_name", "setting"]
     if has_class_pipeline:
-        # Class-pipeline worlds can define shared memories at the persona
+        # Class-pipeline scenarios can define shared memories at the persona
         # defaults level and do not need initial_observations.
         has_top_level_shared = (
             OmegaConf.select(cfg, "agents.shared_memories") is not None
@@ -98,8 +100,8 @@ def validate_world_structure(cfg: DictConfig) -> None:
         if not (has_top_level_shared or has_pipeline_shared):
             missing_fields = ["shared_memories or persona_pipeline.defaults.shared_memories"]
             raise ValueError(
-                f"World configuration missing required fields: {', '.join(missing_fields)}\n"
-                "Please ensure your world config includes all required fields."
+                f"scenario configuration missing required fields: {', '.join(missing_fields)}\n"
+                "Please ensure your scenario config includes all required fields."
             )
     else:
         required_fields.extend(["roles", "shared_memories", "initial_observations"])
@@ -111,8 +113,8 @@ def validate_world_structure(cfg: DictConfig) -> None:
 
     if missing_fields:
         raise ValueError(
-            f"World configuration missing required fields: {', '.join(missing_fields)}\n"
-            "Please ensure your world config includes all required fields."
+            f"scenario configuration missing required fields: {', '.join(missing_fields)}\n"
+            "Please ensure your scenario config includes all required fields."
         )
 
     # Validate nested required fields
@@ -131,10 +133,10 @@ def validate_world_structure(cfg: DictConfig) -> None:
 
     if missing_fields:
         raise ValueError(
-            f"World configuration missing required nested fields: {', '.join(missing_fields)}"
+            f"scenario configuration missing required nested fields: {', '.join(missing_fields)}"
         )
 
-    print("✓ World structure validation passed")
+    print("✓ Scenario structure validation passed")
 
 
 def validate_cross_references(cfg: DictConfig) -> None:
@@ -244,13 +246,13 @@ def validate_cross_references(cfg: DictConfig) -> None:
     print("✓ Cross-reference validation passed")
 
 
-def validate_data_files(cfg: DictConfig, world_path: Path) -> None:
+def validate_data_files(cfg: DictConfig, scenario_path: Path) -> None:
     """
     Validate that referenced data files exist.
 
     Args:
-        cfg: World configuration
-        world_path: Path to world directory
+        cfg: scenario configuration
+        scenario_path: Path to scenario directory
 
     Raises
     ------
@@ -272,10 +274,10 @@ def validate_data_files(cfg: DictConfig, world_path: Path) -> None:
             return None
         candidate_paths = [
             Path(raw_path),
-            world_path / raw_path,
-            world_path / "input" / raw_path,
-            world_path / "input" / "personas" / raw_path,
-            world_path / "input" / "news_data" / raw_path,
+            scenario_path / raw_path,
+            scenario_path / "input" / raw_path,
+            scenario_path / "input" / "personas" / raw_path,
+            scenario_path / "input" / "news_data" / raw_path,
         ]
         for candidate in candidate_paths:
             if candidate.exists():
@@ -284,7 +286,7 @@ def validate_data_files(cfg: DictConfig, world_path: Path) -> None:
 
     # Validate persona file
     if not class_pipeline and hasattr(cfg, "data") and hasattr(cfg.data, "persona_file"):
-        persona_file = world_path / "input" / "personas" / cfg.data.persona_file
+        persona_file = scenario_path / "input" / "personas" / cfg.data.persona_file
         if not persona_file.exists():
             missing_files.append(str(persona_file))
 
@@ -292,7 +294,7 @@ def validate_data_files(cfg: DictConfig, world_path: Path) -> None:
     if hasattr(cfg, "data") and hasattr(cfg.data, "use_news_agent"):
         if cfg.data.use_news_agent and cfg.data.use_news_agent != "none":
             if hasattr(cfg.data, "news_file"):
-                news_file = world_path / "input" / "news_data" / f"{cfg.data.news_file}.json"
+                news_file = scenario_path / "input" / "news_data" / f"{cfg.data.news_file}.json"
                 if not news_file.exists():
                     missing_files.append(str(news_file))
 
@@ -344,7 +346,7 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
     _assert_allowed_keys(
         cfg,
         "env.gm.backend",
-        {"type", "class_path", "params", "enabled_actions"},
+        {"type", "class_path", "params", "enabled_actions", "excluded_actions"},
     )
     _assert_allowed_keys(cfg, "env.gm_orchestration", {"gms", "flow_bindings"})
     _assert_allowed_keys(cfg, "env.gm_orchestration.flow_bindings", {"flow_to_gms"})
@@ -432,32 +434,32 @@ def _assert_component_slot(cfg: DictConfig, path: str) -> None:
             raise ValueError(f"Unsupported config key(s) under {instance_path}: {instance_extras}")
 
 
-def validate_world_config(cfg: DictConfig, world_path: Path | None = None) -> None:
+def validate_scenario_config(cfg: DictConfig, scenario_path: Path | None = None) -> None:
     """
-    Run all validation checks on world configuration.
+    Run all validation checks on scenario configuration.
 
     Args:
         cfg: Configuration to validate
-        world_path: Path to world directory (for data file validation)
+        scenario_path: Path to scenario directory (for data file validation)
 
     Raises
     ------
         Various exceptions if validation fails
     """
     print("\n" + "=" * 60)
-    print("VALIDATING WORLD CONFIGURATION")
+    print("VALIDATING SCENARIO CONFIGURATION")
     print("=" * 60)
 
     # 1. Validate structure
-    validate_world_structure(cfg)
+    validate_scenario_structure(cfg)
     validate_runtime_structure(cfg)
 
     # 2. Validate cross-references
     validate_cross_references(cfg)
 
     # 3. Validate data files (if path provided)
-    if world_path:
-        validate_data_files(cfg, world_path)
+    if scenario_path:
+        validate_data_files(cfg, scenario_path)
 
     print("=" * 60)
     print("✅ ALL VALIDATION CHECKS PASSED")

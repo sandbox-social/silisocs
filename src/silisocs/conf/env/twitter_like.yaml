@@ -9,8 +9,10 @@ gm:
         like, repost, follow/unfollow, mute/unmute, search, inspect trends, report
         posts, update/view profiles, and finish an open-ended turn. By default all
         backend actions exposed with @app_action are available; restrict them with
-        env.gm.backend.enabled_actions when a world needs a smaller action surface.
+        env.gm.backend.enabled_actions or env.gm.backend.excluded_actions when a
+        scenario needs a smaller action surface.
     enabled_actions: null
+    excluded_actions: null
   components:
     initialize:
       built_in: social_media
@@ -67,8 +69,8 @@ gm:
 
           The backend exposes actions as typed tools. By default, every @app_action
           on the backend is available. Scenarios can restrict the action surface with
-          env.gm.backend.enabled_actions using canonical function names or selectable
-          aliases.
+          env.gm.backend.enabled_actions or env.gm.backend.excluded_actions using
+          canonical function names or selectable aliases.
 
 
           Common actions include create_tweet, reply_to_tweet, like_tweet, unlike_tweet,

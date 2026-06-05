@@ -241,7 +241,9 @@ def test_probe_postprocessor_accepts_nonexistent_output_json_context(tmp_path: P
         events,
         run_dir,
         output_json,
-        postprocessors=["worlds/election_recsys_engagement/postprocessors.py:cross_seed_case_ci"],
+        postprocessors=[
+            "scenarios/election_recsys_engagement/postprocessors.py:cross_seed_case_ci"
+        ],
     )
 
     ext = plots["extensions"]

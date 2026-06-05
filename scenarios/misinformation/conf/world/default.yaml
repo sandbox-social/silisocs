@@ -1,0 +1,39 @@
+# @package _global_
+description: >-
+  A small social media community where a false health claim circulates. Studies
+  how misinformation propagates, gets countered, or amplifies across a network
+  of spreaders, skeptics, and passive bystanders.
+scenario_name: misinformation
+jobname_format: "Misinfo_N${num_agents}_T${num_steps}_${run_name}"
+num_agents: 6
+num_steps: 10
+seed: 7
+run_name: misinformation
+
+setting:
+  name: Social Media Platform
+  background:
+  - A small social media community of six users with distinct personalities and habits.
+  - Users follow each other selectively, creating an asymmetric information flow.
+  - The platform allows posting, replying, liking, and boosting content.
+  - Misinformation about health topics circulates alongside neutral everyday content.
+
+event:
+  name: Misinformation Spread Study
+  context: 'A false health claim has been posted on the platform claiming that a common
+    household
+
+    item causes serious health issues. The post urges users to share before it gets
+    deleted.
+
+    Some users are primed to spread sensational content uncritically. Others are skeptical
+
+    fact-checkers. Most fall somewhere in between — trusting what their friends share,
+
+    swayed by emotion, or passively observing trends. The simulation studies how the
+
+    false claim propagates, gets countered, or is amplified across this small network.
+
+    '
+
+data: {}

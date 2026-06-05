@@ -18,11 +18,11 @@ fictional small town. It has three agent classes:
 
 ## Scenario Config
 
-The world is now split across:
+The scenario config is split across:
 
-- `worlds/election/conf/world/default.yaml` (run params, setting, event, data)
-- `worlds/election/conf/agents/default.yaml` (persona pipeline)
-- `worlds/election/conf/eval/default.yaml` (probe config)
+- `scenarios/election/conf/world/default.yaml` (run params, setting, event, data)
+- `scenarios/election/conf/agents/default.yaml` (persona pipeline)
+- `scenarios/election/conf/eval/default.yaml` (probe config)
 
 ### Setting
 
@@ -164,10 +164,10 @@ probes:
 
 ```sh
 # Full scale (497 voters, 200 steps)
-uv run silisocs --config-path worlds/election/conf
+uv run silisocs --config-path scenarios/election/conf
 
 # Quick test
-uv run silisocs --config-path worlds/election/conf num_agents=20 num_steps=5
+uv run silisocs --config-path scenarios/election/conf num_agents=20 num_steps=5
 ```
 
 !!! note

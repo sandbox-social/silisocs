@@ -77,7 +77,7 @@ nav:
     - Quick Start: quickstart.md
   - User Guide:
     - Usage Overview: usage.md
-    - World Guide: world_guide.md
+    - Scenario Guide: scenario_guide.md
     - Study Guide: study_guide.md
     - Study Schema: study_schema.md
     - Experiment Studies: experiments.md

@@ -73,11 +73,11 @@ uv run silisocs world=resource_market agents=resource_market env=resource_market
 uv run silisocs world=virtual_space agents=virtual_space env=virtual_space
 
 # Run curated external backend examples
-uv run silisocs --config-path worlds/resource_market/conf world=resource_market agents=resource_market env=resource_market
-uv run silisocs --config-path worlds/virtual_space/conf world=virtual_space agents=virtual_space env=virtual_space
+uv run silisocs --config-path scenarios/resource_market/conf world=resource_market agents=resource_market env=resource_market
+uv run silisocs --config-path scenarios/virtual_space/conf world=virtual_space agents=virtual_space env=virtual_space
 
-# Run an external world
-uv run silisocs --config-path worlds/election/conf
+# Run an external scenario
+uv run silisocs --config-path scenarios/election/conf
 ```
 
 ### Hydra CLI Overrides
@@ -108,8 +108,8 @@ For a visual interface:
 uv run streamlit run src/silisocs/dashboard/launch_app.py
 ```
 
-The launcher sidebar loads configs in two steps: choose a world first, then
-choose whether to start from the world definition or a prior run snapshot.
+The launcher sidebar loads configs in two steps: choose a scenario first, then
+choose whether to start from the scenario definition or a prior run snapshot.
 
 See [Dashboard](dashboard.md) for details.
 
@@ -157,10 +157,10 @@ For environment-level customization (Engine + GM components + backends), see
 
 ### External Scenarios
 
-Worlds can live outside the package in `worlds/<name>/conf/`:
+Scenarios can live outside the package in `scenarios/<name>/conf/`:
 
 ```
-worlds/election/
+scenarios/election/
 ├── conf/
 │   ├── world/default.yaml # @package _global_
 │   ├── agents/default.yaml   # @package agents
@@ -174,17 +174,17 @@ worlds/election/
 Run with:
 
 ```sh
-uv run silisocs --config-path worlds/election/conf
+uv run silisocs --config-path scenarios/election/conf
 ```
 
-The runner reads `world_name` from the world config automatically, so you
-usually do not need a manual world override.
+The runner reads `scenario_name` from the world config automatically, so you
+usually do not need a manual `world=` override.
 
 ---
 
 ## Agent Pipeline
 
-Agents are defined in the `persona_pipeline` section of your world config.
+Agents are defined in the `persona_pipeline` section of your scenario config.
 There are two methods:
 
 ### Method 1: YAML Pipeline (Declarative)
@@ -371,7 +371,8 @@ Behavior notes:
 Compatibility notes:
 
 - Fixed-action items use backend action names (or selectable aliases).
-- `env.gm.backend.enabled_actions` applies globally and can restrict fixed-action items.
+- `env.gm.backend.enabled_actions` and `env.gm.backend.excluded_actions` apply
+  globally and can restrict fixed-action items.
 
 ---
 
@@ -428,7 +429,7 @@ See [Evaluation Probes](probes.md) for details.
 Each simulation run produces output under the Hydra-managed directory:
 
 ```
-outputs/<world_name>/<jobname>/<jobname>_<timestamp>/
+outputs/<scenario_name>/<jobname>/<jobname>_<timestamp>/
 ```
 
 ### Output Files
@@ -539,15 +540,15 @@ Here is the complete workflow for creating and running a custom world:
 ### 1. Create the Scenario Directory
 
 ```sh
-mkdir -p worlds/my_world/conf/world worlds/my_world/conf/agents
+mkdir -p scenarios/my_world/conf/world scenarios/my_world/conf/agents
 ```
 
 ### 2. Write the Scenario Configs
 
 ```yaml
-# worlds/my_world/conf/world/default.yaml
+# scenarios/my_world/conf/world/default.yaml
 # @package _global_
-world_name: my_world
+scenario_name: my_world
 num_agents: 2
 num_steps: 5
 
@@ -564,7 +565,7 @@ event:
 ```
 
 ```yaml
-# worlds/my_world/conf/agents/default.yaml
+# scenarios/my_world/conf/agents/default.yaml
 # @package agents
 persona_pipeline:
   defaults:
@@ -599,7 +600,7 @@ initial_observations:
 ```
 
 ```yaml
-# worlds/my_world/conf/env.yaml
+# scenarios/my_world/conf/env.yaml
 gm:
   components:
     initialize:
@@ -619,7 +620,7 @@ gm:
 ### 3. Run It
 
 ```sh
-uv run silisocs --config-path worlds/my_world/conf num_agents=20 num_steps=10
+uv run silisocs --config-path scenarios/my_world/conf num_agents=20 num_steps=10
 ```
 
 ### 4. Analyze Output
@@ -631,7 +632,7 @@ Output appears in `outputs/my_world/`.
 If you need programmatic control over agent construction:
 
 ```python
-# worlds/my_world/builders.py
+# scenarios/my_world/builders.py
 from silisocs.runtime.construction.agent_builders import AgentBuilder
 
 class MyScenarioAgentBuilder(AgentBuilder):
@@ -658,7 +659,7 @@ Enable checkpointing during a run:
 
 ```sh
 uv run silisocs \
-  --config-path worlds/my_world/conf \
+  --config-path scenarios/my_world/conf \
   num_steps=200 \
   sim.checkpoint.every_n_steps=10
 ```
@@ -667,7 +668,7 @@ Then restore from the previous output directory:
 
 ```sh
 uv run silisocs \
-  --config-path worlds/my_world/conf \
+  --config-path scenarios/my_world/conf \
   num_steps=200 \
   sim.checkpoint.source_run=outputs/my_world/run1 \
   sim.checkpoint.restore.built_in=social_action_event_replay

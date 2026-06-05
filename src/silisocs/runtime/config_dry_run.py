@@ -1,4 +1,4 @@
-"""Dry-run utility for validating external world and replication configs."""
+"""Dry-run utility for validating external scenario and replication configs."""
 
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ def _discover_config_root_targets(
 
 
 def _discover_targets(project_root: Path) -> list[DryRunTarget]:
-    """Discover dry-run targets under packaged, world, and replication configs."""
+    """Discover dry-run targets under packaged, scenario, and replication configs."""
     candidates: list[DryRunTarget] = []
     candidates.extend(
         _discover_config_root_targets(
@@ -83,7 +83,7 @@ def _discover_targets(project_root: Path) -> list[DryRunTarget]:
         )
     )
     roots = [
-        project_root / "worlds",
+        project_root / "scenarios",
         project_root / "replications",
     ]
     for root in roots:
@@ -226,21 +226,21 @@ def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint for config dry-run checks."""
     parser = argparse.ArgumentParser(
         description=(
-            "Dry-run all shipped world/replication configs through the real runtime "
+            "Dry-run all shipped scenario/replication configs through the real runtime "
             "runner and report failures."
         )
     )
     parser.add_argument(
         "--project-root",
         default=".",
-        help="Project root containing worlds/ and replications/ (default: current dir).",
+        help="Project root containing scenarios/ and replications/ (default: current dir).",
     )
     args = parser.parse_args(argv)
 
     project_root = Path(args.project_root).resolve()
     results = run_dry_runs(project_root)
     if not results:
-        print("No world/replication config targets discovered.")
+        print("No scenario/replication config targets discovered.")
         return 1
 
     passed = sum(1 for r in results if r.ok and not r.skipped)

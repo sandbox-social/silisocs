@@ -26,7 +26,7 @@ experiments/
           {hypothesis_id}/
             hypothesis.yaml             # Hypothesis definition (generated)
             runs.json                   # All eval records for this hypothesis (generated)
-            {condition_id}/{world}/seed_{seed}/
+            {condition_id}/{scenario}/seed_{seed}/
               config.yaml               # Run configuration (frozen at launch)
               run -> <simulation output directory>
               eval.json -> <primary evaluator output>
@@ -69,11 +69,11 @@ study:
   question: >-
     Does increasing LLM capacity reduce repetitive/groupthink behavior
     in multi-agent social media simulations?
-  worlds:
+  scenarios:
     - ai_conference
     - misinformation
   run_defaults:
-    config_path: worlds/{world}/conf
+    config_path: scenarios/{scenario}/conf
     seeds: [42, 7, 123]
     overrides:
       num_steps: 10
@@ -88,7 +88,7 @@ hypotheses:
       Larger language models produce more diverse agent behavior.
     independent_variable: model
     prediction: >-
-      gpt4o outperforms gpt4o-mini on diversity metrics across worlds.
+      gpt4o outperforms gpt4o-mini on diversity metrics across scenarios.
     status: supported
     conditions:
       gpt4o-mini:
@@ -129,8 +129,8 @@ hypotheses:
 | `name` | string | Unique study identifier (matches directory name) |
 | `study_id` | string | Stable output identifier; defaults to `name` when omitted |
 | `question` | string | The research question in plain language |
-| `worlds` | list[string] | World names used across all hypotheses |
-| `run_defaults.config_path` | string | World config directory, often `worlds/{world}/conf`. |
+| `scenarios` | list[string] | Scenario names used across all hypotheses |
+| `run_defaults.config_path` | string | Scenario config directory, often `scenarios/{scenario}/conf`. |
 | `run_defaults.overrides` | dict | Hydra overrides shared by all runs. Per-condition overrides are added on top. |
 
 **`hypotheses.{id}.conditions.{name}` fields:**
@@ -145,7 +145,7 @@ hypotheses:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `world` | string | World name for this run |
+| `scenario` | string | Scenario name for this run |
 | `source` | string | Path to the original simulation output directory |
 | `eval` | string | Path to the evaluation JSON file |
 
@@ -160,7 +160,7 @@ statement: >
   Larger language models produce more diverse agent behavior
   (higher lexical diversity, lower self-BLEU, more varied actions).
 independent_variable: model
-prediction: gpt4o outperforms gpt4o-mini on diversity metrics across worlds.
+prediction: gpt4o outperforms gpt4o-mini on diversity metrics across scenarios.
 status: testing          # testing | supported | refuted | inconclusive
 conditions:
   - gpt4o-mini
@@ -181,14 +181,14 @@ Followup hypotheses additionally have `follows_from` and `motivation` (see study
 ### runs.json
 
 Generated under `generated/organized/{hypothesis_id}/runs.json`. It is a flat
-list of all eval records for every condition × world × seed under this
+list of all eval records for every condition x scenario × seed under this
 hypothesis and is the primary data source for per-hypothesis notebook sections.
 
 ```json
 [
   {
     "condition": "gpt4o-mini",
-    "world": "ai_conference",
+    "scenario": "ai_conference",
     "checkpoint": "outputs/ai_conference_experiment/2026-02-06_23-50-55/checkpoints/step_10_checkpoint.json",
     "agents": {
       "Agent Name": { "self_bleu": 0.32, "lexical_diversity": 0.30, ... }
@@ -200,13 +200,13 @@ hypothesis and is the primary data source for per-hypothesis notebook sections.
   },
   {
     "condition": "gpt4o",
-    "world": "ai_conference",
+    "scenario": "ai_conference",
     ...
   }
 ]
 ```
 
-Each entry is the contents of a single `eval.json` plus `condition` and `world` keys. One entry per run (multiple entries per condition if replicate runs exist).
+Each entry is the contents of a single `eval.json` plus `condition` and `scenario` keys. One entry per run (multiple entries per condition if replicate runs exist).
 
 ### config.yaml
 
@@ -216,19 +216,18 @@ Frozen snapshot of the run configuration. Captures everything needed to reproduc
 source: outputs/ai_conference_experiment/2026-02-07_09-43-11
 model_name: gpt-4o
 model_config: gpt4o
-world: ai_conference
+scenario: ai_conference
 world_description: Simulates groupthink dynamics at an AI conference
 max_steps: 10
 seed: 42
 condition: gpt4o
 hypothesis: h1_model_capacity
 cli_overrides:
-  - world=ai_conference
   - sim.llm.name=gpt-4o
   - num_steps=10
 run_command: >-
-  uv run python -m silisocs.runtime.runner
-  world=ai_conference sim.llm.name=gpt-4o-mini num_steps=10
+  uv run python -m silisocs.runtime.runner --config-path scenarios/ai_conference/conf
+  sim.llm.name=gpt-4o num_steps=10
 ```
 
 **Required fields:**
@@ -238,7 +237,7 @@ run_command: >-
 | `source` | string | Path to the original simulation output |
 | `model_name` | string | Actual model identifier used by the API |
 | `model_config` | string | Runtime model provider, for example `openai` or `scripted` |
-| `world` | string | World name |
+| `scenario` | string | Scenario name |
 | `max_steps` | int | Number of simulation steps |
 | `seed` | int | Random seed |
 | `condition` | string | IV condition value |
@@ -298,14 +297,14 @@ Generated at the study level. Two sections: a flat `conditions` list for per-run
     {
       "hypothesis": "h1_model_capacity",
       "condition": "gpt4o-mini",
-      "world": "ai_conference",
+      "scenario": "ai_conference",
       "aggregated": { "self_bleu": 0.45, "lexical_diversity": 0.23, ... },
       "summary": { "total_posts": 96, "agents": 9, "steps": 9 }
     },
     {
       "hypothesis": "h1_model_capacity",
       "condition": "gpt4o",
-      "world": "ai_conference",
+      "scenario": "ai_conference",
       "aggregated": { ... },
       "summary": { ... }
     }
@@ -323,7 +322,7 @@ Generated at the study level. Two sections: a flat `conditions` list for per-run
 }
 ```
 
-`conditions` contains one entry per (hypothesis, condition, world) triple — identical in shape to a per-run `eval.json` entry but without per-agent detail. `metrics_by_condition` averages each metric across worlds, nested by hypothesis so condition names that appear in multiple hypotheses don't collide.
+`conditions` contains one entry per (hypothesis, condition, scenario) triple — identical in shape to a per-run `eval.json` entry but without per-agent detail. `metrics_by_condition` averages each metric across scenarios, nested by hypothesis so condition names that appear in multiple hypotheses don't collide.
 
 ## The eval.py Contract
 
@@ -410,7 +409,7 @@ Studies that don't need custom metrics can omit `eval.py` and use only the `buil
 To run a new study from scratch:
 
 ```bash
-# Run all conditions × worlds, evaluate, register, and organize in one command:
+# Run all conditions × scenarios, evaluate, register, and organize in one command:
 uv run python -m experiments.run_study --study experiments/studies/{study_name} run
 
 # Run only a specific hypothesis:
@@ -451,7 +450,7 @@ the expanded Hydra overrides place it, commonly `outputs/` or a study-specific
 `output_root_override`.
 
 ```
-1. plan       expand hypotheses, conditions, worlds, seeds, and overrides
+1. plan       expand hypotheses, conditions, scenarios, seeds, and overrides
 2. run        call silisocs.runtime.runner for each runnable expanded run
 3. evaluate   run configured builtin or study-local evaluator hooks
 4. record     write repro_lock.jsonl, repro_lock.json, and study_index.json
@@ -467,12 +466,12 @@ The results notebook (`experiments/studies/{name}/notebook.ipynb`) follows a fix
 
 ### Section 1: Title + Setup
 - **Type:** markdown + code
-- **Content:** Study title, load `study.yaml`, load all `eval.json` files into a structured dict keyed by `(hypothesis_id, condition, world)`, load `summary.json`, set matplotlib defaults.
+- **Content:** Study title, load `study.yaml`, load all `eval.json` files into a structured dict keyed by `(hypothesis_id, condition, scenario)`, load `summary.json`, set matplotlib defaults.
 - **Output:** Print study name, question, hypotheses, number of eval files loaded.
 
 ### Section 2: Study Overview
 - **Type:** markdown + code
-- **Content:** Hypothesis statement, IV, prediction. Table of conditions showing: model, world, agents, steps, total posts, replies, originals, boosts.
+- **Content:** Hypothesis statement, IV, prediction. Table of conditions showing: model, scenario, agents, steps, total posts, replies, originals, boosts.
 
 ### Section 3: Key Metrics Explained
 - **Type:** markdown
@@ -480,7 +479,7 @@ The results notebook (`experiments/studies/{name}/notebook.ipynb`) follows a fix
 
 ### Section 4: Headline Comparison
 - **Type:** code + markdown
-- **Plot:** Grouped bar chart of key metrics, values averaged across worlds. Annotate direction (lower/higher = better). Add value labels on bars.
+- **Plot:** Grouped bar chart of key metrics, values averaged across scenarios. Annotate direction (lower/higher = better). Add value labels on bars.
 - **Narrative:** One-paragraph takeaway beneath the plot.
 
 ### Section 5: Full Metric Profile
@@ -490,17 +489,17 @@ The results notebook (`experiments/studies/{name}/notebook.ipynb`) follows a fix
 
 ### Section 6: Scenario Consistency
 - **Type:** code + markdown
-- **Plot:** Faceted figure (one panel per world), each showing all metrics as grouped horizontal bars by condition.
-- **Narrative:** Is the effect consistent across worlds or world-dependent?
+- **Plot:** Faceted figure (one panel per scenario), each showing all metrics as grouped horizontal bars by condition.
+- **Narrative:** Is the effect consistent across scenarios or scenario-dependent?
 
 ### Section 7: Per-Agent Distributions
 - **Type:** code + markdown
-- **Plot:** Strip/dot plots for key metrics, each agent as a point, colored by condition, pooled across worlds. Mean markers. Print mean and std table.
+- **Plot:** Strip/dot plots for key metrics, each agent as a point, colored by condition, pooled across scenarios. Mean markers. Print mean and std table.
 - **Narrative:** Does the IV shift the mean, tighten variance, or both?
 
 ### Section 8: Behavioral Breakdown
 - **Type:** code + markdown
-- **Plot:** Stacked bar chart of action type counts (e.g. replies, originals, boosts) per condition, pooled across worlds. Label segment counts.
+- **Plot:** Stacked bar chart of action type counts (e.g. replies, originals, boosts) per condition, pooled across scenarios. Label segment counts.
 - **Narrative:** Qualitative behavioral differences between conditions.
 
 ### Section 9: Takeaways
@@ -520,7 +519,7 @@ The results notebook (`experiments/studies/{name}/notebook.ipynb`) follows a fix
 ### Adding a new hypothesis to an existing study
 
 1. Add the hypothesis entry to `study.yaml` (the source of truth). Include `statement`, `independent_variable`, `prediction`, `status: testing`, and an empty `conditions` map. The `hypothesis.yaml` files under `experiments/` are generated by the organizer — do not create them by hand.
-2. Run simulations for each condition × world combination using `study.run_defaults` as the base, adding per-condition overrides.
+2. Run simulations for each condition x scenario combination using `study.run_defaults` as the base, adding per-condition overrides.
 3. Evaluate each run to produce `eval.json`.
 4. Re-run `uv run python -m experiments.run_study --study experiments/studies/{study_name} organize`
    when you want to rebuild only the notebook-friendly organized tree from an
@@ -554,7 +553,7 @@ hypotheses:
           mode: reuse_existing
         reuse:
           runs:
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 42
               source: outputs/ai_conference_experiment/2026-02-06_23-50-55
               eval:   outputs/eval_style_diversity/baseline/ai_conference/eval.json
@@ -573,7 +572,7 @@ A followup hypothesis is motivated by the result of a completed hypothesis. The 
      status: supported
      finding: >-
        gpt4o produced 3× higher inter-agent distinctiveness than gpt4o-mini
-       across both worlds.
+       across both scenarios.
    ```
 
 2. **Add the followup entry** to `study.yaml` with `follows_from` and `motivation`:
@@ -607,4 +606,4 @@ A followup hypothesis is motivated by the result of a completed hypothesis. The 
 
 ### Adding replicate runs
 
-Multiple `run_{timestamp}/` directories under the same `{iv}={condition}/{world}/` path represent replicate runs (e.g. different seeds). The analysis pipeline should average across replicates when computing `summary.json`, and the notebook should show replicate variance where available.
+Multiple `run_{timestamp}/` directories under the same `{iv}={condition}/{scenario}/` path represent replicate runs (e.g. different seeds). The analysis pipeline should average across replicates when computing `summary.json`, and the notebook should show replicate variance where available.

@@ -1,13 +1,13 @@
 # Designing and Running a Study
 
-A **study** is a research question asked on top of one or more worlds. It defines:
+A **study** is a research question asked on top of one or more scenarios. It defines:
 - the **hypotheses** you want to test
 - the **conditions** (what you vary between runs)
-- the **worlds** you run them on
+- the **scenarios** you run them on
 - how many **replicate seeds** to use
 
 Studies live in `experiments/studies/<study_name>/` and are version-controlled.
-The world is the stage; the study is the experiment.
+The scenario is the stage; the study is the experiment.
 
 **Shortcut:** If you are using a coding agent (Claude Code, Cursor, etc.), you can
 type `/new-study` to be guided through this process interactively.
@@ -16,7 +16,7 @@ type `/new-study` to be guided through this process interactively.
 
 ## Concepts
 
-**Scenario** — The social world (agents, platform, event). Shared and reusable.
+**Scenario** — A shared social world (agents, backend, event). Reusable across studies.
 
 **Hypothesis** — A falsifiable claim about what will happen if you vary something.
 Example: *"Larger LLMs produce more stylistically diverse posts."*
@@ -24,7 +24,7 @@ Example: *"Larger LLMs produce more stylistically diverse posts."*
 **Condition** — One value of the independent variable. A hypothesis has 2+ conditions.
 Example: `sim.llm.name=gpt-4o-mini` and `sim.llm.name=gpt-4o`.
 
-**Run** — One simulation of one (condition × world × seed) combination.
+**Run** — One simulation of one (condition x scenario x seed) combination.
 
 **Evaluation** — A script that reads a completed run and produces metrics (`eval.json`).
 
@@ -53,13 +53,13 @@ study:
   name: my_study
   question: >-
     Does a richer agent persona produce more stylistically distinct posts?
-  worlds:
+  scenarios:
     - neighborhood_forum
     - hobby_collective
   run_defaults:
-    config_path: worlds/{world}/conf
+    config_path: scenarios/{scenario}/conf
     seed_start: 42
-    seed_repeats: 3          # runs seeds 42, 43, 44 for each condition × world
+    seed_repeats: 3          # runs seeds 42, 43, 44 for each condition x scenario
     overrides:
       num_steps: 10
 
@@ -71,22 +71,22 @@ hypotheses:
     independent_variable: persona
     prediction: >-
       Rich persona condition will show higher inter-agent distinctiveness
-      across both worlds.
+      across both scenarios.
     status: testing
     conditions:
       rich:
         overrides:
-          agents: default       # uses worlds/<name>/conf/agents/default.yaml
+          agents: default       # uses scenarios/<name>/conf/agents/default.yaml
       thin:
         overrides:
-          agents: thin          # uses worlds/<name>/conf/agents/thin.yaml
+          agents: thin          # uses scenarios/<name>/conf/agents/thin.yaml
 ```
 
 **Key fields:**
 
 | Field | What it does |
 |---|---|
-| `study.worlds` | List of worlds to run each condition on |
+| `study.scenarios` | List of scenarios to run each condition on |
 | `run_defaults.seed_start` + `seed_repeats` | Expands to N consecutive seeds per run |
 | `hypotheses.<id>.conditions.<name>.overrides` | Hydra CLI overrides for this condition |
 | `hypotheses.<id>.status` | `testing` → `supported` / `refuted` / `inconclusive` |
@@ -129,7 +129,7 @@ write `eval.py`. See `docs/study_schema.md` for the required output format.
 uv run python -m experiments.run_study \
     --study experiments/studies/my_study plan
 
-# Run all conditions × worlds × seeds
+# Run all conditions × scenarios × seeds
 uv run python -m experiments.run_study \
     --study experiments/studies/my_study run
 
@@ -161,7 +161,7 @@ The standard notebook structure has 9 sections:
 3. Key metrics explained
 4. Headline comparison (grouped bar chart)
 5. Full metric profile (radar chart)
-6. World consistency (faceted by world)
+6. Scenario consistency (faceted by scenario)
 7. Per-agent distributions (strip plots)
 8. Behavioral breakdown (action type counts)
 9. Takeaways (key findings, limitations, next steps)
@@ -179,7 +179,7 @@ h1_persona_richness:
   status: supported
   finding: >-
     Rich persona condition showed 2.4× higher inter-agent distinctiveness
-    than thin condition across both worlds.
+    than thin condition across both scenarios.
 ```
 
 To add a follow-up hypothesis motivated by this finding:
@@ -213,6 +213,6 @@ duplicate paths — the run is not re-executed, just re-linked.
 ## Where to look next
 
 - **Full study.yaml schema:** `docs/study_schema.md` — all fields, file formats, eval.json spec
-- **World design:** `docs/world_guide.md` — how to build the world you study
+- **Scenario design:** `docs/scenario_guide.md` — how to build the scenario you study
 - **Existing studies:** `experiments/studies/style_diversity/` — a working example
 - **Run study CLI help:** `uv run python -m experiments.run_study --help`

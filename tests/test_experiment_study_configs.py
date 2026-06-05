@@ -268,7 +268,7 @@ def test_study_artifact_metadata_reads_current_effective_config(tmp_path: Path) 
     (run_dir / "effective_config.yaml").write_text(
         yaml.safe_dump(
             {
-                "world_name": "resource_market",
+                "scenario_name": "resource_market",
                 "num_steps": 3,
                 "num_agents": 2,
                 "seed": 99,
@@ -285,11 +285,11 @@ def test_study_artifact_metadata_reads_current_effective_config(tmp_path: Path) 
         encoding="utf-8",
     )
 
-    metadata = extract_run_metadata(run_dir, config_path="worlds/resource_market/conf")
+    metadata = extract_run_metadata(run_dir, config_path="scenarios/resource_market/conf")
 
     assert metadata["model_name"] == "scripted"
     assert metadata["model_config"] == "scripted"
-    assert metadata["world"] == "resource_market"
+    assert metadata["scenario"] == "resource_market"
     assert metadata["world_description"] == "market test"
     assert metadata["max_steps"] == 3
     assert metadata["num_agents"] == 2
@@ -297,5 +297,5 @@ def test_study_artifact_metadata_reads_current_effective_config(tmp_path: Path) 
     assert metadata["cli_overrides"] == ["world=resource_market", "seed=99"]
     assert (
         metadata["run_command"] == "uv run python -m silisocs.runtime.runner --config-path "
-        "worlds/resource_market/conf world=resource_market seed=99"
+        "scenarios/resource_market/conf world=resource_market seed=99"
     )

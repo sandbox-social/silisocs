@@ -7,7 +7,7 @@ study:
     What gives an agent population's language its stylistic diversity, and how
     do LLM generation parameters (model size, temperature, persona richness,
     CTA framing) interact with scenario structure to produce or suppress it?
-  worlds:
+  scenarios:
     - ai_conference
     - misinformation
     - neighborhood_forum
@@ -18,10 +18,10 @@ study:
   summary_log_path: experiments/studies/style_diversity/generated/summary_log.jsonl
 
   run_defaults:
-    config_path: worlds/{world}/conf
+    config_path: scenarios/{scenario}/conf
     runner_module: silisocs.runtime.runner
-    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{world}_seed{seed}"
-    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{world}/seed_{seed}/run"
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
+    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
     seeds:
       - 42
       - 7
@@ -57,27 +57,27 @@ hypotheses:
           sim.llm.name: gpt-4o-mini
         reuse:
           runs:
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 42
               source: outputs/ai_conference_experiment/2026-03-29_23-44-40
               eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/ai_conference/seed_42/eval.json
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 7
               source: outputs/ai_conference_experiment/2026-03-30_00-01-15
               eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/ai_conference/seed_7/eval.json
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 123
               source: outputs/ai_conference_experiment/2026-03-30_00-19-49
               eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/ai_conference/seed_123/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 42
               source: outputs/misinformation_experiment/2026-03-30_00-35-20
               eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/misinformation/seed_42/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 7
               source: outputs/misinformation_experiment/2026-03-30_00-41-37
               eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/misinformation/seed_7/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 123
               source: outputs/misinformation_experiment/2026-03-30_00-46-34
               eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o-mini/misinformation/seed_123/eval.json
@@ -89,27 +89,27 @@ hypotheses:
           sim.llm.name: gpt-4o
         reuse:
           runs:
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 42
               source: outputs/ai_conference_experiment/2026-03-30_00-51-23
               eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/ai_conference/seed_42/eval.json
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 7
               source: outputs/ai_conference_experiment/2026-03-30_00-57-29
               eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/ai_conference/seed_7/eval.json
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 123
               source: outputs/ai_conference_experiment/2026-03-30_01-04-30
               eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/ai_conference/seed_123/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 42
               source: outputs/misinformation_experiment/2026-03-30_01-11-08
               eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/misinformation/seed_42/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 7
               source: outputs/misinformation_experiment/2026-03-30_01-13-13
               eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/misinformation/seed_7/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 123
               source: outputs/misinformation_experiment/2026-03-30_01-14-59
               eval: outputs/eval_style_diversity/h1_model_capacity/gpt4o/misinformation/seed_123/eval.json
@@ -119,7 +119,7 @@ hypotheses:
           mode: run
         overrides:
           sim.llm.name: gpt-4o-mini
-        worlds:
+        scenarios:
           - neighborhood_forum
           - science_qa
           - hobby_collective
@@ -130,7 +130,7 @@ hypotheses:
           mode: run
         overrides:
           sim.llm.name: gpt-4o
-        worlds:
+        scenarios:
           - neighborhood_forum
           - science_qa
           - hobby_collective
@@ -159,27 +159,27 @@ hypotheses:
           sim.llm.temperature: 0.5
         reuse:
           runs:
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 42
               source: outputs/ai_conference_experiment/2026-03-31_02-52-51
               eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/ai_conference/seed_42/eval.json
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 7
               source: outputs/ai_conference_experiment/2026-03-31_03-09-08
               eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/ai_conference/seed_7/eval.json
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 123
               source: outputs/ai_conference_experiment/2026-03-31_03-27-32
               eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/ai_conference/seed_123/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 42
               source: outputs/misinformation_experiment/2026-03-31_03-45-08
               eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/misinformation/seed_42/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 7
               source: outputs/misinformation_experiment/2026-03-31_03-50-45
               eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/misinformation/seed_7/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 123
               source: outputs/misinformation_experiment/2026-03-31_03-56-34
               eval: outputs/eval_style_diversity/h2_temperature/temp_0.5/misinformation/seed_123/eval.json
@@ -191,27 +191,27 @@ hypotheses:
           sim.llm.temperature: 1.5
         reuse:
           runs:
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 42
               source: outputs/ai_conference_experiment/2026-03-31_09-57-15
               eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/ai_conference/seed_42/eval.json
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 7
               source: outputs/ai_conference_experiment/2026-03-31_10-16-16
               eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/ai_conference/seed_7/eval.json
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 123
               source: outputs/ai_conference_experiment/2026-03-31_10-34-14
               eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/ai_conference/seed_123/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 42
               source: outputs/misinformation_experiment/2026-03-31_10-49-26
               eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/misinformation/seed_42/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 7
               source: outputs/misinformation_experiment/2026-03-31_10-55-37
               eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/misinformation/seed_7/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 123
               source: outputs/misinformation_experiment/2026-03-31_11-04-12
               eval: outputs/eval_style_diversity/h2_temperature/temp_1.5/misinformation/seed_123/eval.json
@@ -222,7 +222,7 @@ hypotheses:
         overrides:
           sim.llm.name: gpt-4o-mini
           sim.llm.temperature: 0.5
-        worlds:
+        scenarios:
           - neighborhood_forum
           - science_qa
           - hobby_collective
@@ -234,7 +234,7 @@ hypotheses:
         overrides:
           sim.llm.name: gpt-4o-mini
           sim.llm.temperature: 1.5
-        worlds:
+        scenarios:
           - neighborhood_forum
           - science_qa
           - hobby_collective
@@ -258,27 +258,27 @@ hypotheses:
           mode: reuse_existing
         reuse:
           runs:
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 42
               source: outputs/ai_conference_experiment/2026-03-31_18-46-31
               eval: outputs/eval_style_diversity/h3_persona_richness/rich/ai_conference/seed_42/eval.json
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 7
               source: outputs/ai_conference_experiment/2026-03-31_18-59-59
               eval: outputs/eval_style_diversity/h3_persona_richness/rich/ai_conference/seed_7/eval.json
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 123
               source: outputs/ai_conference_experiment/2026-03-31_19-19-00
               eval: outputs/eval_style_diversity/h3_persona_richness/rich/ai_conference/seed_123/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 42
               source: outputs/misinformation_experiment/2026-03-31_19-37-02
               eval: outputs/eval_style_diversity/h3_persona_richness/rich/misinformation/seed_42/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 7
               source: outputs/misinformation_experiment/2026-03-31_19-43-06
               eval: outputs/eval_style_diversity/h3_persona_richness/rich/misinformation/seed_7/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 123
               source: outputs/misinformation_experiment/2026-03-31_19-50-27
               eval: outputs/eval_style_diversity/h3_persona_richness/rich/misinformation/seed_123/eval.json
@@ -293,27 +293,27 @@ hypotheses:
           agents: thin
         reuse:
           runs:
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 42
               source: outputs/ai_conference_thin_experiment/2026-03-31_19-56-45
               eval: outputs/eval_style_diversity/h3_persona_richness/thin/ai_conference_thin/seed_42/eval.json
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 7
               source: outputs/ai_conference_thin_experiment/2026-03-31_20-14-50
               eval: outputs/eval_style_diversity/h3_persona_richness/thin/ai_conference_thin/seed_7/eval.json
-            - world: ai_conference
+            - scenario: ai_conference
               seed: 123
               source: outputs/ai_conference_thin_experiment/2026-03-31_20-34-21
               eval: outputs/eval_style_diversity/h3_persona_richness/thin/ai_conference_thin/seed_123/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 42
               source: outputs/misinformation_thin_experiment/2026-03-31_20-52-48
               eval: outputs/eval_style_diversity/h3_persona_richness/thin/misinformation_thin/seed_42/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 7
               source: outputs/misinformation_thin_experiment/2026-03-31_20-59-39
               eval: outputs/eval_style_diversity/h3_persona_richness/thin/misinformation_thin/seed_7/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 123
               source: outputs/misinformation_thin_experiment/2026-03-31_21-06-49
               eval: outputs/eval_style_diversity/h3_persona_richness/thin/misinformation_thin/seed_123/eval.json
@@ -323,7 +323,7 @@ hypotheses:
           mode: run
         overrides:
           sim.llm.name: gpt-4o-mini
-        worlds:
+        scenarios:
           - neighborhood_forum
           - science_qa
           - hobby_collective
@@ -335,7 +335,7 @@ hypotheses:
         overrides:
           sim.llm.name: gpt-4o-mini
           agents: thin
-        worlds:
+        scenarios:
           - neighborhood_forum
           - science_qa
           - hobby_collective
@@ -367,7 +367,7 @@ hypotheses:
       sim.llm.name: gpt-4o-mini
     conditions:
       cta=deliberate:
-        worlds:
+        scenarios:
           - misinformation
         execution:
           mode: reuse_existing
@@ -375,20 +375,20 @@ hypotheses:
           env: cta_deliberate
         reuse:
           runs:
-            - world: misinformation
+            - scenario: misinformation
               seed: 42
               source: experiments/studies/style_diversity/h6_cta_phrasing/cta=deliberate/misinformation/seed_42/misinformation_2026-05-01_08-22-55
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=deliberate/misinformation/seed_42/style_diversity_eval/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 7
               source: experiments/studies/style_diversity/h6_cta_phrasing/cta=deliberate/misinformation/seed_7/misinformation_2026-05-01_08-30-48
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=deliberate/misinformation/seed_7/style_diversity_eval/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 123
               source: experiments/studies/style_diversity/h6_cta_phrasing/cta=deliberate/misinformation/seed_123/misinformation_2026-05-01_08-37-28
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=deliberate/misinformation/seed_123/style_diversity_eval/eval.json
       cta=reactive:
-        worlds:
+        scenarios:
           - misinformation
         execution:
           mode: reuse_existing
@@ -396,20 +396,20 @@ hypotheses:
           env: cta_reactive
         reuse:
           runs:
-            - world: misinformation
+            - scenario: misinformation
               seed: 42
               source: experiments/studies/style_diversity/h6_cta_phrasing/cta=reactive/misinformation/seed_42/misinformation_2026-05-01_08-43-26
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=reactive/misinformation/seed_42/style_diversity_eval/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 7
               source: experiments/studies/style_diversity/h6_cta_phrasing/cta=reactive/misinformation/seed_7/misinformation_2026-05-01_08-49-52
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=reactive/misinformation/seed_7/style_diversity_eval/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 123
               source: experiments/studies/style_diversity/h6_cta_phrasing/cta=reactive/misinformation/seed_123/misinformation_2026-05-01_08-56-30
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=reactive/misinformation/seed_123/style_diversity_eval/eval.json
       cta=engagement:
-        worlds:
+        scenarios:
           - misinformation
         execution:
           mode: reuse_existing
@@ -417,15 +417,15 @@ hypotheses:
           env: cta_engagement
         reuse:
           runs:
-            - world: misinformation
+            - scenario: misinformation
               seed: 42
               source: experiments/studies/style_diversity/h6_cta_phrasing/cta=engagement/misinformation/seed_42/misinformation_2026-05-01_09-03-48
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=engagement/misinformation/seed_42/style_diversity_eval/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 7
               source: experiments/studies/style_diversity/h6_cta_phrasing/cta=engagement/misinformation/seed_7/misinformation_2026-05-01_09-11-29
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=engagement/misinformation/seed_7/style_diversity_eval/eval.json
-            - world: misinformation
+            - scenario: misinformation
               seed: 123
               source: experiments/studies/style_diversity/h6_cta_phrasing/cta=engagement/misinformation/seed_123/misinformation_2026-05-01_09-19-24
               eval: experiments/studies/style_diversity/generated/eval/h6_cta_phrasing/cta=engagement/misinformation/seed_123/style_diversity_eval/eval.json
@@ -436,7 +436,7 @@ hypotheses:
         overrides:
           sim.llm.name: gpt-4o-mini
           env: cta_deliberate
-        worlds:
+        scenarios:
           - neighborhood_forum
           - science_qa
           - hobby_collective
@@ -448,7 +448,7 @@ hypotheses:
         overrides:
           sim.llm.name: gpt-4o-mini
           env: cta_reactive
-        worlds:
+        scenarios:
           - neighborhood_forum
           - science_qa
           - hobby_collective
@@ -460,7 +460,7 @@ hypotheses:
         overrides:
           sim.llm.name: gpt-4o-mini
           env: cta_engagement
-        worlds:
+        scenarios:
           - neighborhood_forum
           - science_qa
           - hobby_collective

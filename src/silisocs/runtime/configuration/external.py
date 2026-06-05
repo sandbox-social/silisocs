@@ -131,7 +131,7 @@ def register_search_path_plugin() -> None:
     from hydra.core.plugins import Plugins
     from hydra.plugins.search_path_plugin import SearchPathPlugin
 
-    class _WorldSearchPathPlugin(SearchPathPlugin):
+    class _ScenarioSearchPathPlugin(SearchPathPlugin):
         def manipulate_search_path(self, search_path: Any) -> None:  # type: ignore[override]
             paths_csv = _os.environ.get("SILISOCS_EXTERNAL_CONFIG_DIRS", "").strip()
             if not paths_csv:
@@ -139,4 +139,4 @@ def register_search_path_plugin() -> None:
             for raw_dir in [p for p in paths_csv.split(":") if p]:
                 search_path.prepend("file", raw_dir)
 
-    Plugins.instance().register(_WorldSearchPathPlugin)
+    Plugins.instance().register(_ScenarioSearchPathPlugin)

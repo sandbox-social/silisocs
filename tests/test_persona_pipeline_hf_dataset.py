@@ -85,7 +85,7 @@ def test_hf_dataset_builds_expected_agent_params(monkeypatch) -> None:
 
     world_cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "persona_pipeline": {
                 "defaults": {
                     "params": {
@@ -160,7 +160,7 @@ def test_hf_dataset_preserves_explicit_specific_memories(monkeypatch) -> None:
 
     world_cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -196,7 +196,7 @@ def test_field_map_template_combines_multiple_fields() -> None:
     """Template field maps can compose multiple source fields into one target."""
     world_cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -247,7 +247,7 @@ def test_nemotron_hf_dataset_derives_name_from_persona(monkeypatch) -> None:
 
     world_cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -289,7 +289,7 @@ def test_unknown_hf_dataset_requires_mapped_or_derived_name(monkeypatch) -> None
 
     world_cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -317,7 +317,7 @@ def test_explicit_name_derivation_option_for_inline_records() -> None:
     """Scenario builders can request name derivation as intentional builder logic."""
     world_cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -351,7 +351,7 @@ def test_explicit_name_derivation_option_for_inline_records() -> None:
 def test_empty_mapped_name_fails_loudly() -> None:
     world_cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -401,7 +401,7 @@ def test_hf_dataset_loads_nemotron_and_scope_formats(monkeypatch) -> None:
 
     world_cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "nemotron_voter": {
@@ -487,7 +487,7 @@ def test_hf_dataset_materializes_only_requested_count(monkeypatch) -> None:
 
     world_cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -526,7 +526,7 @@ def test_jsonl_source_builds_agents_with_name_and_context(tmp_path: Path) -> Non
 
     world_cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -567,7 +567,7 @@ def test_shared_memories_inline_multiline_text_is_not_treated_as_path() -> None:
 
     world_cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "persona_pipeline": {
                 "defaults": {
                     "shared_memories": [shared_memory_block],
@@ -601,7 +601,7 @@ def test_field_map_case_mismatch_still_resolves_context() -> None:
     """Case-only key mismatch in field_map should still resolve source values."""
     world_cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -637,7 +637,7 @@ def test_class_pipeline_duplicate_names_fail_loudly() -> None:
     """Class pipeline should reject duplicate runtime agent names."""
     world_cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "persona_pipeline": {
                 "classes": {
                     "voter": {
@@ -688,7 +688,7 @@ def test_explicit_builder_class_path_is_used() -> None:
     """Runtime construction uses only agents.builder.class_path for custom builders."""
     cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "agents": {
                 "builder": {
                     "class_path": f"{__name__}._ExplicitCustomBuilder",
@@ -716,7 +716,7 @@ def test_custom_builder_outputs_must_have_unique_names(
 ) -> None:
     cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "agents": {
                 "builder": {
                     "class_path": f"{__name__}.{builder_class}",
@@ -734,11 +734,11 @@ def test_builder_params_cannot_override_reserved_runtime_values() -> None:
     """Runtime-supplied builder params are explicit and protected."""
     cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "agents": {
                 "builder": {
                     "class_path": f"{__name__}._ExplicitCustomBuilder",
-                    "params": {"world_name": "wrong"},
+                    "params": {"scenario_name": "wrong"},
                 }
             },
         }
@@ -754,20 +754,20 @@ def test_old_agent_builder_import_path_is_absent() -> None:
         importlib.import_module("silisocs.agents.builders")
 
 
-def test_runtime_builder_selection_has_no_world_name_auto_detection() -> None:
+def test_runtime_builder_selection_has_no_scenario_name_auto_detection() -> None:
     """Custom builders must be selected explicitly with agents.builder.class_path."""
     from silisocs.runtime.construction import agent_configs
 
     source = Path(agent_configs.__file__).read_text(encoding="utf-8")
     assert "spec_from_file_location" not in source
-    assert "worlds.<name>.builders" not in source
+    assert "scenarios.<name>.builders" not in source
 
 
 def test_fixed_action_set_renders_into_fixed_agent_plan() -> None:
     """Fixed-action helper rendering remains available through the builder facade."""
     world_cfg = OmegaConf.create(
         {
-            "world_name": "election",
+            "scenario_name": "election",
             "fixed_action_sets": {
                 "inline": {
                     "news_actions": {

@@ -1,7 +1,7 @@
 # Top-level Hydra configuration for Silisocs
 # Choose between preset configurations using Hydra overrides:
-#   python -m silisocs.runtime.runner --config-path worlds/misinformation/conf
-#   python -m silisocs.runtime.runner --config-path worlds/misinformation/conf agents=thin
+#   python -m silisocs.runtime.runner --config-path scenarios/misinformation/conf
+#   python -m silisocs.runtime.runner --config-path scenarios/misinformation/conf agents=thin
 
 defaults:
   - world: default
@@ -13,9 +13,9 @@ defaults:
 
 hydra:
   job:
-    name: ${world_name}_${now:%Y-%m-%d_%H-%M-%S}
+    name: ${scenario_name}_${now:%Y-%m-%d_%H-%M-%S}
   run:
-    dir: outputs/${world_name}/${jobname_format}
+    dir: outputs/${scenario_name}/${jobname_format}
   output_subdir: configs/${jobname_format}
 
 experiment_name: independent
