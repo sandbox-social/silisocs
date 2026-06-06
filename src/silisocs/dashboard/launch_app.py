@@ -925,21 +925,6 @@ with tab_sim:
                 ),
                 key="timeline_posts",
             )
-            st.number_input(
-                "Observation history",
-                min_value=10,
-                max_value=1000,
-                value=max(
-                    10,
-                    _as_int(
-                        _environment_defaults.get(
-                            "observation_history", _sim_defaults.get("observation_history", 100)
-                        ),
-                        100,
-                    ),
-                ),
-                key="observation_history",
-            )
             st.checkbox(
                 "Disable language model (dry run)",
                 value=bool((_sim_defaults.get("llm") or {}).get("disabled", False)),
@@ -2160,7 +2145,6 @@ with tab_launch:
             if st.session_state.get("excluded_actions")
             else None
         ),
-        "observation_history": st.session_state.get("observation_history", 100),
         "gm_orchestration": st.session_state.get("gm_orchestration_yaml_parsed", {}),
         "gm.components.initialize.built_in": st.session_state.get(
             "gm_initializer_built_in",
@@ -2353,7 +2337,6 @@ with tab_launch:
                     "gm.components.observe.params.timeline_mode": st.session_state.get(
                         "timeline_strategy", "follower_chronological"
                     ),
-                    "observation_history": st.session_state.get("observation_history", 100),
                     "gm.backend.enabled_actions": (
                         st.session_state.get("enabled_actions")
                         if st.session_state.get("enabled_actions")
@@ -2488,7 +2471,6 @@ with tab_launch:
                 "gm.components.observe.params.timeline_mode": st.session_state.get(
                     "timeline_strategy", "follower_chronological"
                 ),
-                "observation_history": st.session_state.get("observation_history", 100),
                 "gm.backend.enabled_actions": (
                     st.session_state.get("enabled_actions")
                     if st.session_state.get("enabled_actions")

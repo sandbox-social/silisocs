@@ -9,10 +9,15 @@ from __future__ import annotations
 
 import dataclasses
 import os
+from collections.abc import Mapping
 from typing import Any
 
 from silisocs.environments.backends.base import SocialBackendApp, app_action
 from silisocs.environments.backends.reddit_like.engine import RedditLikePlatform
+from silisocs.environments.backends.sqlite_state import (
+    restore_sqlite_database,
+    snapshot_sqlite_database,
+)
 
 
 @dataclasses.dataclass
@@ -357,6 +362,47 @@ class RedditLikeApp(SocialBackendApp):
     def shutdown(self) -> None:
         """Clean shutdown of the platform engine."""
         self._platform.shutdown()
+
+    def get_state(self) -> dict[str, Any]:
+        """Return serializable backend state for checkpoints."""
+        return {
+            "db_snapshot_b64": snapshot_sqlite_database(self.db_path),
+            "user_mapping": dict(self._user_mapping),
+            "default_subreddit": str(getattr(self, "_default_subreddit", "general")),
+            "last_initialization_stats": dict(getattr(self, "_last_initialization_stats", {})),
+        }
+
+    def set_state(self, state: dict[str, Any]) -> None:
+        """Restore backend state from a checkpoint payload."""
+        if not isinstance(state, Mapping):
+            raise TypeError("RedditLikeApp checkpoint state must be a mapping.")
+        snapshot = state.get("db_snapshot_b64")
+        if not isinstance(snapshot, str) or not snapshot:
+            raise ValueError("RedditLikeApp checkpoint state requires db_snapshot_b64.")
+        self._close_platform_for_restore()
+        restore_sqlite_database(self.db_path, snapshot)
+        self._platform = RedditLikePlatform(self.db_path, use_queue=True)
+        user_mapping = state.get("user_mapping", {})
+        if not isinstance(user_mapping, Mapping):
+            raise TypeError("RedditLikeApp checkpoint user_mapping must be a mapping.")
+        self._user_mapping = {str(k): str(v) for k, v in user_mapping.items()}
+        self._default_subreddit = str(state.get("default_subreddit") or "general")
+        stats = state.get("last_initialization_stats", {})
+        if isinstance(stats, Mapping):
+            self._last_initialization_stats = dict(stats)
+
+    def _close_platform_for_restore(self) -> None:
+        try:
+            local_conn = getattr(getattr(self._platform, "_local", None), "conn", None)
+            if local_conn is not None:
+                local_conn.close()
+                self._platform._local.conn = None
+        except Exception:
+            pass
+        try:
+            self._platform.shutdown()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------ #
     # @app_action methods — Core actions

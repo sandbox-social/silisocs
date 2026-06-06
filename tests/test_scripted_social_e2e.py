@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -155,7 +156,7 @@ def test_scripted_social_posts_and_likes_with_timeline_context(tmp_path: Path) -
     assert any("tool_calls:" in str(row.get("output", "")) for row in prompt_rows)
 
 
-def test_scripted_social_checkpoint_restore_replays_backend_events(tmp_path: Path) -> None:
+def test_scripted_social_checkpoint_restore_uses_backend_state(tmp_path: Path) -> None:
     overlay = tmp_path / "conf"
     overlay.mkdir()
     (overlay / "sim.yaml").write_text(
@@ -212,6 +213,9 @@ def test_scripted_social_checkpoint_restore_replays_backend_events(tmp_path: Pat
     assert checkpoint.is_file()
     checkpoint_payload = json.loads(checkpoint.read_text(encoding="utf-8"))
     assert checkpoint_payload["objects"]
+    gm_payload = checkpoint_payload["objects"]["twitter_like_gm"]
+    assert gm_payload["state"]["backend"]["backend_type"] == "twitter_like"
+    assert gm_payload["state"]["backend"]["state"]["db_snapshot_b64"]
 
     second_output = tmp_path / "second"
     second_hydra = tmp_path / "second_hydra"
@@ -234,5 +238,8 @@ def test_scripted_social_checkpoint_restore_replays_backend_events(tmp_path: Pat
     restored_rows = _read_jsonl(second_output / "action_events.jsonl")
     labels = [str(row.get("label", "")) for row in restored_rows]
     assert "post" in labels
-    assert "like" in labels
     assert not [row for row in restored_rows if row.get("label") == "agent" + "_turn"]
+    with sqlite3.connect(second_output / "twitter_like.db") as conn:
+        rows = conn.execute("SELECT content FROM posts ORDER BY id").fetchall()
+    contents = [str(row[0]) for row in rows]
+    assert any("says hello" in content for content in contents)

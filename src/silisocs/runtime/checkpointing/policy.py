@@ -2,7 +2,7 @@
 
 from typing import Any
 
-CHECKPOINT_SCHEMA_VERSION = 4
+CHECKPOINT_SCHEMA_VERSION = 5
 
 
 def should_save_checkpoint(step: int, checkpoint_cfg: Any | None = None) -> bool:

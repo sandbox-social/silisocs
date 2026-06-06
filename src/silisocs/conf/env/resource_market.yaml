@@ -1,4 +1,3 @@
-observation_history: 100
 gm:
   backend:
     type: resource_market

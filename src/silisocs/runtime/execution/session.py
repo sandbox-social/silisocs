@@ -34,6 +34,7 @@ from silisocs.initialization.game_masters import build_game_master_initializer_s
 from silisocs.initialization.simulation import build_simulation_initializer
 from silisocs.runtime.checkpointing import (
     build_checkpoint_restore,
+    checkpoint_has_backend_state,
     checkpoint_runtime_metadata,
     load_checkpoint_file,
     load_checkpoint_into_runtime,
@@ -393,6 +394,8 @@ def main(cfg: DictConfig):
     checkpoint_meta: dict[str, Any] = {}
     checkpoint_restore = None
     checkpoint_action_events = None
+    checkpoint_data: dict[str, Any] | None = None
+    checkpoint_backend_state_authoritative = False
     if source_run:
         if checkpoint_cfg is None or getattr(checkpoint_cfg, "restore", None) is None:
             raise ValueError("sim.checkpoint.source_run requires sim.checkpoint.restore.")
@@ -404,12 +407,7 @@ def main(cfg: DictConfig):
 
         with metrics.phase("checkpoint_load"):
             checkpoint_data = load_checkpoint_file(resume_path)
-            load_checkpoint_into_runtime(
-                runtime_objects,
-                checkpoint_data,
-                models=models,
-                object_to_model=object_to_model,
-            )
+            checkpoint_backend_state_authoritative = checkpoint_has_backend_state(checkpoint_data)
             checkpoint_meta = checkpoint_runtime_metadata(checkpoint_data)
 
         default_step = checkpoint_data.get("step")
@@ -460,7 +458,14 @@ def main(cfg: DictConfig):
                 initialization_context=initializer_context,
                 initializer_model=runtime_objects.default_model(models),
             )
-            if checkpoint_restore is not None:
+            if checkpoint_data is not None:
+                load_checkpoint_into_runtime(
+                    runtime_objects,
+                    checkpoint_data,
+                    models=models,
+                    object_to_model=object_to_model,
+                )
+            if checkpoint_restore is not None and not checkpoint_backend_state_authoritative:
                 if checkpoint_action_events is None:
                     raise ValueError("Checkpoint restore requires action_events.jsonl.")
                 checkpoint_restore.restore(
@@ -468,6 +473,7 @@ def main(cfg: DictConfig):
                     action_events_file=checkpoint_action_events,
                     checkpoint_step=start_step,
                 )
+            if checkpoint_data is not None:
                 restore_rng_state_from_metadata(checkpoint_meta)
         _log_startup_phase("engine_initialize", time.time() - t0)
 

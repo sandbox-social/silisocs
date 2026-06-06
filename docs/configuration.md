@@ -571,19 +571,19 @@ env:
 ### GM Components
 
 ```yaml
-gm:
-  preset: base
-  components:
-    next_acting:
-      built_in: activity_probability  # activity_markov | activity_probability | all_agents | fixed_order
-    observe:
-      built_in: timeline_every_turn   # app_observation | timeline_every_turn | episode_only
-      params:
-        episode_observation_flow: fixed_pre
-    resolve:
-      built_in: tool_calling          # parsed_action | generic_action | tool_calling
-    update:
-      built_in: app_update            # app_update | social_recommendation | disabled | none
+env:
+  gm:
+    components:
+      next_acting:
+        built_in: activity_probability  # activity_markov | activity_probability | all_agents | fixed_order
+      observe:
+        built_in: timeline_every_turn   # app_observation | timeline_every_turn | episode_only
+        params:
+          episode_observation_flow: fixed_pre
+      resolve:
+        built_in: tool_calling          # parsed_action | generic_action | tool_calling
+      update:
+        built_in: app_update            # app_update | social_recommendation | disabled | none
 ```
 
 Component `params` are strict constructor arguments. Unknown keys fail before
@@ -597,32 +597,34 @@ Graph fields are owned by the GM initialize component. Activity rates are owned
 by the GM next-acting component.
 
 ```yaml
-gm:
-  components:
-    initialize:
-      params:
-        graph:
-          network_type: barabasi_albert
-          barabasi_albert_m: 10
-          base_followership_probability: 0.3
-          fully_connected_targets:
-            - news_account
-    next_acting:
-      params:
-        activity_transition_rates:
-          <role_name>:
-            inactive_to_active: 0.3
-            active_to_inactive: 0.3
+env:
+  gm:
+    components:
+      initialize:
+        params:
+          graph:
+            network_type: barabasi_albert
+            barabasi_albert_m: 10
+            base_followership_probability: 0.3
+            fully_connected_targets:
+              - news_account
+      next_acting:
+        params:
+          activity_transition_rates:
+            <role_name>:
+              inactive_to_active: 0.3
+              active_to_inactive: 0.3
 ```
 
 ### Timeline Observation
 
 ```yaml
-gm:
-  components:
-    observe:
-      params:
-        timeline_mode: follower_chronological
+env:
+  gm:
+    components:
+      observe:
+        params:
+          timeline_mode: follower_chronological
 ```
 
 | Mode | Backends | Description |
@@ -750,12 +752,17 @@ uv run silisocs \
   --config-path scenarios/my_world/conf \
   num_steps=200 \
   sim.checkpoint.every_n_steps=10 \
-  sim.checkpoint.source_run=outputs/my_world/run1
+  sim.checkpoint.source_run=outputs/my_world/run1 \
+  sim.checkpoint.restore.built_in=social_action_event_replay
 ```
 
 Checkpoints are written to `.../outputs/.../checkpoints/step_<N>_checkpoint.json`.
-Restore selects the latest checkpoint in the source run and replays backend
-action events through `sim.checkpoint.restore`.
+Restore selects the latest checkpoint in the source run, initializes the runtime
+object scaffolding, and then applies checkpointed agent, game-master, component,
+and backend state. Built-in local backends restore their world state directly
+from the checkpoint. `sim.checkpoint.restore` is still required for source runs
+that need a restore strategy, such as older social runs that must rebuild backend
+state from `action_events.jsonl`.
 
 ---
 

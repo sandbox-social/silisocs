@@ -146,3 +146,16 @@ def test_resource_market_consume_and_finished_actions() -> None:
     assert "Alice consumed 1 food" in consume_result
     assert "food: 1" in app.observe("Alice")
     assert app.invoke_action_with_kwargs("FINISHED", {}) == "Finished action episode"
+
+
+def test_resource_market_checkpoint_state_restores_world() -> None:
+    app = ResourceMarketApp(initial_cash=20, initial_inventory={"food": 2})
+    app.initialize(agent_names=["Alice", "Bob"])
+    app.list_resource(agent_name="Alice", resource="food", quantity=1, price=7)
+
+    restored = ResourceMarketApp(initial_cash=0, initial_inventory={})
+    restored.set_state(app.get_state())
+
+    assert "Listing 1" in restored.observe("Bob")
+    assert "Cash: 20" in restored.observe("Alice")
+    assert "food: 1" in restored.observe("Alice")

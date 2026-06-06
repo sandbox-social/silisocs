@@ -115,3 +115,6 @@ def test_config_dry_run_selects_matching_external_agent_and_env_groups(tmp_path)
 
     assert "agents=resource_market" in command
     assert "env=resource_market" in command
+    assert "++sim.llm.provider=scripted" in command
+    assert "++sim.llm.name=scripted" in command
+    assert "++sim.llm.disabled=true" in command

@@ -5,7 +5,9 @@ import types
 
 import pytest
 
+from silisocs.environments.backends.reddit_like.app import RedditLikeApp
 from silisocs.environments.backends.reddit_like.engine import RedditLikePlatform
+from silisocs.environments.backends.twitter_like.app import TwitterLikeApp
 from silisocs.environments.backends.twitter_like.engine import TwitterLikePlatform
 
 
@@ -25,6 +27,23 @@ def test_twitter_timeline_oracle_follower_chronological_matches_expected_posts(t
     contents = [post["content"] for post in timeline]
 
     assert contents == ["bob-post-2", "bob-post-1"]
+
+
+def test_twitter_like_app_checkpoint_state_restores_sqlite_backend(tmp_path) -> None:
+    app = TwitterLikeApp(db_path=str(tmp_path / "twitter_source.db"))
+    app.setup_social_state(agent_names=["Alice Smith", "Bob Stone"], following_graph={})
+    app.create_tweet(agent_name="Alice Smith", status="checkpoint tweet")
+
+    restored = TwitterLikeApp(db_path=str(tmp_path / "twitter_restored.db"))
+    restored.set_state(app.get_state())
+
+    timeline = restored._platform.get_feed("firehose", limit=10)["posts"]
+    assert [post["content"] for post in timeline] == ["checkpoint tweet"]
+    assert restored.create_tweet(agent_name="Alice Smith", status="after restore").startswith(
+        "Alice Smith posted a tweet"
+    )
+    app.shutdown()
+    restored.shutdown()
 
 
 def test_twitter_timeline_oracle_pure_recsys_twitter(tmp_path) -> None:
@@ -106,6 +125,34 @@ def test_reddit_timeline_oracle_follower_chronological_matches_expected_posts(tm
     contents = [post["content"] for post in timeline]
 
     assert contents == ["general-post-2", "general-post-1"]
+
+
+def test_reddit_like_app_checkpoint_state_restores_sqlite_backend(tmp_path) -> None:
+    app = RedditLikeApp(db_path=str(tmp_path / "reddit_source.db"))
+    app.setup_social_state(
+        agent_names=["Alice Smith", "Bob Stone"],
+        graph_config={"subreddits": [{"name": "general", "roles": "all"}]},
+    )
+    app.create_reddit_post(
+        agent_name="Alice Smith",
+        subreddit="general",
+        title="Checkpoint",
+        content="checkpoint post",
+    )
+
+    restored = RedditLikeApp(db_path=str(tmp_path / "reddit_restored.db"))
+    restored.set_state(app.get_state())
+
+    timeline = restored._platform.get_feed("home", username="bobstone", limit=10)["posts"]
+    assert [post["content"] for post in timeline] == ["checkpoint post"]
+    assert restored.create_reddit_post(
+        agent_name="Alice Smith",
+        subreddit="general",
+        title="After",
+        content="after restore",
+    ).startswith("Alice Smith posted in r/general")
+    app.shutdown()
+    restored.shutdown()
 
 
 def test_reddit_timeline_oracle_pure_recsys_reddit(tmp_path) -> None:

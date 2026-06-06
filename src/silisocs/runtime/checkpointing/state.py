@@ -124,6 +124,23 @@ def load_checkpoint_into_runtime(
     runtime.checkpoint_counter = int(checkpoint.get("checkpoint_counter", 0))
 
 
+def checkpoint_has_backend_state(checkpoint: Mapping[str, Any]) -> bool:
+    """Return whether every checkpointed game master carries backend state."""
+    objects = checkpoint.get("objects", {})
+    if not isinstance(objects, Mapping):
+        return False
+    game_master_states: list[Mapping[str, Any]] = []
+    for raw in objects.values():
+        if not isinstance(raw, Mapping):
+            continue
+        if raw.get("role") != RuntimeRole.GAME_MASTER.value:
+            continue
+        state = raw.get("state")
+        if isinstance(state, Mapping):
+            game_master_states.append(state)
+    return bool(game_master_states) and all("backend" in state for state in game_master_states)
+
+
 def checkpoint_runtime_metadata(checkpoint: Mapping[str, Any]) -> dict[str, Any]:
     """Return normalized runtime metadata from a checkpoint payload."""
     raw = checkpoint.get("runtime_metadata", {})

@@ -150,6 +150,7 @@ def _build_command(
         [
             "++sim.llm.provider=scripted",
             "++sim.llm.name=scripted",
+            "++sim.llm.disabled=true",
             "++num_steps=0",
             f"++output_rootname={output_dir}",
             f"hydra.run.dir={hydra_dir}",

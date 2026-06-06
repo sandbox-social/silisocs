@@ -241,7 +241,7 @@ class ComponentGameMaster(BaseGameMaster):
         return str(component.resolve_action(agent_name, action))
 
     def get_state(self) -> dict[str, Any]:
-        return {
+        state: dict[str, Any] = {
             "initialized": self._initialized,
             "components": {
                 key: component.get_state()
@@ -249,10 +249,31 @@ class ComponentGameMaster(BaseGameMaster):
                 if callable(getattr(component, "get_state", None))
             },
         }
+        backend_state = self.backend.get_state()
+        if backend_state:
+            state["backend"] = {
+                "backend_type": self.backend_type,
+                "state": backend_state,
+            }
+        return state
 
     def set_state(self, state: Mapping[str, Any]) -> None:
         data = dict(state or {})
         self._initialized = bool(data.get("initialized", self._initialized))
+        backend_payload = data.get("backend")
+        if backend_payload is not None:
+            if not isinstance(backend_payload, Mapping):
+                raise TypeError("Game master checkpoint backend state must be a mapping.")
+            backend_type = str(backend_payload.get("backend_type") or "")
+            if backend_type and backend_type != self.backend_type:
+                raise ValueError(
+                    f"Checkpoint backend type {backend_type!r} does not match "
+                    f"game master backend type {self.backend_type!r}."
+                )
+            backend_state = backend_payload.get("state")
+            if not isinstance(backend_state, Mapping):
+                raise TypeError("Game master checkpoint backend.state must be a mapping.")
+            self.backend.set_state(dict(backend_state))
         component_states = data.get("components", {})
         if not isinstance(component_states, Mapping):
             return
