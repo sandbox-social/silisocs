@@ -647,7 +647,7 @@ class MyScenarioAgentBuilder(AgentBuilder):
 uv run streamlit run src/silisocs/dashboard/launch_app.py
 ```
 
-Create the scenario visually, configure agents, and launch. Use the sidebar
+Create the world visually, configure agents, and launch. Use the sidebar
 `Start from` selector to load previous run configuration snapshots when needed.
 
 To replay simulation state from a previous run, use `sim.checkpoint.source_run`
