@@ -1,0 +1,3 @@
+graft scenarios
+prune scenarios/*/outputs
+global-exclude __pycache__ *.pyc *.db *.db-shm *.db-wal .DS_Store
