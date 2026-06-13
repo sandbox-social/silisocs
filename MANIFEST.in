@@ -1,3 +1,4 @@
 graft scenarios
+graft experiments/studies/study_template_v1
 prune scenarios/*/outputs
 global-exclude __pycache__ *.pyc *.db *.db-shm *.db-wal .DS_Store

@@ -9,13 +9,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from experiments._internal.study_artifacts import (
-    _combine_eval_payloads,
-    _metric_stats,
-    _t_critical_95,
-    build_summary,
-)
-from experiments.run_study import (
+
+from silisocs.studies.run_study import (
     RUN_COMPLETE_MARKER,
     EvalSpec,
     RunSpec,
@@ -25,6 +20,12 @@ from experiments.run_study import (
     _partition_completed_runs,
     _planned_run_dir,
     _preflight_summary,
+)
+from silisocs.studies.study_artifacts import (
+    _combine_eval_payloads,
+    _metric_stats,
+    _t_critical_95,
+    build_summary,
 )
 
 

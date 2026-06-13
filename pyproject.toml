@@ -106,6 +106,7 @@ Repository = "https://github.com/sandbox-social/silisocs"
 
 [project.scripts]
 silisocs = "silisocs.runtime.runner:cli_main"
+silisocs-study = "silisocs.studies.run_study:main"
 silisocs-config-dry-run = "silisocs.runtime.config_dry_run:main"
 
 

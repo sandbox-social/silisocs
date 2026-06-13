@@ -2,12 +2,21 @@
 
 A study is a self-contained investigation of a research question using simulation experiments. This document defines the directory layout, file formats, analysis pipeline, and notebook structure that all studies should follow.
 
+> **Runner location.** The study runner lives in the package at
+> `silisocs.studies.run_study` and is exposed as the `silisocs-study` console
+> command. The `python -m experiments.run_study` invocations below still work
+> through a back-compat shim; new usage should prefer
+> `silisocs-study ...` or `python -m silisocs.studies.run_study ...`.
+
 ## Directory Layout
 
 ```
-experiments/
+src/silisocs/studies/
   run_study.py                           # Study planner/runner/evaluator orchestrator
-  _internal/study_artifacts.py           # Private artifact organization helpers
+  study_artifacts.py                     # Artifact organization helpers
+  templates/study_template_v1/           # Bundled study template (also shipped in the wheel)
+experiments/
+  run_study.py                           # Back-compat shim → silisocs.studies.run_study
   studies/
     {study_name}/
       study.yaml                        # Study definition (authored, version-controlled)

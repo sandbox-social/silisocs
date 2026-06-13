@@ -1,6 +1,13 @@
 # Experiment Studies
 
-This guide describes how to run multi-condition studies with `experiments/run_study.py`.
+This guide describes how to run multi-condition studies.
+
+The study runner ships inside the package as `silisocs.studies.run_study`,
+exposed as the **`silisocs-study`** console command (available after
+`pip install silisocs`). The examples below use
+`python -m experiments.run_study`, which still works as a thin back-compat
+shim for repository checkouts and existing SLURM templates; new usage should
+prefer `silisocs-study ...` or `python -m silisocs.studies.run_study ...`.
 
 Use this when you need:
 - hypothesis trees

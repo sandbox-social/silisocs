@@ -26,14 +26,24 @@ _IGNORE = shutil.ignore_patterns(
 )
 
 
+def _bundle_tree(build_lib: str, source: Path, package_subdir: str) -> None:
+    if not source.is_dir():
+        return
+    destination = Path(build_lib) / "silisocs" / package_subdir
+    shutil.copytree(source, destination, dirs_exist_ok=True, ignore=_IGNORE)
+
+
 class build_py(_build_py):  # noqa: N801 (setuptools naming convention)
     def run(self) -> None:
         super().run()
-        source = _REPO_ROOT / "scenarios"
-        if not source.is_dir():
-            return
-        destination = Path(self.build_lib) / "silisocs" / "scenarios"
-        shutil.copytree(source, destination, dirs_exist_ok=True, ignore=_IGNORE)
+        # Bundle the scenario library and the study template so pip-installed
+        # users get both without a repo checkout.
+        _bundle_tree(self.build_lib, _REPO_ROOT / "scenarios", "scenarios")
+        _bundle_tree(
+            self.build_lib,
+            _REPO_ROOT / "experiments" / "studies" / "study_template_v1",
+            "studies/templates/study_template_v1",
+        )
 
 
 setup(cmdclass={"build_py": build_py})

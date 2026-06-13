@@ -70,7 +70,7 @@ def _run_study_subprocess(study_yaml: Path, tmp_path: Path) -> subprocess.Comple
         [
             sys.executable,
             "-m",
-            "experiments.run_study",
+            "silisocs.studies.run_study",
             "--study",
             str(study_yaml),
             "--repo-root",
