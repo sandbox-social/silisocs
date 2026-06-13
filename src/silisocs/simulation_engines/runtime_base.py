@@ -42,6 +42,12 @@ class StepResult:
     probe_phase: dict[str, Any] = field(default_factory=dict)
     action_phase: dict[str, Any] = field(default_factory=dict)
     primary_game_master: str = ""
+    failed_turns: tuple[str, ...] = ()
+
+    @property
+    def degraded(self) -> bool:
+        """True when at least one agent turn raised instead of producing an action."""
+        return bool(self.failed_turns)
 
 
 class TurnPolicy(Protocol):

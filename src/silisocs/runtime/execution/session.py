@@ -521,6 +521,20 @@ def main(cfg: DictConfig):
             completion_line += f" error={completion_error}"
         logger.info(completion_line)
         print(completion_line)
+
+        # Surface degraded-run signals so silent failures cannot pass as clean runs.
+        health_counters = {
+            "agent_turn_failures": "agent turns raised an exception",
+            "action_parse_failures": "agent actions were dropped as unparseable",
+            "action_invalid_targets": "agent actions referenced invalid target ids",
+            "backend_action_errors": "backend actions raised unexpected exceptions",
+        }
+        for counter_name, description in health_counters.items():
+            count = metrics.counter(counter_name)
+            if count:
+                health_line = f"⚠ DEGRADED RUN: {count} {description} (see sim_metrics.json)"
+                logger.warning(health_line)
+                print(health_line)
         with open(run_stats_path, "a", encoding="utf-8") as f:
             f.write(completion_line + "\n")
 

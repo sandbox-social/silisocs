@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -14,7 +15,39 @@ from silisocs.environments.gm.components.base import (
     ComponentState,
     ResolveComponent,
 )
+from silisocs.runtime.telemetry.collector import SimMetricsCollector
 from silisocs.runtime.types import ActionOutput, OutputType
+
+_LOGGER = logging.getLogger(__name__)
+
+PARSE_FAILURE_COUNTER = "action_parse_failures"
+INVALID_TARGET_COUNTER = "action_invalid_targets"
+
+# Outputs that are legitimate non-actions (turn-policy signals), not parse failures.
+_EXPECTED_NON_ACTION_OUTPUTS = {
+    "FINISHED",
+    "FINISH",
+    "FINISH_ACTION_EPISODE",
+    "FINISHED ACTION EPISODE",
+}
+
+
+def _record_parse_failure(agent_name: str, action_text: str, reason: str) -> None:
+    """Surface a dropped agent action instead of failing silently."""
+    normalized = action_text.strip().upper().rstrip(".!")
+    if not normalized or normalized in _EXPECTED_NON_ACTION_OUTPUTS:
+        return
+    SimMetricsCollector.get().increment_counter(PARSE_FAILURE_COUNTER)
+    snippet = action_text.strip().replace("\n", " | ")
+    if len(snippet) > 300:
+        snippet = snippet[:300] + "…"
+    _LOGGER.warning(
+        "Dropped action from agent '%s' (%s). Raw output: %s",
+        agent_name,
+        reason,
+        snippet,
+    )
+
 
 _ACTION_BLOCK_PATTERN = re.compile(
     r"(?ims)^\s*(?P<label>ACTION TYPE|TARGET ID|CONTENT|REASONING)\s*:\s*"
@@ -139,15 +172,26 @@ class ParsedActionResolveComponent(_BaseResolveComponent):
     """Resolve using ACTION TYPE/TARGET ID/CONTENT parser output."""
 
     def resolve(self, *, active_agent: str, action: ActionOutput | str) -> str:
-        """Resolve.
-
-        :returns: str
-        :rtype: str
-        """
+        """Resolve raw action text into a backend operation result."""
         action_text = action.text if isinstance(action, ActionOutput) else str(action)
         action_data = find_and_parse_action_data(action_text)
         if action_data is None:
+            _record_parse_failure(active_agent, action_text, "no ACTION TYPE block found")
             return ""
+        action_type = action_data["action_type"].strip().lower()
+        target_id = action_data["target_id"]
+        if action_type in _TARGET_REQUIRED_ACTIONS and not target_id.isdigit():
+            SimMetricsCollector.get().increment_counter(INVALID_TARGET_COUNTER)
+            _LOGGER.warning(
+                "Agent '%s' action '%s' has invalid TARGET ID %r (numeric post id required).",
+                active_agent,
+                action_type,
+                target_id,
+            )
+            return (
+                f"Could not perform '{action_type}': TARGET ID {target_id!r} is not a "
+                "valid numeric post id. Use a post id from the timeline."
+            )
         return self.backend.parse_and_resolve_action(active_agent, action_data)
 
 
@@ -156,14 +200,11 @@ class GenericActionResolveComponent(_BaseResolveComponent):
     """Resolve generic ACTION: name / param: value format."""
 
     def resolve(self, *, active_agent: str, action: ActionOutput | str) -> str:
-        """Resolve.
-
-        :returns: str
-        :rtype: str
-        """
+        """Resolve generic action text into a backend operation result."""
         action_text = action.text if isinstance(action, ActionOutput) else str(action)
         action_match = re.search(r"(?i)ACTION:\s*(\w+)", action_text)
         if not action_match:
+            _record_parse_failure(active_agent, action_text, "no ACTION: line found")
             return ""
         action_name = action_match.group(1).strip()
         args_text = action_text[action_match.end() :].strip()

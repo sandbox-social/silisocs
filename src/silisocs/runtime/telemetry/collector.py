@@ -75,6 +75,7 @@ class SimMetricsCollector:
         self._episode_metrics: list[dict[str, Any]] = []
         self._resource_snapshots: list[dict[str, Any]] = []
         self._meta: dict[str, Any] = {}
+        self._counters: dict[str, int] = {}
         self._sim_start: float | None = None
         self._sim_end: float | None = None
         self._lock_data = threading.Lock()
@@ -125,6 +126,16 @@ class SimMetricsCollector:
         with self._lock_data:
             self._meta[key] = value
 
+    def increment_counter(self, name: str, amount: int = 1) -> None:
+        """Increment a named run-level counter (e.g. action parse failures)."""
+        with self._lock_data:
+            self._counters[name] = self._counters.get(name, 0) + amount
+
+    def counter(self, name: str) -> int:
+        """Return the current value of a named counter (0 if never incremented)."""
+        with self._lock_data:
+            return self._counters.get(name, 0)
+
     def to_dict(self) -> dict[str, Any]:
         total = None
         if self._sim_start is not None and self._sim_end is not None:
@@ -138,6 +149,7 @@ class SimMetricsCollector:
                 "total_ram_mb": round(psutil.virtual_memory().total / (1024 * 1024), 1),
             },
             "meta": dict(self._meta),
+            "counters": dict(self._counters),
             "total_sim_duration_s": total,
             "phase_timings": list(self._phase_timings),
             "episode_metrics": list(self._episode_metrics),

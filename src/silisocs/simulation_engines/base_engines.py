@@ -14,6 +14,7 @@ from omegaconf import OmegaConf
 
 from silisocs.agents.base_agent import Agent
 from silisocs.runtime.telemetry import (
+    SimMetricsCollector,
     capture_retry_counters,
     collect_retry_telemetry,
     collect_unique_models,
@@ -239,6 +240,7 @@ class RuntimeEngine(RuntimeEngineBase):
     def _run_tasks_with_limit(
         tasks: Mapping[str, Callable[[], str]],
         worker_limit: int,
+        failed_tasks: list[str] | None = None,
     ) -> dict[str, str]:
         if not tasks:
             return {}
@@ -253,6 +255,9 @@ class RuntimeEngine(RuntimeEngineBase):
                     results[task_name] = str(future.result() or "")
                 except Exception:
                     _LOGGER.exception("Agent turn failed (isolated): %s", task_name)
+                    SimMetricsCollector.get().increment_counter("agent_turn_failures")
+                    if failed_tasks is not None:
+                        failed_tasks.append(task_name)
                     results[task_name] = ""
             return results
 
@@ -304,9 +309,10 @@ class RuntimeEngine(RuntimeEngineBase):
         before = capture_retry_counters(models)
         set_model_retry_phase(models, "action")
         action_start = time.time()
+        failed_tasks: list[str] = []
         try:
             for _flow_name, tasks in tasks_by_flow:
-                self._run_tasks_with_limit(tasks, worker_limit)
+                self._run_tasks_with_limit(tasks, worker_limit, failed_tasks=failed_tasks)
         finally:
             set_model_retry_phase(models, "other")
         action_duration = time.time() - action_start
@@ -333,9 +339,11 @@ class RuntimeEngine(RuntimeEngineBase):
                 "active_agents": len(active_names),
                 "duration_s": round(action_duration, 4),
                 "retry": retry_delta,
+                "failed_turns": len(failed_tasks),
             },
             probe_phase=probe_empty(len(active_names)),
             primary_game_master=batches[0].game_master.name if batches else "",
+            failed_turns=tuple(failed_tasks),
         )
 
     def run_step(

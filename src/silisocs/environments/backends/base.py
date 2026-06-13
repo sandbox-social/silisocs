@@ -7,6 +7,7 @@ import abc
 import dataclasses
 import datetime
 import inspect
+import logging
 import re
 import textwrap
 import types
@@ -16,6 +17,10 @@ from typing import Any, Literal, get_type_hints
 
 import docstring_parser
 import termcolor
+
+from silisocs.exceptions import ActionError, BackendError
+
+_LOGGER = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
 # Constants & Types
@@ -116,8 +121,16 @@ def app_action(
     return _decorate
 
 
-class ActionArgumentError(Exception):
+class ActionArgumentError(ActionError):
     """An error that is raised when argument parsing fails."""
+
+
+def _record_unexpected_action_error(action_name: str, exc: Exception) -> None:
+    """Log and count a non-ActionError escaping a backend action."""
+    from silisocs.runtime.telemetry.collector import SimMetricsCollector
+
+    _LOGGER.exception("Backend action '%s' raised unexpectedly: %s", action_name, exc)
+    SimMetricsCollector.get().increment_counter("backend_action_errors")
 
 
 def is_runtime_owned_parameter(name: str) -> bool:
@@ -525,15 +538,26 @@ class BackendApp(metaclass=abc.ABCMeta):
 
         try:
             return getattr(self, action.name)(**processed_args)
+        except ActionError as e:
+            self._print(f"Error invoking action {action.name}: {e}", color="red")
+            return f"Error invoking action {action.name}: {e}"
         except Exception as e:
+            _record_unexpected_action_error(action.name, e)
             self._print(f"Error invoking action {action.name}: {e}", color="red")
             return f"Error invoking action {action.name}: {e}"
 
     def _action_lookup(self) -> dict[str, ActionDescriptor]:
         lookup: dict[str, ActionDescriptor] = {}
         for action in self.actions():
-            lookup[action.name] = action
-            lookup[action.selectable_name] = action
+            for key in {action.name, action.selectable_name}:
+                existing = lookup.get(key)
+                if existing is not None and existing.name != action.name:
+                    raise BackendError(
+                        f"Action name collision in {type(self).__name__}: "
+                        f"'{key}' maps to both '{existing.name}' and '{action.name}'. "
+                        "Action names and selectable_names must be unique per backend."
+                    )
+                lookup[key] = action
         return lookup
 
     def invoke_action_by_name(self, action_name: str, args_text: str) -> str:
@@ -590,7 +614,11 @@ class BackendApp(metaclass=abc.ABCMeta):
 
         try:
             return getattr(self, action.name)(**processed) or ""
+        except ActionError as exc:
+            self._print(f"Error invoking action {action.name}: {exc}", color="red")
+            return f"Error invoking action {action.name}: {exc}"
         except Exception as exc:
+            _record_unexpected_action_error(action.name, exc)
             self._print(f"Error invoking action {action.name}: {exc}", color="red")
             return f"Error invoking action {action.name}: {exc}"
 
