@@ -103,10 +103,16 @@ Key run params live in `world/default.yaml` (at config root via `@package _globa
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| `num_agents` | 100 | Number of agents |
-| `num_steps` | 50 | Simulation episodes |
+| `num_agents` | 10 | Number of agents |
+| `num_steps` | 5 | Simulation episodes |
 | `scenario_name` | default | Used in output path |
 | `seed` | 1 | Random seed |
+
+Note: scenario `world/default.yaml` files REPLACE the base world group (Hydra
+searchpath shadowing), so every scenario must re-declare the universal run
+params (`num_steps`, `seed`, `output_rootname`, ...). Flat scenario
+`sim.yaml`/`env.yaml` files are MERGED into the composed config instead.
+`tests/test_bundled_scenarios_compose.py` enforces this for bundled scenarios.
 
 GM component routing is enabled with
 `env.gm.class_path=silisocs.environments.gm.game_master.MultiFlowGameMaster`.
@@ -265,11 +271,17 @@ actions as tools and the language model selects which action(s) to invoke.
 
 **Architecture for tool-calling:**
 
-1. **Detect tool-calling mode**: Game master sets the action_spec with a `### TOOL_CALLING_MODE ###` marker
-2. **Entity act layer**: Uses `SocialConcatActComponent` to detect this marker
-3. **Tool selection**: Calls model's `sample_tool_call()` with available backend action schemas
-4. **Format result**: Returns structured tool-call result as JSON
-5. **Resolve execution**: ToolCallingResolveComponent parses result and executes the selected tool
+1. **Detect tool-calling mode**: The GM's action-prompt component checks the
+   `enable_tool_calling` flag and, when the backend provides
+   `generate_tool_schemas()`, builds an `ActionSpec` with
+   `output_type=OutputType.TOOL_CALLS` and the tool schemas in `extra_args["tools"]`
+   (see `environments/gm/components/action_prompt.py`)
+2. **Agent act layer**: `Agent._call_model()` routes `OutputType.TOOL_CALLS`
+   specs to the model's `sample_tool_calls()` with the provided schemas
+3. **Typed result**: The agent returns an `ActionOutput` carrying typed
+   `ToolCall` entries (no string marker or JSON parsing involved)
+4. **Resolve execution**: `ToolCallingResolveComponent` validates the tool calls
+   and executes them via `backend.invoke_action_with_kwargs()`
 
 ### Enabling Tool-Calling
 
@@ -291,6 +303,23 @@ sim:
 
 When tool-calling is active, the native `ActionSpec` carries tool schemas in
 `extra_args`; `Agent._call_model()` routes the request to `sample_tool_calls`.
+
+### Adding a Custom LLM Provider
+
+Two paths, no core edits required:
+
+1. Register a provider name (import the module before the run starts):
+   ```python
+   from silisocs.runtime.language_models.registry import register_llm_provider
+
+   @register_llm_provider("my_provider")
+   class MyModel(LanguageModel): ...
+   ```
+   then set `sim.llm.provider: my_provider`.
+2. Or set `sim.llm.provider: mypkg.models.MyModel` (fully qualified class path).
+
+Providers that speak an OpenAI-compatible HTTP API should subclass
+`OpenAICompatibleLanguageModel` to inherit retry/backoff and telemetry support.
 
 ### Validation & Error Handling
 

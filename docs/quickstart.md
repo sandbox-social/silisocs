@@ -88,17 +88,22 @@ uv run python -m silisocs.evaluations.analysis.dashboard.main \
 The analytics dashboard expects `action_events.jsonl` and `probe_events.jsonl`
 in that folder.
 
-## 6. Run an External Scenario
+## 6. Run a Bundled Scenario
 
-Run the bundled election scenario:
+Run the bundled election scenario (requires the `hf` extra for its persona
+dataset: `pip install "silisocs[hf]"`):
 
 ```sh
-uv run silisocs --config-path scenarios/election/conf
+uv run silisocs --config-path election
 ```
 
-The runner auto-detects the scenario name from the YAML files in the external
-config directory. No need to manually specify a `world=` override unless you are
-choosing a non-default semantic world variant from `conf/world/`.
+`--config-path` accepts a bare bundled-scenario name, a repo-style path
+(`scenarios/election/conf`), or a filesystem path to your own scenario config
+directory — so the same command works from a repo checkout or a plain
+`pip install silisocs`. The runner auto-detects the scenario name from the
+YAML files in the config directory. No need to manually specify a `world=`
+override unless you are choosing a non-default semantic world variant from
+`conf/world/`.
 
 ## Next Steps
 

@@ -41,6 +41,23 @@ pip install "silisocs[all]"                 # all non-AWS extras, including docs
 pip install "silisocs[all,aws]"             # all extras + AWS
 ```
 
+## Run a Bundled Scenario (no repo checkout needed)
+
+The wheel bundles the full scenario library. After `pip install silisocs`,
+run any bundled scenario by name from any directory:
+
+```sh
+silisocs --config-path misinformation \
+  num_agents=6 num_steps=5 \
+  output_rootname=./misinfo_run
+```
+
+`--config-path` accepts a bare scenario name (`election`, `misinformation`,
+...), a repo-style path (`scenarios/election/conf`), or a filesystem path to
+your own scenario config directory. An unknown name lists the available
+bundled scenarios. Scenario persona pipelines that load Hugging Face datasets
+(e.g. `election`) additionally need `pip install "silisocs[hf]"`.
+
 ## Contributor Setup
 
 1. Clone the repository:
