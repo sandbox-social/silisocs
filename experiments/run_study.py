@@ -19,8 +19,10 @@ import argparse
 import copy
 import datetime as dt
 import hashlib
+import importlib.metadata
 import json
 import os
+import platform
 import random
 import shlex
 import subprocess
@@ -284,6 +286,45 @@ def _hash_file(path: Path) -> str | None:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _environment_provenance(repo_root: Path) -> dict[str, Any]:
+    """Capture the execution environment so a study run can be reproduced.
+
+    Config SHAs alone cannot reproduce a run: results depend on the code
+    revision and dependency set that executed it.
+    """
+
+    def _git(*git_args: str) -> str | None:
+        try:
+            proc = subprocess.run(
+                ["git", *git_args],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return proc.stdout.strip() if proc.returncode == 0 else None
+
+    try:
+        silisocs_version = importlib.metadata.version("silisocs")
+    except importlib.metadata.PackageNotFoundError:
+        silisocs_version = None
+
+    dirty_output = _git("status", "--porcelain")
+    return {
+        "git_commit": _git("rev-parse", "HEAD"),
+        "git_branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
+        "git_dirty": bool(dirty_output) if dirty_output is not None else None,
+        "python_version": platform.python_version(),
+        "platform": platform.platform(),
+        "silisocs_version": silisocs_version,
+        "uv_lock_sha256": _hash_file(repo_root / "uv.lock"),
+        "captured_at": _now_iso(),
+    }
 
 
 def _normalize_override_value(value: Any) -> str:  # noqa: PLR0911
@@ -1488,8 +1529,12 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
         for idx, spec in enumerate(shuffled):
             gpu_bindings[spec.run_id] = gpu_ids[idx % len(gpu_ids)]
 
+    provenance = _environment_provenance(repo_root)
     print(f"Study: {study['name']}")
     print(f"Schema version: {SCHEMA_VERSION}")
+    print(f"Git commit: {provenance.get('git_commit') or 'unknown'}")
+    if provenance.get("git_dirty"):
+        print("⚠ Working tree has uncommitted changes; repro lock records git_dirty=true")
     print(f"Expanded runs: {len(run_specs)}")
     print(f"Global evaluators: {[e.eval_id for e in eval_specs]}")
     print(f"Max concurrency: {max_concurrent}")
@@ -1548,7 +1593,14 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
             print(f"[{record.get('status', 'unknown'):>7}] {record.get('run_id')}")
 
     records.sort(key=lambda r: str(r.get("run_id", "")))
-    _write_json(lock_json, {"schema_version": SCHEMA_VERSION, "records": records})
+    _write_json(
+        lock_json,
+        {
+            "schema_version": SCHEMA_VERSION,
+            "environment": provenance,
+            "records": records,
+        },
+    )
     _write_study_index(study_index, study_data, records)
     _write_yaml(enriched_yaml, _enrich_study_with_results(study_data, records))
 
