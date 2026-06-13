@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import importlib
 import json
 import os
 import pickle
@@ -12,6 +13,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from silisocs.exceptions import CheckpointError
 from silisocs.runtime.checkpointing.policy import CHECKPOINT_SCHEMA_VERSION
 from silisocs.runtime.checkpointing.serialization import json_safe
 from silisocs.runtime.construction.assembly import RuntimeObjects, add_agent, add_game_master
@@ -67,21 +69,24 @@ def save_checkpoint(
     print(f"Step {step}: Saved checkpoint to {checkpoint_file}")
 
 
-def load_checkpoint_into_runtime(
+def _stage_checkpoint_objects(
     runtime: RuntimeObjects,
     checkpoint: Mapping[str, Any],
     *,
     models: dict[str, Any],
     object_to_model: dict[str, str],
-) -> None:
-    """Load checkpointed object state into an existing runtime object set."""
-    if checkpoint.get("schema_version") != CHECKPOINT_SCHEMA_VERSION:
-        raise ValueError(
-            f"Unsupported checkpoint schema version: {checkpoint.get('schema_version')!r}"
-        )
+) -> list[tuple[str, RuntimeSpec, Mapping[str, Any], Any]]:
+    """Validate every checkpoint object before any runtime mutation.
+
+    Returns staged ``(name, spec, state, existing_object_or_None)`` entries,
+    ordered agents-first so game masters can reference restored agents.
+    Raises without touching the runtime if any entry is invalid.
+    """
     objects = checkpoint.get("objects", {})
     if not isinstance(objects, Mapping):
         raise ValueError("Checkpoint field `objects` must be a mapping.")
+    by_name = {obj.name: obj for obj in [*runtime.agents, *runtime.game_masters]}
+    staged: list[tuple[str, RuntimeSpec, Mapping[str, Any], Any]] = []
     for name, raw in objects.items():
         if not isinstance(raw, Mapping):
             raise ValueError(f"Checkpoint object state for {name} must be a mapping.")
@@ -91,36 +96,86 @@ def load_checkpoint_into_runtime(
             compat=raw.get("compat"),
             params=dict(raw.get("params") or {}),
         )
+        if spec.role not in (RuntimeRole.AGENT, RuntimeRole.GAME_MASTER):
+            raise ValueError(f"Unsupported checkpoint role for {name}: {spec.role}")
         raw_state = raw.get("state")
         state: Mapping[str, Any] = raw_state if isinstance(raw_state, Mapping) else {}
-        existing = next(
-            (obj for obj in [*runtime.agents, *runtime.game_masters] if obj.name == str(name)),
-            None,
-        )
+        existing = by_name.get(str(name))
         if existing is not None:
-            setter = getattr(existing, "set_state", None)
-            if not callable(setter):
+            if not callable(getattr(existing, "set_state", None)):
                 raise ValueError(f"Runtime object {name} does not support set_state().")
-            setter(state)
-            continue
-        if spec.role == RuntimeRole.AGENT:
-            add_agent(
-                runtime=runtime,
-                spec=spec,
-                models=models,
-                object_to_model=object_to_model,
-                state=dict(state),
-            )
-        elif spec.role == RuntimeRole.GAME_MASTER:
-            add_game_master(
-                runtime=runtime,
-                spec=spec,
-                models=models,
-                object_to_model=object_to_model,
-                state=dict(state),
-            )
         else:
-            raise ValueError(f"Unsupported checkpoint role for {name}: {spec.role}")
+            model_key = object_to_model.get(str(name))
+            if model_key is None or model_key not in models:
+                raise ValueError(
+                    f"Checkpoint object {name} has no language-model assignment in the "
+                    "current configuration; cannot restore it into this runtime."
+                )
+            if not spec.compat:
+                module_path, _, attr = spec.class_path.rpartition(".")
+                if not module_path:
+                    raise ValueError(f"Checkpoint object {name} has invalid class_path.")
+                try:
+                    getattr(importlib.import_module(module_path), attr)
+                except (ImportError, AttributeError) as exc:
+                    raise ValueError(
+                        f"Checkpoint object {name} references unimportable class "
+                        f"'{spec.class_path}': {exc}"
+                    ) from exc
+        staged.append((str(name), spec, state, existing))
+    staged.sort(key=lambda entry: 0 if entry[1].role == RuntimeRole.AGENT else 1)
+    return staged
+
+
+def load_checkpoint_into_runtime(
+    runtime: RuntimeObjects,
+    checkpoint: Mapping[str, Any],
+    *,
+    models: dict[str, Any],
+    object_to_model: dict[str, str],
+) -> None:
+    """Load checkpointed object state into an existing runtime object set.
+
+    Validation happens for every object before any state is applied, so an
+    invalid checkpoint leaves the runtime untouched. If applying state fails
+    partway despite validation, a :class:`CheckpointError` is raised because
+    the runtime can no longer be trusted and must be rebuilt.
+    """
+    if checkpoint.get("schema_version") != CHECKPOINT_SCHEMA_VERSION:
+        raise ValueError(
+            f"Unsupported checkpoint schema version: {checkpoint.get('schema_version')!r}"
+        )
+    staged = _stage_checkpoint_objects(
+        runtime, checkpoint, models=models, object_to_model=object_to_model
+    )
+    applied: list[str] = []
+    try:
+        for name, spec, state, existing in staged:
+            if existing is not None:
+                existing.set_state(state)
+            elif spec.role == RuntimeRole.AGENT:
+                add_agent(
+                    runtime=runtime,
+                    spec=spec,
+                    models=models,
+                    object_to_model=object_to_model,
+                    state=dict(state),
+                )
+            else:
+                add_game_master(
+                    runtime=runtime,
+                    spec=spec,
+                    models=models,
+                    object_to_model=object_to_model,
+                    state=dict(state),
+                )
+            applied.append(name)
+    except Exception as exc:
+        raise CheckpointError(
+            f"Checkpoint restore failed while applying state for object "
+            f"'{staged[len(applied)][0]}' (after {len(applied)}/{len(staged)} objects). "
+            "The runtime is partially restored and must be rebuilt before use."
+        ) from exc
     runtime.checkpoint_counter = int(checkpoint.get("checkpoint_counter", 0))
 
 

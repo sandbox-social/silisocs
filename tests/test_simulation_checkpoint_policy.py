@@ -92,3 +92,67 @@ def test_restore_rng_state_from_metadata_restores_python_random() -> None:
     restore_rng_state_from_metadata(payload)
 
     assert random.random() == expected_first
+
+
+def test_invalid_checkpoint_leaves_runtime_untouched() -> None:
+    """Restore must validate every object before mutating any runtime state."""
+    from silisocs.agents.fixed import FixedAgent
+    from silisocs.runtime.checkpointing.policy import CHECKPOINT_SCHEMA_VERSION
+    from silisocs.runtime.checkpointing.state import load_checkpoint_into_runtime
+    from silisocs.runtime.construction.assembly import RuntimeObjects
+    from silisocs.runtime.construction.specs import RuntimeRole, RuntimeSpec
+    from silisocs.runtime.language_models.base import NoLanguageModel
+
+    model = NoLanguageModel()
+    agent = FixedAgent(model=model, name="Alice", actions=[])
+    runtime = RuntimeObjects(
+        agents=[agent],
+        game_masters=[],
+        object_specs={
+            "Alice": RuntimeSpec(
+                class_path="silisocs.agents.fixed.FixedAgent",
+                role=RuntimeRole.AGENT,
+                compat=None,
+                params={"name": "Alice"},
+            )
+        },
+    )
+    state_before = agent.get_state()
+
+    checkpoint = {
+        "schema_version": CHECKPOINT_SCHEMA_VERSION,
+        "checkpoint_counter": 7,
+        "objects": {
+            "Alice": {
+                "class_path": "silisocs.agents.fixed.FixedAgent",
+                "role": "agent",
+                "compat": None,
+                "params": {"name": "Alice"},
+                "state": {"current_episode": 3},
+            },
+            "Ghost": {
+                "class_path": "does.not.exist.GhostAgent",
+                "role": "agent",
+                "compat": None,
+                "params": {"name": "Ghost"},
+                "state": {},
+            },
+        },
+    }
+
+    try:
+        load_checkpoint_into_runtime(
+            runtime,
+            checkpoint,
+            models={"m": model},
+            object_to_model={"Alice": "m"},
+        )
+    except ValueError as exc:
+        assert "Ghost" in str(exc)
+    else:
+        raise AssertionError("Expected restore to fail validation for Ghost")
+
+    # Alice's state must NOT have been applied: validation precedes mutation.
+    assert agent.get_state() == state_before
+    assert runtime.checkpoint_counter == 0
+    assert len(runtime.agents) == 1
