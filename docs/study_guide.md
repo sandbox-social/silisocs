@@ -88,6 +88,7 @@ hypotheses:
 |---|---|
 | `study.scenarios` | List of scenarios to run each condition on |
 | `run_defaults.seed_start` + `seed_repeats` | Expands to N consecutive seeds per run |
+| `run_defaults.checkpoint_every_n_steps` | Checkpoint cadence injected into every run (default `1`, i.e. a checkpoint every step so evaluators can read the final checkpoint). Set a larger int for sparser checkpoints, or `null`/`0`/`false` to disable the injection. |
 | `hypotheses.<id>.conditions.<name>.overrides` | Hydra CLI overrides for this condition |
 | `hypotheses.<id>.status` | `testing` → `supported` / `refuted` / `inconclusive` |
 
@@ -149,6 +150,24 @@ Outputs land in:
 experiments/studies/my_study/runs/h1_persona_richness/persona=rich/neighborhood_forum/seed_42/run/
 ```
 
+**Resuming an interrupted study.** Each successful run leaves a
+`RUN_COMPLETE.json` marker in its run directory. Re-running the same `run`
+command skips runs that already completed (reported as `skipped_complete` and
+counted as successes) and only executes the missing or failed ones. The runner
+prints `Skipped N already-complete runs (use --force to re-run)`; pass `--force`
+to ignore the markers and re-run everything.
+
+**Preflight check.** Before launching, the runner prints how many runs will
+execute, their `num_agents`/`num_steps` (when derivable from overrides), and the
+estimated total agent-steps. If more than 50 runs would launch, it asks for
+confirmation — pass `--yes` to skip the prompt (required in non-interactive
+sessions such as CI or batch jobs).
+
+**Checkpoint cadence.** By default every run is launched with
+`sim.checkpoint.every_n_steps=1` so evaluators can read the final checkpoint.
+Set `run_defaults.checkpoint_every_n_steps` to a larger integer for sparser
+checkpoints, or to `null`/`0`/`false` to disable the injection.
+
 ---
 
 ## Step 5 — Analyse results
@@ -165,6 +184,12 @@ The standard notebook structure has 9 sections:
 7. Per-agent distributions (strip plots)
 8. Behavioral breakdown (action type counts)
 9. Takeaways (key findings, limitations, next steps)
+
+Cross-replicate statistics (`n`, `mean`, `stdev`, and a t-distribution 95%
+confidence interval as `ci95_low`/`ci95_high`) are generated automatically:
+per condition in `generated/organized/summary.json` under
+`metrics_stats_by_condition`, and per run in each hypothesis `runs.json` under
+`aggregated_stats`.
 
 See `docs/study_schema.md` for the full notebook conventions.
 

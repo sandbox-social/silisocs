@@ -62,16 +62,11 @@ def _study_payload(tmp_path: Path) -> dict:
     }
 
 
-def test_study_runner_e2e_with_scripted_model(tmp_path: Path) -> None:
-    study_dir = tmp_path / "study_def"
-    study_dir.mkdir(parents=True)
-    study_yaml = study_dir / "study.yaml"
-    study_yaml.write_text(yaml.safe_dump(_study_payload(tmp_path)), encoding="utf-8")
-
+def _run_study_subprocess(study_yaml: Path, tmp_path: Path) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
     env["RUN_STUDY_PYTHON"] = sys.executable
 
-    proc = subprocess.run(
+    return subprocess.run(
         [
             sys.executable,
             "-m",
@@ -90,6 +85,15 @@ def test_study_runner_e2e_with_scripted_model(tmp_path: Path) -> None:
         text=True,
         timeout=600,
     )
+
+
+def test_study_runner_e2e_with_scripted_model(tmp_path: Path) -> None:
+    study_dir = tmp_path / "study_def"
+    study_dir.mkdir(parents=True)
+    study_yaml = study_dir / "study.yaml"
+    study_yaml.write_text(yaml.safe_dump(_study_payload(tmp_path)), encoding="utf-8")
+
+    proc = _run_study_subprocess(study_yaml, tmp_path)
     assert proc.returncode == 0, f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
 
     generated = tmp_path / "experiments" / "studies" / STUDY_ID / "generated"
@@ -116,6 +120,11 @@ def test_study_runner_e2e_with_scripted_model(tmp_path: Path) -> None:
         assert run_dir.is_dir()
         assert (run_dir / "sim_metrics.json").is_file()
         assert record["lock"]["effective_config_sha256"]
+        # Idempotent-resume marker is written after each successful run.
+        marker = json.loads((run_dir / "RUN_COMPLETE.json").read_text(encoding="utf-8"))
+        assert marker["run_id"] == record["run_id"]
+        assert marker["return_code"] == 0
+        assert marker["effective_config_sha256"] == record["lock"]["effective_config_sha256"]
 
     # The per-run jsonl lock and study index are also written.
     assert (generated / "repro_lock.jsonl").is_file()
@@ -127,3 +136,20 @@ def test_study_runner_e2e_with_scripted_model(tmp_path: Path) -> None:
     assert (organized / "study_summary.yaml").is_file()
     seed_dirs = list(organized.rglob("seed_*"))
     assert len(seed_dirs) >= 2, sorted(str(p) for p in organized.rglob("*"))
+
+    # Second invocation of the same study: every run resumes as
+    # skipped_complete instead of re-executing, and prior run dirs survive.
+    first_pass_run_dirs = {record["run_id"]: record["run_dir"] for record in records}
+    proc2 = _run_study_subprocess(study_yaml, tmp_path)
+    assert proc2.returncode == 0, f"stdout:\n{proc2.stdout}\nstderr:\n{proc2.stderr}"
+    assert "Skipped 2 already-complete runs (use --force to re-run)" in proc2.stdout
+
+    lock2 = json.loads(lock_json.read_text(encoding="utf-8"))
+    records2 = lock2["records"]
+    assert len(records2) == 2
+    assert {record["status"] for record in records2} == {"skipped_complete"}
+    for record in records2:
+        first_run_dir = Path(first_pass_run_dirs[record["run_id"]]).resolve()
+        assert Path(record["run_dir"]).resolve() == first_run_dir
+        assert record["lock"]["effective_config_sha256"]
+        assert Path(record["run_dir"], "sim_metrics.json").is_file()

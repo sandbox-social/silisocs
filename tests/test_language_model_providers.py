@@ -242,3 +242,66 @@ def test_sample_tool_calls_returns_typed_tool_calls() -> None:
     result = model.sample_tool_calls("prompt", [{"type": "function"}], mode="multi")
 
     assert result == [ToolCall("toot", {"status": "hello"})]
+
+
+class _ToyModel:
+    """Minimal custom provider for registry tests."""
+
+    def __init__(self, *, model_name: str = "", temperature: float = 0.0) -> None:
+        self.model_name = model_name
+        self.temperature = temperature
+
+
+def test_registered_custom_provider_is_selectable() -> None:
+    from silisocs.runtime.language_models.base import LanguageModel
+    from silisocs.runtime.language_models.factory import select_large_language_model
+    from silisocs.runtime.language_models.registry import (
+        _PROVIDERS,
+        register_llm_provider,
+    )
+
+    @register_llm_provider("toy_test_provider")
+    class ToyLanguageModel(LanguageModel):
+        def __init__(self, *, model_name: str = "", temperature: float = 0.0) -> None:
+            self.model_name = model_name
+            self.temperature = temperature
+
+        def sample_text(self, prompt: str, **kwargs):  # type: ignore[override]
+            return "toy"
+
+    try:
+        model = select_large_language_model(
+            model_name="toy-1",
+            log_file="",
+            debug_mode=False,
+            provider="toy_test_provider",
+            temperature=0.9,
+        )
+        assert isinstance(model, ToyLanguageModel)
+        assert model.model_name == "toy-1"
+        assert model.temperature == 0.9
+    finally:
+        _PROVIDERS.pop("toy_test_provider", None)
+
+
+def test_class_path_provider_must_be_language_model() -> None:
+    import pytest
+
+    from silisocs.runtime.language_models.factory import select_large_language_model
+
+    with pytest.raises(TypeError, match="not a silisocs LanguageModel"):
+        select_large_language_model(
+            model_name="x",
+            log_file="",
+            debug_mode=False,
+            provider=f"{_ToyModel.__module__}._ToyModel",
+        )
+
+
+def test_unknown_provider_error_mentions_extension_paths() -> None:
+    import pytest
+
+    from silisocs.runtime.language_models.factory import select_large_language_model
+
+    with pytest.raises(ValueError, match="register_llm_provider"):
+        select_large_language_model(model_name="x", log_file="", debug_mode=False, provider="nope")

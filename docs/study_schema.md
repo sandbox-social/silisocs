@@ -132,6 +132,7 @@ hypotheses:
 | `scenarios` | list[string] | Scenario names used across all hypotheses |
 | `run_defaults.config_path` | string | Scenario config directory, often `scenarios/{scenario}/conf`. |
 | `run_defaults.overrides` | dict | Hydra overrides shared by all runs. Per-condition overrides are added on top. |
+| `run_defaults.checkpoint_every_n_steps` | int \| null | Checkpoint cadence injected into every run as `sim.checkpoint.every_n_steps`. Defaults to `1` (a checkpoint every step) so `eval.py` can read the final checkpoint for action-type metrics. Set another positive integer for a sparser cadence, or `null`/`0`/`false` to skip the injection entirely (the runtime default then applies). An explicit `sim.checkpoint.every_n_steps` in `run_defaults.overrides` or a condition's `overrides` still takes precedence. |
 
 **`hypotheses.{id}.conditions.{name}` fields:**
 
@@ -207,6 +208,27 @@ hypothesis and is the primary data source for per-hypothesis notebook sections.
 ```
 
 Each entry is the contents of a single `eval.json` plus `condition` and `scenario` keys. One entry per run (multiple entries per condition if replicate runs exist).
+
+Each entry also carries an `aggregated_stats` map (empty when a run has fewer than two evaluator payloads). For every numeric metric that was averaged it reports replicate statistics:
+
+```json
+"aggregated_stats": {
+  "self_bleu": {
+    "n": 3,
+    "mean": 0.45,
+    "stdev": 0.04,
+    "ci95_low": 0.35,
+    "ci95_high": 0.55
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `n` | Number of values aggregated |
+| `mean` | Sample mean (same value as the metric in `aggregated`) |
+| `stdev` | Sample standard deviation (`null` when `n < 2`) |
+| `ci95_low` / `ci95_high` | 95% confidence interval using the t-distribution (`mean ± t(0.975, n-1) · stdev / √n`); `null` when `n < 2`. For `n - 1 > 30` the normal approximation (1.96) is used. |
 
 ### config.yaml
 
@@ -324,6 +346,8 @@ Generated at the study level. Two sections: a flat `conditions` list for per-run
 
 `conditions` contains one entry per (hypothesis, condition, scenario) triple — identical in shape to a per-run `eval.json` entry but without per-agent detail. `metrics_by_condition` averages each metric across scenarios, nested by hypothesis so condition names that appear in multiple hypotheses don't collide.
 
+A parallel `metrics_stats_by_condition` section reports cross-replicate statistics for each averaged metric — `n`, `mean`, `stdev`, `ci95_low`, `ci95_high` (same field semantics as `aggregated_stats` in `runs.json`). `metrics_by_condition` keeps its plain-mean shape for backward compatibility; use `metrics_stats_by_condition` when you need error bars or confidence intervals across seed replicates.
+
 ## The eval.py Contract
 
 Every study that needs style-diversity metrics ships `experiments/studies/{study_name}/eval.py`. `run_study.py` discovers and invokes it automatically via the `builtin.study_eval` preset.
@@ -354,7 +378,7 @@ uv run python experiments/studies/{study_name}/eval.py \
 | File | Required | Purpose |
 |------|----------|---------|
 | `action_events.jsonl` | yes | Post/reply/repost content — drives all text metrics |
-| `checkpoints/step_*_checkpoint.json` | no | Optional checkpoint state for evaluators that need it. Study runs enable per-step checkpoints by default for evaluator support; override the checkpoint cadence in `study.run_defaults.overrides` if a study does not need them. If absent, checkpoint-derived metrics should be `null` or omitted rather than crashing. |
+| `checkpoints/step_*_checkpoint.json` | no | Optional checkpoint state for evaluators that need it. Study runs enable per-step checkpoints by default for evaluator support; tune or disable this via `study.run_defaults.checkpoint_every_n_steps` (or override `sim.checkpoint.every_n_steps` directly in `study.run_defaults.overrides`) if a study does not need them. If absent, checkpoint-derived metrics should be `null` or omitted rather than crashing. |
 | `probe_events.jsonl` | no | Free-text probe responses for `probe_diversity` section |
 
 The script finds the latest checkpoint automatically (`step_N` with largest N). It never crashes if the checkpoint directory is missing.
@@ -427,6 +451,44 @@ reproducibility artifacts, and rebuilds the organized view. Re-running a study i
 safe when run output paths are deterministic or when conditions intentionally use
 `execution.mode: reuse_existing`; the runner does not infer old runs from
 arbitrary directories.
+
+### Idempotent resume (RUN_COMPLETE markers)
+
+After every successful run the runner writes a `RUN_COMPLETE.json` marker into
+the run directory containing `run_id`, `finished_at`, `effective_config_sha256`,
+and `return_code`. On the next `run` invocation, any run whose planned output
+directory already contains this marker is skipped instead of re-executed: it is
+recorded with `status: skipped_complete` (counted as a success in the summary),
+the existing `effective_config.yaml` is re-hashed into the repro lock, and any
+prior evaluator outputs under `generated/eval/` are re-linked. The runner prints
+`Skipped N already-complete runs (use --force to re-run)` at the end.
+
+```bash
+# Resume a partially completed study (only failed/missing runs execute):
+uv run python -m experiments.run_study --study experiments/studies/{study_name} run
+
+# Ignore markers and re-run everything:
+uv run python -m experiments.run_study --study experiments/studies/{study_name} run --force
+```
+
+Resume applies only to runs with a deterministic planned output directory (the
+default `experiments/studies/{study_id}/runs/...` layout or an explicit
+`output_root_override`). Failed or timed-out runs never write a marker, so they
+re-run automatically.
+
+### Cost/scale preflight
+
+Before launching (and in `plan` output), the runner prints a preflight summary:
+the number of planned runs, per-run `num_agents`/`num_steps` when derivable from
+the resolved overrides (`?` otherwise), and the estimated total agent-steps.
+When more than 50 runs would actually execute, the runner asks for confirmation
+on a TTY and aborts in non-interactive sessions unless `--yes` is passed:
+
+```bash
+uv run python -m experiments.run_study --study experiments/studies/{study_name} run --yes
+```
+
+Already-complete (skipped) runs do not count toward the confirmation threshold.
 
 **Prerequisites before running:**
 1. `study.yaml` exists with `study.run_defaults`, `hypotheses`, and condition `overrides`

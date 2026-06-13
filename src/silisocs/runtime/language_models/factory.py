@@ -1,12 +1,20 @@
 """Language-model provider selection."""
 
+import importlib
 import os
 from typing import Any
 
 from silisocs.runtime.language_models.base import LanguageModel, NoLanguageModel
 from silisocs.runtime.language_models.openai import OpenAILanguageModel
 from silisocs.runtime.language_models.openai_compatible import OpenAICompatibleLanguageModel
+from silisocs.runtime.language_models.registry import (
+    available_llm_providers,
+    get_llm_provider,
+    instantiate_provider,
+)
 from silisocs.runtime.language_models.scripted import ScriptedLanguageModel
+
+BUILT_IN_PROVIDERS = ("openai", "openai_compatible", "scripted", "disabled")
 
 
 def select_large_language_model(
@@ -56,7 +64,40 @@ def select_large_language_model(
             debug=debug_mode,
             extra_kwargs=extra_kwargs,
         )
+
+    custom_factory = get_llm_provider(normalized_provider)
+    if custom_factory is None and "." in str(provider or ""):
+        module_path, _, attr = str(provider).strip().rpartition(".")
+        try:
+            custom_factory = getattr(importlib.import_module(module_path), attr)
+        except (ImportError, AttributeError) as exc:
+            raise ValueError(
+                f"sim.llm.provider '{provider}' looks like a class path but cannot "
+                f"be imported: {exc}"
+            ) from exc
+    if custom_factory is not None:
+        built = instantiate_provider(
+            custom_factory,
+            {
+                "model_name": model_name,
+                "log_file": log_file,
+                "debug": debug_mode,
+                "api_base": api_base,
+                "api_key": api_key,
+                "temperature": temperature,
+                "extra_kwargs": extra_kwargs,
+            },
+        )
+        if not isinstance(built, LanguageModel):
+            raise TypeError(
+                f"Custom provider '{provider}' returned {type(built).__name__}, "
+                "not a silisocs LanguageModel."
+            )
+        return built
+
+    known = ", ".join([*BUILT_IN_PROVIDERS, *available_llm_providers()])
     raise ValueError(
-        f"Unknown sim.llm.provider '{provider}'. "
-        f"Available: openai, openai_compatible, scripted, disabled."
+        f"Unknown sim.llm.provider '{provider}'. Available: {known}. "
+        "Custom providers: register with @register_llm_provider or use a "
+        "fully qualified class path."
     )
