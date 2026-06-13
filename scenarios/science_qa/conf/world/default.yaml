@@ -5,6 +5,7 @@ num_agents: 9
 num_steps: 10
 seed: 42
 run_name: science_qa
+output_rootname: ""
 setting:
   name: SciQuery — Open Science Discussion Forum
   background:

@@ -5,6 +5,7 @@ num_agents: 9
 num_steps: 10
 seed: 42
 run_name: neighborhood_forum
+output_rootname: ""
 setting:
   name: Riverside Heights Community Board
   background:
