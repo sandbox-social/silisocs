@@ -1,12 +1,10 @@
-"""Locate bundled scenario configurations by name.
+"""Locate scenario configurations by name within a repository checkout.
 
-Scenarios live in the repository's top-level ``scenarios/`` directory during
-development and are copied into the wheel as ``silisocs/scenarios/`` at build
-time (see ``setup.py``), so pip-installed users get the full scenario library
-without a repo checkout.
-
-Resolution order prefers a repository checkout (live, editable tree) over the
-packaged copy, so developers always run what they are editing.
+The example scenarios live in the repository's top-level ``scenarios/``
+directory and are *not* bundled into the wheel — they are domain content, not
+framework. A ``pip install`` ships only the engine and its base config
+(``silisocs/conf/``), which is runnable on its own. Use these helpers from a
+repo checkout to resolve a scenario by name (e.g. ``--config-path election``).
 """
 
 from __future__ import annotations
@@ -16,37 +14,32 @@ from pathlib import Path
 _PACKAGE_DIR = Path(__file__).resolve().parent
 
 
-def packaged_scenarios_root() -> Path | None:
-    """Return the scenario tree shipped inside the installed package, if any."""
-    candidate = _PACKAGE_DIR / "scenarios"
-    return candidate if candidate.is_dir() else None
-
-
-def repo_scenarios_root() -> Path | None:
-    """Return ``<repo>/scenarios`` when running from a repository checkout."""
-    for parent in (_PACKAGE_DIR, *_PACKAGE_DIR.parents):
-        if (parent / "pyproject.toml").is_file():
-            candidate = parent / "scenarios"
-            return candidate if candidate.is_dir() else None
-    cwd_candidate = Path.cwd() / "scenarios"
-    return cwd_candidate if cwd_candidate.is_dir() else None
-
-
 def scenarios_root() -> Path:
-    """Return the active scenario library root.
+    """Return the repository's scenario library root.
+
+    Resolution prefers ``<repo>/scenarios`` (located by walking up to the
+    directory containing ``pyproject.toml``) and falls back to
+    ``<cwd>/scenarios``.
 
     Raises
     ------
-        FileNotFoundError: When neither a repo checkout nor a packaged
-            scenario tree is available.
+        FileNotFoundError: When no ``scenarios/`` directory can be located,
+            e.g. in a pip-installed environment without a repo checkout.
     """
-    root = repo_scenarios_root() or packaged_scenarios_root()
-    if root is None:
-        raise FileNotFoundError(
-            "No scenario library found: expected a repository `scenarios/` "
-            "directory or the packaged `silisocs/scenarios/` data."
-        )
-    return root
+    for parent in (_PACKAGE_DIR, *_PACKAGE_DIR.parents):
+        if (parent / "pyproject.toml").is_file():
+            candidate = parent / "scenarios"
+            if candidate.is_dir():
+                return candidate
+            break
+    cwd_candidate = Path.cwd() / "scenarios"
+    if cwd_candidate.is_dir():
+        return cwd_candidate
+    raise FileNotFoundError(
+        "No scenario library found. Example scenarios live in the repository's "
+        "`scenarios/` directory and are not bundled with the installed package; "
+        "run from a repo checkout or pass a filesystem path to --config-path."
+    )
 
 
 def list_scenarios() -> list[str]:
@@ -61,11 +54,11 @@ def list_scenarios() -> list[str]:
 
 
 def scenario_conf_path(name: str) -> Path:
-    """Return the Hydra config directory for a bundled scenario by name.
+    """Return the Hydra config directory for a repo scenario by name.
 
     Accepts a bare scenario name (``election``), a ``scenarios/<name>`` form,
     or a ``scenarios/<name>/conf`` form, so documented repo-relative paths
-    keep working after a pip install from any working directory.
+    keep working regardless of the current working directory.
 
     Raises
     ------

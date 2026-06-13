@@ -112,7 +112,9 @@ Note: scenario `world/default.yaml` files REPLACE the base world group (Hydra
 searchpath shadowing), so every scenario must re-declare the universal run
 params (`num_steps`, `seed`, `output_rootname`, ...). Flat scenario
 `sim.yaml`/`env.yaml` files are MERGED into the composed config instead.
-`tests/test_bundled_scenarios_compose.py` enforces this for bundled scenarios.
+`tests/test_bundled_scenarios_compose.py` enforces this for the repo's example
+scenarios. (Example scenarios live in `scenarios/` and are repository content,
+not packaged into the wheel; a pip install ships only the engine + base config.)
 
 GM component routing is enabled with
 `env.gm.class_path=silisocs.environments.gm.game_master.MultiFlowGameMaster`.

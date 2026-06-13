@@ -83,9 +83,9 @@ def merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
 def _resolve_config_dir_argument(raw: str) -> Path | None:
     """Resolve a --config-path argument to a directory.
 
-    Accepts a filesystem path, or — when that does not exist — a bundled
+    Accepts a filesystem path, or — when that does not exist — a repository
     scenario reference (``election``, ``scenarios/election/conf``), so
-    documented invocations work from any directory after a pip install.
+    documented invocations work from any directory within a repo checkout.
     """
     directory = Path(raw).resolve()
     if directory.is_dir():
@@ -121,7 +121,8 @@ def inject_external_config_path() -> None:
                 available = ", ".join(list_scenarios()) or "<none>"
                 print(
                     f"ERROR: {token} '{sys.argv[i + 1]}' is neither an existing "
-                    f"directory nor a bundled scenario. Bundled scenarios: {available}"
+                    f"directory nor a known repository scenario. "
+                    f"Available scenarios: {available}"
                 )
                 sys.exit(1)
             if token == primary_flag:

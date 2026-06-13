@@ -41,22 +41,29 @@ pip install "silisocs[all]"                 # all non-AWS extras, including docs
 pip install "silisocs[all,aws]"             # all extras + AWS
 ```
 
-## Run a Bundled Scenario (no repo checkout needed)
+## Run the Base Config (no repo checkout needed)
 
-The wheel bundles the full scenario library. After `pip install silisocs`,
-run any bundled scenario by name from any directory:
+The installed package ships a runnable base configuration (`silisocs/conf/`: a
+generic twitter-like world). After `pip install silisocs`, run it directly
+from any directory — no `--config-path` required:
 
 ```sh
-silisocs --config-path misinformation \
-  num_agents=6 num_steps=5 \
-  output_rootname=./misinfo_run
+silisocs num_agents=6 num_steps=5 \
+  sim.llm.provider=openai sim.llm.name=gpt-4o-mini \
+  output_rootname=./base_run
 ```
 
-`--config-path` accepts a bare scenario name (`election`, `misinformation`,
-...), a repo-style path (`scenarios/election/conf`), or a filesystem path to
-your own scenario config directory. An unknown name lists the available
-bundled scenarios. Scenario persona pipelines that load Hugging Face datasets
-(e.g. `election`) additionally need `pip install "silisocs[hf]"`.
+The named example scenarios (`election`, `misinformation`, ...) are example
+*content*, not part of the engine wheel — they live in the repository's
+`scenarios/` directory. From a repo checkout you can run one by name:
+
+```sh
+silisocs --config-path election        # bare name, or scenarios/election/conf
+```
+
+`--config-path` also accepts a filesystem path to your own scenario config
+directory. Scenario persona pipelines that load Hugging Face datasets (e.g.
+`election`) additionally need `pip install "silisocs[hf]"`.
 
 ## Contributor Setup
 
