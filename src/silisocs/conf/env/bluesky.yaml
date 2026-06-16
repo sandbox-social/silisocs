@@ -20,7 +20,9 @@ gm:
         - For post_text fields, write in first person as the character.
 
         - Omit optional parameters you do not want to use.'
-    enabled_actions: null
+    enabled_actions: 
+      - post
+      - reply
   components:
     initialize:
       built_in: social_media
@@ -70,32 +72,119 @@ gm:
       built_in: default
       class_path: null
       params:
-        action_prompt: 'You are operating on a Bluesky backend.
+        action_prompt: 'Bluesky is a social media application built on the AT Protocol.
 
-          The backend exposes actions as typed tools. By default, every @app_action
-          on the backend is available. Scenarios can restrict the action surface with
-          env.gm.backend.enabled_actions using canonical function names or selectable
-          aliases.
+          To share content on Bluesky, users write a post.
 
-          Common actions include post, reply, repost, like_post, follow, unfollow,
-          read_profile, read_notifications, get_timeline, and FINISHED.
+          Posts can be up to 300 characters long.
 
-          Use only real post_uri/post_cid values from timeline/feed observations or
-          action results; do not fabricate IDs. For post_text fields, write in first
-          person as the character. Omit optional parameters you do not want to use.
+          A user''s home timeline shows posts from people they follow and reposted content.
 
-          Determine what one action {name} would take next based on their character,
-          memories, goals, current context, timeline, and recent actions.
+          Users can reply to posts, creating threaded conversations.
+
+          Users can like posts to show appreciation or save them for later.
+
+          Users can repost posts to share them with their followers.
+
+          Users can mention other users in their posts using their @handle.
+
+          Follow other users to see their posts in the home timeline.
+
+          Users can unfollow users if they no longer wish to see their content.
+
+          A user''s profile can be customized with a display name and bio.
+
+          Critically important: Operations such as liking, reposting, replying, etc.
+          require real `post_uri` and `post_cid` values. To obtain these values,
+          you must have memory/knowledge of real posts from timeline/feed observations.
+          If you don''t know a real `post_uri` and `post_cid`, you can''t perform
+          actions that require them. These can be retrieved using the `get_timeline`
+          action.
+
+          - Only use real post_uri/post_cid values from timeline/feed observations;
+          do not fabricate IDs.
+
+          - For post_text/content fields, write in first person as the character.
+
+          - Omit optional parameters you do not want to use.
+
+
+          ## AVAILABLE ACTIONS
+
+          1. POST - Share new content by creating a new Bluesky post
+
+          2. REPLY - Engage existing content by responding to it; needs post_uri and post_cid
+
+          3. REPOST - Extend the reach of content by sharing someone''s post; needs post_uri and post_cid
+
+          4. LIKE_POST - Show appreciation for content by liking a post; needs post_uri and post_cid
+
+
+          ## INSTRUCTIONS
+
+          Determine what ONE action {name} would take next based on:
+
+          - Their character and values via self-perception and goal descriptions
+
+          - The current context and timeline
+
+          - Not repeating recent actions
+
+          If text-based, the text must reflect their posting style description.
+
 
           [OUTPUT STYLE]'
-        output_style: 'FINAL DECISION:
+        output_style: '## OUTPUT FORMAT
 
-          ACTION TYPE: [chosen backend action]
+          Answer: {name}
 
-          TARGET: [Include post_uri/post_cid or target user if applicable]
+          STEP 1: [Analyze {name}''s motivation based on their character]
+
+          STEP 2: [Consider which posts/actions align with {name}''s values]
+
+          STEP 3: [Determine the single most authentic action]
+
+
+          FINAL DECISION:
+
+          ACTION TYPE: [POST/REPLY/REPOST/LIKE_POST]
+
+          TARGET URI: [Include post_uri if applicable]
+
+          TARGET CID: [Include post_cid if applicable]
 
           CONTENT: [For posts/replies, exact text {name} would write]
 
-          REASONING: [Brief explanation of why this action fits {name}''s character]'
+          REASONING: [Brief explanation of why this action fits {name}''s character]
+
+
+          ## EXAMPLE OUTPUT
+
+          STEP 1: {name} is motivated by her interest in educational initiatives and
+          community engagement around the election.
+
+          STEP 2: Chris''s post about community priorities resonates with {name}''s
+          values. They haven''t interacted with this post yet.
+
+          STEP 3: Replying to Chris would allow {name} to engage meaningfully about
+          community values.
+
+
+          FINAL DECISION:
+
+          ACTION TYPE: REPLY
+
+          TARGET URI: at://did:plc:example/app.bsky.feed.post/3kabc123
+
+          TARGET CID: bafyreiexamplecid123
+
+          CONTENT: "I appreciate your focus on community priorities, Chris! As an
+          educator, I believe our growth depends on strong educational foundations
+          alongside economic development."
+
+          REASONING: This reply allows Emily to acknowledge community values while
+          highlighting her educational perspective, which is authentic to her character.
+
+          '
   name: bluesky_gm
   class_path: silisocs.environments.gm.game_master.ComponentGameMaster

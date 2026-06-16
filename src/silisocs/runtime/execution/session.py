@@ -16,6 +16,7 @@ import random
 import sys
 import time
 import warnings
+import subprocess
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
@@ -62,6 +63,7 @@ from silisocs.runtime.construction.initialization_context import (
 from silisocs.runtime.io import configure_logging
 from silisocs.runtime.language_models import LanguageModel, select_large_language_model
 from silisocs.runtime.telemetry import SimMetricsCollector
+from silisocs.environments.backends.bluesky.bluesky_ops.crawl import request_crawl
 
 # Package root (src/silisocs)
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
@@ -507,6 +509,12 @@ def main(cfg: DictConfig):
         metrics.mark_sim_end()
         metrics.write_json(output_dir)
 
+        backend_type = OmegaConf.select(cfg, "env.gm.backend.type")
+  
+        if backend_type == "bluesky":
+            logger.info("Requesting crawl")
+            request_crawl()
+                
         completion_line = (
             "Simulation complete: "
             f"status={completion_status} "
