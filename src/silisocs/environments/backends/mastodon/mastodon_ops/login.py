@@ -6,6 +6,16 @@ from silisocs.environments.backends.mastodon.logging_config import logger
 from silisocs.environments.backends.mastodon.mastodon_ops.env_utils import get_env_variable
 from silisocs.environments.backends.mastodon.mastodon_ops.get_client import get_client
 
+# OAuth access tokens are reusable for the life of a run, but every backend action
+# previously triggered a fresh password log_in() round-trip. Cache the token per
+# username so repeated actions skip re-authentication.
+_TOKEN_CACHE: dict[str, str] = {}
+
+
+def clear_token_cache() -> None:
+    """Drop all cached access tokens (e.g. between runs or after a credential change)."""
+    _TOKEN_CACHE.clear()
+
 
 def login(username: str, save_to_file: bool = False) -> str:
     """
@@ -19,6 +29,11 @@ def login(username: str, save_to_file: bool = False) -> str:
     -------
         str: The user credentials in string format.
     """
+    if not save_to_file:
+        cached = _TOKEN_CACHE.get(username)
+        if cached:
+            return cached
+
     email_prefix = get_env_variable("EMAIL_PREFIX")
     password = get_env_variable(f"{username.upper()}_PASSWORD")
     email = f"{email_prefix}+{username}@gmail.com"
@@ -41,6 +56,8 @@ def login(username: str, save_to_file: bool = False) -> str:
         return ""
     else:
         logger.debug(f"Access token for {username}: {access_token}")
+        if access_token:
+            _TOKEN_CACHE[username] = access_token
         return access_token
 
 

@@ -205,9 +205,7 @@ class ResourceMarketApp(BackendApp):
 
     def _record(self, event: str) -> None:
         self._events.append(event)
-        log_fn = getattr(self.action_logger, "log", None)
-        if callable(log_fn):
-            log_fn({"event_type": "resource_market", "message": event})
+        self._emit_event_log(event, event_type="resource_market")
 
     def _ensure_agent(self, agent_name: str) -> str | None:
         if agent_name not in self._cash:

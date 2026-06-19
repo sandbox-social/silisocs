@@ -283,6 +283,15 @@ class SocialNetworkApp(SocialBackendApp):
         """
         return self.print_and_return_timeline(timeline)
 
+    def action_aliases(self) -> list[set[str]]:
+        """Domain-verb <-> method-name synonyms (keep in sync with parse_and_resolve_action)."""
+        return [
+            {"post", "post_toot"},
+            {"reply", "reply_to_toot"},
+            {"like", "like_toot"},
+            {"boost", "repost", "boost_toot"},
+        ]
+
     def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
         """Dispatch a parsed action to the correct Mastodon app_action method.
 
@@ -473,106 +482,88 @@ class SocialNetworkApp(SocialBackendApp):
         )
         return unfollow_message
 
-    # @app_action
-    # def post_status(
-    #     self,
-    #     agent_name: str,
-    #     status: str,
-    #     visibility: (Literal["private", "public", "unlisted", "direct"] | None) = None,
-    #     sensitive: bool = False,
-    #     spoiler_text: str | None = None,
-    #     language: str | None = None,
-    #     scheduled_at: datetime.datetime | None = None,
-    #     in_reply_to_id: int | None = None,
-    #     media_files: list[str] | None = None,
-    #     idempotency_key: str | None = None,
-    #     content_type: str | None = None,
-    #     poll_options: list[str] | None = None,
-    #     poll_expires_in: int | None = None,
-    #     poll_multiple: bool = False,
-    #     poll_hide_totals: bool = False,
-    #     quote_id: int | None = None,
-    # ) -> str:
-    #     """Post a new status update to the Mastodon-like social network.
+    @app_action
+    def post_status(
+        self,
+        agent_name: str,
+        status: str,
+        visibility: str | None = None,
+        sensitive: bool = False,
+        spoiler_text: str | None = None,
+        in_reply_to_id: int | None = None,
+        media_files: list[str] | None = None,
+    ) -> str:
+        """Post a status with visibility, content-warning, reply, and media controls.
 
-    #     Args:
-    #         agent_name (str): The username of the user posting the status.
-    #         status (str): The text content of the status update.
-    #         visibility (str | None): The visibility level of the post ('direct', 'private', 'unlisted', or 'public').
-    #         sensitive (bool): Whether the post should be marked as sensitive content.
-    #         spoiler_text (str | None): Text to be shown as a warning before the status.
-    #         language (str | None): The language of the status (ISO 639-1 or 639-3 code).
-    #         scheduled_at (datetime.datetime | None): When to schedule the post for future publishing.
-    #         in_reply_to_id (int | None): The `toot_id` of the status this post is replying to.
-    #         media_files (List[str] | None): List of paths to media files to attach to the post.
-    #         idempotency_key (str | None): A unique key to prevent duplicate posts.
-    #         content_type (str | None): The MIME type of the status content (for Pleroma servers).
-    #         poll_options (List[str] | None): List of options for a poll attached to the post.
-    #         poll_expires_in (int | None): Number of seconds until the poll expires.
-    #         poll_multiple (bool): Whether multiple choices are allowed in the poll.
-    #         poll_hide_totals (bool): Whether to hide poll results until it expires.
-    #         quote_id (int | None): The ID of a status being quoted (Fedibird-specific feature).
+        Args:
+            agent_name (str): The display name of the user posting the status.
+            status (str): The text content of the status update.
+            visibility (str | None): Visibility level: 'public', 'unlisted', 'private', or 'direct'.
+            sensitive (bool): Whether the post should be marked as sensitive content.
+            spoiler_text (str | None): Content-warning text shown before the status.
+            in_reply_to_id (int | None): The ``toot_id`` of the status this post replies to.
+            media_files (list[str] | None): Paths to media files to attach to the post.
 
-    #     Raises
-    #     ------
-    #         ValueError: If the input parameters are invalid.
-    #         Exception: For any other unexpected errors during posting.
-    #     """
-    #     try:
-    #         username = self._get_username(agent_name)
-    #         if self.perform_operations:
-    #             self._mastodon_ops.post_status(
-    #                 login_user=username,
-    #                 status=status,
-    #                 visibility=visibility,
-    #                 sensitive=sensitive,
-    #                 spoiler_text=spoiler_text,
-    #                 language=language,
-    #                 scheduled_at=scheduled_at,
-    #                 in_reply_to_id=in_reply_to_id,
-    #                 media_files=media_files,
-    #                 idempotency_key=idempotency_key,
-    #                 content_type=content_type,
-    #                 poll_options=poll_options,
-    #                 poll_expires_in=poll_expires_in,
-    #                 poll_multiple=poll_multiple,
-    #                 poll_hide_totals=poll_hide_totals,
-    #                 quote_id=quote_id,
-    #             )
-    #         else:
-    #             self._print(
-    #                 "Skipping real Mastodon API call since perform_operations is set to False",
-    #                 color="light_grey",
-    #             )
+        Raises
+        ------
+            ValueError: If the input parameters are invalid.
+            Exception: For any other unexpected errors during posting.
+        """
+        return_val = None
+        actor_display_name = str(agent_name)
+        try:
+            agent_name = _display_name_key(agent_name)
+            username = self._get_username(agent_name)
+            if self.perform_operations:
+                return_val = self._require_mastodon_ops().post_status(
+                    login_user=username,
+                    status=status,
+                    visibility=visibility,
+                    sensitive=sensitive,
+                    spoiler_text=spoiler_text,
+                    in_reply_to_id=in_reply_to_id,
+                    media_files=media_files,
+                )
+            else:
+                self._print(
+                    "Skipping real Mastodon API call since perform_operations is set to False",
+                    color="light_grey",
+                )
 
-    #         # Log success
-    #         if scheduled_at:
-    #             self._print(
-    #                 "Status scheduled successfully for user:"
-    #                 f' {agent_name} ({username}) at {scheduled_at}: "{status}"',
-    #                 emoji="🕒",
-    #             )
-    #         else:
-    #             self._print(
-    #                 f'Status posted for user: {agent_name} ({username}): "{status}"',
-    #                 emoji="📝",
-    #             )
+            self._print(
+                f'Status posted for user: {agent_name} ({username}): "{status}"',
+                emoji="📝",
+            )
+            if media_files:
+                self._print(f"Attached {len(media_files)} media file(s).", emoji="📎")
 
-    #         if poll_options:
-    #             self._print("Poll attached to the status.", emoji="📊")
+        except ValueError as e:
+            self._print(f"Invalid input: {e!s}", emoji="❌")
+            raise
+        except Exception as e:
+            self._print(f"An unexpected error occurred: {e!s}", emoji="❌")
+            raise
 
-    #         if media_files:
-    #             self._print(f"Attached {len(media_files)} media file(s).", emoji="📎")
-
-    #     except ValueError as e:
-    #         self._print(f"Invalid input: {e!s}", emoji="❌")
-    #         raise
-
-    #     except Exception as e:
-    #         self._print(f"An unexpected error occurred: {e!s}", emoji="❌")
-    #         raise
-    #     return_msg = f'Status posted for user: {agent_name} ({username}): "{status}"'
-    #     return return_msg
+        toot_id = None
+        if return_val:
+            return_msg = (
+                f"{agent_name} posted a status with Toot ID: {return_val['id']} --- {status}\n"
+            )
+            toot_id = return_val["id"]
+        else:
+            return_msg = f'{agent_name} posted a status!: "{status}"\n'
+        self._log_action_event(
+            {
+                "source_user": actor_display_name,
+                "label": "post_status",
+                "data": {
+                    "toot_id": str(toot_id),
+                    "post_text": status,
+                    "visibility": visibility,
+                },
+            }
+        )
+        return return_msg
 
     @app_action
     def post_toot(
@@ -639,6 +630,10 @@ class SocialNetworkApp(SocialBackendApp):
         )
         return return_msg
 
+    # NOTE: `post_media_toot` is intentionally left inactive. It is superseded by the
+    # live `post_toot` action above, which already attaches media via its `media_links`
+    # argument. (The version below additionally never forwarded its `media_link` to the
+    # API, so it was a no-op for media.) Use `post_toot` for media posts.
     # @app_action
     # def post_media_toot(
     #     self,
@@ -788,21 +783,29 @@ class SocialNetworkApp(SocialBackendApp):
                 )
         return return_msg
 
-    # @app_action
-    # def get_public_timeline(self, limit: int) -> str:
-    #     """Read the public Mastodon social network feed."""
-    #     self._print(f"Fetching public timeline (limit: {limit})", emoji="🌐")
-    #     if self.perform_operations:
-    #         timeline = self._mastodon_ops.get_public_timeline(limit=limit)
-    #     else:
-    #         self._print(
-    #             "Skipping real Mastodon API call since perform_operations is set to False",
-    #             color="light_grey",
-    #         )
-    #         timeline = []
-    #     self._print(f"Retrieved {len(timeline)} posts from the public timeline", emoji="📊")
-    #     str_timeline = self.print_and_return_timeline(timeline)
-    #     return f"{self._get_username} viewed the Public Mastodon timeline:\n" + str_timeline
+    @app_action
+    def get_public_timeline(self, agent_name: str, limit: int) -> str:
+        """Read the public Mastodon social network feed."""
+        actor_display_name = str(agent_name)
+        self._print(f"Fetching public timeline (limit: {limit})", emoji="🌐")
+        if self.perform_operations:
+            timeline = self._require_mastodon_ops().get_public_timeline(limit=limit)
+        else:
+            self._print(
+                "Skipping real Mastodon API call since perform_operations is set to False",
+                color="light_grey",
+            )
+            timeline = []
+        self._print(f"Retrieved {len(timeline)} posts from the public timeline", emoji="📊")
+        str_timeline = self.print_and_return_timeline(timeline)
+        self._log_action_event(
+            {
+                "source_user": actor_display_name,
+                "label": "get_public_timeline",
+                "data": {"num_posts_retrieved": len(timeline)},
+            }
+        )
+        return f"{actor_display_name} viewed the Public Mastodon timeline:\n{str_timeline}"
 
     def print_timeline(self, timeline: list[dict[str, Any]]) -> None:
         """Print the timeline in a readable format."""
@@ -887,31 +890,48 @@ class SocialNetworkApp(SocialBackendApp):
             return "Own Mastodon Timeline:\n" + str_timeline
         return timeline
 
-    # @app_action
-    # def get_user_timeline(self, agent_name: str, target_user: str, limit: int) -> str:
-    #     """Read a specific user's timeline on Mastodon social network."""
-    #     current_username = self._get_username(agent_name.split()[0])
-    #     target_username = self._get_username(target_user.split()[0])
-    #     self._print(
-    #         f"@{current_username} fetching @{target_username}'s timeline (limit: {limit})",
-    #         emoji="👥",
-    #     )
-    #     if self.perform_operations:
-    #         timeline = self._mastodon_ops.get_user_timeline(
-    #             current_username, target_username, limit=limit
-    #         )
-    #     else:
-    #         timeline = []
-    #         self._print(
-    #             "Skipping real Mastodon API call since perform_operations is set to False",
-    #             color="light_grey",
-    #         )
-    #     self._print(
-    #         f"Retrieved {len(timeline)} posts from @{target_username}'s timeline",
-    #         emoji="📊",
-    #     )
-    #     str_timeline = self.print_and_return_timeline(timeline)
-    #     return f"@{current_username}'s Mastodon Timeline:\n" + str_timeline
+    @app_action
+    def get_user_timeline(self, agent_name: str, target_user: str, limit: int) -> str:
+        """Read a specific user's timeline on the Mastodon social network."""
+        actor_display_name = str(agent_name)
+        agent_name = _display_name_key(agent_name)
+        target_user_full = str(target_user)
+        target_user = _display_name_key(target_user)
+        current_username = self._get_username(agent_name)
+        target_username = self._get_username(target_user)
+        self._print(
+            f"@{current_username} fetching @{target_username}'s timeline (limit: {limit})",
+            emoji="👥",
+        )
+        if self.perform_operations:
+            timeline = self._require_mastodon_ops().get_user_timeline(
+                current_username, target_username, limit=limit
+            )
+        else:
+            timeline = []
+            self._print(
+                "Skipping real Mastodon API call since perform_operations is set to False",
+                color="light_grey",
+            )
+        self._print(
+            f"Retrieved {len(timeline)} posts from @{target_username}'s timeline",
+            emoji="📊",
+        )
+        str_timeline = self.print_and_return_timeline(timeline)
+        self._log_action_event(
+            {
+                "source_user": actor_display_name,
+                "label": "get_user_timeline",
+                "data": {
+                    "target_user": target_user_full,
+                    "num_posts_retrieved": len(timeline),
+                },
+            }
+        )
+        return (
+            f"@{target_username}'s Mastodon Timeline (viewed by @{current_username}):\n"
+            f"{str_timeline}"
+        )
 
     def print_notifications(self, notifications: list[dict[str, Any]]) -> str:
         """Generate a string of important details of notifications, one per line."""
@@ -1064,117 +1084,228 @@ class SocialNetworkApp(SocialBackendApp):
             boost_message = '''There was an error in boosting due to invalid toot id"'''
         return boost_message
 
-    # @app_action
-    # def block_user(self, agent_name: str, target_user: str) -> None:
-    #   """Block a user."""
-    #   current_username = self._get_username(agent_name)
-    #   target_username = self._get_username(target_user)
-    #   self._print(
-    #       f"@{current_username} blocking user: @{target_username}", emoji="🚫"
-    #   )
-    #   if self.perform_operations:
-    #     self._mastodon_ops.block_user(current_username, target_username)
-    #   self._print(
-    #       f"@{current_username} blocked user @{target_username}", emoji="✅"
-    #   )
+    @app_action
+    def block_user(self, agent_name: str, target_user: str) -> str:
+        """Block a user on the Mastodon social network."""
+        actor_display_name = str(agent_name)
+        agent_name = _display_name_key(agent_name)
+        target_user_full = str(target_user)
+        target_user = _display_name_key(target_user)
+        current_username = self._get_username(agent_name)
+        target_username = self._get_username(target_user)
+        self._print(f"@{current_username} blocking user: @{target_username}", emoji="🚫")
+        if self.perform_operations:
+            self._require_mastodon_ops().block_user(current_username, target_username)
+        else:
+            self._print(
+                "Skipping real Mastodon API call since perform_operations is set to False",
+                color="light_grey",
+            )
+        block_message = (
+            f"{actor_display_name} (@{current_username}) blocked "
+            f"{target_user_full} (@{target_username})"
+        )
+        self._print(block_message, emoji="✅")
+        self._log_action_event(
+            {
+                "source_user": actor_display_name,
+                "label": "block_user",
+                "data": {"target_user": target_user_full},
+            }
+        )
+        return block_message
 
-    # @app_action
-    # def unblock_user(self, agent_name: str, target_user: str) -> None:
-    #   """Unblock a user."""
-    #   current_username = self._get_username(agent_name)
-    #   target_username = self._get_username(target_user)
-    #   self._print(
-    #       f"@{current_username} unblocking user: @{target_username}", emoji="✅"
-    #   )
-    #   if self.perform_operations:
-    #     self._mastodon_ops.unblock_user(current_username, target_username)
-    #   self._print(
-    #       f"@{current_username} unblocked user @{target_username}", emoji="✅"
-    #   )
+    @app_action
+    def unblock_user(self, agent_name: str, target_user: str) -> str:
+        """Unblock a previously blocked user."""
+        actor_display_name = str(agent_name)
+        agent_name = _display_name_key(agent_name)
+        target_user_full = str(target_user)
+        target_user = _display_name_key(target_user)
+        current_username = self._get_username(agent_name)
+        target_username = self._get_username(target_user)
+        self._print(f"@{current_username} unblocking user: @{target_username}", emoji="✅")
+        if self.perform_operations:
+            self._require_mastodon_ops().unblock_user(current_username, target_username)
+        else:
+            self._print(
+                "Skipping real Mastodon API call since perform_operations is set to False",
+                color="light_grey",
+            )
+        unblock_message = (
+            f"{actor_display_name} (@{current_username}) unblocked "
+            f"{target_user_full} (@{target_username})"
+        )
+        self._print(unblock_message, emoji="✅")
+        self._log_action_event(
+            {
+                "source_user": actor_display_name,
+                "label": "unblock_user",
+                "data": {"target_user": target_user_full},
+            }
+        )
+        return unblock_message
 
-    # @app_action
-    # def mute_account(
-    #     self,
-    #     agent_name: str,
-    #     target_user: str,
-    #     notifications: bool,
-    #     duration: int,
-    # ) -> None:
-    #   """Mute an account."""
-    #   current_username = self._get_username(agent_name)
-    #   target_username = self._get_username(target_user)
-    #   self._print(
-    #       f"@{current_username} muting @{target_username} (notifications:"
-    #       f" {notifications}, duration: {duration})",
-    #       emoji="🔇",
-    #   )
-    #   if self.perform_operations:
-    #     self._mastodon_ops.mute_account(
-    #         current_username,
-    #         target_username,
-    #         notifications=notifications,
-    #         duration=duration,
-    #     )
-    #   self._print(f"@{current_username} muted @{target_username}", emoji="✅")
+    @app_action
+    def mute_account(
+        self,
+        agent_name: str,
+        target_user: str,
+        notifications: bool = False,
+        duration: int = 0,
+    ) -> str:
+        """Mute an account, optionally suppressing notifications for a duration."""
+        actor_display_name = str(agent_name)
+        agent_name = _display_name_key(agent_name)
+        target_user_full = str(target_user)
+        target_user = _display_name_key(target_user)
+        current_username = self._get_username(agent_name)
+        target_username = self._get_username(target_user)
+        self._print(
+            f"@{current_username} muting @{target_username} "
+            f"(notifications: {notifications}, duration: {duration})",
+            emoji="🔇",
+        )
+        if self.perform_operations:
+            self._require_mastodon_ops().mute_account(
+                current_username,
+                target_username,
+                notifications=notifications,
+                duration=duration,
+            )
+        else:
+            self._print(
+                "Skipping real Mastodon API call since perform_operations is set to False",
+                color="light_grey",
+            )
+        mute_message = (
+            f"{actor_display_name} (@{current_username}) muted "
+            f"{target_user_full} (@{target_username})"
+        )
+        self._print(mute_message, emoji="✅")
+        self._log_action_event(
+            {
+                "source_user": actor_display_name,
+                "label": "mute_account",
+                "data": {"target_user": target_user_full},
+            }
+        )
+        return mute_message
 
-    # @app_action
-    # def unmute_account(self, agent_name: str, target_user: str) -> None:
-    #   """Unmute an account."""
-    #   current_username = self._get_username(agent_name)
-    #   target_username = self._get_username(target_user)
-    #   self._print(f"@{current_username} unmuting @{target_username}", emoji="🔊")
-    #   if self.perform_operations:
-    #     self._mastodon_ops.unmute_account(current_username, target_username)
-    #   self._print(f"@{current_username} unmuted @{target_username}", emoji="✅")
+    @app_action
+    def unmute_account(self, agent_name: str, target_user: str) -> str:
+        """Unmute a previously muted account."""
+        actor_display_name = str(agent_name)
+        agent_name = _display_name_key(agent_name)
+        target_user_full = str(target_user)
+        target_user = _display_name_key(target_user)
+        current_username = self._get_username(agent_name)
+        target_username = self._get_username(target_user)
+        self._print(f"@{current_username} unmuting @{target_username}", emoji="🔊")
+        if self.perform_operations:
+            self._require_mastodon_ops().unmute_account(current_username, target_username)
+        else:
+            self._print(
+                "Skipping real Mastodon API call since perform_operations is set to False",
+                color="light_grey",
+            )
+        unmute_message = (
+            f"{actor_display_name} (@{current_username}) unmuted "
+            f"{target_user_full} (@{target_username})"
+        )
+        self._print(unmute_message, emoji="✅")
+        self._log_action_event(
+            {
+                "source_user": actor_display_name,
+                "label": "unmute_account",
+                "data": {"target_user": target_user_full},
+            }
+        )
+        return unmute_message
 
-    # @app_action
-    # def delete_posts(
-    #     self,
-    #     agent_name: str,
-    #     post_ids: list[str],
-    #     recent_count: int,
-    #     delete_all: bool,
-    # ) -> None:
-    #   """Delete posts for a user."""
-    #   username = self._get_username(agent_name)
-    #   if delete_all:
-    #     self._print(f"Deleting all posts for @{username}", emoji="🗑️")
-    #   elif recent_count:
-    #     self._print(
-    #         f"Deleting {recent_count} recent posts for @{username}", emoji="🗑️"
-    #     )
-    #   elif post_ids:
-    #     self._print(f"Deleting specific posts for @{username}", emoji="🗑️")
-    #   else:
-    #     self._print("No posts specified for deletion", emoji="❌")
-    #     return
+    @app_action
+    def delete_posts(
+        self,
+        agent_name: str,
+        post_ids: list[int] | None = None,
+        recent_count: int = 0,
+        delete_all: bool = False,
+    ) -> str:
+        """Delete a user's own posts (by id, recent count, or all)."""
+        actor_display_name = str(agent_name)
+        agent_name = _display_name_key(agent_name)
+        username = self._get_username(agent_name)
+        if delete_all:
+            self._print(f"Deleting all posts for @{username}", emoji="🗑️")
+        elif recent_count:
+            self._print(f"Deleting {recent_count} recent posts for @{username}", emoji="🗑️")
+        elif post_ids:
+            self._print(f"Deleting specific posts for @{username}", emoji="🗑️")
+        else:
+            self._print("No posts specified for deletion", emoji="❌")
+            return f"{actor_display_name} (@{username}) specified no posts to delete."
 
-    #   if self.perform_operations:
-    #     self._mastodon_ops.delete_posts(
-    #         username,
-    #         post_ids=post_ids,
-    #         recent_count=recent_count,
-    #         delete_all=delete_all,
-    #     )
-    #   self._print("Deletion process completed", emoji="✅")
+        if self.perform_operations:
+            self._require_mastodon_ops().delete_posts(
+                username,
+                post_ids=post_ids,
+                recent_count=recent_count,
+                delete_all=delete_all,
+            )
+        else:
+            self._print(
+                "Skipping real Mastodon API call since perform_operations is set to False",
+                color="light_grey",
+            )
+        delete_message = f"{actor_display_name} (@{username}) completed post deletion."
+        self._print(delete_message, emoji="✅")
+        self._log_action_event(
+            {
+                "source_user": actor_display_name,
+                "label": "delete_posts",
+                "data": {
+                    "post_ids": [str(pid) for pid in (post_ids or [])],
+                    "recent_count": recent_count,
+                    "delete_all": delete_all,
+                },
+            }
+        )
+        return delete_message
 
-    # @app_action
-    # def send_direct_message(
-    #     self, agent_name: str, target_user: str, message: str
-    # ) -> None:
-    #   """Send a direct message to another user."""
-    #   current_username = self._get_username(agent_name)
-    #   target_username = self._get_username(target_user)
-    #   self._print(
-    #       f"@{current_username} sending DM to @{target_username}", emoji="✉️"
-    #   )
-    #   if self.perform_operations:
-    #     self._mastodon_ops.post_status(
-    #         current_username, f"@{target_username} {message}", visibility="direct"
-    #     )
-    #   self._print(
-    #       f"DM sent from @{current_username} to @{target_username}", emoji="✅"
-    #   )
+    @app_action
+    def send_direct_message(self, agent_name: str, target_user: str, message: str) -> str:
+        """Send a direct (private) message to another user."""
+        actor_display_name = str(agent_name)
+        agent_name = _display_name_key(agent_name)
+        target_user_full = str(target_user)
+        target_user = _display_name_key(target_user)
+        current_username = self._get_username(agent_name)
+        target_username = self._get_username(target_user)
+        self._print(f"@{current_username} sending DM to @{target_username}", emoji="✉️")
+        if self.perform_operations:
+            self._require_mastodon_ops().post_status(
+                login_user=current_username,
+                status=f"@{target_username} {message}",
+                visibility="direct",
+            )
+        else:
+            self._print(
+                "Skipping real Mastodon API call since perform_operations is set to False",
+                color="light_grey",
+            )
+        dm_message = (
+            f"{actor_display_name} (@{current_username}) sent a direct message to "
+            f"{target_user_full} (@{target_username})"
+        )
+        self._print(dm_message, emoji="✅")
+        self._log_action_event(
+            {
+                "source_user": actor_display_name,
+                "label": "send_direct_message",
+                "data": {"target_user": target_user_full, "message": message},
+            }
+        )
+        return dm_message
 
     # endregion
 

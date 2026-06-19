@@ -9,7 +9,6 @@ import datetime
 import inspect
 import logging
 import re
-import textwrap
 import types
 import typing
 from collections.abc import Callable, Collection, Sequence
@@ -182,10 +181,6 @@ class Parameter:
                 continue
         raise ValueError(f"Cannot parse '{value}' as any of {types}")
 
-    def full_description(self):
-        """Return a full description of the parameter."""
-        return f"{self.name}: {self.description or ''}, type: {self.kind}"
-
     def _parse_single_argument(self, text: str, kind: Any = None):
         kind = kind or self.kind
         if kind is type(None):
@@ -197,15 +192,6 @@ class Parameter:
         arg = typing.get_args(self.kind)
         parser = _ARGUMENT_PARSERS.get(arg, arg)  # type: ignore
         return [parser(e) for e in text.split(",")]
-
-    @classmethod
-    def create(cls, parameter: inspect.Parameter, docstring: docstring_parser.Docstring):
-        """Create a Parameter from a method docstring and inspect.Parameter."""
-        description = next(
-            (p.description for p in docstring.params if p.arg_name == parameter.name),
-            None,
-        )
-        return cls(parameter.name, parameter.annotation, description)  # type: ignore
 
 
 # --------------------------------------------------------------------------- #
@@ -230,58 +216,6 @@ class ActionDescriptor:
     def agent_visible_parameters(self) -> Sequence[Parameter]:
         """Parameters an agent may provide in a tool call or generic action."""
         return [p for p in self.parameters if not is_runtime_owned_parameter(p.name)]
-
-    def instructions(self):
-        """Return a string containing instructions for using the action."""
-        visible_params = self.agent_visible_parameters
-        required_params = [p for p in visible_params if p.required]
-        optional_params = [p for p in visible_params if not p.required]
-
-        instructions = f"The {self.name} action expects the following parameters:\n"
-
-        if required_params:
-            instructions += "\nRequired parameters:\n"
-            instructions += "\n".join(p.full_description() for p in required_params)
-            instructions += "\n"
-
-        if optional_params:
-            instructions += "\nOptional parameters:\n"
-            instructions += "\n".join(p.full_description() for p in optional_params)
-            instructions += "\n"
-
-        instructions += textwrap.dedent("""
-        Provide values for the required parameters and any optional parameters you want to use.
-        Each parameter should be on its own line, for example:
-        param1: value1
-        param2: value2
-
-        For optional parameters you don't want to use, you should omit them rather than provide an empty value.
-
-        Critically important: If an argument is message or a post (e.g. `status`), make sure it is
-        from first person perspective and makes sense as a realistic user post based on their information.
-        Do not post any statuses from 3rd person perspective.
-
-        Note: target_user or a username field is the full name of another agent
-        when the action asks for a target. The acting agent is supplied by the
-        runtime and should not be included in your response.
-
-        Bad examples:
-            `bio`: Updated my bio and checking notifications!
-            `status`: I'm updating my status and posting a message
-            `status`: Wrote about goals for today
-
-        Good examples:
-            `bio`: I'm a software engineer with a passion for building great apps. Let's connect!
-            `status`: Just finished writing a chapter of my book. Feeling productive!
-            `status`: My goals for today are to get to the gym and submit my grant proposal.
-
-        Also, several string/int args require real knowledge, such as a real `target_user` or `toot_id`, so don't
-        fabricate these values and only fill them in with values you've been provided.
-        You can read posts by using the `get_public_timeline` action. These are operations like:
-        liking, boosting, replying, reading profile, following user, etc.
-        """)
-
-        return instructions
 
     @classmethod
     def from_method(cls, method):
@@ -384,6 +318,12 @@ class BackendApp(metaclass=abc.ABCMeta):
         formatted_entry = f"{emoji} {entry}" if emoji else entry
         print(termcolor.colored(formatted_entry, color or self._log_color))
 
+    def _emit_event_log(self, message: str, *, event_type: str) -> None:
+        """Emit a typed backend event to the action logger, when one is configured."""
+        log_fn = getattr(self.action_logger, "log", None)
+        if callable(log_fn):
+            log_fn({"event_type": event_type, "message": message})
+
     def actions(self) -> Sequence[ActionDescriptor]:
         """Return this app's callable actions."""
         actions = self._all_actions()
@@ -408,6 +348,18 @@ class BackendApp(metaclass=abc.ABCMeta):
     @staticmethod
     def _action_matches_filter(action: ActionDescriptor, names: set[str]) -> bool:
         return action.name in names or action.selectable_name in names
+
+    def action_aliases(self) -> list[set[str]]:
+        """Return groups of synonymous action tokens for per-flow filtering.
+
+        Each group lists tokens that name the same logical action across the
+        vocabularies an agent may emit — e.g. the custom-mode domain verb
+        (``post``) and the canonical backend method (``create_tweet``). Per-flow
+        action filters union these groups so a filter written in either
+        vocabulary matches regardless of which synonym the agent uses. Backends
+        with no synonyms (the default) return an empty list.
+        """
+        return []
 
     def action_catalog(self) -> list[dict[str, Any]]:
         """Return a normalized action catalog for prompting/UI/config validation."""
@@ -499,12 +451,15 @@ class BackendApp(metaclass=abc.ABCMeta):
                 + f". Available actions: {available}"
             )
 
-    def full_description(self):
-        """Return a description of the app and all the actions it supports."""
-        return textwrap.dedent(f"""\
-    {self.name()}: {self.description()}
-    The app supports the following actions:
-    """) + "\n".join(f"{a.name}: {a.description}" for a in self.actions())
+    def _handle_action_invocation_error(
+        self, action_name: str, exc: Exception, *, record_unexpected: bool
+    ) -> str:
+        """Format, print, and (optionally) record an action invocation error."""
+        if record_unexpected:
+            _record_unexpected_action_error(action_name, exc)
+        message = f"Error invoking action {action_name}: {exc}"
+        self._print(message, color="red")
+        return message
 
     def invoke_action(self, action: ActionDescriptor, args_text: str) -> str | None:
         """Invoke the given action with the given arguments."""
@@ -539,12 +494,9 @@ class BackendApp(metaclass=abc.ABCMeta):
         try:
             return getattr(self, action.name)(**processed_args)
         except ActionError as e:
-            self._print(f"Error invoking action {action.name}: {e}", color="red")
-            return f"Error invoking action {action.name}: {e}"
+            return self._handle_action_invocation_error(action.name, e, record_unexpected=False)
         except Exception as e:
-            _record_unexpected_action_error(action.name, e)
-            self._print(f"Error invoking action {action.name}: {e}", color="red")
-            return f"Error invoking action {action.name}: {e}"
+            return self._handle_action_invocation_error(action.name, e, record_unexpected=True)
 
     def _action_lookup(self) -> dict[str, ActionDescriptor]:
         lookup: dict[str, ActionDescriptor] = {}
@@ -615,12 +567,9 @@ class BackendApp(metaclass=abc.ABCMeta):
         try:
             return getattr(self, action.name)(**processed) or ""
         except ActionError as exc:
-            self._print(f"Error invoking action {action.name}: {exc}", color="red")
-            return f"Error invoking action {action.name}: {exc}"
+            return self._handle_action_invocation_error(action.name, exc, record_unexpected=False)
         except Exception as exc:
-            _record_unexpected_action_error(action.name, exc)
-            self._print(f"Error invoking action {action.name}: {exc}", color="red")
-            return f"Error invoking action {action.name}: {exc}"
+            return self._handle_action_invocation_error(action.name, exc, record_unexpected=True)
 
     def generate_generic_action_prompt(self) -> str:
         """Build a call-to-action prompt auto-generated from @app_action methods.
@@ -693,10 +642,6 @@ class BackendApp(metaclass=abc.ABCMeta):
         """No-op terminal action for open-ended loops and constrained action sets."""
         return "Finished action episode"
 
-    def generate_action_prompt(self) -> str:
-        """Generate the call-to-action prompt listing all available actions."""
-        return self.full_description()
-
 
 # --------------------------------------------------------------------------- #
 # Argument Text Parser
@@ -758,6 +703,11 @@ class SocialBackendApp(BackendApp):
     actions, or recommendation update components implement this interface on
     top of the domain-neutral :class:`BackendApp`.
     """
+
+    def _log_action_event(self, source_user: str, label: str, data: dict[str, Any]) -> None:
+        """Log a structured social action event when an action logger is configured."""
+        if self.action_logger:
+            self.action_logger.log({"source_user": source_user, "label": label, "data": data})
 
     def setup_social_state(
         self,

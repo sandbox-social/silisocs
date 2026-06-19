@@ -54,16 +54,6 @@ class TwitterLikeApp(SocialBackendApp):
         """Return a description of the app."""
         return self.app_description
 
-    def _log_action_event(self, source_user: str, label: str, data: dict[str, Any]) -> None:
-        if self.action_logger:
-            self.action_logger.log(
-                {
-                    "source_user": source_user,
-                    "label": label,
-                    "data": data,
-                }
-            )
-
     def initialize(self, agent_names: list[str], **kwargs: Any) -> None:
         """Compatibility no-op; runtime initializers own social setup."""
         del agent_names, kwargs
@@ -266,6 +256,15 @@ class TwitterLikeApp(SocialBackendApp):
                 f"Replies: {post.get('reply_count', 0)}\n"
             )
         return result
+
+    def action_aliases(self) -> list[set[str]]:
+        """Domain-verb <-> method-name synonyms (keep in sync with parse_and_resolve_action)."""
+        return [
+            {"post", "create_tweet"},
+            {"reply", "reply_to_tweet"},
+            {"like", "like_tweet"},
+            {"repost", "retweet", "boost", "repost_tweet"},
+        ]
 
     def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
         """Dispatch a parsed action to the correct app_action method.
