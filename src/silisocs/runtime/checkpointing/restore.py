@@ -54,7 +54,7 @@ class SocialActionEventReplayRestore(CheckpointRestoreStrategy):
             if not isinstance(data, Mapping):
                 raise ValueError(f"Action event data must be a mapping: {row}")
             tool_call = _event_to_tool_call(label, data)
-            _first_game_master_for_agent(source_user, game_masters).resolve_action(
+            _game_master_for_agent_action(source_user, tool_call, game_masters).resolve_action(
                 source_user,
                 ActionOutput.from_tool_calls([tool_call]),
             )
@@ -146,6 +146,100 @@ def _target_id(label: str, data: Mapping[str, Any]) -> str:
     return str(target)
 
 
-def _first_game_master_for_agent(agent_name: str, game_masters: Sequence[Any]) -> Any:
-    del agent_name
-    return game_masters[0]
+def _game_master_for_agent_action(
+    agent_name: str,
+    tool_call: ToolCall,
+    game_masters: Sequence[Any],
+) -> Any:
+    """Return the GM that should replay one action event for an agent."""
+    if not game_masters:
+        raise ValueError("Checkpoint replay requires at least one game master.")
+    if len(game_masters) == 1:
+        return game_masters[0]
+
+    by_name = {str(getattr(gm, "name", "")): gm for gm in game_masters}
+    unnamed = [gm for gm in game_masters if not str(getattr(gm, "name", "")).strip()]
+    if unnamed:
+        raise ValueError("Checkpoint replay requires every game master to have a name.")
+    if len(by_name) != len(game_masters):
+        raise ValueError("Checkpoint replay requires unique game master names.")
+
+    agent_flow = _flow_for_agent(agent_name, game_masters)
+    chain = _flow_chain_for_flow(agent_flow, game_masters)
+    unknown = [name for name in chain if name not in by_name]
+    if unknown:
+        raise ValueError(
+            f"Checkpoint replay flow '{agent_flow}' references unknown GM(s): {unknown}"
+        )
+    chain_candidates = [by_name[name] for name in chain]
+    matches = [gm for gm in chain_candidates if _gm_backend_exposes_action(gm, tool_call.name)]
+    if not matches:
+        raise ValueError(
+            "Checkpoint replay could not route action "
+            f"'{tool_call.name}' for agent '{agent_name}' in flow '{agent_flow}'."
+        )
+    if len(matches) > 1:
+        names = [str(getattr(gm, "name", "")) for gm in matches]
+        raise ValueError(
+            "Checkpoint replay action routing is ambiguous for "
+            f"'{tool_call.name}' in flow '{agent_flow}': {names}"
+        )
+    return matches[0]
+
+
+def _flow_for_agent(agent_name: str, game_masters: Sequence[Any]) -> str:
+    flows: set[str] = set()
+    for gm in game_masters:
+        flow_tags = getattr(gm, "agent_flow_tags", None)
+        if isinstance(flow_tags, Mapping):
+            flow = str(flow_tags.get(agent_name, "") or "").strip()
+            if flow:
+                flows.add(flow)
+    if not flows:
+        raise ValueError(f"Checkpoint replay requires agent_flow_tags for agent '{agent_name}'.")
+    if len(flows) > 1:
+        raise ValueError(
+            f"Checkpoint replay found conflicting flows for agent '{agent_name}': {sorted(flows)}"
+        )
+    return next(iter(flows))
+
+
+def _flow_chain_for_flow(flow: str, game_masters: Sequence[Any]) -> list[str]:
+    chains: set[tuple[str, ...]] = set()
+    for gm in game_masters:
+        flow_chains = getattr(gm, "flow_chains", None)
+        if isinstance(flow_chains, Mapping):
+            raw_chain = flow_chains.get(flow)
+            if isinstance(raw_chain, str):
+                chain = tuple([raw_chain.strip()] if raw_chain.strip() else [])
+            elif isinstance(raw_chain, Sequence) and not isinstance(raw_chain, (str, bytes)):
+                chain = tuple(str(name).strip() for name in raw_chain if str(name).strip())
+            elif raw_chain is None:
+                continue
+            else:
+                raise ValueError(
+                    f"Checkpoint replay flow chain for '{flow}' must be a string or list."
+                )
+            if chain:
+                chains.add(chain)
+    if not chains:
+        raise ValueError(f"Checkpoint replay requires flow_chains metadata for flow '{flow}'.")
+    if len(chains) > 1:
+        raise ValueError(
+            f"Checkpoint replay found conflicting flow chains for flow '{flow}': {sorted(chains)}"
+        )
+    return list(next(iter(chains)))
+
+
+def _gm_backend_exposes_action(game_master: Any, action_name: str) -> bool:
+    backend = getattr(game_master, "backend", None)
+    actions = getattr(backend, "actions", None)
+    if not callable(actions):
+        return False
+    for action in actions():
+        if action_name in {
+            str(getattr(action, "name", "")),
+            str(getattr(action, "selectable_name", "")),
+        }:
+            return True
+    return False

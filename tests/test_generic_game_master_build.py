@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -8,6 +9,7 @@ import pytest
 from silisocs.environments.backends.base import BackendApp, app_action
 from silisocs.environments.gm import game_master as gm_module
 from silisocs.environments.gm.game_master import ComponentGameMaster
+from silisocs.runtime.io import flush_jsonl_writers
 from silisocs.runtime.types import ActionOutput, OutputType
 
 
@@ -49,7 +51,13 @@ class _Entity:
 
 def test_base_environment_gm_builds_without_social_config(tmp_path, monkeypatch) -> None:
     app = _GenericApp()
-    monkeypatch.setattr(gm_module, "create_backend_app", lambda **kwargs: app)
+    created: dict[str, Any] = {}
+
+    def fake_create_backend_app(**kwargs: Any) -> _GenericApp:
+        created.update(kwargs)
+        return app
+
+    monkeypatch.setattr(gm_module, "create_backend_app", fake_create_backend_app)
 
     agents = [_Entity("Alice"), _Entity("Bob")]
     built = ComponentGameMaster(
@@ -78,6 +86,11 @@ def test_base_environment_gm_builds_without_social_config(tmp_path, monkeypatch)
     )
 
     assert built.name == "generic_gm"
+    created["action_logger"].log({"source_user": "Alice", "label": "ACT", "data": {}})
+    flush_jsonl_writers()
+    action_row = json.loads((tmp_path / "action_events.jsonl").read_text().splitlines()[0])
+    assert action_row["gm_name"] == "generic_gm"
+    assert action_row["backend_type"] == "resource_market"
     assert app.initialized_with is None
     assert hasattr(built, "acting_agents")
     assert hasattr(built, "action_prompt")

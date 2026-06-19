@@ -118,7 +118,7 @@ class ComponentGameMaster(BaseGameMaster):
             if backend_config is None:
                 raise ValueError("ComponentGameMaster requires backend_config or backend.")
             self.backend_type = _backend_type(backend_config)
-            self.backend = _create_backend(backend_config)
+            self.backend = _create_backend(backend_config, gm_name=self._name)
         else:
             self.backend = backend
             self.backend_type = str(backend_type or getattr(backend, "backend_type", "") or "")
@@ -486,11 +486,15 @@ def _backend_type(backend_config: Mapping[str, Any]) -> str:
     return backend_type
 
 
-def _create_backend(backend_config: Mapping[str, Any]) -> Any:
+def _create_backend(backend_config: Mapping[str, Any], *, gm_name: str) -> Any:
     cfg = dict(backend_config or {})
     backend_type = _backend_type(cfg)
     output_rootname = str(cfg.get("output_rootname") or "")
-    action_logger = EventLogger("action", os.path.join(output_rootname, "action_events.jsonl"))
+    action_logger = EventLogger(
+        "action",
+        os.path.join(output_rootname, "action_events.jsonl"),
+        static_fields={"gm_name": gm_name, "backend_type": backend_type},
+    )
     action_logger.episode_idx = 0
     backend = create_backend_app(
         backend_type=backend_type,

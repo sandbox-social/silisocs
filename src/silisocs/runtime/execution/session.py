@@ -257,7 +257,7 @@ def main(cfg: DictConfig):
     _log_startup_phase("build_agents", time.time() - t0, f"count={len(agent_configs)}")
 
     t0 = time.time()
-    populate_agent_data(agent_configs, game_masters)
+    populate_agent_data(cfg, agent_configs, game_masters)
     _log_startup_phase(
         "populate_agent_data",
         time.time() - t0,

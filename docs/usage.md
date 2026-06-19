@@ -436,7 +436,7 @@ outputs/<scenario_name>/<jobname>/<jobname>_<timestamp>/
 
 | File | Format | Description |
 |------|--------|-------------|
-| `action_events.jsonl` | JSONL | Every social media action (post, reply, like, repost, follow, etc.) with episode index, source user, and action data |
+| `action_events.jsonl` | JSONL | Every backend action with episode index, Game Master name, backend type, source user, and action data |
 | `probe_events.jsonl` | JSONL | Probe/survey responses per agent per deployment step |
 | `prompts_and_responses.jsonl` | JSONL | Every LLM call — prompt, response, episode index, and agent name |
 | `run_stats.log` | Text | Per-episode timing, worker counts, retry telemetry, and startup phase durations |
@@ -454,6 +454,8 @@ Each line in `action_events.jsonl` is a JSON object:
   "episode": 3,
   "event_type": "action",
   "event_index": 42,
+  "gm_name": "social_gm",
+  "backend_type": "twitter_like",
   "source_user": "Alice Smith",
   "label": "post",
   "data": {
@@ -680,6 +682,10 @@ the state of built-in local backends. For SQLite-backed backends such as
 restore strategy is only used when checkpointed backend state is absent and a
 domain-specific replay is needed.
 
+For multi-GM source runs, replay is metadata-driven and strict. The runtime uses
+the restored Agent flow and the configured flow chain, then requires exactly one
+GM in that chain to expose the replayed backend action.
+
 ---
 
 ## Developer Customization Guide
@@ -695,6 +701,11 @@ The runtime now includes direct engine step strategies:
 - `sim.engine.step.built_in: sequential`: one GM, selected agents executed one by one.
 - `sim.engine.step.built_in: flow`: flow-aware execution.
 - `sim.engine.step.built_in: multi_gm`: flow-aware execution with multi-GM routing.
+
+For `multi_gm`, all configured Game Masters update once at the start of each
+episode step, before flow routing and actor selection. Flow chains then route
+selected agent turns through the configured GMs; `gm.update(...)` is not called
+again inside each flow chain.
 
 The engine is responsible for:
 
@@ -729,6 +740,10 @@ To introduce new class-level behavior phases without engine/resolve bloat:
 3. Optionally add per-agent overrides with `sim.engine.step.params.agent_to_flow`.
 4. Add any flow names that require episode-style observations to
   `env.gm.components.observe.params.episode_observation_flows`.
+
+`agent_to_flow` keys must match final Agent names. Overrides are applied during
+runtime construction and passed to the Engine and every Game Master as the
+final flow map.
 
 This pattern is how fixed agents run before default LLM-driven agents today,
 and it generalizes to any future specialized class.

@@ -198,20 +198,6 @@ class RuntimeEngine(RuntimeEngineBase):
 
     def _agent_flow_tag(self, game_master: Any, agent_name: str) -> str:
         flow_map = dict(getattr(game_master, "agent_flow_tags", {}) or {})
-        engine_map: Mapping[str, Any] = {}
-        if self.config is not None:
-            selected = OmegaConf.select(
-                self.config,
-                "sim.engine.step.params.agent_to_flow",
-                default={},
-            )
-            if isinstance(selected, Mapping):
-                engine_map = cast(Mapping[str, Any], selected)
-        if isinstance(engine_map, Mapping):
-            for key, value in engine_map.items():
-                key_name = str(key).strip()
-                if key_name:
-                    flow_map[key_name] = str(value).strip() or "default"
         return str(flow_map.get(agent_name, "default") or "default")
 
     def _selected_turns(

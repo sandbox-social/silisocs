@@ -763,6 +763,13 @@ and backend state. Built-in local backends restore their world state directly
 from the checkpoint. `sim.checkpoint.restore` is still required for source runs
 that need a restore strategy, such as older social runs that must rebuild backend
 state from `action_events.jsonl`.
+Checkpoint runtime metadata records artifact ownership for every Game Master
+rather than relying on one representative GM for the whole run.
+
+For multi-GM replay, action events are routed through the materialized Agent
+flow and that flow's GM chain. Replay is strict: exactly one GM in the chain
+must expose the replayed backend action. Incomplete or ambiguous routing
+metadata is an error, not a fallback.
 
 ---
 
@@ -789,6 +796,23 @@ list of output files.
 
 See [Multi-GM Architecture](multi_gm_architecture.md) for configuring multiple
 game masters, flow-based scheduling, and per-flow component routing.
+
+Use `sim.engine.step.built_in: multi_gm` with `env.gm_orchestration.gms` when
+one run needs multiple Game Masters or backends. Every orchestrated GM must
+declare its own `backend` and `components` blocks; those nested blocks use the
+same strict key surface as `env.gm.backend` and `env.gm.components`.
+
+`env.gm_orchestration.flow_bindings.flow_to_gms` maps flow names to GM chains.
+Each chain must reference known GMs, contain at least one GM, avoid duplicate GM
+names, and follow increasing GM `sequence` values when more than one GM is in
+the chain. Flows without an explicit binding fall back to the earliest-sequence
+GM. At runtime, every GM updates once at the start of each step before flow
+routing and actor selection.
+
+`sim.engine.step.params.agent_to_flow` is validated against final Agent names
+and materialized before runtime. The Engine and Game Masters both read the same
+final `agent_flow_tags`, so component routing cannot drift from Engine flow
+scheduling.
 
 ---
 

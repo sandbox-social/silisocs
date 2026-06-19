@@ -74,6 +74,55 @@ def test_checkpoint_detects_game_master_backend_state() -> None:
     assert checkpoint_has_backend_state(checkpoint) is True
 
 
+def test_checkpoint_runtime_metadata_records_every_game_master() -> None:
+    runtime = RuntimeObjects()
+    runtime.game_masters = [
+        SimpleNamespace(
+            name="later_gm",
+            backend_type="reddit_like",
+            backend=SimpleNamespace(
+                action_logger=SimpleNamespace(output_filename="/tmp/run/action_events.jsonl")
+            ),
+        ),
+        SimpleNamespace(
+            name="first_gm",
+            backend_type="twitter_like",
+            backend=SimpleNamespace(
+                action_logger=SimpleNamespace(output_filename="/tmp/run/action_events.jsonl")
+            ),
+        ),
+    ]
+    runtime.object_specs["later_gm"] = RuntimeSpec(
+        class_path="tests.fake.GM",
+        role=RuntimeRole.GAME_MASTER,
+        params={"name": "later_gm", "sequence": 1},
+    )
+    runtime.object_specs["first_gm"] = RuntimeSpec(
+        class_path="tests.fake.GM",
+        role=RuntimeRole.GAME_MASTER,
+        params={"name": "first_gm", "sequence": 0},
+    )
+
+    checkpoint = make_checkpoint_data(runtime, step=1)
+
+    assert checkpoint["runtime_metadata"]["game_masters"] == [
+        {
+            "name": "first_gm",
+            "backend_type": "twitter_like",
+            "sequence": 0,
+            "action_events_file": "/tmp/run/action_events.jsonl",
+            "output_rootname": "/tmp/run",
+        },
+        {
+            "name": "later_gm",
+            "backend_type": "reddit_like",
+            "sequence": 1,
+            "action_events_file": "/tmp/run/action_events.jsonl",
+            "output_rootname": "/tmp/run",
+        },
+    ]
+
+
 def test_restore_rng_state_from_metadata_restores_python_random() -> None:
     random.seed(1234)
     baseline = random.random()

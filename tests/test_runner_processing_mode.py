@@ -5,6 +5,11 @@ from omegaconf import OmegaConf
 
 pytest.importorskip("psutil")
 
+from silisocs.runtime.construction.initialization_context import (
+    build_initializer_context,
+    populate_agent_data,
+)
+from silisocs.runtime.construction.specs import AgentConfig, GameMasterConfig
 from silisocs.runtime.execution.session import build_game_masters
 
 
@@ -309,3 +314,135 @@ def test_multi_gm_specs_can_use_distinct_backends() -> None:
     assert by_name["social_gm"].params["backend_config"]["backend_type"] == "twitter_like"
     assert by_name["market_gm"].params["backend_config"]["backend_type"] == "resource_market"
     assert by_name["market_gm"].params["backend_config"]["params"] == {"initial_cash": 5}
+
+
+def test_multi_gm_nested_backend_and_component_keys_are_strict() -> None:
+    cfg = _base_cfg("raw")
+    components = cast(dict[str, Any], OmegaConf.to_container(cfg.env.gm.components, resolve=True))
+    cfg.env.gm_orchestration = {
+        "gms": [
+            {
+                "gm_name": "gm_alpha",
+                "sequence": 0,
+                "backend": {
+                    "type": "twitter_like",
+                    "class_path": None,
+                    "params": {},
+                    "legacy_app": {},
+                },
+                "components": components,
+            }
+        ]
+    }
+
+    with pytest.raises(ValueError, match="legacy_app"):
+        build_game_masters(cfg)
+
+    cfg = _base_cfg("raw")
+    components = cast(dict[str, Any], OmegaConf.to_container(cfg.env.gm.components, resolve=True))
+    components["legacy_slot"] = {"built_in": "none"}
+    cfg.env.gm_orchestration = {
+        "gms": [
+            {
+                "gm_name": "gm_alpha",
+                "sequence": 0,
+                "backend": OmegaConf.to_container(cfg.env.gm.backend, resolve=True),
+                "components": components,
+            }
+        ]
+    }
+
+    with pytest.raises(ValueError, match="legacy_slot"):
+        build_game_masters(cfg)
+
+
+def test_multi_gm_flow_bindings_validate_unknown_duplicate_and_sequence() -> None:
+    cfg = _base_cfg("raw")
+    components = cast(dict[str, Any], OmegaConf.to_container(cfg.env.gm.components, resolve=True))
+    backend = OmegaConf.to_container(cfg.env.gm.backend, resolve=True)
+    cfg.env.gm_orchestration = {
+        "gms": [
+            {"gm_name": "first", "sequence": 1, "backend": backend, "components": components},
+            {"gm_name": "second", "sequence": 0, "backend": backend, "components": components},
+        ],
+        "flow_bindings": {"flow_to_gms": {"review": ["first", "missing"]}},
+    }
+
+    with pytest.raises(ValueError, match="Unknown GMs"):
+        build_game_masters(cfg)
+
+    cfg.env.gm_orchestration.flow_bindings.flow_to_gms.review = ["first", "first"]
+    with pytest.raises(ValueError, match="duplicate GMs"):
+        build_game_masters(cfg)
+
+    cfg.env.gm_orchestration.flow_bindings.flow_to_gms.review = ["first", "second"]
+    with pytest.raises(ValueError, match="strictly serial"):
+        build_game_masters(cfg)
+
+
+def test_build_game_masters_includes_agent_to_flow_override_in_owned_flows() -> None:
+    cfg = _base_cfg("raw")
+    cfg.sim.engine = {
+        "step": {"built_in": "multi_gm", "params": {"agent_to_flow": {"Alice": "override"}}},
+        "turn_policy": {"built_in": "single_action"},
+    }
+    cfg.env.gm_orchestration = {
+        "gms": [
+            {
+                "gm_name": "gm_alpha",
+                "sequence": 0,
+                "backend": OmegaConf.to_container(cfg.env.gm.backend, resolve=True),
+                "components": OmegaConf.to_container(cfg.env.gm.components, resolve=True),
+            }
+        ],
+        "flow_bindings": {"flow_to_gms": {}},
+    }
+
+    specs = build_game_masters(cfg)
+
+    assert specs[0].params["owned_flows"] == ["override", "default"]
+
+
+def test_populate_agent_data_updates_every_game_master_spec() -> None:
+    cfg = OmegaConf.create(
+        {"sim": {"engine": {"step": {"params": {"agent_to_flow": {"Bob": "override"}}}}}}
+    )
+    agents = [
+        AgentConfig(
+            class_path="silisocs.agents.native.NativeAgent",
+            params={"name": "Alice", "sim_role": {"name": "speaker"}, "flow_tag": "review"},
+        ),
+        AgentConfig(
+            class_path="silisocs.agents.native.NativeAgent",
+            params={"name": "Bob", "sim_role": {"name": "listener"}},
+        ),
+    ]
+    game_masters = [
+        GameMasterConfig(class_path="tests.fake.GM", params={"name": "gm_one"}),
+        GameMasterConfig(class_path="tests.fake.GM", params={"name": "gm_two"}),
+    ]
+
+    populate_agent_data(cfg, agents, game_masters)
+
+    for gm in game_masters:
+        assert gm.params["sim_roles"] == {"Alice": "speaker", "Bob": "listener"}
+        assert gm.params["agent_flow_tags"] == {"Alice": "review", "Bob": "override"}
+
+    context = build_initializer_context(cfg, agents)
+    assert context.agent_flow_tags == {"Alice": "review", "Bob": "override"}
+
+
+def test_agent_to_flow_rejects_unknown_agent_name() -> None:
+    cfg = OmegaConf.create(
+        {"sim": {"engine": {"step": {"params": {"agent_to_flow": {"Ghost": "review"}}}}}}
+    )
+    agents = [
+        AgentConfig(
+            class_path="silisocs.agents.native.NativeAgent",
+            params={"name": "Alice", "sim_role": {"name": "speaker"}, "flow_tag": "default"},
+        )
+    ]
+    game_masters = [GameMasterConfig(class_path="tests.fake.GM", params={"name": "gm"})]
+
+    with pytest.raises(ValueError, match="unknown agent"):
+        populate_agent_data(cfg, agents, game_masters)

@@ -252,19 +252,32 @@ def restore_rng_state_from_metadata(metadata: Mapping[str, Any]) -> None:
 
 
 def _runtime_metadata(runtime: RuntimeObjects) -> dict[str, Any]:
-    action_events_file = ""
-    output_rootname = ""
-    if runtime.game_masters:
-        backend = getattr(runtime.game_masters[0], "backend", None)
+    game_master_artifacts: list[dict[str, Any]] = []
+    for game_master in runtime.game_masters_by_sequence():
+        backend = getattr(game_master, "backend", None)
         action_logger = getattr(backend, "action_logger", None)
         action_events_file = str(getattr(action_logger, "output_filename", "") or "")
-        if action_events_file:
-            output_rootname = str(os.path.dirname(action_events_file))
+        output_rootname = str(os.path.dirname(action_events_file)) if action_events_file else ""
+        spec = runtime.object_specs.get(str(getattr(game_master, "name", "")))
+        sequence = 0
+        if spec is not None:
+            try:
+                sequence = int(spec.params.get("sequence", 0))
+            except (TypeError, ValueError):
+                sequence = 0
+        game_master_artifacts.append(
+            {
+                "name": str(getattr(game_master, "name", "")),
+                "backend_type": str(getattr(game_master, "backend_type", "") or ""),
+                "sequence": sequence,
+                "action_events_file": action_events_file,
+                "output_rootname": output_rootname,
+            }
+        )
 
     rng_state_bytes = pickle.dumps(random.getstate(), protocol=pickle.HIGHEST_PROTOCOL)
     return {
-        "action_events_file": action_events_file,
-        "output_rootname": output_rootname,
+        "game_masters": game_master_artifacts,
         "rng_state_b64": base64.b64encode(rng_state_bytes).decode("ascii"),
     }
 

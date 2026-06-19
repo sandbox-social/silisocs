@@ -16,6 +16,13 @@ DEFAULT_FLOW_TAG = "default"
 
 def _collect_declared_flow_tags(cfg: DictConfig) -> set[str]:
     declared: set[str] = set()
+    agent_to_flow = OmegaConf.select(cfg, "sim.engine.step.params.agent_to_flow", default={})
+    if isinstance(agent_to_flow, Mapping):
+        for flow_tag in agent_to_flow.values():
+            normalized = str(flow_tag or "").strip()
+            if normalized:
+                declared.add(normalized)
+
     classes_cfg = (
         getattr(getattr(cfg.agents, "persona_pipeline", object()), "classes", None)
         if hasattr(cfg, "agents")
@@ -88,8 +95,42 @@ def _plain_mapping(value: Any) -> dict[str, Any]:
     return dict(value)
 
 
+def _validate_component_slot_shape(value: Any, *, path: str) -> None:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{path} must be a mapping.")
+    allowed = {"built_in", "class_path", "params", "instances", "flow_map"}
+    extras = sorted(str(key) for key in value if str(key) not in allowed)
+    if extras:
+        raise ValueError(f"Unsupported config key(s) under {path}: {extras}")
+    instances = value.get("instances")
+    if instances is None:
+        return
+    if not isinstance(instances, Mapping):
+        raise ValueError(f"{path}.instances must be a mapping.")
+    for instance_name, instance_cfg in instances.items():
+        instance_path = f"{path}.instances.{instance_name!s}"
+        if not isinstance(instance_cfg, Mapping):
+            raise ValueError(f"{instance_path} must be a mapping.")
+        instance_extras = sorted(
+            str(key) for key in instance_cfg if str(key) not in {"built_in", "class_path", "params"}
+        )
+        if instance_extras:
+            raise ValueError(f"Unsupported config key(s) under {instance_path}: {instance_extras}")
+
+
+def _validate_components_cfg(components: Mapping[str, Any], *, path: str) -> None:
+    allowed_slots = {"initialize", "next_acting", "action_prompt", "observe", "resolve", "update"}
+    extras = sorted(str(key) for key in components if str(key) not in allowed_slots)
+    if extras:
+        raise ValueError(f"Unsupported config key(s) under {path}: {extras}")
+    for slot, slot_cfg in components.items():
+        _validate_component_slot_shape(slot_cfg, path=f"{path}.{slot}")
+
+
 def _gm_components_cfg(cfg: DictConfig) -> dict[str, Any]:
-    return _plain_mapping(OmegaConf.select(cfg, "env.gm.components", default={}) or {})
+    components = _plain_mapping(OmegaConf.select(cfg, "env.gm.components", default={}) or {})
+    _validate_components_cfg(components, path="env.gm.components")
+    return components
 
 
 def _backend_config(
@@ -171,6 +212,15 @@ def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
         if raw_components is None:
             raise ValueError(f"env.gm_orchestration.gms[{idx}].components is required.")
         components = _plain_mapping(raw_components)
+        _validate_components_cfg(
+            components,
+            path=f"env.gm_orchestration.gms[{idx}].components",
+        )
+        _backend_config(
+            cfg,
+            _plain_mapping(raw_backend),
+            path=f"env.gm_orchestration.gms[{idx}].backend",
+        )
         spec: dict[str, Any] = {
             "gm_name": str(
                 gm_raw.get("gm_name", gm_raw.get("name", default_spec["gm_name"])) or ""

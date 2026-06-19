@@ -106,10 +106,17 @@ def flush_jsonl_writers(timeout_s: float = 5.0) -> None:
 class EventLogger:
     """Structured event logger for action/probe JSONL files."""
 
-    def __init__(self, event_type: str, output_filename: str) -> None:
+    def __init__(
+        self,
+        event_type: str,
+        output_filename: str,
+        *,
+        static_fields: Mapping[str, Any] | None = None,
+    ) -> None:
         self.episode_idx: int | None = None
         self.output_filename = output_filename
         self.type = event_type
+        self.static_fields = dict(static_fields or {})
         self._sequence = count()
         self._seq_lock = threading.Lock()
 
@@ -119,6 +126,7 @@ class EventLogger:
 
     def _prepare_item(self, log_item: Mapping[str, Any]) -> dict[str, Any]:
         item = dict(log_item)
+        item.update(self.static_fields)
         item["episode"] = self.episode_idx
         item["event_type"] = self.type
         item["event_index"] = self._next_seq()
