@@ -408,8 +408,9 @@ class MyAgent(Agent):
 Use uv-managed workflows (from `docs/contributing.md`):
 
 - Sync dev env: `uv sync --group dev`
-- Lint workflow: `uv run poe lint`
-- Test workflow: `uv run poe test`
+- Lint workflow: `uv run --group dev poe lint`
+- Test workflow: `uv run --group dev poe test`
+- Docs workflow: `uv run --group dev poe docs`
 - Pre-commit hooks all files: `uv run pre-commit run --all-files --verbose`
 - Commit with Commitizen: `uv run cz c`
 
@@ -418,7 +419,7 @@ Fast contributor workflow (LLM-agent friendly):
 1. `uv sync --group dev`
 2. Run targeted tests for changed files first (`uv run pytest <targeted_tests>`)
 3. Run full quality gate: `uv run pre-commit run --all-files --verbose`
-4. Run coverage workflow: `uv run poe test`
+4. Run coverage workflow: `uv run --group dev poe test`
 5. Commit with Conventional Commits (`uv run cz c` or `git commit -m "feat: ..."`)
 6. Push branch (`git push origin <branch>`)
 

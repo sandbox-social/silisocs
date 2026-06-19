@@ -108,8 +108,9 @@ directory. Scenario persona pipelines that load Hugging Face datasets (e.g.
 ## Development Commands
 
 - Install git hooks: `uv run pre-commit install`
-- Run the lint workflow: `uv run poe lint`
-- Run the test workflow: `uv run poe test`
+- Run the lint workflow: `uv run --group dev poe lint`
+- Run the test workflow: `uv run --group dev poe test`
+- Build the documentation site via Poe: `uv run --group dev poe docs`
 - Build the documentation site: `uv run --group docs properdocs build --strict`
 
 ## Environment Variables
