@@ -511,10 +511,48 @@ aliases such as `FINISHED`. Unknown names fail during backend construction. If
 an action is matched by both `enabled_actions` and `excluded_actions`, the run
 fails loudly instead of guessing which list wins.
 
+#### Per-flow action filters
+
+`env.gm.backend.enabled_actions`/`excluded_actions` apply to every agent on that
+backend. To restrict the action surface *per flow* — e.g. a `lurker` flow that
+may only `like`/`repost` while a `poster` flow may publish — add a
+`flow_action_filters` map on the resolve component. It is enforced at resolve
+time (the disallowed action is rejected before the backend runs) and only ever
+*further-restricts* the backend-wide filter:
+
+```yaml
+env:
+  gm:
+    components:
+      resolve:
+        built_in: parsed_action        # parsed_action | generic_action | tool_calling
+        params:
+          flow_action_filters:
+            default:                    # fallback for any unlisted flow
+              enabled_actions: null     # null => all backend actions
+            lurker:
+              enabled_actions: [like, repost]
+            poster:
+              excluded_actions: [follow_user]
+```
+
+Keys are flow tags (from `persona_pipeline.classes.<class>.flow_tag` or
+`sim.engine.step.params.agent_to_flow`); values reuse the same
+`enabled_actions`/`excluded_actions` vocabulary as the backend filter and match
+both canonical and selectable names. This works on the default
+`ComponentGameMaster` (no `MultiFlowGameMaster` needed). The terminal `FINISHED`
+signal is never blocked, so open-ended flows can always terminate. Omitting the
+key preserves current behavior. In `custom` (`parsed_action`) mode, specify
+filters using the agent-facing verbs the parser emits (`post`, `like`, `reply`,
+`repost`); in `generic`/`tool_calling` mode, use backend action names. Names that
+match no backend action are matched literally and logged as a warning to catch
+typos. Per-flow filtering enforces; to also *hide* actions from a flow's prompt,
+give that flow its own `action_prompt` instance via `MultiFlowGameMaster`.
+
 | Backend | Common actions |
 |---------|----------------|
 | `twitter_like` | `create_tweet`, `reply_to_tweet`, `like_tweet`, `unlike_tweet`, `repost_tweet`, `quote_repost_tweet`, `follow_user`, `unfollow_user`, `mute_user`, `unmute_user`, `search_posts`, `get_trending_posts`, `report_post`, `update_profile`, `view_profile`, `do_nothing`, `FINISHED` |
-| `reddit_like` | `create_reddit_post`, `create_comment`, `upvote`, `downvote`, `like_post`, `unlike_post`, `dislike_post`, `undo_dislike_post`, `get_home_feed`, `get_post_comments`, `search_subreddits`, `get_trending_posts`, `report_post`, `mute_user`, `unmute_user`, `update_profile`, `view_profile`, `do_nothing`, `FINISHED` |
+| `reddit_like` | `create_reddit_post`, `create_comment`, `upvote`, `downvote`, `unlike_post`, `dislike_post`, `undo_dislike_post`, `get_home_feed`, `get_post_comments`, `search_subreddits`, `get_trending_posts`, `report_post`, `mute_user`, `unmute_user`, `update_profile`, `view_profile`, `do_nothing`, `FINISHED` |
 | `mastodon` | `post_toot`, `reply_to_toot`, `like_toot`, `boost_toot`, `follow_user`, `unfollow_user` |
 
 ### Seed Posts
@@ -654,6 +692,10 @@ probes:
     every_n_steps: 1
     include_agents: []   # Empty = all agents
     exclude_agents: []
+    include_classes: []  # Filter by persona class / sim role
+    exclude_classes: []
+    include_flows: []    # Filter by flow tag; empty = all flows
+    exclude_flows: []
 
   probes:
     favorability:
@@ -665,6 +707,17 @@ probes:
         lo: 1
         hi: 10
 ```
+
+Deployment filters select which agents receive probes and are applied as a
+sequential `AND`: `include_classes` → `exclude_classes` → `include_agents` →
+`exclude_agents` → `include_flows` → `exclude_flows`. `include_flows`/
+`exclude_flows` target by flow tag — e.g. `include_flows: [treatment]` deploys
+probes only to agents whose materialized flow is `treatment`, ideal for measuring
+a treatment cohort. Flow tags come from the same source as scheduling
+(`persona_pipeline.classes.<class>.flow_tag` + `sim.engine.step.params.agent_to_flow`)
+and are resolved from the game master's authoritative `agent_flow_tags`, so they
+apply uniformly to native and fixed agents. Empty/omitted flow lists preserve
+current behavior (deploy to all selected agents).
 
 ---
 
@@ -726,10 +779,27 @@ sim:
       params:
         flow_order: [fixed_pre, default]
         agent_to_flow: {}
+        # Optional per-flow turn policy overrides. Each value mirrors the
+        # sim.engine.turn_policy slot shape ({built_in|class_path, params}).
+        # Flows not listed here use the global sim.engine.turn_policy below.
+        flow_turn_policies:
+          fixed_pre:
+            built_in: single_action
+          default:
+            built_in: open_ended
+            params: {max_actions: 3}
+    turn_policy:                 # global default; applies to unlisted flows
+      built_in: single_action
 ```
 
-The turn policy is global for the engine. Flow mode only controls which
-agent groups act together and in what order.
+`sim.engine.turn_policy` is the global default applied to every agent. With
+`flow` or `multi_gm` scheduling you may additionally override the policy per
+flow via `sim.engine.step.params.flow_turn_policies` — keyed by flow tag, each
+value uses the same slot shape as `turn_policy`. Flows absent from the map fall
+back to the global policy, so omitting the key reproduces current behavior
+exactly. Per-flow overrides are ignored under `base`/`sequential` scheduling
+(which do not group agents by flow). For a multi-GM flow chain the same per-flow
+policy applies at every GM hop.
 
 Sequential scheduling:
 

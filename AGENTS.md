@@ -147,15 +147,32 @@ Use class-level behavior flows instead of adding custom manager branches:
 4. Optional observe specialization for selected flows:
 - `env.gm.components.observe.params.episode_observation_flows`
 
-5. Advanced multi-GM orchestration (optional):
+5. Optional per-flow turn policy (how many actions a flow takes per step):
+- `sim.engine.step.params.flow_turn_policies` (map flow_tag ->
+  `{built_in|class_path, params}`; unlisted flows use `sim.engine.turn_policy`).
+  Only effective under `engine.step.built_in` of `flow`/`multi_gm`.
+
+6. Optional per-flow action enforcement (which actions a flow may execute):
+- `env.gm.components.resolve.params.flow_action_filters` (map flow_tag ->
+  `{enabled_actions, excluded_actions}`; further-restricts the backend filter,
+  enforced at resolve time, never blocks `FINISHED`). Works on the default GM.
+
+7. Optional per-flow probe/eval targeting:
+- `eval.probes.deployment.include_flows` / `exclude_flows` (deploy probes only to
+  agents in the named flow(s); empty = all agents).
+
+8. Advanced multi-GM orchestration (optional):
 - `env.gm_orchestration.gms`
-- `env.gm_orchestration.flow_bindings.flow_to_gm`
-- `env.gm_orchestration.flow_bindings.flow_to_gms`
-- `env.gm_orchestration.flow_bindings.gm_to_flows`
+- `env.gm_orchestration.flow_bindings.flow_to_gms` (maps a flow to a GM or a
+  strictly-increasing-`sequence` GM chain; the only supported flow binding key)
 
 Default UX rule:
 - Keep users on the default `ComponentGameMaster`, with advanced dashboard toggles off.
 - Only expose flow tags and multi-GM controls behind advanced mode.
+
+All per-flow keys above are additive and backward compatible: each falls back to
+the global/default behavior when omitted, and the agent->flow mapping is the same
+materialized `agent_flow_tags` used by scheduling and component routing.
 
 Fixed agents (`silisocs.agents.fixed.FixedAgent`) are the reference example.
 
