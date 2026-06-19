@@ -1,0 +1,9 @@
+# silisocs dashboard — Slate & Teal brand theme (matches the docs site).
+[theme]
+base = "dark"
+primaryColor = "#0d9488"          # teal — primary actions / accents
+backgroundColor = "#0f1117"        # app background
+secondaryBackgroundColor = "#161922"  # cards, inputs, sidebar surfaces
+textColor = "#e8eaf2"
+linkColor = "#5eead4"              # brighter teal for links
+font = "sans-serif"

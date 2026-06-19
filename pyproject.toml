@@ -152,6 +152,7 @@ include = ["silisocs*"]
 [tool.setuptools.package-data]
 silisocs = [
   "conf/**/*.yaml",
+  "dashboard/assets/*.svg",
   "environments/backends/**/templates/*.html",
 ]
 

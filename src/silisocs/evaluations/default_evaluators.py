@@ -23,11 +23,26 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-import matplotlib
 import yaml
 
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+# matplotlib is an optional (`analysis` extra) dependency used only by the plot
+# writers below. Import it lazily so this module — and its JSONL/stat helpers —
+# can be imported without the plotting stack installed.
+plt: Any = None
+
+
+def _ensure_plt() -> Any:
+    """Lazily import matplotlib (Agg backend) and cache pyplot on the module."""
+    global plt
+    if plt is None:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as _plt
+
+        plt = _plt
+    return plt
+
 
 VALID_MODES = {
     "action_metrics",
@@ -422,6 +437,7 @@ def _write_choice_plots(records: list[dict[str, Any]], out_dir: Path) -> list[st
     if not records:
         return []
 
+    plt = _ensure_plt()
     grouped: dict[str, dict[int, Counter[str]]] = defaultdict(lambda: defaultdict(Counter))
     for rec in records:
         grouped[str(rec["label"])][int(rec["episode"])][str(rec["choice"])] += 1
@@ -471,6 +487,7 @@ def _write_numeric_plots(records: list[dict[str, Any]], out_dir: Path) -> list[s
     if not records:
         return []
 
+    plt = _ensure_plt()
     grouped: dict[str, dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
     for rec in records:
         grouped[str(rec["label"])][int(rec["episode"])].append(float(rec["value"]))
@@ -512,6 +529,7 @@ def _write_freetext_plots(records: list[dict[str, Any]], out_dir: Path) -> list[
     if not records:
         return []
 
+    plt = _ensure_plt()
     by_label_episode: dict[str, dict[int, list[int]]] = defaultdict(lambda: defaultdict(list))
     token_counts: Counter[str] = Counter()
 
