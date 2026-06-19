@@ -101,15 +101,16 @@ SQLite backend database for local platforms.
 
 ## Studies and Experiments
 
-Study orchestration lives in `experiments/run_study.py`. It expands hypotheses,
-conditions, scenarios, and seeds into reproducible simulation runs, then executes
-the configured evaluators and writes organized artifacts under the study's
-`generated/` directory.
+Study orchestration ships in the package as `silisocs.studies.run_study`, exposed
+as the `silisocs-study` console command (equivalent: `python -m
+silisocs.studies.run_study`). It expands hypotheses, conditions, scenarios, and
+seeds into reproducible simulation runs, then executes the configured evaluators
+and writes organized artifacts under the study's `generated/` directory.
 
 ```sh
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 plan
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 run --only-hypothesis h1_timeline_mechanism
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 summary-append --author analyst --hypothesis h1_timeline_mechanism --note "Initial finding"
+uv run silisocs-study --study experiments/studies/study_template_v1 plan
+uv run silisocs-study --study experiments/studies/study_template_v1 run --only-hypothesis h1_timeline_mechanism
+uv run silisocs-study --study experiments/studies/study_template_v1 summary-append --author analyst --hypothesis h1_timeline_mechanism --note "Initial finding"
 ```
 
 Custom commands plug in through `conditions.<id>.execution.command`, evaluator
@@ -164,7 +165,8 @@ Common commands:
 ```sh
 uv run pytest
 uv run silisocs-config-dry-run --project-root .
-uv run poe lint
+uv run --group dev poe lint
+uv run --group dev poe docs
 uv build --sdist --wheel
 uv run --group docs properdocs build --strict
 ```
@@ -172,8 +174,9 @@ uv run --group docs properdocs build --strict
 - `uv run pytest` runs the test suite in the current environment.
 - `uv run silisocs-config-dry-run --project-root .` composes shipped scenario
   and replication configs without running LLM calls.
-- `uv run poe lint` runs the configured formatting, static checks, and type
+- `uv run --group dev poe lint` runs the configured formatting, static checks, and type
   checks.
+- `uv run --group dev poe docs` runs the configured documentation build task.
 - `uv build --sdist --wheel` builds release artifacts in `dist/`.
 - `uv run --group docs properdocs build --strict` builds the documentation site
   and fails on broken links or stale navigation.

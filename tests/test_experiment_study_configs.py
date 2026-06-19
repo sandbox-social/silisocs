@@ -78,7 +78,7 @@ def test_active_study_plan_command_runs_for_each_study(tmp_path: Path) -> None:
             [
                 sys.executable,
                 "-m",
-                "experiments.run_study",
+                "silisocs.studies.run_study",
                 "--study",
                 str(path),
                 "plan",
@@ -119,7 +119,7 @@ def test_slurm_array_exports_all_current_filters_and_hooks() -> None:
         [
             sys.executable,
             "-m",
-            "experiments.run_study",
+            "silisocs.studies.run_study",
             "--study",
             str(STUDY_ROOT / "study_template_v1" / "study.yaml"),
             "slurm-array",

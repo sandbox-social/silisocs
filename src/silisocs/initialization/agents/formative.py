@@ -95,6 +95,3 @@ class FormativeAgentInitializer(AgentInitializer):
             terminators=[],
         )
         return [episode.strip() for episode in result.split(delimiter) if episode.strip()]
-
-
-FormativeMemoryInitializer = FormativeAgentInitializer

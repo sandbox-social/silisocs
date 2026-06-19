@@ -61,7 +61,7 @@ Example dry run:
 
 ```bash
 cd /home/sneheel/mastodon-sim
-uv run python experiments/run_study.py \
+uv run silisocs-study \
   --study replications/echo_chambers/study.yaml \
   run \
   --only-hypothesis h3_loose_action_structure \

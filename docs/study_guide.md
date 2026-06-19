@@ -127,15 +127,15 @@ write `eval.py`. See `docs/study_schema.md` for the required output format.
 
 ```bash
 # Plan: preview what will be run without executing
-uv run python -m experiments.run_study \
+uv run silisocs-study \
     --study experiments/studies/my_study plan
 
 # Run all conditions × scenarios × seeds
-uv run python -m experiments.run_study \
+uv run silisocs-study \
     --study experiments/studies/my_study run
 
 # Run only one hypothesis
-uv run python -m experiments.run_study \
+uv run silisocs-study \
     --study experiments/studies/my_study run \
     --only-hypothesis h1_persona_richness
 ```
@@ -240,4 +240,4 @@ duplicate paths — the run is not re-executed, just re-linked.
 - **Full study.yaml schema:** `docs/study_schema.md` — all fields, file formats, eval.json spec
 - **Scenario design:** `docs/scenario_guide.md` — how to build the scenario you study
 - **Existing studies:** `experiments/studies/style_diversity/` — a working example
-- **Run study CLI help:** `uv run python -m experiments.run_study --help`
+- **Run study CLI help:** `uv run silisocs-study --help`

@@ -1972,7 +1972,7 @@ def _build_submitit_job_commands(
         command = [
             sys.executable,
             "-m",
-            "experiments.run_study",
+            "silisocs.studies.run_study",
             "--study",
             study_arg,
             "--repo-root",
@@ -2226,7 +2226,7 @@ def cmd_slurm_array(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     """Build parser for planning, generation, and execution commands."""
-    parser = argparse.ArgumentParser(description="Structured study runner for mastodon-sim")
+    parser = argparse.ArgumentParser(description="Structured study runner for silisocs")
     parser.add_argument(
         "--study",
         required=True,

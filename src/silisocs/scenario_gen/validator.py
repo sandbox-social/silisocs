@@ -61,7 +61,7 @@ def validate_study(study_root: Path | str) -> ValidationResult:
             "run",
             "python",
             "-m",
-            "experiments.run_study",
+            "silisocs.studies.run_study",
             "--study",
             str(study_root),
             "plan",

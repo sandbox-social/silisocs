@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Generic Slurm array template for Silisocs studies.
 #
-# Use experiments.run_study slurm-array to compute the array size and export the
-# run plan, or copy this template and add site-specific SBATCH directives.
+# Use silisocs.studies.run_study slurm-array to compute the array size and export
+# the run plan, or copy this template and add site-specific SBATCH directives.
 
 #SBATCH --job-name=silisocs-study
 #SBATCH --time=04:00:00
@@ -76,7 +76,7 @@ if [[ -n "${RUN_IDS}" ]]; then
 fi
 
 if [[ ! -f "${PLAN_JSON}" ]]; then
-  "${RUNNER_PYTHON}" -m experiments.run_study "${PLAN_ARGS[@]}"
+  "${RUNNER_PYTHON}" -m silisocs.studies.run_study "${PLAN_ARGS[@]}"
 else
   echo "Using existing PLAN_JSON: ${PLAN_JSON}"
 fi
@@ -156,4 +156,4 @@ if [[ -n "${RUN_IDS}" && "${ARRAY_MODE}" != "run" ]]; then
   RUN_ARGS+=(--only-run-id "${RUN_IDS}")
 fi
 
-"${RUNNER_PYTHON}" -m experiments.run_study "${RUN_ARGS[@]}"
+"${RUNNER_PYTHON}" -m silisocs.studies.run_study "${RUN_ARGS[@]}"

@@ -170,7 +170,3 @@ def _join_context_and_prompt(context: str, prompt: str) -> str:
     if context_text and prompt_text:
         return f"{context_text}\n\n{prompt_text}"
     return context_text or prompt_text
-
-
-# Type alias for flexibility
-AgentLike = Agent
