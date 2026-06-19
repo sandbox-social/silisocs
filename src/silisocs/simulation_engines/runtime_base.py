@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -20,11 +21,17 @@ class AgentStepResult:
 
 @dataclass(frozen=True)
 class StepBatch:
-    """One group of agent turns executed together inside a step strategy."""
+    """One group of agent turns executed together inside a step strategy.
+
+    ``turn_policy`` is an optional per-batch override. When ``None`` the engine
+    falls back to its single global turn policy, so non-flow step strategies and
+    flows without a configured override behave exactly as before.
+    """
 
     flow_name: str
     game_master: Any
     turns: list[tuple[Any, ActionSpec]]
+    turn_policy: TurnPolicy | None = None
 
 
 @dataclass
@@ -112,6 +119,7 @@ class ProbeRunner(Protocol):
         step: int,
         agents: list[Any],
         worker_limit: int | None,
+        agent_flows: Mapping[str, str] | None = None,
     ) -> tuple[bool, int]: ...
 
 

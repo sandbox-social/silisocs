@@ -8,7 +8,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 from omegaconf import OmegaConf
 
@@ -25,7 +25,10 @@ from silisocs.runtime.telemetry import (
     update_adaptive_worker_cap,
 )
 from silisocs.runtime.types import ActionOutput, ActionSpec
-from silisocs.simulation_engines.policies.factory import build_turn_policy
+from silisocs.simulation_engines.policies.factory import (
+    build_flow_turn_policies,
+    build_turn_policy,
+)
 from silisocs.simulation_engines.policies.loops import FixedStepsLoopStrategy
 from silisocs.simulation_engines.policies.steps import (
     BaseStepStrategy,
@@ -268,11 +271,12 @@ class RuntimeEngine(RuntimeEngineBase):
         active_names: set[str] = set()
         for batch in batches:
             flow_tasks: dict[str, Callable[[], str]] = {}
+            batch_policy = batch.turn_policy or self.turn_policy
             for agent, spec in batch.turns:
                 active_names.add(agent.name)
                 task_name = f"{batch.game_master.name}::{agent.name}"
                 flow_tasks[task_name] = functools.partial(
-                    self.turn_policy.run,
+                    batch_policy.run,
                     engine=self,
                     game_master=batch.game_master,
                     agent=agent,
@@ -386,6 +390,18 @@ def _extract_flow_order(cfg: Any | None) -> tuple[str, ...]:
     return tuple(str(item) for item in (raw or default))
 
 
+def _extract_flow_turn_policies(cfg: Any | None) -> dict[str, Any]:
+    """Resolve per-flow turn policies from sim.engine.step.params.flow_turn_policies.
+
+    Returns an empty map when unset, so the engine's single global turn policy
+    applies to every flow (current behavior).
+    """
+    if cfg is None:
+        return {}
+    raw = OmegaConf.select(cfg, "sim.engine.step.params.flow_turn_policies", default=None)
+    return build_flow_turn_policies(raw)
+
+
 def _apply_engine_defaults(kwargs: dict[str, Any], step_strategy: Any) -> None:
     """Set shared defaults (loop strategy, step strategy, turn policy) on kwargs."""
     cfg = kwargs.get("config")
@@ -398,28 +414,34 @@ class BaseRuntimeEngine(RuntimeEngine):
     """Runtime engine preset wrapper using base step strategy."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        flow_order = _extract_flow_order(kwargs.get("config"))
         _apply_engine_defaults(kwargs, BaseStepStrategy())
         super().__init__(*args, **kwargs)
-        self._flow_order = flow_order
 
 
 class FlowRuntimeEngine(RuntimeEngine):
-    """Runtime engine preset wrapper using flow step strategy."""
+    """Runtime engine preset wrapper using a flow-ordered step strategy.
+
+    Subclasses select their step strategy via ``step_strategy_class``; the flow
+    order is read from config and passed to it.
+    """
+
+    step_strategy_class: ClassVar[Callable[..., StepStrategy]] = FlowStepStrategy
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        flow_order = _extract_flow_order(kwargs.get("config"))
-        _apply_engine_defaults(kwargs, FlowStepStrategy(flow_order=flow_order))
+        cfg = kwargs.get("config")
+        flow_order = _extract_flow_order(cfg)
+        flow_turn_policies = _extract_flow_turn_policies(cfg)
+        _apply_engine_defaults(
+            kwargs,
+            self.step_strategy_class(flow_order=flow_order, flow_turn_policies=flow_turn_policies),
+        )
         super().__init__(*args, **kwargs)
 
 
 class MultiGMRuntimeEngine(FlowRuntimeEngine):
-    """Runtime engine preset wrapper using flow-first multi-GM step strategy."""
+    """Runtime engine preset wrapper using the flow-first multi-GM step strategy."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        flow_order = _extract_flow_order(kwargs.get("config"))
-        _apply_engine_defaults(kwargs, MultiGMStepStrategy(flow_order=flow_order))
-        super().__init__(*args, **kwargs)
+    step_strategy_class: ClassVar[Callable[..., StepStrategy]] = MultiGMStepStrategy
 
 
 def _engine_turn_policy_cfg(cfg: Any | None) -> Mapping[str, Any] | None:

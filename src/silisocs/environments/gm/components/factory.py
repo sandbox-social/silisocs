@@ -366,6 +366,7 @@ def build_resolve_component(
                 "model": context.model,
                 "action_prompt_template": action_prompt_template,
                 "agents_by_name": agents_by_name or {agent.name: agent for agent in context.agents},
+                "agent_flow_tags": dict(context.agent_flow_tags),
             },
         ),
     )

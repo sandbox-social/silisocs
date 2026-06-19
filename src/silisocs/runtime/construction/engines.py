@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import logging
 from collections.abc import Mapping
 from typing import Any, cast
 
 from omegaconf import DictConfig, OmegaConf
+
+_LOGGER = logging.getLogger(__name__)
 
 from silisocs.simulation_engines.base_engines import (
     BaseRuntimeEngine,
@@ -15,7 +18,10 @@ from silisocs.simulation_engines.base_engines import (
     MultiGMRuntimeEngine,
     RuntimeEngine,
 )
-from silisocs.simulation_engines.policies.factory import build_turn_policy
+from silisocs.simulation_engines.policies.factory import (
+    build_flow_turn_policies,
+    build_turn_policy,
+)
 from silisocs.simulation_engines.policies.loops import FixedStepsLoopStrategy
 from silisocs.simulation_engines.policies.steps import (
     FlowStepStrategy,
@@ -83,14 +89,15 @@ def _build_step_strategy(step_cfg: Mapping[str, Any]) -> Any:
         return _instantiate_with_supported_kwargs(_load_class(class_path), params)
     built_in = str(step_cfg.get("built_in") or "base").strip()
     flow_order = tuple(str(item) for item in (params.get("flow_order") or ["fixed_pre", "default"]))
+    flow_turn_policies = build_flow_turn_policies(params.get("flow_turn_policies"))
     if built_in == "base":
         return None
     if built_in == "sequential":
         return SequentialStepStrategy()
     if built_in == "flow":
-        return FlowStepStrategy(flow_order=flow_order)
+        return FlowStepStrategy(flow_order=flow_order, flow_turn_policies=flow_turn_policies)
     if built_in == "multi_gm":
-        return MultiGMStepStrategy(flow_order=flow_order)
+        return MultiGMStepStrategy(flow_order=flow_order, flow_turn_policies=flow_turn_policies)
     raise ValueError(f"Unknown sim.engine.step.built_in='{built_in}'.")
 
 
@@ -139,19 +146,33 @@ def build_engine(cfg: DictConfig):
         )
 
     step_built_in = str(step_cfg.get("built_in") or "base").strip()
+    if step_built_in in {"base", "sequential"} and dict(step_cfg.get("params") or {}).get(
+        "flow_turn_policies"
+    ):
+        _LOGGER.warning(
+            "sim.engine.step.params.flow_turn_policies is set but step.built_in=%r does not group "
+            "agents by flow; per-flow turn policies are ignored. Use built_in 'flow' or 'multi_gm'.",
+            step_built_in,
+        )
+    # A configured sim.engine.loop must be honored regardless of step mode, so the
+    # built loop strategy is passed to every preset (presets only setdefault the
+    # FixedStepsLoopStrategy, so an explicit one wins).
+    loop_strategy = _build_loop_strategy(loop_cfg)
     if step_built_in == "base":
-        return BaseRuntimeEngine(config=cfg, turn_policy=turn_policy)
+        return BaseRuntimeEngine(config=cfg, loop_strategy=loop_strategy, turn_policy=turn_policy)
     if step_built_in == "sequential":
         return RuntimeEngine(
             config=cfg,
-            loop_strategy=_build_loop_strategy(loop_cfg),
+            loop_strategy=loop_strategy,
             step_strategy=SequentialStepStrategy(),
             turn_policy=turn_policy,
         )
     if step_built_in == "flow":
-        return FlowRuntimeEngine(config=cfg, turn_policy=turn_policy)
+        return FlowRuntimeEngine(config=cfg, loop_strategy=loop_strategy, turn_policy=turn_policy)
     if step_built_in == "multi_gm":
-        return MultiGMRuntimeEngine(config=cfg, turn_policy=turn_policy)
+        return MultiGMRuntimeEngine(
+            config=cfg, loop_strategy=loop_strategy, turn_policy=turn_policy
+        )
 
     return RuntimeEngine(
         config=cfg,

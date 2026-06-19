@@ -7,6 +7,8 @@ import inspect
 from collections.abc import Mapping
 from typing import Any
 
+from omegaconf import DictConfig, OmegaConf
+
 from silisocs.simulation_engines.policies.probe_schedule import (
     DisabledProbeSchedulePolicy,
     FixedIntervalProbeSchedulePolicy,
@@ -106,6 +108,34 @@ def _build_policy(
 def build_turn_policy(slot_cfg: Mapping[str, Any] | None = None) -> Any:
     """Build turn policy from YAML config."""
     return _build_policy(slot_cfg, built_ins=_TURN_BUILT_INS, default_built_in="single_action")
+
+
+def build_flow_turn_policies(raw: Any) -> dict[str, Any]:
+    """Resolve a ``{flow_tag: turn_policy_slot}`` mapping into per-flow policies.
+
+    Each value mirrors the ``sim.engine.turn_policy`` slot shape
+    (``{built_in|class_path, params}``). Flows absent from the returned map fall
+    back to the engine's single global turn policy at execution time, so an empty
+    or omitted config is a pure no-op.
+    """
+    if raw is None:
+        return {}
+    if isinstance(raw, DictConfig):
+        raw = OmegaConf.to_container(raw, resolve=True)
+    if not isinstance(raw, Mapping):
+        raise ValueError("sim.engine.step.params.flow_turn_policies must be a mapping.")
+    resolved: dict[str, Any] = {}
+    for flow, slot in raw.items():
+        flow_name = str(flow).strip()
+        if not flow_name:
+            raise ValueError("flow_turn_policies contains an empty flow name.")
+        if slot is not None and not isinstance(slot, Mapping):
+            raise ValueError(
+                f"flow_turn_policies['{flow_name}'] must be a mapping of "
+                "{built_in|class_path, params}."
+            )
+        resolved[flow_name] = build_turn_policy(dict(slot or {}))
+    return resolved
 
 
 def build_probe_schedule_policy(slot_cfg: Mapping[str, Any] | None = None) -> Any:

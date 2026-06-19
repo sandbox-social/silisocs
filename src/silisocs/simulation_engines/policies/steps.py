@@ -3,12 +3,45 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from silisocs.agents.base_agent import Agent
 from silisocs.runtime.types import ActionSpec
-from silisocs.simulation_engines.runtime_base import StepBatch, StepResult, StepStrategy
+from silisocs.simulation_engines.runtime_base import (
+    StepBatch,
+    StepResult,
+    StepStrategy,
+    TurnPolicy,
+)
+
+
+def _group_agents_by_flow(
+    engine: Any, game_master: Any, agents: list[Agent]
+) -> OrderedDict[str, list[Agent]]:
+    """Group agents by their flow tag, resolved against ``game_master``."""
+    agents_by_flow: OrderedDict[str, list[Agent]] = OrderedDict()
+    for agent in agents:
+        flow = engine._agent_flow_tag(game_master, agent.name)
+        agents_by_flow.setdefault(flow, []).append(agent)
+    return agents_by_flow
+
+
+def _order_flows(flow_order: tuple[str, ...], available: Iterable[str]) -> list[str]:
+    """Order flow names: those named in ``flow_order`` first (in order), then any
+    remaining flows in insertion order. Mirrors the legacy per-strategy ordering.
+    """
+    available_list = list(available)
+    available_set = set(available_list)
+    ordered: list[str] = []
+    for raw in flow_order:
+        name = str(raw).strip()
+        if name and name in available_set:
+            ordered.append(name)
+    seen = set(ordered)
+    ordered.extend(name for name in available_list if name not in seen)
+    return ordered
 
 
 class BaseStepStrategy(StepStrategy):
@@ -66,10 +99,15 @@ class SequentialStepStrategy(StepStrategy):
 
 @dataclass
 class FlowStepStrategy(StepStrategy):
-    """Flow-aware step scheduling for a single game master."""
+    """Flow-aware step scheduling for a single game master.
+
+    ``flow_turn_policies`` maps a flow tag to a resolved per-flow turn policy.
+    Flows absent from the map run under the engine's global turn policy.
+    """
 
     flow_order: tuple[str, ...] = ("fixed_pre", "default")
     name: str = "flow"
+    flow_turn_policies: Mapping[str, TurnPolicy] = field(default_factory=dict)
 
     def run(
         self,
@@ -83,36 +121,36 @@ class FlowStepStrategy(StepStrategy):
         del step_index, verbose
         if not game_masters:
             raise ValueError("No game masters configured.")
-        groups: OrderedDict[str, list[tuple[Agent, ActionSpec]]] = OrderedDict()
         gm = game_masters[0]
-        agents_by_flow: OrderedDict[str, list[Agent]] = OrderedDict()
-        for agent in cast(list[Agent], agents):
-            flow = engine._agent_flow_tag(gm, agent.name)
-            agents_by_flow.setdefault(flow, []).append(agent)
+        agents_by_flow = _group_agents_by_flow(engine, gm, cast(list[Agent], agents))
+        groups: OrderedDict[str, list[tuple[Agent, ActionSpec]]] = OrderedDict()
         for flow, flow_agents in agents_by_flow.items():
             turns = engine._selected_turns(game_master=gm, candidate_agents=flow_agents)
             groups.setdefault(flow, []).extend(turns)
-        batches: list[StepBatch] = []
-        used: set[str] = set()
-        for flow in self.flow_order:
-            flow_name = str(flow).strip()
-            if flow_name and flow_name in groups:
-                batches.append(
-                    StepBatch(flow_name=flow_name, game_master=gm, turns=groups[flow_name])
-                )
-                used.add(flow_name)
-        for flow_name, flow_turns in groups.items():
-            if flow_name not in used:
-                batches.append(StepBatch(flow_name=flow_name, game_master=gm, turns=flow_turns))
+        batches = [
+            StepBatch(
+                flow_name=flow_name,
+                game_master=gm,
+                turns=groups[flow_name],
+                turn_policy=self.flow_turn_policies.get(flow_name),
+            )
+            for flow_name in _order_flows(self.flow_order, groups)
+        ]
         return engine._execute_batches(step_index=0, batches=batches, verbose=False)
 
 
 @dataclass
 class MultiGMStepStrategy(StepStrategy):
-    """Flow-first multi-GM routing strategy using flow_to_gms chains."""
+    """Flow-first multi-GM routing strategy using flow_to_gms chains.
+
+    ``flow_turn_policies`` maps a flow tag to a resolved per-flow turn policy that
+    is applied at every GM hop of the flow's chain. Flows absent from the map run
+    under the engine's global turn policy.
+    """
 
     flow_order: tuple[str, ...] = ("fixed_pre", "default")
     name: str = "multi_gm"
+    flow_turn_policies: Mapping[str, TurnPolicy] = field(default_factory=dict)
 
     def run(
         self,
@@ -127,25 +165,12 @@ class MultiGMStepStrategy(StepStrategy):
         if not game_masters:
             raise ValueError("No game masters configured.")
         gm_by_name = {str(gm.name): gm for gm in game_masters}
-        flow_to_agents: OrderedDict[str, list[Agent]] = OrderedDict()
         default_gm = game_masters[0]
-        for agent in cast(list[Agent], agents):
-            flow = engine._agent_flow_tag(default_gm, agent.name)
-            flow_to_agents.setdefault(flow, []).append(agent)
+        flow_to_agents = _group_agents_by_flow(engine, default_gm, cast(list[Agent], agents))
         flow_chains = dict(getattr(default_gm, "flow_chains", {}) or {})
 
         batches: list[StepBatch] = []
-        ordered_flows: list[str] = []
-        seen: set[str] = set()
-        for flow in self.flow_order:
-            name = str(flow).strip()
-            if name and name in flow_to_agents:
-                ordered_flows.append(name)
-                seen.add(name)
-        for flow_name in flow_to_agents:
-            if flow_name not in seen:
-                ordered_flows.append(flow_name)
-        for flow_name in ordered_flows:
+        for flow_name in _order_flows(self.flow_order, flow_to_agents):
             candidates = flow_to_agents.get(flow_name, [])
             if not candidates:
                 continue
@@ -158,5 +183,12 @@ class MultiGMStepStrategy(StepStrategy):
                         f"Unknown GM '{gm_name}' in flow chain for flow '{flow_name}'."
                     )
                 turns = engine._selected_turns(game_master=gm, candidate_agents=candidates)
-                batches.append(StepBatch(flow_name=flow_name, game_master=gm, turns=turns))
+                batches.append(
+                    StepBatch(
+                        flow_name=flow_name,
+                        game_master=gm,
+                        turns=turns,
+                        turn_policy=self.flow_turn_policies.get(flow_name),
+                    )
+                )
         return engine._execute_batches(step_index=0, batches=batches, verbose=False)

@@ -219,6 +219,51 @@ def test_multi_gm_step_strategy_falls_back_to_default_gm_for_unbound_flow() -> N
     assert other_gm.resolved == []
 
 
+def test_multi_gm_step_strategy_applies_per_flow_policy_at_every_chain_hop() -> None:
+    cfg = OmegaConf.create(
+        {
+            "sim": {
+                "engine": {
+                    "turn_policy": {"built_in": "single_action"},
+                    "step": {
+                        "built_in": "multi_gm",
+                        "params": {
+                            "flow_order": ["review", "default"],
+                            "flow_turn_policies": {
+                                "review": {"built_in": "fixed_count", "params": {"count": 2}}
+                            },
+                        },
+                    },
+                }
+            }
+        }
+    )
+    engine = MultiGMRuntimeEngine(config=cfg)
+    alice = _Agent("Alice")  # review flow -> fixed_count(2)
+    dave = _Agent("Dave")  # default flow -> global single_action
+    primary = _GameMaster(
+        name="primary",
+        selected=["Dave"],
+        agent_flow_tags={"Alice": "review", "Dave": "default"},
+        flow_chains={"review": ["audit_gm", "main_gm"], "default": ["primary"]},
+    )
+    audit_gm = _GameMaster(name="audit_gm", selected=["Alice"])
+    main_gm = _GameMaster(name="main_gm", selected=["Alice"])
+
+    engine.run_step(
+        step_index=0,
+        game_masters=[primary, audit_gm, main_gm],
+        agents=[alice, dave],
+        verbose=False,
+    )
+
+    # The per-flow fixed_count(2) applies at EVERY hop of the review chain.
+    assert [name for name, _ in audit_gm.resolved] == ["Alice", "Alice"]
+    assert [name for name, _ in main_gm.resolved] == ["Alice", "Alice"]
+    # Default-flow agent uses the global single_action policy (one action).
+    assert [name for name, _ in primary.resolved] == ["Dave"]
+
+
 def test_multi_gm_step_strategy_rejects_unknown_gm_in_chain() -> None:
     engine = MultiGMRuntimeEngine()
     alice = _Agent("Alice")
