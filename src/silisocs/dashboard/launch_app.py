@@ -989,7 +989,7 @@ with tab_sim:
             "gm_orchestration (YAML)",
             value=yaml.dump(gm_orch_default, default_flow_style=False)
             if gm_orch_default
-            else "gms: []\nflow_bindings:\n  flow_to_gm: {}\n  flow_to_gms: {}",
+            else "gms: []\nflow_bindings:\n  flow_to_gms: {}",
             key="gm_orchestration_yaml",
             height=200,
             help="Define multiple GMs and their flow assignments. Leave empty to disable.",
@@ -1717,7 +1717,7 @@ with tab_env:
                 value=orchestration_yaml,
                 key="gm_orchestration_yaml",
                 height=180,
-                help="Supports gms, flow_to_gm, flow_to_gms, gm_to_flows.",
+                help="Supports gms and flow_bindings.flow_to_gms.",
             )
 
     with st.expander(

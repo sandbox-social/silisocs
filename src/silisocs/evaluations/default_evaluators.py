@@ -867,7 +867,76 @@ def _build_action_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _build_probe_metrics_with_context(  # noqa: C901, PLR0912, PLR0915
+def _accumulate_typed_response(
+    probe_type: str,
+    label: str,
+    response: Any,
+    *,
+    per_type: dict[str, Counter[str]],
+    numeric_values: dict[str, list[float]],
+    choice_values: dict[str, Counter[str]],
+    free_text_lengths: dict[str, list[float]],
+    free_text_word_counts: dict[str, list[float]],
+    free_text_tokens: dict[str, Counter[str]],
+) -> None:
+    """Accumulate one present probe response into the per-type/per-label stats."""
+    if probe_type == "BinaryProbe":
+        normalized = _normalize_binary(response)
+        key = normalized if normalized is not None else "Other"
+        per_type[probe_type][f"answer_{key}"] += 1
+    elif probe_type == "NumericRatingProbe":
+        num = _safe_float(response)
+        if num is not None:
+            numeric_values[label].append(num)
+            per_type[probe_type]["numeric_values_parsed"] += 1
+        else:
+            per_type[probe_type]["numeric_values_unparsed"] += 1
+    elif probe_type == "ChoiceProbe":
+        value = str(response).strip() or "<empty>"
+        choice_values[label][value] += 1
+    elif probe_type == "FreeTextProbe":
+        text = str(response)
+        free_text_lengths[label].append(float(len(text)))
+        words = text.split()
+        free_text_word_counts[label].append(float(len(words)))
+        for token in _TOKEN_RE.findall(text.lower()):
+            free_text_tokens[label][token] += 1
+
+
+def _build_per_label_probe_output(
+    per_label_counts: dict[str, Counter[str]],
+    per_label_modes: dict[str, Counter[str]],
+    type_map: dict[str, str],
+    *,
+    numeric_values: dict[str, list[float]],
+    choice_values: dict[str, Counter[str]],
+    free_text_lengths: dict[str, list[float]],
+    free_text_word_counts: dict[str, list[float]],
+    free_text_tokens: dict[str, Counter[str]],
+) -> dict[str, Any]:
+    """Build the per-label probe summary (counts, stats, and token frequencies)."""
+    per_label_out: dict[str, Any] = {}
+    for label, counts in sorted(per_label_counts.items()):
+        entry: dict[str, Any] = {
+            "probe_type": type_map.get(label) or "inferred",
+            "total_events": int(counts.get("total_events", 0)),
+            "responses_present": int(counts.get("responses_present", 0)),
+            "responses_missing": int(counts.get("responses_missing", 0)),
+            "probe_mode_counts": dict(per_label_modes[label]),
+        }
+        if numeric_values.get(label):
+            entry["numeric_response_stats"] = _summary_stats(numeric_values[label])
+        if choice_values.get(label):
+            entry["choice_value_counts"] = dict(choice_values[label])
+        if free_text_lengths.get(label):
+            entry["free_text_char_len_stats"] = _summary_stats(free_text_lengths[label])
+            entry["free_text_word_count_stats"] = _summary_stats(free_text_word_counts[label])
+            entry["free_text_top_tokens"] = dict(free_text_tokens[label].most_common(30))
+        per_label_out[label] = entry
+    return per_label_out
+
+
+def _build_probe_metrics_with_context(
     events: list[dict[str, Any]],
     run_dir: Path,
     probe_type_filter: str | None = None,
@@ -944,55 +1013,32 @@ def _build_probe_metrics_with_context(  # noqa: C901, PLR0912, PLR0915
         if not has_response:
             continue
 
-        if probe_type == "BinaryProbe":
-            normalized = _normalize_binary(response)
-            key = normalized if normalized is not None else "Other"
-            per_type[probe_type][f"answer_{key}"] += 1
-
-        elif probe_type == "NumericRatingProbe":
-            num = _safe_float(response)
-            if num is not None:
-                numeric_values[label].append(num)
-                per_type[probe_type]["numeric_values_parsed"] += 1
-            else:
-                per_type[probe_type]["numeric_values_unparsed"] += 1
-
-        elif probe_type == "ChoiceProbe":
-            value = str(response).strip() or "<empty>"
-            choice_values[label][value] += 1
-
-        elif probe_type == "FreeTextProbe":
-            text = str(response)
-            free_text_lengths[label].append(float(len(text)))
-            words = text.split()
-            free_text_word_counts[label].append(float(len(words)))
-            for token in _TOKEN_RE.findall(text.lower()):
-                free_text_tokens[label][token] += 1
+        _accumulate_typed_response(
+            probe_type,
+            label,
+            response,
+            per_type=per_type,
+            numeric_values=numeric_values,
+            choice_values=choice_values,
+            free_text_lengths=free_text_lengths,
+            free_text_word_counts=free_text_word_counts,
+            free_text_tokens=free_text_tokens,
+        )
 
     probe_type_by_label = {
         label: (type_map.get(label) or "inferred") for label in sorted(per_label_counts.keys())
     }
 
-    per_label_out: dict[str, Any] = {}
-    for label, counts in sorted(per_label_counts.items()):
-        entry: dict[str, Any] = {
-            "probe_type": type_map.get(label) or "inferred",
-            "total_events": int(counts.get("total_events", 0)),
-            "responses_present": int(counts.get("responses_present", 0)),
-            "responses_missing": int(counts.get("responses_missing", 0)),
-            "probe_mode_counts": dict(per_label_modes[label]),
-        }
-
-        if numeric_values.get(label):
-            entry["numeric_response_stats"] = _summary_stats(numeric_values[label])
-        if choice_values.get(label):
-            entry["choice_value_counts"] = dict(choice_values[label])
-        if free_text_lengths.get(label):
-            entry["free_text_char_len_stats"] = _summary_stats(free_text_lengths[label])
-            entry["free_text_word_count_stats"] = _summary_stats(free_text_word_counts[label])
-            entry["free_text_top_tokens"] = dict(free_text_tokens[label].most_common(30))
-
-        per_label_out[label] = entry
+    per_label_out = _build_per_label_probe_output(
+        per_label_counts,
+        per_label_modes,
+        type_map,
+        numeric_values=numeric_values,
+        choice_values=choice_values,
+        free_text_lengths=free_text_lengths,
+        free_text_word_counts=free_text_word_counts,
+        free_text_tokens=free_text_tokens,
+    )
 
     per_type_out = {ptype: dict(counter) for ptype, counter in sorted(per_type.items())}
 

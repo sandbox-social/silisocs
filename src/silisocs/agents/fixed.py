@@ -87,22 +87,6 @@ class FixedAgent(Agent):
         :rtype: None
         """
         super().__init__(model or NoLanguageModel())
-        self._params = {
-            "name": name,
-            "seed_post": seed_post,
-            "fixed_action_plan": fixed_action_plan or {},
-            "fixed_action_plan_file": fixed_action_plan_file,
-            "allowed_action_types": allowed_action_types or [],
-            "action_output_mode": action_output_mode,
-            "advance_without_episode_observation": advance_without_episode_observation,
-            "advance_episode_on_non_episode_observation": advance_episode_on_non_episode_observation,
-            "emit_finished_on_episode_end": emit_finished_on_episode_end,
-            "finished_action_name": finished_action_name,
-            "initial_episode": initial_episode,
-            "action_aliases": dict(action_aliases or {}),
-            **dict(extra_params),
-        }
-        params = self._params
         self._agent_name = str(name or "FixedAgent")
         self.seed_post = str(seed_post or "")
         self._current_episode = int(initial_episode or 0)
@@ -487,7 +471,11 @@ class FixedAgent(Agent):
         """Restore state from checkpoint."""
         if state:
             self._current_episode = state.get("current_episode", self._current_episode)
-            self._episode_cursors = dict(state.get("episode_cursors", {}))
+            # Episode keys are ints, but a JSON checkpoint round-trip stringifies
+            # mapping keys; coerce back so lookups by the int episode index hit.
+            self._episode_cursors = {
+                int(k): int(v) for k, v in dict(state.get("episode_cursors", {})).items()
+            }
             emitted = state.get("episodes_finished_emitted", [])
             self._episodes_finished_emitted = {
                 int(v) for v in emitted if isinstance(v, int) or str(v).isdigit()

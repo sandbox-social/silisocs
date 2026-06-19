@@ -968,19 +968,34 @@ def _run_subprocess(
         )
 
         assert proc.stdout is not None
-        try:
+
+        # Drain stdout on a separate thread so the timeout is enforced via
+        # proc.wait(timeout=...) below even when the child produces NO output: a
+        # blocking `for line in proc.stdout` only returns at EOF, so a hang that
+        # holds stdout open (deadlock, stuck network/LLM call) would otherwise
+        # never reach the timeout and run forever.
+        def _drain_stdout() -> None:
+            nonlocal parsed_output_dir
+            assert proc.stdout is not None
             for line in proc.stdout:
                 log_file.write(line)
                 output_tail.append(line.rstrip("\n"))
                 out_dir = _extract_output_dir_from_line(line)
                 if out_dir:
                     parsed_output_dir = out_dir
+
+        reader = threading.Thread(target=_drain_stdout, daemon=True)
+        reader.start()
+        try:
             return_code = proc.wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait()
             output_tail.append(f"TIMEOUT after {timeout_seconds}s")
             return_code = PROCESS_TIMEOUT_RC
+        # Let the drain thread observe EOF (the pipe closes once the process
+        # exits / is killed) and flush remaining output before the log closes.
+        reader.join(timeout=5)
 
     return return_code, list(output_tail), parsed_output_dir
 
@@ -1161,15 +1176,14 @@ def _run_evaluations(
     return records
 
 
-def _run_one_spec(  # noqa: C901, PLR0912, PLR0915
-    spec: RunSpec,
-    repo_root: Path,
-    generated_dir: Path,
-    timeout_seconds: int | None,
-    assigned_gpu: str | None = None,
-) -> dict[str, Any]:
-    started = _now_iso()
-    record: dict[str, Any] = {
+def _build_eval_paths(evaluations: list[dict[str, Any]]) -> dict[str, str]:
+    """Map evaluation id -> output path for evaluations that produced one."""
+    return {str(item.get("id")): str(item.get("path")) for item in evaluations if item.get("path")}
+
+
+def _initialize_run_record(spec: RunSpec, assigned_gpu: str | None, started: str) -> dict[str, Any]:
+    """Build the base run record shared by the reuse and new-run paths."""
+    return {
         "schema_version": SCHEMA_VERSION,
         "run_id": spec.run_id,
         "study": spec.study_name,
@@ -1202,51 +1216,64 @@ def _run_one_spec(  # noqa: C901, PLR0912, PLR0915
         "gpu_binding": assigned_gpu,
     }
 
-    exec_env = {"CUDA_VISIBLE_DEVICES": assigned_gpu} if assigned_gpu else None
 
-    if spec.execution_mode == "reuse_existing":
-        reused_source = Path(spec.reused_source or "")
-        if not reused_source.is_absolute():
-            reused_source = (repo_root / reused_source).resolve()
-        record["run_dir"] = str(reused_source)
-        record["simulation_output_path"] = str(reused_source)
-        record["status"] = "reused"
+def _run_reused_spec(
+    spec: RunSpec,
+    record: dict[str, Any],
+    repo_root: Path,
+    generated_dir: Path,
+    timeout_seconds: int | None,
+    exec_env: dict[str, str] | None,
+) -> dict[str, Any]:
+    """Resolve (and optionally re-evaluate) an existing run referenced by the spec."""
+    reused_source = Path(spec.reused_source or "")
+    if not reused_source.is_absolute():
+        reused_source = (repo_root / reused_source).resolve()
+    record["run_dir"] = str(reused_source)
+    record["simulation_output_path"] = str(reused_source)
+    record["status"] = "reused"
 
-        if spec.reused_eval:
-            eval_path = Path(spec.reused_eval)
-            if not eval_path.is_absolute():
-                eval_path = (repo_root / eval_path).resolve()
-            record["evaluations"].append(
-                {
-                    "id": "legacy_reused_eval",
-                    "status": "reused",
-                    "path": str(eval_path),
-                    "command": [],
-                    "log_path": None,
-                    "return_code": None,
-                    "tail": [],
-                }
-            )
-            record["eval_paths"]["legacy_reused_eval"] = str(eval_path)
-
-        if spec.eval_specs and spec.re_evaluate:
-            record["evaluations"] = _run_evaluations(
-                spec,
-                reused_source,
-                repo_root,
-                generated_dir,
-                timeout_seconds,
-                extra_env=exec_env,
-            )
-            record["eval_paths"] = {
-                str(item.get("id")): str(item.get("path"))
-                for item in record["evaluations"]
-                if item.get("path")
+    if spec.reused_eval:
+        eval_path = Path(spec.reused_eval)
+        if not eval_path.is_absolute():
+            eval_path = (repo_root / eval_path).resolve()
+        record["evaluations"].append(
+            {
+                "id": "legacy_reused_eval",
+                "status": "reused",
+                "path": str(eval_path),
+                "command": [],
+                "log_path": None,
+                "return_code": None,
+                "tail": [],
             }
+        )
+        record["eval_paths"]["legacy_reused_eval"] = str(eval_path)
 
-        record["finished_at"] = _now_iso()
-        return record
+    if spec.eval_specs and spec.re_evaluate:
+        record["evaluations"] = _run_evaluations(
+            spec,
+            reused_source,
+            repo_root,
+            generated_dir,
+            timeout_seconds,
+            extra_env=exec_env,
+        )
+        record["eval_paths"] = _build_eval_paths(record["evaluations"])
 
+    record["finished_at"] = _now_iso()
+    return record
+
+
+def _run_new_spec(
+    spec: RunSpec,
+    record: dict[str, Any],
+    repo_root: Path,
+    generated_dir: Path,
+    timeout_seconds: int | None,
+    exec_env: dict[str, str] | None,
+) -> dict[str, Any]:
+    """Execute a fresh simulation run, resolve its output dir, and run evaluations."""
     run_log = generated_dir / "logs" / f"{spec.run_id}.log"
     cmd = _build_run_command(spec)
     record["command"] = cmd
@@ -1292,11 +1319,7 @@ def _run_one_spec(  # noqa: C901, PLR0912, PLR0915
                 timeout_seconds,
                 extra_env=exec_env,
             )
-            record["eval_paths"] = {
-                str(item.get("id")): str(item.get("path"))
-                for item in record["evaluations"]
-                if item.get("path")
-            }
+            record["eval_paths"] = _build_eval_paths(record["evaluations"])
         else:
             record["evaluations"] = []
 
@@ -1316,6 +1339,20 @@ def _run_one_spec(  # noqa: C901, PLR0912, PLR0915
 
     record["finished_at"] = _now_iso()
     return record
+
+
+def _run_one_spec(
+    spec: RunSpec,
+    repo_root: Path,
+    generated_dir: Path,
+    timeout_seconds: int | None,
+    assigned_gpu: str | None = None,
+) -> dict[str, Any]:
+    record = _initialize_run_record(spec, assigned_gpu, _now_iso())
+    exec_env = {"CUDA_VISIBLE_DEVICES": assigned_gpu} if assigned_gpu else None
+    if spec.execution_mode == "reuse_existing":
+        return _run_reused_spec(spec, record, repo_root, generated_dir, timeout_seconds, exec_env)
+    return _run_new_spec(spec, record, repo_root, generated_dir, timeout_seconds, exec_env)
 
 
 def _planned_run_dir(spec: RunSpec, repo_root: Path) -> Path | None:
@@ -1687,6 +1724,67 @@ def cmd_generate_bash(args: argparse.Namespace) -> int:
     return 0
 
 
+def _execute_pending_runs(
+    pending_specs: list[RunSpec],
+    skipped_records: list[dict[str, Any]],
+    repo_root: Path,
+    generated_dir: Path,
+    timeout_seconds: int | None,
+    max_concurrent: int,
+    gpu_bindings: dict[str, str],
+    lock_jsonl: Path,
+) -> list[dict[str, Any]]:
+    """Run the pending specs concurrently, streaming each record to the lock JSONL.
+
+    Already-complete (skipped) records are emitted first, then each pending spec is
+    run via ``_run_one_spec`` in a bounded thread pool; a worker exception is turned
+    into a failed record rather than aborting the study.
+    """
+    records: list[dict[str, Any]] = []
+    write_lock = threading.Lock()
+
+    for record in skipped_records:
+        records.append(record)
+        _write_jsonl_line(lock_jsonl, record, lock=write_lock)
+        print(f"[{record.get('status', 'unknown'):>7}] {record.get('run_id')}")
+
+    with ThreadPoolExecutor(max_workers=max_concurrent) as pool:
+        future_map = {
+            pool.submit(
+                _run_one_spec,
+                spec,
+                repo_root,
+                generated_dir,
+                timeout_seconds,
+                gpu_bindings.get(spec.run_id),
+            ): spec
+            for spec in pending_specs
+        }
+        for future in as_completed(future_map):
+            spec = future_map[future]
+            try:
+                record = future.result()
+            except Exception as e:  # pragma: no cover
+                record = {
+                    "schema_version": SCHEMA_VERSION,
+                    "run_id": spec.run_id,
+                    "study": spec.study_name,
+                    "hypothesis": spec.hypothesis_id,
+                    "condition": spec.condition_id,
+                    "scenario": spec.scenario,
+                    "seed": spec.seed,
+                    "execution_mode": spec.execution_mode,
+                    "status": "failed",
+                    "error": str(e),
+                    "finished_at": _now_iso(),
+                }
+            records.append(record)
+            _write_jsonl_line(lock_jsonl, record, lock=write_lock)
+            print(f"[{record.get('status', 'unknown'):>7}] {record.get('run_id')}")
+
+    return records
+
+
 def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
     """Execute the expanded study plan and write reproducibility artifacts."""
     study_path = resolve_study_definition_path(Path(args.study).resolve())
@@ -1763,47 +1861,16 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
     if not _confirm_run_count(len(pending_specs), bool(args.yes)):
         return 2
 
-    records: list[dict[str, Any]] = []
-    write_lock = threading.Lock()
-
-    for record in skipped_records:
-        records.append(record)
-        _write_jsonl_line(lock_jsonl, record, lock=write_lock)
-        print(f"[{record.get('status', 'unknown'):>7}] {record.get('run_id')}")
-
-    with ThreadPoolExecutor(max_workers=max_concurrent) as pool:
-        future_map = {
-            pool.submit(
-                _run_one_spec,
-                spec,
-                repo_root,
-                generated_dir,
-                timeout_seconds,
-                gpu_bindings.get(spec.run_id),
-            ): spec
-            for spec in pending_specs
-        }
-        for future in as_completed(future_map):
-            spec = future_map[future]
-            try:
-                record = future.result()
-            except Exception as e:  # pragma: no cover
-                record = {
-                    "schema_version": SCHEMA_VERSION,
-                    "run_id": spec.run_id,
-                    "study": spec.study_name,
-                    "hypothesis": spec.hypothesis_id,
-                    "condition": spec.condition_id,
-                    "scenario": spec.scenario,
-                    "seed": spec.seed,
-                    "execution_mode": spec.execution_mode,
-                    "status": "failed",
-                    "error": str(e),
-                    "finished_at": _now_iso(),
-                }
-            records.append(record)
-            _write_jsonl_line(lock_jsonl, record, lock=write_lock)
-            print(f"[{record.get('status', 'unknown'):>7}] {record.get('run_id')}")
+    records = _execute_pending_runs(
+        pending_specs,
+        skipped_records,
+        repo_root,
+        generated_dir,
+        timeout_seconds,
+        max_concurrent,
+        gpu_bindings,
+        lock_jsonl,
+    )
 
     records.sort(key=lambda r: str(r.get("run_id", "")))
     _write_json(

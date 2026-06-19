@@ -25,22 +25,6 @@ class PromptAdditions:
     add_action_count_guidance: bool = True
 
 
-def _cfg_bool(cfg: Any, path: str, default: bool = False) -> bool:
-    """_cfg_bool.
-
-    :param Any cfg:
-    :type cfg: Any
-    :param str path:
-    :type path: str
-    :param bool default:
-    :type default: bool
-
-    :returns: bool
-    :rtype: bool
-    """
-    return bool(OmegaConf.select(cfg, path, default=default))
-
-
 def prompt_additions_from_cfg(cfg: Any) -> PromptAdditions:
     """Read prompt-addition toggles from config.
 
@@ -176,14 +160,12 @@ def build_action_prompt_with_app_instance(
     cfg: Any,
     action_mode: str,
     tool_calling_mode: str,
-    backend: Any = None,
     gm_prompt_cfg: Mapping[str, Any] | None = None,
 ) -> str:
     """Build action prompt for runner startup.
 
     Tool schemas are attached later by the GM action_prompt method with the real app instance.
     """
-    del backend
     return build_complete_action_prompt_for_runner(
         cfg=cfg,
         action_mode=action_mode,

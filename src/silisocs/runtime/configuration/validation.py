@@ -11,6 +11,7 @@ when checks fail.
 """
 
 import importlib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -413,32 +414,40 @@ def _assert_allowed_keys(cfg: DictConfig, path: str, allowed: set[str]) -> None:
         raise ValueError(f"Unsupported config key(s) under {path}: {extras}")
 
 
-def _assert_component_slot(cfg: DictConfig, path: str) -> None:
-    value = OmegaConf.select(cfg, path)
-    if value is None:
-        return
-    if not isinstance(value, DictConfig):
+def validate_component_slot_shape(value: Any, *, path: str) -> None:
+    """Validate one GM component slot's shape (allowed keys + nested instances).
+
+    Accepts either a raw ``DictConfig`` node (config-validation phase) or an
+    already-extracted mapping (GM-spec construction), so both phases share the
+    same structural rules.
+    """
+    if not isinstance(value, (Mapping, DictConfig)):
         raise ValueError(f"{path} must be a mapping.")
     allowed = {"built_in", "class_path", "params", "instances", "flow_map"}
-    extras = sorted(str(key) for key in value.keys() if str(key) not in allowed)
+    extras = sorted(str(key) for key in value if str(key) not in allowed)
     if extras:
         raise ValueError(f"Unsupported config key(s) under {path}: {extras}")
     instances = value.get("instances")
     if instances is None:
         return
-    if not isinstance(instances, DictConfig):
+    if not isinstance(instances, (Mapping, DictConfig)):
         raise ValueError(f"{path}.instances must be a mapping.")
     for instance_name, instance_cfg in instances.items():
         instance_path = f"{path}.instances.{instance_name!s}"
-        if not isinstance(instance_cfg, DictConfig):
+        if not isinstance(instance_cfg, (Mapping, DictConfig)):
             raise ValueError(f"{instance_path} must be a mapping.")
         instance_extras = sorted(
-            str(key)
-            for key in instance_cfg.keys()
-            if str(key) not in {"built_in", "class_path", "params"}
+            str(key) for key in instance_cfg if str(key) not in {"built_in", "class_path", "params"}
         )
         if instance_extras:
             raise ValueError(f"Unsupported config key(s) under {instance_path}: {instance_extras}")
+
+
+def _assert_component_slot(cfg: DictConfig, path: str) -> None:
+    value = OmegaConf.select(cfg, path)
+    if value is None:
+        return
+    validate_component_slot_shape(value, path=path)
 
 
 def _collect_class_paths(node: Any, location: str, found: list[tuple[str, str]]) -> None:

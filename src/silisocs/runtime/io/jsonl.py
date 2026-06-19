@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import atexit
-import dataclasses
 import json
 import os
 import queue
 import threading
 import time
 from collections.abc import Mapping, Sequence
-from enum import Enum
 from itertools import count
 from typing import Any
+
+from silisocs.runtime.io.json_safe import json_safe
 
 
 class _AsyncJsonlWriter:
@@ -95,7 +95,7 @@ atexit.register(_JSONL_WRITERS.close_all)
 
 def write_jsonl_item(out_item: Mapping[str, Any], output_filename: str) -> None:
     """Write one JSONL payload through the shared async writer registry."""
-    _JSONL_WRITERS.get(output_filename).write(_json_safe(out_item))
+    _JSONL_WRITERS.get(output_filename).write(json_safe(out_item))
 
 
 def flush_jsonl_writers(timeout_s: float = 5.0) -> None:
@@ -138,20 +138,3 @@ class EventLogger:
                 write_jsonl_item(self._prepare_item(log_item), self.output_filename)
             return
         write_jsonl_item(self._prepare_item(log_data), self.output_filename)
-
-
-def _json_safe(value: Any) -> Any:
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, Enum):
-        return value.value
-    if isinstance(value, Mapping):
-        return {str(k): _json_safe(v) for k, v in value.items()}
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        return [_json_safe(item) for item in value]
-    to_dict = getattr(value, "to_dict", None)
-    if callable(to_dict):
-        return _json_safe(to_dict())
-    if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return _json_safe(dataclasses.asdict(value))
-    return str(value)

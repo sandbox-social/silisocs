@@ -25,10 +25,7 @@ class ObservationComponent(ObservationComponentBase):
         self._agent_names = list(agent_names)
 
     def _agent_name(self, agent_name: str) -> str:
-        name = str(agent_name or "").strip()
-        if self._agent_names and name not in self._agent_names:
-            return name
-        return name
+        return str(agent_name or "").strip()
 
 
 class AppObservationComponent(ObservationComponent):

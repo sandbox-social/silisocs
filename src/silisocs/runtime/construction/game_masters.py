@@ -8,7 +8,10 @@ from typing import Any
 from omegaconf import DictConfig, OmegaConf
 
 from silisocs.runtime.configuration.projection import RuntimeProjection
-from silisocs.runtime.configuration.validation import validate_runtime_structure
+from silisocs.runtime.configuration.validation import (
+    validate_component_slot_shape,
+    validate_runtime_structure,
+)
 from silisocs.runtime.construction.specs import GameMasterConfig
 
 DEFAULT_FLOW_TAG = "default"
@@ -95,36 +98,13 @@ def _plain_mapping(value: Any) -> dict[str, Any]:
     return dict(value)
 
 
-def _validate_component_slot_shape(value: Any, *, path: str) -> None:
-    if not isinstance(value, Mapping):
-        raise ValueError(f"{path} must be a mapping.")
-    allowed = {"built_in", "class_path", "params", "instances", "flow_map"}
-    extras = sorted(str(key) for key in value if str(key) not in allowed)
-    if extras:
-        raise ValueError(f"Unsupported config key(s) under {path}: {extras}")
-    instances = value.get("instances")
-    if instances is None:
-        return
-    if not isinstance(instances, Mapping):
-        raise ValueError(f"{path}.instances must be a mapping.")
-    for instance_name, instance_cfg in instances.items():
-        instance_path = f"{path}.instances.{instance_name!s}"
-        if not isinstance(instance_cfg, Mapping):
-            raise ValueError(f"{instance_path} must be a mapping.")
-        instance_extras = sorted(
-            str(key) for key in instance_cfg if str(key) not in {"built_in", "class_path", "params"}
-        )
-        if instance_extras:
-            raise ValueError(f"Unsupported config key(s) under {instance_path}: {instance_extras}")
-
-
 def _validate_components_cfg(components: Mapping[str, Any], *, path: str) -> None:
     allowed_slots = {"initialize", "next_acting", "action_prompt", "observe", "resolve", "update"}
     extras = sorted(str(key) for key in components if str(key) not in allowed_slots)
     if extras:
         raise ValueError(f"Unsupported config key(s) under {path}: {extras}")
     for slot, slot_cfg in components.items():
-        _validate_component_slot_shape(slot_cfg, path=f"{path}.{slot}")
+        validate_component_slot_shape(slot_cfg, path=f"{path}.{slot}")
 
 
 def _gm_components_cfg(cfg: DictConfig) -> dict[str, Any]:
