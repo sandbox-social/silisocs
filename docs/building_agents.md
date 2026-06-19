@@ -3,6 +3,12 @@
 For API-level contracts for runtime agents and builder hooks, see
 [Simulation Extensibility API](simulation_extensibility_api.md).
 
+!!! agent "The agent contract"
+    Every agent — native, fixed, or custom — implements the same small interface:
+    `name`, `observe(observation)`, and `act(action_spec)`. The platform decides
+    *what* an agent perceives and *how* its output is resolved; the agent just
+    reasons and responds.
+
 There are two ways to produce agent specs for your simulation:
 
 1. **YAML Pipeline** (recommended for most cases) — define agent classes
@@ -191,6 +197,10 @@ All runtime agents are constructed with a `LanguageModel`. Custom agents should
 keep `act()` responsible for deciding what context the agent needs, then use the
 protected `_call_model(context, action_spec)` helper to route the requested
 output type to the correct model method.
+
+The native 0.x runtime exposes the concrete `Agent` base class as the custom
+agent contract. Older aliases such as `AgentLike` and formative-initializer
+shim names are intentionally removed rather than kept as compatibility paths.
 
 ```python
 from silisocs.agents.base_agent import Agent

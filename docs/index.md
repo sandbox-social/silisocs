@@ -1,152 +1,140 @@
-# Social Simulation Sandbox
-
-**Configurable generative agent simulation of social media using Silisocs-native runtime contracts.**
-
-- 2024 NeurIPS Workshop Paper: [arXiv:2410.13915](http://arxiv.org/abs/2410.13915)
-- 2025 IJCAI Demo Paper: [IJCAI 2025](https://www.ijcai.org/proceedings/2025/1271)
-- Version 2: Structured scenario configuration with an optional Concordia bridge
-
+---
+hide:
+  - navigation
+  - toc
 ---
 
-## What is this?
+<div class="sx-hero" markdown>
+<canvas class="sx-hero__net" id="sx-net" aria-hidden="true"></canvas>
+<div class="sx-hero__inner" markdown>
 
-Social Simulation Sandbox lets you spin up large-scale social media simulations
-populated by LLM-powered generative agents. Each agent has a unique persona,
-memories, and goals, and they interact through a configurable environment
-backend such as a Twitter-like app, Reddit-like app, real Mastodon instance,
-resource market, or virtual space.
+<span class="sx-hero__eyebrow">Social Simulation Sandbox</span>
 
-You configure everything in YAML: the world setting, agent populations,
-backend, Game Master components, evaluation probes, and run defaults. The
-framework handles the rest — memory initialization, turn policies, probe
-deployment, and structured output logging.
+# Spin up <span class="sx-gradient-text">societies of agents</span>
 
-## Key Features
+Large-scale social-media simulations populated by LLM-powered generative agents —
+each with a persona, memories, and goals — interacting through configurable
+platform backends. Define everything in YAML; the engine runs the world.
 
-| Feature | Description |
-|---------|-------------|
-| **Declarative scenarios** | Define agents, settings, and networks in YAML — no Python needed for most use cases |
-| **Multiple backends** | Local Twitter-like and Reddit-like backends (SQLite), a real Mastodon server, a resource market, or a virtual space |
-| **Scalable** | Tested with 5000+ concurrent agents using adaptive concurrency control |
-| **Persona pipeline** | Source agent personas from HuggingFace datasets, local JSON, inline YAML, or config references |
-| **Memory initialization** | Raw (config-only) or formative (LLM-generated backstories) modes, with custom initializers |
-| **Evaluation probes** | Deploy longitudinal surveys (numeric, binary, choice, free-text) to agents during simulation |
-| **Per-agent LLM** | Assign different LLM models per agent class or per individual agent |
-| **Streamlit dashboard** | GUI for creating worlds, configuring agents, and launching simulations |
-| **Hydra config** | Full Hydra composition with CLI overrides, sweep support, and structured logging |
-| **Rich output** | Action events, probe responses, LLM logs, timing telemetry, and structured metrics (JSON) |
-| **Built-in visualizers** | Web UIs for browsing simulated Twitter/Reddit platforms (user profiles, threads, admin stats) |
+[Get started](quickstart.md){ .md-button .md-button--primary }
+[Browse the guide](usage.md){ .md-button }
+[GitHub](https://github.com/sandbox-social/silisocs){ .md-button }
 
-## For End Users
+</div>
+</div>
 
-If your goal is to **design and run worlds** without writing code:
+**silisocs turns a research question into a running society.** You describe a
+world in YAML — who the agents are, which platform they inhabit, and what you
+want to measure — and the engine populates it with LLM-driven agents, runs the
+interaction loop, and logs structured results you can analyze or reproduce.
 
-1. Start with the [Quick Start](quickstart.md) to run the default scenario
-2. Read the [Usage Overview](usage.md) for the full workflow
-3. Follow the [Scenario Guide](scenario_guide.md) to build a new scenario
-4. Follow the [Study Guide](study_guide.md) to design a multi-condition study
-5. Use [Experiment Studies](experiments.md) for the study runner reference
-6. Use the [Dashboard](dashboard.md) to create scenarios visually
-7. See the [Election Walkthrough](tutorials/election.md) for a real-world example
-8. Check [Configuration Reference](configuration.md) for all knobs
+<small>
+Research: [NeurIPS 2024 Workshop](http://arxiv.org/abs/2410.13915) ·
+[IJCAI 2025 Demo](https://www.ijcai.org/proceedings/2025/1271) ·
+Version 2 adds structured scenario configuration with an optional Concordia bridge.
+</small>
 
-## For Developers
+## Choose your path
 
-If you want to **extend the framework** (new backends, agents, probes, initializers):
+<div class="grid cards" markdown>
 
-1. Read the [Usage Overview](usage.md) to understand the pipeline
-2. See [Building Agents](building_agents.md) for custom builder classes
-3. See [Concordia Bridge](concordia_bridge.md) for optional legacy interoperability details
-4. See [Memory Initialization](memory_initialization.md) for custom initializers
-5. See [Environment Layer](environment_layer.md) for Engine/GM/component configurability
-6. See [Environment Backends](backends.md#adding-a-new-backend-developer-guide) for new backend apps
-7. See [Evaluation Probes](probes.md#custom-probe-types) for custom probe types
-8. See [Simulation Extensibility API](simulation_extensibility_api.md) for class/method contracts and extension hooks
-9. Check [Contributing](contributing.md) for code standards and workflows
+-   🌍 __Run worlds__
 
-## For AI Coding Agents
+    ---
 
-If you're an **LLM helping with code changes or architecture**:
+    Design and run simulations entirely in YAML — no Python required. Start from
+    the default scenario and build out from there.
 
-1. **Code Extension & Architecture**: Read `AGENTS.md` in the repository root — entry points, component system, extensibility patterns
-2. **Deep Architectural Dive**: Read `agent_docs/architecture.md` in the repository root — multi-flow routing, component instance management, flow scheduling
-3. **Configuration Reference**: Check [configuration.md](configuration.md) — All knobs and their effects
-4. **Study Orchestration**: Read `agent_docs/scenario_design.md` in the repository root — `run_study.py` schema and evaluator presets
+    [Quick Start →](quickstart.md)
 
-If you're an **LLM helping design experiments via configuration**:
+-   🛠️ __Extend the framework__
 
-1. **Scenario Design**: Read `agent_docs/scenario_design.md` in the repository root — How to create `scenarios/{name}/conf/` with persona pipelines, networks, probes
-2. **Guided workflows**: Use `/new-scenario` or `/new-study` with the instruction files in `agent_docs/skills/`
-3. **Config Reference**: Check [configuration.md](configuration.md) — All config values and defaults
+    ---
 
-## Quick Links
+    Add custom agents, backends, probes, game-master components, and policies
+    through clean class-path extension points.
 
-**For All Users:**
-- [Installation](installation.md) — Set up the project
-- [Quick Start](quickstart.md) — Run your first simulation in 5 minutes
-- [Configuration Reference](configuration.md) — All config options explained
+    [Building Agents →](building_agents.md)
 
-**For End Users:**
-- [Usage Overview](usage.md) — End-to-end guide to the system
-- [Scenario Guide](scenario_guide.md) — Build a new scenario from scratch
-- [Study Guide](study_guide.md) — Design and run a multi-condition study
-- [Study Schema Reference](study_schema.md) — Full study.yaml schema and file formats
-- [Experiment Studies](experiments.md) — Study runner CLI reference
-- [Dashboard Guide](dashboard.md) — GUI for scenario creation
-- [Election Walkthrough](tutorials/election.md) — Step-by-step complex scenario tutorial
+-   🔬 __Run a study__
 
-**For Code Developers:**
-- [Environment Layer](environment_layer.md) — Engine/GM/backend extensibility
-- [Simulation Extensibility API](simulation_extensibility_api.md) — API-style contracts for extending agents, GMs, engines, and policies
-- [Documentation Coverage](documentation_coverage.md) — Coverage matrix and stale-doc register
-- [Framework Roadmap](framework_roadmap.md) — Near-term framework priorities
-- [Concordia Bridge](concordia_bridge.md) — Optional legacy interoperability layer
-- [Building Agents](building_agents.md) — YAML pipeline and custom builders
-- [Memory Initialization](memory_initialization.md) — Custom initializers
-- [Environment Backends](backends.md) — Backend plugin guide
-- [Evaluation Probes](probes.md) — Custom probe types
-- [Contributing](contributing.md) — Code standards
+    ---
 
-**For AI Agents:**
-- `AGENTS.md` in the repository root — Code extension points and architecture
-- `agent_docs/architecture.md` — Multi-flow routing deep dive
-- `agent_docs/scenario_design.md` — Scenario design via configuration
-- `agent_docs/skills/` — Guided workflow instruction sets
+    Design reproducible multi-condition studies with seed grids, SLURM,
+    provenance locks, and built-in statistics.
 
-## Architecture at a Glance
+    [Study Guide →](study_guide.md)
+
+</div>
+
+## How it works
+
+A scenario's YAML is composed by Hydra into a single runtime config. The runner
+builds the agent population and their memories, stands up a platform backend, and
+hands control to a **game master** — which decides who acts next, shows each agent
+its slice of the world, and resolves their responses into concrete actions. A
+simulation loop advances episodes, deploys evaluation probes, and writes every
+action and measurement to disk for analysis.
 
 ```mermaid
-graph TD
-    A[Scenario YAML] --> B[Hydra Config Composition]
+graph LR
+    A[Scenario YAML] --> B[Hydra config]
     B --> C[Runner]
-    C --> D[Agent Builder]
-    C --> E[Memory Initializer]
-    C --> F[Environment Backend]
-    D --> G[Agents]
-    E --> G
-    F --> H[Game Master]
-    G --> H
-    H --> I[Simulation Loop]
-    I --> J[Probe Deployment]
-    I --> K[Action Logging]
-    K --> L[action_events.jsonl + probe_events.jsonl + sim_metrics.json]
+    C --> D[Agents + memories]
+    C --> E[Platform backend]
+    D --> F[Game Master]
+    E --> F
+    F --> G[Simulation loop]
+    G --> H[Probes]
+    G --> I[action_events · probe_events · sim_metrics]
 ```
 
-## Project Structure
+## Highlights
 
-```
-silisocs/
-├── src/silisocs/
-│   ├── agents/              # Agent runtimes
-│   ├── conf/                # Hydra YAML config hierarchy
-│   ├── dashboard/           # Streamlit GUI
-│   ├── environments/        # Environment backends + game masters
-│   ├── evaluations/         # Evaluation probes
-│   ├── initialization/      # Agent, GM, and simulation initialization
-│   ├── runtime/             # Runner, config, simulation orchestration
-│   ├── scenario_gen/           # Scenario generation helpers
-│   └── simulation_engines/  # Runtime engine and policy implementations
-├── scenarios/                  # External scenario directories
-├── docs/                    # This documentation
-└── tests/                   # Test suite
-```
+<div class="grid cards" markdown>
+
+-   🧩 __Declarative scenarios__
+
+    ---
+
+    Agents, settings, networks, and probes in YAML — full Hydra composition with
+    CLI overrides and per-agent LLMs.
+
+    [Scenario Guide →](scenario_guide.md)
+
+-   🌐 __Multiple backends__
+
+    ---
+
+    Local Twitter-like and Reddit-like apps, a real Mastodon server, a resource
+    market, or a virtual space.
+
+    [Backends →](backends.md)
+
+-   🧪 __Evaluation probes__
+
+    ---
+
+    Deploy longitudinal surveys — numeric, binary, choice, free-text — to agents
+    during a run.
+
+    [Probes →](probes.md)
+
+-   🔬 __Reproducible studies__
+
+    ---
+
+    Seed grids, SLURM dispatch, provenance locks, and built-in cross-seed
+    statistics out of the box.
+
+    [Study Guide →](study_guide.md)
+
+</div>
+
+## Start here
+
+[Quickstart](quickstart.md){ .md-button .md-button--primary }
+[Configuration reference](configuration.md){ .md-button }
+[Dashboard](dashboard.md){ .md-button }
+
+Looking for something specific? Everything is in the left sidebar and the tabs above.

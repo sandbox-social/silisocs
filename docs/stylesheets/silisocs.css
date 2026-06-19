@@ -1,0 +1,220 @@
+/* ===========================================================================
+   silisocs — brand theme for Material for MkDocs
+   Motif: a quiet society of agents (nodes + edges). One restrained violet
+   accent on neutral surfaces — clean and professional, not vibrant.
+   This file owns the exact brand hex; properdocs.yml only sets nearest base.
+   =========================================================================== */
+
+:root {
+  --sx-accent: #0d9488;          /* brand accent — deep teal */
+  --sx-accent-600: #0f766e;
+  /* distinct, semantic hues for framework-themed callouts */
+  --sx-c-agent: #0d9488;
+  --sx-c-probe: #2563eb;
+  --sx-c-gamemaster: #d97706;
+  --sx-c-scenario: #7c3aed;
+}
+
+/* ---- Light scheme ---------------------------------------------------------- */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #0d9488;
+  --md-primary-fg-color--light: #2db5a8;
+  --md-primary-fg-color--dark: #0f766e;
+  --md-accent-fg-color: #0f766e;
+  --md-typeset-a-color: #0f766e;
+  --sx-surface: #ffffff;
+  --sx-surface-2: #f7f8fa;      /* neutral grey surface (not tinted) */
+  --sx-border: #e6e8ec;          /* neutral hairline */
+  --sx-border-strong: #c7e3df;   /* faint teal — hover only */
+  --sx-hero-wash: rgba(13, 148, 136, 0.05);
+}
+
+/* ---- Dark scheme ----------------------------------------------------------- */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #0d9488;     /* header stays a consistent teal */
+  --md-primary-fg-color--light: #2dd4bf;
+  --md-primary-fg-color--dark: #0f766e;
+  --md-accent-fg-color: #5eead4;
+  --md-typeset-a-color: #5eead4;       /* brighter teal for link contrast */
+  --md-default-bg-color: #0f1117;
+  --md-default-bg-color--light: #161922;
+  --sx-surface: #161922;
+  --sx-surface-2: #13151c;       /* subtle, neutral */
+  --sx-border: #262a36;           /* neutral hairline */
+  --sx-border-strong: #2f4a45;
+  --sx-hero-wash: rgba(45, 212, 191, 0.06);
+}
+
+/* Brand accent text — solid, clean */
+.sx-gradient-text {
+  color: var(--md-primary-fg-color);
+}
+
+/* ===========================================================================
+   HERO  (home page only — built with md_in_html in docs/index.md)
+   =========================================================================== */
+.sx-hero {
+  position: relative;
+  margin: -1.2rem -0.8rem 2.5rem;
+  padding: 4.5rem 1.2rem 3.5rem;
+  border-radius: 1rem;
+  overflow: hidden;
+  background:
+    radial-gradient(900px 360px at 30% -20%, var(--sx-hero-wash), transparent 65%),
+    var(--sx-surface-2);
+  border: 1px solid var(--sx-border);
+}
+.sx-hero__net {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  opacity: 0.5;
+  pointer-events: none;
+}
+.sx-hero__inner {
+  position: relative;
+  z-index: 1;
+  max-width: 46rem;
+}
+.sx-hero__eyebrow {
+  display: inline-block;
+  font-family: var(--md-code-font, monospace);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--md-primary-fg-color);
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--sx-border);
+  border-radius: 2rem;
+  background: var(--sx-surface);
+  margin-bottom: 1.1rem;
+}
+.sx-hero h1 {
+  font-size: 2.6rem;
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.8rem;
+  color: var(--md-default-fg-color);
+}
+.sx-hero__tagline {
+  font-size: 1.12rem;
+  line-height: 1.6;
+  color: var(--md-default-fg-color--light);
+  margin-bottom: 1.6rem;
+}
+.sx-hero .md-button {
+  margin: 0.3rem 0.5rem 0.3rem 0;
+}
+.sx-hero .md-button--primary {
+  background: var(--md-primary-fg-color);
+  border-color: transparent;
+  color: #fff;
+}
+.sx-hero .md-button--primary:hover {
+  background: var(--md-primary-fg-color--dark);
+  box-shadow: 0 6px 18px rgba(13, 148, 136, 0.22);
+}
+
+@media screen and (max-width: 44rem) {
+  .sx-hero { padding: 3rem 1rem 2.5rem; }
+  .sx-hero h1 { font-size: 2rem; }
+}
+
+/* ===========================================================================
+   CARD GRIDS — rebrand Material's native grid cards (`<div class="grid cards">`)
+   so links rewrite correctly while keeping the Living Network look.
+   =========================================================================== */
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid.cards > ol > li {
+  position: relative;
+  border: 1px solid var(--sx-border);
+  border-radius: 0.7rem;
+  background: var(--sx-surface);
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.md-typeset .grid.cards > ul > li:hover,
+.md-typeset .grid.cards > ol > li:hover {
+  transform: translateY(-2px);
+  border-color: var(--sx-border-strong);
+  box-shadow: 0 6px 18px rgba(15, 17, 23, 0.06);
+}
+.md-typeset .grid.cards > ul > li > hr {
+  margin: 0.6rem 0;
+  border-bottom: 1px solid var(--sx-border);
+}
+/* The card's "more" link reads as a brand action */
+.md-typeset .grid.cards a {
+  font-weight: 600;
+}
+
+/* ===========================================================================
+   FRAMEWORK-THEMED ADMONITIONS
+   Map docs callouts to framework vocabulary:
+     !!! agent       !!! gamemaster      !!! probe       !!! scenario
+   =========================================================================== */
+:root {
+  --md-admonition-icon--agent:      url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5Zm0 2c-4 0-9 2-9 6v2h18v-2c0-4-5-6-9-6Z"/></svg>');
+  --md-admonition-icon--gamemaster: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M5 16 3 5l5.5 4L12 4l3.5 5L21 5l-2 11Zm0 2h14v3H5Z"/></svg>');
+  --md-admonition-icon--probe:      url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 13h3l2 5 4-12 2 7h2l1-2h4v2h-3l-2 4h-3l-1-4-4 12-3-8H3Z"/></svg>');
+  --md-admonition-icon--scenario:   url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Zm0 7V3.5L19.5 9ZM8 13h8v2H8Zm0 4h8v2H8Z"/></svg>');
+}
+.md-typeset .admonition.agent,      .md-typeset details.agent      { border-color: var(--sx-c-agent); }
+.md-typeset .admonition.probe,      .md-typeset details.probe      { border-color: var(--sx-c-probe); }
+.md-typeset .admonition.gamemaster, .md-typeset details.gamemaster { border-color: var(--sx-c-gamemaster); }
+.md-typeset .admonition.scenario,   .md-typeset details.scenario   { border-color: var(--sx-c-scenario); }
+
+.md-typeset .agent > .admonition-title,      .md-typeset .agent > summary      { background-color: rgba(13, 148, 136, 0.10); }
+.md-typeset .probe > .admonition-title,      .md-typeset .probe > summary      { background-color: rgba(37, 99, 235, 0.10); }
+.md-typeset .gamemaster > .admonition-title, .md-typeset .gamemaster > summary { background-color: rgba(217, 119, 6, 0.10); }
+.md-typeset .scenario > .admonition-title,   .md-typeset .scenario > summary   { background-color: rgba(124, 58, 237, 0.10); }
+
+.md-typeset .agent > .admonition-title::before,      .md-typeset .agent > summary::before      { background-color: var(--sx-c-agent);      -webkit-mask-image: var(--md-admonition-icon--agent);      mask-image: var(--md-admonition-icon--agent); }
+.md-typeset .probe > .admonition-title::before,      .md-typeset .probe > summary::before      { background-color: var(--sx-c-probe);      -webkit-mask-image: var(--md-admonition-icon--probe);      mask-image: var(--md-admonition-icon--probe); }
+.md-typeset .gamemaster > .admonition-title::before, .md-typeset .gamemaster > summary::before { background-color: var(--sx-c-gamemaster);  -webkit-mask-image: var(--md-admonition-icon--gamemaster); mask-image: var(--md-admonition-icon--gamemaster); }
+.md-typeset .scenario > .admonition-title::before,   .md-typeset .scenario > summary::before   { background-color: var(--sx-c-scenario);   -webkit-mask-image: var(--md-admonition-icon--scenario);   mask-image: var(--md-admonition-icon--scenario); }
+
+/* ===========================================================================
+   "SIMULATION LOG" code style  ( ```text { .sim-log }  )
+   =========================================================================== */
+.md-typeset .sim-log > pre,
+.md-typeset pre.sim-log {
+  border-radius: 0.6rem;
+  border: 1px solid var(--sx-border);
+}
+.md-typeset .sim-log > pre > code,
+.md-typeset pre.sim-log > code {
+  background: #0d1117;
+  color: #c9d1e4;
+  border-radius: 0.6rem;
+}
+.md-typeset .sim-log > pre::before,
+.md-typeset pre.sim-log::before {
+  content: "● ● ●";
+  display: block;
+  letter-spacing: 0.2em;
+  font-size: 0.6rem;
+  color: #4b5269;
+  padding: 0.45rem 0.8rem 0;
+  background: #0d1117;
+  border-radius: 0.6rem 0.6rem 0 0;
+}
+
+/* ===========================================================================
+   Misc polish
+   =========================================================================== */
+/* Quiet hairline under section headings */
+.md-typeset h2 {
+  border-bottom: 1px solid var(--sx-border);
+  padding-bottom: 0.25rem;
+}
+.md-tabs__link--active { opacity: 1; }
+/* Make inline code feel part of the brand */
+.md-typeset code {
+  border-radius: 0.3rem;
+}
+/* Quiet hairline above the footer */
+.md-footer-meta { border-top: 1px solid var(--sx-border); }

@@ -4,6 +4,11 @@ Probes are structured surveys deployed to agents during the simulation. They
 measure agent attitudes, preferences, and knowledge over time — providing
 quantitative data for analysis.
 
+!!! probe "What a probe captures"
+    A probe asks every agent the same question on a schedule (e.g. every episode)
+    and records typed responses to `probe_events.jsonl` — turning a running
+    society into a longitudinal panel survey.
+
 ## Overview
 
 Probes are configured under `eval.probes` in your scenario YAML. The system
