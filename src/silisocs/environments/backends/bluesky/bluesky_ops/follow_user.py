@@ -6,25 +6,27 @@ from .get_client import get_authenticated_client
 
 load_dotenv()
 
-def follow_user(follower_handle: str, follower_password: str, target_handle: str) -> None:
-    """Follows a user on the PDS."""
-    client = get_authenticated_client(follower_handle, follower_password)
-    
-    profile = client.app.bsky.actor.get_profile(
-        {"actor": target_handle}
+def follow_user(follower_handle: str, password: str, target_handle: str):
+    """Follows target_handle on the follower_handle account."""
+    client = get_authenticated_client(follower_handle, password)
+
+    resolved = client.com.atproto.identity.resolve_handle(
+        {"handle": target_handle}
     )
 
-    target_did = profile.did
-    
+    target_did = resolved.did
+
+    record = {
+        "$type": "app.bsky.graph.follow",
+        "subject": target_did,
+        "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+
     client.com.atproto.repo.create_record(
         {
             "repo": client.me.did,
             "collection": "app.bsky.graph.follow",
-            "record": {
-                "$type": "app.bsky.graph.follow",
-                "subject": target_did,
-                "createdAt": datetime.now(timezone.utc).isoformat(),
-            },
+            "record": record,
         }
     )
 

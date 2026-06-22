@@ -45,11 +45,14 @@ def reset_user(handle: str, password: str, email: str, did: str) -> dict:
     print(f"Reset {handle} -> {account['did']}")
     return account
 
-def reset_bluesky_server() -> None:
+def reset_bluesky_server(num_users: int) -> None:
     """Resets server by resetting all individual agents."""
     users = list_users()
-
-    for user in users:
+    
+    #Sorts by agent0 -> agent1 -> agent2 ...
+    users.sort(key=lambda u: int(u["handle"].split(".")[0].replace("agent", "")))
+    
+    for user in users[:num_users]:
         reset_user(handle=user["handle"], password="password", email=user["email"], did=user["did"])
 
     print(f"Cleared and reset {len(users)} accounts")

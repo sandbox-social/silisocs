@@ -172,7 +172,7 @@ class BlueskyApp(SocialBackendApp):
         self._print(mapping)
         self._print(f"Updated user mapping with {num_agents} entries", emoji="🔄")
         self._print("Resetting server")
-        reset_bluesky_server()
+        reset_bluesky_server(num_agents)
       
     def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
         """Dispatch a parsed action to the correct Bluesky app_action method."""

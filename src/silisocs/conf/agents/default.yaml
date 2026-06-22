@@ -43,6 +43,8 @@ persona_pipeline:
             persona: Indigo is a parent who follows school updates, civic meetings, and neighborhood recommendations.
           - name: Jules
             persona: Jules is a retiree who enjoys history, gardening, and long-running community conversations.
+          - name: Kelly
+            persona: Kelly is an aspiring artist who likes to engage in long-winded discussion about her community.
       field_map:
         name: name
         context: persona
