@@ -1,4 +1,4 @@
-# Social Simulation Sandbox
+# Silicon Society Sandbox
 
 **Configurable generative agent simulation of social media using Silisocs-native runtime contracts.**
 
@@ -10,7 +10,7 @@
 
 ## What is this?
 
-Social Simulation Sandbox lets you spin up large-scale social media simulations
+Silicon Society Sandbox lets you spin up large-scale social media simulations
 populated by LLM-powered generative agents. Each agent has a unique persona,
 memories, and goals, and they interact through a configurable environment
 backend such as a Twitter-like app, Reddit-like app, real Mastodon instance,
