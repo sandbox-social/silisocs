@@ -172,6 +172,50 @@ def test_native_agent_initialize_observes_memory_strings() -> None:
     assert "specific memory" in memories
 
 
+def test_native_agent_caps_memory_text_growth() -> None:
+    entity = NativeAgent(
+        name="Alice",
+        model=NoLanguageModel(),
+        memory_history=10,
+    )
+
+    for i in range(50):
+        entity.observe(f"observation {i}")
+
+    memories = entity.get_all_memories_as_text()
+    assert len(memories) == 10
+    assert memories[0] == "observation 40"
+    assert memories[-1] == "observation 49"
+
+
+def test_native_agent_memory_history_is_config_settable() -> None:
+    entity = NativeAgent(
+        name="Alice",
+        model=NoLanguageModel(),
+        memory_history=1000,
+    )
+
+    assert entity._memory_history == 1000
+    # default applies when unset
+    default_entity = NativeAgent(name="Bob", model=NoLanguageModel())
+    assert default_entity._memory_history == 1000
+
+
+def test_native_agent_set_state_caps_restored_memory() -> None:
+    entity = NativeAgent(
+        name="Alice",
+        model=NoLanguageModel(),
+        memory_history=5,
+    )
+
+    # Simulate a checkpoint from an older, uncapped run.
+    entity.set_state({"memory_text": [f"old {i}" for i in range(100)]})
+
+    memories = entity.get_all_memories_as_text()
+    assert len(memories) == 5
+    assert memories[0] == "old 95"
+
+
 def test_native_game_master_contract_uses_plain_actor_names() -> None:
     from silisocs.environments.gm.runtime import GameMasterProtocol
 
