@@ -325,7 +325,12 @@ When tool-calling is active, the native `ActionSpec` carries tool schemas in
 
 ### Adding a Custom LLM Provider
 
-Two paths, no core edits required:
+Common providers that expose an OpenAI-compatible API ship as built-in presets
+(`anthropic`, `gemini`, `openrouter`, `groq`, `together`, `deepseek`, `mistral`,
+`fireworks`, `xai`, `ollama`); set `sim.llm.provider` to the name and supply the
+key via the provider's env var (see `OPENAI_COMPATIBLE_PRESETS` in
+`runtime/language_models/factory.py`). For anything else, two paths exist, with no
+core edits required:
 
 1. Register a provider name (import the module before the run starts):
    ```python
@@ -399,7 +404,10 @@ For **tool-calling mode** specifically: The entity layer is responsible for call
 
 - Checkpoints are saved as JSON under run output `checkpoints/step_{N}_checkpoint.json`.
 - Runtime resume uses:
-- `sim.checkpoint.source_run`
+- `sim.checkpoint.source_run` (explicit prior output directory)
+- `sim.checkpoint.auto_resume` (default `true`): when `source_run` is unset, resume
+  from this run's own output directory if it already contains checkpoints; a fresh
+  output directory still starts from scratch. Set `false` to force a fresh start.
 - `sim.checkpoint.restore`
 - Resume restores game-master and entity component state plus raw log.
 

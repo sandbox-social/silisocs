@@ -70,13 +70,37 @@ Run parameters live in the `world` config group (placed at config root via
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `sim.llm.provider` | `openai` | Model provider: `openai`, `openai_compatible`, `scripted`, or `disabled` |
+| `sim.llm.provider` | `openai` | Model provider: `openai`, `openai_compatible`, `scripted`, `disabled`, a built-in preset (see below), a registered name, or a class path |
 | `sim.llm.name` | `gpt-4o-mini` | LLM model name (passed to the model factory) |
-| `sim.llm.api_base` | `null` | Required base URL when `provider: openai_compatible` |
-| `sim.llm.api_key` | `null` | API key (or set via environment variable) |
+| `sim.llm.api_base` | `null` | Required base URL when `provider: openai_compatible`; also overrides the base URL of a built-in preset |
+| `sim.llm.api_key` | `null` | API key (or set via the provider's environment variable) |
 | `sim.llm.temperature` | `0.5` | Sampling temperature |
 | `sim.llm.disabled` | `false` | Use a no-op model (for testing without API calls) |
 | `sim.llm.extra_kwargs` | `{}` | Provider request kwargs such as OpenAI-compatible `extra_body` settings |
+
+**Built-in provider presets.** Common providers that expose an OpenAI-compatible
+API are available as named presets. Set `sim.llm.provider` to the name and supply
+the key via the listed environment variable (or `sim.llm.api_key`); `sim.llm.name`
+selects the model.
+
+| Preset | Endpoint | API key env var |
+|--------|----------|-----------------|
+| `anthropic` | `https://api.anthropic.com/v1/` | `ANTHROPIC_API_KEY` |
+| `gemini` | `https://generativelanguage.googleapis.com/v1beta/openai/` | `GEMINI_API_KEY` |
+| `openrouter` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` |
+| `groq` | `https://api.groq.com/openai/v1` | `GROQ_API_KEY` |
+| `together` | `https://api.together.xyz/v1` | `TOGETHER_API_KEY` |
+| `deepseek` | `https://api.deepseek.com` | `DEEPSEEK_API_KEY` |
+| `mistral` | `https://api.mistral.ai/v1` | `MISTRAL_API_KEY` |
+| `fireworks` | `https://api.fireworks.ai/inference/v1` | `FIREWORKS_API_KEY` |
+| `xai` | `https://api.x.ai/v1` | `XAI_API_KEY` |
+| `ollama` | `http://localhost:11434/v1` | none (local) |
+
+These presets route through the OpenAI-compatible client, so they inherit the same
+retry, backoff, and telemetry support. Anthropic and Gemini are reached through
+their OpenAI-compatible endpoints. For a provider not listed here, use
+`provider: openai_compatible` with an explicit `sim.llm.api_base`, or register a
+custom provider (see [Building Agents](building_agents.md)).
 
 ### Engine and Runtime
 
@@ -88,7 +112,8 @@ Run parameters live in the `world` config group (placed at config root via
 | `sim.prompt_additions.action_count_guidance` | `true` | Add `[ActNum]` marker and action count guidance to prompt |
 | `sim.checkpoint.every_n_steps` | `null` | Save checkpoints every N steps when set |
 | `sim.checkpoint.explicit_steps` | `[]` | Additional explicit checkpoint steps |
-| `sim.checkpoint.source_run` | `null` | Previous output directory to restore from |
+| `sim.checkpoint.source_run` | `null` | Previous output directory to restore from (explicit resume) |
+| `sim.checkpoint.auto_resume` | `true` | Resume from this run's own output directory if it already contains checkpoints; ignored when `source_run` is set |
 | `sim.checkpoint.restore.built_in` | `social_action_event_replay` | Checkpoint restore strategy when `source_run` is set |
 | `sim.engine.step.built_in` | `base` | Engine step policy: `base`, `sequential`, `flow`, or `multi_gm` |
 | `sim.roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |
@@ -507,11 +532,17 @@ gm:
     params:
       rooms: [atrium, garden, workshop]
       starting_room: atrium
+      room_descriptions:
+        atrium: A bright central hall with paths to every other room.
+        garden: A quiet garden for private conversations.
+        workshop: A practical room filled with tools and shared projects.
+      connections: null          # null = fully connected; or a map of room -> [reachable rooms]
       room_tasks:
         - task_id: welcome_board
           room: atrium
           description: Prepare a shared welcome board.
           required_effort: 2
+          completion_message: The welcome board summarizes the group's first impressions.
 ```
 
 Custom backend apps can be loaded without editing the factory:

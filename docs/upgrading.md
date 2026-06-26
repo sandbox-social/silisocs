@@ -20,3 +20,13 @@ Notes for moving between releases. Each entry lists only user-affecting changes.
   applies state (see [ADR 0003](adr/0003-checkpoint-owned-restore.md)). Multi-GM
   runs keep per-GM logs and support per-GM restore overrides; the Mastodon backend
   self-restores from its embedded action history.
+- **Auto-resume is on by default.** A run now resumes from its own output
+  directory when that directory already contains checkpoints, unless you set an
+  explicit `sim.checkpoint.source_run`. A fresh output directory (the usual case)
+  still starts from scratch. Set `sim.checkpoint.auto_resume: false` to force a
+  fresh start into a directory that already has checkpoints.
+- **More built-in LLM providers.** Common providers are available as named presets
+  (`anthropic`, `gemini`, `openrouter`, `groq`, `together`, `deepseek`, `mistral`,
+  `fireworks`, `xai`, `ollama`). Set `sim.llm.provider` to the name; see
+  [Configuration](configuration.md). Existing `openai` / `openai_compatible`
+  configs are unchanged.
