@@ -16,21 +16,21 @@ type `/new-study` to be guided through this process interactively.
 
 ## Concepts
 
-**Scenario** — A shared social world (agents, backend, event). Reusable across studies.
+**Scenario**: A shared social world (agents, backend, event). Reusable across studies.
 
-**Hypothesis** — A falsifiable claim about what will happen if you vary something.
+**Hypothesis**: A falsifiable claim about what will happen if you vary something.
 Example: *"Larger LLMs produce more stylistically diverse posts."*
 
-**Condition** — One value of the independent variable. A hypothesis has 2+ conditions.
+**Condition**: One value of the independent variable. A hypothesis has 2+ conditions.
 Example: `sim.llm.name=gpt-4o-mini` and `sim.llm.name=gpt-4o`.
 
-**Run** — One simulation of one (condition x scenario x seed) combination.
+**Run**: One simulation of one (condition x scenario x seed) combination.
 
-**Evaluation** — A script that reads a completed run and produces metrics (`eval.json`).
+**Evaluation**: A script that reads a completed run and produces metrics (`eval.json`).
 
 ---
 
-## Step 1 — Create the study directory
+## Step 1: Create the study directory
 
 ```
 experiments/studies/my_study/
@@ -41,7 +41,7 @@ experiments/studies/my_study/
 
 ---
 
-## Step 2 — Write `study.yaml`
+## Step 2: Write `study.yaml`
 
 This is the single source of truth. It describes your research question, hypotheses,
 and maps each condition to concrete run configurations.
@@ -88,6 +88,7 @@ hypotheses:
 |---|---|
 | `study.scenarios` | List of scenarios to run each condition on |
 | `run_defaults.seed_start` + `seed_repeats` | Expands to N consecutive seeds per run |
+| `run_defaults.checkpoint_every_n_steps` | Checkpoint cadence injected into every run (default `1`, i.e. a checkpoint every step so evaluators can read the final checkpoint). Set a larger int for sparser checkpoints, or `null`/`0`/`false` to disable the injection. |
 | `hypotheses.<id>.conditions.<name>.overrides` | Hydra CLI overrides for this condition |
 | `hypotheses.<id>.status` | `testing` → `supported` / `refuted` / `inconclusive` |
 
@@ -96,7 +97,7 @@ The `overrides` values are passed directly to `uv run silisocs` as CLI overrides
 
 ---
 
-## Step 3 — Write `eval.py` (or use built-in presets)
+## Step 3: Write `eval.py` (or use built-in presets)
 
 `eval.py` reads a completed run directory and writes `eval.json` with your metrics.
 
@@ -122,19 +123,19 @@ write `eval.py`. See `docs/study_schema.md` for the required output format.
 
 ---
 
-## Step 4 — Run the study
+## Step 4: Run the study
 
 ```bash
 # Plan: preview what will be run without executing
-uv run python -m experiments.run_study \
+uv run silisocs-study \
     --study experiments/studies/my_study plan
 
 # Run all conditions × scenarios × seeds
-uv run python -m experiments.run_study \
+uv run silisocs-study \
     --study experiments/studies/my_study run
 
 # Run only one hypothesis
-uv run python -m experiments.run_study \
+uv run silisocs-study \
     --study experiments/studies/my_study run \
     --only-hypothesis h1_persona_richness
 ```
@@ -149,9 +150,27 @@ Outputs land in:
 experiments/studies/my_study/runs/h1_persona_richness/persona=rich/neighborhood_forum/seed_42/run/
 ```
 
+**Resuming an interrupted study.** Each successful run leaves a
+`RUN_COMPLETE.json` marker in its run directory. Re-running the same `run`
+command skips runs that already completed (reported as `skipped_complete` and
+counted as successes) and only executes the missing or failed ones. The runner
+prints `Skipped N already-complete runs (use --force to re-run)`; pass `--force`
+to ignore the markers and re-run everything.
+
+**Preflight check.** Before launching, the runner prints how many runs will
+execute, their `num_agents`/`num_steps` (when derivable from overrides), and the
+estimated total agent-steps. If more than 50 runs would launch, it asks for
+confirmation: pass `--yes` to skip the prompt (required in non-interactive
+sessions such as CI or batch jobs).
+
+**Checkpoint cadence.** By default every run is launched with
+`sim.checkpoint.every_n_steps=1` so evaluators can read the final checkpoint.
+Set `run_defaults.checkpoint_every_n_steps` to a larger integer for sparser
+checkpoints, or to `null`/`0`/`false` to disable the injection.
+
 ---
 
-## Step 5 — Analyse results
+## Step 5: Analyse results
 
 After runs complete, open or create `experiments/studies/my_study/notebook.ipynb`.
 
@@ -166,11 +185,17 @@ The standard notebook structure has 9 sections:
 8. Behavioral breakdown (action type counts)
 9. Takeaways (key findings, limitations, next steps)
 
+Cross-replicate statistics (`n`, `mean`, `stdev`, and a t-distribution 95%
+confidence interval as `ci95_low`/`ci95_high`) are generated automatically:
+per condition in `generated/organized/summary.json` under
+`metrics_stats_by_condition`, and per run in each hypothesis `runs.json` under
+`aggregated_stats`.
+
 See `docs/study_schema.md` for the full notebook conventions.
 
 ---
 
-## Step 6 — Record findings and add follow-up hypotheses
+## Step 6: Record findings and add follow-up hypotheses
 
 When a hypothesis is complete, update its `status` and add a `finding`:
 
@@ -206,13 +231,13 @@ h2_model_capacity:
 
 If a condition from an earlier hypothesis serves as the control for a later one,
 reference the same run paths in both condition entries. The organizer handles
-duplicate paths — the run is not re-executed, just re-linked.
+duplicate paths: the run is not re-executed, just re-linked.
 
 ---
 
 ## Where to look next
 
-- **Full study.yaml schema:** `docs/study_schema.md` — all fields, file formats, eval.json spec
-- **Scenario design:** `docs/scenario_guide.md` — how to build the scenario you study
-- **Existing studies:** `experiments/studies/style_diversity/` — a working example
-- **Run study CLI help:** `uv run python -m experiments.run_study --help`
+- **Full study.yaml schema:** `docs/study_schema.md`: all fields, file formats, eval.json spec
+- **Scenario design:** `docs/scenario_guide.md`: how to build the scenario you study
+- **Existing studies:** `experiments/studies/style_diversity/`: a working example
+- **Run study CLI help:** `uv run silisocs-study --help`

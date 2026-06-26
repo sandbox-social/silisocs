@@ -554,19 +554,19 @@ This means your scenario files only need to specify what's **different** from de
 
 ---
 
-## 10) Structured Study Orchestration (`experiments/run_study.py`)
+## 10) Structured Study Orchestration (`silisocs.studies.run_study`)
 
 For multi-condition research studies (hypothesis trees, seed sweeps, condition-specific evaluators), use:
 
 ```bash
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 plan
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 generate-bash
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 run
+uv run silisocs-study --study experiments/studies/study_template_v1 plan
+uv run silisocs-study --study experiments/studies/study_template_v1 generate-bash
+uv run silisocs-study --study experiments/studies/study_template_v1 run
 ```
 
 Code placement:
-- Canonical runner implementation is in `experiments/run_study.py`.
-- Use module entrypoint: `uv run python -m experiments.run_study ...`.
+- Canonical runner implementation is in the package at `silisocs.studies.run_study`.
+- Console command: `uv run silisocs-study ...` (equivalent: `uv run python -m silisocs.studies.run_study ...`).
 
 ### Why use study orchestration?
 
@@ -768,7 +768,7 @@ Rolling summary artifacts for humans/LLMs:
 Append summary entries from CLI:
 
 ```bash
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 summary-append \
+uv run silisocs-study --study experiments/studies/study_template_v1 summary-append \
   --author analyst \
   --hypothesis h1_timeline_mechanism \
   --note "Observed stronger interaction rates in recsys conditions" \
@@ -794,7 +794,7 @@ experiments/studies/{study_id}/generated/organized/
 Subset execution controls:
 
 ```bash
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 run \
+uv run silisocs-study --study experiments/studies/study_template_v1 run \
   --only-hypothesis h1_timeline_mechanism \
   --only-sub-experiment bill_bias
 ```

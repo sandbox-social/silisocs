@@ -240,4 +240,4 @@ refactor_notes.md
 #LLM-Coding files
 .claude
 .codex
-.agents
+.agentsbuild/

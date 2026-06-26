@@ -1,6 +1,6 @@
 # Concordia Migration Log
 
-Silisocs began with several Concordia-shaped runtime concepts: agents built
+SiliSocS began with several Concordia-shaped runtime concepts: agents built
 from component entities, game masters driven through string dispatch, local
 copies of Concordia helper classes, and initializer game masters. Those shapes
 made early experiments possible, but they made the code harder to install,
@@ -11,7 +11,7 @@ Agents, Environment, Evaluations, and Engine.
 
 ## What Changed
 
-- Native agents now implement the Silisocs `Agent` contract and route model
+- Native agents now implement the SiliSocS `Agent` contract and route model
   calls through `Agent._call_model(context, action_spec)`.
 - Native action requests use `ActionSpec(prompt, output_type, options, tag,
   extra_args)` and native responses use typed `ActionOutput` values.
@@ -53,5 +53,5 @@ methods.
 - The old `local` LLM provider alias; OpenAI-compatible endpoints use
   `openai_compatible`.
 
-The current bridge exists for porting old modules, not for new Silisocs
+The current bridge exists for porting old modules, not for new SiliSocS
 extensions.

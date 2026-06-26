@@ -29,7 +29,6 @@ _THREAD_ENV_KEYS = (
 for _thread_env_key in _THREAD_ENV_KEYS:
     os.environ.setdefault(_thread_env_key, "1")
 
-import matplotlib.pyplot as plt
 from dotenv import load_dotenv
 
 GRAPH_TYPES = ("scale_free", "random", "small_world")
@@ -99,6 +98,15 @@ def _mean_curve(
 
 
 def _plot(output_root: Path, graph_types: tuple[str, ...], runs: int) -> None:
+    # Lazy import: plotting needs the optional [analysis] extra; planning/dry-run does not.
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError as exc:
+        raise SystemExit(
+            "Plotting requires matplotlib. Install the analysis extras: "
+            "uv sync --extra analysis (or pip install 'silisocs[analysis]')."
+        ) from exc
+
     colors = {"scale_free": "#1f77b4", "random": "#d62728", "small_world": "#2ca02c"}
     fig, axes = plt.subplots(3, 1, figsize=(12, 14), sharex=True)
     summary: dict[str, Any] = {}

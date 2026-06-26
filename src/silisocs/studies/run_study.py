@@ -19,8 +19,10 @@ import argparse
 import copy
 import datetime as dt
 import hashlib
+import importlib.metadata
 import json
 import os
+import platform
 import random
 import shlex
 import subprocess
@@ -34,19 +36,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-# Support both:
-#   python -m experiments.run_study
-# and:
-#   python experiments/run_study.py
-# In the second form Python puts experiments/ on sys.path, not the repo root,
-# so absolute imports like experiments._internal would otherwise fail.
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
 import yaml
 
-from experiments._internal.study_artifacts import (
+from silisocs.runtime.checkpointing import resolve_checkpoint_source
+from silisocs.studies.study_artifacts import (
     load_study_definition,
     organize_study_outputs,
     resolve_study_definition_path,
@@ -56,6 +49,8 @@ SCHEMA_VERSION = 1
 DEFAULT_RUNNER_MODULE = "silisocs.runtime.runner"
 PROCESS_TIMEOUT_RC = 124
 PLAN_PREVIEW_ROWS = 10
+PREFLIGHT_CONFIRM_RUN_COUNT = 50
+RUN_COMPLETE_MARKER = "RUN_COMPLETE.json"
 
 BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
     "builtin.activity_summary": {
@@ -286,6 +281,45 @@ def _hash_file(path: Path) -> str | None:
     return h.hexdigest()
 
 
+def _environment_provenance(repo_root: Path) -> dict[str, Any]:
+    """Capture the execution environment so a study run can be reproduced.
+
+    Config SHAs alone cannot reproduce a run: results depend on the code
+    revision and dependency set that executed it.
+    """
+
+    def _git(*git_args: str) -> str | None:
+        try:
+            proc = subprocess.run(
+                ["git", *git_args],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return proc.stdout.strip() if proc.returncode == 0 else None
+
+    try:
+        silisocs_version = importlib.metadata.version("silisocs")
+    except importlib.metadata.PackageNotFoundError:
+        silisocs_version = None
+
+    dirty_output = _git("status", "--porcelain")
+    return {
+        "git_commit": _git("rev-parse", "HEAD"),
+        "git_branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
+        "git_dirty": bool(dirty_output) if dirty_output is not None else None,
+        "python_version": platform.python_version(),
+        "platform": platform.platform(),
+        "silisocs_version": silisocs_version,
+        "uv_lock_sha256": _hash_file(repo_root / "uv.lock"),
+        "captured_at": _now_iso(),
+    }
+
+
 def _normalize_override_value(value: Any) -> str:  # noqa: PLR0911
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -323,6 +357,7 @@ def _extract_inline_overrides(run_defaults: dict[str, Any]) -> dict[str, Any]:
         "timeout_seconds",
         "runner_module",
         "overrides",
+        "checkpoint_every_n_steps",
     }
     out: dict[str, Any] = {}
     for key, value in run_defaults.items():
@@ -331,6 +366,25 @@ def _extract_inline_overrides(run_defaults: dict[str, Any]) -> dict[str, Any]:
         if "." in key:
             out[key] = value
     return out
+
+
+def _checkpoint_cadence_overrides(run_defaults: dict[str, Any]) -> dict[str, Any]:
+    """Resolve the checkpoint cadence override injected into every run.
+
+    Defaults to 1 (a checkpoint every step) so eval.py can read the final
+    checkpoint for action-type metrics. Setting
+    run_defaults.checkpoint_every_n_steps to another positive int changes the
+    cadence; setting it to null/0/false disables the injection entirely.
+    """
+    cadence = run_defaults.get("checkpoint_every_n_steps", 1)
+    if cadence is None or cadence is False or cadence == 0:
+        return {}
+    if isinstance(cadence, bool) or not isinstance(cadence, int) or cadence < 0:
+        raise StudyConfigError(
+            "run_defaults.checkpoint_every_n_steps must be a positive int, "
+            "or null/0/false to disable checkpoint injection"
+        )
+    return {"sim.checkpoint.every_n_steps": cadence}
 
 
 def _resolve_command_tokens(value: Any, label: str) -> tuple[str, ...]:
@@ -645,9 +699,10 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
     global_eval_specs = _resolve_eval_specs(study_root, study_data)
 
     default_overrides = _merge_overrides(
-        # Always write a checkpoint every step so eval.py can compute action-type
-        # metrics. Studies can override via run_defaults.overrides.
-        {"sim.checkpoint.every_n_steps": 1},
+        # Checkpoint cadence injected so eval.py can compute action-type metrics.
+        # Controlled by run_defaults.checkpoint_every_n_steps (default: 1);
+        # studies can also override via run_defaults.overrides.
+        _checkpoint_cadence_overrides(run_defaults),
         _extract_inline_overrides(run_defaults),
         _ensure_mapping("study.run_defaults.overrides", run_defaults.get("overrides")),
     )
@@ -846,17 +901,11 @@ def _build_run_command(spec: RunSpec) -> list[str]:
     if spec.command_override:
         return list(spec.command_override)
 
-    runner_python = os.environ.get("RUN_STUDY_PYTHON", "").strip()
-    if runner_python:
-        cmd = [runner_python, "-m", spec.runner_module]
-    else:
-        cmd = [
-            "uv",
-            "run",
-            "python",
-            "-m",
-            spec.runner_module,
-        ]
+    # Default to the interpreter running this study (it already has silisocs
+    # importable), which is correct for both `uv run` repo workflows and
+    # pip-installed venvs. RUN_STUDY_PYTHON overrides it for explicit control.
+    runner_python = os.environ.get("RUN_STUDY_PYTHON", "").strip() or sys.executable
+    cmd = [runner_python, "-m", spec.runner_module]
     if spec.config_path:
         cmd.extend(["--config-path", spec.config_path])
 
@@ -890,11 +939,14 @@ def _extract_output_dir_from_line(line: str) -> str | None:
 
 
 def _find_latest_checkpoint(run_dir: Path) -> Path | None:
-    checkpoint_dir = run_dir / "checkpoints"
-    if not checkpoint_dir.is_dir():
+    # Defer to the canonical runtime resolver so study eval picks the exact same
+    # checkpoint the runtime restore would (highest parsed step, step_*_checkpoint.json
+    # only). It raises FileNotFoundError / ValueError for no-usable / unparseable
+    # checkpoints; translate both to this function's "None" contract.
+    try:
+        return resolve_checkpoint_source(run_dir)
+    except (FileNotFoundError, ValueError):
         return None
-    checkpoints = sorted(checkpoint_dir.glob("*.json"), key=lambda p: p.stat().st_mtime)
-    return checkpoints[-1] if checkpoints else None
 
 
 def _run_subprocess(
@@ -920,19 +972,34 @@ def _run_subprocess(
         )
 
         assert proc.stdout is not None
-        try:
+
+        # Drain stdout on a separate thread so the timeout is enforced via
+        # proc.wait(timeout=...) below even when the child produces NO output: a
+        # blocking `for line in proc.stdout` only returns at EOF, so a hang that
+        # holds stdout open (deadlock, stuck network/LLM call) would otherwise
+        # never reach the timeout and run forever.
+        def _drain_stdout() -> None:
+            nonlocal parsed_output_dir
+            assert proc.stdout is not None
             for line in proc.stdout:
                 log_file.write(line)
                 output_tail.append(line.rstrip("\n"))
                 out_dir = _extract_output_dir_from_line(line)
                 if out_dir:
                     parsed_output_dir = out_dir
+
+        reader = threading.Thread(target=_drain_stdout, daemon=True)
+        reader.start()
+        try:
             return_code = proc.wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait()
             output_tail.append(f"TIMEOUT after {timeout_seconds}s")
             return_code = PROCESS_TIMEOUT_RC
+        # Let the drain thread observe EOF (the pipe closes once the process
+        # exits / is killed) and flush remaining output before the log closes.
+        reader.join(timeout=5)
 
     return return_code, list(output_tail), parsed_output_dir
 
@@ -1113,15 +1180,14 @@ def _run_evaluations(
     return records
 
 
-def _run_one_spec(  # noqa: C901, PLR0912, PLR0915
-    spec: RunSpec,
-    repo_root: Path,
-    generated_dir: Path,
-    timeout_seconds: int | None,
-    assigned_gpu: str | None = None,
-) -> dict[str, Any]:
-    started = _now_iso()
-    record: dict[str, Any] = {
+def _build_eval_paths(evaluations: list[dict[str, Any]]) -> dict[str, str]:
+    """Map evaluation id -> output path for evaluations that produced one."""
+    return {str(item.get("id")): str(item.get("path")) for item in evaluations if item.get("path")}
+
+
+def _initialize_run_record(spec: RunSpec, assigned_gpu: str | None, started: str) -> dict[str, Any]:
+    """Build the base run record shared by the reuse and new-run paths."""
+    return {
         "schema_version": SCHEMA_VERSION,
         "run_id": spec.run_id,
         "study": spec.study_name,
@@ -1154,51 +1220,64 @@ def _run_one_spec(  # noqa: C901, PLR0912, PLR0915
         "gpu_binding": assigned_gpu,
     }
 
-    exec_env = {"CUDA_VISIBLE_DEVICES": assigned_gpu} if assigned_gpu else None
 
-    if spec.execution_mode == "reuse_existing":
-        reused_source = Path(spec.reused_source or "")
-        if not reused_source.is_absolute():
-            reused_source = (repo_root / reused_source).resolve()
-        record["run_dir"] = str(reused_source)
-        record["simulation_output_path"] = str(reused_source)
-        record["status"] = "reused"
+def _run_reused_spec(
+    spec: RunSpec,
+    record: dict[str, Any],
+    repo_root: Path,
+    generated_dir: Path,
+    timeout_seconds: int | None,
+    exec_env: dict[str, str] | None,
+) -> dict[str, Any]:
+    """Resolve (and optionally re-evaluate) an existing run referenced by the spec."""
+    reused_source = Path(spec.reused_source or "")
+    if not reused_source.is_absolute():
+        reused_source = (repo_root / reused_source).resolve()
+    record["run_dir"] = str(reused_source)
+    record["simulation_output_path"] = str(reused_source)
+    record["status"] = "reused"
 
-        if spec.reused_eval:
-            eval_path = Path(spec.reused_eval)
-            if not eval_path.is_absolute():
-                eval_path = (repo_root / eval_path).resolve()
-            record["evaluations"].append(
-                {
-                    "id": "legacy_reused_eval",
-                    "status": "reused",
-                    "path": str(eval_path),
-                    "command": [],
-                    "log_path": None,
-                    "return_code": None,
-                    "tail": [],
-                }
-            )
-            record["eval_paths"]["legacy_reused_eval"] = str(eval_path)
-
-        if spec.eval_specs and spec.re_evaluate:
-            record["evaluations"] = _run_evaluations(
-                spec,
-                reused_source,
-                repo_root,
-                generated_dir,
-                timeout_seconds,
-                extra_env=exec_env,
-            )
-            record["eval_paths"] = {
-                str(item.get("id")): str(item.get("path"))
-                for item in record["evaluations"]
-                if item.get("path")
+    if spec.reused_eval:
+        eval_path = Path(spec.reused_eval)
+        if not eval_path.is_absolute():
+            eval_path = (repo_root / eval_path).resolve()
+        record["evaluations"].append(
+            {
+                "id": "legacy_reused_eval",
+                "status": "reused",
+                "path": str(eval_path),
+                "command": [],
+                "log_path": None,
+                "return_code": None,
+                "tail": [],
             }
+        )
+        record["eval_paths"]["legacy_reused_eval"] = str(eval_path)
 
-        record["finished_at"] = _now_iso()
-        return record
+    if spec.eval_specs and spec.re_evaluate:
+        record["evaluations"] = _run_evaluations(
+            spec,
+            reused_source,
+            repo_root,
+            generated_dir,
+            timeout_seconds,
+            extra_env=exec_env,
+        )
+        record["eval_paths"] = _build_eval_paths(record["evaluations"])
 
+    record["finished_at"] = _now_iso()
+    return record
+
+
+def _run_new_spec(
+    spec: RunSpec,
+    record: dict[str, Any],
+    repo_root: Path,
+    generated_dir: Path,
+    timeout_seconds: int | None,
+    exec_env: dict[str, str] | None,
+) -> dict[str, Any]:
+    """Execute a fresh simulation run, resolve its output dir, and run evaluations."""
     run_log = generated_dir / "logs" / f"{spec.run_id}.log"
     cmd = _build_run_command(spec)
     record["command"] = cmd
@@ -1244,18 +1323,216 @@ def _run_one_spec(  # noqa: C901, PLR0912, PLR0915
                 timeout_seconds,
                 extra_env=exec_env,
             )
-            record["eval_paths"] = {
-                str(item.get("id")): str(item.get("path"))
-                for item in record["evaluations"]
-                if item.get("path")
-            }
+            record["eval_paths"] = _build_eval_paths(record["evaluations"])
         else:
             record["evaluations"] = []
+
+        # Idempotent-resume marker: a later `run` invocation skips this run
+        # unless --force is given.
+        _write_json(
+            run_dir_path / RUN_COMPLETE_MARKER,
+            {
+                "run_id": spec.run_id,
+                "finished_at": _now_iso(),
+                "effective_config_sha256": record["lock"]["effective_config_sha256"],
+                "return_code": rc,
+            },
+        )
     else:
         record["status"] = "failed" if rc != PROCESS_TIMEOUT_RC else "timeout"
 
     record["finished_at"] = _now_iso()
     return record
+
+
+def _run_one_spec(
+    spec: RunSpec,
+    repo_root: Path,
+    generated_dir: Path,
+    timeout_seconds: int | None,
+    assigned_gpu: str | None = None,
+) -> dict[str, Any]:
+    record = _initialize_run_record(spec, assigned_gpu, _now_iso())
+    exec_env = {"CUDA_VISIBLE_DEVICES": assigned_gpu} if assigned_gpu else None
+    if spec.execution_mode == "reuse_existing":
+        return _run_reused_spec(spec, record, repo_root, generated_dir, timeout_seconds, exec_env)
+    return _run_new_spec(spec, record, repo_root, generated_dir, timeout_seconds, exec_env)
+
+
+def _planned_run_dir(spec: RunSpec, repo_root: Path) -> Path | None:
+    """Resolve the planned output directory the same way _run_one_spec does."""
+    if not spec.output_rootname:
+        return None
+    planned = Path(spec.output_rootname)
+    if not planned.is_absolute():
+        planned = (repo_root / planned).resolve()
+    return planned
+
+
+def _load_complete_marker(run_dir: Path) -> dict[str, Any] | None:
+    marker_path = run_dir / RUN_COMPLETE_MARKER
+    if not marker_path.is_file():
+        return None
+    try:
+        with marker_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _skipped_complete_record(spec: RunSpec, run_dir: Path, generated_dir: Path) -> dict[str, Any]:
+    """Build a repro record for a run skipped because RUN_COMPLETE.json exists."""
+    now = _now_iso()
+    effective_cfg = run_dir / "effective_config.yaml"
+    record: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "run_id": spec.run_id,
+        "study": spec.study_name,
+        "hypothesis": spec.hypothesis_id,
+        "condition": spec.condition_id,
+        "sub_experiment": spec.sub_experiment,
+        "scenario": spec.scenario,
+        "seed": spec.seed,
+        "execution_mode": spec.execution_mode,
+        "started_at": now,
+        "finished_at": now,
+        "status": "skipped_complete",
+        "resolved_overrides": spec.overrides,
+        "study_id": spec.study_id,
+        "run_name": spec.run_name,
+        "planned_output_rootname": spec.output_rootname,
+        "command": None,
+        "log_path": None,
+        "run_dir": str(run_dir),
+        "simulation_output_path": str(run_dir),
+        "evaluations": [],
+        "eval_paths": {},
+        "reused": {"source": None, "eval": None},
+        "lock": {
+            "effective_config_sha256": _hash_file(effective_cfg),
+            "effective_config_path": str(effective_cfg),
+        },
+        "gpu_binding": None,
+        "complete_marker": _load_complete_marker(run_dir),
+    }
+
+    # Relink prior evaluator outputs (deterministic paths) so the organized
+    # tree keeps eval data for skipped runs.
+    for eval_spec in spec.eval_specs:
+        eval_output = (
+            generated_dir
+            / "eval"
+            / spec.hypothesis_id
+            / spec.condition_id
+            / spec.scenario
+            / f"seed_{spec.seed}"
+            / eval_spec.eval_id
+            / eval_spec.output_subpath
+        )
+        if not eval_output.is_file():
+            continue
+        record["evaluations"].append(
+            {
+                "id": eval_spec.eval_id,
+                "status": "reused",
+                "path": str(eval_output),
+                "command": [],
+                "log_path": None,
+                "return_code": None,
+                "tail": [],
+            }
+        )
+        record["eval_paths"][eval_spec.eval_id] = str(eval_output)
+
+    return record
+
+
+def _partition_completed_runs(
+    run_specs: list[RunSpec],
+    repo_root: Path,
+    generated_dir: Path,
+    force: bool,
+) -> tuple[list[RunSpec], list[dict[str, Any]]]:
+    """Split specs into pending runs and records for already-complete runs."""
+    if force:
+        return list(run_specs), []
+
+    pending: list[RunSpec] = []
+    skipped: list[dict[str, Any]] = []
+    for spec in run_specs:
+        run_dir = _planned_run_dir(spec, repo_root)
+        if (
+            spec.execution_mode == "run"
+            and run_dir is not None
+            and (run_dir / RUN_COMPLETE_MARKER).is_file()
+        ):
+            skipped.append(_skipped_complete_record(spec, run_dir, generated_dir))
+        else:
+            pending.append(spec)
+    return pending, skipped
+
+
+def _spec_scale(spec: RunSpec) -> tuple[int | None, int | None]:
+    """Extract (num_agents, num_steps) from resolved overrides when derivable."""
+
+    def _as_int(value: Any) -> int | None:
+        if isinstance(value, bool) or not isinstance(value, int):
+            return None
+        return value
+
+    return _as_int(spec.overrides.get("num_agents")), _as_int(spec.overrides.get("num_steps"))
+
+
+def _preflight_summary(run_specs: list[RunSpec]) -> list[str]:
+    """Render the cost/scale preflight lines for a set of planned runs."""
+    lines = [f"Preflight: {len(run_specs)} run(s) planned"]
+    total_agent_steps = 0
+    unknown = 0
+    for spec in run_specs:
+        agents, steps = _spec_scale(spec)
+        if agents is not None and steps is not None:
+            total_agent_steps += agents * steps
+        else:
+            unknown += 1
+    for spec in run_specs[:PLAN_PREVIEW_ROWS]:
+        agents, steps = _spec_scale(spec)
+        lines.append(
+            f"  - {spec.run_id}: "
+            f"num_agents={agents if agents is not None else '?'} "
+            f"num_steps={steps if steps is not None else '?'}"
+        )
+    if len(run_specs) > PLAN_PREVIEW_ROWS:
+        lines.append(f"  ... and {len(run_specs) - PLAN_PREVIEW_ROWS} more")
+    if unknown == len(run_specs) and run_specs:
+        lines.append(f"Estimated total agent-steps: ? ({unknown} run(s) with unknown scale)")
+    elif unknown:
+        lines.append(
+            f"Estimated total agent-steps: >= {total_agent_steps} "
+            f"({unknown} run(s) with unknown scale)"
+        )
+    else:
+        lines.append(f"Estimated total agent-steps: {total_agent_steps}")
+    return lines
+
+
+def _confirm_run_count(run_count: int, assume_yes: bool) -> bool:
+    """Gate large launches behind --yes or an interactive confirmation."""
+    if run_count <= PREFLIGHT_CONFIRM_RUN_COUNT or assume_yes:
+        return True
+    if not sys.stdin.isatty():
+        print(
+            f"Aborting: {run_count} runs exceed the preflight threshold "
+            f"({PREFLIGHT_CONFIRM_RUN_COUNT}) and stdin is not a TTY. "
+            "Re-run with --yes to proceed.",
+            file=sys.stderr,
+        )
+        return False
+    answer = input(
+        f"About to launch {run_count} runs "
+        f"(threshold: {PREFLIGHT_CONFIRM_RUN_COUNT}). Continue? [y/N] "
+    )
+    return answer.strip().lower() in {"y", "yes"}
 
 
 def _filter_run_specs(
@@ -1406,6 +1683,8 @@ def cmd_plan(args: argparse.Namespace) -> int:
     print(f"Schema version: {SCHEMA_VERSION}")
     print(f"Global evaluators: {len(eval_specs)}")
     print(f"Total expanded runs: {len(run_specs)}")
+    for line in _preflight_summary(run_specs):
+        print(line)
 
     rows = _plan_rows(run_specs)
     if args.output:
@@ -1449,6 +1728,67 @@ def cmd_generate_bash(args: argparse.Namespace) -> int:
     return 0
 
 
+def _execute_pending_runs(
+    pending_specs: list[RunSpec],
+    skipped_records: list[dict[str, Any]],
+    repo_root: Path,
+    generated_dir: Path,
+    timeout_seconds: int | None,
+    max_concurrent: int,
+    gpu_bindings: dict[str, str],
+    lock_jsonl: Path,
+) -> list[dict[str, Any]]:
+    """Run the pending specs concurrently, streaming each record to the lock JSONL.
+
+    Already-complete (skipped) records are emitted first, then each pending spec is
+    run via ``_run_one_spec`` in a bounded thread pool; a worker exception is turned
+    into a failed record rather than aborting the study.
+    """
+    records: list[dict[str, Any]] = []
+    write_lock = threading.Lock()
+
+    for record in skipped_records:
+        records.append(record)
+        _write_jsonl_line(lock_jsonl, record, lock=write_lock)
+        print(f"[{record.get('status', 'unknown'):>7}] {record.get('run_id')}")
+
+    with ThreadPoolExecutor(max_workers=max_concurrent) as pool:
+        future_map = {
+            pool.submit(
+                _run_one_spec,
+                spec,
+                repo_root,
+                generated_dir,
+                timeout_seconds,
+                gpu_bindings.get(spec.run_id),
+            ): spec
+            for spec in pending_specs
+        }
+        for future in as_completed(future_map):
+            spec = future_map[future]
+            try:
+                record = future.result()
+            except Exception as e:  # pragma: no cover
+                record = {
+                    "schema_version": SCHEMA_VERSION,
+                    "run_id": spec.run_id,
+                    "study": spec.study_name,
+                    "hypothesis": spec.hypothesis_id,
+                    "condition": spec.condition_id,
+                    "scenario": spec.scenario,
+                    "seed": spec.seed,
+                    "execution_mode": spec.execution_mode,
+                    "status": "failed",
+                    "error": str(e),
+                    "finished_at": _now_iso(),
+                }
+            records.append(record)
+            _write_jsonl_line(lock_jsonl, record, lock=write_lock)
+            print(f"[{record.get('status', 'unknown'):>7}] {record.get('run_id')}")
+
+    return records
+
+
 def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
     """Execute the expanded study plan and write reproducibility artifacts."""
     study_path = resolve_study_definition_path(Path(args.study).resolve())
@@ -1481,16 +1821,28 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
     timeout_seconds = int(args.timeout_seconds) if args.timeout_seconds > 0 else None
     gpu_ids = _resolve_gpu_ids_for_run()
 
+    pending_specs, skipped_records = _partition_completed_runs(
+        run_specs, repo_root, generated_dir, force=bool(args.force)
+    )
+
     gpu_bindings: dict[str, str] = {}
     if gpu_ids and max_concurrent > 1:
-        shuffled = list(run_specs)
+        shuffled = list(pending_specs)
         random.shuffle(shuffled)
         for idx, spec in enumerate(shuffled):
             gpu_bindings[spec.run_id] = gpu_ids[idx % len(gpu_ids)]
 
+    provenance = _environment_provenance(repo_root)
     print(f"Study: {study['name']}")
     print(f"Schema version: {SCHEMA_VERSION}")
+    print(f"Git commit: {provenance.get('git_commit') or 'unknown'}")
+    if provenance.get("git_dirty"):
+        print("⚠ Working tree has uncommitted changes; repro lock records git_dirty=true")
     print(f"Expanded runs: {len(run_specs)}")
+    if skipped_records:
+        print(f"Already complete (will skip): {len(skipped_records)}")
+    for line in _preflight_summary(pending_specs):
+        print(line)
     print(f"Global evaluators: {[e.eval_id for e in eval_specs]}")
     print(f"Max concurrency: {max_concurrent}")
     if gpu_bindings:
@@ -1510,53 +1862,40 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
         print("Dry-run only. Wrote plan and bash script.")
         return 0
 
-    records: list[dict[str, Any]] = []
-    write_lock = threading.Lock()
+    if not _confirm_run_count(len(pending_specs), bool(args.yes)):
+        return 2
 
-    with ThreadPoolExecutor(max_workers=max_concurrent) as pool:
-        future_map = {
-            pool.submit(
-                _run_one_spec,
-                spec,
-                repo_root,
-                generated_dir,
-                timeout_seconds,
-                gpu_bindings.get(spec.run_id),
-            ): spec
-            for spec in run_specs
-        }
-        for future in as_completed(future_map):
-            spec = future_map[future]
-            try:
-                record = future.result()
-            except Exception as e:  # pragma: no cover
-                record = {
-                    "schema_version": SCHEMA_VERSION,
-                    "run_id": spec.run_id,
-                    "study": spec.study_name,
-                    "hypothesis": spec.hypothesis_id,
-                    "condition": spec.condition_id,
-                    "scenario": spec.scenario,
-                    "seed": spec.seed,
-                    "execution_mode": spec.execution_mode,
-                    "status": "failed",
-                    "error": str(e),
-                    "finished_at": _now_iso(),
-                }
-            records.append(record)
-            _write_jsonl_line(lock_jsonl, record, lock=write_lock)
-            print(f"[{record.get('status', 'unknown'):>7}] {record.get('run_id')}")
+    records = _execute_pending_runs(
+        pending_specs,
+        skipped_records,
+        repo_root,
+        generated_dir,
+        timeout_seconds,
+        max_concurrent,
+        gpu_bindings,
+        lock_jsonl,
+    )
 
     records.sort(key=lambda r: str(r.get("run_id", "")))
-    _write_json(lock_json, {"schema_version": SCHEMA_VERSION, "records": records})
+    _write_json(
+        lock_json,
+        {
+            "schema_version": SCHEMA_VERSION,
+            "environment": provenance,
+            "records": records,
+        },
+    )
     _write_study_index(study_index, study_data, records)
     _write_yaml(enriched_yaml, _enrich_study_with_results(study_data, records))
 
-    success = sum(1 for r in records if r.get("status") in {"success", "reused"})
+    success = sum(
+        1 for r in records if r.get("status") in {"success", "reused", "skipped_complete"}
+    )
     failed = sum(1 for r in records if r.get("status") in {"failed", "timeout"})
     print("Run complete")
     print(f"Success/reused: {success}")
     print(f"Failed/timeout: {failed}")
+    print(f"Skipped {len(skipped_records)} already-complete runs (use --force to re-run)")
     print(f"Repro lock JSONL: {lock_jsonl}")
     print(f"Repro lock JSON: {lock_json}")
     print(f"Study index JSON: {study_index}")
@@ -1704,12 +2043,15 @@ def _build_submitit_job_commands(
         command = [
             sys.executable,
             "-m",
-            "experiments.run_study",
+            "silisocs.studies.run_study",
             "--study",
             study_arg,
             "--repo-root",
             str(repo_root),
             "run",
+            # The user already confirmed scale by submitting; submitted jobs
+            # run non-interactively so the preflight gate must not block them.
+            "--yes",
             "--max-concurrent",
             str(max_concurrent),
         ]
@@ -1955,7 +2297,7 @@ def cmd_slurm_array(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     """Build parser for planning, generation, and execution commands."""
-    parser = argparse.ArgumentParser(description="Structured study runner for mastodon-sim")
+    parser = argparse.ArgumentParser(description="Structured study runner for silisocs")
     parser.add_argument(
         "--study",
         required=True,
@@ -2039,6 +2381,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Do not execute, only write generated plan and bash script",
+    )
+    p_run.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-run all runs even when RUN_COMPLETE.json markers exist",
+    )
+    p_run.add_argument(
+        "--yes",
+        action="store_true",
+        help=(
+            "Skip the preflight confirmation when more than "
+            f"{PREFLIGHT_CONFIRM_RUN_COUNT} runs would launch"
+        ),
     )
     p_run.add_argument(
         "--only-hypothesis",

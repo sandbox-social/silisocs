@@ -13,6 +13,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from silisocs.evaluations.action_events import resolve_action_event_files
+
 VALID_MODES = {"activity", "probes"}
 
 
@@ -119,19 +121,21 @@ def main() -> None:
     out_path = Path(args.output).expanduser().resolve()
 
     if args.mode == "probes":
-        events_path = run_dir / "probe_events.jsonl"
-        if not events_path.is_file():
-            raise FileNotFoundError(f"Missing probe events file: {events_path}")
+        event_files = [run_dir / "probe_events.jsonl"]
     else:
-        events_path = run_dir / "action_events.jsonl"
-        if not events_path.is_file():
-            raise FileNotFoundError(f"Missing action events file: {events_path}")
+        # Multi-GM runs isolate action logs under per-GM subdirectories.
+        event_files = resolve_action_event_files(run_dir)
+    event_files = [path for path in event_files if path.is_file()]
+    if not event_files:
+        raise FileNotFoundError(f"Missing events file(s) for mode {args.mode!r} in {run_dir}")
 
-    events = _read_jsonl(events_path)
+    events: list[dict[str, Any]] = []
+    for path in event_files:
+        events.extend(_read_jsonl(path))
     payload = _summarize_activity(events) if args.mode == "activity" else _summarize_probes(events)
 
     payload["run_dir"] = str(run_dir)
-    payload["source_file"] = str(events_path)
+    payload["source_file"] = ", ".join(str(path) for path in event_files)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 

@@ -25,22 +25,6 @@ class PromptAdditions:
     add_action_count_guidance: bool = True
 
 
-def _cfg_bool(cfg: Any, path: str, default: bool = False) -> bool:
-    """_cfg_bool.
-
-    :param Any cfg:
-    :type cfg: Any
-    :param str path:
-    :type path: str
-    :param bool default:
-    :type default: bool
-
-    :returns: bool
-    :rtype: bool
-    """
-    return bool(OmegaConf.select(cfg, path, default=default))
-
-
 def prompt_additions_from_cfg(cfg: Any) -> PromptAdditions:
     """Read prompt-addition toggles from config.
 
@@ -56,14 +40,7 @@ def prompt_additions_from_cfg(cfg: Any) -> PromptAdditions:
 
 
 def split_output_style_sections(action_prompt: str) -> tuple[str, str, bool]:
-    """split_output_style_sections.
-
-    :param str action_prompt:
-    :type action_prompt: str
-
-    :returns: tuple[str, str, bool]
-    :rtype: tuple[str, str, bool]
-    """
+    """Split a prompt at the output-style marker into (head, style, found) parts."""
     raw = str(action_prompt or "")
     if OUTPUT_STYLE_MARKER not in raw:
         return raw.strip(), "", False
@@ -72,14 +49,7 @@ def split_output_style_sections(action_prompt: str) -> tuple[str, str, bool]:
 
 
 def action_guidance_line(tool_calling_mode: str) -> str:
-    """action_guidance_line.
-
-    :param str tool_calling_mode:
-    :type tool_calling_mode: str
-
-    :returns: str
-    :rtype: str
-    """
+    """Return the action-count guidance line for the given tool-calling mode."""
     if str(tool_calling_mode or "none").strip().lower() == "multi":
         return MULTI_TOOL_CALLING_PROMPT_LINE
     return SINGLE_STEP_PROMPT_LINE
@@ -176,14 +146,12 @@ def build_action_prompt_with_app_instance(
     cfg: Any,
     action_mode: str,
     tool_calling_mode: str,
-    backend: Any = None,
     gm_prompt_cfg: Mapping[str, Any] | None = None,
 ) -> str:
     """Build action prompt for runner startup.
 
     Tool schemas are attached later by the GM action_prompt method with the real app instance.
     """
-    del backend
     return build_complete_action_prompt_for_runner(
         cfg=cfg,
         action_mode=action_mode,

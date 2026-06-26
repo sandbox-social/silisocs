@@ -73,7 +73,7 @@ uv run streamlit run src/silisocs/dashboard/launch_app.py
 ```
 
 The dashboard lets you configure scenarios, agent classes, network topology,
-and probes — then launch simulations with one click.
+and probes, then launch simulations with one click.
 
 ## 5. Analyze a Completed Run
 
@@ -88,21 +88,30 @@ uv run python -m silisocs.evaluations.analysis.dashboard.main \
 The analytics dashboard expects `action_events.jsonl` and `probe_events.jsonl`
 in that folder.
 
-## 6. Run an External Scenario
+## 6. Run an Example Scenario
 
-Run the bundled election scenario:
+The named example scenarios live in the repository's `scenarios/` directory
+(they are example content, not part of the installed wheel). From a repo
+checkout, run the election scenario (requires the `hf` extra for its persona
+dataset: `pip install "silisocs[hf]"`):
 
 ```sh
-uv run silisocs --config-path scenarios/election/conf
+uv run silisocs --config-path election
 ```
 
-The runner auto-detects the scenario name from the YAML files in the external
-config directory. No need to manually specify a `world=` override unless you are
-choosing a non-default semantic world variant from `conf/world/`.
+`--config-path` accepts a bare scenario name, a repo-style path
+(`scenarios/election/conf`), or a filesystem path to your own scenario config
+directory. The runner auto-detects the scenario name from the YAML files in
+the config directory. No need to manually specify a `world=` override unless
+you are choosing a non-default semantic world variant from `conf/world/`.
+
+A `pip install` without a repo checkout still runs out of the box via the
+packaged base config: omit `--config-path` entirely (see
+[Installation](installation.md#run-the-base-config-no-repo-checkout-needed)).
 
 ## Next Steps
 
-- [Usage Overview](usage.md) — Full end-to-end guide
-- [Configuration Reference](configuration.md) — All config options
-- [Building Agents](building_agents.md) — Create custom agent populations
-- [Election Walkthrough](tutorials/election.md) — Complex scenario tutorial
+- [Usage Overview](usage.md): Full end-to-end guide
+- [Configuration Reference](configuration.md): All config options
+- [Building Agents](building_agents.md): Create custom agent populations
+- [Election Walkthrough](tutorials/election.md): Complex scenario tutorial

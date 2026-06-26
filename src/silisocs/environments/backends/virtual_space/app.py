@@ -28,6 +28,8 @@ class VirtualSpaceApp(BackendApp):
     """In-memory room environment where agents move and talk when co-located."""
 
     action_logger: Any = None
+    # Authoritative checkpoint state: full in-memory room state round-trips.
+    provides_checkpoint_state = True
     app_description: str = "A virtual space where agents can move between rooms and talk."
     rooms: list[str] = field(default_factory=lambda: ["atrium", "garden", "workshop"])
     starting_room: str = "atrium"
@@ -138,9 +140,7 @@ class VirtualSpaceApp(BackendApp):
 
     def _record(self, event: str) -> None:
         self._events.append(event)
-        log_fn = getattr(self.action_logger, "log", None)
-        if callable(log_fn):
-            log_fn({"event_type": "virtual_space", "message": event})
+        self._emit_event_log(event, event_type="virtual_space")
 
     def _ensure_agent(self, agent_name: str) -> str | None:
         if agent_name not in self._locations:

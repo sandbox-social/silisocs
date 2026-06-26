@@ -7,15 +7,20 @@ import abc
 import dataclasses
 import datetime
 import inspect
+import logging
 import re
-import textwrap
 import types
 import typing
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import Any, Literal, get_type_hints
 
 import docstring_parser
 import termcolor
+
+from silisocs.exceptions import ActionError, BackendError
+from silisocs.runtime.types import ActionOutput, ToolCall
+
+_LOGGER = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
 # Constants & Types
@@ -30,6 +35,10 @@ ParserFunc = Callable[[str], Any]
 _ACTION_PROPERTY = "__app_action__"
 RUNTIME_AGENT_PARAM = "agent_name"
 LEGACY_RUNTIME_AGENT_PARAMS = frozenset({"current_user"})
+# Reused when rebuilding an ActionDescriptor for an aliased selectable name; the
+# descriptor's docstring InitVar is discarded in __post_init__, so an empty parse
+# is sufficient (description/parameters are carried over directly).
+_EMPTY_DOCSTRING = docstring_parser.parse("")
 RUNTIME_OWNED_ACTION_PARAMS = frozenset({RUNTIME_AGENT_PARAM})
 
 COLOR_TYPE = (
@@ -116,8 +125,16 @@ def app_action(
     return _decorate
 
 
-class ActionArgumentError(Exception):
+class ActionArgumentError(ActionError):
     """An error that is raised when argument parsing fails."""
+
+
+def _record_unexpected_action_error(action_name: str, exc: Exception) -> None:
+    """Log and count a non-ActionError escaping a backend action."""
+    from silisocs.runtime.telemetry.collector import SimMetricsCollector
+
+    _LOGGER.exception("Backend action '%s' raised unexpectedly: %s", action_name, exc)
+    SimMetricsCollector.get().increment_counter("backend_action_errors")
 
 
 def is_runtime_owned_parameter(name: str) -> bool:
@@ -169,10 +186,6 @@ class Parameter:
                 continue
         raise ValueError(f"Cannot parse '{value}' as any of {types}")
 
-    def full_description(self):
-        """Return a full description of the parameter."""
-        return f"{self.name}: {self.description or ''}, type: {self.kind}"
-
     def _parse_single_argument(self, text: str, kind: Any = None):
         kind = kind or self.kind
         if kind is type(None):
@@ -184,15 +197,6 @@ class Parameter:
         arg = typing.get_args(self.kind)
         parser = _ARGUMENT_PARSERS.get(arg, arg)  # type: ignore
         return [parser(e) for e in text.split(",")]
-
-    @classmethod
-    def create(cls, parameter: inspect.Parameter, docstring: docstring_parser.Docstring):
-        """Create a Parameter from a method docstring and inspect.Parameter."""
-        description = next(
-            (p.description for p in docstring.params if p.arg_name == parameter.name),
-            None,
-        )
-        return cls(parameter.name, parameter.annotation, description)  # type: ignore
 
 
 # --------------------------------------------------------------------------- #
@@ -217,58 +221,6 @@ class ActionDescriptor:
     def agent_visible_parameters(self) -> Sequence[Parameter]:
         """Parameters an agent may provide in a tool call or generic action."""
         return [p for p in self.parameters if not is_runtime_owned_parameter(p.name)]
-
-    def instructions(self):
-        """Return a string containing instructions for using the action."""
-        visible_params = self.agent_visible_parameters
-        required_params = [p for p in visible_params if p.required]
-        optional_params = [p for p in visible_params if not p.required]
-
-        instructions = f"The {self.name} action expects the following parameters:\n"
-
-        if required_params:
-            instructions += "\nRequired parameters:\n"
-            instructions += "\n".join(p.full_description() for p in required_params)
-            instructions += "\n"
-
-        if optional_params:
-            instructions += "\nOptional parameters:\n"
-            instructions += "\n".join(p.full_description() for p in optional_params)
-            instructions += "\n"
-
-        instructions += textwrap.dedent("""
-        Provide values for the required parameters and any optional parameters you want to use.
-        Each parameter should be on its own line, for example:
-        param1: value1
-        param2: value2
-
-        For optional parameters you don't want to use, you should omit them rather than provide an empty value.
-
-        Critically important: If an argument is message or a post (e.g. `status`), make sure it is
-        from first person perspective and makes sense as a realistic user post based on their information.
-        Do not post any statuses from 3rd person perspective.
-
-        Note: target_user or a username field is the full name of another agent
-        when the action asks for a target. The acting agent is supplied by the
-        runtime and should not be included in your response.
-
-        Bad examples:
-            `bio`: Updated my bio and checking notifications!
-            `status`: I'm updating my status and posting a message
-            `status`: Wrote about goals for today
-
-        Good examples:
-            `bio`: I'm a software engineer with a passion for building great apps. Let's connect!
-            `status`: Just finished writing a chapter of my book. Feeling productive!
-            `status`: My goals for today are to get to the gym and submit my grant proposal.
-
-        Also, several string/int args require real knowledge, such as a real `target_user` or `toot_id`, so don't
-        fabricate these values and only fill them in with values you've been provided.
-        You can read posts by using the `get_public_timeline` action. These are operations like:
-        liking, boosting, replying, reading profile, following user, etc.
-        """)
-
-        return instructions
 
     @classmethod
     def from_method(cls, method):
@@ -321,9 +273,24 @@ class BackendApp(metaclass=abc.ABCMeta):
     action_logger: Any = None
     _log_color: COLOR_TYPE = "blue"
 
+    # Checkpoint capability contract (see docs/configuration.md#checkpointing).
+    # ``provides_checkpoint_state``: get_state/set_state round-trip authoritative
+    # state, so a checkpoint restores this backend directly from its snapshot.
+    # Backends that leave it False (e.g. live external servers) must rely on a
+    # configured ``sim.checkpoint.restore`` strategy instead.
+    provides_checkpoint_state: bool = False
+    # ``supports_action_replay``: the built-in ``social_action_event_replay`` strategy
+    # can rebuild this backend by re-resolving its logged action events. Backends with
+    # non-idempotent external state (e.g. a live Mastodon server) set this False.
+    supports_action_replay: bool = False
+
     def __init__(self) -> None:
         self._enabled_actions: set[str] | None = None
         self._excluded_actions: set[str] = set()
+        # Config-driven agent-facing action aliases: canonical method name ->
+        # [agent-facing names], first is the displayed selectable name. Empty by
+        # default (agents see canonical/decorator names). See set_action_aliases.
+        self._action_aliases: dict[str, list[str]] = {}
 
     @abc.abstractmethod
     def name(self) -> str:
@@ -371,6 +338,12 @@ class BackendApp(metaclass=abc.ABCMeta):
         formatted_entry = f"{emoji} {entry}" if emoji else entry
         print(termcolor.colored(formatted_entry, color or self._log_color))
 
+    def _emit_event_log(self, message: str, *, event_type: str) -> None:
+        """Emit a typed backend event to the action logger, when one is configured."""
+        log_fn = getattr(self.action_logger, "log", None)
+        if callable(log_fn):
+            log_fn({"event_type": event_type, "message": message})
+
     def actions(self) -> Sequence[ActionDescriptor]:
         """Return this app's callable actions."""
         actions = self._all_actions()
@@ -387,14 +360,124 @@ class BackendApp(metaclass=abc.ABCMeta):
             ]
         return actions
 
-    def _all_actions(self) -> list[ActionDescriptor]:
-        """Return all declared backend actions before config-level filtering."""
+    def _raw_actions(self) -> list[ActionDescriptor]:
+        """Return all declared backend actions with their built-in names."""
         methods = inspect.getmembers(self, predicate=inspect.ismethod)
         return [ActionDescriptor.from_method(m) for _, m in methods if hasattr(m, _ACTION_PROPERTY)]
+
+    def _all_actions(self) -> list[ActionDescriptor]:
+        """Return declared actions with config aliases applied (before filtering).
+
+        When ``set_action_aliases`` has been configured, an action's displayed
+        ``selectable_name`` is replaced by its first configured agent-facing name,
+        so prompts/catalogs present the simplified vocabulary. The canonical
+        method name and every configured alias still resolve (see
+        ``configured_action_aliases`` and the resolve alias index).
+        """
+        actions = self._raw_actions()
+        if not self._action_aliases:
+            return actions
+        applied: list[ActionDescriptor] = []
+        for action in actions:
+            names = self._action_aliases.get(action.name)
+            if names and names[0] != action.selectable_name:
+                action = ActionDescriptor(
+                    name=action.name,
+                    selectable_name=names[0],
+                    description=action.description,
+                    parameters=action.parameters,
+                    docstring=_EMPTY_DOCSTRING,
+                )
+            applied.append(action)
+        return applied
+
+    def set_action_aliases(self, aliases: Mapping[str, Any] | None) -> None:
+        """Configure agent-facing names for backend actions (config-driven rename).
+
+        ``aliases`` maps an existing action (referenced by its canonical method
+        name or current selectable name) to either a single new agent-facing name
+        (rename) or a list of names (the first is shown to agents; all are
+        accepted by the parser). This lets scenario authors simplify the agent
+        action vocabulary in YAML without editing backend code. Unknown actions,
+        empty names, or names that collide with another action fail loudly.
+        """
+        if not aliases:
+            self._action_aliases = {}
+            return
+        token_to_canonical: dict[str, str] = {}
+        for action in self._raw_actions():
+            for token in (action.name, action.selectable_name):
+                normalized = str(token).strip().lower()
+                if normalized:
+                    token_to_canonical[normalized] = action.name
+        resolved: dict[str, list[str]] = {}
+        new_name_owner: dict[str, str] = {}
+        for key, value in dict(aliases).items():
+            canonical = token_to_canonical.get(str(key).strip().lower())
+            if canonical is None:
+                known = sorted({action.name for action in self._raw_actions()})
+                raise ValueError(
+                    f"action_aliases references unknown action {key!r}. Known actions: {known}."
+                )
+            names = [value] if isinstance(value, str) else list(value)
+            names = [str(name).strip() for name in names if str(name).strip()]
+            if not names:
+                raise ValueError(f"action_aliases for {key!r} must provide at least one name.")
+            self._validate_alias_names(names, canonical, token_to_canonical, new_name_owner)
+            resolved[canonical] = names
+        self._action_aliases = resolved
+
+    @staticmethod
+    def _validate_alias_names(
+        names: list[str],
+        canonical: str,
+        token_to_canonical: dict[str, str],
+        new_name_owner: dict[str, str],
+    ) -> None:
+        """Reject alias names that collide with another action; record ownership."""
+        for name in names:
+            low = name.lower()
+            if token_to_canonical.get(low, canonical) != canonical:
+                raise ValueError(f"action_aliases name {name!r} collides with another action.")
+            if new_name_owner.get(low, canonical) != canonical:
+                raise ValueError(f"action_aliases name {name!r} is assigned to multiple actions.")
+            new_name_owner[low] = canonical
+
+    def configured_action_aliases(self) -> list[set[str]]:
+        """Return config-defined alias groups for the resolve/alias index.
+
+        Each group unions an action's canonical name, its built-in selectable
+        name, and every configured agent-facing alias, so the parser accepts any
+        of them regardless of which one the prompt displays. Empty when no
+        aliases are configured.
+        """
+        if not self._action_aliases:
+            return []
+        raw_by_name = {action.name: action for action in self._raw_actions()}
+        groups: list[set[str]] = []
+        for canonical, names in self._action_aliases.items():
+            group = {canonical, *names}
+            descriptor = raw_by_name.get(canonical)
+            if descriptor is not None:
+                group.add(descriptor.selectable_name)
+            groups.append(group)
+        return groups
 
     @staticmethod
     def _action_matches_filter(action: ActionDescriptor, names: set[str]) -> bool:
         return action.name in names or action.selectable_name in names
+
+    def action_aliases(self) -> list[set[str]]:
+        """Return groups of synonymous action tokens for per-flow filtering.
+
+        Each group lists tokens that name the same logical action across the
+        vocabularies an agent may emit — e.g. the custom-mode domain verb
+        (``post``) and the canonical backend method (``create_tweet``). Per-flow
+        action filters union these groups so a filter written in either
+        vocabulary matches regardless of which synonym the agent uses. Backends
+        with no synonyms (the default) return an empty list.
+        """
+        return []
 
     def action_catalog(self) -> list[dict[str, Any]]:
         """Return a normalized action catalog for prompting/UI/config validation."""
@@ -486,12 +569,15 @@ class BackendApp(metaclass=abc.ABCMeta):
                 + f". Available actions: {available}"
             )
 
-    def full_description(self):
-        """Return a description of the app and all the actions it supports."""
-        return textwrap.dedent(f"""\
-    {self.name()}: {self.description()}
-    The app supports the following actions:
-    """) + "\n".join(f"{a.name}: {a.description}" for a in self.actions())
+    def _handle_action_invocation_error(
+        self, action_name: str, exc: Exception, *, record_unexpected: bool
+    ) -> str:
+        """Format, print, and (optionally) record an action invocation error."""
+        if record_unexpected:
+            _record_unexpected_action_error(action_name, exc)
+        message = f"Error invoking action {action_name}: {exc}"
+        self._print(message, color="red")
+        return message
 
     def invoke_action(self, action: ActionDescriptor, args_text: str) -> str | None:
         """Invoke the given action with the given arguments."""
@@ -525,16 +611,38 @@ class BackendApp(metaclass=abc.ABCMeta):
 
         try:
             return getattr(self, action.name)(**processed_args)
+        except ActionError as e:
+            return self._handle_action_invocation_error(action.name, e, record_unexpected=False)
         except Exception as e:
-            self._print(f"Error invoking action {action.name}: {e}", color="red")
-            return f"Error invoking action {action.name}: {e}"
+            return self._handle_action_invocation_error(action.name, e, record_unexpected=True)
 
     def _action_lookup(self) -> dict[str, ActionDescriptor]:
         lookup: dict[str, ActionDescriptor] = {}
         for action in self.actions():
-            lookup[action.name] = action
-            lookup[action.selectable_name] = action
+            # Canonical name, displayed selectable name, and any extra configured
+            # agent-facing aliases all dispatch to the same action.
+            keys = {action.name, action.selectable_name}
+            keys.update(self._action_aliases.get(action.name, ()))
+            for key in keys:
+                existing = lookup.get(key)
+                if existing is not None and existing.name != action.name:
+                    raise BackendError(
+                        f"Action name collision in {type(self).__name__}: "
+                        f"'{key}' maps to both '{existing.name}' and '{action.name}'. "
+                        "Action names and selectable_names must be unique per backend."
+                    )
+                lookup[key] = action
         return lookup
+
+    def canonical_action_name(self, action_name: str) -> str | None:
+        """Return the canonical method name for any agent-facing action token.
+
+        Resolves a displayed selectable name or configured alias back to the
+        backend method name (used to normalize custom-mode action tokens before
+        dispatch). Returns None when the token names no known action.
+        """
+        descriptor = self._action_lookup().get(str(action_name))
+        return descriptor.name if descriptor is not None else None
 
     def invoke_action_by_name(self, action_name: str, args_text: str) -> str:
         """Find an action by name and invoke it with the given argument text.
@@ -590,9 +698,10 @@ class BackendApp(metaclass=abc.ABCMeta):
 
         try:
             return getattr(self, action.name)(**processed) or ""
+        except ActionError as exc:
+            return self._handle_action_invocation_error(action.name, exc, record_unexpected=False)
         except Exception as exc:
-            self._print(f"Error invoking action {action.name}: {exc}", color="red")
-            return f"Error invoking action {action.name}: {exc}"
+            return self._handle_action_invocation_error(action.name, exc, record_unexpected=True)
 
     def generate_generic_action_prompt(self) -> str:
         """Build a call-to-action prompt auto-generated from @app_action methods.
@@ -665,10 +774,6 @@ class BackendApp(metaclass=abc.ABCMeta):
         """No-op terminal action for open-ended loops and constrained action sets."""
         return "Finished action episode"
 
-    def generate_action_prompt(self) -> str:
-        """Generate the call-to-action prompt listing all available actions."""
-        return self.full_description()
-
 
 # --------------------------------------------------------------------------- #
 # Argument Text Parser
@@ -723,6 +828,16 @@ def _param_to_json_schema(param: "Parameter") -> dict:
 # --------------------------------------------------------------------------- #
 
 
+def _replay_target_id(label: str, data: Mapping[str, Any]) -> str:
+    """Extract the post/toot id a replayed social action targets."""
+    target = (
+        data.get("post_id") or data.get("tweet_id") or data.get("toot_id") or data.get("target_id")
+    )
+    if target is None:
+        raise ValueError(f"{label} event missing target id: {data}")
+    return str(target)
+
+
 class SocialBackendApp(BackendApp):
     """Backend capability interface for timeline and recommendation components.
 
@@ -730,6 +845,80 @@ class SocialBackendApp(BackendApp):
     actions, or recommendation update components implement this interface on
     top of the domain-neutral :class:`BackendApp`.
     """
+
+    # Social action events are re-resolvable through the GM resolve surface, so
+    # local social backends can be reconstructed by the built-in replay strategy.
+    # Backends backed by an external live service override this to False.
+    supports_action_replay: bool = True
+
+    def _log_action_event(self, source_user: str, label: str, data: dict[str, Any]) -> None:
+        """Log a structured social action event when an action logger is configured."""
+        if self.action_logger:
+            self.action_logger.log({"source_user": source_user, "label": label, "data": data})
+
+    def event_to_replay_action(self, label: str, data: Mapping[str, Any]) -> ActionOutput | None:
+        """Translate one logged action event into a replayable action.
+
+        The built-in ``social_action_event_replay`` restore strategy calls this on
+        the owning game master's backend to rebuild state by re-resolving each
+        logged write action. Return ``None`` to skip a non-replayable bookkeeping
+        label. The default targets the canonical microblog vocabulary
+        (create/like/repost/reply/follow); backends with a different action
+        vocabulary (e.g. Mastodon) override this with their own mapping.
+        """
+        if label == "post":
+            text = (
+                data.get("post_text")
+                or data.get("text")
+                or data.get("content")
+                or data.get("status")
+            )
+            if not text:
+                raise ValueError(f"Post event missing text: {data}")
+            return ActionOutput.from_tool_calls([ToolCall("create_tweet", {"status": str(text)})])
+        if label in {"like", "like_toot"}:
+            return ActionOutput.from_tool_calls(
+                [ToolCall("like_tweet", {"post_id": _replay_target_id("Like", data)})]
+            )
+        if label in {"repost", "boost_toot"}:
+            return ActionOutput.from_tool_calls(
+                [ToolCall("repost_tweet", {"post_id": _replay_target_id("Repost", data)})]
+            )
+        if label == "reply":
+            text = (
+                data.get("post_text")
+                or data.get("text")
+                or data.get("content")
+                or data.get("status")
+            )
+            if not text:
+                raise ValueError(f"Reply event missing text: {data}")
+            return ActionOutput.from_tool_calls(
+                [
+                    ToolCall(
+                        "reply_to_tweet",
+                        {"post_id": _replay_target_id("Reply", data), "status": str(text)},
+                    )
+                ]
+            )
+        if label in {"follow", "unfollow"}:
+            target = data.get("target_user") or data.get("target") or data.get("user")
+            if not target:
+                raise ValueError(f"{label} event missing target user: {data}")
+            return ActionOutput.from_tool_calls(
+                [ToolCall(f"{label}_user", {"target_user": str(target)})]
+            )
+        raise ValueError(f"Unknown social action event label for checkpoint replay: {label}")
+
+    def recsys_active_types(self) -> set[str]:
+        """Return recsys algorithm types currently live on the backend.
+
+        The recommendation-update component reconciles configured types against
+        this set, so a backend whose in-memory recsys engine was rebuilt empty on
+        checkpoint restore reports an empty set and triggers a lazy re-init. The
+        default has no live recsys state.
+        """
+        return set()
 
     def setup_social_state(
         self,

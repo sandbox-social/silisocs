@@ -77,6 +77,8 @@ class DefaultEngineRecorder(EngineRecorder):
             active_agents=len(active_names),
             active_agent_names=active_names,
             skipped=bool(step_result.skipped),
+            degraded=step_result.degraded,
+            failed_turns=list(step_result.failed_turns),
             game_master=step_result.primary_game_master,
             worker_limit=int(step_result.worker_limit),
             requested_workers=int(step_result.requested_workers),

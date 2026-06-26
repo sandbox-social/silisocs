@@ -10,6 +10,7 @@ to fully-qualified class path. Custom backends can set
 
 import importlib
 import inspect
+import os
 from collections.abc import Mapping
 from typing import Any
 
@@ -22,6 +23,33 @@ _BUILTIN_BACKENDS: dict[str, str] = {
     "resource_market": "silisocs.environments.backends.resource_market.app.ResourceMarketApp",
     "virtual_space": "silisocs.environments.backends.virtual_space.app.VirtualSpaceApp",
 }
+
+
+def default_backend_db_filename(backend_type: str) -> str:
+    """Return the default db filename convention for a backend type."""
+    return f"{backend_type}.db"
+
+
+def resolve_backend_db_path(
+    output_rootname: str,
+    backend_type: str,
+    db_path: str | None = None,
+) -> str:
+    """Compute the resolved backend database path for a game master.
+
+    Single source of truth for the db path so the multi-GM collision guard and
+    the actual app instantiation never diverge. An explicit ``db_path`` (e.g. a
+    configured ``params.db_path``) is honored: an absolute path is used as-is,
+    while a relative one is nested under ``output_rootname``. Otherwise the
+    default ``<output_rootname>/<backend_type>.db`` convention is used.
+    """
+    rootname = str(output_rootname or "")
+    explicit = str(db_path or "").strip()
+    if explicit:
+        if os.path.isabs(explicit):
+            return explicit
+        return os.path.join(rootname, explicit)
+    return os.path.join(rootname, default_backend_db_filename(backend_type))
 
 
 def _load_app_class(class_path: str) -> type[BackendApp]:
@@ -94,10 +122,24 @@ def create_backend_app(backend_type: str, **kwargs: Any) -> BackendApp:
 
     cls = _load_app_class(class_path)
 
+    # Resolve the db path from a single source so an explicit ``params.db_path``
+    # override and the default ``<backend_type>.db`` convention match exactly what
+    # the multi-GM collision guard checks (see ``resolve_backend_db_path``). The
+    # caller passes ``db_path`` already nested under the run output dir; a relative
+    # ``params.db_path`` override is nested under that same root rather than
+    # silently clobbering it with an un-rooted path.
+    base_db_path = str(kwargs.get("db_path") or default_backend_db_filename(backend_type))
+    output_rootname = os.path.dirname(base_db_path)
+    params_db_path = backend_params.pop("db_path", None)
+    if params_db_path is not None:
+        db_path = resolve_backend_db_path(output_rootname, backend_type, db_path=params_db_path)
+    else:
+        db_path = base_db_path
+
     init_kwargs: dict[str, Any] = {
         "action_logger": action_logger,
         "app_description": app_description,
-        "db_path": kwargs.get("db_path", f"{backend_type}.db"),
+        "db_path": db_path,
         "perform_operations": kwargs.get("perform_operations", False),
     }
     init_kwargs.update(backend_params)

@@ -33,6 +33,7 @@ class NativeAgent(Agent):
         shared_memories: Sequence[str] | None = None,
         flow_tag: str | None = None,
         observation_history: int = 100,
+        memory_history: int = 1000,
         **extra_params: Any,
     ) -> None:
         super().__init__(model)
@@ -48,10 +49,11 @@ class NativeAgent(Agent):
         self.flow_tag = flow_tag
         self.extra_params = dict(extra_params)
         self._observation_history = max(1, int(observation_history or 100))
+        self._memory_history = max(1, int(memory_history or 1000))
         self._observations: list[str] = []
-        self._memory_text: list[str] = _normalize_text_items(
-            shared_memories
-        ) + _normalize_text_items(specific_memories)
+        self._memory_text: list[str] = (
+            _normalize_text_items(shared_memories) + _normalize_text_items(specific_memories)
+        )[-self._memory_history :]
         self._last_log: dict[str, Any] = {}
 
     @property
@@ -65,6 +67,7 @@ class NativeAgent(Agent):
         self._observations.append(text)
         self._observations = self._observations[-self._observation_history :]
         self._memory_text.append(text)
+        self._memory_text = self._memory_text[-self._memory_history :]
 
     def initialize(self, context: Any | None = None) -> None:
         memories: list[str] = []
@@ -119,8 +122,12 @@ class NativeAgent(Agent):
         return state
 
     def set_state(self, state: Mapping[str, Any]) -> None:
-        self._observations = _normalize_text_items(state.get("observations", ()))
-        self._memory_text = _normalize_text_items(state.get("memory_text", self._observations))
+        self._observations = _normalize_text_items(state.get("observations", ()))[
+            -self._observation_history :
+        ]
+        self._memory_text = _normalize_text_items(state.get("memory_text", self._observations))[
+            -self._memory_history :
+        ]
 
 
 def _normalize_text_items(value: Any) -> list[str]:

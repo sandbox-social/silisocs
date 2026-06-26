@@ -5,12 +5,17 @@
 
 # SiliSocS
 
-SiliSocS (Silicon Society Sandbox) is an easy-to-use, configurable, and extensible framework for multi-agent
-social simulation and experimentation. It is structured around the EASE decomposition —
-Environment, Agents, Simulation engine, and Evaluation — taking inspiration from the Concordia framework, and providing a principled,
-reproducible configuration layer for simulated societies. It offers scenario-driven
-social grounding, Concordia-like game master-mediated environments, local and served
-backends, evaluation probes, runtime telemetry, and experimental study tooling. Interoperability for Concordia designed agents is available through an optional bridge extra.
+**A configurable, extensible framework for multi-agent social simulation and experimentation.**
+
+SiliSocS (Silicon Society Sandbox) is easy to use and is structured around the EASE decomposition (Environment,
+Agents, Simulation engine, and Evaluation), taking inspiration from the Concordia framework and providing a
+principled, reproducible configuration layer for simulated worlds. You define each axis in YAML: the environment
+agents inhabit, the agent population and their memories, the simulation engine that schedules how and when agents
+act, and the evaluation that measures them. Built-in environments span social platforms (a Twitter-like app, a
+Reddit-like app, and a real Mastodon server), a resource market, and a virtual space, and you can add your own.
+SiliSocS offers scenario-driven grounding, game master-mediated environments, local and served backends,
+evaluation probes, runtime telemetry, and experimental study tooling. Interoperability for Concordia-designed
+agents is available through an optional bridge extra.
 
 - 2026 ICML Position Paper [ICML 2026](https://www.complexdatalab.com/stamina/papers/puelmatouzel_CloseEvalGap.pdf)
 - 2026 EASE Configuration: [arXiv:2605.30258](https://arxiv.org/abs/2605.30258)
@@ -101,15 +106,16 @@ SQLite backend database for local platforms.
 
 ## Studies and Experiments
 
-Study orchestration lives in `experiments/run_study.py`. It expands hypotheses,
-conditions, scenarios, and seeds into reproducible simulation runs, then executes
-the configured evaluators and writes organized artifacts under the study's
-`generated/` directory.
+Study orchestration ships in the package as `silisocs.studies.run_study`, exposed
+as the `silisocs-study` console command (equivalent: `python -m
+silisocs.studies.run_study`). It expands hypotheses, conditions, scenarios, and
+seeds into reproducible simulation runs, then executes the configured evaluators
+and writes organized artifacts under the study's `generated/` directory.
 
 ```sh
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 plan
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 run --only-hypothesis h1_timeline_mechanism
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 summary-append --author analyst --hypothesis h1_timeline_mechanism --note "Initial finding"
+uv run silisocs-study --study experiments/studies/study_template_v1 plan
+uv run silisocs-study --study experiments/studies/study_template_v1 run --only-hypothesis h1_timeline_mechanism
+uv run silisocs-study --study experiments/studies/study_template_v1 summary-append --author analyst --hypothesis h1_timeline_mechanism --note "Initial finding"
 ```
 
 Custom commands plug in through `conditions.<id>.execution.command`, evaluator
@@ -164,7 +170,8 @@ Common commands:
 ```sh
 uv run pytest
 uv run silisocs-config-dry-run --project-root .
-uv run poe lint
+uv run --group dev poe lint
+uv run --group dev poe docs
 uv build --sdist --wheel
 uv run --group docs properdocs build --strict
 ```
@@ -172,8 +179,9 @@ uv run --group docs properdocs build --strict
 - `uv run pytest` runs the test suite in the current environment.
 - `uv run silisocs-config-dry-run --project-root .` composes shipped scenario
   and replication configs without running LLM calls.
-- `uv run poe lint` runs the configured formatting, static checks, and type
+- `uv run --group dev poe lint` runs the configured formatting, static checks, and type
   checks.
+- `uv run --group dev poe docs` runs the configured documentation build task.
 - `uv build --sdist --wheel` builds release artifacts in `dist/`.
 - `uv run --group docs properdocs build --strict` builds the documentation site
   and fails on broken links or stale navigation.

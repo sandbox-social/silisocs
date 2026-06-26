@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 import yaml
-from experiments._internal.study_artifacts import extract_run_metadata, load_study_definition
-from experiments.run_study import (
+
+from silisocs.studies.run_study import (
     StudyConfigError,
     _build_run_command,
     _build_submitit_job_commands,
@@ -17,6 +17,7 @@ from experiments.run_study import (
     _submitit_group_filters,
     _validate_schema,
 )
+from silisocs.studies.study_artifacts import extract_run_metadata, load_study_definition
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STUDY_ROOT = PROJECT_ROOT / "experiments" / "studies"
@@ -77,7 +78,7 @@ def test_active_study_plan_command_runs_for_each_study(tmp_path: Path) -> None:
             [
                 sys.executable,
                 "-m",
-                "experiments.run_study",
+                "silisocs.studies.run_study",
                 "--study",
                 str(path),
                 "plan",
@@ -118,7 +119,7 @@ def test_slurm_array_exports_all_current_filters_and_hooks() -> None:
         [
             sys.executable,
             "-m",
-            "experiments.run_study",
+            "silisocs.studies.run_study",
             "--study",
             str(STUDY_ROOT / "study_template_v1" / "study.yaml"),
             "slurm-array",

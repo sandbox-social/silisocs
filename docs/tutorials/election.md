@@ -1,6 +1,6 @@
 # Election Scenario Walkthrough
 
-This tutorial walks through the bundled election world — a complex simulation
+This tutorial walks through the bundled election world: a complex simulation
 with multiple agent classes, custom probes, and a realistic setting.
 
 ## Overview
@@ -12,7 +12,7 @@ fictional small town. It has three agent classes:
 |-------|-------|------|
 | `voter` | 497 | Residents with unique personas from HuggingFace |
 | `candidate` | 2 | Bill Fredrickson (conservative) and Bradley Carter (progressive) |
-| `news_account` | 1 | Storhampton Gazette — posts news headlines |
+| `news_account` | 1 | Storhampton Gazette, posts news headlines |
 
 ---
 
@@ -93,7 +93,7 @@ candidates:
 
 ### GM Component Behavior
 
-Candidates and the news account are fully connected targets — everyone follows them:
+Candidates and the news account are fully connected targets, everyone follows them:
 
 ```yaml
 gm:
@@ -181,9 +181,9 @@ uv run silisocs --config-path scenarios/election/conf num_agents=20 num_steps=5
 
 Output lands in `outputs/election/`:
 
-- `action_events.jsonl` — Campaign posts, voter discussions, candidate interactions
-- `probe_events.jsonl` — Favorability ratings, vote preferences, intent over time
-- `prompts_and_responses.jsonl` — All LLM calls for debugging
+- `action_events.jsonl`: Campaign posts, voter discussions, candidate interactions
+- `probe_events.jsonl`: Favorability ratings, vote preferences, intent over time
+- `prompts_and_responses.jsonl`: All LLM calls for debugging
 
 ---
 

@@ -8,12 +8,13 @@ import logging
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 from omegaconf import OmegaConf
 
 from silisocs.agents.base_agent import Agent
 from silisocs.runtime.telemetry import (
+    SimMetricsCollector,
     capture_retry_counters,
     collect_retry_telemetry,
     collect_unique_models,
@@ -24,7 +25,10 @@ from silisocs.runtime.telemetry import (
     update_adaptive_worker_cap,
 )
 from silisocs.runtime.types import ActionOutput, ActionSpec
-from silisocs.simulation_engines.policies.factory import build_turn_policy
+from silisocs.simulation_engines.policies.factory import (
+    build_flow_turn_policies,
+    build_turn_policy,
+)
 from silisocs.simulation_engines.policies.loops import FixedStepsLoopStrategy
 from silisocs.simulation_engines.policies.steps import (
     BaseStepStrategy,
@@ -197,20 +201,6 @@ class RuntimeEngine(RuntimeEngineBase):
 
     def _agent_flow_tag(self, game_master: Any, agent_name: str) -> str:
         flow_map = dict(getattr(game_master, "agent_flow_tags", {}) or {})
-        engine_map: Mapping[str, Any] = {}
-        if self.config is not None:
-            selected = OmegaConf.select(
-                self.config,
-                "sim.engine.step.params.agent_to_flow",
-                default={},
-            )
-            if isinstance(selected, Mapping):
-                engine_map = cast(Mapping[str, Any], selected)
-        if isinstance(engine_map, Mapping):
-            for key, value in engine_map.items():
-                key_name = str(key).strip()
-                if key_name:
-                    flow_map[key_name] = str(value).strip() or "default"
         return str(flow_map.get(agent_name, "default") or "default")
 
     def _selected_turns(
@@ -239,6 +229,7 @@ class RuntimeEngine(RuntimeEngineBase):
     def _run_tasks_with_limit(
         tasks: Mapping[str, Callable[[], str]],
         worker_limit: int,
+        failed_tasks: list[str] | None = None,
     ) -> dict[str, str]:
         if not tasks:
             return {}
@@ -253,6 +244,9 @@ class RuntimeEngine(RuntimeEngineBase):
                     results[task_name] = str(future.result() or "")
                 except Exception:
                     _LOGGER.exception("Agent turn failed (isolated): %s", task_name)
+                    SimMetricsCollector.get().increment_counter("agent_turn_failures")
+                    if failed_tasks is not None:
+                        failed_tasks.append(task_name)
                     results[task_name] = ""
             return results
 
@@ -277,11 +271,12 @@ class RuntimeEngine(RuntimeEngineBase):
         active_names: set[str] = set()
         for batch in batches:
             flow_tasks: dict[str, Callable[[], str]] = {}
+            batch_policy = batch.turn_policy or self.turn_policy
             for agent, spec in batch.turns:
                 active_names.add(agent.name)
                 task_name = f"{batch.game_master.name}::{agent.name}"
                 flow_tasks[task_name] = functools.partial(
-                    self.turn_policy.run,
+                    batch_policy.run,
                     engine=self,
                     game_master=batch.game_master,
                     agent=agent,
@@ -304,9 +299,10 @@ class RuntimeEngine(RuntimeEngineBase):
         before = capture_retry_counters(models)
         set_model_retry_phase(models, "action")
         action_start = time.time()
+        failed_tasks: list[str] = []
         try:
             for _flow_name, tasks in tasks_by_flow:
-                self._run_tasks_with_limit(tasks, worker_limit)
+                self._run_tasks_with_limit(tasks, worker_limit, failed_tasks=failed_tasks)
         finally:
             set_model_retry_phase(models, "other")
         action_duration = time.time() - action_start
@@ -333,9 +329,11 @@ class RuntimeEngine(RuntimeEngineBase):
                 "active_agents": len(active_names),
                 "duration_s": round(action_duration, 4),
                 "retry": retry_delta,
+                "failed_turns": len(failed_tasks),
             },
             probe_phase=probe_empty(len(active_names)),
             primary_game_master=batches[0].game_master.name if batches else "",
+            failed_turns=tuple(failed_tasks),
         )
 
     def run_step(
@@ -392,6 +390,18 @@ def _extract_flow_order(cfg: Any | None) -> tuple[str, ...]:
     return tuple(str(item) for item in (raw or default))
 
 
+def _extract_flow_turn_policies(cfg: Any | None) -> dict[str, Any]:
+    """Resolve per-flow turn policies from sim.engine.step.params.flow_turn_policies.
+
+    Returns an empty map when unset, so the engine's single global turn policy
+    applies to every flow (current behavior).
+    """
+    if cfg is None:
+        return {}
+    raw = OmegaConf.select(cfg, "sim.engine.step.params.flow_turn_policies", default=None)
+    return build_flow_turn_policies(raw)
+
+
 def _apply_engine_defaults(kwargs: dict[str, Any], step_strategy: Any) -> None:
     """Set shared defaults (loop strategy, step strategy, turn policy) on kwargs."""
     cfg = kwargs.get("config")
@@ -404,28 +414,34 @@ class BaseRuntimeEngine(RuntimeEngine):
     """Runtime engine preset wrapper using base step strategy."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        flow_order = _extract_flow_order(kwargs.get("config"))
         _apply_engine_defaults(kwargs, BaseStepStrategy())
         super().__init__(*args, **kwargs)
-        self._flow_order = flow_order
 
 
 class FlowRuntimeEngine(RuntimeEngine):
-    """Runtime engine preset wrapper using flow step strategy."""
+    """Runtime engine preset wrapper using a flow-ordered step strategy.
+
+    Subclasses select their step strategy via ``step_strategy_class``; the flow
+    order is read from config and passed to it.
+    """
+
+    step_strategy_class: ClassVar[Callable[..., StepStrategy]] = FlowStepStrategy
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        flow_order = _extract_flow_order(kwargs.get("config"))
-        _apply_engine_defaults(kwargs, FlowStepStrategy(flow_order=flow_order))
+        cfg = kwargs.get("config")
+        flow_order = _extract_flow_order(cfg)
+        flow_turn_policies = _extract_flow_turn_policies(cfg)
+        _apply_engine_defaults(
+            kwargs,
+            self.step_strategy_class(flow_order=flow_order, flow_turn_policies=flow_turn_policies),
+        )
         super().__init__(*args, **kwargs)
 
 
 class MultiGMRuntimeEngine(FlowRuntimeEngine):
-    """Runtime engine preset wrapper using flow-first multi-GM step strategy."""
+    """Runtime engine preset wrapper using the flow-first multi-GM step strategy."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        flow_order = _extract_flow_order(kwargs.get("config"))
-        _apply_engine_defaults(kwargs, MultiGMStepStrategy(flow_order=flow_order))
-        super().__init__(*args, **kwargs)
+    step_strategy_class: ClassVar[Callable[..., StepStrategy]] = MultiGMStepStrategy
 
 
 def _engine_turn_policy_cfg(cfg: Any | None) -> Mapping[str, Any] | None:

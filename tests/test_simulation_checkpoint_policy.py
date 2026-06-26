@@ -74,6 +74,55 @@ def test_checkpoint_detects_game_master_backend_state() -> None:
     assert checkpoint_has_backend_state(checkpoint) is True
 
 
+def test_checkpoint_runtime_metadata_records_every_game_master() -> None:
+    runtime = RuntimeObjects()
+    runtime.game_masters = [
+        SimpleNamespace(
+            name="later_gm",
+            backend_type="reddit_like",
+            backend=SimpleNamespace(
+                action_logger=SimpleNamespace(output_filename="/tmp/run/action_events.jsonl")
+            ),
+        ),
+        SimpleNamespace(
+            name="first_gm",
+            backend_type="twitter_like",
+            backend=SimpleNamespace(
+                action_logger=SimpleNamespace(output_filename="/tmp/run/action_events.jsonl")
+            ),
+        ),
+    ]
+    runtime.object_specs["later_gm"] = RuntimeSpec(
+        class_path="tests.fake.GM",
+        role=RuntimeRole.GAME_MASTER,
+        params={"name": "later_gm", "sequence": 1},
+    )
+    runtime.object_specs["first_gm"] = RuntimeSpec(
+        class_path="tests.fake.GM",
+        role=RuntimeRole.GAME_MASTER,
+        params={"name": "first_gm", "sequence": 0},
+    )
+
+    checkpoint = make_checkpoint_data(runtime, step=1)
+
+    assert checkpoint["runtime_metadata"]["game_masters"] == [
+        {
+            "name": "first_gm",
+            "backend_type": "twitter_like",
+            "sequence": 0,
+            "action_events_file": "/tmp/run/action_events.jsonl",
+            "output_rootname": "/tmp/run",
+        },
+        {
+            "name": "later_gm",
+            "backend_type": "reddit_like",
+            "sequence": 1,
+            "action_events_file": "/tmp/run/action_events.jsonl",
+            "output_rootname": "/tmp/run",
+        },
+    ]
+
+
 def test_restore_rng_state_from_metadata_restores_python_random() -> None:
     random.seed(1234)
     baseline = random.random()
@@ -92,3 +141,67 @@ def test_restore_rng_state_from_metadata_restores_python_random() -> None:
     restore_rng_state_from_metadata(payload)
 
     assert random.random() == expected_first
+
+
+def test_invalid_checkpoint_leaves_runtime_untouched() -> None:
+    """Restore must validate every object before mutating any runtime state."""
+    from silisocs.agents.fixed import FixedAgent
+    from silisocs.runtime.checkpointing.policy import CHECKPOINT_SCHEMA_VERSION
+    from silisocs.runtime.checkpointing.state import load_checkpoint_into_runtime
+    from silisocs.runtime.construction.assembly import RuntimeObjects
+    from silisocs.runtime.construction.specs import RuntimeRole, RuntimeSpec
+    from silisocs.runtime.language_models.base import NoLanguageModel
+
+    model = NoLanguageModel()
+    agent = FixedAgent(model=model, name="Alice", actions=[])
+    runtime = RuntimeObjects(
+        agents=[agent],
+        game_masters=[],
+        object_specs={
+            "Alice": RuntimeSpec(
+                class_path="silisocs.agents.fixed.FixedAgent",
+                role=RuntimeRole.AGENT,
+                compat=None,
+                params={"name": "Alice"},
+            )
+        },
+    )
+    state_before = agent.get_state()
+
+    checkpoint = {
+        "schema_version": CHECKPOINT_SCHEMA_VERSION,
+        "checkpoint_counter": 7,
+        "objects": {
+            "Alice": {
+                "class_path": "silisocs.agents.fixed.FixedAgent",
+                "role": "agent",
+                "compat": None,
+                "params": {"name": "Alice"},
+                "state": {"current_episode": 3},
+            },
+            "Ghost": {
+                "class_path": "does.not.exist.GhostAgent",
+                "role": "agent",
+                "compat": None,
+                "params": {"name": "Ghost"},
+                "state": {},
+            },
+        },
+    }
+
+    try:
+        load_checkpoint_into_runtime(
+            runtime,
+            checkpoint,
+            models={"m": model},
+            object_to_model={"Alice": "m"},
+        )
+    except ValueError as exc:
+        assert "Ghost" in str(exc)
+    else:
+        raise AssertionError("Expected restore to fail validation for Ghost")
+
+    # Alice's state must NOT have been applied: validation precedes mutation.
+    assert agent.get_state() == state_before
+    assert runtime.checkpoint_counter == 0
+    assert len(runtime.agents) == 1

@@ -8,6 +8,9 @@ scenario_name: election
 jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
 num_agents: 20
 run_name: election
+output_rootname: ""
+num_steps: 15
+seed: 1
 
 setting:
   name: Storhampton

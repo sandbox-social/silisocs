@@ -41,6 +41,30 @@ pip install "silisocs[all]"                 # all non-AWS extras, including docs
 pip install "silisocs[all,aws]"             # all extras + AWS
 ```
 
+## Run the Base Config (no repo checkout needed)
+
+The installed package ships a runnable base configuration (`silisocs/conf/`: a
+generic twitter-like world). After `pip install silisocs`, run it directly
+from any directory, no `--config-path` required:
+
+```sh
+silisocs num_agents=6 num_steps=5 \
+  sim.llm.provider=openai sim.llm.name=gpt-4o-mini \
+  output_rootname=./base_run
+```
+
+The named example scenarios (`election`, `misinformation`, ...) are example
+*content*, not part of the engine wheel; they live in the repository's
+`scenarios/` directory. From a repo checkout you can run one by name:
+
+```sh
+silisocs --config-path election        # bare name, or scenarios/election/conf
+```
+
+`--config-path` also accepts a filesystem path to your own scenario config
+directory. Scenario persona pipelines that load Hugging Face datasets (e.g.
+`election`) additionally need `pip install "silisocs[hf]"`.
+
 ## Contributor Setup
 
 1. Clone the repository:
@@ -84,13 +108,14 @@ pip install "silisocs[all,aws]"             # all extras + AWS
 ## Development Commands
 
 - Install git hooks: `uv run pre-commit install`
-- Run the lint workflow: `uv run poe lint`
-- Run the test workflow: `uv run poe test`
+- Run the lint workflow: `uv run --group dev poe lint`
+- Run the test workflow: `uv run --group dev poe test`
+- Build the documentation site via Poe: `uv run --group dev poe docs`
 - Build the documentation site: `uv run --group docs properdocs build --strict`
 
 ## Environment Variables
 
-Silisocs reads `.env` files through `python-dotenv`, but only integrations that
+SiliSocS reads `.env` files through `python-dotenv`, but only integrations that
 talk to external services require secrets. Keep `.env` local and never commit it.
 
 ### Example `.env` File

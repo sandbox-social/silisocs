@@ -82,6 +82,23 @@ No string-prefix dispatch is involved in the native path. Agent names are passed
 as names, prompts are typed `ActionSpec` objects, and actions are typed
 `ActionOutput` objects.
 
+In `multi_gm` step mode, this same shape is applied across several Game
+Masters:
+
+```text
+Each step
+  -> for each configured GM in sequence order:
+       gm.update(step, agents, context)
+  -> group agents by flow
+  -> for each flow in flow_order:
+       for each GM in the flow's configured chain:
+         gm.acting_agents(flow_agents)
+         selected agents observe, act, and resolve through that GM
+```
+
+The update phase is per GM and per step, not per flow-chain hop. Flow chains
+route selected agent turns only.
+
 ### Engine Flow Scheduling
 
 Engine flows are agent groups. Agents with the same `flow_tag` can act together;
@@ -118,6 +135,19 @@ agents:
 The runner can derive `agent_to_flow` from those agent params. Explicit Engine
 config remains useful for unusual studies where the scheduling flow should not
 match the persona class flow.
+
+`agent_to_flow` is resolved before the Engine starts. The finalized
+`agent_flow_tags` map is passed to every Game Master and is the only flow source
+used during turn scheduling.
+
+In multi-GM runs, `flow_to_gms` chains must be explicit and valid: each chain
+references known GMs, contains at least one GM, avoids duplicate names, and
+uses increasing GM `sequence` values. Flows without a binding fall back to the
+earliest-sequence GM.
+
+Checkpoint replay uses that same flow metadata. In multi-GM replay, exactly one
+GM in the Agent's flow chain must expose the replayed action; otherwise restore
+fails instead of falling back to another GM.
 
 ---
 

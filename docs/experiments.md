@@ -1,6 +1,11 @@
 # Experiment Studies
 
-This guide describes how to run multi-condition studies with `experiments/run_study.py`.
+This guide describes how to run multi-condition studies.
+
+The study runner ships inside the package as `silisocs.studies.run_study`,
+exposed as the **`silisocs-study`** console command (available after
+`pip install silisocs`). The examples below use `silisocs-study`; the
+equivalent module form is `python -m silisocs.studies.run_study ...`.
 
 Use this when you need:
 - hypothesis trees
@@ -12,16 +17,20 @@ Use this when you need:
 ## Quick Start
 
 ```sh
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 plan
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 generate-bash
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 run
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 run --only-hypothesis h2_followup_from_h1
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 run --only-sub-experiment bill_bias
-uv run python -m experiments.run_study --study experiments/studies/study_template_v1 summary-append --author analyst --hypothesis h1_timeline_mechanism --note "Observed higher interaction counts in recsys arms" --evidence experiments/studies/recsys_behavior_sweep/generated/repro_lock.json
+uv run silisocs-study --study experiments/studies/study_template_v1 plan
+uv run silisocs-study --study experiments/studies/study_template_v1 generate-bash
+uv run silisocs-study --study experiments/studies/study_template_v1 run
+uv run silisocs-study --study experiments/studies/study_template_v1 run --only-hypothesis h2_followup_from_h1
+uv run silisocs-study --study experiments/studies/study_template_v1 run --only-sub-experiment bill_bias
+uv run silisocs-study --study experiments/studies/study_template_v1 summary-append --author analyst --hypothesis h1_timeline_mechanism --note "Observed higher interaction counts in recsys arms" --evidence experiments/studies/recsys_behavior_sweep/generated/repro_lock.json
 ```
 
-Compatibility note:
-- Use the canonical module entrypoint: `uv run python -m experiments.run_study ...`.
+Entrypoint:
+- Console command: `uv run silisocs-study ...`.
+- Equivalent module form: `uv run python -m silisocs.studies.run_study ...`.
+
+The old `experiments.run_study` module path is removed in the 0.x native
+runtime. Use only the console command or the packaged module path above.
 
 ## Minimal Study File
 
@@ -223,19 +232,19 @@ to rebuild just the organized view from `repro_lock.json`.
 1. Execute initial hypotheses:
 
 ```sh
-uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1 run --only-hypothesis h1_initial_news_bias_shift
+uv run silisocs-study --study experiments/studies/election_opinion_program_v1 run --only-hypothesis h1_initial_news_bias_shift
 ```
 
 2. Review evidence and append summary:
 
 ```sh
-uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1 summary-append --author researcher --hypothesis h1_initial_news_bias_shift --note "Bias direction changed vote and favorability trajectories" --evidence experiments/studies/election_opinion_program_v1/generated/repro_lock.json
+uv run silisocs-study --study experiments/studies/election_opinion_program_v1 summary-append --author researcher --hypothesis h1_initial_news_bias_shift --note "Bias direction changed vote and favorability trajectories" --evidence experiments/studies/election_opinion_program_v1/generated/repro_lock.json
 ```
 
 3. Run follow-up hypothesis only:
 
 ```sh
-uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1 run --only-hypothesis h2_initial_persona_prior_carryover
+uv run silisocs-study --study experiments/studies/election_opinion_program_v1 run --only-hypothesis h2_initial_persona_prior_carryover
 ```
 
 Sample study file:
@@ -246,11 +255,11 @@ Sample study file:
 Local orchestration does **not** require Slurm/HPC:
 
 ```sh
-uv run python -m experiments.run_study --study experiments/studies/election_opinion_program_v1 run --only-hypothesis h1_initial_news_bias_shift
+uv run silisocs-study --study experiments/studies/election_opinion_program_v1 run --only-hypothesis h1_initial_news_bias_shift
 ```
 
 For clusters, keep site-specific account, partition, module, cache, and model
-startup choices outside the repository. The public templates only wire Silisocs
+startup choices outside the repository. The public templates only wire SiliSocS
 study/runner commands into Slurm; they do not launch any specific model server.
 If you use a local OpenAI-compatible server, configure `sim.llm.provider` and
 `sim.llm.api_base` in your study overrides or scenario config.
@@ -266,7 +275,7 @@ uv sync --extra hpc --group dev
 Then submit study run groups through the study runner:
 
 ```sh
-uv run python -m experiments.run_study \
+uv run silisocs-study \
   --study experiments/studies/election_opinion_program_v1 \
   submitit \
   --array-mode case \
@@ -280,7 +289,7 @@ By default, submitted jobs assume any LLM endpoint already exists. If your
 cluster requires job-local setup, pass explicit hooks:
 
 ```sh
-uv run python -m experiments.run_study \
+uv run silisocs-study \
   --study experiments/studies/election_opinion_program_v1 \
   submitit \
   --array-mode seed \
@@ -289,7 +298,7 @@ uv run python -m experiments.run_study \
   --server-ready-url 'http://127.0.0.1:8000/v1/models'
 ```
 
-Silisocs treats those hooks as user-owned shell commands; it does not ship
+SiliSocS treats those hooks as user-owned shell commands; it does not ship
 model-specific vLLM or cluster defaults.
 
 ### Generic Slurm templates
@@ -298,7 +307,7 @@ Use `slurm-array` when you want to keep using direct `sbatch` scripts. It
 computes array size from filtered study runs and prints/submits the command:
 
 ```sh
-uv run python -m experiments.run_study \
+uv run silisocs-study \
   --study experiments/studies/election_opinion_program_v1 \
   slurm-array \
   --base-script slurm_scripts/study-array-template.sh \

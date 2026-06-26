@@ -1,5 +1,5 @@
-site_name: Silicon Society Sandbox
-site_description: Configurable native generative-agent simulations with optional Concordia compatibility
+site_name: SiliSocS
+site_description: "SiliSocS (Silicon Society Sandbox): a configurable, extensible framework for multi-agent social simulation, structured around the EASE decomposition of Environment, Agents, Simulation engine, and Evaluation."
 site_url: https://sandbox-social.github.io/silisocs
 repo_url: https://github.com/sandbox-social/silisocs
 repo_name: sandbox-social/silisocs
@@ -7,38 +7,63 @@ exclude_docs: |
 
 theme:
   name: material
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
+  font:
+    text: Inter
+    code: JetBrains Mono
   palette:
+    # Exact brand hex (violet -> teal) is applied in stylesheets/silisocs.css via
+    # --md-* CSS variables; the named colors below are the nearest base.
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
-      accent: blue
+      primary: teal
+      accent: teal
       toggle:
-        icon: material/brightness-7
+        icon: material/weather-sunny
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
-      accent: blue
+      primary: teal
+      accent: teal
       toggle:
-        icon: material/brightness-4
+        icon: material/weather-night
         name: Switch to light mode
   features:
     - content.code.copy
     - content.code.annotate
+    - content.tabs.link
+    - navigation.tabs
     - navigation.instant
     - navigation.sections
     - navigation.expand
     - navigation.indexes
     - navigation.top
+    - navigation.footer
     - search.suggest
     - search.highlight
     - toc.follow
   icon:
     repo: fontawesome/brands/github
 
+extra_css:
+  - stylesheets/silisocs.css
+
+extra_javascript:
+  - javascripts/network-hero.js
+
 plugins:
   - search
   - literate-nav
+  # Branded social/OG link-preview cards. Disabled by default because card
+  # generation needs the imaging stack (cairosvg + pillow + system Cairo). To
+  # enable in CI: install the docs group (which now includes those deps) and set
+  # `enabled: true` here. With `enabled: false` the plugin imports no imaging libs.
+  - social:
+      enabled: false
+      cards_layout_options:
+        background_color: "#0d9488"
+        color: "#ffffff"
   - mkdocstrings:
       handlers:
         python:
@@ -75,6 +100,7 @@ nav:
   - Getting Started:
     - Installation: installation.md
     - Quick Start: quickstart.md
+    - Upgrading: upgrading.md
   - User Guide:
     - Usage Overview: usage.md
     - Scenario Guide: scenario_guide.md
@@ -102,6 +128,7 @@ nav:
       - Native Core and Concordia Boundary: adr/0001-native-core-concordia-compatibility-boundary.md
       - Engine-Owned Initialization: adr/0002-engine-owned-initialization-lifecycle.md
       - Checkpoint-Owned Restore: adr/0003-checkpoint-owned-restore.md
+      - Async Event-Driven Engine Mode: adr/0004-async-event-driven-engine-mode.md
 
 extra:
   social:

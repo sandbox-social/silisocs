@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import atexit
-import dataclasses
 import json
 import os
 import queue
 import threading
 import time
 from collections.abc import Mapping, Sequence
-from enum import Enum
 from itertools import count
 from typing import Any
+
+from silisocs.runtime.io.json_safe import json_safe
 
 
 class _AsyncJsonlWriter:
@@ -95,7 +95,7 @@ atexit.register(_JSONL_WRITERS.close_all)
 
 def write_jsonl_item(out_item: Mapping[str, Any], output_filename: str) -> None:
     """Write one JSONL payload through the shared async writer registry."""
-    _JSONL_WRITERS.get(output_filename).write(_json_safe(out_item))
+    _JSONL_WRITERS.get(output_filename).write(json_safe(out_item))
 
 
 def flush_jsonl_writers(timeout_s: float = 5.0) -> None:
@@ -106,10 +106,17 @@ def flush_jsonl_writers(timeout_s: float = 5.0) -> None:
 class EventLogger:
     """Structured event logger for action/probe JSONL files."""
 
-    def __init__(self, event_type: str, output_filename: str) -> None:
+    def __init__(
+        self,
+        event_type: str,
+        output_filename: str,
+        *,
+        static_fields: Mapping[str, Any] | None = None,
+    ) -> None:
         self.episode_idx: int | None = None
         self.output_filename = output_filename
         self.type = event_type
+        self.static_fields = dict(static_fields or {})
         self._sequence = count()
         self._seq_lock = threading.Lock()
 
@@ -119,6 +126,7 @@ class EventLogger:
 
     def _prepare_item(self, log_item: Mapping[str, Any]) -> dict[str, Any]:
         item = dict(log_item)
+        item.update(self.static_fields)
         item["episode"] = self.episode_idx
         item["event_type"] = self.type
         item["event_index"] = self._next_seq()
@@ -130,20 +138,3 @@ class EventLogger:
                 write_jsonl_item(self._prepare_item(log_item), self.output_filename)
             return
         write_jsonl_item(self._prepare_item(log_data), self.output_filename)
-
-
-def _json_safe(value: Any) -> Any:
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, Enum):
-        return value.value
-    if isinstance(value, Mapping):
-        return {str(k): _json_safe(v) for k, v in value.items()}
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        return [_json_safe(item) for item in value]
-    to_dict = getattr(value, "to_dict", None)
-    if callable(to_dict):
-        return _json_safe(to_dict())
-    if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return _json_safe(dataclasses.asdict(value))
-    return str(value)

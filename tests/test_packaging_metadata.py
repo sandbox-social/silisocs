@@ -22,6 +22,14 @@ def test_package_data_includes_runtime_templates() -> None:
     assert "environments/backends/**/templates/*.html" in package_data
 
 
+def test_package_data_includes_dashboard_assets() -> None:
+    """Streamlit dashboard brand assets are loaded from package-relative paths."""
+    data = _pyproject()
+    package_data = data["tool"]["setuptools"]["package-data"]["silisocs"]
+
+    assert "dashboard/assets/*.svg" in package_data
+
+
 def test_public_package_excludes_live_mastodon_probe_module() -> None:
     """Ad hoc live-service scripts should not ship inside the import package."""
     assert not (PROJECT_ROOT / "src" / "silisocs" / "test_mastodon.py").exists()

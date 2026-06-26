@@ -109,3 +109,101 @@ def test_finished_action_is_available_and_invokable() -> None:
 
     assert "FINISHED" in selectable
     assert app.invoke_action_with_kwargs("FINISHED", {}) == "Finished action episode"
+
+
+def test_action_name_collision_raises_backend_error() -> None:
+    from silisocs.environments.backends.base import BackendApp, app_action
+    from silisocs.exceptions import BackendError
+
+    class CollidingApp(BackendApp):
+        def name(self) -> str:
+            return "CollidingApp"
+
+        def description(self) -> str:
+            return "test app"
+
+        def initialize(self, agent_names, **kwargs) -> None:
+            del agent_names, kwargs
+
+        @app_action(selectable_name="post")
+        def create_post(self, content: str) -> str:
+            """Create a post.
+
+            Args:
+                content: Post body.
+            """
+            return "ok"
+
+        @app_action(selectable_name="post")
+        def submit_post(self, content: str) -> str:
+            """Submit a post.
+
+            Args:
+                content: Post body.
+            """
+            return "ok"
+
+    app = CollidingApp()
+    try:
+        app.invoke_action_by_name("post", "content: hi")
+    except BackendError as exc:
+        assert "collision" in str(exc)
+    else:
+        raise AssertionError("Expected BackendError for selectable_name collision")
+
+
+def test_unexpected_backend_exception_is_counted_and_logged(caplog) -> None:
+    import logging
+
+    from silisocs.environments.backends.base import BackendApp, app_action
+    from silisocs.runtime.telemetry.collector import SimMetricsCollector
+
+    class BuggyApp(BackendApp):
+        def name(self) -> str:
+            return "BuggyApp"
+
+        def description(self) -> str:
+            return "test app"
+
+        def initialize(self, agent_names, **kwargs) -> None:
+            del agent_names, kwargs
+
+        @app_action(selectable_name="boom")
+        def boom_action(self) -> str:
+            """Blow up."""
+            raise KeyError("programming bug")
+
+    SimMetricsCollector.reset()
+    app = BuggyApp()
+    with caplog.at_level(logging.ERROR):
+        result = app.invoke_action_with_kwargs("boom", {})
+    assert "Error invoking action" in result
+    assert SimMetricsCollector.get().counter("backend_action_errors") == 1
+    assert any("raised unexpectedly" in record.message for record in caplog.records)
+
+
+def test_action_error_is_returned_without_error_counter() -> None:
+    from silisocs.environments.backends.base import BackendApp, app_action
+    from silisocs.exceptions import ActionError
+    from silisocs.runtime.telemetry.collector import SimMetricsCollector
+
+    class PoliteApp(BackendApp):
+        def name(self) -> str:
+            return "PoliteApp"
+
+        def description(self) -> str:
+            return "test app"
+
+        def initialize(self, agent_names, **kwargs) -> None:
+            del agent_names, kwargs
+
+        @app_action(selectable_name="nope")
+        def nope_action(self) -> str:
+            """Refuse politely."""
+            raise ActionError("that post does not exist")
+
+    SimMetricsCollector.reset()
+    app = PoliteApp()
+    result = app.invoke_action_with_kwargs("nope", {})
+    assert "that post does not exist" in result
+    assert SimMetricsCollector.get().counter("backend_action_errors") == 0

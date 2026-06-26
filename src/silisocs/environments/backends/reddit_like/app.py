@@ -30,6 +30,8 @@ class RedditLikeApp(SocialBackendApp):
     """
 
     action_logger: Any = None
+    # Authoritative checkpoint state: full SQLite snapshot + user mapping.
+    provides_checkpoint_state = True
     app_description: str = "RedditLikeApp"
     db_path: str = "reddit_like.db"
     _platform: RedditLikePlatform = dataclasses.field(default=None, init=False, repr=False)  # type: ignore[assignment]
@@ -54,16 +56,6 @@ class RedditLikeApp(SocialBackendApp):
     def description(self) -> str:
         """Return a description of the app."""
         return self.app_description
-
-    def _log_action_event(self, source_user: str, label: str, data: dict[str, Any]) -> None:
-        if self.action_logger:
-            self.action_logger.log(
-                {
-                    "source_user": source_user,
-                    "label": label,
-                    "data": data,
-                }
-            )
 
     def initialize(self, agent_names: list[str], **kwargs: Any) -> None:
         """Compatibility no-op; runtime initializers own forum setup."""
@@ -236,14 +228,39 @@ class RedditLikeApp(SocialBackendApp):
             )
             return []
 
-    def init_recsys(self, recsys_type: str = "reddit") -> None:
-        """Initialize recommendation algorithm(s) on the underlying platform."""
+    def init_recsys(
+        self,
+        recsys_type: str = "reddit",
+        user_context_recent_posts: int = 0,
+        include_like_trace: bool = False,
+        like_trace_window: int = 5,
+        like_trace_weight: float = 0.0,
+        include_like_trace_in_context: bool = True,
+    ) -> None:
+        """Initialize recommendation algorithm(s) on the underlying platform.
+
+        Accepts the full like-trace parameter set for interface compatibility
+        with :class:`SocialRecommendationUpdateComponent` (which always passes
+        them). The Reddit recsys engine does not implement like-trace
+        personalization, so those parameters are not forwarded to the platform.
+        """
+        del (
+            user_context_recent_posts,
+            include_like_trace,
+            like_trace_window,
+            like_trace_weight,
+            include_like_trace_in_context,
+        )
         self._platform.init_recsys(recsys_type=recsys_type)
         self._log_action_event(
             source_user="system",
             label="recsys_init",
             data={"recsys_type": str(recsys_type)},
         )
+
+    def recsys_active_types(self) -> set[str]:
+        """Return recsys types currently live on the platform (empty after restore)."""
+        return set(getattr(self._platform, "_recsys_types", {}) or {})
 
     def update_recommendations(
         self, active_user_ids: list[int] | None = None, max_posts: int = 10
@@ -291,6 +308,13 @@ class RedditLikeApp(SocialBackendApp):
                 f"Comments: {post.get('comment_count', 0)}\n"
             )
         return result
+
+    def action_aliases(self) -> list[set[str]]:
+        """Domain-verb <-> method-name synonyms (keep in sync with parse_and_resolve_action)."""
+        return [
+            {"post", "create_reddit_post"},
+            {"comment", "create_comment", "reply"},
+        ]
 
     def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
         """Dispatch a parsed action to the correct app_action method.
@@ -820,104 +844,111 @@ class RedditLikeApp(SocialBackendApp):
         return msg
 
     # ------------------------------------------------------------------ #
-    # @app_action methods — Non-essential / commented out
+    # @app_action methods — Subreddit management
     # ------------------------------------------------------------------ #
 
-    # @app_action
-    # def create_subreddit(self, agent_name: str, subreddit_name: str, description: str) -> str:
-    #     """Create a new subreddit.
-    #
-    #     Args:
-    #         agent_name: The full display name of the user creating the subreddit.
-    #         subreddit_name: The name for the new subreddit.
-    #         description: A description of the subreddit's purpose and topic.
-    #     """
-    #     actor_display_name = str(agent_name)
-    #     try:
-    #         sub_id = self._platform.create_subreddit(subreddit_name, description)
-    #         msg = f"{actor_display_name} created subreddit r/{subreddit_name} (ID: {sub_id})."
-    #     except Exception as e:
-    #         msg = f"Error creating subreddit: {e}"
-    #     self._print(msg, emoji="🏠")
-    #     if self.action_logger:
-    #         self.action_logger.log({
-    #             "source_user": actor_display_name,
-    #             "label": "create_subreddit",
-    #             "data": {"subreddit_name": subreddit_name, "description": description},
-    #         })
-    #     return msg
+    @app_action
+    def create_subreddit(self, agent_name: str, subreddit_name: str, description: str) -> str:
+        """Create a new subreddit.
 
-    # @app_action
-    # def join_subreddit(self, agent_name: str, subreddit_name: str) -> str:
-    #     """Join a subreddit to see its posts in your home feed.
-    #
-    #     Args:
-    #         agent_name: The full display name of the user joining.
-    #         subreddit_name: The name of the subreddit to join.
-    #     """
-    #     actor_display_name = str(agent_name)
-    #     username = self._get_username(agent_name)
-    #     try:
-    #         self._platform.join_subreddit(username, subreddit_name)
-    #         msg = f"{actor_display_name} joined r/{subreddit_name}."
-    #     except Exception as e:
-    #         msg = f"Error joining subreddit: {e}"
-    #     self._print(msg, emoji="📌")
-    #     if self.action_logger:
-    #         self.action_logger.log({
-    #             "source_user": actor_display_name,
-    #             "label": "join_subreddit",
-    #             "data": {"subreddit_name": subreddit_name},
-    #         })
-    #     return msg
+        Args:
+            agent_name: The full display name of the user creating the subreddit.
+            subreddit_name: The name for the new subreddit.
+            description: A description of the subreddit's purpose and topic.
+        """
+        actor_display_name = str(agent_name)
+        try:
+            sub_id = self._platform.create_subreddit(subreddit_name, description)
+            msg = f"{actor_display_name} created subreddit r/{subreddit_name} (ID: {sub_id})."
+        except Exception as e:
+            msg = f"Error creating subreddit: {e}"
+        self._print(msg, emoji="🏠")
+        if self.action_logger:
+            self.action_logger.log(
+                {
+                    "source_user": actor_display_name,
+                    "label": "create_subreddit",
+                    "data": {"subreddit_name": subreddit_name, "description": description},
+                }
+            )
+        return msg
 
-    # @app_action
-    # def leave_subreddit(self, agent_name: str, subreddit_name: str) -> str:
-    #     """Leave a subreddit to stop seeing its posts.
-    #
-    #     Args:
-    #         agent_name: The full display name of the user leaving.
-    #         subreddit_name: The name of the subreddit to leave.
-    #     """
-    #     actor_display_name = str(agent_name)
-    #     username = self._get_username(agent_name)
-    #     try:
-    #         self._platform.leave_subreddit(username, subreddit_name)
-    #         msg = f"{actor_display_name} left r/{subreddit_name}."
-    #     except Exception as e:
-    #         msg = f"Error leaving subreddit: {e}"
-    #     self._print(msg, emoji="🚪")
-    #     if self.action_logger:
-    #         self.action_logger.log({
-    #             "source_user": actor_display_name,
-    #             "label": "leave_subreddit",
-    #             "data": {"subreddit_name": subreddit_name},
-    #         })
-    #     return msg
+    @app_action
+    def join_subreddit(self, agent_name: str, subreddit_name: str) -> str:
+        """Join a subreddit to see its posts in your home feed.
 
-    # @app_action
-    # def get_subreddit_feed(self, agent_name: str, subreddit_name: str, limit: int) -> str:
-    #     """Read the feed for a specific subreddit.
-    #
-    #     Args:
-    #         agent_name: The full display name of the user browsing.
-    #         subreddit_name: The name of the subreddit to browse.
-    #         limit: Maximum number of posts to retrieve.
-    #     """
-    #     actor_display_name = str(agent_name)
-    #     username = self._get_username(agent_name)
-    #     try:
-    #         feed = self._platform.get_subreddit_feed(subreddit_name, limit=limit)
-    #         posts = feed.get("posts", [])
-    #         str_feed = self.format_timeline_for_observation(posts)
-    #         msg = f"r/{subreddit_name} Feed for {actor_display_name}:\n{str_feed}"
-    #     except Exception as e:
-    #         msg = f"Error fetching subreddit feed: {e}"
-    #     self._print(msg, emoji="📰")
-    #     if self.action_logger:
-    #         self.action_logger.log({
-    #             "source_user": actor_display_name,
-    #             "label": "get_subreddit_feed",
-    #             "data": {"subreddit_name": subreddit_name},
-    #         })
-    #     return msg
+        Args:
+            agent_name: The full display name of the user joining.
+            subreddit_name: The name of the subreddit to join.
+        """
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
+        try:
+            self._platform.join_subreddit(username, subreddit_name)
+            msg = f"{actor_display_name} joined r/{subreddit_name}."
+        except Exception as e:
+            msg = f"Error joining subreddit: {e}"
+        self._print(msg, emoji="📌")
+        if self.action_logger:
+            self.action_logger.log(
+                {
+                    "source_user": actor_display_name,
+                    "label": "join_subreddit",
+                    "data": {"subreddit_name": subreddit_name},
+                }
+            )
+        return msg
+
+    @app_action
+    def leave_subreddit(self, agent_name: str, subreddit_name: str) -> str:
+        """Leave a subreddit to stop seeing its posts.
+
+        Args:
+            agent_name: The full display name of the user leaving.
+            subreddit_name: The name of the subreddit to leave.
+        """
+        actor_display_name = str(agent_name)
+        username = self._get_username(agent_name)
+        try:
+            self._platform.leave_subreddit(username, subreddit_name)
+            msg = f"{actor_display_name} left r/{subreddit_name}."
+        except Exception as e:
+            msg = f"Error leaving subreddit: {e}"
+        self._print(msg, emoji="🚪")
+        if self.action_logger:
+            self.action_logger.log(
+                {
+                    "source_user": actor_display_name,
+                    "label": "leave_subreddit",
+                    "data": {"subreddit_name": subreddit_name},
+                }
+            )
+        return msg
+
+    @app_action
+    def get_subreddit_feed(self, agent_name: str, subreddit_name: str, limit: int) -> str:
+        """Read the feed for a specific subreddit.
+
+        Args:
+            agent_name: The full display name of the user browsing.
+            subreddit_name: The name of the subreddit to browse.
+            limit: Maximum number of posts to retrieve.
+        """
+        actor_display_name = str(agent_name)
+        try:
+            feed = self._platform.get_subreddit_feed(subreddit_name, limit=limit)
+            posts = feed.get("posts", [])
+            str_feed = self.format_timeline_for_observation(posts)
+            msg = f"r/{subreddit_name} Feed for {actor_display_name}:\n{str_feed}"
+        except Exception as e:
+            msg = f"Error fetching subreddit feed: {e}"
+        self._print(msg, emoji="📰")
+        if self.action_logger:
+            self.action_logger.log(
+                {
+                    "source_user": actor_display_name,
+                    "label": "get_subreddit_feed",
+                    "data": {"subreddit_name": subreddit_name},
+                }
+            )
+        return msg

@@ -27,6 +27,7 @@ from dotenv import find_dotenv, load_dotenv
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
+from silisocs.evaluations.action_events import resolve_action_event_files
 from silisocs.evaluations.probes.deployment import DefaultProbeRunner
 from silisocs.initialization.agents import build_agent_initializer
 from silisocs.initialization.context import InitializationContext
@@ -34,13 +35,16 @@ from silisocs.initialization.game_masters import build_game_master_initializer_s
 from silisocs.initialization.simulation import build_simulation_initializer
 from silisocs.runtime.checkpointing import (
     build_checkpoint_restore,
-    checkpoint_has_backend_state,
+    build_per_gm_checkpoint_restores,
+    checkpoint_authoritative_gm_names,
     checkpoint_runtime_metadata,
     load_checkpoint_file,
     load_checkpoint_into_runtime,
     resolve_checkpoint_source,
     restore_rng_state_from_metadata,
+    run_checkpoint_restores,
     save_checkpoint,
+    select_resume_source,
     should_save_checkpoint,
 )
 from silisocs.runtime.configuration.external import (
@@ -225,18 +229,7 @@ def main(cfg: DictConfig):
     logger.info("Wrote runtime-effective config snapshot to: %s", effective_cfg_snapshot_path)
 
     def _log_startup_phase(phase_name: str, duration_s: float, details: str = "") -> None:
-        """_log_startup_phase.
-
-        :param str phase_name:
-        :type phase_name: str
-        :param float duration_s:
-        :type duration_s: float
-        :param str details:
-        :type details: str
-
-        :returns: None
-        :rtype: None
-        """
+        """Log a named startup phase's duration to the logger and run-stats file."""
         details_part = f" {details}" if details else ""
         line = f"Startup {phase_name}: {duration_s:.2f}s{details_part}"
         logger.info(line)
@@ -257,7 +250,7 @@ def main(cfg: DictConfig):
     _log_startup_phase("build_agents", time.time() - t0, f"count={len(agent_configs)}")
 
     t0 = time.time()
-    populate_agent_data(agent_configs, game_masters)
+    populate_agent_data(cfg, agent_configs, game_masters)
     _log_startup_phase(
         "populate_agent_data",
         time.time() - t0,
@@ -387,27 +380,40 @@ def main(cfg: DictConfig):
 
     checkpoint_cfg = getattr(cfg.sim, "checkpoint", None)
     source_run = None
+    auto_resume = True
+    restore_cfg = None
     if checkpoint_cfg is not None:
         source_run = getattr(checkpoint_cfg, "source_run", None)
+        auto_resume = bool(getattr(checkpoint_cfg, "auto_resume", True))
+        restore_cfg = getattr(checkpoint_cfg, "restore", None)
+
+    # An explicit ``source_run`` resumes from that prior run and requires a
+    # ``restore`` strategy; otherwise auto-resume (default on) picks up this
+    # run's own output dir only if it already holds checkpoints.
+    if source_run and restore_cfg is None:
+        raise ValueError("sim.checkpoint.source_run requires sim.checkpoint.restore.")
+    source_path = select_resume_source(
+        source_run,
+        auto_resume=auto_resume,
+        restore_present=restore_cfg is not None,
+        output_dir=output_dir,
+    )
+    is_auto_resume = bool(source_path is not None and not source_run)
 
     start_step = 0
     checkpoint_meta: dict[str, Any] = {}
     checkpoint_restore = None
-    checkpoint_action_events = None
+    checkpoint_action_event_files: list[Path] = []
     checkpoint_data: dict[str, Any] | None = None
-    checkpoint_backend_state_authoritative = False
-    if source_run:
-        if checkpoint_cfg is None or getattr(checkpoint_cfg, "restore", None) is None:
-            raise ValueError("sim.checkpoint.source_run requires sim.checkpoint.restore.")
-        source_path = Path(str(source_run)).expanduser()
-        if not source_path.is_absolute():
-            source_path = (Path.cwd() / source_path).resolve()
-        resume_path, checkpoint_action_events = resolve_checkpoint_source(source_path)
-        checkpoint_restore = build_checkpoint_restore(getattr(checkpoint_cfg, "restore", None))
+    checkpoint_authoritative_gms: frozenset[str] = frozenset()
+    if source_path is not None:
+        resume_path = resolve_checkpoint_source(source_path)
+        checkpoint_action_event_files = resolve_action_event_files(source_path)
+        checkpoint_restore = build_checkpoint_restore(restore_cfg)
 
         with metrics.phase("checkpoint_load"):
             checkpoint_data = load_checkpoint_file(resume_path)
-            checkpoint_backend_state_authoritative = checkpoint_has_backend_state(checkpoint_data)
+            checkpoint_authoritative_gms = checkpoint_authoritative_gm_names(checkpoint_data)
             checkpoint_meta = checkpoint_runtime_metadata(checkpoint_data)
 
         default_step = checkpoint_data.get("step")
@@ -415,15 +421,23 @@ def main(cfg: DictConfig):
             raise ValueError("Checkpoint is missing required `step` value.")
         start_step = int(default_step)
 
-        logger.info(
-            "Restoring from checkpoint %s at step %d",
-            resume_path,
-            start_step,
-        )
+        if is_auto_resume:
+            logger.info(
+                "Auto-resuming from latest checkpoint in %s at step %d",
+                resume_path,
+                start_step,
+            )
+        else:
+            logger.info(
+                "Restoring from checkpoint %s at step %d",
+                resume_path,
+                start_step,
+            )
+        checkpoint_meta["auto_resumed"] = is_auto_resume
         checkpoint_meta["checkpoint_step"] = start_step
         checkpoint_meta["checkpoint_file"] = str(resume_path)
         checkpoint_meta["source_run"] = str(source_path)
-        checkpoint_meta["action_events_file"] = str(checkpoint_action_events)
+        checkpoint_meta["action_events_files"] = [str(p) for p in checkpoint_action_event_files]
         initializer_context = InitializationContext(
             shared_memories=initializer_context.shared_memories,
             player_specific_memories=initializer_context.player_specific_memories,
@@ -465,14 +479,21 @@ def main(cfg: DictConfig):
                     models=models,
                     object_to_model=object_to_model,
                 )
-            if checkpoint_restore is not None and not checkpoint_backend_state_authoritative:
-                if checkpoint_action_events is None:
-                    raise ValueError("Checkpoint restore requires action_events.jsonl.")
-                checkpoint_restore.restore(
-                    game_masters=runtime_objects.game_masters_by_sequence(),
-                    action_events_file=checkpoint_action_events,
-                    checkpoint_step=start_step,
-                )
+            if checkpoint_restore is not None:
+                restore_gms = runtime_objects.game_masters_by_sequence()
+                all_gm_names = frozenset(str(getattr(gm, "name", "")) for gm in restore_gms)
+                # Replay only the game masters that lack an authoritative snapshot;
+                # snapshot-restored GMs were already applied by set_state above. Each
+                # GM may override the global strategy via its own restore config.
+                if all_gm_names - checkpoint_authoritative_gms:
+                    run_checkpoint_restores(
+                        game_masters=restore_gms,
+                        default_strategy=checkpoint_restore,
+                        per_gm_strategies=build_per_gm_checkpoint_restores(cfg),
+                        action_events_files=checkpoint_action_event_files,
+                        checkpoint_step=start_step,
+                        authoritative_gm_names=checkpoint_authoritative_gms,
+                    )
             if checkpoint_data is not None:
                 restore_rng_state_from_metadata(checkpoint_meta)
         _log_startup_phase("engine_initialize", time.time() - t0)
@@ -521,6 +542,20 @@ def main(cfg: DictConfig):
             completion_line += f" error={completion_error}"
         logger.info(completion_line)
         print(completion_line)
+
+        # Surface degraded-run signals so silent failures cannot pass as clean runs.
+        health_counters = {
+            "agent_turn_failures": "agent turns raised an exception",
+            "action_parse_failures": "agent actions were dropped as unparseable",
+            "action_invalid_targets": "agent actions referenced invalid target ids",
+            "backend_action_errors": "backend actions raised unexpected exceptions",
+        }
+        for counter_name, description in health_counters.items():
+            count = metrics.counter(counter_name)
+            if count:
+                health_line = f"⚠ DEGRADED RUN: {count} {description} (see sim_metrics.json)"
+                logger.warning(health_line)
+                print(health_line)
         with open(run_stats_path, "a", encoding="utf-8") as f:
             f.write(completion_line + "\n")
 

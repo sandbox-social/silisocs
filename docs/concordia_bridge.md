@@ -1,9 +1,9 @@
 # Concordia Bridge
 
-Silisocs runs on native runtime contracts by default. Concordia is no longer a
+SiliSocS runs on native runtime contracts by default. Concordia is no longer a
 required dependency for installing, importing, or running the standard runtime.
 The bridge exists only to help teams port older Concordia-designed agents,
-prefabs, or context components into Silisocs incrementally.
+prefabs, or context components into SiliSocS incrementally.
 
 Install the bridge extra only when you need legacy interoperability:
 
@@ -57,11 +57,11 @@ persona_pipeline:
 ```
 
 Use the bridge only for legacy modules that are expensive to rewrite
-immediately. New extensions should target native Silisocs contracts.
+immediately. New extensions should target native SiliSocS contracts.
 
 ## Porting Guidance
 
-- Replace direct `concordia.*` imports with native Silisocs contracts where
+- Replace direct `concordia.*` imports with native SiliSocS contracts where
   practical.
 - If a legacy component expects Concordia-shaped classes, import them from
   `silisocs.adapters.concordia` as a temporary compatibility step.
@@ -76,5 +76,5 @@ know Concordia unless they are deliberately porting old Concordia code.
 ## Licensing
 
 The bridge extra depends on `gdm-concordia`, which is licensed under Apache
-License 2.0. Silisocs does not vendor Concordia; keep upstream notices intact
+License 2.0. SiliSocS does not vendor Concordia; keep upstream notices intact
 when distributing environments that install the optional bridge extra.

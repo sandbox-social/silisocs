@@ -18,6 +18,14 @@ import yaml
 from silisocs.dashboard.config_writer import (
     save_scenario as _save_scenario,
 )
+from silisocs.dashboard.results import (
+    HEALTH_COUNTERS,
+    discover_result_run_dirs,
+    health_counter_summary,
+    load_run_results,
+    repo_root,
+    total_health_issues,
+)
 from silisocs.environments.backends.base import ActionDescriptor
 
 # ---------------------------------------------------------------------------
@@ -27,6 +35,7 @@ _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 _CONF_DIR = _PACKAGE_ROOT / "conf"
 _SCENARIOS_DIR = _PACKAGE_ROOT.parents[2] / "scenarios"
 _PROJECT_ROOT = _PACKAGE_ROOT.parents[2]
+_ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
 _BACKEND_OPTIONS = ["twitter_like", "reddit_like", "mastodon", "resource_market", "virtual_space"]
 _SOCIAL_BACKENDS = {"twitter_like", "reddit_like", "mastodon"}
@@ -51,24 +60,40 @@ _PROBE_TYPE_OPTIONS = ["NumericRatingProbe", "BinaryProbe", "ChoiceProbe", "Free
 # ---------------------------------------------------------------------------
 # Theme & page config
 # ---------------------------------------------------------------------------
+_ICON_PATH = _ASSETS_DIR / "icon.svg"
+_LOGO_PATH = _ASSETS_DIR / "logo.svg"
+
 st.set_page_config(
-    page_title="Silisocs Launcher",
-    page_icon="\U0001f30d",
+    page_title="silisocs",
+    page_icon=str(_ICON_PATH) if _ICON_PATH.exists() else "\U0001f30d",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
+# Brand mark (wordmark when sidebar is expanded, node-graph icon when collapsed).
+if _LOGO_PATH.exists():
+    st.logo(
+        str(_LOGO_PATH),
+        icon_image=str(_ICON_PATH) if _ICON_PATH.exists() else None,
+    )
+
+# Slate & Teal brand, matching the docs theme.
 st.markdown(
     """
     <style>
-    section[data-testid="stSidebar"] { background-color: #0e1117; }
+    :root { --sx-accent: #0d9488; }
+    section[data-testid="stSidebar"] { background-color: #0f1117; }
     div[data-testid="stExpander"] details {
-        border: 1px solid #30363d; border-radius: 8px; padding: 4px 8px;
+        border: 1px solid rgba(13, 148, 136, 0.20); border-radius: 8px; padding: 4px 8px;
     }
     div.stButton > button[kind="primary"] {
-        background-color: #238636; color: white;
-        font-size: 1.1rem; padding: 0.6rem 2.4rem; border-radius: 8px;
+        background: #0d9488;
+        color: #fff; border: 0;
+        font-size: 1.05rem; padding: 0.6rem 2.4rem; border-radius: 8px;
     }
+    div.stButton > button[kind="primary"]:hover { background: #0f766e; }
+    .stTabs [aria-selected="true"] { color: var(--sx-accent) !important; }
+    h1, h2, h3 { letter-spacing: -0.01em; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -79,14 +104,7 @@ st.markdown(
 # Helpers
 # ---------------------------------------------------------------------------
 def _load_yaml(path: Path) -> dict:
-    """_load_yaml.
-
-    :param Path path:
-    :type path: Path
-
-    :returns: dict
-    :rtype: dict
-    """
+    """Load a YAML file into a dict, returning an empty dict on failure."""
     try:
         return yaml.safe_load(path.read_text()) or {}
     except Exception:
@@ -299,11 +317,7 @@ def _split_loaded_config(
 
 
 def _backend_class(backend_type: str):
-    """_backend_class.
-
-    :param str backend_type:
-    :type backend_type: str
-    """
+    """Return the backend app class for the given backend type."""
     if backend_type == "twitter_like":
         from silisocs.environments.backends.twitter_like.app import TwitterLikeApp
 
@@ -522,20 +536,7 @@ def _build_hydra_overrides(
     world: dict,
     eval_cfg: dict | None = None,
 ) -> list[str]:
-    """_build_hydra_overrides.
-
-    :param dict sim:
-    :type sim: dict
-    :param dict env:
-    :type env: dict
-    :param str backend_group:
-    :type backend_group: str
-    :param dict world:
-    :type world: dict
-
-    :returns: list[str]
-    :rtype: list[str]
-    """
+    """Build Hydra CLI override strings from sim, env, eval, and world dicts."""
     overrides: list[str] = []
     for key, val in sim.items():
         if val is None:
@@ -606,11 +607,14 @@ def _validate_config(sim_params: dict, classes: list[dict]) -> None:
             warnings.append(f"Class '{cls.get('name', '?')}' has no agent class set.")
         if not cls.get("data", {}).get("source"):
             warnings.append(f"Class '{cls.get('name', '?')}' has no data source.")
-    total_count = sum(c.get("count", 0) for c in classes)
-    if total_count > sim_params.get("num_agents", 0):
+    total_count = sum(_as_int(c.get("count", 0), 0) for c in classes)
+    declared = _as_int(sim_params.get("num_agents", 0), 0)
+    if total_count and declared and total_count != declared:
         warnings.append(
-            f"Total class count ({total_count}) exceeds num_agents ({sim_params['num_agents']}). "
-            f"Some agents may be truncated."
+            f"Agent classes sum to {total_count}, but num_agents is {declared}. "
+            f"The actual number of agents built is the sum of the class counts "
+            f"({total_count}); num_agents does not cap or pad the total. Set unused "
+            f"classes to count 0, or align num_agents with the class counts."
         )
     for w in warnings:
         st.warning(w)
@@ -827,8 +831,8 @@ st.markdown(f"Editing scenario: **{scenario_display}**")
 source_label = st.session_state.get("_loaded_source_label", scenario_display)
 st.caption(f"Loaded from: {source_label}")
 
-tab_sim, tab_world, tab_classes, tab_env, tab_probes, tab_launch = st.tabs(
-    ["Simulation", "World", "Agent Classes", "Environment", "Probes", "Launch"],
+tab_sim, tab_world, tab_classes, tab_env, tab_probes, tab_launch, tab_results = st.tabs(
+    ["Simulation", "World", "Agent Classes", "Environment", "Probes", "Launch", "Results"],
 )
 
 
@@ -843,7 +847,7 @@ with tab_sim:
             "Number of agents",
             min_value=1,
             max_value=1_000_000,
-            value=max(1, _as_int(_sim_defaults.get("num_agents", 20), 20)),
+            value=max(1, _as_int(_sim_defaults.get("num_agents", 10), 10)),
             step=10,
             key="num_agents",
         )
@@ -964,7 +968,7 @@ with tab_sim:
             "gm_orchestration (YAML)",
             value=yaml.dump(gm_orch_default, default_flow_style=False)
             if gm_orch_default
-            else "gms: []\nflow_bindings:\n  flow_to_gm: {}\n  flow_to_gms: {}",
+            else "gms: []\nflow_bindings:\n  flow_to_gms: {}",
             key="gm_orchestration_yaml",
             height=200,
             help="Define multiple GMs and their flow assignments. Leave empty to disable.",
@@ -1692,7 +1696,7 @@ with tab_env:
                 value=orchestration_yaml,
                 key="gm_orchestration_yaml",
                 height=180,
-                help="Supports gms, flow_to_gm, flow_to_gms, gm_to_flows.",
+                help="Supports gms and flow_bindings.flow_to_gms.",
             )
 
     with st.expander(
@@ -2070,7 +2074,7 @@ with tab_launch:
 
     # Collect sim params.
     sim_params = {
-        "num_agents": st.session_state.get("num_agents", 20),
+        "num_agents": st.session_state.get("num_agents", 10),
         "num_steps": st.session_state.get("num_steps", 50),
         "seed": st.session_state.get("seed", 1),
         "run_name": st.session_state.get("run_name", "run1"),
@@ -2578,3 +2582,137 @@ with tab_launch:
                 st.error(f"Failed to launch: {e}")
 
         output_area.code("".join(log_lines[-200:]), language="text")
+
+
+# ---------------------------------------------------------------------------
+# TAB: Results  (inspect a finished run — metrics, run health, event activity)
+# ---------------------------------------------------------------------------
+_REPO_ROOT = repo_root()
+
+
+@st.cache_data(show_spinner=False)
+def _load_run_results(run_dir_str: str) -> dict[str, Any]:
+    """Load a run's event logs and metrics."""
+    return load_run_results(run_dir_str)
+
+
+with tab_results:
+    import pandas as pd
+
+    st.subheader("Run Results")
+    st.caption("Inspect a finished run — overview metrics, run health, and event activity.")
+
+    _discovered = discover_result_run_dirs(root=_REPO_ROOT)
+
+    def _rel(path: Path) -> str:
+        try:
+            return str(path.relative_to(_REPO_ROOT))
+        except ValueError:
+            return str(path)
+
+    _options = ["(enter a path below)"] + [_rel(p) for p in _discovered]
+    _choice = st.selectbox(
+        "Run directory",
+        _options,
+        index=1 if len(_options) > 1 else 0,
+        help="Directories under outputs/, experiments/studies/, or scenarios/ that contain "
+        "a finished run (action_events.jsonl / sim_metrics.json).",
+    )
+    _manual = st.text_input("…or paste a run directory path", value="")
+
+    _run_dir: Path | None = None
+    if _manual.strip():
+        _run_dir = Path(_manual.strip()).expanduser()
+    elif _choice != "(enter a path below)":
+        _run_dir = _REPO_ROOT / _choice
+
+    if _run_dir is None or not _run_dir.is_dir():
+        st.info("Select a discovered run above, or paste a path to a run output directory.")
+    else:
+        _data = _load_run_results(str(_run_dir))
+        _actions = _data["actions"]
+        _probes = _data["probes"]
+        _metrics = _data["metrics"]
+
+        if not _actions and not _probes and _metrics is None:
+            st.warning(f"No result files found in `{_run_dir}`.")
+        else:
+            _adf = pd.DataFrame(_actions) if _actions else pd.DataFrame()
+
+            # ---- Overview ------------------------------------------------------
+            _episodes = (
+                int(_adf["episode"].max()) + 1 if not _adf.empty and "episode" in _adf else 0
+            )
+            _agents = _adf["source_user"].nunique() if "source_user" in _adf else 0
+            _duration = _metrics.get("total_sim_duration_s") if isinstance(_metrics, dict) else None
+            c1, c2, c3, c4, c5 = st.columns(5)
+            c1.metric("Episodes", _episodes or "—")
+            c2.metric("Actions", len(_actions))
+            c3.metric("Agents", _agents or "—")
+            c4.metric("Probe responses", len(_probes))
+            c5.metric(
+                "Duration", f"{_duration:.0f}s" if isinstance(_duration, (int, float)) else "—"
+            )
+
+            # ---- Run health (WS1 degraded-run counters) ------------------------
+            st.markdown("#### Run health")
+            _counters = health_counter_summary(_metrics)
+            if _counters is not None:
+                _total_issues = total_health_issues(_counters)
+                hcols = st.columns(len(HEALTH_COUNTERS))
+                for col, key in zip(hcols, HEALTH_COUNTERS, strict=False):
+                    col.metric(key.replace("_", " ").title(), _counters[key])
+                if _total_issues > 0:
+                    st.warning(
+                        f"⚠ Degraded run — {_total_issues} issue(s) recorded "
+                        "(failed turns, dropped actions, or backend errors)."
+                    )
+                else:
+                    st.success(
+                        "✓ Clean run — no degraded turns, dropped actions, or backend errors."
+                    )
+            elif _metrics is not None:
+                st.caption(
+                    "This run predates run-health counters (no `counters` block in sim_metrics.json)."
+                )
+            else:
+                st.caption("No sim_metrics.json found for this run.")
+
+            # ---- Action activity ----------------------------------------------
+            if not _adf.empty and "label" in _adf:
+                st.markdown("#### Action activity")
+                a1, a2 = st.columns(2)
+                with a1:
+                    st.caption("By action type")
+                    st.bar_chart(_adf["label"].value_counts())
+                with a2:
+                    if "episode" in _adf:
+                        st.caption("Actions per episode")
+                        st.bar_chart(_adf.groupby("episode").size())
+            else:
+                st.info("No action events to chart for this run.")
+
+            # ---- Probe responses ----------------------------------------------
+            if _probes:
+                st.markdown("#### Probe responses")
+                _pdf = pd.DataFrame(_probes)
+                _value_col = next(
+                    (c for c in ("value", "response", "numeric", "score", "answer") if c in _pdf),
+                    None,
+                )
+                _pdf_num = None
+                if _value_col is not None:
+                    _pdf = _pdf.copy()
+                    _pdf["_num"] = pd.to_numeric(_pdf[_value_col], errors="coerce")
+                    _pdf_num = _pdf.dropna(subset=["_num"])
+                if _pdf_num is not None and "episode" in _pdf_num and not _pdf_num.empty:
+                    st.caption(f"Mean of `{_value_col}` by episode")
+                    st.line_chart(_pdf_num.groupby("episode")["_num"].mean())
+                else:
+                    st.caption(f"{len(_probes)} probe responses (no numeric series to chart)")
+                    st.dataframe(pd.DataFrame(_probes).head(50), use_container_width=True)
+
+            # ---- Raw metrics ---------------------------------------------------
+            if _metrics is not None:
+                with st.expander("Raw sim_metrics.json"):
+                    st.json(_metrics)

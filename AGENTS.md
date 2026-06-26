@@ -103,10 +103,18 @@ Key run params live in `world/default.yaml` (at config root via `@package _globa
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| `num_agents` | 100 | Number of agents |
-| `num_steps` | 50 | Simulation episodes |
+| `num_agents` | 10 | Number of agents |
+| `num_steps` | 5 | Simulation episodes |
 | `scenario_name` | default | Used in output path |
 | `seed` | 1 | Random seed |
+
+Note: scenario `world/default.yaml` files REPLACE the base world group (Hydra
+searchpath shadowing), so every scenario must re-declare the universal run
+params (`num_steps`, `seed`, `output_rootname`, ...). Flat scenario
+`sim.yaml`/`env.yaml` files are MERGED into the composed config instead.
+`tests/test_bundled_scenarios_compose.py` enforces this for the repo's example
+scenarios. (Example scenarios live in `scenarios/` and are repository content,
+not packaged into the wheel; a pip install ships only the engine + base config.)
 
 GM component routing is enabled with
 `env.gm.class_path=silisocs.environments.gm.game_master.MultiFlowGameMaster`.
@@ -139,15 +147,32 @@ Use class-level behavior flows instead of adding custom manager branches:
 4. Optional observe specialization for selected flows:
 - `env.gm.components.observe.params.episode_observation_flows`
 
-5. Advanced multi-GM orchestration (optional):
+5. Optional per-flow turn policy (how many actions a flow takes per step):
+- `sim.engine.step.params.flow_turn_policies` (map flow_tag ->
+  `{built_in|class_path, params}`; unlisted flows use `sim.engine.turn_policy`).
+  Only effective under `engine.step.built_in` of `flow`/`multi_gm`.
+
+6. Optional per-flow action enforcement (which actions a flow may execute):
+- `env.gm.components.resolve.params.flow_action_filters` (map flow_tag ->
+  `{enabled_actions, excluded_actions}`; further-restricts the backend filter,
+  enforced at resolve time, never blocks `FINISHED`). Works on the default GM.
+
+7. Optional per-flow probe/eval targeting:
+- `eval.probes.deployment.include_flows` / `exclude_flows` (deploy probes only to
+  agents in the named flow(s); empty = all agents).
+
+8. Advanced multi-GM orchestration (optional):
 - `env.gm_orchestration.gms`
-- `env.gm_orchestration.flow_bindings.flow_to_gm`
-- `env.gm_orchestration.flow_bindings.flow_to_gms`
-- `env.gm_orchestration.flow_bindings.gm_to_flows`
+- `env.gm_orchestration.flow_bindings.flow_to_gms` (maps a flow to a GM or a
+  strictly-increasing-`sequence` GM chain; the only supported flow binding key)
 
 Default UX rule:
 - Keep users on the default `ComponentGameMaster`, with advanced dashboard toggles off.
 - Only expose flow tags and multi-GM controls behind advanced mode.
+
+All per-flow keys above are additive and backward compatible: each falls back to
+the global/default behavior when omitted, and the agent->flow mapping is the same
+materialized `agent_flow_tags` used by scheduling and component routing.
 
 Fixed agents (`silisocs.agents.fixed.FixedAgent`) are the reference example.
 
@@ -265,11 +290,17 @@ actions as tools and the language model selects which action(s) to invoke.
 
 **Architecture for tool-calling:**
 
-1. **Detect tool-calling mode**: Game master sets the action_spec with a `### TOOL_CALLING_MODE ###` marker
-2. **Entity act layer**: Uses `SocialConcatActComponent` to detect this marker
-3. **Tool selection**: Calls model's `sample_tool_call()` with available backend action schemas
-4. **Format result**: Returns structured tool-call result as JSON
-5. **Resolve execution**: ToolCallingResolveComponent parses result and executes the selected tool
+1. **Detect tool-calling mode**: The GM's action-prompt component checks the
+   `enable_tool_calling` flag and, when the backend provides
+   `generate_tool_schemas()`, builds an `ActionSpec` with
+   `output_type=OutputType.TOOL_CALLS` and the tool schemas in `extra_args["tools"]`
+   (see `environments/gm/components/action_prompt.py`)
+2. **Agent act layer**: `Agent._call_model()` routes `OutputType.TOOL_CALLS`
+   specs to the model's `sample_tool_calls()` with the provided schemas
+3. **Typed result**: The agent returns an `ActionOutput` carrying typed
+   `ToolCall` entries (no string marker or JSON parsing involved)
+4. **Resolve execution**: `ToolCallingResolveComponent` validates the tool calls
+   and executes them via `backend.invoke_action_with_kwargs()`
 
 ### Enabling Tool-Calling
 
@@ -291,6 +322,28 @@ sim:
 
 When tool-calling is active, the native `ActionSpec` carries tool schemas in
 `extra_args`; `Agent._call_model()` routes the request to `sample_tool_calls`.
+
+### Adding a Custom LLM Provider
+
+Common providers that expose an OpenAI-compatible API ship as built-in presets
+(`anthropic`, `gemini`, `openrouter`, `groq`, `together`, `deepseek`, `mistral`,
+`fireworks`, `xai`, `ollama`); set `sim.llm.provider` to the name and supply the
+key via the provider's env var (see `OPENAI_COMPATIBLE_PRESETS` in
+`runtime/language_models/factory.py`). For anything else, two paths exist, with no
+core edits required:
+
+1. Register a provider name (import the module before the run starts):
+   ```python
+   from silisocs.runtime.language_models.registry import register_llm_provider
+
+   @register_llm_provider("my_provider")
+   class MyModel(LanguageModel): ...
+   ```
+   then set `sim.llm.provider: my_provider`.
+2. Or set `sim.llm.provider: mypkg.models.MyModel` (fully qualified class path).
+
+Providers that speak an OpenAI-compatible HTTP API should subclass
+`OpenAICompatibleLanguageModel` to inherit retry/backoff and telemetry support.
 
 ### Validation & Error Handling
 
@@ -351,15 +404,44 @@ For **tool-calling mode** specifically: The entity layer is responsible for call
 
 - Checkpoints are saved as JSON under run output `checkpoints/step_{N}_checkpoint.json`.
 - Runtime resume uses:
-- `sim.checkpoint.source_run`
+- `sim.checkpoint.source_run` (explicit prior output directory)
+- `sim.checkpoint.auto_resume` (default `true`): when `source_run` is unset, resume
+  from this run's own output directory if it already contains checkpoints; a fresh
+  output directory still starts from scratch. Set `false` to force a fresh start.
 - `sim.checkpoint.restore`
 - Resume restores game-master and entity component state plus raw log.
 
+**Backend restore contract** (backend authors): declare two class-level capability
+flags (`base.py`): `provides_checkpoint_state` (get_state/set_state round-trip an
+authoritative snapshot — restore applies it directly) and `supports_action_replay`
+(the built-in `social_action_event_replay` strategy can rebuild the backend by
+re-resolving logged events). A replayable backend maps its own logged labels to
+its own actions via `event_to_replay_action(label, data) -> ActionOutput | None`
+(the default is the microblog mapping). Every shipped backend self-restores via
+`set_state` (`provides_checkpoint_state=True`); Mastodon — which can't snapshot
+its live server — does so by embedding its action history in `get_state` and
+replaying it (with old→new toot-id remapping) in `set_state`. The
+`social_action_event_replay` strategy + `supports_action_replay` remain an
+extension point for *custom* non-snapshot backends. The authoritative-vs-replay
+decision is **per game master**: snapshot GMs restore from their block, the rest
+go to the strategy.
+Multi-GM runs isolate each GM's backend db + `action_events.jsonl` under
+`<output>/<gm_name>/`; both restore and eval discover these via
+`silisocs.evaluations.action_events.resolve_action_event_files` (restore passes
+all per-GM logs to the strategy as `action_events_files`). A GM may override the
+global `sim.checkpoint.restore` with its own strategy via
+`env.gm_orchestration.gms[*].restore` (same schema; absent → global default).
+
 **Saving policy**: checkpoint saving is disabled by default when running directly via `run_experiment.py` unless `every_n_steps` or `explicit_steps` is configured. When running via `run_study.py`, checkpointing is enabled automatically (`every_n_steps=1`) so that `eval.py` can access the final checkpoint for action-type metrics. Studies can change the frequency via `run_defaults.overrides: {sim.checkpoint.every_n_steps: N}`.
 
-**For custom agents**: By default, only Concordia `EntityWithComponents` entities are checkpointed.
-If your custom agent has episodic state that needs saving, implement `get_state()` and `set_state()`
-methods. The simulation will call these after checking `isinstance(entity, EntityWithComponents)`.
+**For custom agents**: Checkpointing is duck-typed — every agent and game master is
+checkpointed by reading its `get_state()` and applying its `set_state()` (there is no
+`isinstance(EntityWithComponents)` gate). The base `Agent` provides no-op defaults, so an
+agent with no episodic state needs no changes. If your custom agent *does* have episodic
+state, implement BOTH `get_state()` and `set_state()`: restore now refuses to load a
+checkpoint whose object saved non-empty state but only inherits the no-op `set_state()`
+(it would otherwise be silently dropped). Restore also rejects a checkpoint object whose
+`class_path`/`compat` no longer matches the current runtime object of the same name.
 
 Example:
 ```python
@@ -377,8 +459,9 @@ class MyAgent(Agent):
 Use uv-managed workflows (from `docs/contributing.md`):
 
 - Sync dev env: `uv sync --group dev`
-- Lint workflow: `uv run poe lint`
-- Test workflow: `uv run poe test`
+- Lint workflow: `uv run --group dev poe lint`
+- Test workflow: `uv run --group dev poe test`
+- Docs workflow: `uv run --group dev poe docs`
 - Pre-commit hooks all files: `uv run pre-commit run --all-files --verbose`
 - Commit with Commitizen: `uv run cz c`
 
@@ -387,7 +470,7 @@ Fast contributor workflow (LLM-agent friendly):
 1. `uv sync --group dev`
 2. Run targeted tests for changed files first (`uv run pytest <targeted_tests>`)
 3. Run full quality gate: `uv run pre-commit run --all-files --verbose`
-4. Run coverage workflow: `uv run poe test`
+4. Run coverage workflow: `uv run --group dev poe test`
 5. Commit with Conventional Commits (`uv run cz c` or `git commit -m "feat: ..."`)
 6. Push branch (`git push origin <branch>`)
 

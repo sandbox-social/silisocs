@@ -31,6 +31,8 @@ Flow controls use two independent settings:
 
 - `env.gm.class_path: silisocs.environments.gm.game_master.MultiFlowGameMaster`: enables GM-side component routing.
 - `sim.engine.step.built_in: flow`: enables engine-side flow scheduling.
+- `sim.engine.step.built_in: multi_gm`: enables flow scheduling across multiple
+  configured Game Masters.
 
 ## Canonical Structure
 
@@ -201,7 +203,7 @@ Pros:
 
 - Components fit directly into native GM routing through explicit slot methods.
 - You get consistent checkpoint state behavior (`get_state`, `set_state`).
-- Easier interoperability with other Silisocs components.
+- Easier interoperability with other SiliSocS components.
 
 Tradeoffs:
 
@@ -294,9 +296,22 @@ Flow routing notes:
   for specialized agent classes without sacrificing per-bucket parallelism.
 - Assign classes to buckets using `persona_pipeline.classes.<name>.flow_tag`.
 - Add one-off overrides with `sim.engine.step.params.agent_to_flow` when a
-  specific agent should move to a different phase.
+  specific agent should move to a different phase. Override keys must match
+  final Agent names.
 - Use `env.gm.components.observe.params.episode_observation_flows` for flows
   that should receive episode-index observations instead of timeline content.
+- In `multi_gm` mode, every configured GM runs `update(...)` once at the start
+  of the episode step, before flow routing and actor selection. Flow chains only
+  route selected agent turns through GMs.
+
+Multi-GM orchestration is configured under `env.gm_orchestration`. Each
+orchestrated GM must declare its own strict `backend` and `components` blocks;
+missing nested keys are not filled from the default `env.gm`. Flow chains must
+reference known GM names, cannot be empty, cannot repeat a GM, and must move
+through strictly increasing GM `sequence` values.
+
+Final Agent flow tags are materialized during construction and passed to every
+Game Master. The Engine does not re-apply `agent_to_flow` at turn time.
 
 ## Shared-Flow GM Contract
 

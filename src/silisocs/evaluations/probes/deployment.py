@@ -17,6 +17,8 @@ from silisocs.simulation_engines.policies.factory import build_probe_schedule_po
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_FLOW_TAG = "default"
+
 
 @dataclass(frozen=True)
 class ProbeDeploymentPolicy:
@@ -29,18 +31,12 @@ class ProbeDeploymentPolicy:
     exclude_classes: tuple[str, ...] = ()
     include_agents: tuple[str, ...] = ()
     exclude_agents: tuple[str, ...] = ()
+    include_flows: tuple[str, ...] = ()
+    exclude_flows: tuple[str, ...] = ()
 
     @classmethod
     def from_probes_config(cls, probes_config: Mapping[str, Any] | None) -> ProbeDeploymentPolicy:
-        """from_probes_config.
-
-        :param cls:
-        :param Mapping[str, Any] | None probes_config:
-        :type probes_config: Mapping[str, Any] | None
-
-        :returns: ProbeDeploymentPolicy
-        :rtype: ProbeDeploymentPolicy
-        """
+        """Build a deployment policy from a probes config mapping."""
         deployment_cfg = dict((probes_config or {}).get("deployment", {}) or {})
         every_n_steps = int(deployment_cfg.get("every_n_steps", 1))
         if every_n_steps <= 0:
@@ -50,6 +46,8 @@ class ProbeDeploymentPolicy:
         exclude_agents = tuple(str(x) for x in deployment_cfg.get("exclude_agents", []) or [])
         include_classes = tuple(str(x) for x in deployment_cfg.get("include_classes", []) or [])
         exclude_classes = tuple(str(x) for x in deployment_cfg.get("exclude_classes", []) or [])
+        include_flows = tuple(str(x) for x in deployment_cfg.get("include_flows", []) or [])
+        exclude_flows = tuple(str(x) for x in deployment_cfg.get("exclude_flows", []) or [])
 
         return cls(
             enabled=bool(deployment_cfg.get("enabled", True)),
@@ -59,6 +57,8 @@ class ProbeDeploymentPolicy:
             exclude_classes=exclude_classes,
             include_agents=include_agents,
             exclude_agents=exclude_agents,
+            include_flows=include_flows,
+            exclude_flows=exclude_flows,
         )
 
 
@@ -71,15 +71,7 @@ class ProbeDeploymentOrchestrator:
         probe_event_logger: Any,
         policy: ProbeDeploymentPolicy | None = None,
     ):
-        """__init__.
-
-        :param Mapping[str, Any] | None probes_config:
-        :type probes_config: Mapping[str, Any] | None
-        :param Any probe_event_logger:
-        :type probe_event_logger: Any
-        :param ProbeDeploymentPolicy | None policy:
-        :type policy: ProbeDeploymentPolicy | None
-        """
+        """Initialize the orchestrator with probes config, logger, and policy."""
         self._probes_config = dict(probes_config or {})
         self._probe_event_logger = probe_event_logger
         self._policy = policy or ProbeDeploymentPolicy.from_probes_config(self._probes_config)
@@ -114,22 +106,11 @@ class ProbeDeploymentOrchestrator:
         return probes
 
     def is_configured(self) -> bool:
-        """is_configured.
-
-        :returns: bool
-        :rtype: bool
-        """
+        """Return whether any probes are configured for deployment."""
         return bool(self._probes_config.get("probes"))
 
     def should_deploy(self, step: int) -> bool:
-        """should_deploy.
-
-        :param int step:
-        :type step: int
-
-        :returns: bool
-        :rtype: bool
-        """
+        """Return whether probes are due for deployment at the given step."""
         if not self._policy.enabled:
             return False
         if not self.is_configured():
@@ -138,25 +119,26 @@ class ProbeDeploymentOrchestrator:
             return False
         return (step - self._policy.start_step) % self._policy.every_n_steps == 0
 
-    def _select_agents(self, agents: Sequence[Any]) -> list[Any]:
-        """_select_agents.
+    def _select_agents(
+        self,
+        agents: Sequence[Any],
+        agent_flows: Mapping[str, str] | None = None,
+    ) -> list[Any]:
+        """Select probe targets by class, agent name, and flow filters.
 
-        :param Sequence[Any] agents:
-        :type agents: Sequence[Any]
-
-        :returns: list[Any]
-        :rtype: list[Any]
+        ``agent_flows`` maps agent name -> flow tag (authoritative source is the
+        game master's ``agent_flow_tags``). It is required only when flow filters
+        are configured; agents missing from the map resolve to the default flow.
         """
 
+        def _agent_name(agent: Any) -> str:
+            return str(getattr(agent, "_agent_name", getattr(agent, "name", "")))
+
+        def _agent_flow(agent: Any) -> str:
+            return str((agent_flows or {}).get(_agent_name(agent), DEFAULT_FLOW_TAG))
+
         def _agent_classes(agent: Any) -> set[str]:
-            """Return configured class/role labels for an agent.
-
-            :param Any agent:
-            :type agent: Any
-
-            :returns: set[str]
-            :rtype: set[str]
-            """
+            """Return configured class/role labels for an agent."""
             out: set[str] = set()
 
             for attr in ("sim_role_name", "sim_role", "role", "class_name", "agent_class"):
@@ -196,18 +178,16 @@ class ProbeDeploymentOrchestrator:
             ]
         if self._policy.include_agents:
             include = set(self._policy.include_agents)
-            selected = [
-                agent
-                for agent in selected
-                if getattr(agent, "_agent_name", getattr(agent, "name", "")) in include
-            ]
+            selected = [agent for agent in selected if _agent_name(agent) in include]
         if self._policy.exclude_agents:
             exclude = set(self._policy.exclude_agents)
-            selected = [
-                agent
-                for agent in selected
-                if getattr(agent, "_agent_name", getattr(agent, "name", "")) not in exclude
-            ]
+            selected = [agent for agent in selected if _agent_name(agent) not in exclude]
+        if self._policy.include_flows:
+            include_flows = set(self._policy.include_flows)
+            selected = [agent for agent in selected if _agent_flow(agent) in include_flows]
+        if self._policy.exclude_flows:
+            exclude_flows = set(self._policy.exclude_flows)
+            selected = [agent for agent in selected if _agent_flow(agent) not in exclude_flows]
         return selected
 
     def maybe_deploy(
@@ -215,15 +195,23 @@ class ProbeDeploymentOrchestrator:
         step: int,
         agents: Sequence[Any],
         worker_limit: int | None = None,
+        agent_flows: Mapping[str, str] | None = None,
     ) -> tuple[bool, int]:
         """Deploy probes if the configured schedule says this step is due."""
         if not self.should_deploy(step):
             return False, 0
 
-        selected_agents = self._select_agents(agents)
+        selected_agents = self._select_agents(agents, agent_flows)
         if not selected_agents:
-            logger.info(
-                "Probe deployment skipped at step=%s because no agents matched filters.", step
+            logger.warning(
+                "Probe deployment skipped at step=%s: no agents matched filters "
+                "(include_flows=%s exclude_flows=%s include_classes=%s include_agents=%s). "
+                "Check for a typo'd flow/class name.",
+                step,
+                self._policy.include_flows,
+                self._policy.exclude_flows,
+                self._policy.include_classes,
+                self._policy.include_agents,
             )
             return False, 0
 
@@ -254,9 +242,12 @@ class DefaultProbeRunner:
         step: int,
         agents: Sequence[Any],
         worker_limit: int | None,
+        agent_flows: Mapping[str, str] | None = None,
     ) -> tuple[bool, int]:
         if not self._schedule_policy.should_run_probe_phase(
             step=step, orchestrator=self._orchestrator
         ):
             return False, 0
-        return self._orchestrator.maybe_deploy(step=step, agents=agents, worker_limit=worker_limit)
+        return self._orchestrator.maybe_deploy(
+            step=step, agents=agents, worker_limit=worker_limit, agent_flows=agent_flows
+        )

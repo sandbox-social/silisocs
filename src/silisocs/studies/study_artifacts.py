@@ -3,13 +3,81 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
+import statistics
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+# Two-tailed 95% critical values of the t-distribution, t(0.975, df).
+# Beyond df=30 the normal approximation (1.96) is used.
+_T_CRITICAL_95: dict[int, float] = {
+    1: 12.706,
+    2: 4.303,
+    3: 3.182,
+    4: 2.776,
+    5: 2.571,
+    6: 2.447,
+    7: 2.365,
+    8: 2.306,
+    9: 2.262,
+    10: 2.228,
+    11: 2.201,
+    12: 2.179,
+    13: 2.160,
+    14: 2.145,
+    15: 2.131,
+    16: 2.120,
+    17: 2.110,
+    18: 2.101,
+    19: 2.093,
+    20: 2.086,
+    21: 2.080,
+    22: 2.074,
+    23: 2.069,
+    24: 2.064,
+    25: 2.060,
+    26: 2.056,
+    27: 2.052,
+    28: 2.048,
+    29: 2.045,
+    30: 2.042,
+}
+
+
+def _t_critical_95(df: int) -> float:
+    """Return t(0.975, df), falling back to 1.96 for df > 30."""
+    return _T_CRITICAL_95.get(df, 1.96)
+
+
+def _metric_stats(values: list[float]) -> dict[str, Any]:
+    """Compute n/mean/stdev and a 95% t-distribution CI for replicate values."""
+    n = len(values)
+    mean = statistics.fmean(values)
+    if n < 2:
+        return {"n": n, "mean": mean, "stdev": None, "ci95_low": None, "ci95_high": None}
+    stdev = statistics.stdev(values)
+    half_width = _t_critical_95(n - 1) * stdev / math.sqrt(n)
+    return {
+        "n": n,
+        "mean": mean,
+        "stdev": stdev,
+        "ci95_low": mean - half_width,
+        "ci95_high": mean + half_width,
+    }
+
+
+def _numeric_values(values: list[Any]) -> list[float] | None:
+    """Return float values when every entry is numeric, else None."""
+    if not values:
+        return None
+    if all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in values):
+        return [float(value) for value in values]
+    return None
 
 
 def resolve_study_definition_path(path: Path) -> Path:
@@ -131,17 +199,30 @@ def _load_eval_payload(path: Path) -> dict[str, Any] | None:
 
 def _combine_eval_payloads(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     if not payloads:
-        return {"aggregated": {}, "summary": {}, "agents": {}, "checkpoint": None}
+        return {
+            "aggregated": {},
+            "aggregated_stats": {},
+            "summary": {},
+            "agents": {},
+            "checkpoint": None,
+        }
     if len(payloads) == 1:
         payload = payloads[0]
         return {
             "aggregated": payload.get("aggregated", {}),
+            "aggregated_stats": {},
             "summary": payload.get("summary", {}),
             "agents": payload.get("agents", {}),
             "checkpoint": payload.get("checkpoint"),
         }
 
-    combined: dict[str, Any] = {"aggregated": {}, "summary": {}, "agents": {}, "checkpoint": None}
+    combined: dict[str, Any] = {
+        "aggregated": {},
+        "aggregated_stats": {},
+        "summary": {},
+        "agents": {},
+        "checkpoint": None,
+    }
     metric_names: set[str] = set()
     for payload in payloads:
         metric_names.update(payload.get("aggregated", {}).keys())
@@ -152,6 +233,9 @@ def _combine_eval_payloads(payloads: list[dict[str, Any]]) -> dict[str, Any]:
             if payload.get("aggregated", {}).get(metric) is not None
         ]
         combined["aggregated"][metric] = sum(vals) / len(vals) if vals else None
+        numeric_vals = _numeric_values(vals)
+        if numeric_vals is not None:
+            combined["aggregated_stats"][metric] = _metric_stats(numeric_vals)
 
     summary_names: set[str] = set()
     for payload in payloads:
@@ -193,7 +277,7 @@ def _combine_eval_payloads(payloads: list[dict[str, Any]]) -> dict[str, Any]:
 def build_summary(eval_results: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate eval results into the study-wide summary payload."""
     if not eval_results:
-        return {"conditions": [], "metrics_by_condition": {}}
+        return {"conditions": [], "metrics_by_condition": {}, "metrics_stats_by_condition": {}}
 
     conditions: list[dict[str, Any]] = []
     for result in eval_results:
@@ -215,13 +299,16 @@ def build_summary(eval_results: list[dict[str, Any]]) -> dict[str, Any]:
         by_hyp_cond.setdefault(hyp, {}).setdefault(cond, []).append(condition)
 
     metrics_by_condition: dict[str, dict[str, dict[str, float | None]]] = {}
+    metrics_stats_by_condition: dict[str, dict[str, dict[str, dict[str, Any]]]] = {}
     for hyp_id, conds in by_hyp_cond.items():
         metrics_by_condition[hyp_id] = {}
+        metrics_stats_by_condition[hyp_id] = {}
         for cond_name, entries in conds.items():
             metric_names: set[str] = set()
             for entry in entries:
                 metric_names.update(entry["aggregated"].keys())
             aggregate: dict[str, float | None] = {}
+            aggregate_stats: dict[str, dict[str, Any]] = {}
             for metric in sorted(metric_names):
                 vals = [
                     entry["aggregated"][metric]
@@ -229,9 +316,17 @@ def build_summary(eval_results: list[dict[str, Any]]) -> dict[str, Any]:
                     if entry["aggregated"].get(metric) is not None
                 ]
                 aggregate[metric] = sum(vals) / len(vals) if vals else None
+                numeric_vals = _numeric_values(vals)
+                if numeric_vals is not None:
+                    aggregate_stats[metric] = _metric_stats(numeric_vals)
             metrics_by_condition[hyp_id][cond_name] = aggregate
+            metrics_stats_by_condition[hyp_id][cond_name] = aggregate_stats
 
-    return {"conditions": conditions, "metrics_by_condition": metrics_by_condition}
+    return {
+        "conditions": conditions,
+        "metrics_by_condition": metrics_by_condition,
+        "metrics_stats_by_condition": metrics_stats_by_condition,
+    }
 
 
 def organize_study_outputs(
@@ -328,7 +423,12 @@ def organize_study_outputs(
                 if not dry_run:
                     eval_dir.mkdir(parents=True, exist_ok=True)
 
+                # Single pass over the evaluations: resolve each eval_path once,
+                # then symlink it and load its payload (a non-file payload is
+                # skipped by _load_eval_payload, matching the prior exists()
+                # gate on the symlink side).
                 first_eval_linked = False
+                payloads: list[dict[str, Any]] = []
                 for eval_item in record.get("evaluations", []):
                     eval_id = str(eval_item.get("id", "eval")).strip() or "eval"
                     eval_path_raw = eval_item.get("path")
@@ -351,14 +451,6 @@ def organize_study_outputs(
                         create_relative_symlink(eval_path, seed_dir / "eval.json", dry_run=dry_run)
                         first_eval_linked = True
 
-                payloads: list[dict[str, Any]] = []
-                for eval_item in record.get("evaluations", []):
-                    eval_path_raw = eval_item.get("path")
-                    if not eval_path_raw:
-                        continue
-                    eval_path = Path(str(eval_path_raw))
-                    if not eval_path.is_absolute():
-                        eval_path = (repo_root / eval_path).resolve()
                     payload = _load_eval_payload(eval_path)
                     if payload is not None:
                         payloads.append(payload)
@@ -387,6 +479,7 @@ def organize_study_outputs(
                         "run_dir": str(run_dir) if run_dir is not None else None,
                         "eval_paths": record.get("eval_paths", {}),
                         "aggregated": combined.get("aggregated", {}),
+                        "aggregated_stats": combined.get("aggregated_stats", {}),
                         "summary": combined.get("summary", {}),
                     }
                 )

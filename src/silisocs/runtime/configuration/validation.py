@@ -10,15 +10,13 @@ The validation functions raise :class:`ValueError` or :class:`FileNotFoundError`
 when checks fail.
 """
 
+import importlib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from omegaconf import DictConfig, OmegaConf
-
-# ============================================================================
-# Base Scenario Schema
-# ============================================================================
 
 
 @dataclass
@@ -63,11 +61,6 @@ class BaseScenarioSchema:
 
     # Output configuration
     jobname_format: str = ""
-
-
-# ============================================================================
-# Validation Functions
-# ============================================================================
 
 
 def validate_scenario_structure(cfg: DictConfig) -> None:
@@ -379,13 +372,19 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
         {"provider", "name", "temperature", "api_base", "api_key", "disabled", "extra_kwargs"},
     )
     provider = OmegaConf.select(cfg, "sim.llm.provider")
-    if provider is not None and str(provider) not in {
-        "openai",
-        "openai_compatible",
-        "scripted",
-        "disabled",
-    }:
-        raise ValueError(f"Unsupported sim.llm.provider: {provider!r}")
+    if provider is not None:
+        from silisocs.runtime.language_models.registry import get_llm_provider
+
+        provider_text = str(provider)
+        is_built_in = provider_text in {"openai", "openai_compatible", "scripted", "disabled"}
+        is_registered = get_llm_provider(provider_text) is not None
+        is_class_path = "." in provider_text
+        if not (is_built_in or is_registered or is_class_path):
+            raise ValueError(
+                f"Unsupported sim.llm.provider: {provider!r}. Use a built-in "
+                "(openai, openai_compatible, scripted, disabled), a provider "
+                "registered via @register_llm_provider, or a class path."
+            )
     _assert_allowed_keys(
         cfg,
         "sim.engine",
@@ -406,32 +405,85 @@ def _assert_allowed_keys(cfg: DictConfig, path: str, allowed: set[str]) -> None:
         raise ValueError(f"Unsupported config key(s) under {path}: {extras}")
 
 
-def _assert_component_slot(cfg: DictConfig, path: str) -> None:
-    value = OmegaConf.select(cfg, path)
-    if value is None:
-        return
-    if not isinstance(value, DictConfig):
+def validate_component_slot_shape(value: Any, *, path: str) -> None:
+    """Validate one GM component slot's shape (allowed keys + nested instances).
+
+    Accepts either a raw ``DictConfig`` node (config-validation phase) or an
+    already-extracted mapping (GM-spec construction), so both phases share the
+    same structural rules.
+    """
+    if not isinstance(value, (Mapping, DictConfig)):
         raise ValueError(f"{path} must be a mapping.")
     allowed = {"built_in", "class_path", "params", "instances", "flow_map"}
-    extras = sorted(str(key) for key in value.keys() if str(key) not in allowed)
+    extras = sorted(str(key) for key in value if str(key) not in allowed)
     if extras:
         raise ValueError(f"Unsupported config key(s) under {path}: {extras}")
     instances = value.get("instances")
     if instances is None:
         return
-    if not isinstance(instances, DictConfig):
+    if not isinstance(instances, (Mapping, DictConfig)):
         raise ValueError(f"{path}.instances must be a mapping.")
     for instance_name, instance_cfg in instances.items():
         instance_path = f"{path}.instances.{instance_name!s}"
-        if not isinstance(instance_cfg, DictConfig):
+        if not isinstance(instance_cfg, (Mapping, DictConfig)):
             raise ValueError(f"{instance_path} must be a mapping.")
         instance_extras = sorted(
-            str(key)
-            for key in instance_cfg.keys()
-            if str(key) not in {"built_in", "class_path", "params"}
+            str(key) for key in instance_cfg if str(key) not in {"built_in", "class_path", "params"}
         )
         if instance_extras:
             raise ValueError(f"Unsupported config key(s) under {instance_path}: {instance_extras}")
+
+
+def _assert_component_slot(cfg: DictConfig, path: str) -> None:
+    value = OmegaConf.select(cfg, path)
+    if value is None:
+        return
+    validate_component_slot_shape(value, path=path)
+
+
+def _collect_class_paths(node: Any, location: str, found: list[tuple[str, str]]) -> None:
+    if isinstance(node, dict):
+        for key, value in node.items():
+            child_location = f"{location}.{key}" if location else str(key)
+            if str(key) == "class_path" and isinstance(value, str) and value.strip():
+                found.append((location or "<root>", value.strip()))
+            else:
+                _collect_class_paths(value, child_location, found)
+    elif isinstance(node, list):
+        for index, item in enumerate(node):
+            _collect_class_paths(item, f"{location}[{index}]", found)
+
+
+def validate_class_paths(cfg: DictConfig) -> None:
+    """Verify every configured ``class_path`` is importable before any LLM call.
+
+    Without this, a typo'd class path only surfaces at runtime-assembly time,
+    after models are constructed and (for checkpoint resumes) state is loaded.
+    """
+    container = OmegaConf.to_container(cfg, resolve=False)
+    found: list[tuple[str, str]] = []
+    _collect_class_paths(container, "", found)
+
+    errors: list[str] = []
+    for location, class_path in found:
+        if "${" in class_path:
+            continue  # interpolation resolved later; cannot check statically
+        module_path, _, attr = class_path.rpartition(".")
+        if not module_path:
+            errors.append(
+                f"{location}: '{class_path}' is not a fully qualified class path "
+                "(expected 'package.module.ClassName')"
+            )
+            continue
+        try:
+            getattr(importlib.import_module(module_path), attr)
+        except (ImportError, AttributeError) as exc:
+            errors.append(f"{location}: cannot import '{class_path}': {exc}")
+    if errors:
+        raise ValueError(
+            "Configured class_path entries failed to import:\n  - " + "\n  - ".join(errors)
+        )
+    print(f"✓ class_path validation passed ({len(found)} checked)")
 
 
 def validate_scenario_config(cfg: DictConfig, scenario_path: Path | None = None) -> None:
@@ -453,6 +505,7 @@ def validate_scenario_config(cfg: DictConfig, scenario_path: Path | None = None)
     # 1. Validate structure
     validate_scenario_structure(cfg)
     validate_runtime_structure(cfg)
+    validate_class_paths(cfg)
 
     # 2. Validate cross-references
     validate_cross_references(cfg)

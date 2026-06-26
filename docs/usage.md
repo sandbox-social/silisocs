@@ -1,6 +1,6 @@
 # Usage Overview
 
-This guide covers the complete workflow for running Silisocs simulations —
+This guide covers the complete workflow for running SiliSocS simulations:
 from configuration to output analysis.
 
 ## How It Works
@@ -30,17 +30,17 @@ sequenceDiagram
     end
 ```
 
-**Phase 1 — Config composition**: Hydra merges the base simulation config,
+**Phase 1, Config composition**: Hydra merges the base simulation config,
 environment config, and world config into a single resolved config tree.
 
-**Phase 2 — Agent construction**: The agent builder reads the persona pipeline
+**Phase 2, Agent construction**: The agent builder reads the persona pipeline
 (or custom builder logic) and creates agent configs with personas, memories,
 and goals. Runtime construction then creates live agents.
 
-**Phase 3 — Runtime initialization**: The Engine runs agent initialization,
+**Phase 3, Runtime initialization**: The Engine runs agent initialization,
 Game Master initialization, then simulation initialization before the main loop.
 
-**Phase 4 — Simulation loop**: Each step, agents observe environment state,
+**Phase 4, Simulation loop**: Each step, agents observe environment state,
 decide on an action, and the game master executes it against the configured
 backend. Each backend provides its own observations through the GM component
 slots; `app_observation` delegates directly to `BackendApp.observe(...)`.
@@ -245,14 +245,14 @@ See [Building Agents](building_agents.md) for the full guide.
 
 You can assign different LLM models at three levels:
 
-**Global default** — in `sim/base.yaml`:
+**Global default**, in `sim/base.yaml`:
 ```yaml
 llm:
   provider: openai
   name: gpt-4o
 ```
 
-**Per-class** — in the persona pipeline:
+**Per-class**, in the persona pipeline:
 ```yaml
 classes:
   voter:
@@ -263,7 +263,7 @@ classes:
     model: gpt-4o            # Better model for key agents
 ```
 
-**Per-agent** — via field mapping:
+**Per-agent**, via field mapping:
 ```yaml
 classes:
   user:
@@ -436,9 +436,9 @@ outputs/<scenario_name>/<jobname>/<jobname>_<timestamp>/
 
 | File | Format | Description |
 |------|--------|-------------|
-| `action_events.jsonl` | JSONL | Every social media action (post, reply, like, repost, follow, etc.) with episode index, source user, and action data |
+| `action_events.jsonl` | JSONL | Every backend action with episode index, Game Master name, backend type, source user, and action data |
 | `probe_events.jsonl` | JSONL | Probe/survey responses per agent per deployment step |
-| `prompts_and_responses.jsonl` | JSONL | Every LLM call — prompt, response, episode index, and agent name |
+| `prompts_and_responses.jsonl` | JSONL | Every LLM call: prompt, response, episode index, and agent name |
 | `run_stats.log` | Text | Per-episode timing, worker counts, retry telemetry, and startup phase durations |
 | `sim_metrics.json` | JSON | Structured metrics summary: system info, per-episode durations, worker limits, resource snapshots (CPU/memory), and aggregate statistics |
 | `<platform>.db` | SQLite | Full social media state (users, posts, replies, likes, follows). Use with the [built-in visualizers](backends.md#built-in-visualizers) to browse |
@@ -454,6 +454,8 @@ Each line in `action_events.jsonl` is a JSON object:
   "episode": 3,
   "event_type": "action",
   "event_index": 42,
+  "gm_name": "social_gm",
+  "backend_type": "twitter_like",
   "source_user": "Alice Smith",
   "label": "post",
   "data": {
@@ -680,6 +682,10 @@ the state of built-in local backends. For SQLite-backed backends such as
 restore strategy is only used when checkpointed backend state is absent and a
 domain-specific replay is needed.
 
+For multi-GM source runs, replay is metadata-driven and strict. The runtime uses
+the restored Agent flow and the configured flow chain, then requires exactly one
+GM in that chain to expose the replayed backend action.
+
 ---
 
 ## Developer Customization Guide
@@ -695,6 +701,11 @@ The runtime now includes direct engine step strategies:
 - `sim.engine.step.built_in: sequential`: one GM, selected agents executed one by one.
 - `sim.engine.step.built_in: flow`: flow-aware execution.
 - `sim.engine.step.built_in: multi_gm`: flow-aware execution with multi-GM routing.
+
+For `multi_gm`, all configured Game Masters update once at the start of each
+episode step, before flow routing and actor selection. Flow chains then route
+selected agent turns through the configured GMs; `gm.update(...)` is not called
+again inside each flow chain.
 
 The engine is responsible for:
 
@@ -729,6 +740,10 @@ To introduce new class-level behavior phases without engine/resolve bloat:
 3. Optionally add per-agent overrides with `sim.engine.step.params.agent_to_flow`.
 4. Add any flow names that require episode-style observations to
   `env.gm.components.observe.params.episode_observation_flows`.
+
+`agent_to_flow` keys must match final Agent names. Overrides are applied during
+runtime construction and passed to the Engine and every Game Master as the
+final flow map.
 
 This pattern is how fixed agents run before default LLM-driven agents today,
 and it generalizes to any future specialized class.
@@ -776,10 +791,10 @@ optional timeline semantics, and storage/query behavior.
 
 ## Further Reading
 
-- [Configuration Reference](configuration.md) — Every config option explained
-- [Building Agents](building_agents.md) — YAML pipeline and custom builders
-- [Memory Initialization](memory_initialization.md) — Raw, formative, and custom modes
-- [Environment Backends](backends.md) — Generic apps, Twitter-like, Reddit-like, Mastodon
-- [Evaluation Probes](probes.md) — Probe types and deployment
-- [Dashboard](dashboard.md) — Streamlit GUI guide
-- [Election Walkthrough](tutorials/election.md) — Complex real-world example
+- [Configuration Reference](configuration.md): Every config option explained
+- [Building Agents](building_agents.md): YAML pipeline and custom builders
+- [Memory Initialization](memory_initialization.md): Raw, formative, and custom modes
+- [Environment Backends](backends.md): Generic apps, Twitter-like, Reddit-like, Mastodon
+- [Evaluation Probes](probes.md): Probe types and deployment
+- [Dashboard](dashboard.md): Streamlit GUI guide
+- [Election Walkthrough](tutorials/election.md): Complex real-world example

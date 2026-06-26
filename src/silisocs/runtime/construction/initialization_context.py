@@ -41,6 +41,7 @@ def build_initializer_context(
     sim_roles: dict[str, str] = {}
     agent_flow_tags: dict[str, str] = {}
     agent_bios: dict[str, str] = {}
+    final_flow_tags = _final_agent_flow_tags(cfg, agent_configs)
     for agent in agent_configs:
         agent_name = str(agent.params["name"])
         player_specific_memories[agent_name] = tuple(
@@ -50,8 +51,7 @@ def build_initializer_context(
         sim_role = agent.params.get("sim_role", {})
         if isinstance(sim_role, Mapping):
             sim_roles[agent_name] = str(sim_role.get("name", ""))
-        flow_tag = str(agent.params.get("flow_tag", DEFAULT_FLOW_TAG) or DEFAULT_FLOW_TAG).strip()
-        agent_flow_tags[agent_name] = flow_tag or DEFAULT_FLOW_TAG
+        agent_flow_tags[agent_name] = final_flow_tags[agent_name]
         agent_bios[agent_name] = str(agent.params.get("bio", ""))
         for memory in _normalize_memories(agent.params.get("shared_memories", [])):
             if memory not in shared_memories:
@@ -67,18 +67,49 @@ def build_initializer_context(
     )
 
 
+def _final_agent_flow_tags(
+    cfg: DictConfig,
+    agent_configs: Sequence[RuntimeSpec],
+) -> dict[str, str]:
+    tags: dict[str, str] = {}
+    for agent in agent_configs:
+        agent_name = str(agent.params["name"])
+        flow_tag = str(agent.params.get("flow_tag", DEFAULT_FLOW_TAG) or DEFAULT_FLOW_TAG).strip()
+        tags[agent_name] = flow_tag or DEFAULT_FLOW_TAG
+
+    raw_overrides = OmegaConf.select(cfg, "sim.engine.step.params.agent_to_flow", default={})
+    if raw_overrides is None:
+        return tags
+    if not isinstance(raw_overrides, Mapping):
+        raise ValueError("sim.engine.step.params.agent_to_flow must be a mapping.")
+
+    unknown: list[str] = []
+    for raw_name, raw_flow in raw_overrides.items():
+        agent_name = str(raw_name).strip()
+        if not agent_name:
+            raise ValueError("sim.engine.step.params.agent_to_flow contains an empty agent name.")
+        if agent_name not in tags:
+            unknown.append(agent_name)
+            continue
+        tags[agent_name] = str(raw_flow or DEFAULT_FLOW_TAG).strip() or DEFAULT_FLOW_TAG
+    if unknown:
+        raise ValueError(
+            f"sim.engine.step.params.agent_to_flow references unknown agent(s): {sorted(unknown)}"
+        )
+    return tags
+
+
 def populate_agent_data(
+    cfg: DictConfig,
     agent_configs: Sequence[RuntimeSpec],
     game_masters: Sequence[RuntimeSpec],
 ) -> None:
     sim_roles: dict[str, str] = {}
-    agent_flow_tags: dict[str, str] = {}
+    agent_flow_tags = _final_agent_flow_tags(cfg, agent_configs)
 
     for agent in agent_configs:
         agent_name = agent.params["name"]
         sim_roles[agent_name] = agent.params["sim_role"]["name"]
-        flow_tag = str(agent.params.get("flow_tag", DEFAULT_FLOW_TAG) or DEFAULT_FLOW_TAG).strip()
-        agent_flow_tags[agent_name] = flow_tag or DEFAULT_FLOW_TAG
 
     configured_gms = list(game_masters)
     if not configured_gms:

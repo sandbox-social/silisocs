@@ -24,15 +24,6 @@ class BaseComponent:
         del state
 
 
-class NoOpComponent(BaseComponent):
-    """Passive component for optional GM slots that are disabled."""
-
-    def __init__(self, **kwargs: Any) -> None:
-        """Accept and ignore runtime kwargs from component factories."""
-        del kwargs
-        super().__init__()
-
-
 class InitializeComponent(BaseComponent, ABC):
     """Base class for components that initialize one game master."""
 

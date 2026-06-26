@@ -7,6 +7,8 @@ import inspect
 from collections.abc import Mapping
 from typing import Any
 
+from omegaconf import DictConfig, OmegaConf
+
 from silisocs.simulation_engines.policies.probe_schedule import (
     DisabledProbeSchedulePolicy,
     FixedIntervalProbeSchedulePolicy,
@@ -32,30 +34,14 @@ _PROBE_BUILT_INS = {
 
 
 def _load_class(class_path: str) -> type[Any]:
-    """_load_class.
-
-    :param str class_path:
-    :type class_path: str
-
-    :returns: type[Any]
-    :rtype: type[Any]
-    """
+    """Load and return a class from its fully-qualified path."""
     module_path, class_name = class_path.rsplit(".", 1)
     module = importlib.import_module(module_path)
     return getattr(module, class_name)
 
 
 def _instantiate_with_supported_kwargs(cls: type[Any], kwargs: Mapping[str, Any]) -> Any:
-    """_instantiate_with_supported_kwargs.
-
-    :param type[Any] cls:
-    :type cls: type[Any]
-    :param Mapping[str, Any] kwargs:
-    :type kwargs: Mapping[str, Any]
-
-    :returns: Any
-    :rtype: Any
-    """
+    """Instantiate a class using only kwargs supported by its constructor."""
     params = inspect.signature(cls.__init__).parameters
     if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
         return cls(**dict(kwargs))
@@ -81,14 +67,7 @@ def _build_policy(
     built_ins: Mapping[str, type[Any]],
     default_built_in: str,
 ) -> Any:
-    """_build_policy.
-
-    :param Mapping[str, Any] | None slot_cfg:
-    :type slot_cfg: Mapping[str, Any] | None
-
-    :returns: Any
-    :rtype: Any
-    """
+    """Build a policy from a slot config, using class_path or a built-in name."""
     cfg = dict(slot_cfg or {})
     class_path = cfg.get("class_path")
     params = dict(cfg.get("params") or {})
@@ -106,6 +85,34 @@ def _build_policy(
 def build_turn_policy(slot_cfg: Mapping[str, Any] | None = None) -> Any:
     """Build turn policy from YAML config."""
     return _build_policy(slot_cfg, built_ins=_TURN_BUILT_INS, default_built_in="single_action")
+
+
+def build_flow_turn_policies(raw: Any) -> dict[str, Any]:
+    """Resolve a ``{flow_tag: turn_policy_slot}`` mapping into per-flow policies.
+
+    Each value mirrors the ``sim.engine.turn_policy`` slot shape
+    (``{built_in|class_path, params}``). Flows absent from the returned map fall
+    back to the engine's single global turn policy at execution time, so an empty
+    or omitted config is a pure no-op.
+    """
+    if raw is None:
+        return {}
+    if isinstance(raw, DictConfig):
+        raw = OmegaConf.to_container(raw, resolve=True)
+    if not isinstance(raw, Mapping):
+        raise ValueError("sim.engine.step.params.flow_turn_policies must be a mapping.")
+    resolved: dict[str, Any] = {}
+    for flow, slot in raw.items():
+        flow_name = str(flow).strip()
+        if not flow_name:
+            raise ValueError("flow_turn_policies contains an empty flow name.")
+        if slot is not None and not isinstance(slot, Mapping):
+            raise ValueError(
+                f"flow_turn_policies['{flow_name}'] must be a mapping of "
+                "{built_in|class_path, params}."
+            )
+        resolved[flow_name] = build_turn_policy(dict(slot or {}))
+    return resolved
 
 
 def build_probe_schedule_policy(slot_cfg: Mapping[str, Any] | None = None) -> Any:

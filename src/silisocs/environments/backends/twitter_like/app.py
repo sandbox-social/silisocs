@@ -29,6 +29,8 @@ class TwitterLikeApp(SocialBackendApp):
     """
 
     action_logger: Any = None
+    # Authoritative checkpoint state: full SQLite snapshot + user mapping.
+    provides_checkpoint_state = True
     app_description: str = "TwitterLikeApp"
     db_path: str = "twitter_like.db"
     _platform: TwitterLikePlatform = dataclasses.field(default=None, init=False, repr=False)  # type: ignore[assignment]
@@ -53,16 +55,6 @@ class TwitterLikeApp(SocialBackendApp):
     def description(self) -> str:
         """Return a description of the app."""
         return self.app_description
-
-    def _log_action_event(self, source_user: str, label: str, data: dict[str, Any]) -> None:
-        if self.action_logger:
-            self.action_logger.log(
-                {
-                    "source_user": source_user,
-                    "label": label,
-                    "data": data,
-                }
-            )
 
     def initialize(self, agent_names: list[str], **kwargs: Any) -> None:
         """Compatibility no-op; runtime initializers own social setup."""
@@ -221,6 +213,10 @@ class TwitterLikeApp(SocialBackendApp):
             },
         )
 
+    def recsys_active_types(self) -> set[str]:
+        """Return recsys types currently live on the platform (empty after restore)."""
+        return set(getattr(self._platform, "_recsys_types", {}) or {})
+
     def update_recommendations(
         self, active_user_ids: list[int] | None = None, max_posts: int = 10
     ) -> None:
@@ -266,6 +262,15 @@ class TwitterLikeApp(SocialBackendApp):
                 f"Replies: {post.get('reply_count', 0)}\n"
             )
         return result
+
+    def action_aliases(self) -> list[set[str]]:
+        """Domain-verb <-> method-name synonyms (keep in sync with parse_and_resolve_action)."""
+        return [
+            {"post", "create_tweet"},
+            {"reply", "reply_to_tweet"},
+            {"like", "like_tweet"},
+            {"repost", "retweet", "boost", "repost_tweet"},
+        ]
 
     def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
         """Dispatch a parsed action to the correct app_action method.

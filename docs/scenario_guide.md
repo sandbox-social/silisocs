@@ -2,7 +2,7 @@
 
 A **scenario** is a shared social world: a setting, a cast of agents, and a
 backend configuration. It lives in `scenarios/<name>/` and can be reused across
-many studies. Think of it as the stage — studies are the experiments you run on
+many studies. Think of it as the stage: studies are the experiments you run on
 it. The semantic world description for a scenario lives in
 `conf/world/default.yaml`.
 
@@ -29,7 +29,7 @@ adjust the LLM).
 
 ---
 
-## Step 1 — Define your world (`world/default.yaml`)
+## Step 1: Define your world (`world/default.yaml`)
 
 This file describes where the simulation takes place and what is happening.
 
@@ -58,14 +58,14 @@ event:
 ```
 
 **Tips:**
-- Keep `background` to 4–6 bullets. These become shared memories for all agents.
-- The `context` sentence goes into every agent's initial awareness — make it
+- Keep `background` to 4 to 6 bullets. These become shared memories for all agents.
+- The `context` sentence goes into every agent's initial awareness, make it
   the thing they are actually responding to.
 - `num_agents` must equal the total count across all your agent classes (Step 2).
 
 ---
 
-## Step 2 — Define your agents (`agents/default.yaml`)
+## Step 2: Define your agents (`agents/default.yaml`)
 
 This file describes who is in the simulation, what they know, and how active they are.
 
@@ -145,8 +145,8 @@ initial_observations:
 
 | Field | What it controls |
 |---|---|
-| `context` | The agent's backstory — fed into their memory at init |
-| `style` | One-line posting voice description — shapes how they write |
+| `context` | The agent's backstory, fed into their memory at init |
+| `style` | One-line posting voice description, shapes how they write |
 | `goal` | What they are trying to achieve in this simulation |
 | `seed_post` | Their first post (leave blank `''` to let the LLM decide) |
 | `inactive_to_active` | Probability of acting on any given step (configured in `env.yaml`) |
@@ -159,7 +159,7 @@ for the full reference.
 
 ---
 
-## Step 3 — Run it
+## Step 3: Run it
 
 ```bash
 uv run silisocs --config-path scenarios/my_world/conf
@@ -177,7 +177,7 @@ uv run streamlit run src/silisocs/dashboard/launch_app.py
 
 ---
 
-## Step 4 — Validate and add a README
+## Step 4: Validate and add a README
 
 Check that the config loads without error:
 ```bash
@@ -193,7 +193,7 @@ existing scenarios like `scenarios/neighborhood_forum/README.md` for the format)
 
 ### Multiple agent classes with different activity levels
 
-Set `inactive_to_active` high (0.8–0.9) for active roles and low (0.3–0.5) for
+Set `inactive_to_active` high (0.8 to 0.9) for active roles and low (0.3 to 0.5) for
 lurkers. Activity rates go in
 `env.gm.components.next_acting.params.activity_transition_rates` keyed by
 `sim_role_name`.
@@ -247,8 +247,8 @@ gm:
 
 ## Where to look next
 
-- **Existing scenarios:** `scenarios/election/`, `scenarios/ai_conference/` — working examples
+- **Existing scenarios:** `scenarios/election/`, `scenarios/ai_conference/`: working examples
 - **Full config reference:** `docs/configuration.md`
-- **Study design:** `docs/study_guide.md` — how to run multi-condition experiments on your scenario
+- **Study design:** `docs/study_guide.md`: how to run multi-condition experiments on your scenario
 - **Probes (survey questions):** `docs/probes.md`
-- **Advanced config:** `agent_docs/scenario_design.md` — complete field reference
+- **Advanced config:** `agent_docs/scenario_design.md`: complete field reference

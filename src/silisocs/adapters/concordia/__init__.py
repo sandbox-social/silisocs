@@ -140,6 +140,16 @@ class ConcordiaAgentAdapter(Agent):
         setter = getattr(self._target, "set_state", None)
         if callable(setter):
             setter(state)
+        elif state:
+            # Non-empty checkpointed state (e.g. the agent's associative memory)
+            # with no way to restore it would be silently dropped. Fail loudly so
+            # a misconfigured Concordia target is caught at restore time rather
+            # than resuming with empty memory while reporting success.
+            raise TypeError(
+                f"Concordia target {type(self._target).__name__} has checkpointed state but "
+                "exposes no set_state(); restoring it would silently drop that state. Use a "
+                "Concordia agent (e.g. EntityAgentWithLogging) that implements set_state()."
+            )
 
 
 class ConcordiaGameMasterAdapter:

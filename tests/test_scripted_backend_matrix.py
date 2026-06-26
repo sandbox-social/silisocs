@@ -11,6 +11,12 @@ import yaml
 
 from silisocs.runtime.types import ToolCall
 
+# Each scripted test spawns a full `silisocs.runtime.runner` subprocess. A cold
+# import of the package (first run, or after the OS page cache is evicted by a
+# large full-suite run) can take far longer than a warm ~2s run, so the timeout
+# is generous to avoid flaky timeouts under full-suite load.
+_SUBPROCESS_TIMEOUT_S = 300
+
 
 def _read_jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
@@ -227,7 +233,7 @@ def _run_scripted(
         check=False,
         text=True,
         capture_output=True,
-        timeout=60,
+        timeout=_SUBPROCESS_TIMEOUT_S,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     return output_dir
@@ -396,7 +402,7 @@ def test_dashboard_saved_config_runs_with_scripted_model(tmp_path: Path) -> None
         check=False,
         text=True,
         capture_output=True,
-        timeout=60,
+        timeout=_SUBPROCESS_TIMEOUT_S,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert (output_dir / "effective_config.yaml").is_file()

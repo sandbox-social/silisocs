@@ -6,7 +6,7 @@ import random
 import threading
 import time
 from collections import deque
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import Any, cast
 
 import httpx
@@ -149,7 +149,11 @@ class OpenAILanguageModel(LanguageModel):
             self._local.tag = str(action_tag)
 
     def clear_runtime_context(self) -> None:
-        self._local = threading.local()
+        # Clear only THIS thread's context: rebinding self._local would replace the
+        # shared object and wipe other in-flight threads' per-thread context.
+        for attr in ("agent_name", "episode_idx", "phase", "tag"):
+            if hasattr(self._local, attr):
+                delattr(self._local, attr)
 
     def _rebuild_agent_name_index(self) -> None:
         index: dict[str, str] = {}
@@ -221,33 +225,22 @@ class OpenAILanguageModel(LanguageModel):
             messages.append({"role": "user", "content": prompt})
             stop_param = terminators
 
-        response = None
-        for attempt in range(self._max_retries + 1):
-            try:
-                kwargs = self._request_kwargs(
-                    model=self._model_name,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    timeout=timeout,
-                    seed=seed,
-                )
-                if stop_param is not None:
-                    kwargs["stop"] = stop_param
-                response = cast(Any, self._client.chat.completions.create)(**kwargs)
-                self._record_retry_outcome(attempt, success=True)
-                break
-            except openai.APIError as e:
-                print(f"OpenAI API returned an API Error (attempt {attempt + 1}): {e}")
-            except openai.APIConnectionError as e:
-                print(f"Failed to connect to OpenAI API (attempt {attempt + 1}): {e}")
-            except openai.RateLimitError as e:
-                print(f"OpenAI API request exceeded rate limit (attempt {attempt + 1}): {e}")
-            self._sleep_or_fail(attempt, "LLM call")
+        def _attempt(attempt: int) -> Any:
+            kwargs = self._request_kwargs(
+                model=self._model_name,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
+                seed=seed,
+            )
+            if stop_param is not None:
+                kwargs["stop"] = stop_param
+            result = cast(Any, self._client.chat.completions.create)(**kwargs)
+            self._record_retry_outcome(attempt, success=True)
+            return result
 
-        if response is None:
-            self._record_retry_outcome(self._max_retries, success=False)
-            raise RuntimeError("LLM call did not produce a response.")
+        response = self._retry_request(_attempt, label="LLM call")
         answer = response.choices[0].message.content
         if answer is None:
             raise ValueError("Response content is None.")
@@ -296,7 +289,7 @@ class OpenAILanguageModel(LanguageModel):
         mode: str | None = None,
         **kwargs: Any,
     ) -> list[ToolCall]:
-        tool_mode = str(mode or self._resolve_tool_calling_mode()).strip().lower()
+        tool_mode = str(mode or "single").strip().lower()
         if tool_mode not in {"single", "multi"}:
             tool_mode = "single"
         messages = [
@@ -309,45 +302,37 @@ class OpenAILanguageModel(LanguageModel):
             },
             {"role": "user", "content": prompt},
         ]
-        for attempt in range(self._max_retries + 1):
-            try:
-                request_kwargs = self._request_kwargs(
-                    model=self._model_name,
-                    messages=messages,
-                    tools=tools,
-                    tool_choice="required",
-                    temperature=0.5,
-                    timeout=60,
-                    **kwargs,
-                )
-                response = cast(Any, self._client.chat.completions.create)(**request_kwargs)
-                self._record_retry_outcome(attempt, success=True)
-                msg = response.choices[0].message
-                if not msg.tool_calls:
-                    raise ValueError("Model returned no tool calls.")
-                parsed_calls = [
-                    call
-                    for call in (_parse_tool_call(tc) for tc in msg.tool_calls)
-                    if call is not None
-                ]
-                if tool_mode == "single":
-                    parsed_calls = parsed_calls[:1]
-                self._log(
-                    prompt,
-                    "tool_calls:"
-                    + ", ".join(f"{call.name}({dict(call.arguments)})" for call in parsed_calls),
-                )
-                return parsed_calls
-            except openai.APIError as e:
-                print(f"Tool call API error (attempt {attempt + 1}): {e}")
-            except openai.APIConnectionError as e:
-                print(f"Tool call connection error (attempt {attempt + 1}): {e}")
-            except openai.RateLimitError as e:
-                print(f"Tool call rate limit (attempt {attempt + 1}): {e}")
-            except Exception as e:
-                print(f"Tool call unexpected error (attempt {attempt + 1}): {e}")
-            self._sleep_or_fail(attempt, "Tool call")
-        raise RuntimeError("Tool call did not produce a response.")
+
+        def _attempt(attempt: int) -> list[ToolCall]:
+            request_kwargs = self._request_kwargs(
+                model=self._model_name,
+                messages=messages,
+                tools=tools,
+                tool_choice="required",
+                temperature=0.5,
+                timeout=60,
+                **kwargs,
+            )
+            response = cast(Any, self._client.chat.completions.create)(**request_kwargs)
+            self._record_retry_outcome(attempt, success=True)
+            msg = response.choices[0].message
+            if not msg.tool_calls:
+                raise ValueError("Model returned no tool calls.")
+            parsed_calls = [
+                call for call in (_parse_tool_call(tc) for tc in msg.tool_calls) if call is not None
+            ]
+            if tool_mode == "single":
+                parsed_calls = parsed_calls[:1]
+            self._log(
+                prompt,
+                "tool_calls:"
+                + ", ".join(f"{call.name}({dict(call.arguments)})" for call in parsed_calls),
+            )
+            return parsed_calls
+
+        return cast(
+            list[ToolCall], self._retry_request(_attempt, label="Tool call", catch_all=True)
+        )
 
     def sample_structured(
         self,
@@ -371,30 +356,28 @@ class OpenAILanguageModel(LanguageModel):
             },
             {"role": "user", "content": prompt},
         ]
-        for attempt in range(self._max_retries + 1):
-            try:
-                kwargs = self._request_kwargs(
-                    model=self._model_name,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=min(max_tokens, 4000),
-                    timeout=120,
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": safe_schema_name,
-                            "schema": schema,
-                            "strict": False,
-                        },
+
+        def _attempt(attempt: int) -> dict[str, Any]:
+            kwargs = self._request_kwargs(
+                model=self._model_name,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=min(max_tokens, 4000),
+                timeout=120,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": safe_schema_name,
+                        "schema": schema,
+                        "strict": False,
                     },
-                    **extra_request_kwargs,
-                )
+                },
+                **extra_request_kwargs,
+            )
+            try:
                 response = cast(Any, self._client.chat.completions.create)(**kwargs)
-                parsed = _parse_json_content(response.choices[0].message.content)
-                self._record_retry_outcome(attempt, success=True)
-                self._log(prompt, json.dumps(parsed, ensure_ascii=True))
-                return parsed
-            except openai.BadRequestError as e:
+            except openai.BadRequestError:
+                # On the first attempt, fall back to plain json_object mode before retrying.
                 if attempt == 0:
                     fallback = self._sample_structured_json_object(
                         messages, temperature, max_tokens
@@ -403,19 +386,16 @@ class OpenAILanguageModel(LanguageModel):
                         self._record_retry_outcome(attempt, success=True)
                         self._log(prompt, json.dumps(fallback, ensure_ascii=True))
                         return fallback
-                print(f"Structured response API error (attempt {attempt + 1}): {e}")
-            except (json.JSONDecodeError, TypeError, ValueError) as e:
-                print(f"Structured response parse error (attempt {attempt + 1}): {e}")
-            except openai.APIError as e:
-                print(f"Structured response API error (attempt {attempt + 1}): {e}")
-            except openai.APIConnectionError as e:
-                print(f"Structured response connection error (attempt {attempt + 1}): {e}")
-            except openai.RateLimitError as e:
-                print(f"Structured response rate limit (attempt {attempt + 1}): {e}")
-            except Exception as e:
-                print(f"Structured response unexpected error (attempt {attempt + 1}): {e}")
-            self._sleep_or_fail(attempt, "Structured output")
-        raise RuntimeError("Structured output did not produce a response.")
+                raise
+            parsed = _parse_json_content(response.choices[0].message.content)
+            self._record_retry_outcome(attempt, success=True)
+            self._log(prompt, json.dumps(parsed, ensure_ascii=True))
+            return parsed
+
+        return cast(
+            dict[str, Any],
+            self._retry_request(_attempt, label="Structured output", catch_all=True),
+        )
 
     def _sample_structured_json_object(
         self,
@@ -451,9 +431,32 @@ class OpenAILanguageModel(LanguageModel):
         sleep_seconds += random.uniform(0, self._backoff_base_seconds)
         time.sleep(sleep_seconds)
 
-    @staticmethod
-    def _resolve_tool_calling_mode() -> str:
-        return "single"
+    def _retry_request(
+        self, attempt_fn: Callable[[int], Any], *, label: str, catch_all: bool = False
+    ) -> Any:
+        """Run ``attempt_fn`` over the bounded retry loop with exponential backoff.
+
+        ``attempt_fn(attempt)`` performs one request attempt and, on success,
+        records the outcome (via ``_record_retry_outcome``) and returns its result.
+        Recognised OpenAI API exceptions — and, when ``catch_all`` is set, any other
+        exception — trigger a backoff and retry. When retries are exhausted,
+        ``_sleep_or_fail`` raises; the trailing ``RuntimeError`` is a defensive
+        backstop that the loop never reaches in practice.
+        """
+        retry_excs: tuple[type[BaseException], ...] = (
+            openai.APIError,
+            openai.APIConnectionError,
+            openai.RateLimitError,
+        )
+        if catch_all:
+            retry_excs = (*retry_excs, Exception)
+        for attempt in range(self._max_retries + 1):
+            try:
+                return attempt_fn(attempt)
+            except retry_excs as exc:
+                print(f"{label} error (attempt {attempt + 1}): {exc}")
+            self._sleep_or_fail(attempt, label)
+        raise RuntimeError(f"{label} did not produce a response.")
 
 
 def _parse_tool_call(tool_call: Any) -> ToolCall | None:

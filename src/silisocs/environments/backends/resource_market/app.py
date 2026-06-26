@@ -27,6 +27,8 @@ class ResourceMarketApp(BackendApp):
     """Small in-memory market where agents produce, list, buy, and consume resources."""
 
     action_logger: Any = None
+    # Authoritative checkpoint state: full in-memory market state round-trips.
+    provides_checkpoint_state = True
     app_description: str = "A resource market environment."
     initial_cash: int = 20
     initial_inventory: dict[str, int] = field(default_factory=lambda: {"food": 1})
@@ -205,9 +207,7 @@ class ResourceMarketApp(BackendApp):
 
     def _record(self, event: str) -> None:
         self._events.append(event)
-        log_fn = getattr(self.action_logger, "log", None)
-        if callable(log_fn):
-            log_fn({"event_type": "resource_market", "message": event})
+        self._emit_event_log(event, event_type="resource_market")
 
     def _ensure_agent(self, agent_name: str) -> str | None:
         if agent_name not in self._cash:

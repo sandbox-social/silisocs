@@ -16,11 +16,7 @@ class ValidationResult:
     stderr: str
 
     def __str__(self) -> str:
-        """__str__.
-
-        :returns: str
-        :rtype: str
-        """
+        """Render the result as a PASS/FAIL block with captured output."""
         status = "PASS" if self.ok else "FAIL"
         lines = [f"[{status}]"]
         if self.stdout.strip():
@@ -61,7 +57,7 @@ def validate_study(study_root: Path | str) -> ValidationResult:
             "run",
             "python",
             "-m",
-            "experiments.run_study",
+            "silisocs.studies.run_study",
             "--study",
             str(study_root),
             "plan",

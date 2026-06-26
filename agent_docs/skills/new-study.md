@@ -185,7 +185,7 @@ experiments/studies/<study_id>/
 
 Then validate the study plan expands correctly:
 ```bash
-uv run python -m experiments.run_study --study experiments/studies/<study_id> plan
+uv run silisocs-study --study experiments/studies/<study_id> plan
 ```
 
 Report the expanded plan to the user. Fix any config key errors before finishing.
@@ -199,7 +199,7 @@ Remind the user of this pattern after writing files:
 > **After running H1:**
 > 1. Update `status` in `study.yaml` to `supported`, `refuted`, or `inconclusive`
 > 2. Record the key result as `finding: "gpt4o produced 3× higher diversity..."` on the hypothesis
-> 3. Append a summary note: `uv run python -m experiments.run_study --study ... summary-append --author ... --hypothesis h1_... --note "..."`
+> 3. Append a summary note: `uv run silisocs-study --study ... summary-append --author ... --hypothesis h1_... --note "..."`
 > 4. Add H2 to `study.yaml` with `follows_from: h1_...` and `motivation:` explaining what the H1 finding raised
 > 5. Run H2 — conditions that overlap with H1 can reuse existing runs via `execution.mode: reuse_existing`
 

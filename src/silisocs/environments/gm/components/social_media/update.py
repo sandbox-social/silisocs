@@ -90,19 +90,11 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
     }
 
     def _supported_recsys_types(self) -> set[str]:
-        """_supported_recsys_types.
-
-        :returns: set[str]
-        :rtype: set[str]
-        """
+        """Return the recsys types supported by the current backend."""
         return set(self._SUPPORTED_RECSYS_BY_BACKEND.get(self.backend_type, set()))
 
     def _effective_default_recsys_type(self) -> str | None:
-        """_effective_default_recsys_type.
-
-        :returns: str | None
-        :rtype: str | None
-        """
+        """Return the effective default recsys type for the current backend."""
         if self.default_recsys_type:
             return self.default_recsys_type
         return self._DEFAULT_RECSYS_BY_BACKEND.get(self.backend_type)
@@ -185,37 +177,50 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
 
             backend = self.backend
 
-            # Initialize all unique recsys types on first call
-            if not self._initialized_recsys_types:
-                recsys_types = self._extract_unique_recsys_types()
-                if not recsys_types:
-                    logger.debug(
-                        "No recommendation algorithms configured/supported for backend '%s'; "
-                        "skipping recommendation updates.",
-                        self.backend_type,
+            # Reconcile configured recsys types against what the backend reports as
+            # live (not our own flag): after a checkpoint restore the backend is
+            # rebuilt empty, so any configured-but-missing type is re-initialized here
+            # as a lazy self-heal. Otherwise a stale flag would suppress re-init and
+            # update_recommendations would silently no-op.
+            recsys_types = self._extract_unique_recsys_types()
+            if not recsys_types:
+                logger.debug(
+                    "No recommendation algorithms configured/supported for backend '%s'; "
+                    "skipping recommendation updates.",
+                    self.backend_type,
+                )
+                self._initialized_recsys_types = set()
+                self._recsys_disabled = True
+                self._log_recsys_event(
+                    "recsys_update_skipped",
+                    {
+                        "reason": "no_recsys_types",
+                        "backend_type": self.backend_type,
+                    },
+                )
+                return
+            active_types = self._backend_active_recsys_types(backend)
+            missing_types = recsys_types - active_types
+            if missing_types and hasattr(backend, "init_recsys"):
+                for recsys_type in sorted(missing_types):
+                    backend.init_recsys(
+                        recsys_type=recsys_type,
+                        user_context_recent_posts=self.user_context_recent_posts,
+                        include_like_trace=self.include_like_trace,
+                        like_trace_window=self.like_trace_window,
+                        like_trace_weight=self.like_trace_weight,
+                        include_like_trace_in_context=self.include_like_trace_in_context,
                     )
-                    self._initialized_recsys_types = set()
-                    self._recsys_disabled = True
+                    logger.info("Initialized recsys type: %s", recsys_type)
+                if active_types or self._initialized_recsys_types:
                     self._log_recsys_event(
-                        "recsys_update_skipped",
+                        "recsys_reinit_after_restore",
                         {
-                            "reason": "no_recsys_types",
                             "backend_type": self.backend_type,
+                            "reinitialized_types": sorted(missing_types),
                         },
                     )
-                    return
-                if hasattr(backend, "init_recsys"):
-                    for recsys_type in recsys_types:
-                        backend.init_recsys(
-                            recsys_type=recsys_type,
-                            user_context_recent_posts=self.user_context_recent_posts,
-                            include_like_trace=self.include_like_trace,
-                            like_trace_window=self.like_trace_window,
-                            like_trace_weight=self.like_trace_weight,
-                            include_like_trace_in_context=self.include_like_trace_in_context,
-                        )
-                        logger.info(f"Initialized recsys type: {recsys_type}")
-                self._initialized_recsys_types = recsys_types
+            self._initialized_recsys_types = recsys_types
 
             # Update recommendations via backend
             if hasattr(backend, "update_recommendations"):
@@ -279,6 +284,23 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
         if self.default_recsys_type:
             unique_types.add(self.default_recsys_type)
         return unique_types
+
+    @staticmethod
+    def _backend_active_recsys_types(backend: Any) -> set[str]:
+        """Return the recsys types the backend currently has live (source of truth).
+
+        Used to reconcile after a checkpoint restore: the backend platform is
+        rebuilt empty on restore, so this returns an empty set and the component
+        re-initializes the configured types. Backends that don't expose the hook
+        report no live types (safe default).
+        """
+        getter = getattr(backend, "recsys_active_types", None)
+        if not callable(getter):
+            return set()
+        try:
+            return {str(value).strip() for value in getter() if str(value).strip()}
+        except Exception:  # pragma: no cover - defensive
+            return set()
 
     def get_state(self) -> dict[str, Any]:
         """Return serializable component state for checkpoints."""

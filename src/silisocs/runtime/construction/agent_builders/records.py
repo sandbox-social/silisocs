@@ -84,7 +84,14 @@ class RecordLoader:
         if not dataset_name:
             raise ValueError("hf_dataset source requires a `dataset` field")
 
-        from datasets import load_dataset
+        try:
+            from datasets import load_dataset
+        except ImportError as exc:
+            raise ImportError(
+                "This scenario's persona pipeline loads a Hugging Face dataset, "
+                "which requires the optional `hf` extra. Install it with "
+                "`uv sync --extra hf` (or `pip install 'silisocs[hf]'`)."
+            ) from exc
 
         load_kwargs: dict[str, Any] = {"split": split}
         load_args: tuple[Any, ...] = (dataset_name, subset) if subset else (dataset_name,)

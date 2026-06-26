@@ -27,18 +27,23 @@ Thank you for considering contributing to this project! We appreciate your effor
 
 - Sync the standard contributor environment: `uv sync --group dev`
 - Sync the full release-test environment: `uv sync --all-extras --group dev --group docs`
-- Run the pre-commit suite: `uv run poe lint`
-- Run tests with coverage (defaults to non-LLM tests): `uv run poe test`
-- Build the documentation site: `uv run --group docs properdocs build --strict`
+- Run the pre-commit suite: `uv run --group dev poe lint`
+- Run tests with coverage (defaults to non-LLM tests): `uv run --group dev poe test`
+- Build the documentation site via Poe: `uv run --group dev poe docs`
+- Build the documentation site directly: `uv run --group docs properdocs build --strict`
 - Install git hooks: `uv run pre-commit install`
 - Create a commit with Commitizen: `uv run cz c`
 
 ## Lint Policy
 
 The contributor lint contract is the configured pre-commit workflow:
-`uv run poe lint`. That workflow runs Ruff in the same mode as
+`uv run --group dev poe lint`. That workflow runs Ruff in the same mode as
 `.pre-commit-config.yaml`, including auto-fix-only Ruff checks, Ruff format,
 lock-file validation, and mypy.
+
+Poe commands require the dev dependency group because `poethepoet` lives there.
+For example, use `uv run --group dev poe docs` for the docs task rather than
+plain `uv run poe docs`.
 
 Do not treat an ad hoc `uv run ruff check --no-fix .` run as the release gate
 unless the project first scopes or cleans the historical Ruff backlog. It is a
@@ -59,7 +64,7 @@ marker. These tests launch short simulation runs and validate runtime artifacts.
     uv run pytest -m llm_e2e tests/test_e2e_multi_gm_llm.py -v -s
     ```
 
-- Note: `uv run poe test` excludes the `llm_e2e` marker by default.
+- Note: `uv run --group dev poe test` excludes the `llm_e2e` marker by default.
 
 - Run deterministic simulation-contract mirrors (default CI-safe set):
 
@@ -132,7 +137,7 @@ Every `llm_e2e` test should verify these generated files:
     ```
 
     - This will automatically fix issues where possible, but some issues may require manual fixing.
-    - You can also run `uv run poe lint` for the configured lint workflow and `uv run poe test` for the coverage workflow.
+    - You can also run `uv run --group dev poe lint` for the configured lint workflow and `uv run --group dev poe test` for the coverage workflow.
 
 7. Commit using Commitizen:
 

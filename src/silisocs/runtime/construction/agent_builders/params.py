@@ -32,6 +32,7 @@ def build_agent_params(
     resolve_file_path: Callable[[str], Path],
     derive_name_from_context: bool = False,
     name_words: int = 2,
+    name_suffix_index: int = 0,
 ) -> dict[str, Any]:
     """Build one runtime agent params dict from one persona record."""
     mapped: dict[str, Any] = {}
@@ -72,6 +73,9 @@ def build_agent_params(
             "(the builder must map or derive a unique Agent Name) "
             f"(field_map.name={field_map.get('name')!r}). Fields: {fields}"
         )
+    if name_suffix_index > 0:
+        # Recycled persona pass: disambiguate the repeated name (`Alex` -> `Alex 2`).
+        name = f"{name} {name_suffix_index + 1}"
 
     if "specific_memories" not in params and mem_field:
         params["specific_memories"] = extract_path(record, mem_field)

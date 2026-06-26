@@ -100,3 +100,34 @@ def test_update_adaptive_worker_cap_massive_scale_throttles_to_absolute_floor() 
     # After repeated severe pressure the cap must settle at the absolute floor (8),
     # NOT at requested_workers // 64 = 15625.
     assert cap == 8
+
+
+def test_failed_turn_is_isolated_counted_and_reported() -> None:
+    from silisocs.runtime.telemetry import SimMetricsCollector
+    from silisocs.simulation_engines.base_engines import RuntimeEngine
+
+    SimMetricsCollector.reset()
+    failed: list[str] = []
+
+    def _ok() -> str:
+        return "fine"
+
+    def _boom() -> str:
+        raise RuntimeError("model exploded")
+
+    results = RuntimeEngine._run_tasks_with_limit(
+        {"gm::Alice": _ok, "gm::Bob": _boom},
+        worker_limit=2,
+        failed_tasks=failed,
+    )
+    assert results["gm::Alice"] == "fine"
+    assert results["gm::Bob"] == ""
+    assert failed == ["gm::Bob"]
+    assert SimMetricsCollector.get().counter("agent_turn_failures") == 1
+
+
+def test_step_result_degraded_property() -> None:
+    from silisocs.simulation_engines.runtime_base import StepResult
+
+    assert not StepResult().degraded
+    assert StepResult(failed_turns=("gm::Bob",)).degraded

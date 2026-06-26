@@ -35,6 +35,7 @@ checkpoint:
   every_n_steps: null          # int | null
   explicit_steps: []           # list[int]
   source_run: null             # optional previous output directory to restore from
+  auto_resume: true            # resume from THIS run's own output dir if it already has checkpoints; ignored when source_run is set
   restore:
     built_in: social_action_event_replay
     class_path: null

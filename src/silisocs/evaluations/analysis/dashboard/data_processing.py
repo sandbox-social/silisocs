@@ -10,6 +10,7 @@ from typing import Any
 import networkx as nx
 import pandas as pd
 
+from silisocs.evaluations.action_events import resolve_action_event_files
 from silisocs.evaluations.analysis.dashboard.config import (
     INTERACTION_TYPES,
     PAST_TENSE_MAP,
@@ -240,12 +241,18 @@ def load_data_from_directory(directory_path: str | Path) -> dict[str, Any] | Non
         return None
 
     folder_contents = {}
-    for filename in ("action_events.jsonl", "probe_events.jsonl", "prompts_and_responses.jsonl"):
+    # Multi-GM runs isolate action logs under per-GM subdirectories; concatenate
+    # them so the dashboard covers every game master, not just a flat root file.
+    action_files = resolve_action_event_files(directory)
+    if not action_files:
+        return None
+    folder_contents["action_events.jsonl"] = "\n".join(
+        path.read_text(encoding="utf-8").strip() for path in action_files
+    )
+    for filename in ("probe_events.jsonl", "prompts_and_responses.jsonl"):
         path = directory / filename
         if path.exists():
             folder_contents[filename] = path.read_text(encoding="utf-8")
-        elif filename == "action_events.jsonl":
-            return None
 
     (
         follow_graph,

@@ -1,3 +1,45 @@
+## v0.3.0 (2026-06-26)
+
+### ✨ Features
+
+- **agents**: bound native-agent memory growth
+- **checkpoint**: auto-resume from the run's own output directory by default
+- **llm**: add built-in OpenAI-compatible provider presets
+- **runtime**: flexible agent counts and robust per-GM checkpoint restore
+- **engine**: per-flow turn policy, action filters, and probe targeting
+- **dashboard**: Slate & Teal theme and a run Results viewer
+- **gm**: multi-GM flow routing, checkpoint replay, and strict config validation
+- **packaging**: move study runner into the package; add silisocs-study CLI
+- **packaging**: bundle scenario library in the wheel; resolve scenarios by name
+- **study+config**: study reproducibility upgrades; startup class-path validation; LLM provider registry
+- **study**: record environment provenance + scripted e2e study test
+- **checkpoint**: make restore atomic via validate-then-apply
+- **runtime**: surface silent failures as run-health signals
+
+### 🐛🚑️ Fixes
+
+- **backends,runtime**: address code-review findings
+- **scenarios**: make every bundled scenario runnable as documented
+
+### ♻️  Refactorings
+
+- **study**: finish moving the study runner into the package; drop legacy shims and aliases
+- **packaging**: keep example scenarios out of the wheel
+
+### 📝💡 Documentation
+
+- document provider presets and auto-resume; fix virtual_space example
+- frame as general social simulation; add async-engine ADR and upgrade notes
+- refresh site theme, generalize framing, and drop em-dashes
+- document per-flow controls; correct reddit action list
+- add CLAUDE.md and align contributor workflow commands with the dev group
+- brand the documentation site (Slate & Teal) and restructure the landing page
+- reconcile AGENTS.md with code; document pip-install scenario flow
+
+### 🧹 chore
+
+- simplify comments and drop boilerplate docstrings
+
 ## v0.2.0 (2026-06-12)
 
 ### ♻️  Refactorings

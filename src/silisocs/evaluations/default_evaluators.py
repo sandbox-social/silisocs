@@ -23,11 +23,28 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-import matplotlib
 import yaml
 
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+from silisocs.evaluations.action_events import resolve_action_event_files
+
+# matplotlib is an optional (`analysis` extra) dependency used only by the plot
+# writers below. Import it lazily so this module — and its JSONL/stat helpers —
+# can be imported without the plotting stack installed.
+plt: Any = None
+
+
+def _ensure_plt() -> Any:
+    """Lazily import matplotlib (Agg backend) and cache pyplot on the module."""
+    global plt
+    if plt is None:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as _plt
+
+        plt = _plt
+    return plt
+
 
 VALID_MODES = {
     "action_metrics",
@@ -43,27 +60,13 @@ _CHOICE_WORD_THRESHOLD = 4
 
 
 def _slug(text: str) -> str:
-    """_slug.
-
-    :param str text:
-    :type text: str
-
-    :returns: str
-    :rtype: str
-    """
+    """Convert text to a lowercase, underscore-separated slug identifier."""
     slug = re.sub(r"[^a-zA-Z0-9]+", "_", text.strip().lower()).strip("_")
     return slug or "unknown"
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    """_read_jsonl.
-
-    :param Path path:
-    :type path: Path
-
-    :returns: list[dict[str, Any]]
-    :rtype: list[dict[str, Any]]
-    """
+    """Read a JSONL file and return its non-empty lines as parsed dicts."""
     rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as f:
         for raw in f:
@@ -75,16 +78,7 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
-    """_safe_int.
-
-    :param Any value:
-    :type value: Any
-    :param int default:
-    :type default: int
-
-    :returns: int
-    :rtype: int
-    """
+    """Coerce a value to int, returning the default if conversion fails."""
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -92,14 +86,7 @@ def _safe_int(value: Any, default: int = 0) -> int:
 
 
 def _safe_float(value: Any) -> float | None:
-    """_safe_float.
-
-    :param Any value:
-    :type value: Any
-
-    :returns: float | None
-    :rtype: float | None
-    """
+    """Parse the first numeric token from a value as a float, or None."""
     if value is None:
         return None
     if isinstance(value, (int, float)):
@@ -117,14 +104,7 @@ def _safe_float(value: Any) -> float | None:
 
 
 def _summary_stats(values: list[float]) -> dict[str, Any]:
-    """_summary_stats.
-
-    :param list[float] values:
-    :type values: list[float]
-
-    :returns: dict[str, Any]
-    :rtype: dict[str, Any]
-    """
+    """Return count/min/max/mean/median/stdev summary stats for the values."""
     if not values:
         return {
             "count": 0,
@@ -145,14 +125,7 @@ def _summary_stats(values: list[float]) -> dict[str, Any]:
 
 
 def _normalize_binary(value: Any) -> str | None:
-    """_normalize_binary.
-
-    :param Any value:
-    :type value: Any
-
-    :returns: str | None
-    :rtype: str | None
-    """
+    """Normalize a value to "Yes"/"No", or None if it is not binary."""
     text = str(value or "").strip().lower()
     if not text:
         return None
@@ -168,14 +141,7 @@ def _normalize_binary(value: Any) -> str | None:
 
 
 def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
-    """_load_probe_type_map.
-
-    :param Path run_dir:
-    :type run_dir: Path
-
-    :returns: dict[str, str]
-    :rtype: dict[str, str]
-    """
+    """Load a mapping of probe label to probe type from the run's config."""
     cfg_path = run_dir / "effective_config.yaml"
     if not cfg_path.is_file():
         return {}
@@ -224,14 +190,7 @@ def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
 
 
 def _load_probe_hold_last_response(run_dir: Path) -> bool:
-    """_load_probe_hold_last_response.
-
-    :param Path run_dir:
-    :type run_dir: Path
-
-    :returns: bool
-    :rtype: bool
-    """
+    """Return whether probe deployment has hold_last_response enabled in config."""
     cfg_path = run_dir / "effective_config.yaml"
     if not cfg_path.is_file():
         return False
@@ -255,14 +214,7 @@ def _load_probe_hold_last_response(run_dir: Path) -> bool:
 
 
 def _has_probe_response(row: dict[str, Any]) -> bool:
-    """_has_probe_response.
-
-    :param dict[str, Any] row:
-    :type row: dict[str, Any]
-
-    :returns: bool
-    :rtype: bool
-    """
+    """Return whether a probe row carries a non-empty response."""
     data = row.get("data", {})
     data = data if isinstance(data, dict) else {}
     response = data.get("probe_return")
@@ -270,14 +222,7 @@ def _has_probe_response(row: dict[str, Any]) -> bool:
 
 
 def _apply_carry_forward_probe_rows(probe_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """_apply_carry_forward_probe_rows.
-
-    :param list[dict[str, Any]] probe_rows:
-    :type probe_rows: list[dict[str, Any]]
-
-    :returns: list[dict[str, Any]]
-    :rtype: list[dict[str, Any]]
-    """
+    """Impute missing-episode probe rows by carrying forward the last response."""
     if not probe_rows:
         return probe_rows
 
@@ -334,18 +279,7 @@ def _extract_probe_records(
     run_dir: Path,
     probe_type_filter: str | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
-    """_extract_probe_records.
-
-    :param list[dict[str, Any]] events:
-    :type events: list[dict[str, Any]]
-    :param Path run_dir:
-    :type run_dir: Path
-    :param str | None probe_type_filter:
-    :type probe_type_filter: str | None
-
-    :returns: dict[str, list[dict[str, Any]]]
-    :rtype: dict[str, list[dict[str, Any]]]
-    """
+    """Extract probe responses grouped into choice, numeric, and freetext records."""
     probe_rows = [row for row in events if str(row.get("event_type", "")).lower() == "probe"]
     hold_last_response = _load_probe_hold_last_response(run_dir)
     if hold_last_response:
@@ -409,19 +343,11 @@ def _extract_probe_records(
 
 
 def _write_choice_plots(records: list[dict[str, Any]], out_dir: Path) -> list[str]:
-    """_write_choice_plots.
-
-    :param list[dict[str, Any]] records:
-    :type records: list[dict[str, Any]]
-    :param Path out_dir:
-    :type out_dir: Path
-
-    :returns: list[str]
-    :rtype: list[str]
-    """
+    """Write per-label choice-share-over-episodes plots and return their paths."""
     if not records:
         return []
 
+    plt = _ensure_plt()
     grouped: dict[str, dict[int, Counter[str]]] = defaultdict(lambda: defaultdict(Counter))
     for rec in records:
         grouped[str(rec["label"])][int(rec["episode"])][str(rec["choice"])] += 1
@@ -458,19 +384,11 @@ def _write_choice_plots(records: list[dict[str, Any]], out_dir: Path) -> list[st
 
 
 def _write_numeric_plots(records: list[dict[str, Any]], out_dir: Path) -> list[str]:
-    """_write_numeric_plots.
-
-    :param list[dict[str, Any]] records:
-    :type records: list[dict[str, Any]]
-    :param Path out_dir:
-    :type out_dir: Path
-
-    :returns: list[str]
-    :rtype: list[str]
-    """
+    """Write per-label numeric-mean-over-episodes plots and return their paths."""
     if not records:
         return []
 
+    plt = _ensure_plt()
     grouped: dict[str, dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
     for rec in records:
         grouped[str(rec["label"])][int(rec["episode"])].append(float(rec["value"]))
@@ -499,19 +417,11 @@ def _write_numeric_plots(records: list[dict[str, Any]], out_dir: Path) -> list[s
 
 
 def _write_freetext_plots(records: list[dict[str, Any]], out_dir: Path) -> list[str]:
-    """_write_freetext_plots.
-
-    :param list[dict[str, Any]] records:
-    :type records: list[dict[str, Any]]
-    :param Path out_dir:
-    :type out_dir: Path
-
-    :returns: list[str]
-    :rtype: list[str]
-    """
+    """Write free-text word-count and top-token plots and return their paths."""
     if not records:
         return []
 
+    plt = _ensure_plt()
     by_label_episode: dict[str, dict[int, list[int]]] = defaultdict(lambda: defaultdict(list))
     token_counts: Counter[str] = Counter()
 
@@ -560,14 +470,7 @@ def _write_freetext_plots(records: list[dict[str, Any]], out_dir: Path) -> list[
 
 
 def _probe_filter_for_mode(mode: str) -> str | None:
-    """_probe_filter_for_mode.
-
-    :param str mode:
-    :type mode: str
-
-    :returns: str | None
-    :rtype: str | None
-    """
+    """Map a probe_* mode to its probe type filter, or None for no filter."""
     if mode == "probe_binary":
         return "BinaryProbe"
     if mode == "probe_numeric":
@@ -586,22 +489,7 @@ def _build_probe_plots(
     output_json: Path,
     postprocessors: list[str] | None = None,
 ) -> dict[str, Any]:
-    """_build_probe_plots.
-
-    :param str mode:
-    :type mode: str
-    :param list[dict[str, Any]] events:
-    :type events: list[dict[str, Any]]
-    :param Path run_dir:
-    :type run_dir: Path
-    :param Path output_json:
-    :type output_json: Path
-    :param list[str] | None postprocessors:
-    :type postprocessors: list[str] | None
-
-    :returns: dict[str, Any]
-    :rtype: dict[str, Any]
-    """
+    """Generate probe plots and run postprocessors, returning a result summary."""
     if not mode.startswith("probe_"):
         return {
             "generated_files": [],
@@ -668,14 +556,7 @@ def _build_probe_plots(
 def _load_postprocessor(
     ref: str,
 ) -> Callable[[dict[str, list[dict[str, Any]]], Path, dict[str, Any]], Any]:
-    """_load_postprocessor.
-
-    :param str ref:
-    :type ref: str
-
-    :returns: Callable[[dict[str, list[dict[str, Any]]], Path, dict[str, Any]], Any]
-    :rtype: Callable[[dict[str, list[dict[str, Any]]], Path, dict[str, Any]], Any]
-    """
+    """Resolve a module:function reference into a callable postprocessor."""
     module_name, sep, attr_name = ref.partition(":")
     module_name = module_name.strip()
     attr_name = attr_name.strip() if sep else "postprocess"
@@ -705,14 +586,7 @@ def _load_postprocessor(
 
 
 def _extract_plugin_files(result: Any) -> list[str]:
-    """_extract_plugin_files.
-
-    :param Any result:
-    :type result: Any
-
-    :returns: list[str]
-    :rtype: list[str]
-    """
+    """Extract the list of generated file paths from a postprocessor result."""
     if isinstance(result, list):
         return [str(item) for item in result]
     if isinstance(result, dict):
@@ -723,28 +597,14 @@ def _extract_plugin_files(result: Any) -> list[str]:
 
 
 def _json_safe_plugin_result(result: Any) -> Any:
-    """_json_safe_plugin_result.
-
-    :param Any result:
-    :type result: Any
-
-    :returns: Any
-    :rtype: Any
-    """
+    """Return a JSON-serializable form of a postprocessor result."""
     if isinstance(result, (dict, list, str, int, float, bool)) or result is None:
         return result
     return str(result)
 
 
 def _infer_probe_type(response: Any) -> str:
-    """_infer_probe_type.
-
-    :param Any response:
-    :type response: Any
-
-    :returns: str
-    :rtype: str
-    """
+    """Infer the probe type (binary/numeric/choice/freetext) from a response."""
     if _normalize_binary(response) is not None:
         return "BinaryProbe"
     if _safe_float(response) is not None:
@@ -758,14 +618,7 @@ def _infer_probe_type(response: Any) -> str:
 
 
 def _build_action_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
-    """_build_action_metrics.
-
-    :param list[dict[str, Any]] events:
-    :type events: list[dict[str, Any]]
-
-    :returns: dict[str, Any]
-    :rtype: dict[str, Any]
-    """
+    """Build action metrics aggregated per episode, agent, and transition."""
     action_rows = [row for row in events if str(row.get("event_type", "")).lower() == "action"]
     label_counts = Counter(str(row.get("label", "")) for row in action_rows)
 
@@ -849,23 +702,81 @@ def _build_action_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _build_probe_metrics_with_context(  # noqa: C901, PLR0912, PLR0915
+def _accumulate_typed_response(
+    probe_type: str,
+    label: str,
+    response: Any,
+    *,
+    per_type: dict[str, Counter[str]],
+    numeric_values: dict[str, list[float]],
+    choice_values: dict[str, Counter[str]],
+    free_text_lengths: dict[str, list[float]],
+    free_text_word_counts: dict[str, list[float]],
+    free_text_tokens: dict[str, Counter[str]],
+) -> None:
+    """Accumulate one present probe response into the per-type/per-label stats."""
+    if probe_type == "BinaryProbe":
+        normalized = _normalize_binary(response)
+        key = normalized if normalized is not None else "Other"
+        per_type[probe_type][f"answer_{key}"] += 1
+    elif probe_type == "NumericRatingProbe":
+        num = _safe_float(response)
+        if num is not None:
+            numeric_values[label].append(num)
+            per_type[probe_type]["numeric_values_parsed"] += 1
+        else:
+            per_type[probe_type]["numeric_values_unparsed"] += 1
+    elif probe_type == "ChoiceProbe":
+        value = str(response).strip() or "<empty>"
+        choice_values[label][value] += 1
+    elif probe_type == "FreeTextProbe":
+        text = str(response)
+        free_text_lengths[label].append(float(len(text)))
+        words = text.split()
+        free_text_word_counts[label].append(float(len(words)))
+        for token in _TOKEN_RE.findall(text.lower()):
+            free_text_tokens[label][token] += 1
+
+
+def _build_per_label_probe_output(
+    per_label_counts: dict[str, Counter[str]],
+    per_label_modes: dict[str, Counter[str]],
+    type_map: dict[str, str],
+    *,
+    numeric_values: dict[str, list[float]],
+    choice_values: dict[str, Counter[str]],
+    free_text_lengths: dict[str, list[float]],
+    free_text_word_counts: dict[str, list[float]],
+    free_text_tokens: dict[str, Counter[str]],
+) -> dict[str, Any]:
+    """Build the per-label probe summary (counts, stats, and token frequencies)."""
+    per_label_out: dict[str, Any] = {}
+    for label, counts in sorted(per_label_counts.items()):
+        entry: dict[str, Any] = {
+            "probe_type": type_map.get(label) or "inferred",
+            "total_events": int(counts.get("total_events", 0)),
+            "responses_present": int(counts.get("responses_present", 0)),
+            "responses_missing": int(counts.get("responses_missing", 0)),
+            "probe_mode_counts": dict(per_label_modes[label]),
+        }
+        if numeric_values.get(label):
+            entry["numeric_response_stats"] = _summary_stats(numeric_values[label])
+        if choice_values.get(label):
+            entry["choice_value_counts"] = dict(choice_values[label])
+        if free_text_lengths.get(label):
+            entry["free_text_char_len_stats"] = _summary_stats(free_text_lengths[label])
+            entry["free_text_word_count_stats"] = _summary_stats(free_text_word_counts[label])
+            entry["free_text_top_tokens"] = dict(free_text_tokens[label].most_common(30))
+        per_label_out[label] = entry
+    return per_label_out
+
+
+def _build_probe_metrics_with_context(
     events: list[dict[str, Any]],
     run_dir: Path,
     probe_type_filter: str | None = None,
 ) -> dict[str, Any]:
-    """_build_probe_metrics_with_context.
-
-    :param list[dict[str, Any]] events:
-    :type events: list[dict[str, Any]]
-    :param Path run_dir:
-    :type run_dir: Path
-    :param str | None probe_type_filter:
-    :type probe_type_filter: str | None
-
-    :returns: dict[str, Any]
-    :rtype: dict[str, Any]
-    """
+    """Build probe metrics per type, label, episode, and agent from run context."""
     probe_rows_raw = [row for row in events if str(row.get("event_type", "")).lower() == "probe"]
     hold_last_response = _load_probe_hold_last_response(run_dir)
     probe_rows = (
@@ -926,55 +837,32 @@ def _build_probe_metrics_with_context(  # noqa: C901, PLR0912, PLR0915
         if not has_response:
             continue
 
-        if probe_type == "BinaryProbe":
-            normalized = _normalize_binary(response)
-            key = normalized if normalized is not None else "Other"
-            per_type[probe_type][f"answer_{key}"] += 1
-
-        elif probe_type == "NumericRatingProbe":
-            num = _safe_float(response)
-            if num is not None:
-                numeric_values[label].append(num)
-                per_type[probe_type]["numeric_values_parsed"] += 1
-            else:
-                per_type[probe_type]["numeric_values_unparsed"] += 1
-
-        elif probe_type == "ChoiceProbe":
-            value = str(response).strip() or "<empty>"
-            choice_values[label][value] += 1
-
-        elif probe_type == "FreeTextProbe":
-            text = str(response)
-            free_text_lengths[label].append(float(len(text)))
-            words = text.split()
-            free_text_word_counts[label].append(float(len(words)))
-            for token in _TOKEN_RE.findall(text.lower()):
-                free_text_tokens[label][token] += 1
+        _accumulate_typed_response(
+            probe_type,
+            label,
+            response,
+            per_type=per_type,
+            numeric_values=numeric_values,
+            choice_values=choice_values,
+            free_text_lengths=free_text_lengths,
+            free_text_word_counts=free_text_word_counts,
+            free_text_tokens=free_text_tokens,
+        )
 
     probe_type_by_label = {
         label: (type_map.get(label) or "inferred") for label in sorted(per_label_counts.keys())
     }
 
-    per_label_out: dict[str, Any] = {}
-    for label, counts in sorted(per_label_counts.items()):
-        entry: dict[str, Any] = {
-            "probe_type": type_map.get(label) or "inferred",
-            "total_events": int(counts.get("total_events", 0)),
-            "responses_present": int(counts.get("responses_present", 0)),
-            "responses_missing": int(counts.get("responses_missing", 0)),
-            "probe_mode_counts": dict(per_label_modes[label]),
-        }
-
-        if numeric_values.get(label):
-            entry["numeric_response_stats"] = _summary_stats(numeric_values[label])
-        if choice_values.get(label):
-            entry["choice_value_counts"] = dict(choice_values[label])
-        if free_text_lengths.get(label):
-            entry["free_text_char_len_stats"] = _summary_stats(free_text_lengths[label])
-            entry["free_text_word_count_stats"] = _summary_stats(free_text_word_counts[label])
-            entry["free_text_top_tokens"] = dict(free_text_tokens[label].most_common(30))
-
-        per_label_out[label] = entry
+    per_label_out = _build_per_label_probe_output(
+        per_label_counts,
+        per_label_modes,
+        type_map,
+        numeric_values=numeric_values,
+        choice_values=choice_values,
+        free_text_lengths=free_text_lengths,
+        free_text_word_counts=free_text_word_counts,
+        free_text_tokens=free_text_tokens,
+    )
 
     per_type_out = {ptype: dict(counter) for ptype, counter in sorted(per_type.items())}
 
@@ -1000,18 +888,7 @@ def _build_probe_metrics_with_context(  # noqa: C901, PLR0912, PLR0915
 
 
 def _build_payload(mode: str, events: list[dict[str, Any]], run_dir: Path) -> dict[str, Any]:
-    """_build_payload.
-
-    :param str mode:
-    :type mode: str
-    :param list[dict[str, Any]] events:
-    :type events: list[dict[str, Any]]
-    :param Path run_dir:
-    :type run_dir: Path
-
-    :returns: dict[str, Any]
-    :rtype: dict[str, Any]
-    """
+    """Dispatch to the evaluator for the given mode and return its payload."""
     if mode == "action_metrics":
         return _build_action_metrics(events)
     if mode == "probe_metrics":
@@ -1062,18 +939,22 @@ def main() -> None:
     # Probe and action events are persisted in separate files.
     # Use the mode to select the correct source for evaluation.
     if args.mode.startswith("probe_"):
-        events_path = run_dir / "probe_events.jsonl"
+        event_files = [run_dir / "probe_events.jsonl"]
     else:
-        events_path = run_dir / "action_events.jsonl"
+        # Multi-GM runs isolate action logs under per-GM subdirectories.
+        event_files = resolve_action_event_files(run_dir)
 
-    if not events_path.is_file():
-        raise FileNotFoundError(f"Missing events file: {events_path}")
+    event_files = [path for path in event_files if path.is_file()]
+    if not event_files:
+        raise FileNotFoundError(f"Missing events file(s) for mode {args.mode!r} in {run_dir}")
 
-    events = _read_jsonl(events_path)
+    events: list[dict[str, Any]] = []
+    for path in event_files:
+        events.extend(_read_jsonl(path))
     payload = _build_payload(args.mode, events, run_dir)
     payload["mode"] = args.mode
     payload["run_dir"] = str(run_dir)
-    payload["source_file"] = str(events_path)
+    payload["source_file"] = ", ".join(str(path) for path in event_files)
     payload["plots"] = _build_probe_plots(
         args.mode,
         events,

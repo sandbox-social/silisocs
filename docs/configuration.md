@@ -54,8 +54,8 @@ Run parameters live in the `world` config group (placed at config root via
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `num_agents` | `100` | Number of agents to create |
-| `num_steps` | `50` | Simulation steps to run |
+| `num_agents` | `10` | Number of agents to create (any value works; personas recycle past the bundled 100, see below) |
+| `num_steps` | `5` | Simulation steps to run |
 | `run_name` | `run1` | Run identifier (used in output path) |
 | `seed` | `1` | Random seed |
 | `scenario_name` | `default` | Scenario identifier (used in output path) |
@@ -70,13 +70,37 @@ Run parameters live in the `world` config group (placed at config root via
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `sim.llm.provider` | `openai` | Model provider: `openai`, `openai_compatible`, `scripted`, or `disabled` |
+| `sim.llm.provider` | `openai` | Model provider: `openai`, `openai_compatible`, `scripted`, `disabled`, a built-in preset (see below), a registered name, or a class path |
 | `sim.llm.name` | `gpt-4o-mini` | LLM model name (passed to the model factory) |
-| `sim.llm.api_base` | `null` | Required base URL when `provider: openai_compatible` |
-| `sim.llm.api_key` | `null` | API key (or set via environment variable) |
+| `sim.llm.api_base` | `null` | Required base URL when `provider: openai_compatible`; also overrides the base URL of a built-in preset |
+| `sim.llm.api_key` | `null` | API key (or set via the provider's environment variable) |
 | `sim.llm.temperature` | `0.5` | Sampling temperature |
 | `sim.llm.disabled` | `false` | Use a no-op model (for testing without API calls) |
 | `sim.llm.extra_kwargs` | `{}` | Provider request kwargs such as OpenAI-compatible `extra_body` settings |
+
+**Built-in provider presets.** Common providers that expose an OpenAI-compatible
+API are available as named presets. Set `sim.llm.provider` to the name and supply
+the key via the listed environment variable (or `sim.llm.api_key`); `sim.llm.name`
+selects the model.
+
+| Preset | Endpoint | API key env var |
+|--------|----------|-----------------|
+| `anthropic` | `https://api.anthropic.com/v1/` | `ANTHROPIC_API_KEY` |
+| `gemini` | `https://generativelanguage.googleapis.com/v1beta/openai/` | `GEMINI_API_KEY` |
+| `openrouter` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` |
+| `groq` | `https://api.groq.com/openai/v1` | `GROQ_API_KEY` |
+| `together` | `https://api.together.xyz/v1` | `TOGETHER_API_KEY` |
+| `deepseek` | `https://api.deepseek.com` | `DEEPSEEK_API_KEY` |
+| `mistral` | `https://api.mistral.ai/v1` | `MISTRAL_API_KEY` |
+| `fireworks` | `https://api.fireworks.ai/inference/v1` | `FIREWORKS_API_KEY` |
+| `xai` | `https://api.x.ai/v1` | `XAI_API_KEY` |
+| `ollama` | `http://localhost:11434/v1` | none (local) |
+
+These presets route through the OpenAI-compatible client, so they inherit the same
+retry, backoff, and telemetry support. Anthropic and Gemini are reached through
+their OpenAI-compatible endpoints. For a provider not listed here, use
+`provider: openai_compatible` with an explicit `sim.llm.api_base`, or register a
+custom provider (see [Building Agents](building_agents.md)).
 
 ### Engine and Runtime
 
@@ -88,7 +112,8 @@ Run parameters live in the `world` config group (placed at config root via
 | `sim.prompt_additions.action_count_guidance` | `true` | Add `[ActNum]` marker and action count guidance to prompt |
 | `sim.checkpoint.every_n_steps` | `null` | Save checkpoints every N steps when set |
 | `sim.checkpoint.explicit_steps` | `[]` | Additional explicit checkpoint steps |
-| `sim.checkpoint.source_run` | `null` | Previous output directory to restore from |
+| `sim.checkpoint.source_run` | `null` | Previous output directory to restore from (explicit resume) |
+| `sim.checkpoint.auto_resume` | `true` | Resume from this run's own output directory if it already contains checkpoints; ignored when `source_run` is set |
 | `sim.checkpoint.restore.built_in` | `social_action_event_replay` | Checkpoint restore strategy when `source_run` is set |
 | `sim.engine.step.built_in` | `base` | Engine step policy: `base`, `sequential`, `flow`, or `multi_gm` |
 | `sim.roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |
@@ -124,13 +149,13 @@ scenarios/
 
 Two mechanisms layer on top of the package defaults:
 
-**Layer 1 — Hydra SearchPath Plugin**: a registered `SearchPathPlugin` prepends
+**Layer 1, Hydra SearchPath Plugin**: a registered `SearchPathPlugin` prepends
 the scenario conf dir to Hydra's search path before composition. This gives
 `world/default.yaml` and `agents/default.yaml` from the scenario conf dir
 higher priority than the package defaults, so they replace the package
 `world/default.yaml` and `agents/default.yaml` entirely.
 
-**Layer 2 — Manual merge** (runs inside `main()` after Hydra composes): handles
+**Layer 2, Manual merge** (runs inside `main()` after Hydra composes): handles
 partial-override flat files that don't replace their group wholesale:
 
 - `env.yaml`, `eval.yaml`, `sim.yaml` → merged into their named groups
@@ -174,7 +199,7 @@ uv run silisocs --config-path scenarios/election/conf --cfg job
 1. Start the dashboard: `streamlit run src/silisocs/dashboard/launch_app.py`
 2. Modify all settings (agents, network, probes, etc.)
 3. Enter a new scenario name in the "Scenario name" field
-4. Click "Save Scenario" — creates files under `scenarios/{name}/conf/`
+4. Click "Save Scenario": creates files under `scenarios/{name}/conf/`
 5. Click "Run Simulation"
 
 **Option 2: Manual**
@@ -183,7 +208,7 @@ uv run silisocs --config-path scenarios/election/conf --cfg job
 mkdir -p scenarios/my_world/conf/world scenarios/my_world/conf/agents
 ```
 
-**`scenarios/my_world/conf/world/default.yaml`** — run parameters and narrative:
+**`scenarios/my_world/conf/world/default.yaml`**, run parameters and narrative:
 ```yaml
 # @package _global_
 scenario_name: my_world
@@ -206,7 +231,7 @@ event:
 data: {}
 ```
 
-**`scenarios/my_world/conf/agents/default.yaml`** — personas:
+**`scenarios/my_world/conf/agents/default.yaml`**, personas:
 ```yaml
 # @package agents
 persona_pipeline:
@@ -246,7 +271,7 @@ still rejects unnamed or duplicate specs before the simulation starts. Agent
 names are the runtime identities used by GMs, backends, flows, probes, logs, and
 checkpoints.
 
-**`scenarios/my_world/conf/env.yaml`** — optional backend/GM overrides:
+**`scenarios/my_world/conf/env.yaml`**, optional backend/GM overrides:
 ```yaml
 gm:
   components:
@@ -378,6 +403,45 @@ initial_observations:
 | `inline` | `records` | Records defined directly in YAML |
 | `config_path` | `path` | Dot-path reference into another config section (e.g. `candidates`) |
 
+### Count vs. available records (persona recycling)
+
+A class's `count` (commonly `${num_agents}`) sets how many agents the class
+builds; the data source supplies the persona records. The builder reconciles the
+two automatically:
+
+- **`count` ≤ records**: the record list is truncated to `count`.
+- **`count` > records**: the records are **recycled** to reach `count`, and each
+  extra pass gets a numbered suffix so agent names stay unique
+  (`Alex`, `Alex 2`, `Alex 3`, …). A single `WARNING` is logged naming the class
+  and the shortfall.
+
+This means any `num_agents` works out-of-the-box. There is no silent cap at the
+record count. The bundled default agents config ships **100 distinct starter
+personas**, so the default scenario scales to large agent counts before any
+recycling happens. For fully distinct personas at larger scale, point the class
+at a bigger data source (`csv`, `jsonl`, or `hf_dataset`) instead of relying on
+recycling.
+
+### `num_agents` vs. per-class `count`
+
+There are two related knobs, and it is important to understand which one is
+authoritative:
+
+| Field | Scope | Role |
+|-------|-------|------|
+| `num_agents` | run param (config root) | **Declared total.** Convenience value used in the job name and run metadata, and commonly referenced as `count: ${num_agents}`. |
+| `count` | per persona-pipeline class | **Authoritative.** How many agents that class builds. |
+
+The **actual** number of agents is the **sum of every class's `count`**: it is
+neither capped nor padded to `num_agents`. In the default config one class uses
+`count: ${num_agents}` and the others use `count: 0`, so the totals agree. If you
+add classes with explicit counts, make sure they **sum to `num_agents`** (set
+unused classes to `count: 0`).
+
+If the built total diverges from `num_agents`, a `WARNING` is logged at build
+time (and the dashboard's Launch tab shows the same mismatch), since this usually
+indicates the class counts were not kept in sync with the declared total.
+
 ### Alternate Agents Variants
 
 Create additional files alongside `default.yaml` for lightweight or experimental
@@ -468,11 +532,17 @@ gm:
     params:
       rooms: [atrium, garden, workshop]
       starting_room: atrium
+      room_descriptions:
+        atrium: A bright central hall with paths to every other room.
+        garden: A quiet garden for private conversations.
+        workshop: A practical room filled with tools and shared projects.
+      connections: null          # null = fully connected; or a map of room -> [reachable rooms]
       room_tasks:
         - task_id: welcome_board
           room: atrium
           description: Prepare a shared welcome board.
           required_effort: 2
+          completion_message: The welcome board summarizes the group's first impressions.
 ```
 
 Custom backend apps can be loaded without editing the factory:
@@ -511,10 +581,74 @@ aliases such as `FINISHED`. Unknown names fail during backend construction. If
 an action is matched by both `enabled_actions` and `excluded_actions`, the run
 fails loudly instead of guessing which list wins.
 
+### Action Aliases (agent-facing renaming)
+
+Give backend actions simpler/different agent-facing names without editing backend
+code, to simplify the action vocabulary agents see and emit:
+
+```yaml
+env:
+  gm:
+    backend:
+      action_aliases:
+        create_tweet: post            # rename: agents see + call "post"
+        like_tweet: [like, fav]       # "like" is displayed; "fav" also accepted
+```
+
+- The key is an existing action (its canonical method name or current selectable
+  name); the value is a single new name (rename) or a list (the first is shown to
+  agents, all are accepted by the parser).
+- The renamed name appears in the auto-generated action catalog/prompt, and the
+  canonical name plus every alias all resolve to the same action.
+- Works across resolve modes: `generic`/`tool_calling` dispatch aliases directly;
+  the custom `parsed_action` parser receives the token normalized to the
+  canonical method name.
+- Unknown actions, empty names, or a name that collides with another action fail
+  loudly at backend construction. Aliases are applied before
+  `enabled_actions`/`excluded_actions`, so filters may reference either vocabulary.
+
+#### Per-flow action filters
+
+`env.gm.backend.enabled_actions`/`excluded_actions` apply to every agent on that
+backend. To restrict the action surface *per flow* (e.g. a `lurker` flow that
+may only `like`/`repost` while a `poster` flow may publish), add a
+`flow_action_filters` map on the resolve component. It is enforced at resolve
+time (the disallowed action is rejected before the backend runs) and only ever
+*further-restricts* the backend-wide filter:
+
+```yaml
+env:
+  gm:
+    components:
+      resolve:
+        built_in: parsed_action        # parsed_action | generic_action | tool_calling
+        params:
+          flow_action_filters:
+            default:                    # fallback for any unlisted flow
+              enabled_actions: null     # null => all backend actions
+            lurker:
+              enabled_actions: [like, repost]
+            poster:
+              excluded_actions: [follow_user]
+```
+
+Keys are flow tags (from `persona_pipeline.classes.<class>.flow_tag` or
+`sim.engine.step.params.agent_to_flow`); values reuse the same
+`enabled_actions`/`excluded_actions` vocabulary as the backend filter and match
+both canonical and selectable names. This works on the default
+`ComponentGameMaster` (no `MultiFlowGameMaster` needed). The terminal `FINISHED`
+signal is never blocked, so open-ended flows can always terminate. Omitting the
+key preserves current behavior. In `custom` (`parsed_action`) mode, specify
+filters using the agent-facing verbs the parser emits (`post`, `like`, `reply`,
+`repost`); in `generic`/`tool_calling` mode, use backend action names. Names that
+match no backend action are matched literally and logged as a warning to catch
+typos. Per-flow filtering enforces; to also *hide* actions from a flow's prompt,
+give that flow its own `action_prompt` instance via `MultiFlowGameMaster`.
+
 | Backend | Common actions |
 |---------|----------------|
 | `twitter_like` | `create_tweet`, `reply_to_tweet`, `like_tweet`, `unlike_tweet`, `repost_tweet`, `quote_repost_tweet`, `follow_user`, `unfollow_user`, `mute_user`, `unmute_user`, `search_posts`, `get_trending_posts`, `report_post`, `update_profile`, `view_profile`, `do_nothing`, `FINISHED` |
-| `reddit_like` | `create_reddit_post`, `create_comment`, `upvote`, `downvote`, `like_post`, `unlike_post`, `dislike_post`, `undo_dislike_post`, `get_home_feed`, `get_post_comments`, `search_subreddits`, `get_trending_posts`, `report_post`, `mute_user`, `unmute_user`, `update_profile`, `view_profile`, `do_nothing`, `FINISHED` |
+| `reddit_like` | `create_reddit_post`, `create_comment`, `upvote`, `downvote`, `unlike_post`, `dislike_post`, `undo_dislike_post`, `get_home_feed`, `get_post_comments`, `search_subreddits`, `get_trending_posts`, `report_post`, `mute_user`, `unmute_user`, `update_profile`, `view_profile`, `do_nothing`, `FINISHED` |
 | `mastodon` | `post_toot`, `reply_to_toot`, `like_toot`, `boost_toot`, `follow_user`, `unfollow_user` |
 
 ### Seed Posts
@@ -654,6 +788,10 @@ probes:
     every_n_steps: 1
     include_agents: []   # Empty = all agents
     exclude_agents: []
+    include_classes: []  # Filter by persona class / sim role
+    exclude_classes: []
+    include_flows: []    # Filter by flow tag; empty = all flows
+    exclude_flows: []
 
   probes:
     favorability:
@@ -665,6 +803,17 @@ probes:
         lo: 1
         hi: 10
 ```
+
+Deployment filters select which agents receive probes and are applied as a
+sequential `AND`: `include_classes` → `exclude_classes` → `include_agents` →
+`exclude_agents` → `include_flows` → `exclude_flows`. `include_flows`/
+`exclude_flows` target by flow tag: e.g. `include_flows: [treatment]` deploys
+probes only to agents whose materialized flow is `treatment`, ideal for measuring
+a treatment cohort. Flow tags come from the same source as scheduling
+(`persona_pipeline.classes.<class>.flow_tag` + `sim.engine.step.params.agent_to_flow`)
+and are resolved from the game master's authoritative `agent_flow_tags`, so they
+apply uniformly to native and fixed agents. Empty/omitted flow lists preserve
+current behavior (deploy to all selected agents).
 
 ---
 
@@ -726,10 +875,27 @@ sim:
       params:
         flow_order: [fixed_pre, default]
         agent_to_flow: {}
+        # Optional per-flow turn policy overrides. Each value mirrors the
+        # sim.engine.turn_policy slot shape ({built_in|class_path, params}).
+        # Flows not listed here use the global sim.engine.turn_policy below.
+        flow_turn_policies:
+          fixed_pre:
+            built_in: single_action
+          default:
+            built_in: open_ended
+            params: {max_actions: 3}
+    turn_policy:                 # global default; applies to unlisted flows
+      built_in: single_action
 ```
 
-The turn policy is global for the engine. Flow mode only controls which
-agent groups act together and in what order.
+`sim.engine.turn_policy` is the global default applied to every agent. With
+`flow` or `multi_gm` scheduling you may additionally override the policy per
+flow via `sim.engine.step.params.flow_turn_policies`, keyed by flow tag, each
+value uses the same slot shape as `turn_policy`. Flows absent from the map fall
+back to the global policy, so omitting the key reproduces current behavior
+exactly. Per-flow overrides are ignored under `base`/`sequential` scheduling
+(which do not group agents by flow). For a multi-GM flow chain the same per-flow
+policy applies at every GM hop.
 
 Sequential scheduling:
 
@@ -763,6 +929,113 @@ and backend state. Built-in local backends restore their world state directly
 from the checkpoint. `sim.checkpoint.restore` is still required for source runs
 that need a restore strategy, such as older social runs that must rebuild backend
 state from `action_events.jsonl`.
+Checkpoint runtime metadata records artifact ownership for every Game Master
+rather than relying on one representative GM for the whole run.
+
+### Backend checkpoint capability
+
+Every backend declares two capability flags (see
+`src/silisocs/environments/backends/base.py`):
+
+- `provides_checkpoint_state`: the backend round-trips authoritative state via
+  `get_state`/`set_state`, so restore is a direct snapshot apply through the
+  default checkpoint loader. **True for every shipped backend.**
+- `supports_action_replay`: the backend exposes an event→action mapping
+  (`event_to_replay_action`) that the built-in `social_action_event_replay`
+  strategy can use to rebuild it by re-resolving logged events. Provided as an
+  extension point for *custom* non-snapshot backends.
+
+Every shipped backend self-restores via `set_state`. The SQL backends snapshot
+their database; **`mastodon`** can't snapshot its external live server, so its
+checkpoint state *is* its action history: `get_state` embeds the logged actions
+and `set_state` rebuilds the server by re-running them (as their original users,
+in order). It therefore restores through the same default `set_state` path, no
+special strategy required:
+
+- **Server reset**: the server must be wiped first (`reset_server_on_setup=true`),
+  otherwise replay duplicates the original run's content. Replay logs a warning
+  when reset is not configured.
+- **Toot-id remapping**: re-creating a post yields a *new* server toot id, so
+  `like`/`boost`/`reply` events are remapped from their logged (pre-resume) id to
+  the new one; an unmapped reference is skipped.
+- **Caveat**: replay re-posts to the live server and reproduces a *similar*, not
+  byte-identical, state (timestamps, ordering, federation differ). Set
+  `perform_operations=true` for the actions to actually reach the server.
+
+A **custom** non-snapshot backend (`provides_checkpoint_state=False`) can either
+do the same (implement `get_state`/`set_state`) or, if it sets
+`supports_action_replay=True`, let the built-in strategy replay its logged events.
+A backend that supports neither fails loudly; supply a custom restore strategy:
+
+```yaml
+sim:
+  checkpoint:
+    restore:
+      class_path: my_pkg.MyRestore   # subclass of CheckpointRestoreStrategy
+      params: {}
+```
+
+`class_path` takes precedence over `built_in`. The class must subclass
+`silisocs.runtime.checkpointing.restore.CheckpointRestoreStrategy`.
+
+### Restore robustness
+
+- **Identity reconciliation**: restoring a checkpoint object onto a runtime
+  object of a different `class_path`/`compat` is rejected, and an object that
+  saved non-empty state but only inherits the no-op `set_state()` raises rather
+  than silently dropping that state. Objects present in the runtime but absent
+  from the checkpoint are left freshly initialized and logged as a warning.
+- **Recsys self-heal**: after restore the in-memory recsys engine is rebuilt
+  empty; the recommendation-update component reconciles configured types against
+  the backend's live `recsys_active_types()` and lazily re-initializes them on
+  the first post-resume update, so algorithmic feeds resume automatically.
+- **Flow scheduling**: flow tags and flow chains are re-materialized from the
+  resume-time config (not the checkpoint). A divergence from the checkpointed
+  scheduling fingerprint is logged as a warning, since it can mis-route replay.
+
+### Multi-GM layout
+
+When more than one Game Master is configured, each GM's backend database and
+`action_events.jsonl` are isolated under a per-GM subdirectory
+(`<output>/<gm_name>/...`) so same-type GMs cannot clobber one another on
+checkpoint restore. Single-GM runs keep the flat layout. Two GMs that would
+resolve to the same backend database path are rejected at build time.
+
+**Per-GM restore**: the authoritative-vs-replay decision is made per game
+master, not all-or-nothing: each GM that carries a backend snapshot restores from
+it directly, and only the remaining (non-authoritative, e.g. Mastodon) GMs are
+handed to the restore strategy. A mixed run (e.g. a `twitter_like` GM and a
+`mastodon` GM) restores the snapshot GM from disk while replaying the Mastodon GM.
+
+For multi-GM replay, restore discovers **every** per-GM `action_events.jsonl`
+(the same flat-or-per-GM lookup eval uses), so multi-GM resumes locate their
+logs. Each event is routed back to the GM that logged it (its `gm_name`) and
+mapped to a backend action by that GM's own backend; events owned by an
+already-restored (snapshot) GM are skipped.
+
+**Per-GM restore override**: a GM may override the global `sim.checkpoint.restore`
+with its own strategy (same schema), for a backend that needs custom loading
+logic rather than the default replay/snapshot:
+
+```yaml
+env:
+  gm_orchestration:
+    gms:
+      - gm_name: mastodon_gm
+        backend: { type: mastodon }      # plus components: { ... }
+        restore:
+          class_path: my_pkg.MyMastodonRestore   # subclass of CheckpointRestoreStrategy
+          params: {}
+```
+
+GMs without a `restore` block use the global default. The key is additive: omit
+it and multi-GM restore behaves exactly as before. Authoritative (snapshot) GMs
+ignore their `restore` override because `set_state` already restored them.
+
+**Evaluation/analysis** read every per-GM `action_events.jsonl` (via
+`silisocs.evaluations.action_events.resolve_action_event_files`), so the default
+evaluators, activity summary, and dashboard cover all game masters, not just a
+flat root log.
 
 ---
 
@@ -780,7 +1053,7 @@ hydra:
 ```
 
 The simulation writes artifacts into the directory resolved by `hydra.run.dir` +
-`hydra.job.name`. See [Usage Overview — Output](usage.md#output) for the complete
+`hydra.job.name`. See [Usage Overview: Output](usage.md#output) for the complete
 list of output files.
 
 ---
@@ -790,12 +1063,29 @@ list of output files.
 See [Multi-GM Architecture](multi_gm_architecture.md) for configuring multiple
 game masters, flow-based scheduling, and per-flow component routing.
 
+Use `sim.engine.step.built_in: multi_gm` with `env.gm_orchestration.gms` when
+one run needs multiple Game Masters or backends. Every orchestrated GM must
+declare its own `backend` and `components` blocks; those nested blocks use the
+same strict key surface as `env.gm.backend` and `env.gm.components`.
+
+`env.gm_orchestration.flow_bindings.flow_to_gms` maps flow names to GM chains.
+Each chain must reference known GMs, contain at least one GM, avoid duplicate GM
+names, and follow increasing GM `sequence` values when more than one GM is in
+the chain. Flows without an explicit binding fall back to the earliest-sequence
+GM. At runtime, every GM updates once at the start of each step before flow
+routing and actor selection.
+
+`sim.engine.step.params.agent_to_flow` is validated against final Agent names
+and materialized before runtime. The Engine and Game Masters both read the same
+final `agent_flow_tags`, so component routing cannot drift from Engine flow
+scheduling.
+
 ---
 
 ## Related
 
-- [Usage Overview](usage.md) — End-to-end workflow and output format
-- [Building Agents](building_agents.md) — Persona pipeline details
-- [Environment Backends](backends.md) — Generic apps, social platforms, and visualizers
-- [Evaluation Probes](probes.md) — Probe type reference
-- [Multi-GM Architecture](multi_gm_architecture.md) — Advanced GM orchestration
+- [Usage Overview](usage.md): End-to-end workflow and output format
+- [Building Agents](building_agents.md): Persona pipeline details
+- [Environment Backends](backends.md): Generic apps, social platforms, and visualizers
+- [Evaluation Probes](probes.md): Probe type reference
+- [Multi-GM Architecture](multi_gm_architecture.md): Advanced GM orchestration

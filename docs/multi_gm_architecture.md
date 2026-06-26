@@ -61,10 +61,11 @@ Engine Step Loop:
 **Multi-GM Mode (Advanced):**
 ```
 Engine Step Loop:
+  → for each configured GM in sequence order:
+    → gm.update(...)
   → group agents by flow
   → for each flow in flow_order:
     → for each GM in that flow's configured GM chain:
-      → gm.update(...)
       → gm.acting_agents(flow_agents)
       → each active agent observes/acts/resolves through that GM
   → next step
@@ -72,6 +73,10 @@ Engine Step Loop:
 
 **Key property**: a GM owns one backend. Multi-backend simulations use multiple
 GMs, each with its own backend and components.
+
+Each GM updates exactly once at the start of a step, before flow routing and
+actor selection. Flow chains route agent turns through GMs; they do not trigger
+additional per-chain GM update calls.
 
 ---
 
@@ -149,7 +154,12 @@ gm_orchestration:
 **Behavior:**
 - agents with flow `social` act through `social_gm`;
 - agents with flow `market` act through `market_gm`;
-- each GM initializes and updates its own backend.
+- each GM initializes its own backend and updates once at the start of each step.
+
+`env.gm_orchestration.gms[*]` is intentionally strict in 0.x. Every GM must
+declare its own `backend` and `components`; orchestrated GMs do not inherit
+missing backend or component slots from `env.gm`. Nested backend and component
+keys use the same strict surface as the default GM.
 
 Within each GM:
 ```yaml
@@ -163,6 +173,11 @@ engine:
         bob: "default"
         charlie: "post_analysis"
 ```
+
+`agent_to_flow` is validated against the final Agent names during runtime
+construction. Overrides are materialized into each Game Master's
+`agent_flow_tags` before the Engine starts, so Engine scheduling and
+Game Master component routing use the same flow assignment.
 
 ### Per-Flow Component Configuration
 
@@ -217,12 +232,22 @@ class CustomObserve(ObservationComponent):
 Hydra config into native `GameMasterConfig` specs. In multi-GM mode every item
 under `env.gm_orchestration.gms` must define its own `backend` and
 `components`; defaults are not inherited into orchestrated GMs.
+`flow_bindings.flow_to_gms` is validated up front: every referenced GM must be
+declared, every chain must be non-empty, duplicate GMs in a chain are rejected,
+and multi-GM chains must follow strictly increasing `sequence` values.
 
 ### MultiGMRuntimeEngine
 
 `MultiGMRuntimeEngine` uses `MultiGMStepStrategy`. It reads
-`flow_to_gms` from the first GM's routing metadata, groups agents by flow, and
-executes each flow through its configured GM chain.
+materialized `flow_to_gms` routing metadata, groups agents by flow, and
+executes each flow through its configured GM chain. A flow with no explicit
+binding falls back to the earliest-sequence GM. `agent_to_flow` overrides are
+included in routing metadata even when no persona class declares that flow.
+
+Checkpoint replay for multi-GM runs is strict: the replay strategy uses the
+agent's materialized flow and that flow's GM chain, then requires exactly one
+GM in the chain to expose the replayed backend action. Missing flow metadata,
+unknown GMs, no action match, and ambiguous action matches fail loudly.
 
 ### Routed Slot Components
 
@@ -239,6 +264,7 @@ the same as the single-flow APIs; routing is a GM responsibility.
 ```bash
 uv run pytest tests/test_multi_gm_runtime_engine.py -v
 uv run pytest tests/test_runner_processing_mode.py::test_multi_gm_specs_can_use_distinct_backends -v
+uv run pytest tests/test_initializer_bootstrap.py::test_checkpoint_restore_routes_replay_to_matching_gm_backend -v
 ```
 
 ## Performance Considerations
@@ -248,6 +274,7 @@ uv run pytest tests/test_runner_processing_mode.py::test_multi_gm_specs_can_use_
   GM and flow are isolated as separate turns.
 - **Backend state is per GM**: this release does not share one live backend
   object across multiple GMs.
+
 
 ---
 
@@ -272,6 +299,6 @@ methods.
 
 ## See Also
 
-- [Environment Layer](environment_layer.md) — GM and engine extensibility
-- [Configuration Reference](configuration.md#gm-components) — Full config schema
+- [Environment Layer](environment_layer.md): GM and engine extensibility
+- [Configuration Reference](configuration.md#gm-components): Full config schema
 - Test files: `tests/test_*.py` for examples

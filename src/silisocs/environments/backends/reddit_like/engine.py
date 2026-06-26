@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import concurrent.futures
 import logging
-import queue
 import sqlite3
-import threading
 import time
-from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
+
+from silisocs.environments.backends.social.sqlite_engine import SqliteSocialEngineBase
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -77,20 +75,9 @@ class Comment:
         }
 
 
-class RedditLikePlatform:
+class RedditLikePlatform(SqliteSocialEngineBase):
     SUPPORTED_RECSYS_TYPES = frozenset({"reddit", "twhin"})
-
-    def __init__(self, db_path: str = "reddit_like.db", use_queue: bool = True):
-        self.db_path = db_path
-        self._init_db()
-        self.use_queue = use_queue
-        self._local = threading.local()
-
-        if self.use_queue:
-            self._write_queue: queue.Queue[Any] = queue.Queue()
-            self._stop_event = threading.Event()
-            self._writer_thread = threading.Thread(target=self._writer_loop, daemon=True)
-            self._writer_thread.start()
+    default_db_path = "reddit_like.db"
 
     def _init_db(self):
         """Initialize the database schema with optimizations and advanced features."""
@@ -158,6 +145,10 @@ class RedditLikePlatform:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_posts_user_created ON posts(user_id, created_at DESC)"
             )
+            # Plain created_at index backs the recsys candidate query
+            # (ORDER BY created_at DESC LIMIT 1000), which the composite
+            # (subreddit_id|user_id, created_at) indexes cannot serve.
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC)")
 
             # Comments table
             conn.execute("""
@@ -238,148 +229,35 @@ class RedditLikePlatform:
                 "CREATE INDEX IF NOT EXISTS idx_activities_target ON activities(target_user_id, created_at DESC)"
             )
 
+            # Mutes table (one-directional: muter hides mutee from their feed)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS mutes (
+                    muter_id INTEGER NOT NULL,
+                    mutee_id INTEGER NOT NULL,
+                    created_at REAL,
+                    PRIMARY KEY (muter_id, mutee_id),
+                    FOREIGN KEY(muter_id) REFERENCES users(id),
+                    FOREIGN KEY(mutee_id) REFERENCES users(id)
+                )
+            """)
+
+            # Reports table (moderation reports; multiple allowed per user/post)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    post_id INTEGER NOT NULL,
+                    reason TEXT,
+                    created_at REAL,
+                    FOREIGN KEY(user_id) REFERENCES users(id),
+                    FOREIGN KEY(post_id) REFERENCES posts(id)
+                )
+            """)
+
             # Initialize recommendation schema tables
             self._init_recommendation_schema(conn)
 
-    def _init_recommendation_schema(self, conn: sqlite3.Connection) -> None:
-        """Initialize optional recommendation extension schema.
-
-        Recommendation-driven timelines rely on this table at runtime.
-        """
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS recommendations (
-                user_id INTEGER NOT NULL,
-                post_id INTEGER NOT NULL,
-                recsys_type TEXT NOT NULL,
-                PRIMARY KEY (user_id, post_id, recsys_type),
-                FOREIGN KEY(user_id) REFERENCES users(id),
-                FOREIGN KEY(post_id) REFERENCES posts(id)
-            )
-        """)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_recommendations_user_type ON recommendations(user_id, recsys_type)"
-        )
-
-    def shutdown(self):
-        """Clean shutdown of the writer thread."""
-        if self.use_queue:
-            self._stop_event.set()
-            # Push a sentinel value to wake up the queue
-            self._write_queue.put(None)
-            self._writer_thread.join()
-
-    @contextmanager
-    def get_connection(self):
-        """Yields a thread-local database connection (reused across calls)."""
-        conn = getattr(self._local, "conn", None)
-        if conn is None:
-            conn = sqlite3.connect(self.db_path, timeout=5.0)
-            conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA journal_mode=WAL;")
-            conn.execute("PRAGMA busy_timeout=5000;")
-            self._local.conn = conn
-        try:
-            yield conn
-        except Exception:
-            # On error, discard the connection so next call gets a fresh one.
-            try:
-                conn.close()
-            except Exception:
-                pass
-            self._local.conn = None
-            raise
-
-    def _writer_loop(self):
-        """Background thread that consumes from the queue and batches writes."""
-        with sqlite3.connect(self.db_path, timeout=5.0) as conn:
-            conn.execute("PRAGMA journal_mode=WAL;")
-            conn.execute("PRAGMA synchronous=NORMAL;")
-            conn.execute("PRAGMA busy_timeout=5000;")
-            conn.execute("PRAGMA foreign_keys=ON;")
-
-            while not self._stop_event.is_set() or not self._write_queue.empty():
-                try:
-                    item = self._write_queue.get(timeout=0.1)
-                except queue.Empty:
-                    continue
-
-                if item is None:
-                    continue
-
-                batch = [item]
-                while len(batch) < 1000:
-                    try:
-                        next_item = self._write_queue.get_nowait()
-                        if next_item is None:
-                            break
-                        batch.append(next_item)
-                    except queue.Empty:
-                        break
-
-                # Execute the batch inside a single transaction
-                results = []
-                try:
-                    conn.execute("BEGIN TRANSACTION")
-                    for item_data in batch:
-                        queries, future = item_data
-                        try:
-                            main_sql, main_params = queries[0]
-                            cursor = conn.execute(main_sql, main_params)
-                            res = (
-                                cursor.lastrowid
-                                if cursor.lastrowid is not None
-                                else cursor.rowcount
-                            )
-                            for sql, params in queries[1:]:
-                                conn.execute(sql, params)
-                            results.append((future, res, None))
-                        except Exception as e:
-                            results.append((future, None, e))
-                    conn.commit()
-                except Exception as e:
-                    conn.rollback()
-                    logger.error(f"Batch write transaction failed entirely: {e}")
-                    for _, future in batch:
-                        if future and not future.done():
-                            future.set_exception(e)
-                    continue
-
-                # Resolve futures after successful commit
-                for future, res, err in results:
-                    if future and not future.done():
-                        if err:
-                            future.set_exception(err)
-                        else:
-                            future.set_result(res)
-
-    def _execute_write(self, queries: list[tuple[str, tuple[Any, ...]]], sync: bool = True) -> Any:
-        """Helper to either enqueue a write or execute it directly."""
-        if not self.use_queue:
-            with self.get_connection() as conn:
-                try:
-                    main_sql, main_params = queries[0]
-                    cursor = conn.execute(main_sql, main_params)
-                    res = cursor.lastrowid if cursor.lastrowid is not None else cursor.rowcount
-                    for sql, params in queries[1:]:
-                        conn.execute(sql, params)
-                    conn.commit()
-                    return res
-                except Exception as e:
-                    conn.rollback()
-                    raise e
-        else:
-            future: concurrent.futures.Future[Any] = concurrent.futures.Future()
-            self._write_queue.put((queries, future))
-            if sync:
-                return future.result()
-            return future
-
     # --- Read / Helper Operations ---
-
-    def get_user_id(self, username: str) -> int | None:
-        with self.get_connection() as conn:
-            row = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
-            return row["id"] if row else None
 
     def get_subreddit_id(self, name: str) -> int | None:
         with self.get_connection() as conn:
@@ -387,18 +265,6 @@ class RedditLikePlatform:
             return row["id"] if row else None
 
     # --- Write Actions: Users & Subreddits ---
-
-    def create_user(self, username: str, bio: str = "", sync: bool = True) -> Any:
-        try:
-            queries = [
-                (
-                    "INSERT INTO users (username, bio, created_at) VALUES (?, ?, ?)",
-                    (username, bio, time.time()),
-                )
-            ]
-            return self._execute_write(queries, sync=sync)
-        except sqlite3.IntegrityError:
-            return self.get_user_id(username)
 
     def update_profile(self, username: str, bio: str, sync: bool = True) -> Any:
         user_id = self.get_user_id(username)
@@ -445,12 +311,26 @@ class RedditLikePlatform:
         if not user_id or not sub_id:
             raise ValueError("User or Subreddit not found")
 
+        # Only decrement when the membership actually exists, and clamp at zero, so
+        # leaving a subreddit the user never joined cannot corrupt members_count.
+        # Mirrors the duplicate-join guard in join_subreddit.
+        with self.get_connection() as conn:
+            existing = conn.execute(
+                "SELECT 1 FROM subreddit_members WHERE user_id = ? AND subreddit_id = ?",
+                (user_id, sub_id),
+            ).fetchone()
+        if not existing:
+            return False
+
         queries = [
             (
                 "DELETE FROM subreddit_members WHERE user_id = ? AND subreddit_id = ?",
                 (user_id, sub_id),
             ),
-            ("UPDATE subreddits SET members_count = members_count - 1 WHERE id = ?", (sub_id,)),
+            (
+                "UPDATE subreddits SET members_count = MAX(0, members_count - 1) WHERE id = ?",
+                (sub_id,),
+            ),
         ]
         return self._execute_write(queries, sync=sync)
 
@@ -470,17 +350,6 @@ class RedditLikePlatform:
             return self._execute_write(queries, sync=sync)
         except sqlite3.IntegrityError:
             return False
-
-    def unblock(self, username: str, target_username: str, sync: bool = True):
-        blocker_id = self.get_user_id(username)
-        blocked_id = self.get_user_id(target_username)
-        if not blocker_id or not blocked_id:
-            raise ValueError("User not found")
-
-        queries = [
-            ("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (blocker_id, blocked_id))
-        ]
-        return self._execute_write(queries, sync=sync)
 
     # --- Write Actions: Content & Votes ---
 
@@ -645,13 +514,6 @@ class RedditLikePlatform:
 
     # --- Read / Feed Methods ---
 
-    def view_profile(self, username: str) -> dict[str, Any] | None:
-        with self.get_connection() as conn:
-            row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-            if row:
-                return dict(row)
-            return None
-
     def search_subreddits(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
         with self.get_connection() as conn:
             search_term = f"%{query}%"
@@ -714,11 +576,14 @@ class RedditLikePlatform:
             WHERE p.subreddit_id IN (SELECT subreddit_id FROM subreddit_members WHERE user_id = ?)
             AND (? IS NULL OR p.id < ?)
             AND p.user_id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = ?)
+            AND p.user_id NOT IN (SELECT mutee_id FROM mutes WHERE muter_id = ?)
             ORDER BY p.id DESC
             LIMIT ?
         """
         with self.get_connection() as conn:
-            rows = conn.execute(query, (user_id, cursor, cursor, user_id, limit)).fetchall()
+            rows = conn.execute(
+                query, (user_id, cursor, cursor, user_id, user_id, limit)
+            ).fetchall()
             posts = self._parse_posts(rows)
             return {"posts": posts, "next_cursor": posts[-1]["id"] if posts else None}
 
@@ -846,27 +711,6 @@ class RedditLikePlatform:
 
     # --- DMs and Activities ---
 
-    def send_dm(self, username: str, target_username: str, content: str, sync: bool = True) -> Any:
-        sender_id = self.get_user_id(username)
-        receiver_id = self.get_user_id(target_username)
-        if not sender_id or not receiver_id:
-            raise ValueError("User not found")
-
-        with self.get_connection() as conn:
-            if conn.execute(
-                "SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?",
-                (receiver_id, sender_id),
-            ).fetchone():
-                raise ValueError("Cannot send DM, blocked.")
-
-        queries = [
-            (
-                "INSERT INTO direct_messages (sender_id, receiver_id, content, created_at) VALUES (?, ?, ?, ?)",
-                (sender_id, receiver_id, content, time.time()),
-            )
-        ]
-        return self._execute_write(queries, sync=sync)
-
     def view_dms_with(
         self, username: str, target_username: str, limit: int = 50
     ) -> list[dict[str, Any]]:
@@ -981,174 +825,61 @@ class RedditLikePlatform:
     # Extended social methods (mirrored from Twitter)
     # ================================================================ #
 
+    def _current_post_vote(self, user_id: int, post_id: int) -> int:
+        """Return the user's current vote on a post (1, -1, or 0 if none)."""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                "SELECT vote_value FROM votes "
+                "WHERE user_id = ? AND target_id = ? AND target_type = 'post'",
+                (user_id, post_id),
+            ).fetchone()
+        return int(row["vote_value"]) if row else 0
+
     def dislike_post(self, username: str, post_id: int) -> bool:
-        """Add a downvote to a post."""
+        """Downvote a post.
+
+        Routed through the canonical ``vote()`` (votes table) so a downvote shares
+        one source of truth with the ``downvote`` action and cannot double-count
+        ``posts.downvotes``. Returns False if the user has already downvoted.
+        """
+        user_id = self.get_user_id(username)
+        if not user_id:
+            return False
+        if self._current_post_vote(user_id, post_id) == -1:
+            return False
         try:
-            with self.get_connection() as conn:
-                user_id = self.get_user_id(username)
-                if not user_id:
-                    return False
-
-                # Check if already downvoted
-                cursor = conn.execute(
-                    "SELECT 1 FROM dislikes WHERE user_id = ? AND post_id = ?",
-                    (user_id, post_id),
-                )
-                if cursor.fetchone():
-                    return False
-
-                # Add downvote
-                now = time.time()
-                conn.execute(
-                    "INSERT INTO dislikes (user_id, post_id, created_at) VALUES (?, ?, ?)",
-                    (user_id, post_id, now),
-                )
-                conn.execute(
-                    "UPDATE posts SET downvotes = downvotes + 1 WHERE id = ?",
-                    (post_id,),
-                )
-                conn.commit()
-                return True
-        except Exception as e:
+            self.vote(username, post_id, "post", -1)
+            return True
+        except ValueError as e:
             logger.error(f"Error downvoting post {post_id}: {e}")
             return False
 
     def unlike_post(self, username: str, post_id: int) -> bool:
-        """Remove an upvote from a post."""
+        """Remove an upvote from a post (revokes the user's upvote in ``votes``)."""
+        user_id = self.get_user_id(username)
+        if not user_id:
+            return False
+        if self._current_post_vote(user_id, post_id) != 1:
+            return False
         try:
-            with self.get_connection() as conn:
-                user_id = self.get_user_id(username)
-                if not user_id:
-                    return False
-
-                # Check if upvote exists
-                cursor = conn.execute(
-                    "SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?",
-                    (user_id, post_id),
-                )
-                if not cursor.fetchone():
-                    return False
-
-                # Remove upvote
-                conn.execute(
-                    "DELETE FROM likes WHERE user_id = ? AND post_id = ?",
-                    (user_id, post_id),
-                )
-                conn.execute(
-                    "UPDATE posts SET upvotes = MAX(0, upvotes - 1) WHERE id = ?",
-                    (post_id,),
-                )
-                conn.commit()
-                return True
-        except Exception as e:
+            self.vote(username, post_id, "post", 0)
+            return True
+        except ValueError as e:
             logger.error(f"Error removing upvote for post {post_id}: {e}")
             return False
 
     def undo_dislike_post(self, username: str, post_id: int) -> bool:
-        """Remove a downvote from a post."""
+        """Remove a downvote from a post (revokes the user's downvote in ``votes``)."""
+        user_id = self.get_user_id(username)
+        if not user_id:
+            return False
+        if self._current_post_vote(user_id, post_id) != -1:
+            return False
         try:
-            with self.get_connection() as conn:
-                user_id = self.get_user_id(username)
-                if not user_id:
-                    return False
-
-                # Check if downvote exists
-                cursor = conn.execute(
-                    "SELECT 1 FROM dislikes WHERE user_id = ? AND post_id = ?",
-                    (user_id, post_id),
-                )
-                if not cursor.fetchone():
-                    return False
-
-                # Remove downvote
-                conn.execute(
-                    "DELETE FROM dislikes WHERE user_id = ? AND post_id = ?",
-                    (user_id, post_id),
-                )
-                conn.execute(
-                    "UPDATE posts SET downvotes = MAX(0, downvotes - 1) WHERE id = ?",
-                    (post_id,),
-                )
-                conn.commit()
-                return True
-        except Exception as e:
+            self.vote(username, post_id, "post", 0)
+            return True
+        except ValueError as e:
             logger.error(f"Error removing downvote for post {post_id}: {e}")
-            return False
-
-    def mute_user(self, username: str, target_username: str) -> bool:
-        """Mute another user."""
-        try:
-            with self.get_connection() as conn:
-                user_id = self.get_user_id(username)
-                target_id = self.get_user_id(target_username)
-                if not user_id or not target_id:
-                    return False
-
-                # Check if already muted
-                cursor = conn.execute(
-                    "SELECT 1 FROM mutes WHERE muter_id = ? AND mutee_id = ?",
-                    (user_id, target_id),
-                )
-                if cursor.fetchone():
-                    return False
-
-                # Add mute
-                now = time.time()
-                conn.execute(
-                    "INSERT INTO mutes (muter_id, mutee_id, created_at) VALUES (?, ?, ?)",
-                    (user_id, target_id, now),
-                )
-                conn.commit()
-                return True
-        except Exception as e:
-            logger.error(f"Error muting user {target_username}: {e}")
-            return False
-
-    def unmute_user(self, username: str, target_username: str) -> bool:
-        """Unmute a user."""
-        try:
-            with self.get_connection() as conn:
-                user_id = self.get_user_id(username)
-                target_id = self.get_user_id(target_username)
-                if not user_id or not target_id:
-                    return False
-
-                # Check if muted
-                cursor = conn.execute(
-                    "SELECT 1 FROM mutes WHERE muter_id = ? AND mutee_id = ?",
-                    (user_id, target_id),
-                )
-                if not cursor.fetchone():
-                    return False
-
-                # Remove mute
-                conn.execute(
-                    "DELETE FROM mutes WHERE muter_id = ? AND mutee_id = ?",
-                    (user_id, target_id),
-                )
-                conn.commit()
-                return True
-        except Exception as e:
-            logger.error(f"Error unmuting user {target_username}: {e}")
-            return False
-
-    def report_post(self, username: str, post_id: int, reason: str = "") -> bool:
-        """Report a post."""
-        try:
-            with self.get_connection() as conn:
-                user_id = self.get_user_id(username)
-                if not user_id:
-                    return False
-
-                now = time.time()
-                conn.execute(
-                    "INSERT INTO reports (user_id, post_id, reason, created_at) VALUES (?, ?, ?, ?)",
-                    (user_id, post_id, reason, now),
-                )
-                conn.commit()
-                return True
-        except Exception as e:
-            logger.error(f"Error reporting post {post_id}: {e}")
             return False
 
     def get_trending_posts(self, limit: int = 10, days: int = 7) -> list[dict]:
@@ -1263,7 +994,11 @@ class RedditLikePlatform:
         in the database with the algorithm type tagged.
         """
         if not hasattr(self, "_recsys_types") or not self._recsys_types:
-            logger.debug("No recsys types initialized; skipping recommendations update")
+            logger.warning(
+                "update_recommendations called with no live recsys types; recommendations "
+                "will not refresh. After a checkpoint restore the update component should "
+                "re-initialize recsys (via recsys_active_types reconciliation)."
+            )
             return
 
         try:
@@ -1377,11 +1112,26 @@ class RedditLikePlatform:
             return {}
 
         try:
+            import torch
+
             rec_matrix = {}
 
-            # Encode posts (batch)
-            post_texts = [p["content"] for p in posts]
-            post_embeddings = model.encode(post_texts, batch_size=32, convert_to_tensor=True)
+            # Posts are append-only, so batch-encode only ids not already in the
+            # persistent embeddings_cache and reassemble in post order, avoiding
+            # re-encoding the same posts each recsys update (mirrors the Twitter backend).
+            post_ids = [int(p["id"]) for p in posts]
+            missing = [
+                (i, p["content"])
+                for i, (pid, p) in enumerate(zip(post_ids, posts, strict=False))
+                if ("post_emb", pid) not in embeddings_cache
+            ]
+            if missing:
+                new_embeddings = model.encode(
+                    [text for _, text in missing], batch_size=32, convert_to_tensor=True
+                )
+                for row, (idx, _) in enumerate(missing):
+                    embeddings_cache[("post_emb", post_ids[idx])] = new_embeddings[row]
+            post_embeddings = torch.stack([embeddings_cache[("post_emb", pid)] for pid in post_ids])
 
             # For each user
             for user in users:
@@ -1397,8 +1147,6 @@ class RedditLikePlatform:
                     user_emb = embeddings_cache[cache_key]
 
                 # Compute similarities
-                import torch
-
                 sims = torch.nn.functional.cosine_similarity(user_emb.unsqueeze(0), post_embeddings)
 
                 # Score posts

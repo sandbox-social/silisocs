@@ -80,6 +80,24 @@ def merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
     return merged_cfg
 
 
+def _resolve_config_dir_argument(raw: str) -> Path | None:
+    """Resolve a --config-path argument to a directory.
+
+    Accepts a filesystem path, or — when that does not exist — a repository
+    scenario reference (``election``, ``scenarios/election/conf``), so
+    documented invocations work from any directory within a repo checkout.
+    """
+    directory = Path(raw).resolve()
+    if directory.is_dir():
+        return directory
+    from silisocs.scenario_library import scenario_conf_path
+
+    try:
+        return scenario_conf_path(raw)
+    except FileNotFoundError:
+        return None
+
+
 def inject_external_config_path() -> None:
     primary_flag = "--config-path"
     overlay_flag = "--overlay-config-path"
@@ -96,9 +114,16 @@ def inject_external_config_path() -> None:
             if i + 1 >= len(sys.argv):
                 print(f"ERROR: {token} requires a directory argument.")
                 sys.exit(1)
-            directory = Path(sys.argv[i + 1]).resolve()
-            if not directory.is_dir():
-                print(f"ERROR: {token} directory does not exist: {directory}")
+            directory = _resolve_config_dir_argument(sys.argv[i + 1])
+            if directory is None:
+                from silisocs.scenario_library import list_scenarios
+
+                available = ", ".join(list_scenarios()) or "<none>"
+                print(
+                    f"ERROR: {token} '{sys.argv[i + 1]}' is neither an existing "
+                    f"directory nor a known repository scenario. "
+                    f"Available scenarios: {available}"
+                )
                 sys.exit(1)
             if token == primary_flag:
                 external_dir = directory
