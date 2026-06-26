@@ -274,17 +274,14 @@ class BackendApp(metaclass=abc.ABCMeta):
     _log_color: COLOR_TYPE = "blue"
 
     # Checkpoint capability contract (see docs/configuration.md#checkpointing).
-    # ``provides_checkpoint_state`` declares that get_state/set_state round-trip
-    # authoritative backend state, so a checkpoint can restore this backend
-    # directly from its snapshot. Backends that leave it False (e.g. live
-    # external servers) carry no authoritative snapshot and must rely on a
+    # ``provides_checkpoint_state``: get_state/set_state round-trip authoritative
+    # state, so a checkpoint restores this backend directly from its snapshot.
+    # Backends that leave it False (e.g. live external servers) must rely on a
     # configured ``sim.checkpoint.restore`` strategy instead.
     provides_checkpoint_state: bool = False
-    # ``supports_action_replay`` declares that the built-in
-    # ``social_action_event_replay`` restore strategy can faithfully reconstruct
-    # this backend by re-resolving its logged action events. Backends that mutate
-    # external, non-idempotent state (e.g. a live Mastodon server) set this False
-    # and require a custom ``sim.checkpoint.restore.class_path`` strategy.
+    # ``supports_action_replay``: the built-in ``social_action_event_replay`` strategy
+    # can rebuild this backend by re-resolving its logged action events. Backends with
+    # non-idempotent external state (e.g. a live Mastodon server) set this False.
     supports_action_replay: bool = False
 
     def __init__(self) -> None:

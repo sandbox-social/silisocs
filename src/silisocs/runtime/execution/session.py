@@ -229,18 +229,7 @@ def main(cfg: DictConfig):
     logger.info("Wrote runtime-effective config snapshot to: %s", effective_cfg_snapshot_path)
 
     def _log_startup_phase(phase_name: str, duration_s: float, details: str = "") -> None:
-        """_log_startup_phase.
-
-        :param str phase_name:
-        :type phase_name: str
-        :param float duration_s:
-        :type duration_s: float
-        :param str details:
-        :type details: str
-
-        :returns: None
-        :rtype: None
-        """
+        """Log a named startup phase's duration to the logger and run-stats file."""
         details_part = f" {details}" if details else ""
         line = f"Startup {phase_name}: {duration_s:.2f}s{details_part}"
         logger.info(line)

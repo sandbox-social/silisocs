@@ -36,15 +36,7 @@ class ProbeDeploymentPolicy:
 
     @classmethod
     def from_probes_config(cls, probes_config: Mapping[str, Any] | None) -> ProbeDeploymentPolicy:
-        """from_probes_config.
-
-        :param cls:
-        :param Mapping[str, Any] | None probes_config:
-        :type probes_config: Mapping[str, Any] | None
-
-        :returns: ProbeDeploymentPolicy
-        :rtype: ProbeDeploymentPolicy
-        """
+        """Build a deployment policy from a probes config mapping."""
         deployment_cfg = dict((probes_config or {}).get("deployment", {}) or {})
         every_n_steps = int(deployment_cfg.get("every_n_steps", 1))
         if every_n_steps <= 0:
@@ -79,15 +71,7 @@ class ProbeDeploymentOrchestrator:
         probe_event_logger: Any,
         policy: ProbeDeploymentPolicy | None = None,
     ):
-        """__init__.
-
-        :param Mapping[str, Any] | None probes_config:
-        :type probes_config: Mapping[str, Any] | None
-        :param Any probe_event_logger:
-        :type probe_event_logger: Any
-        :param ProbeDeploymentPolicy | None policy:
-        :type policy: ProbeDeploymentPolicy | None
-        """
+        """Initialize the orchestrator with probes config, logger, and policy."""
         self._probes_config = dict(probes_config or {})
         self._probe_event_logger = probe_event_logger
         self._policy = policy or ProbeDeploymentPolicy.from_probes_config(self._probes_config)
@@ -122,22 +106,11 @@ class ProbeDeploymentOrchestrator:
         return probes
 
     def is_configured(self) -> bool:
-        """is_configured.
-
-        :returns: bool
-        :rtype: bool
-        """
+        """Return whether any probes are configured for deployment."""
         return bool(self._probes_config.get("probes"))
 
     def should_deploy(self, step: int) -> bool:
-        """should_deploy.
-
-        :param int step:
-        :type step: int
-
-        :returns: bool
-        :rtype: bool
-        """
+        """Return whether probes are due for deployment at the given step."""
         if not self._policy.enabled:
             return False
         if not self.is_configured():
@@ -165,14 +138,7 @@ class ProbeDeploymentOrchestrator:
             return str((agent_flows or {}).get(_agent_name(agent), DEFAULT_FLOW_TAG))
 
         def _agent_classes(agent: Any) -> set[str]:
-            """Return configured class/role labels for an agent.
-
-            :param Any agent:
-            :type agent: Any
-
-            :returns: set[str]
-            :rtype: set[str]
-            """
+            """Return configured class/role labels for an agent."""
             out: set[str] = set()
 
             for attr in ("sim_role_name", "sim_role", "role", "class_name", "agent_class"):

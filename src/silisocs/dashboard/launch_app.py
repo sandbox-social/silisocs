@@ -104,14 +104,7 @@ st.markdown(
 # Helpers
 # ---------------------------------------------------------------------------
 def _load_yaml(path: Path) -> dict:
-    """_load_yaml.
-
-    :param Path path:
-    :type path: Path
-
-    :returns: dict
-    :rtype: dict
-    """
+    """Load a YAML file into a dict, returning an empty dict on failure."""
     try:
         return yaml.safe_load(path.read_text()) or {}
     except Exception:
@@ -324,11 +317,7 @@ def _split_loaded_config(
 
 
 def _backend_class(backend_type: str):
-    """_backend_class.
-
-    :param str backend_type:
-    :type backend_type: str
-    """
+    """Return the backend app class for the given backend type."""
     if backend_type == "twitter_like":
         from silisocs.environments.backends.twitter_like.app import TwitterLikeApp
 
@@ -547,20 +536,7 @@ def _build_hydra_overrides(
     world: dict,
     eval_cfg: dict | None = None,
 ) -> list[str]:
-    """_build_hydra_overrides.
-
-    :param dict sim:
-    :type sim: dict
-    :param dict env:
-    :type env: dict
-    :param str backend_group:
-    :type backend_group: str
-    :param dict world:
-    :type world: dict
-
-    :returns: list[str]
-    :rtype: list[str]
-    """
+    """Build Hydra CLI override strings from sim, env, eval, and world dicts."""
     overrides: list[str] = []
     for key, val in sim.items():
         if val is None:

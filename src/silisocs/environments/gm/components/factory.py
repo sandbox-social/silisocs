@@ -93,14 +93,7 @@ _MULTI_INSTANCE_RESERVED_KEYS = {
 
 
 def _load_class(class_path: str) -> type[Any]:
-    """_load_class.
-
-    :param str class_path:
-    :type class_path: str
-
-    :returns: type[Any]
-    :rtype: type[Any]
-    """
+    """Load and return a class from its fully-qualified path."""
     module_path, class_name = class_path.rsplit(".", 1)
     module = importlib.import_module(module_path)
     return getattr(module, class_name)
@@ -113,14 +106,7 @@ def _build_from_slot(
     default_built_in: str,
     runtime_kwargs: Mapping[str, Any] | None = None,
 ) -> Any:
-    """_build_from_slot.
-
-    :param Mapping[str, Any] | None slot_cfg:
-    :type slot_cfg: Mapping[str, Any] | None
-
-    :returns: Any
-    :rtype: Any
-    """
+    """Build a component from a slot config, using class_path or a built-in name."""
     cfg = dict(slot_cfg or {})
     class_path = cfg.get("class_path")
     params = dict(cfg.get("params") or {})
@@ -181,7 +167,6 @@ def _class_to_kebab_case(class_name: str) -> str:
         EpisodeObservation -> episode_observation
         ParsedActionResolveComponent -> parsed_action_resolve_component
     """
-    # Insert underscore before uppercase letters (except first)
     kebab = re.sub(r"(?<!^)(?=[A-Z])", "_", class_name)
     return kebab.lower()
 

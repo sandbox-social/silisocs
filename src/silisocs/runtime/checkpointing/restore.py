@@ -65,9 +65,8 @@ class SocialActionEventReplayRestore(CheckpointRestoreStrategy):
         _assert_backends_replayable(replay_gms)
         _begin_backend_replay(replay_gms)
         replay_names = frozenset(str(getattr(gm, "name", "")) for gm in replay_gms)
-        # Each per-GM log is chronological in itself; replaying the files in order
-        # preserves every backend's event order. Each row is tagged with the GM
-        # that resolved it (``gm_name``), so it is routed back to that owner.
+        # Replay files in order (each per-GM log is chronological); each row is
+        # routed back to its resolving GM via the ``gm_name`` tag.
         for events_file in action_events_files:
             for row in _read_jsonl(events_file):
                 fields = _replay_event_fields(row, checkpoint_step)

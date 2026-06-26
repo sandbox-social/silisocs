@@ -90,19 +90,11 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
     }
 
     def _supported_recsys_types(self) -> set[str]:
-        """_supported_recsys_types.
-
-        :returns: set[str]
-        :rtype: set[str]
-        """
+        """Return the recsys types supported by the current backend."""
         return set(self._SUPPORTED_RECSYS_BY_BACKEND.get(self.backend_type, set()))
 
     def _effective_default_recsys_type(self) -> str | None:
-        """_effective_default_recsys_type.
-
-        :returns: str | None
-        :rtype: str | None
-        """
+        """Return the effective default recsys type for the current backend."""
         if self.default_recsys_type:
             return self.default_recsys_type
         return self._DEFAULT_RECSYS_BY_BACKEND.get(self.backend_type)
@@ -185,12 +177,11 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
 
             backend = self.backend
 
-            # Reconcile configured recsys types against what the backend reports
-            # as live, rather than trusting our own initialized-set flag. After a
-            # checkpoint restore the backend platform is rebuilt empty, so any
-            # configured type the backend no longer has live is (re-)initialized
-            # here as a lazy self-heal; otherwise the stale flag would suppress
-            # re-init forever and update_recommendations would silently no-op.
+            # Reconcile configured recsys types against what the backend reports as
+            # live (not our own flag): after a checkpoint restore the backend is
+            # rebuilt empty, so any configured-but-missing type is re-initialized here
+            # as a lazy self-heal. Otherwise a stale flag would suppress re-init and
+            # update_recommendations would silently no-op.
             recsys_types = self._extract_unique_recsys_types()
             if not recsys_types:
                 logger.debug(

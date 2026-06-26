@@ -117,16 +117,7 @@ _RUNTIME_ARG_PATTERN = re.compile(
 
 
 def _normalize_target_id(action_type: str, target_id: str) -> str:
-    """_normalize_target_id.
-
-    :param str action_type:
-    :type action_type: str
-    :param str target_id:
-    :type target_id: str
-
-    :returns: str
-    :rtype: str
-    """
+    """Normalize a target id for an action, stripping placeholders and brackets."""
     cleaned = target_id.strip()
     if not cleaned:
         return ""

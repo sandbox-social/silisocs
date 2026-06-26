@@ -28,14 +28,7 @@ from silisocs.runtime.types import ActionOutput, OutputType, ToolCall
 def _parse_episode_number(observation: str) -> int | None:
     # Only treat explicit episode markers as authoritative; timeline post IDs
     # or scores should not change deterministic episode progression.
-    """_parse_episode_number.
-
-    :param str observation:
-    :type observation: str
-
-    :returns: int | None
-    :rtype: int | None
-    """
+    """Parse the explicit episode number from an observation string, or None."""
     match = re.search(r"\bepisode\b\s*[:#-]?\s*(\d+)\b", observation or "", re.IGNORECASE)
     if not match:
         return None
@@ -81,11 +74,7 @@ class FixedAgent(Agent):
         action_aliases: Mapping[str, Any] | None = None,
         **extra_params: Any,
     ) -> None:
-        """__init__.
-
-        :returns: None
-        :rtype: None
-        """
+        """Initialize the fixed agent with its scripted action plan and options."""
         super().__init__(model or NoLanguageModel())
         self._agent_name = str(name or "FixedAgent")
         self.seed_post = str(seed_post or "")
@@ -153,14 +142,7 @@ class FixedAgent(Agent):
         return self._agent_name
 
     def set_allowed_action_types(self, action_types: list[str]) -> None:
-        """set_allowed_action_types.
-
-        :param list[str] action_types:
-        :type action_types: list[str]
-
-        :returns: None
-        :rtype: None
-        """
+        """Restrict the action types this agent may emit, normalized to upper case."""
         self._allowed_action_types = [
             str(v).strip().upper() for v in action_types if str(v).strip()
         ]
@@ -172,14 +154,7 @@ class FixedAgent(Agent):
             self._action_output_mode = normalized
 
     def observe(self, observation: str) -> None:
-        """Observe.
-
-        :param str observation:
-        :type observation: str
-
-        :returns: None
-        :rtype: None
-        """
+        """Update the current episode from the observation's episode marker."""
         parsed = _parse_episode_number(observation)
         if parsed is None:
             self._last_observation_had_episode = False
@@ -238,14 +213,7 @@ class FixedAgent(Agent):
         return actions_by_episode
 
     def _next_known_episode(self, current_episode: int) -> int | None:
-        """_next_known_episode.
-
-        :param int current_episode:
-        :type current_episode: int
-
-        :returns: int | None
-        :rtype: int | None
-        """
+        """Return the smallest configured episode after the current one, or None."""
         if not self._episode_order:
             return None
         for episode in self._episode_order:
@@ -254,14 +222,7 @@ class FixedAgent(Agent):
         return None
 
     def _finished_action_item(self, reason: str = "Finished action episode") -> dict[str, Any]:
-        """_finished_action_item.
-
-        :param str reason:
-        :type reason: str
-
-        :returns: dict[str, Any]
-        :rtype: dict[str, Any]
-        """
+        """Build a FINISHED action item carrying the given reason."""
         return {
             "action_type": self._finished_action_name,
             "target_id": "",
@@ -313,14 +274,7 @@ class FixedAgent(Agent):
         return [dict(item) for item in self._actions_by_episode.get(episode, [])]
 
     def _effective_action_output_mode(self, action_spec: Any) -> str:
-        """_effective_action_output_mode.
-
-        :param Any action_spec:
-        :type action_spec: Any
-
-        :returns: str
-        :rtype: str
-        """
+        """Resolve the output mode, inferring from the action spec when set to auto."""
         mode = str(self._action_output_mode or "auto").strip().lower()
         if mode and mode != "auto":
             return mode
@@ -333,16 +287,7 @@ class FixedAgent(Agent):
         return "parsed_action"
 
     def _mode_adjusted_action_name(self, action_name: str, mode: str) -> str:
-        """_mode_adjusted_action_name.
-
-        :param str action_name:
-        :type action_name: str
-        :param str mode:
-        :type mode: str
-
-        :returns: str
-        :rtype: str
-        """
+        """Map an action name to its mode-specific alias or fallback name."""
         raw = str(action_name or "").strip()
         if not raw:
             raw = "POST"
@@ -367,11 +312,7 @@ class FixedAgent(Agent):
         reasoning: str,
         tool_kwargs: Mapping[str, Any] | None = None,
     ) -> ActionOutput:
-        """_format_action.
-
-        :returns: str
-        :rtype: str
-        """
+        """Format an action into the output payload for the given mode."""
         if mode == "tool_calling":
             payload: dict[str, Any] = {}
             normalized_name = str(action_name).strip()
@@ -405,14 +346,7 @@ class FixedAgent(Agent):
         )
 
     def act(self, action_spec: Any) -> ActionOutput:
-        """Act.
-
-        :param Any action_spec:
-        :type action_spec: Any
-
-        :returns: str
-        :rtype: str
-        """
+        """Produce the next scripted action formatted for the active output mode."""
         item = self._next_action_item()
         mode = self._effective_action_output_mode(action_spec)
 
@@ -451,11 +385,7 @@ class FixedAgent(Agent):
         return action_output
 
     def get_last_log(self) -> dict[str, Any]:
-        """get_last_log.
-
-        :returns: dict[str, Any]
-        :rtype: dict[str, Any]
-        """
+        """Return a copy of the log entry for the most recent action."""
         return dict(self._last_log)
 
     def get_state(self) -> dict[str, Any]:

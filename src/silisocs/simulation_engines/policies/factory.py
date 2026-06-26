@@ -34,30 +34,14 @@ _PROBE_BUILT_INS = {
 
 
 def _load_class(class_path: str) -> type[Any]:
-    """_load_class.
-
-    :param str class_path:
-    :type class_path: str
-
-    :returns: type[Any]
-    :rtype: type[Any]
-    """
+    """Load and return a class from its fully-qualified path."""
     module_path, class_name = class_path.rsplit(".", 1)
     module = importlib.import_module(module_path)
     return getattr(module, class_name)
 
 
 def _instantiate_with_supported_kwargs(cls: type[Any], kwargs: Mapping[str, Any]) -> Any:
-    """_instantiate_with_supported_kwargs.
-
-    :param type[Any] cls:
-    :type cls: type[Any]
-    :param Mapping[str, Any] kwargs:
-    :type kwargs: Mapping[str, Any]
-
-    :returns: Any
-    :rtype: Any
-    """
+    """Instantiate a class using only kwargs supported by its constructor."""
     params = inspect.signature(cls.__init__).parameters
     if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
         return cls(**dict(kwargs))
@@ -83,14 +67,7 @@ def _build_policy(
     built_ins: Mapping[str, type[Any]],
     default_built_in: str,
 ) -> Any:
-    """_build_policy.
-
-    :param Mapping[str, Any] | None slot_cfg:
-    :type slot_cfg: Mapping[str, Any] | None
-
-    :returns: Any
-    :rtype: Any
-    """
+    """Build a policy from a slot config, using class_path or a built-in name."""
     cfg = dict(slot_cfg or {})
     class_path = cfg.get("class_path")
     params = dict(cfg.get("params") or {})

@@ -149,9 +149,8 @@ class OpenAILanguageModel(LanguageModel):
             self._local.tag = str(action_tag)
 
     def clear_runtime_context(self) -> None:
-        # Clear only THIS thread's context. Rebinding self._local would replace the
-        # shared thread-local object and wipe the per-thread context of other
-        # in-flight threads sharing this model during a concurrent action batch.
+        # Clear only THIS thread's context: rebinding self._local would replace the
+        # shared object and wipe other in-flight threads' per-thread context.
         for attr in ("agent_name", "episode_idx", "phase", "tag"):
             if hasattr(self._local, attr):
                 delattr(self._local, attr)

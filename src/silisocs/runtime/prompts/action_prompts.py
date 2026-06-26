@@ -40,14 +40,7 @@ def prompt_additions_from_cfg(cfg: Any) -> PromptAdditions:
 
 
 def split_output_style_sections(action_prompt: str) -> tuple[str, str, bool]:
-    """split_output_style_sections.
-
-    :param str action_prompt:
-    :type action_prompt: str
-
-    :returns: tuple[str, str, bool]
-    :rtype: tuple[str, str, bool]
-    """
+    """Split a prompt at the output-style marker into (head, style, found) parts."""
     raw = str(action_prompt or "")
     if OUTPUT_STYLE_MARKER not in raw:
         return raw.strip(), "", False
@@ -56,14 +49,7 @@ def split_output_style_sections(action_prompt: str) -> tuple[str, str, bool]:
 
 
 def action_guidance_line(tool_calling_mode: str) -> str:
-    """action_guidance_line.
-
-    :param str tool_calling_mode:
-    :type tool_calling_mode: str
-
-    :returns: str
-    :rtype: str
-    """
+    """Return the action-count guidance line for the given tool-calling mode."""
     if str(tool_calling_mode or "none").strip().lower() == "multi":
         return MULTI_TOOL_CALLING_PROMPT_LINE
     return SINGLE_STEP_PROMPT_LINE

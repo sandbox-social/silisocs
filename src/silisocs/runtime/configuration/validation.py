@@ -18,10 +18,6 @@ from typing import Any
 
 from omegaconf import DictConfig, OmegaConf
 
-# ============================================================================
-# Base Scenario Schema
-# ============================================================================
-
 
 @dataclass
 class BaseScenarioSchema:
@@ -65,11 +61,6 @@ class BaseScenarioSchema:
 
     # Output configuration
     jobname_format: str = ""
-
-
-# ============================================================================
-# Validation Functions
-# ============================================================================
 
 
 def validate_scenario_structure(cfg: DictConfig) -> None:

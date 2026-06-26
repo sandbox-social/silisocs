@@ -16,11 +16,7 @@ class ValidationResult:
     stderr: str
 
     def __str__(self) -> str:
-        """__str__.
-
-        :returns: str
-        :rtype: str
-        """
+        """Render the result as a PASS/FAIL block with captured output."""
         status = "PASS" if self.ok else "FAIL"
         lines = [f"[{status}]"]
         if self.stdout.strip():
