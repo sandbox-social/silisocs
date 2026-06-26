@@ -38,6 +38,7 @@ from typing import Any
 
 import yaml
 
+from silisocs.runtime.checkpointing import resolve_checkpoint_source
 from silisocs.studies.study_artifacts import (
     load_study_definition,
     organize_study_outputs,
@@ -938,11 +939,14 @@ def _extract_output_dir_from_line(line: str) -> str | None:
 
 
 def _find_latest_checkpoint(run_dir: Path) -> Path | None:
-    checkpoint_dir = run_dir / "checkpoints"
-    if not checkpoint_dir.is_dir():
+    # Defer to the canonical runtime resolver so study eval picks the exact same
+    # checkpoint the runtime restore would (highest parsed step, step_*_checkpoint.json
+    # only). It raises FileNotFoundError / ValueError for no-usable / unparseable
+    # checkpoints; translate both to this function's "None" contract.
+    try:
+        return resolve_checkpoint_source(run_dir)
+    except (FileNotFoundError, ValueError):
         return None
-    checkpoints = sorted(checkpoint_dir.glob("*.json"), key=lambda p: p.stat().st_mtime)
-    return checkpoints[-1] if checkpoints else None
 
 
 def _run_subprocess(

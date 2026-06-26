@@ -85,23 +85,9 @@ def select_large_language_model(
             extra_kwargs=extra_kwargs,
         )
 
-    if normalized_provider in OPENAI_COMPATIBLE_PRESETS:
-        preset_base, key_env = OPENAI_COMPATIBLE_PRESETS[normalized_provider]
-        effective_api_key = api_key or (os.getenv(key_env) if key_env else None)
-        if key_env and not effective_api_key:
-            raise ValueError(
-                f"{key_env} or sim.llm.api_key is required for provider={normalized_provider}."
-            )
-        return OpenAICompatibleLanguageModel(
-            model_name=model_name,
-            api_base=(str(api_base or "").strip() or preset_base),
-            api_key=effective_api_key,
-            temperature=temperature,
-            log_file=log_file,
-            debug=debug_mode,
-            extra_kwargs=extra_kwargs,
-        )
-
+    # Registered providers and dotted class paths resolve *before* the preset table,
+    # so a user registration whose name collides with a preset (e.g. 'ollama') wins.
+    # Reserved core names above stay non-shadowable; presets apply otherwise.
     custom_factory = get_llm_provider(normalized_provider)
     if custom_factory is None and "." in str(provider or ""):
         module_path, _, attr = str(provider).strip().rpartition(".")
@@ -131,6 +117,23 @@ def select_large_language_model(
                 "not a silisocs LanguageModel."
             )
         return built
+
+    if normalized_provider in OPENAI_COMPATIBLE_PRESETS:
+        preset_base, key_env = OPENAI_COMPATIBLE_PRESETS[normalized_provider]
+        effective_api_key = api_key or (os.getenv(key_env) if key_env else None)
+        if key_env and not effective_api_key:
+            raise ValueError(
+                f"{key_env} or sim.llm.api_key is required for provider={normalized_provider}."
+            )
+        return OpenAICompatibleLanguageModel(
+            model_name=model_name,
+            api_base=(str(api_base or "").strip() or preset_base),
+            api_key=effective_api_key,
+            temperature=temperature,
+            log_file=log_file,
+            debug=debug_mode,
+            extra_kwargs=extra_kwargs,
+        )
 
     known = ", ".join([*BUILT_IN_PROVIDERS, *OPENAI_COMPATIBLE_PRESETS, *available_llm_providers()])
     raise ValueError(

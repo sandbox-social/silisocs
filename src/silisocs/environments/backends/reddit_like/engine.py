@@ -145,6 +145,10 @@ class RedditLikePlatform(SqliteSocialEngineBase):
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_posts_user_created ON posts(user_id, created_at DESC)"
             )
+            # Plain created_at index backs the recsys candidate query
+            # (ORDER BY created_at DESC LIMIT 1000), which the composite
+            # (subreddit_id|user_id, created_at) indexes cannot serve.
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC)")
 
             # Comments table
             conn.execute("""
@@ -1108,11 +1112,26 @@ class RedditLikePlatform(SqliteSocialEngineBase):
             return {}
 
         try:
+            import torch
+
             rec_matrix = {}
 
-            # Encode posts (batch)
-            post_texts = [p["content"] for p in posts]
-            post_embeddings = model.encode(post_texts, batch_size=32, convert_to_tensor=True)
+            # Posts are append-only, so batch-encode only ids not already in the
+            # persistent embeddings_cache and reassemble in post order, avoiding
+            # re-encoding the same posts each recsys update (mirrors the Twitter backend).
+            post_ids = [int(p["id"]) for p in posts]
+            missing = [
+                (i, p["content"])
+                for i, (pid, p) in enumerate(zip(post_ids, posts, strict=False))
+                if ("post_emb", pid) not in embeddings_cache
+            ]
+            if missing:
+                new_embeddings = model.encode(
+                    [text for _, text in missing], batch_size=32, convert_to_tensor=True
+                )
+                for row, (idx, _) in enumerate(missing):
+                    embeddings_cache[("post_emb", post_ids[idx])] = new_embeddings[row]
+            post_embeddings = torch.stack([embeddings_cache[("post_emb", pid)] for pid in post_ids])
 
             # For each user
             for user in users:
@@ -1128,8 +1147,6 @@ class RedditLikePlatform(SqliteSocialEngineBase):
                     user_emb = embeddings_cache[cache_key]
 
                 # Compute similarities
-                import torch
-
                 sims = torch.nn.functional.cosine_similarity(user_emb.unsqueeze(0), post_embeddings)
 
                 # Score posts

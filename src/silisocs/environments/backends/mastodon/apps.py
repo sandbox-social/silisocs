@@ -94,16 +94,13 @@ class SocialNetworkApp(SocialBackendApp):
     """
 
     action_logger: Any = None
-    # Mastodon's authoritative state lives on an external live server a checkpoint
-    # cannot snapshot, so its checkpoint "state" IS its replayable action history:
-    # ``get_state`` embeds the logged actions and ``set_state`` rebuilds the server
-    # by re-running them. It thus restores through the normal set_state path (the
-    # default checkpoint loader) like every other shipped backend — no special
-    # restore strategy needed. On resume the server is reset (reset_server_on_setup)
-    # and posts/follows replay directly; like/boost/reply targets are remapped from
-    # the old (pre-resume) toot id to the new id assigned when the post is re-created.
-    # NOTE: replay re-posts to the live server and reproduces a *similar*, not
-    # identical, server state.
+    # Mastodon's authoritative state lives on a live server a checkpoint cannot
+    # snapshot, so its checkpoint "state" IS its replayable action history:
+    # ``get_state`` embeds the logged actions and ``set_state`` replays them to
+    # rebuild the server, via the normal set_state path like every other backend.
+    # On resume the server is reset and posts/follows replay directly; like/boost/
+    # reply targets are remapped from the old toot id to the new one. Replay yields
+    # a *similar*, not identical, server state.
     provides_checkpoint_state = True
     # The event->action replay mapping is also exposed for custom restore
     # strategies, though Mastodon itself restores via set_state above.
@@ -118,6 +115,15 @@ class SocialNetworkApp(SocialBackendApp):
     # the server assigns when the post is re-created during replay.
     _replay_id_map: dict[str, str] = dataclasses.field(default_factory=dict, init=False)
     _pending_replay_old_id: str | None = dataclasses.field(default=None, init=False)
+    # Incremental action-log read cache: ``get_state`` runs every checkpoint, so
+    # re-reading all of ``action_events.jsonl`` each time is O(n^2) over a run. We
+    # keep the parsed events and consumed byte offset and read only newly appended
+    # bytes; ``_action_log_path`` guards against the logger switching files.
+    _cached_action_events: list[dict[str, Any]] = dataclasses.field(
+        default_factory=list, init=False
+    )
+    _action_log_offset: int = dataclasses.field(default=0, init=False)
+    _action_log_path: str | None = dataclasses.field(default=None, init=False)
 
     def __post_init__(self) -> None:  # noqa: D105
         super().__init__()
@@ -169,30 +175,74 @@ class SocialNetworkApp(SocialBackendApp):
                 self._replay_logged_action(event)
 
     def _read_logged_action_events(self) -> list[dict[str, Any]]:
-        """Read this backend's own action log into compact replay events."""
+        """Read this backend's own action log into compact replay events.
+
+        Incremental: only the bytes appended since the previous call are parsed,
+        and parsed events accumulate in ``_cached_action_events``. The full history
+        up to now is always returned. The read falls back to a complete re-parse if
+        the log path changed, the file is missing, or it was truncated/rotated
+        (current size smaller than the offset already consumed).
+        """
         path = str(getattr(self.action_logger, "output_filename", "") or "")
         if not path or not os.path.isfile(path):
+            # No usable log (unset path, or the file is missing/rotated away): forget
+            # any cached state so a re-created log at this path is read from the start
+            # on a later call, and report an empty history (matches the original
+            # missing-file behavior).
+            self._reset_action_log_cache(path or None)
             return []
-        events: list[dict[str, Any]] = []
-        with open(path, encoding="utf-8") as handle:
-            for line in handle:
-                stripped = line.strip()
-                if not stripped:
-                    continue
-                try:
-                    row = json.loads(stripped)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(row, dict) or str(row.get("event_type", "")) != "action":
-                    continue
-                events.append(
-                    {
-                        "label": str(row.get("label", "")),
-                        "source_user": str(row.get("source_user", "")),
-                        "data": row.get("data") or {},
-                    }
-                )
-        return events
+
+        try:
+            current_size = os.path.getsize(path)
+        except OSError:
+            return list(self._cached_action_events)
+
+        # A new path or a shrunken file (truncation/rotation in place) invalidates
+        # the byte offset, so re-read from the beginning.
+        if path != self._action_log_path or current_size < self._action_log_offset:
+            self._reset_action_log_cache(path)
+
+        if current_size <= self._action_log_offset:
+            return list(self._cached_action_events)
+
+        # Read appended bytes and only consume up to the final newline, so a
+        # half-written trailing record is left for the next call (the offset never
+        # advances past an incomplete line).
+        with open(path, "rb") as handle:
+            handle.seek(self._action_log_offset)
+            chunk = handle.read(current_size - self._action_log_offset)
+        last_newline = chunk.rfind(b"\n")
+        if last_newline == -1:
+            return list(self._cached_action_events)
+        complete = chunk[: last_newline + 1]
+        for raw_line in complete.split(b"\n"):
+            stripped = raw_line.decode("utf-8", errors="replace").strip()
+            if stripped:
+                self._append_parsed_action_event(stripped)
+        self._action_log_offset += len(complete)
+        return list(self._cached_action_events)
+
+    def _reset_action_log_cache(self, path: str | None) -> None:
+        """Forget cached events/offset and rebind to ``path`` for a full re-read."""
+        self._cached_action_events.clear()
+        self._action_log_offset = 0
+        self._action_log_path = path
+
+    def _append_parsed_action_event(self, stripped_line: str) -> None:
+        """Parse one non-empty JSONL line and cache it if it is an action event."""
+        try:
+            row = json.loads(stripped_line)
+        except json.JSONDecodeError:
+            return
+        if not isinstance(row, dict) or str(row.get("event_type", "")) != "action":
+            return
+        self._cached_action_events.append(
+            {
+                "label": str(row.get("label", "")),
+                "source_user": str(row.get("source_user", "")),
+                "data": row.get("data") or {},
+            }
+        )
 
     def _replay_logged_action(self, event: Mapping[str, Any]) -> None:
         """Remap and re-execute one logged action as its original user."""
@@ -832,73 +882,8 @@ class SocialNetworkApp(SocialBackendApp):
         self._record_replayed_post_id(toot_id)
         return return_msg
 
-    # NOTE: `post_media_toot` is intentionally left inactive. It is superseded by the
-    # live `post_toot` action above, which already attaches media via its `media_links`
-    # argument. (The version below additionally never forwarded its `media_link` to the
-    # API, so it was a no-op for media.) Use `post_toot` for media posts.
-    # @app_action
-    # def post_media_toot(
-    #     self,
-    #     agent_name: str,
-    #     status: str,
-    #     media_link: str,
-    # ) -> str:
-    #     """Post a new toot to the Mastodon-like social network.
-
-    #     Args:
-    #         agent_name (str): The username of the user posting the status.
-    #         status (str): The text content of the status update.
-
-    #     Raises
-    #     ------
-    #         ValueError: If the input parameters are invalid.
-    #         Exception: For any other unexpected errors during posting.
-    #     """
-    #     return_val = None
-    #     actor_display_name = str(agent_name)
-    #     try:
-    #         agent_name = f"{agent_name.split()[0]}{agent_name.split()[1]}"
-    #         username = self._get_username(agent_name)
-    #         if self.perform_operations:
-    #             return_val = self._mastodon_ops.post_status(
-    #                 login_user=username,
-    #                 status=status,
-    #             )
-    #         else:
-    #             self._print(
-    #                 "Skipping real Mastodon API call since perform_operations is set to False",
-    #                 color="light_grey",
-    #             )
-
-    #         self._print(
-    #             f'Status posted for user: {agent_name} ({username}): "{status}"',
-    #             emoji="📝",
-    #         )
-    #         # self._print(return_val)
-
-    #     except ValueError as e:
-    #         self._print(f"Invalid input: {e!s}", emoji="❌")
-    #         raise
-
-    #     except Exception as e:
-    #         self._print(f"An unexpected error occurred: {e!s}", emoji="❌")
-    #         raise
-    #     toot_id = None
-    #     if return_val:
-    #         return_msg = (
-    #             f"{agent_name} posted a toot with Toot ID: {return_val['id']} --- {status}\n"
-    #         )
-    #         toot_id = return_val["id"]
-    #     else:
-    #         return_msg = f'{agent_name} posted a toot!: "{status}"\n'
-    #     self.action_logger.log(
-    #         {
-    #             "source_user": actor_display_name,
-    #             "label": "post",
-    #             "data": {"toot_id": toot_id, "post_text": status},
-    #         }
-    #     )
-    #     return return_msg
+    # ``post_media_toot`` was removed: ``post_toot`` above supersedes it (media via
+    # its ``media_links`` argument), and the old version never forwarded media anyway.
 
     @app_action
     def reply_to_toot(

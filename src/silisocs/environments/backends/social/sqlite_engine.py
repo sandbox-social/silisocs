@@ -32,6 +32,13 @@ class SqliteSocialEngineBase:
     def __init__(self, db_path: str | None = None, use_queue: bool = True):
         self.db_path = db_path or self.default_db_path
         self._local = threading.local()
+        # Registry of every connection handed out by get_connection() so they can
+        # all be closed on shutdown(), regardless of which thread opened them.
+        self._connections: set[sqlite3.Connection] = set()
+        self._connections_lock = threading.Lock()
+        # Schema is created synchronously (DDL only) before the writer thread
+        # starts: a concurrent writer connection would contend with _init_db's
+        # `PRAGMA journal_mode=WAL` and risk a "database is locked" error.
         self._init_db()
         self.use_queue = use_queue
 
@@ -45,16 +52,35 @@ class SqliteSocialEngineBase:
         """Create the platform-specific schema. Implemented by each subclass."""
         raise NotImplementedError
 
+    @staticmethod
+    def _write_result(cursor: sqlite3.Cursor, sql: str) -> Any:
+        """Choose the result for a main write statement.
+
+        For INSERT/REPLACE return the new ``lastrowid``; for other statements
+        (UPDATE/DELETE) return ``rowcount`` instead. ``lastrowid`` is sticky on a
+        long-lived connection, so it would otherwise echo a stale prior insert id
+        for non-insert statements.
+        """
+        keyword = sql.lstrip().split(None, 1)[0].upper() if sql.strip() else ""
+        if keyword in ("INSERT", "REPLACE"):
+            return cursor.lastrowid if cursor.lastrowid is not None else cursor.rowcount
+        return cursor.rowcount
+
     @contextmanager
     def get_connection(self):
         """Yields a thread-local database connection (reused across calls)."""
         conn = getattr(self._local, "conn", None)
         if conn is None:
-            conn = sqlite3.connect(self.db_path, timeout=5.0)
+            # check_same_thread=False so shutdown() can close the connection from
+            # whichever thread runs it, even though it is reused thread-locally.
+            conn = sqlite3.connect(self.db_path, timeout=5.0, check_same_thread=False)
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA journal_mode=WAL;")
             conn.execute("PRAGMA busy_timeout=5000;")
+            conn.execute("PRAGMA foreign_keys=ON;")
             self._local.conn = conn
+            with self._connections_lock:
+                self._connections.add(conn)
         try:
             yield conn
         except Exception:
@@ -63,12 +89,18 @@ class SqliteSocialEngineBase:
                 conn.close()
             except Exception:
                 pass
+            with self._connections_lock:
+                self._connections.discard(conn)
             self._local.conn = None
             raise
 
     def _writer_loop(self):
         """Background thread that consumes from the queue and batches writes."""
-        with sqlite3.connect(self.db_path, timeout=5.0) as conn:
+        # NOTE: ``with sqlite3.connect(...) as conn`` commits/rolls back on exit but
+        # does NOT close the connection, so the writer connection is owned explicitly
+        # and closed in the finally below when the loop stops.
+        conn = sqlite3.connect(self.db_path, timeout=5.0)
+        try:
             conn.execute("PRAGMA journal_mode=WAL;")
             conn.execute("PRAGMA synchronous=NORMAL;")
             conn.execute("PRAGMA busy_timeout=5000;")
@@ -93,11 +125,9 @@ class SqliteSocialEngineBase:
                     except queue.Empty:
                         break
 
-                # Execute the batch inside a single transaction. Each item gets its
-                # own SAVEPOINT so a per-item failure rolls back ONLY that item's
-                # partial writes (e.g. an INSERT that succeeded before a later
-                # FK-violating statement), instead of being committed alongside the
-                # rest of the batch while its future reports failure.
+                # One SAVEPOINT per item so a per-item failure rolls back only that
+                # item's partial writes (e.g. an INSERT that succeeded before a later
+                # FK violation), not the whole batch.
                 results = []
                 try:
                     conn.execute("BEGIN TRANSACTION")
@@ -109,11 +139,7 @@ class SqliteSocialEngineBase:
                             # Main query
                             main_sql, main_params = queries[0]
                             cursor = conn.execute(main_sql, main_params)
-                            res = (
-                                cursor.lastrowid
-                                if cursor.lastrowid is not None
-                                else cursor.rowcount
-                            )
+                            res = self._write_result(cursor, main_sql)
                             # Subsidiary queries (updates)
                             for sql, params in queries[1:]:
                                 conn.execute(sql, params)
@@ -141,6 +167,8 @@ class SqliteSocialEngineBase:
                             future.set_exception(err)
                         else:
                             future.set_result(res)
+        finally:
+            conn.close()
 
     def _execute_write(self, queries: list[tuple[str, tuple[Any, ...]]], sync: bool = True) -> Any:
         """Helper to either enqueue a write or execute it directly."""
@@ -149,7 +177,7 @@ class SqliteSocialEngineBase:
                 try:
                     main_sql, main_params = queries[0]
                     cursor = conn.execute(main_sql, main_params)
-                    res = cursor.lastrowid if cursor.lastrowid is not None else cursor.rowcount
+                    res = self._write_result(cursor, main_sql)
                     for sql, params in queries[1:]:
                         conn.execute(sql, params)
                     conn.commit()
@@ -165,12 +193,27 @@ class SqliteSocialEngineBase:
             return future
 
     def shutdown(self):
-        """Clean shutdown of the writer thread."""
+        """Clean shutdown of the writer thread and all read/direct connections."""
         if self.use_queue:
             self._stop_event.set()
             # Push a sentinel value to wake up the queue
             self._write_queue.put(None)
             self._writer_thread.join()
+
+        # Close every connection get_connection() opened (across all threads). The
+        # writer thread owns and closes its own connection in _writer_loop's finally
+        # (joined above), so it is intentionally not part of this registry.
+        with self._connections_lock:
+            connections = list(self._connections)
+            self._connections.clear()
+        for conn in connections:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        # Drop the cached connection on the calling thread so a post-shutdown
+        # get_connection() opens a fresh one rather than reusing a closed handle.
+        self._local.conn = None
 
     def _init_recommendation_schema(self, conn: sqlite3.Connection) -> None:
         """Initialize optional recommendation extension schema.
@@ -201,9 +244,20 @@ class SqliteSocialEngineBase:
             return row["id"] if row else None
 
     def create_user(self, username: str, bio: str = "", sync: bool = True) -> Any:
-        """Register a new user."""
+        """Register a new user, returning the (existing or new) user id.
+
+        Idempotent for serialized callers (the normal single-threaded init path):
+        an up-front existence check returns the existing id, which matters under
+        the async queue with ``sync=False`` where the ``UNIQUE`` ``IntegrityError``
+        would otherwise be set on the returned future and escape. Note: two truly
+        concurrent ``sync=False`` creations of the same brand-new username can still
+        surface ``IntegrityError`` on the future (residual TOCTOU); shipped callers
+        create users serially, so this does not arise in practice.
+        """
+        existing_id = self.get_user_id(username)
+        if existing_id is not None:
+            return existing_id
         try:
-            # Fallback to direct read check if sync fails, but IntegrityError is fine
             queries = [
                 (
                     "INSERT INTO users (username, bio, created_at) VALUES (?, ?, ?)",
@@ -212,6 +266,7 @@ class SqliteSocialEngineBase:
             ]
             return self._execute_write(queries, sync=sync)
         except sqlite3.IntegrityError:
+            # Lost an insert race (synchronous path): the row now exists.
             return self.get_user_id(username)
 
     def view_profile(self, username: str) -> dict[str, Any] | None:

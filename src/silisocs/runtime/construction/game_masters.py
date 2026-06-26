@@ -8,6 +8,7 @@ from typing import Any
 
 from omegaconf import DictConfig, OmegaConf
 
+from silisocs.environments.backends.factory import resolve_backend_db_path
 from silisocs.runtime.configuration.projection import RuntimeProjection
 from silisocs.runtime.configuration.validation import (
     validate_component_slot_shape,
@@ -170,9 +171,14 @@ def _isolate_backend_paths(entries: list[tuple[str, dict[str, Any]]]) -> None:
             backend_config["output_rootname"] = os.path.join(
                 str(backend_config.get("output_rootname") or ""), gm_name
             )
-        db_key = os.path.join(
+        # Resolve the db path through the same helper ``create_backend_app`` uses
+        # so the guard checks the exact path that will be opened, including any
+        # configured ``params.db_path`` override.
+        configured_params = backend_config.get("params") or {}
+        db_key = resolve_backend_db_path(
             str(backend_config.get("output_rootname") or ""),
-            f"{backend_config['backend_type']}.db",
+            str(backend_config["backend_type"]),
+            db_path=configured_params.get("db_path"),
         )
         if db_key in seen:
             raise ValueError(
@@ -353,10 +359,8 @@ def build_game_masters(cfg: DictConfig) -> list[GameMasterConfig]:
     flow_chains = _resolve_flow_chains(cfg, gm_specs, declared_flows)
 
     projection = RuntimeProjection.from_cfg(cfg)
-    # Build every GM's backend config up front, then isolate per-GM output paths
-    # (multi-GM only) and reject db-path collisions before constructing GMs. This
-    # prevents same-type GMs from sharing one ``<backend_type>.db`` /
-    # ``action_events.jsonl`` and clobbering one another on checkpoint restore.
+    # Build each GM's backend config, then isolate per-GM paths and reject db-path
+    # collisions before constructing GMs (so same-type GMs can't clobber each other).
     backend_configs = [
         (
             str(spec["gm_name"]),

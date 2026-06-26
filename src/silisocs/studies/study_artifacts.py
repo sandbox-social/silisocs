@@ -423,7 +423,12 @@ def organize_study_outputs(
                 if not dry_run:
                     eval_dir.mkdir(parents=True, exist_ok=True)
 
+                # Single pass over the evaluations: resolve each eval_path once,
+                # then symlink it and load its payload (a non-file payload is
+                # skipped by _load_eval_payload, matching the prior exists()
+                # gate on the symlink side).
                 first_eval_linked = False
+                payloads: list[dict[str, Any]] = []
                 for eval_item in record.get("evaluations", []):
                     eval_id = str(eval_item.get("id", "eval")).strip() or "eval"
                     eval_path_raw = eval_item.get("path")
@@ -446,14 +451,6 @@ def organize_study_outputs(
                         create_relative_symlink(eval_path, seed_dir / "eval.json", dry_run=dry_run)
                         first_eval_linked = True
 
-                payloads: list[dict[str, Any]] = []
-                for eval_item in record.get("evaluations", []):
-                    eval_path_raw = eval_item.get("path")
-                    if not eval_path_raw:
-                        continue
-                    eval_path = Path(str(eval_path_raw))
-                    if not eval_path.is_absolute():
-                        eval_path = (repo_root / eval_path).resolve()
                     payload = _load_eval_payload(eval_path)
                     if payload is not None:
                         payloads.append(payload)

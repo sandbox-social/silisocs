@@ -1173,6 +1173,27 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
             include_like_trace_in_context,
         )
 
+    @staticmethod
+    def _prune_user_context_cache(
+        embeddings_cache: dict, live_user_keys: set[tuple[Any, ...]]
+    ) -> None:
+        """Drop stale user-context embeddings, keeping immutable post embeddings.
+
+        User-context cache keys embed the full per-step context string (bio +
+        recent/liked post snippets), so a user's key changes whenever their
+        context changes. Without eviction these per-step keys accumulate without
+        bound across update passes. Post embeddings (``post_emb`` keys) are
+        immutable and bounded by post count, so they are retained; only
+        ``user``-prefixed keys not produced in the current pass are removed.
+        """
+        stale = [
+            key
+            for key in embeddings_cache
+            if isinstance(key, tuple) and key and key[0] == "user" and key not in live_user_keys
+        ]
+        for key in stale:
+            del embeddings_cache[key]
+
     def _blend_with_like_trace(
         self,
         *,
@@ -1444,11 +1465,9 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
 
             rec_matrix = {}
 
-            # Encode posts (batch), reusing cached per-post embeddings. Posts are
-            # append-only and immutable, so we only encode ids not already cached
-            # in the persistent recsys embeddings_cache and reassemble the matrix
-            # in post order. This avoids re-encoding the same ~1000 posts on every
-            # scheduled recsys update.
+            # Posts are append-only, so batch-encode only ids not already in the
+            # persistent embeddings_cache and reassemble in post order, avoiding
+            # re-encoding the same posts on every scheduled recsys update.
             post_ids = [int(p["id"]) for p in posts]
             missing = [
                 (i, p["content"])
@@ -1462,6 +1481,10 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
                 for row, (idx, _) in enumerate(missing):
                     embeddings_cache[("post_emb", post_ids[idx])] = new_embeddings[row]
             post_embeddings = torch.stack([embeddings_cache[("post_emb", pid)] for pid in post_ids])
+
+            # Track user-context keys used this pass so stale per-step keys can
+            # be evicted afterwards (see _prune_user_context_cache).
+            live_user_keys: set[tuple[Any, ...]] = set()
 
             # For each user
             for user in users:
@@ -1479,6 +1502,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
                     like_trace_window=like_trace_window,
                     include_like_trace_in_context=include_like_trace_in_context,
                 )
+                live_user_keys.add(cache_key)
                 if cache_key not in embeddings_cache:
                     user_emb = model.encode(user_context, convert_to_tensor=True)
                     embeddings_cache[cache_key] = user_emb
@@ -1510,6 +1534,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
                     max_posts=max_posts,
                 )
 
+            self._prune_user_context_cache(embeddings_cache, live_user_keys)
             return rec_matrix
         except Exception as e:
             logger.error(f"Error in embedding recsys: {e}", exc_info=True)
@@ -1615,6 +1640,10 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
             post_texts = [str(post.get("content") or "") for post in posts]
             post_embeddings = _encode_texts(post_texts, batch_size=32)
 
+            # Track user-context keys used this pass so stale per-step keys can
+            # be evicted afterwards (see _prune_user_context_cache).
+            live_user_keys: set[tuple[Any, ...]] = set()
+
             for user in users:
                 user_id = int(user["id"])
                 context_bundle = user_context_index[user_id]
@@ -1628,6 +1657,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
                     like_trace_window=like_trace_window,
                     include_like_trace_in_context=include_like_trace_in_context,
                 )
+                live_user_keys.add(cache_key)
                 if cache_key not in embeddings_cache:
                     user_embedding = _encode_texts([user_context], batch_size=1)[0]
                     embeddings_cache[cache_key] = user_embedding
@@ -1657,6 +1687,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
                     max_posts=max_posts,
                 )
 
+            self._prune_user_context_cache(embeddings_cache, live_user_keys)
             return rec_matrix
         except Exception as e:
             logger.error("Error in TWHIN recsys: %s", e, exc_info=True)
