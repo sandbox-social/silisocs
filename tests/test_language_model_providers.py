@@ -7,6 +7,7 @@ from typing import Any, cast
 import pytest
 
 from silisocs.runtime.language_models import (
+    OPENAI_COMPATIBLE_PRESETS,
     OpenAICompatibleLanguageModel,
     OpenAILanguageModel,
     ScriptedLanguageModel,
@@ -296,6 +297,71 @@ def test_class_path_provider_must_be_language_model() -> None:
             debug_mode=False,
             provider=f"{_ToyModel.__module__}._ToyModel",
         )
+
+
+def _normalized_base_url(model: OpenAICompatibleLanguageModel) -> str:
+    return str(cast(Any, model)._client.base_url).rstrip("/")
+
+
+@pytest.mark.parametrize("provider", sorted(OPENAI_COMPATIBLE_PRESETS))
+def test_openai_compatible_preset_resolves_base_url(
+    provider: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base_url, key_env = OPENAI_COMPATIBLE_PRESETS[provider]
+    if key_env:
+        monkeypatch.delenv(key_env, raising=False)
+
+    model = select_large_language_model(
+        model_name="m",
+        log_file="p.jsonl",
+        debug_mode=False,
+        provider=provider,
+        api_key="test-key",
+    )
+
+    assert isinstance(model, OpenAICompatibleLanguageModel)
+    assert _normalized_base_url(model) == base_url.rstrip("/")
+
+
+def test_preset_requires_api_key_when_env_var_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
+        select_large_language_model(
+            model_name="m",
+            log_file="p.jsonl",
+            debug_mode=False,
+            provider="anthropic",
+        )
+
+
+def test_keyless_preset_constructs_without_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    model = select_large_language_model(
+        model_name="m",
+        log_file="p.jsonl",
+        debug_mode=False,
+        provider="ollama",
+    )
+    assert isinstance(model, OpenAICompatibleLanguageModel)
+    assert _normalized_base_url(model) == "http://localhost:11434/v1"
+
+
+def test_explicit_api_base_overrides_preset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    model = select_large_language_model(
+        model_name="m",
+        log_file="p.jsonl",
+        debug_mode=False,
+        provider="anthropic",
+        api_key="test-key",
+        api_base="http://localhost:9999/v1",
+    )
+    assert isinstance(model, OpenAICompatibleLanguageModel)
+    assert _normalized_base_url(model) == "http://localhost:9999/v1"
 
 
 def test_unknown_provider_error_mentions_extension_paths() -> None:
