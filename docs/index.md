@@ -12,8 +12,8 @@ hide:
 
 # Spin up <span class="sx-gradient-text">societies of agents</span>
 
-Configurable multi-agent simulations populated by LLM-powered generative agents,
-each with a persona, memory, and goals. You define four axes in YAML: the
+Configurable multi-agent social simulations populated by LLM-powered generative
+agents, each with a persona, memory, and goals. You define four axes in YAML: the
 environment agents inhabit, the agents themselves, the simulation engine that
 schedules how and when they act, and the evaluation that measures them. SiliSocS
 runs the world.
@@ -29,9 +29,9 @@ runs the world.
 world in YAML: who the agents are, which environment they inhabit, the simulation
 engine that schedules how they act, and what you want to measure. SiliSocS
 populates it with LLM-driven agents, runs the interaction loop, and logs
-structured results you can analyze or reproduce. Social platforms are one of
-several built-in environments, alongside non-social ones such as a resource
-market and a virtual space.
+structured results you can analyze or reproduce. Social media is one example
+domain: built-in environments also include a resource market and a virtual space,
+and you can plug in your own.
 
 **Research**
 

@@ -5,15 +5,15 @@
 
 # SiliSocS
 
-**A configurable, extensible framework for multi-agent simulation and experimentation.**
+**A configurable, extensible framework for multi-agent social simulation and experimentation.**
 
 SiliSocS (Silicon Society Sandbox) is easy to use and is structured around the EASE decomposition (Environment,
 Agents, Simulation engine, and Evaluation), taking inspiration from the Concordia framework and providing a
 principled, reproducible configuration layer for simulated worlds. You define each axis in YAML: the environment
 agents inhabit, the agent population and their memories, the simulation engine that schedules how and when agents
-act, and the evaluation that measures them. Social platforms (a Twitter-like app, a Reddit-like app, and a real
-Mastodon server) ship as built-in environments alongside non-social ones such as a resource market and a virtual
-space. SiliSocS offers scenario-driven grounding, game master-mediated environments, local and served backends,
+act, and the evaluation that measures them. Built-in environments span social platforms (a Twitter-like app, a
+Reddit-like app, and a real Mastodon server), a resource market, and a virtual space, and you can add your own.
+SiliSocS offers scenario-driven grounding, game master-mediated environments, local and served backends,
 evaluation probes, runtime telemetry, and experimental study tooling. Interoperability for Concordia-designed
 agents is available through an optional bridge extra.
 

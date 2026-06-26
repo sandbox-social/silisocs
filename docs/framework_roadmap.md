@@ -56,7 +56,7 @@ SiliSocS should make each simulator layer replaceable through a defined shape:
 | Priority | Feature | Why it matters |
 |---|---|---|
 | P0 | Strict constructor validation for extension `params` | Prevents silent YAML typos and broken custom components |
-| P0 | Reference-world backend docs and samples | Proves SiliSocS is a simulator framework, not only social media |
+| P0 | Reference-world backend docs and samples | Shows SiliSocS as a general social-simulation framework, with social media as one domain |
 | P1 | Capability matrix for backends | Makes optional timeline/recsys/live-server features explicit |
 | P1 | Public/internal API labels | Helps extension authors avoid unstable modules |
 | P1 | Typed config schema or generated config reference | Reduces drift between YAML defaults and docs |

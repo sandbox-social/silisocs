@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "silisocs"
 version = "0.2.0"
-description = "SiliSocS: a configurable, extensible framework for multi-agent simulation and experimentation across social and non-social environments, organized by the EASE decomposition (Environment, Agents, Simulation engine, Evaluation)"
+description = "SiliSocS: a configurable, extensible framework for multi-agent social simulation and experimentation, organized by the EASE decomposition (Environment, Agents, Simulation engine, Evaluation)"
 readme = "README.md"
 requires-python = ">=3.11,<4.0"
 license = "MIT"

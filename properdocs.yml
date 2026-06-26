@@ -1,5 +1,5 @@
 site_name: SiliSocS
-site_description: "SiliSocS (Silicon Society Sandbox): a configurable, extensible framework for multi-agent simulation, structured around the EASE decomposition of Environment, Agents, Simulation engine, and Evaluation."
+site_description: "SiliSocS (Silicon Society Sandbox): a configurable, extensible framework for multi-agent social simulation, structured around the EASE decomposition of Environment, Agents, Simulation engine, and Evaluation."
 site_url: https://sandbox-social.github.io/silisocs
 repo_url: https://github.com/sandbox-social/silisocs
 repo_name: sandbox-social/silisocs
@@ -100,6 +100,7 @@ nav:
   - Getting Started:
     - Installation: installation.md
     - Quick Start: quickstart.md
+    - Upgrading: upgrading.md
   - User Guide:
     - Usage Overview: usage.md
     - Scenario Guide: scenario_guide.md
@@ -127,6 +128,7 @@ nav:
       - Native Core and Concordia Boundary: adr/0001-native-core-concordia-compatibility-boundary.md
       - Engine-Owned Initialization: adr/0002-engine-owned-initialization-lifecycle.md
       - Checkpoint-Owned Restore: adr/0003-checkpoint-owned-restore.md
+      - Async Event-Driven Engine Mode: adr/0004-async-event-driven-engine-mode.md
 
 extra:
   social:
