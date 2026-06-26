@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -18,7 +18,7 @@ from silisocs.initialization.game_masters import (
 from silisocs.initialization.simulation import SeedPostsSimulationInitializer
 from silisocs.initialization.simulation.seed_posts import SeedPostProvider
 from silisocs.runtime.checkpointing import SocialActionEventReplayRestore
-from silisocs.runtime.types import ActionOutput
+from silisocs.runtime.types import ActionOutput, ToolCall
 
 
 @dataclass
@@ -68,11 +68,20 @@ class _Action:
 
 
 class _ReplayBackend:
+    supports_action_replay = True
+
     def __init__(self, actions: list[_Action]) -> None:
         self._actions = actions
 
     def actions(self) -> list[_Action]:
         return list(self._actions)
+
+    def event_to_replay_action(self, label: str, data: Mapping[str, Any]) -> ActionOutput:
+        """Map every logged event to a create_tweet action for routing tests."""
+        del label
+        return ActionOutput.from_tool_calls(
+            [ToolCall("create_tweet", {"status": str(data.get("post_text", ""))})]
+        )
 
 
 class _ReplayGameMaster:
@@ -143,29 +152,6 @@ def test_gm_phase_rejects_game_master_without_initialize() -> None:
         raise AssertionError("GM without initialize should fail loudly")
 
 
-def test_checkpoint_restore_replays_backend_action_events(tmp_path: Path) -> None:
-    events_file = tmp_path / "action_events.jsonl"
-    replay_row = {
-        "episode": 0,
-        "event_type": "action",
-        "label": "post",
-        "source_user": "Alice",
-        "data": {"post_text": "checkpoint hello"},
-    }
-    events_file.write_text(json.dumps(replay_row) + "\n", encoding="utf-8")
-
-    events: list[str] = []
-    gm = _GameMaster(events)
-
-    SocialActionEventReplayRestore().restore(
-        game_masters=[gm],
-        action_events_file=events_file,
-        checkpoint_step=1,
-    )
-
-    assert events == ["simulation:checkpoint hello"]
-
-
 def test_checkpoint_restore_routes_replay_to_matching_gm_backend(tmp_path: Path) -> None:
     events_file = tmp_path / "action_events.jsonl"
     replay_row = {
@@ -192,7 +178,7 @@ def test_checkpoint_restore_routes_replay_to_matching_gm_backend(tmp_path: Path)
 
     SocialActionEventReplayRestore().restore(
         game_masters=[router_gm, audit_gm, social_gm],
-        action_events_file=events_file,
+        action_events_files=[events_file],
         checkpoint_step=1,
     )
 
@@ -221,7 +207,7 @@ def test_checkpoint_restore_requires_flow_metadata_for_multi_gm_replay(tmp_path:
                 _ReplayGameMaster(name="first", actions=[]),
                 _ReplayGameMaster(name="second", actions=[]),
             ],
-            action_events_file=_write_replay_event(tmp_path),
+            action_events_files=[_write_replay_event(tmp_path)],
             checkpoint_step=1,
         )
 
@@ -238,42 +224,43 @@ def test_checkpoint_restore_rejects_unknown_gm_in_flow_chain(tmp_path: Path) -> 
                 ),
                 _ReplayGameMaster(name="other", actions=[]),
             ],
-            action_events_file=_write_replay_event(tmp_path),
+            action_events_files=[_write_replay_event(tmp_path)],
             checkpoint_step=1,
         )
 
 
-def test_checkpoint_restore_rejects_missing_action_match_in_chain(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="could not route action"):
-        SocialActionEventReplayRestore().restore(
-            game_masters=[
-                _ReplayGameMaster(
-                    name="router",
-                    actions=[],
-                    agent_flow_tags={"Alice": "social"},
-                    flow_chains={"social": ["router", "audit"]},
-                ),
-                _ReplayGameMaster(name="audit", actions=[]),
-            ],
-            action_events_file=_write_replay_event(tmp_path),
-            checkpoint_step=1,
-        )
+def test_checkpoint_restore_skips_unmatched_action_in_chain(tmp_path: Path) -> None:
+    """When no GM in the chain exposes the action, the event is tolerantly skipped."""
+    router = _ReplayGameMaster(
+        name="router",
+        actions=[],
+        agent_flow_tags={"Alice": "social"},
+        flow_chains={"social": ["router", "audit"]},
+    )
+    audit = _ReplayGameMaster(name="audit", actions=[])
+    SocialActionEventReplayRestore().restore(
+        game_masters=[router, audit],
+        action_events_files=[_write_replay_event(tmp_path)],
+        checkpoint_step=1,
+    )
+    assert router.replayed == []
+    assert audit.replayed == []
 
 
-def test_checkpoint_restore_rejects_ambiguous_action_match_in_chain(tmp_path: Path) -> None:
+def test_checkpoint_restore_uses_first_matching_gm_in_chain(tmp_path: Path) -> None:
+    """When several chain GMs expose the action, the first in chain order wins."""
     post_action = _Action(name="create_tweet", selectable_name="create_tweet")
-
-    with pytest.raises(ValueError, match="ambiguous"):
-        SocialActionEventReplayRestore().restore(
-            game_masters=[
-                _ReplayGameMaster(
-                    name="router",
-                    actions=[post_action],
-                    agent_flow_tags={"Alice": "social"},
-                    flow_chains={"social": ["router", "audit"]},
-                ),
-                _ReplayGameMaster(name="audit", actions=[post_action]),
-            ],
-            action_events_file=_write_replay_event(tmp_path),
-            checkpoint_step=1,
-        )
+    router = _ReplayGameMaster(
+        name="router",
+        actions=[post_action],
+        agent_flow_tags={"Alice": "social"},
+        flow_chains={"social": ["router", "audit"]},
+    )
+    audit = _ReplayGameMaster(name="audit", actions=[post_action])
+    SocialActionEventReplayRestore().restore(
+        game_masters=[router, audit],
+        action_events_files=[_write_replay_event(tmp_path)],
+        checkpoint_step=1,
+    )
+    assert router.replayed == [("Alice", "create_tweet")]
+    assert audit.replayed == []

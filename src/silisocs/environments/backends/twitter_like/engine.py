@@ -1281,7 +1281,11 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
         in the database with the algorithm type tagged.
         """
         if not hasattr(self, "_recsys_types") or not self._recsys_types:
-            logger.debug("No recsys types initialized; skipping recommendations update")
+            logger.warning(
+                "update_recommendations called with no live recsys types; recommendations "
+                "will not refresh. After a checkpoint restore the update component should "
+                "re-initialize recsys (via recsys_active_types reconciliation)."
+            )
             return
 
         try:

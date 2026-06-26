@@ -30,6 +30,8 @@ class RedditLikeApp(SocialBackendApp):
     """
 
     action_logger: Any = None
+    # Authoritative checkpoint state: full SQLite snapshot + user mapping.
+    provides_checkpoint_state = True
     app_description: str = "RedditLikeApp"
     db_path: str = "reddit_like.db"
     _platform: RedditLikePlatform = dataclasses.field(default=None, init=False, repr=False)  # type: ignore[assignment]
@@ -226,14 +228,39 @@ class RedditLikeApp(SocialBackendApp):
             )
             return []
 
-    def init_recsys(self, recsys_type: str = "reddit") -> None:
-        """Initialize recommendation algorithm(s) on the underlying platform."""
+    def init_recsys(
+        self,
+        recsys_type: str = "reddit",
+        user_context_recent_posts: int = 0,
+        include_like_trace: bool = False,
+        like_trace_window: int = 5,
+        like_trace_weight: float = 0.0,
+        include_like_trace_in_context: bool = True,
+    ) -> None:
+        """Initialize recommendation algorithm(s) on the underlying platform.
+
+        Accepts the full like-trace parameter set for interface compatibility
+        with :class:`SocialRecommendationUpdateComponent` (which always passes
+        them). The Reddit recsys engine does not implement like-trace
+        personalization, so those parameters are not forwarded to the platform.
+        """
+        del (
+            user_context_recent_posts,
+            include_like_trace,
+            like_trace_window,
+            like_trace_weight,
+            include_like_trace_in_context,
+        )
         self._platform.init_recsys(recsys_type=recsys_type)
         self._log_action_event(
             source_user="system",
             label="recsys_init",
             data={"recsys_type": str(recsys_type)},
         )
+
+    def recsys_active_types(self) -> set[str]:
+        """Return recsys types currently live on the platform (empty after restore)."""
+        return set(getattr(self._platform, "_recsys_types", {}) or {})
 
     def update_recommendations(
         self, active_user_ids: list[int] | None = None, max_posts: int = 10

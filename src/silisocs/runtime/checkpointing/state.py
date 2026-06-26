@@ -6,6 +6,7 @@ import base64
 import copy
 import importlib
 import json
+import logging
 import os
 import pickle
 import random
@@ -13,12 +14,26 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from silisocs.agents.base_agent import Agent
+from silisocs.environments.gm.base_game_master import BaseGameMaster
 from silisocs.exceptions import CheckpointError
 from silisocs.runtime.checkpointing.policy import CHECKPOINT_SCHEMA_VERSION
 from silisocs.runtime.checkpointing.serialization import json_safe
 from silisocs.runtime.construction.assembly import RuntimeObjects, add_agent, add_game_master
 from silisocs.runtime.construction.specs import RuntimeRole, RuntimeSpec
 from silisocs.runtime.io import flush_jsonl_writers
+
+logger = logging.getLogger(__name__)
+
+# set_state implementations that are the inherited no-ops: an object whose
+# set_state resolves to one of these silently discards any checkpointed state.
+_NOOP_SET_STATE = frozenset({Agent.set_state, BaseGameMaster.set_state})
+
+
+def _set_state_is_noop(obj: Any) -> bool:
+    """Return whether ``obj`` only inherits a no-op ``set_state``."""
+    func = getattr(type(obj), "set_state", None)
+    return func in _NOOP_SET_STATE
 
 
 def make_checkpoint_data(runtime: RuntimeObjects, *, step: int | None = None) -> dict[str, Any]:
@@ -31,7 +46,7 @@ def make_checkpoint_data(runtime: RuntimeObjects, *, step: int | None = None) ->
         "checkpoint_counter": runtime.checkpoint_counter,
         "runtime_metadata": _runtime_metadata(runtime),
     }
-    for obj in [*runtime.agents, *runtime.game_masters]:
+    for obj in [*runtime.agents, *runtime.game_masters_by_sequence()]:
         spec = runtime.object_specs.get(obj.name)
         if spec is None:
             raise ValueError(f"Runtime spec not found for object {obj.name}")
@@ -104,6 +119,28 @@ def _stage_checkpoint_objects(
         if existing is not None:
             if not callable(getattr(existing, "set_state", None)):
                 raise ValueError(f"Runtime object {name} does not support set_state().")
+            if state and _set_state_is_noop(existing):
+                raise ValueError(
+                    f"Runtime object {name!r} ({type(existing).__name__}) has checkpointed "
+                    "state but only inherits the no-op set_state(); restoring it would "
+                    "silently drop that state. Implement set_state() to restore this object "
+                    "(see AGENTS.md §6), or make its get_state() return {} if it is stateless."
+                )
+            current_spec = runtime.object_specs.get(str(name))
+            if current_spec is not None:
+                checkpoint_compat = spec.compat or None
+                current_compat = current_spec.compat or None
+                if (
+                    str(current_spec.class_path) != str(spec.class_path)
+                    or current_compat != checkpoint_compat
+                ):
+                    raise ValueError(
+                        f"Checkpoint object {name!r} was saved as class {spec.class_path!r} "
+                        f"(compat={checkpoint_compat!r}) but the current runtime defines it as "
+                        f"{current_spec.class_path!r} (compat={current_compat!r}). Refusing to "
+                        "restore mismatched object identity; rebuild the runtime from the "
+                        "original configuration."
+                    )
         else:
             model_key = object_to_model.get(str(name))
             if model_key is None or model_key not in models:
@@ -123,8 +160,28 @@ def _stage_checkpoint_objects(
                         f"'{spec.class_path}': {exc}"
                     ) from exc
         staged.append((str(name), spec, state, existing))
-    staged.sort(key=lambda entry: 0 if entry[1].role == RuntimeRole.AGENT else 1)
+    checkpoint_names = {str(name) for name in objects}
+    orphaned = [name for name in by_name if name not in checkpoint_names]
+    if orphaned:
+        logger.warning(
+            "Runtime objects present in the current configuration but absent from the "
+            "checkpoint will keep their freshly-initialized state (not restored): %s",
+            ", ".join(sorted(orphaned)),
+        )
+    staged.sort(key=_stage_apply_order)
     return staged
+
+
+def _stage_apply_order(entry: tuple[str, RuntimeSpec, Mapping[str, Any], Any]) -> tuple[int, int]:
+    """Order agents before game masters, and game masters by ascending sequence."""
+    spec = entry[1]
+    if spec.role == RuntimeRole.AGENT:
+        return (0, 0)
+    try:
+        sequence = int(spec.params.get("sequence", 0))
+    except (TypeError, ValueError):
+        sequence = 0
+    return (1, sequence)
 
 
 def load_checkpoint_into_runtime(
@@ -196,6 +253,30 @@ def checkpoint_has_backend_state(checkpoint: Mapping[str, Any]) -> bool:
     return bool(game_master_states) and all("backend" in state for state in game_master_states)
 
 
+def checkpoint_authoritative_gm_names(checkpoint: Mapping[str, Any]) -> frozenset[str]:
+    """Return the names of game masters that carry an authoritative backend snapshot.
+
+    These GMs are restored directly from their snapshot via ``set_state``; the
+    remaining (non-authoritative) GMs are handed to the configured restore
+    strategy. This is the per-GM replacement for the all-or-nothing
+    :func:`checkpoint_has_backend_state` gate, so a twitter GM can restore from a
+    snapshot while a mastodon GM in the same run replays through a strategy.
+    """
+    objects = checkpoint.get("objects", {})
+    if not isinstance(objects, Mapping):
+        return frozenset()
+    authoritative: set[str] = set()
+    for name, raw in objects.items():
+        if not isinstance(raw, Mapping):
+            continue
+        if raw.get("role") != RuntimeRole.GAME_MASTER.value:
+            continue
+        state = raw.get("state")
+        if isinstance(state, Mapping) and "backend" in state:
+            authoritative.add(str(name))
+    return frozenset(authoritative)
+
+
 def checkpoint_runtime_metadata(checkpoint: Mapping[str, Any]) -> dict[str, Any]:
     """Return normalized runtime metadata from a checkpoint payload."""
     raw = checkpoint.get("runtime_metadata", {})
@@ -215,8 +296,13 @@ def load_checkpoint_file(path: str | Path) -> dict[str, Any]:
     return parsed
 
 
-def resolve_checkpoint_source(source_run: str | Path) -> tuple[Path, Path]:
-    """Return the latest checkpoint path and action log for a previous output dir."""
+def resolve_checkpoint_source(source_run: str | Path) -> Path:
+    """Return the latest checkpoint file path for a previous run.
+
+    Action logs are resolved separately via
+    :func:`silisocs.evaluations.action_events.resolve_action_event_files`, which
+    handles both the flat single-GM log and per-GM multi-GM subdirectory logs.
+    """
     root = Path(source_run).expanduser()
     if not root.is_dir():
         raise FileNotFoundError(f"Checkpoint source_run directory not found: {root}")
@@ -229,12 +315,7 @@ def resolve_checkpoint_source(source_run: str | Path) -> tuple[Path, Path]:
     )
     if not candidates:
         raise FileNotFoundError(f"No checkpoint files found in {checkpoints_dir}")
-    action_events = root / "action_events.jsonl"
-    if not action_events.is_file():
-        raise FileNotFoundError(
-            f"Action events log not found for checkpoint replay: {action_events}"
-        )
-    return candidates[-1], action_events
+    return candidates[-1]
 
 
 def restore_rng_state_from_metadata(metadata: Mapping[str, Any]) -> None:

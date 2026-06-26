@@ -631,11 +631,14 @@ def _validate_config(sim_params: dict, classes: list[dict]) -> None:
             warnings.append(f"Class '{cls.get('name', '?')}' has no agent class set.")
         if not cls.get("data", {}).get("source"):
             warnings.append(f"Class '{cls.get('name', '?')}' has no data source.")
-    total_count = sum(c.get("count", 0) for c in classes)
-    if total_count > sim_params.get("num_agents", 0):
+    total_count = sum(_as_int(c.get("count", 0), 0) for c in classes)
+    declared = _as_int(sim_params.get("num_agents", 0), 0)
+    if total_count and declared and total_count != declared:
         warnings.append(
-            f"Total class count ({total_count}) exceeds num_agents ({sim_params['num_agents']}). "
-            f"Some agents may be truncated."
+            f"Agent classes sum to {total_count}, but num_agents is {declared}. "
+            f"The actual number of agents built is the sum of the class counts "
+            f"({total_count}); num_agents does not cap or pad the total. Set unused "
+            f"classes to count 0, or align num_agents with the class counts."
         )
     for w in warnings:
         st.warning(w)
@@ -868,7 +871,7 @@ with tab_sim:
             "Number of agents",
             min_value=1,
             max_value=1_000_000,
-            value=max(1, _as_int(_sim_defaults.get("num_agents", 20), 20)),
+            value=max(1, _as_int(_sim_defaults.get("num_agents", 10), 10)),
             step=10,
             key="num_agents",
         )
@@ -2095,7 +2098,7 @@ with tab_launch:
 
     # Collect sim params.
     sim_params = {
-        "num_agents": st.session_state.get("num_agents", 20),
+        "num_agents": st.session_state.get("num_agents", 10),
         "num_steps": st.session_state.get("num_steps", 50),
         "seed": st.session_state.get("seed", 1),
         "run_name": st.session_state.get("run_name", "run1"),

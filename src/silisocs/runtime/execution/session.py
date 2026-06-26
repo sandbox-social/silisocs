@@ -27,6 +27,7 @@ from dotenv import find_dotenv, load_dotenv
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
+from silisocs.evaluations.action_events import resolve_action_event_files
 from silisocs.evaluations.probes.deployment import DefaultProbeRunner
 from silisocs.initialization.agents import build_agent_initializer
 from silisocs.initialization.context import InitializationContext
@@ -34,12 +35,14 @@ from silisocs.initialization.game_masters import build_game_master_initializer_s
 from silisocs.initialization.simulation import build_simulation_initializer
 from silisocs.runtime.checkpointing import (
     build_checkpoint_restore,
-    checkpoint_has_backend_state,
+    build_per_gm_checkpoint_restores,
+    checkpoint_authoritative_gm_names,
     checkpoint_runtime_metadata,
     load_checkpoint_file,
     load_checkpoint_into_runtime,
     resolve_checkpoint_source,
     restore_rng_state_from_metadata,
+    run_checkpoint_restores,
     save_checkpoint,
     should_save_checkpoint,
 )
@@ -393,21 +396,22 @@ def main(cfg: DictConfig):
     start_step = 0
     checkpoint_meta: dict[str, Any] = {}
     checkpoint_restore = None
-    checkpoint_action_events = None
+    checkpoint_action_event_files: list[Path] = []
     checkpoint_data: dict[str, Any] | None = None
-    checkpoint_backend_state_authoritative = False
+    checkpoint_authoritative_gms: frozenset[str] = frozenset()
     if source_run:
         if checkpoint_cfg is None or getattr(checkpoint_cfg, "restore", None) is None:
             raise ValueError("sim.checkpoint.source_run requires sim.checkpoint.restore.")
         source_path = Path(str(source_run)).expanduser()
         if not source_path.is_absolute():
             source_path = (Path.cwd() / source_path).resolve()
-        resume_path, checkpoint_action_events = resolve_checkpoint_source(source_path)
+        resume_path = resolve_checkpoint_source(source_path)
+        checkpoint_action_event_files = resolve_action_event_files(source_path)
         checkpoint_restore = build_checkpoint_restore(getattr(checkpoint_cfg, "restore", None))
 
         with metrics.phase("checkpoint_load"):
             checkpoint_data = load_checkpoint_file(resume_path)
-            checkpoint_backend_state_authoritative = checkpoint_has_backend_state(checkpoint_data)
+            checkpoint_authoritative_gms = checkpoint_authoritative_gm_names(checkpoint_data)
             checkpoint_meta = checkpoint_runtime_metadata(checkpoint_data)
 
         default_step = checkpoint_data.get("step")
@@ -423,7 +427,7 @@ def main(cfg: DictConfig):
         checkpoint_meta["checkpoint_step"] = start_step
         checkpoint_meta["checkpoint_file"] = str(resume_path)
         checkpoint_meta["source_run"] = str(source_path)
-        checkpoint_meta["action_events_file"] = str(checkpoint_action_events)
+        checkpoint_meta["action_events_files"] = [str(p) for p in checkpoint_action_event_files]
         initializer_context = InitializationContext(
             shared_memories=initializer_context.shared_memories,
             player_specific_memories=initializer_context.player_specific_memories,
@@ -465,14 +469,21 @@ def main(cfg: DictConfig):
                     models=models,
                     object_to_model=object_to_model,
                 )
-            if checkpoint_restore is not None and not checkpoint_backend_state_authoritative:
-                if checkpoint_action_events is None:
-                    raise ValueError("Checkpoint restore requires action_events.jsonl.")
-                checkpoint_restore.restore(
-                    game_masters=runtime_objects.game_masters_by_sequence(),
-                    action_events_file=checkpoint_action_events,
-                    checkpoint_step=start_step,
-                )
+            if checkpoint_restore is not None:
+                restore_gms = runtime_objects.game_masters_by_sequence()
+                all_gm_names = frozenset(str(getattr(gm, "name", "")) for gm in restore_gms)
+                # Replay only the game masters that lack an authoritative snapshot;
+                # snapshot-restored GMs were already applied by set_state above. Each
+                # GM may override the global strategy via its own restore config.
+                if all_gm_names - checkpoint_authoritative_gms:
+                    run_checkpoint_restores(
+                        game_masters=restore_gms,
+                        default_strategy=checkpoint_restore,
+                        per_gm_strategies=build_per_gm_checkpoint_restores(cfg),
+                        action_events_files=checkpoint_action_event_files,
+                        checkpoint_step=start_step,
+                        authoritative_gm_names=checkpoint_authoritative_gms,
+                    )
             if checkpoint_data is not None:
                 restore_rng_state_from_metadata(checkpoint_meta)
         _log_startup_phase("engine_initialize", time.time() - t0)

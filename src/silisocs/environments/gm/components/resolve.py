@@ -223,9 +223,11 @@ class _BaseResolveComponent(ResolveComponent):
                 }
                 if group:
                     groups.append(group)
-        action_aliases = getattr(self.backend, "action_aliases", None)
-        if callable(action_aliases):
-            for raw_group in action_aliases():
+        for source in ("action_aliases", "configured_action_aliases"):
+            alias_fn = getattr(self.backend, source, None)
+            if not callable(alias_fn):
+                continue
+            for raw_group in alias_fn():
                 group = {str(name).strip().lower() for name in raw_group if str(name).strip()}
                 if group:
                     groups.append(group)
@@ -383,6 +385,12 @@ class ParsedActionResolveComponent(_BaseResolveComponent):
                 f"Could not perform '{action_type}': TARGET ID {target_id!r} is not a "
                 "valid numeric post id. Use a post id from the timeline."
             )
+        # Normalize a renamed/aliased token to the canonical method name so the
+        # backend's own parser (which knows only its built-in vocabulary) accepts
+        # config-defined action aliases.
+        canonical = getattr(self.backend, "canonical_action_name", lambda _name: None)(action_type)
+        if canonical and canonical != action_type:
+            action_data = {**action_data, "action_type": canonical}
         return self.backend.parse_and_resolve_action(active_agent, action_data)
 
 

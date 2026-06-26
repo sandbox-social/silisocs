@@ -11,6 +11,7 @@ subclass :class:`AgentBuilder` and implement ``build_agent_configs``.
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,8 @@ from silisocs.runtime.construction.agent_builders.params import build_agent_para
 from silisocs.runtime.construction.agent_builders.records import RecordLoader
 from silisocs.runtime.construction.specs import AgentConfig
 
+_LOGGER = logging.getLogger(__name__)
+
 
 class PersonaPipelineAgentBuilder(AgentBuilder):
     """Build runtime agent specs from ``agents.persona_pipeline``."""
@@ -49,7 +52,20 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
         pipeline = getattr(self.config, "persona_pipeline", None)
         if pipeline and getattr(pipeline, "classes", None):
             return validate_unique_agent_names(self._build_from_classes())
-        raise ValueError("Scenario config must define persona_pipeline.classes.")
+        raise ValueError(
+            "No agent classes defined: `agents.persona_pipeline.classes` is missing "
+            "or empty, so no agents can be built (there is no implicit fallback). "
+            "Define at least one class, e.g.\n"
+            "  persona_pipeline:\n"
+            "    classes:\n"
+            "      user:\n"
+            "        count: ${num_agents}\n"
+            "        class_path: silisocs.agents.native.NativeAgent\n"
+            "        data: {source: inline, records: [{name: Alex, persona: ...}]}\n"
+            "        field_map: {name: name, context: persona}\n"
+            "or run with the bundled default agents config (`agents=default`), which "
+            "ships ready-made personas that scale to any num_agents."
+        )
 
     def load_news_data(self, news_file: str) -> dict[str, Any]:
         """Load news headlines and image metadata from a world JSON file."""
@@ -99,8 +115,11 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
             if data_cfg
             else [{}]
         )
+        base_record_count = len(records)
         if count is not None:
-            records = records[: int(count)]
+            records = self._fit_records_to_count(
+                records, int(count), class_name=class_name, allow_cycle=bool(data_cfg)
+            )
 
         class_path = str(class_cfg.get("class_path", "") or "").strip()
         if not class_path:
@@ -128,6 +147,10 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
 
         agents: list[AgentConfig] = []
         for idx, record in enumerate(records, start=1):
+            # When personas are recycled to satisfy a larger `count`, each extra
+            # pass over the base records gets a numbered suffix so agent names
+            # stay unique (e.g. `Alex` -> `Alex 2`).
+            copy_index = (idx - 1) // base_record_count if base_record_count else 0
             params = build_agent_params(
                 record,
                 idx,
@@ -144,6 +167,7 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
                 resolve_file_path=self._resolve_file_path,
                 derive_name_from_context=derive_name_from_context,
                 name_words=name_words,
+                name_suffix_index=copy_index,
             )
             self._attach_fixed_action(
                 params,
@@ -157,6 +181,39 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
                 AgentConfig(class_path=class_path, params=params, compat=class_compat or None)
             )
         return agents
+
+    def _fit_records_to_count(
+        self,
+        records: list[dict[str, Any]],
+        count: int,
+        *,
+        class_name: str,
+        allow_cycle: bool,
+    ) -> list[dict[str, Any]]:
+        """Fit a record list to exactly ``count`` entries.
+
+        When ``count`` is at most the number of available records the list is
+        simply truncated. When ``count`` exceeds the available records and
+        cycling is allowed, the base records are repeated (the build loop adds a
+        numbered suffix to keep names unique) so any ``num_agents`` works
+        out-of-the-box instead of silently capping at the record count.
+        """
+        if count <= len(records):
+            return records[:count]
+        if not records or not allow_cycle:
+            return records
+        base = len(records)
+        _LOGGER.warning(
+            "Class `%s` requested %d agents but only %d persona record(s) are "
+            "available; recycling personas with numbered suffixes to fill the "
+            "remaining %d (e.g. `Alex` -> `Alex 2`). Supply more records via "
+            "data.source (csv/jsonl/hf_dataset) for fully distinct personas.",
+            class_name,
+            count,
+            base,
+            count - base,
+        )
+        return [records[idx % base] for idx in range(count)]
 
     def _should_derive_name(
         self, class_cfg: Mapping[str, Any], data_cfg: Mapping[str, Any]

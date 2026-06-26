@@ -2,7 +2,9 @@
 
 from typing import Any
 
-CHECKPOINT_SCHEMA_VERSION = 5
+# v6: per-object identity reconciliation, flow-scheduling fingerprint,
+# recsys config in backend state, explicit backend checkpoint capability.
+CHECKPOINT_SCHEMA_VERSION = 6
 
 
 def should_save_checkpoint(step: int, checkpoint_cfg: Any | None = None) -> bool:

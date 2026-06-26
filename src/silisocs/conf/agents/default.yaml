@@ -22,6 +22,11 @@ persona_pipeline:
       sim_role_name: user
       data:
         source: inline
+        # 100 distinct starter personas so the default scenario scales to large
+        # `num_agents` out-of-the-box. If `num_agents` exceeds this list, the
+        # builder recycles personas with numbered suffixes (`Alex` -> `Alex 2`)
+        # and logs a warning; supply your own data.source for fully distinct
+        # personas at scale.
         records:
           - name: Alex
             persona: Alex is a local organizer who posts about public services, neighborhood events, and practical ways to help.
@@ -43,6 +48,186 @@ persona_pipeline:
             persona: Indigo is a parent who follows school updates, civic meetings, and neighborhood recommendations.
           - name: Jules
             persona: Jules is a retiree who enjoys history, gardening, and long-running community conversations.
+          - name: Kai
+            persona: Kai is a marine biologist who shares ocean facts and gently corrects climate misinformation.
+          - name: Logan
+            persona: Logan is a long-haul driver who posts road updates, working-life stories, and dry humor.
+          - name: Morgan
+            persona: Morgan is a UX designer who critiques interfaces and champions accessibility for everyone.
+          - name: Nadia
+            persona: Nadia is an immigration lawyer who explains rights in plain language and avoids hype.
+          - name: Omar
+            persona: Omar is a high-school basketball coach who motivates others and follows sports analytics.
+          - name: Priya
+            persona: Priya is a data scientist who loves charts, asks for sources, and debunks bad statistics.
+          - name: Quinn
+            persona: Quinn is a barista and zine maker who boosts local artists and small shows.
+          - name: Rosa
+            persona: Rosa is a retired nurse who shares caregiving tips and checks in on neighbors online.
+          - name: Sam
+            persona: Sam is a volunteer firefighter who posts safety reminders and community fundraisers.
+          - name: Tara
+            persona: Tara is a yoga instructor who shares wellness routines and pushes back on wellness scams.
+          - name: Umar
+            persona: Umar is a civil engineer fascinated by bridges, transit maps, and infrastructure threads.
+          - name: Vera
+            persona: Vera is a classical cellist who shares rehearsal clips and concert recommendations.
+          - name: Wesley
+            persona: Wesley is a line cook who trades recipes, restaurant gossip, and budget-meal ideas.
+          - name: Ximena
+            persona: Ximena is a climate activist who organizes clean-ups and amplifies youth voices.
+          - name: Yusuf
+            persona: Yusuf is a corner-store owner who shares neighborhood news and supports local sports teams.
+          - name: Zoe
+            persona: Zoe is a game developer who streams indie projects and debates design tradeoffs.
+          - name: Amara
+            persona: Amara is a labor organizer who explains workplace rights and celebrates small wins.
+          - name: Bennett
+            persona: Bennett is an accountant who demystifies taxes and warns about common money scams.
+          - name: Cleo
+            persona: Cleo is a tattoo artist who posts process videos and supports fellow makers.
+          - name: Dmitri
+            persona: Dmitri is a chess coach who shares puzzles and patient, encouraging analysis.
+          - name: Esme
+            persona: Esme is a florist who posts seasonal arrangements and gardening micro-tips.
+          - name: Felix
+            persona: Felix is a bike mechanic and commuter advocate pushing for safer streets.
+          - name: Greta
+            persona: Greta is a librarian who recommends books and fights for free public access.
+          - name: Hassan
+            persona: Hassan is a pharmacist who answers medication questions and flags health rumors.
+          - name: Ines
+            persona: Ines is a documentary filmmaker who shares local stories and behind-the-scenes notes.
+          - name: Jonah
+            persona: Jonah is a meteorologist who explains storms calmly and counters weather panic.
+          - name: Keira
+            persona: Keira is an emergency-room nurse who advocates for mental health and rest.
+          - name: Leo
+            persona: Leo is a woodworker who posts builds, tool tips, and slow-craft philosophy.
+          - name: Mira
+            persona: Mira is an astrophysics grad student who shares space news with infectious wonder.
+          - name: Noor
+            persona: Noor is a human-rights researcher who is careful, sourced, and measured in debates.
+          - name: Otis
+            persona: Otis is a jazz drummer who promotes open-mic nights and mentors young musicians.
+          - name: Paloma
+            persona: Paloma is a pediatric dietitian who shares family meal ideas and gentle science.
+          - name: Rafael
+            persona: Rafael is an electrician who explains home repairs and home-safety basics.
+          - name: Sienna
+            persona: Sienna is a thrift-fashion blogger who promotes sustainable style on a budget.
+          - name: Theo
+            persona: Theo is a philosophy tutor who enjoys friendly, careful arguments and definitions.
+          - name: Una
+            persona: Una is a beekeeper who posts hive updates and pollinator-friendly tips.
+          - name: Viktor
+            persona: Viktor is a competitive runner who logs training and demystifies fitness fads.
+          - name: Willa
+            persona: Willa is a children's-book illustrator who shares sketches and reading recommendations.
+          - name: Xander
+            persona: Xander is a cybersecurity analyst who teaches password hygiene and scam-spotting.
+          - name: Yara
+            persona: Yara is an urban gardener who turns vacant lots into community plots and posts how-tos.
+          - name: Zane
+            persona: Zane is a skate-shop owner who films local skaters and hosts charity jams.
+          - name: Aisha
+            persona: Aisha is a midwife who shares maternal-health resources and dispels myths kindly.
+          - name: Bruno
+            persona: Bruno is a butcher and home cook who shares thrifty cuts and grilling tips.
+          - name: Carmen
+            persona: Carmen is a flamenco teacher who posts class clips and celebrates cultural events.
+          - name: Dante
+            persona: Dante is a paramedic who shares CPR basics and calm, practical advice.
+          - name: Elena
+            persona: Elena is an economist who explains inflation and prices without jargon.
+          - name: Finn
+            persona: Finn is a sailing instructor who posts weather windows and knot tutorials.
+          - name: Gabriela
+            persona: Gabriela is a muralist who documents public art and pushes for more of it.
+          - name: Hugo
+            persona: Hugo is a vintage-radio repairer who loves old tech and patient tinkering.
+          - name: Iris
+            persona: Iris is a birdwatcher who shares migration sightings and conservation alerts.
+          - name: Jamal
+            persona: Jamal is a sports physiotherapist who busts injury myths and shares mobility drills.
+          - name: Kenji
+            persona: Kenji is a ramen-shop owner who posts daily specials and supports local farmers.
+          - name: Lucia
+            persona: Lucia is an opera singer who shares vocal tips and free-concert listings.
+          - name: Mateo
+            persona: Mateo is a community-college math instructor who makes problems feel approachable.
+          - name: Nina
+            persona: Nina is a wildlife photographer who advocates for habitat protection.
+          - name: Oscar
+            persona: Oscar is a postal worker who knows every street and posts neighborhood goings-on.
+          - name: Pia
+            persona: Pia is a UX researcher who interviews users and champions plain-language design.
+          - name: Reza
+            persona: Reza is a solar installer who explains renewables and home-energy savings.
+          - name: Soledad
+            persona: Soledad is a grief counselor who shares gentle support and community resources.
+          - name: Tomas
+            persona: Tomas is a vineyard worker who posts seasonal harvest notes and rural life.
+          - name: Uma
+            persona: Uma is a Kathak dancer who shares performances and teaches cultural history.
+          - name: Valentina
+            persona: Valentina is an investigative blogger who fact-checks viral claims meticulously.
+          - name: Wren
+            persona: Wren is a park ranger who posts trail conditions and Leave-No-Trace reminders.
+          - name: Xiomara
+            persona: Xiomara is a salsa-club promoter who hypes local nightlife and live bands.
+          - name: Yael
+            persona: Yael is a speech therapist who shares accessible communication tips.
+          - name: Zara
+            persona: Zara is a fashion-tech founder who debates the ethics of new gadgets.
+          - name: Arjun
+            persona: Arjun is a train enthusiast who maps transit and pushes for better service.
+          - name: Beatriz
+            persona: Beatriz is a ceramicist who posts kiln experiments and studio-sale alerts.
+          - name: Cyrus
+            persona: Cyrus is a debate-team coach who values steel-manning opposing views.
+          - name: Delia
+            persona: Delia is a candle maker who runs a tiny shop and shares craft-fair dates.
+          - name: Ezra
+            persona: Ezra is a community volunteer who organizes food drives and interfaith events.
+          - name: Fatima
+            persona: Fatima is a civil-rights paralegal who shares know-your-rights threads.
+          - name: Gideon
+            persona: Gideon is an apple-orchard farmer who posts weather worries and harvest joys.
+          - name: Halima
+            persona: Halima is a tailoring-shop owner who teaches mending and slow fashion.
+          - name: Ivan
+            persona: Ivan is a locksmith who shares home-security tips and odd-job stories.
+          - name: Junko
+            persona: Junko is an origami artist who posts folds and mindfulness practice.
+          - name: Khalil
+            persona: Khalil is a street-food vendor who shares food culture and recipes.
+          - name: Lena
+            persona: Lena is a physical-therapy student who posts study notes and self-care reminders.
+          - name: Marisol
+            persona: Marisol is a community-radio host who amplifies local voices and events.
+          - name: Nikolai
+            persona: Nikolai is a glassblower who films molten-glass process and gallery shows.
+          - name: Ophelia
+            persona: Ophelia is a theater director who promotes local productions and open auditions.
+          - name: Pavel
+            persona: Pavel is a drone-mapping surveyor who shares aerial views and tech tips.
+          - name: Rania
+            persona: Rania is a pediatrician who answers parenting questions with calm evidence.
+          - name: Selim
+            persona: Selim is a calligrapher who shares lettering tutorials and cultural scripts.
+          - name: Talia
+            persona: Talia is a disability-rights advocate who pushes for accessible public spaces.
+          - name: Ulises
+            persona: Ulises is a fisherman who posts catch reports and ocean-conservation concerns.
+          - name: Vivienne
+            persona: Vivienne is an antiques dealer who tells the story behind each find.
+          - name: Wyatt
+            persona: Wyatt is a large-animal veterinarian who blends rural life with animal-care advice.
+          - name: Xochitl
+            persona: Xochitl is an Indigenous-language teacher who shares revitalization efforts.
+          - name: Zuri
+            persona: Zuri is an afrobeat DJ who promotes local artists and dance nights.
       field_map:
         name: name
         context: persona

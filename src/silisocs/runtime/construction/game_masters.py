@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -120,7 +121,15 @@ def _backend_config(
     path: str,
 ) -> dict[str, Any]:
     unsupported = sorted(
-        set(raw_backend) - {"type", "class_path", "params", "enabled_actions", "excluded_actions"}
+        set(raw_backend)
+        - {
+            "type",
+            "class_path",
+            "params",
+            "enabled_actions",
+            "excluded_actions",
+            "action_aliases",
+        }
     )
     if unsupported:
         raise ValueError(f"Unsupported config key(s) under {path}: {unsupported}")
@@ -137,10 +146,41 @@ def _backend_config(
         "params": backend_params,
         "enabled_actions": raw_backend.get("enabled_actions"),
         "excluded_actions": raw_backend.get("excluded_actions"),
+        "action_aliases": _plain_mapping(raw_backend.get("action_aliases") or {}) or None,
         "turn_policy_built_in": str(
             OmegaConf.select(cfg, "sim.engine.turn_policy.built_in", default="") or ""
         ),
     }
+
+
+def _isolate_backend_paths(entries: list[tuple[str, dict[str, Any]]]) -> None:
+    """Give each game master a distinct backend output path; reject collisions.
+
+    ``entries`` is a list of ``(gm_name, backend_config)``. With more than one GM
+    each backend's ``output_rootname`` is nested under a per-GM subdirectory so
+    same-type GMs do not share one ``<backend_type>.db`` / ``action_events.jsonl``
+    and clobber one another on checkpoint restore. Single-GM runs keep the flat
+    layout. Mutates each ``backend_config`` in place. Raises ``ValueError`` if two
+    GMs still resolve to the same backend database path.
+    """
+    isolate = len(entries) > 1
+    seen: dict[str, str] = {}
+    for gm_name, backend_config in entries:
+        if isolate:
+            backend_config["output_rootname"] = os.path.join(
+                str(backend_config.get("output_rootname") or ""), gm_name
+            )
+        db_key = os.path.join(
+            str(backend_config.get("output_rootname") or ""),
+            f"{backend_config['backend_type']}.db",
+        )
+        if db_key in seen:
+            raise ValueError(
+                f"Game masters {seen[db_key]!r} and {gm_name!r} resolve to the same backend "
+                f"database path {db_key!r}; checkpoint restore would clobber one with the other. "
+                "Give them distinct gm_name values or backend output paths."
+            )
+        seen[db_key] = gm_name
 
 
 def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
@@ -179,7 +219,16 @@ def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
             raise ValueError(f"env.gm_orchestration.gms[{idx}] must be a mapping.")
         unsupported = sorted(
             set(gm_raw)
-            - {"gm_name", "name", "class_path", "sequence", "mode", "backend", "components"}
+            - {
+                "gm_name",
+                "name",
+                "class_path",
+                "sequence",
+                "mode",
+                "backend",
+                "components",
+                "restore",
+            }
         )
         if unsupported:
             raise ValueError(
@@ -304,6 +353,20 @@ def build_game_masters(cfg: DictConfig) -> list[GameMasterConfig]:
     flow_chains = _resolve_flow_chains(cfg, gm_specs, declared_flows)
 
     projection = RuntimeProjection.from_cfg(cfg)
+    # Build every GM's backend config up front, then isolate per-GM output paths
+    # (multi-GM only) and reject db-path collisions before constructing GMs. This
+    # prevents same-type GMs from sharing one ``<backend_type>.db`` /
+    # ``action_events.jsonl`` and clobbering one another on checkpoint restore.
+    backend_configs = [
+        (
+            str(spec["gm_name"]),
+            _backend_config(cfg, spec["backend"], path=str(spec["backend_path"])),
+        )
+        for spec in gm_specs
+    ]
+    _isolate_backend_paths(backend_configs)
+    backend_config_by_gm = dict(backend_configs)
+
     game_masters: list[GameMasterConfig] = []
     for spec in gm_specs:
         gm_name = str(spec["gm_name"])
@@ -320,11 +383,7 @@ def build_game_masters(cfg: DictConfig) -> list[GameMasterConfig]:
         gm_components_cfg["initialize"] = dict(spec["initializer"])
         gm_params = {
             "name": gm_name,
-            "backend_config": _backend_config(
-                cfg,
-                spec["backend"],
-                path=str(spec["backend_path"]),
-            ),
+            "backend_config": backend_config_by_gm[gm_name],
             "components": gm_components_cfg,
             "action_prompt_template": action_prompt,
             "action_mode": projection.action_mode,

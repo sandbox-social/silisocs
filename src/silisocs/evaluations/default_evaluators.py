@@ -25,6 +25,8 @@ from typing import Any
 
 import yaml
 
+from silisocs.evaluations.action_events import resolve_action_event_files
+
 # matplotlib is an optional (`analysis` extra) dependency used only by the plot
 # writers below. Import it lazily so this module — and its JSONL/stat helpers —
 # can be imported without the plotting stack installed.
@@ -1126,18 +1128,22 @@ def main() -> None:
     # Probe and action events are persisted in separate files.
     # Use the mode to select the correct source for evaluation.
     if args.mode.startswith("probe_"):
-        events_path = run_dir / "probe_events.jsonl"
+        event_files = [run_dir / "probe_events.jsonl"]
     else:
-        events_path = run_dir / "action_events.jsonl"
+        # Multi-GM runs isolate action logs under per-GM subdirectories.
+        event_files = resolve_action_event_files(run_dir)
 
-    if not events_path.is_file():
-        raise FileNotFoundError(f"Missing events file: {events_path}")
+    event_files = [path for path in event_files if path.is_file()]
+    if not event_files:
+        raise FileNotFoundError(f"Missing events file(s) for mode {args.mode!r} in {run_dir}")
 
-    events = _read_jsonl(events_path)
+    events: list[dict[str, Any]] = []
+    for path in event_files:
+        events.extend(_read_jsonl(path))
     payload = _build_payload(args.mode, events, run_dir)
     payload["mode"] = args.mode
     payload["run_dir"] = str(run_dir)
-    payload["source_file"] = str(events_path)
+    payload["source_file"] = ", ".join(str(path) for path in event_files)
     payload["plots"] = _build_probe_plots(
         args.mode,
         events,

@@ -403,11 +403,37 @@ For **tool-calling mode** specifically: The entity layer is responsible for call
 - `sim.checkpoint.restore`
 - Resume restores game-master and entity component state plus raw log.
 
+**Backend restore contract** (backend authors): declare two class-level capability
+flags (`base.py`): `provides_checkpoint_state` (get_state/set_state round-trip an
+authoritative snapshot — restore applies it directly) and `supports_action_replay`
+(the built-in `social_action_event_replay` strategy can rebuild the backend by
+re-resolving logged events). A replayable backend maps its own logged labels to
+its own actions via `event_to_replay_action(label, data) -> ActionOutput | None`
+(the default is the microblog mapping). Every shipped backend self-restores via
+`set_state` (`provides_checkpoint_state=True`); Mastodon — which can't snapshot
+its live server — does so by embedding its action history in `get_state` and
+replaying it (with old→new toot-id remapping) in `set_state`. The
+`social_action_event_replay` strategy + `supports_action_replay` remain an
+extension point for *custom* non-snapshot backends. The authoritative-vs-replay
+decision is **per game master**: snapshot GMs restore from their block, the rest
+go to the strategy.
+Multi-GM runs isolate each GM's backend db + `action_events.jsonl` under
+`<output>/<gm_name>/`; both restore and eval discover these via
+`silisocs.evaluations.action_events.resolve_action_event_files` (restore passes
+all per-GM logs to the strategy as `action_events_files`). A GM may override the
+global `sim.checkpoint.restore` with its own strategy via
+`env.gm_orchestration.gms[*].restore` (same schema; absent → global default).
+
 **Saving policy**: checkpoint saving is disabled by default when running directly via `run_experiment.py` unless `every_n_steps` or `explicit_steps` is configured. When running via `run_study.py`, checkpointing is enabled automatically (`every_n_steps=1`) so that `eval.py` can access the final checkpoint for action-type metrics. Studies can change the frequency via `run_defaults.overrides: {sim.checkpoint.every_n_steps: N}`.
 
-**For custom agents**: By default, only Concordia `EntityWithComponents` entities are checkpointed.
-If your custom agent has episodic state that needs saving, implement `get_state()` and `set_state()`
-methods. The simulation will call these after checking `isinstance(entity, EntityWithComponents)`.
+**For custom agents**: Checkpointing is duck-typed — every agent and game master is
+checkpointed by reading its `get_state()` and applying its `set_state()` (there is no
+`isinstance(EntityWithComponents)` gate). The base `Agent` provides no-op defaults, so an
+agent with no episodic state needs no changes. If your custom agent *does* have episodic
+state, implement BOTH `get_state()` and `set_state()`: restore now refuses to load a
+checkpoint whose object saved non-empty state but only inherits the no-op `set_state()`
+(it would otherwise be silently dropped). Restore also rejects a checkpoint object whose
+`class_path`/`compat` no longer matches the current runtime object of the same name.
 
 Example:
 ```python

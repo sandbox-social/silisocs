@@ -11,13 +11,18 @@ from ``silisocs.environments.backends.base``.
 """
 
 import dataclasses
+import json
+import logging
+import os
 import re
+from collections.abc import Mapping
 from html import unescape
 from typing import Any
 
 # Re-export COLOR_TYPE and action descriptors for downstream backend modules.
 from silisocs.environments.backends.base import (  # noqa: F401
     COLOR_TYPE,
+    RUNTIME_AGENT_PARAM,
     ActionArgumentError,
     ActionDescriptor,
     BackendApp,
@@ -25,6 +30,9 @@ from silisocs.environments.backends.base import (  # noqa: F401
     SocialBackendApp,
     app_action,
 )
+from silisocs.runtime.types import ActionOutput, ToolCall
+
+_LOGGER = logging.getLogger(__name__)
 
 _MASTODON_EXTRA_INSTALL_HINT = (
     "Mastodon live operations require the optional Mastodon dependencies. "
@@ -86,17 +94,208 @@ class SocialNetworkApp(SocialBackendApp):
     """
 
     action_logger: Any = None
+    # Mastodon's authoritative state lives on an external live server a checkpoint
+    # cannot snapshot, so its checkpoint "state" IS its replayable action history:
+    # ``get_state`` embeds the logged actions and ``set_state`` rebuilds the server
+    # by re-running them. It thus restores through the normal set_state path (the
+    # default checkpoint loader) like every other shipped backend — no special
+    # restore strategy needed. On resume the server is reset (reset_server_on_setup)
+    # and posts/follows replay directly; like/boost/reply targets are remapped from
+    # the old (pre-resume) toot id to the new id assigned when the post is re-created.
+    # NOTE: replay re-posts to the live server and reproduces a *similar*, not
+    # identical, server state.
+    provides_checkpoint_state = True
+    # The event->action replay mapping is also exposed for custom restore
+    # strategies, though Mastodon itself restores via set_state above.
+    supports_action_replay = True
     perform_operations: bool = False
     reset_server_on_setup: bool = False
     app_description: str = "MastodonSocialNetworkApp"
     _log_color: COLOR_TYPE = dataclasses.field(default="blue", init=False)
     _mastodon_ops: Any = dataclasses.field(default=None, init=False)
     _user_mapping: dict[str, str] = dataclasses.field(default_factory=dict, init=False)
+    # Checkpoint-replay state: maps a pre-resume (logged) toot id to the new id
+    # the server assigns when the post is re-created during replay.
+    _replay_id_map: dict[str, str] = dataclasses.field(default_factory=dict, init=False)
+    _pending_replay_old_id: str | None = dataclasses.field(default=None, init=False)
 
     def __post_init__(self) -> None:  # noqa: D105
         super().__init__()
         if self.perform_operations:
             self._mastodon_ops = _load_mastodon_ops()
+
+    def begin_action_replay(self) -> None:
+        """Reset per-replay state before replaying logged events.
+
+        The live server itself is wiped via ``reset_server_on_setup`` during the
+        resume's game-master initialization; here we only clear the old->new toot
+        id remap. Warn loudly if the server was not configured to reset, since
+        replaying onto a non-empty server duplicates content.
+        """
+        self._replay_id_map.clear()
+        self._pending_replay_old_id = None
+        if self.perform_operations and not self.reset_server_on_setup:
+            _LOGGER.warning(
+                "Mastodon action replay without reset_server_on_setup=true will duplicate "
+                "content on the live server (the original run's toots/follows are still there)."
+            )
+
+    def get_state(self) -> dict[str, Any]:
+        """Embed this run's replayable action history so ``set_state`` can rebuild it.
+
+        Mastodon cannot snapshot the live server, so its checkpoint state is the
+        list of actions it performed; they are read back from its own action log.
+        """
+        state = super().get_state()
+        events = self._read_logged_action_events()
+        if events:
+            state["replay_events"] = events
+        return state
+
+    def set_state(self, state: dict[str, Any]) -> None:
+        """Rebuild server state by re-running the checkpointed action events.
+
+        The live server is wiped during resume init (``reset_server_on_setup``);
+        here each logged action is remapped (old->new toot ids) and re-executed as
+        its original user, in chronological order so reply/like/boost targets exist
+        before they are referenced.
+        """
+        events = state.get("replay_events") if isinstance(state, Mapping) else None
+        if not events:
+            return
+        self.begin_action_replay()
+        for event in events:
+            if isinstance(event, Mapping):
+                self._replay_logged_action(event)
+
+    def _read_logged_action_events(self) -> list[dict[str, Any]]:
+        """Read this backend's own action log into compact replay events."""
+        path = str(getattr(self.action_logger, "output_filename", "") or "")
+        if not path or not os.path.isfile(path):
+            return []
+        events: list[dict[str, Any]] = []
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    row = json.loads(stripped)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(row, dict) or str(row.get("event_type", "")) != "action":
+                    continue
+                events.append(
+                    {
+                        "label": str(row.get("label", "")),
+                        "source_user": str(row.get("source_user", "")),
+                        "data": row.get("data") or {},
+                    }
+                )
+        return events
+
+    def _replay_logged_action(self, event: Mapping[str, Any]) -> None:
+        """Remap and re-execute one logged action as its original user."""
+        action = self.event_to_replay_action(str(event.get("label", "")), event.get("data") or {})
+        if action is None:
+            return
+        agent = str(event.get("source_user", "") or "")
+        lookup = self._action_lookup()
+        for tool_call in action.tool_calls:
+            payload = dict(tool_call.arguments)
+            descriptor = lookup.get(tool_call.name)
+            if descriptor is not None and any(
+                param.name == RUNTIME_AGENT_PARAM for param in descriptor.parameters
+            ):
+                payload[RUNTIME_AGENT_PARAM] = agent
+            self.invoke_action_with_kwargs(tool_call.name, payload)
+
+    def event_to_replay_action(self, label: str, data: Mapping[str, Any]) -> ActionOutput | None:
+        """Map a logged Mastodon action event to a replayable action.
+
+        Creates (``post``) and follow/unfollow replay directly. ``like``/
+        ``boost``/``reply`` reference a server-assigned toot id that changes when
+        the post is re-created, so they are remapped through ``_replay_id_map``
+        (populated by ``post_toot`` during replay); an unmapped reference is
+        skipped. Read-only and bookkeeping labels return ``None``.
+        """
+        if label in {"post", "post_status"}:
+            text = data.get("post_text") or data.get("status") or data.get("text")
+            if not text:
+                raise ValueError(f"Mastodon post event missing text: {data}")
+            old_id = data.get("toot_id") or data.get("post_id")
+            self._pending_replay_old_id = str(old_id) if old_id not in (None, "", "None") else None
+            return ActionOutput.from_tool_calls([ToolCall("post_toot", {"status": str(text)})])
+        if label in {"follow", "unfollow"}:
+            target = data.get("target_user") or data.get("target") or data.get("user")
+            if not target:
+                raise ValueError(f"Mastodon {label} event missing target user: {data}")
+            return ActionOutput.from_tool_calls(
+                [ToolCall(f"{label}_user", {"target_user": str(target)})]
+            )
+        if label == "update_profile":
+            bio = data.get("new_bio") or data.get("bio") or ""
+            return ActionOutput.from_tool_calls([ToolCall("update_profile", {"bio": str(bio)})])
+        if label in {"like", "like_toot"}:
+            new_id = self._remapped_toot_id(data)
+            return (
+                None
+                if new_id is None
+                else ActionOutput.from_tool_calls([ToolCall("like_toot", {"toot_id": new_id})])
+            )
+        if label in {"boost", "boost_toot", "repost"}:
+            new_id = self._remapped_toot_id(data)
+            return (
+                None
+                if new_id is None
+                else ActionOutput.from_tool_calls([ToolCall("boost_toot", {"toot_id": new_id})])
+            )
+        if label in {"reply", "reply_to_toot"}:
+            text = data.get("post_text") or data.get("status") or data.get("text")
+            # The parent being answered lives under reply_to.toot_id; data.toot_id
+            # is the reply's *own* id (captured below for downstream references).
+            reply_to = data.get("reply_to")
+            parent_old = (
+                reply_to.get("toot_id")
+                if isinstance(reply_to, Mapping)
+                else (data.get("in_reply_to_id") or data.get("reply_to_id"))
+            )
+            parent_new = self._lookup_new_id(parent_old)
+            if parent_new is None or not text:
+                return None
+            own_old = data.get("toot_id")
+            self._pending_replay_old_id = (
+                str(own_old) if own_old not in (None, "", "None") else None
+            )
+            return ActionOutput.from_tool_calls(
+                [ToolCall("reply_to_toot", {"in_reply_to_id": parent_new, "status": str(text)})]
+            )
+        # Read-only / bookkeeping labels are not replayable.
+        return None
+
+    def _remapped_toot_id(self, data: Mapping[str, Any]) -> str | None:
+        """Return the new server id for a logged (old) toot id, or None to skip."""
+        return self._lookup_new_id(
+            data.get("toot_id") or data.get("post_id") or data.get("target_id")
+        )
+
+    def _lookup_new_id(self, old_id: Any) -> str | None:
+        """Translate a logged (pre-resume) toot id to its new replay id, or None."""
+        if old_id in (None, "", "None"):
+            return None
+        new_id = self._replay_id_map.get(str(old_id))
+        if new_id is None:
+            _LOGGER.warning(
+                "Mastodon replay: toot id %s referenced before it was re-created; skipping.",
+                old_id,
+            )
+        return new_id
+
+    def _record_replayed_post_id(self, new_toot_id: str | None) -> None:
+        """Map the pending old toot id to the new server id after a replayed post."""
+        if self._pending_replay_old_id is not None and new_toot_id not in (None, "", "None"):
+            self._replay_id_map[self._pending_replay_old_id] = str(new_toot_id)
+        self._pending_replay_old_id = None
 
     def name(self) -> str:
         """Define the name of the app."""
@@ -628,6 +827,9 @@ class SocialNetworkApp(SocialBackendApp):
                 "data": {"toot_id": str(toot_id), "post_text": status},
             }
         )
+        # During checkpoint replay, map the pre-resume toot id to this new server id
+        # so subsequent like/boost/reply events can be retargeted (no-op otherwise).
+        self._record_replayed_post_id(toot_id)
         return return_msg
 
     # NOTE: `post_media_toot` is intentionally left inactive. It is superseded by the
@@ -756,6 +958,9 @@ class SocialNetworkApp(SocialBackendApp):
                     },
                 }
             )
+            # A reply is itself a new toot: record its old->new id so deeper
+            # replies/likes that reference it can be remapped during replay.
+            self._record_replayed_post_id(toot_id)
         except ValueError as e:
             self._print(f"Invalid input, regular toot posted: {e!s}", emoji="❌")
             return_msg = f'''There was an error in posting {agent_name}'s reply, response was posted as a new toot!: "{status}"'''

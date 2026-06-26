@@ -92,7 +92,9 @@ class ActivityMarkovNextActing(AllAgentsNextActing):
 
     def set_state(self, state: ComponentState) -> None:
         """Restore component state."""
-        self._users_activity_state = dict(state["users_activity_state"])
+        self._users_activity_state = dict(
+            state.get("users_activity_state", self._users_activity_state)
+        )
 
 
 class ActivityProbabilityNextActing(AllAgentsNextActing):
@@ -149,13 +151,15 @@ class ActivityProbabilityNextActing(AllAgentsNextActing):
         return active
 
     def get_state(self) -> ComponentState:
-        """Return serializable component state."""
-        return {
-            "global_active_probability": self._global_active_probability,
-            "min_active_agents": self._min_active_agents,
-        }
+        """Return serializable component state.
+
+        Activation is sampled independently each step from configuration
+        (active_probability / min_active_agents); there is no evolving runtime
+        state to persist. Persisting the config here would let a stale checkpoint
+        silently override resume-time config edits, so we persist nothing.
+        """
+        return {}
 
     def set_state(self, state: ComponentState) -> None:
-        """Restore component state."""
-        self._global_active_probability = state.get("global_active_probability")
-        self._min_active_agents = int(state.get("min_active_agents", 0))
+        """No evolving runtime state; configuration is applied at construction."""
+        del state

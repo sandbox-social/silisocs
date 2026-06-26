@@ -248,12 +248,24 @@ class ComponentGameMaster(BaseGameMaster):
                 for key, component in self._component_registry.items()
                 if callable(getattr(component, "get_state", None))
             },
+            # Flow scheduling is re-materialized from config on resume, not from
+            # the checkpoint. Record a fingerprint so a config change that would
+            # silently mis-route checkpoint replay (or diverge the second half of
+            # a run) is detected on restore. See set_state's validation below.
+            "scheduling": {
+                "agent_flow_tags": dict(self.agent_flow_tags),
+                "owned_flows": list(self.owned_flows),
+                "flow_chains": {str(flow): list(chain) for flow, chain in self.flow_chains.items()},
+            },
         }
-        backend_state = self.backend.get_state()
-        if backend_state:
+        # Use the explicit capability signal, not dict-truthiness: a backend that
+        # legitimately has empty state this step must still be marked authoritative,
+        # while a non-snapshotable backend (e.g. Mastodon) must be left out so the
+        # restore path falls through to the configured restore strategy.
+        if getattr(self.backend, "provides_checkpoint_state", False):
             state["backend"] = {
                 "backend_type": self.backend_type,
-                "state": backend_state,
+                "state": self.backend.get_state(),
             }
         return state
 
@@ -274,6 +286,9 @@ class ComponentGameMaster(BaseGameMaster):
             if not isinstance(backend_state, Mapping):
                 raise TypeError("Game master checkpoint backend.state must be a mapping.")
             self.backend.set_state(dict(backend_state))
+        scheduling = data.get("scheduling")
+        if isinstance(scheduling, Mapping):
+            self._warn_on_scheduling_drift(scheduling)
         component_states = data.get("components", {})
         if not isinstance(component_states, Mapping):
             return
@@ -281,6 +296,41 @@ class ComponentGameMaster(BaseGameMaster):
             component = self._component_registry.get(str(key))
             if component is not None:
                 component.set_state(value)
+
+    def _warn_on_scheduling_drift(self, checkpointed: Mapping[str, Any]) -> None:
+        """Warn loudly if resume-time flow scheduling diverges from the checkpoint.
+
+        Flow scheduling (agent->flow tags and flow chains) is rebuilt from the
+        live config, not restored from the checkpoint. If it changed, checkpoint
+        replay routes historical events by the *new* tags, which can mis-route or
+        raise. We warn rather than hard-fail because some changes (e.g. adding
+        agents) are legitimate, but the divergence must be visible.
+        """
+        saved_tags = dict(checkpointed.get("agent_flow_tags") or {})
+        live_tags = {str(k): str(v) for k, v in self.agent_flow_tags.items()}
+        changed_tags = {
+            agent: (saved_tags.get(agent), live_tags.get(agent))
+            for agent in set(saved_tags) & set(live_tags)
+            if str(saved_tags.get(agent)) != str(live_tags.get(agent))
+        }
+        saved_chains = {
+            str(flow): [str(gm) for gm in chain]
+            for flow, chain in dict(checkpointed.get("flow_chains") or {}).items()
+        }
+        live_chains = {
+            str(flow): [str(gm) for gm in chain] for flow, chain in self.flow_chains.items()
+        }
+        if changed_tags or saved_chains != live_chains:
+            _LOGGER.warning(
+                "Game master %r resumed with flow scheduling that differs from the "
+                "checkpoint (changed agent->flow tags: %s; flow_chains changed: %s). "
+                "Checkpoint replay routes historical events by the current config, so "
+                "this can mis-route actions. Resume with the original flow configuration "
+                "unless the change is intentional.",
+                self.name,
+                changed_tags or "none",
+                saved_chains != live_chains,
+            )
 
     def _build_components(
         self,
@@ -505,6 +555,11 @@ def _create_backend(backend_config: Mapping[str, Any], *, gm_name: str) -> Any:
         class_path=cfg.get("class_path"),
         params=dict(cfg.get("params") or {}),
     )
+    # Apply config-driven agent-facing action renames/aliases before filters so
+    # enabled/excluded lists may reference either canonical or aliased names.
+    action_aliases = cfg.get("action_aliases")
+    if action_aliases and hasattr(backend, "set_action_aliases"):
+        backend.set_action_aliases(action_aliases)
     enabled_actions = cfg.get("enabled_actions")
     excluded_actions = cfg.get("excluded_actions")
     excluded = (

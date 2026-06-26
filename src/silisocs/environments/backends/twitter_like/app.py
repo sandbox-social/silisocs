@@ -29,6 +29,8 @@ class TwitterLikeApp(SocialBackendApp):
     """
 
     action_logger: Any = None
+    # Authoritative checkpoint state: full SQLite snapshot + user mapping.
+    provides_checkpoint_state = True
     app_description: str = "TwitterLikeApp"
     db_path: str = "twitter_like.db"
     _platform: TwitterLikePlatform = dataclasses.field(default=None, init=False, repr=False)  # type: ignore[assignment]
@@ -210,6 +212,10 @@ class TwitterLikeApp(SocialBackendApp):
                 "include_like_trace_in_context": bool(include_like_trace_in_context),
             },
         )
+
+    def recsys_active_types(self) -> set[str]:
+        """Return recsys types currently live on the platform (empty after restore)."""
+        return set(getattr(self._platform, "_recsys_types", {}) or {})
 
     def update_recommendations(
         self, active_user_ids: list[int] | None = None, max_posts: int = 10

@@ -11,13 +11,14 @@ import logging
 import re
 import types
 import typing
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import Any, Literal, get_type_hints
 
 import docstring_parser
 import termcolor
 
 from silisocs.exceptions import ActionError, BackendError
+from silisocs.runtime.types import ActionOutput, ToolCall
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,6 +35,10 @@ ParserFunc = Callable[[str], Any]
 _ACTION_PROPERTY = "__app_action__"
 RUNTIME_AGENT_PARAM = "agent_name"
 LEGACY_RUNTIME_AGENT_PARAMS = frozenset({"current_user"})
+# Reused when rebuilding an ActionDescriptor for an aliased selectable name; the
+# descriptor's docstring InitVar is discarded in __post_init__, so an empty parse
+# is sufficient (description/parameters are carried over directly).
+_EMPTY_DOCSTRING = docstring_parser.parse("")
 RUNTIME_OWNED_ACTION_PARAMS = frozenset({RUNTIME_AGENT_PARAM})
 
 COLOR_TYPE = (
@@ -268,9 +273,27 @@ class BackendApp(metaclass=abc.ABCMeta):
     action_logger: Any = None
     _log_color: COLOR_TYPE = "blue"
 
+    # Checkpoint capability contract (see docs/configuration.md#checkpointing).
+    # ``provides_checkpoint_state`` declares that get_state/set_state round-trip
+    # authoritative backend state, so a checkpoint can restore this backend
+    # directly from its snapshot. Backends that leave it False (e.g. live
+    # external servers) carry no authoritative snapshot and must rely on a
+    # configured ``sim.checkpoint.restore`` strategy instead.
+    provides_checkpoint_state: bool = False
+    # ``supports_action_replay`` declares that the built-in
+    # ``social_action_event_replay`` restore strategy can faithfully reconstruct
+    # this backend by re-resolving its logged action events. Backends that mutate
+    # external, non-idempotent state (e.g. a live Mastodon server) set this False
+    # and require a custom ``sim.checkpoint.restore.class_path`` strategy.
+    supports_action_replay: bool = False
+
     def __init__(self) -> None:
         self._enabled_actions: set[str] | None = None
         self._excluded_actions: set[str] = set()
+        # Config-driven agent-facing action aliases: canonical method name ->
+        # [agent-facing names], first is the displayed selectable name. Empty by
+        # default (agents see canonical/decorator names). See set_action_aliases.
+        self._action_aliases: dict[str, list[str]] = {}
 
     @abc.abstractmethod
     def name(self) -> str:
@@ -340,10 +363,108 @@ class BackendApp(metaclass=abc.ABCMeta):
             ]
         return actions
 
-    def _all_actions(self) -> list[ActionDescriptor]:
-        """Return all declared backend actions before config-level filtering."""
+    def _raw_actions(self) -> list[ActionDescriptor]:
+        """Return all declared backend actions with their built-in names."""
         methods = inspect.getmembers(self, predicate=inspect.ismethod)
         return [ActionDescriptor.from_method(m) for _, m in methods if hasattr(m, _ACTION_PROPERTY)]
+
+    def _all_actions(self) -> list[ActionDescriptor]:
+        """Return declared actions with config aliases applied (before filtering).
+
+        When ``set_action_aliases`` has been configured, an action's displayed
+        ``selectable_name`` is replaced by its first configured agent-facing name,
+        so prompts/catalogs present the simplified vocabulary. The canonical
+        method name and every configured alias still resolve (see
+        ``configured_action_aliases`` and the resolve alias index).
+        """
+        actions = self._raw_actions()
+        if not self._action_aliases:
+            return actions
+        applied: list[ActionDescriptor] = []
+        for action in actions:
+            names = self._action_aliases.get(action.name)
+            if names and names[0] != action.selectable_name:
+                action = ActionDescriptor(
+                    name=action.name,
+                    selectable_name=names[0],
+                    description=action.description,
+                    parameters=action.parameters,
+                    docstring=_EMPTY_DOCSTRING,
+                )
+            applied.append(action)
+        return applied
+
+    def set_action_aliases(self, aliases: Mapping[str, Any] | None) -> None:
+        """Configure agent-facing names for backend actions (config-driven rename).
+
+        ``aliases`` maps an existing action (referenced by its canonical method
+        name or current selectable name) to either a single new agent-facing name
+        (rename) or a list of names (the first is shown to agents; all are
+        accepted by the parser). This lets scenario authors simplify the agent
+        action vocabulary in YAML without editing backend code. Unknown actions,
+        empty names, or names that collide with another action fail loudly.
+        """
+        if not aliases:
+            self._action_aliases = {}
+            return
+        token_to_canonical: dict[str, str] = {}
+        for action in self._raw_actions():
+            for token in (action.name, action.selectable_name):
+                normalized = str(token).strip().lower()
+                if normalized:
+                    token_to_canonical[normalized] = action.name
+        resolved: dict[str, list[str]] = {}
+        new_name_owner: dict[str, str] = {}
+        for key, value in dict(aliases).items():
+            canonical = token_to_canonical.get(str(key).strip().lower())
+            if canonical is None:
+                known = sorted({action.name for action in self._raw_actions()})
+                raise ValueError(
+                    f"action_aliases references unknown action {key!r}. Known actions: {known}."
+                )
+            names = [value] if isinstance(value, str) else list(value)
+            names = [str(name).strip() for name in names if str(name).strip()]
+            if not names:
+                raise ValueError(f"action_aliases for {key!r} must provide at least one name.")
+            self._validate_alias_names(names, canonical, token_to_canonical, new_name_owner)
+            resolved[canonical] = names
+        self._action_aliases = resolved
+
+    @staticmethod
+    def _validate_alias_names(
+        names: list[str],
+        canonical: str,
+        token_to_canonical: dict[str, str],
+        new_name_owner: dict[str, str],
+    ) -> None:
+        """Reject alias names that collide with another action; record ownership."""
+        for name in names:
+            low = name.lower()
+            if token_to_canonical.get(low, canonical) != canonical:
+                raise ValueError(f"action_aliases name {name!r} collides with another action.")
+            if new_name_owner.get(low, canonical) != canonical:
+                raise ValueError(f"action_aliases name {name!r} is assigned to multiple actions.")
+            new_name_owner[low] = canonical
+
+    def configured_action_aliases(self) -> list[set[str]]:
+        """Return config-defined alias groups for the resolve/alias index.
+
+        Each group unions an action's canonical name, its built-in selectable
+        name, and every configured agent-facing alias, so the parser accepts any
+        of them regardless of which one the prompt displays. Empty when no
+        aliases are configured.
+        """
+        if not self._action_aliases:
+            return []
+        raw_by_name = {action.name: action for action in self._raw_actions()}
+        groups: list[set[str]] = []
+        for canonical, names in self._action_aliases.items():
+            group = {canonical, *names}
+            descriptor = raw_by_name.get(canonical)
+            if descriptor is not None:
+                group.add(descriptor.selectable_name)
+            groups.append(group)
+        return groups
 
     @staticmethod
     def _action_matches_filter(action: ActionDescriptor, names: set[str]) -> bool:
@@ -501,7 +622,11 @@ class BackendApp(metaclass=abc.ABCMeta):
     def _action_lookup(self) -> dict[str, ActionDescriptor]:
         lookup: dict[str, ActionDescriptor] = {}
         for action in self.actions():
-            for key in {action.name, action.selectable_name}:
+            # Canonical name, displayed selectable name, and any extra configured
+            # agent-facing aliases all dispatch to the same action.
+            keys = {action.name, action.selectable_name}
+            keys.update(self._action_aliases.get(action.name, ()))
+            for key in keys:
                 existing = lookup.get(key)
                 if existing is not None and existing.name != action.name:
                     raise BackendError(
@@ -511,6 +636,16 @@ class BackendApp(metaclass=abc.ABCMeta):
                     )
                 lookup[key] = action
         return lookup
+
+    def canonical_action_name(self, action_name: str) -> str | None:
+        """Return the canonical method name for any agent-facing action token.
+
+        Resolves a displayed selectable name or configured alias back to the
+        backend method name (used to normalize custom-mode action tokens before
+        dispatch). Returns None when the token names no known action.
+        """
+        descriptor = self._action_lookup().get(str(action_name))
+        return descriptor.name if descriptor is not None else None
 
     def invoke_action_by_name(self, action_name: str, args_text: str) -> str:
         """Find an action by name and invoke it with the given argument text.
@@ -696,6 +831,16 @@ def _param_to_json_schema(param: "Parameter") -> dict:
 # --------------------------------------------------------------------------- #
 
 
+def _replay_target_id(label: str, data: Mapping[str, Any]) -> str:
+    """Extract the post/toot id a replayed social action targets."""
+    target = (
+        data.get("post_id") or data.get("tweet_id") or data.get("toot_id") or data.get("target_id")
+    )
+    if target is None:
+        raise ValueError(f"{label} event missing target id: {data}")
+    return str(target)
+
+
 class SocialBackendApp(BackendApp):
     """Backend capability interface for timeline and recommendation components.
 
@@ -704,10 +849,79 @@ class SocialBackendApp(BackendApp):
     top of the domain-neutral :class:`BackendApp`.
     """
 
+    # Social action events are re-resolvable through the GM resolve surface, so
+    # local social backends can be reconstructed by the built-in replay strategy.
+    # Backends backed by an external live service override this to False.
+    supports_action_replay: bool = True
+
     def _log_action_event(self, source_user: str, label: str, data: dict[str, Any]) -> None:
         """Log a structured social action event when an action logger is configured."""
         if self.action_logger:
             self.action_logger.log({"source_user": source_user, "label": label, "data": data})
+
+    def event_to_replay_action(self, label: str, data: Mapping[str, Any]) -> ActionOutput | None:
+        """Translate one logged action event into a replayable action.
+
+        The built-in ``social_action_event_replay`` restore strategy calls this on
+        the owning game master's backend to rebuild state by re-resolving each
+        logged write action. Return ``None`` to skip a non-replayable bookkeeping
+        label. The default targets the canonical microblog vocabulary
+        (create/like/repost/reply/follow); backends with a different action
+        vocabulary (e.g. Mastodon) override this with their own mapping.
+        """
+        if label == "post":
+            text = (
+                data.get("post_text")
+                or data.get("text")
+                or data.get("content")
+                or data.get("status")
+            )
+            if not text:
+                raise ValueError(f"Post event missing text: {data}")
+            return ActionOutput.from_tool_calls([ToolCall("create_tweet", {"status": str(text)})])
+        if label in {"like", "like_toot"}:
+            return ActionOutput.from_tool_calls(
+                [ToolCall("like_tweet", {"post_id": _replay_target_id("Like", data)})]
+            )
+        if label in {"repost", "boost_toot"}:
+            return ActionOutput.from_tool_calls(
+                [ToolCall("repost_tweet", {"post_id": _replay_target_id("Repost", data)})]
+            )
+        if label == "reply":
+            text = (
+                data.get("post_text")
+                or data.get("text")
+                or data.get("content")
+                or data.get("status")
+            )
+            if not text:
+                raise ValueError(f"Reply event missing text: {data}")
+            return ActionOutput.from_tool_calls(
+                [
+                    ToolCall(
+                        "reply_to_tweet",
+                        {"post_id": _replay_target_id("Reply", data), "status": str(text)},
+                    )
+                ]
+            )
+        if label in {"follow", "unfollow"}:
+            target = data.get("target_user") or data.get("target") or data.get("user")
+            if not target:
+                raise ValueError(f"{label} event missing target user: {data}")
+            return ActionOutput.from_tool_calls(
+                [ToolCall(f"{label}_user", {"target_user": str(target)})]
+            )
+        raise ValueError(f"Unknown social action event label for checkpoint replay: {label}")
+
+    def recsys_active_types(self) -> set[str]:
+        """Return recsys algorithm types currently live on the backend.
+
+        The recommendation-update component reconciles configured types against
+        this set, so a backend whose in-memory recsys engine was rebuilt empty on
+        checkpoint restore reports an empty set and triggers a lazy re-init. The
+        default has no live recsys state.
+        """
+        return set()
 
     def setup_social_state(
         self,
