@@ -16,21 +16,21 @@ type `/new-study` to be guided through this process interactively.
 
 ## Concepts
 
-**Scenario** — A shared social world (agents, backend, event). Reusable across studies.
+**Scenario**: A shared social world (agents, backend, event). Reusable across studies.
 
-**Hypothesis** — A falsifiable claim about what will happen if you vary something.
+**Hypothesis**: A falsifiable claim about what will happen if you vary something.
 Example: *"Larger LLMs produce more stylistically diverse posts."*
 
-**Condition** — One value of the independent variable. A hypothesis has 2+ conditions.
+**Condition**: One value of the independent variable. A hypothesis has 2+ conditions.
 Example: `sim.llm.name=gpt-4o-mini` and `sim.llm.name=gpt-4o`.
 
-**Run** — One simulation of one (condition x scenario x seed) combination.
+**Run**: One simulation of one (condition x scenario x seed) combination.
 
-**Evaluation** — A script that reads a completed run and produces metrics (`eval.json`).
+**Evaluation**: A script that reads a completed run and produces metrics (`eval.json`).
 
 ---
 
-## Step 1 — Create the study directory
+## Step 1: Create the study directory
 
 ```
 experiments/studies/my_study/
@@ -41,7 +41,7 @@ experiments/studies/my_study/
 
 ---
 
-## Step 2 — Write `study.yaml`
+## Step 2: Write `study.yaml`
 
 This is the single source of truth. It describes your research question, hypotheses,
 and maps each condition to concrete run configurations.
@@ -97,7 +97,7 @@ The `overrides` values are passed directly to `uv run silisocs` as CLI overrides
 
 ---
 
-## Step 3 — Write `eval.py` (or use built-in presets)
+## Step 3: Write `eval.py` (or use built-in presets)
 
 `eval.py` reads a completed run directory and writes `eval.json` with your metrics.
 
@@ -123,7 +123,7 @@ write `eval.py`. See `docs/study_schema.md` for the required output format.
 
 ---
 
-## Step 4 — Run the study
+## Step 4: Run the study
 
 ```bash
 # Plan: preview what will be run without executing
@@ -160,7 +160,7 @@ to ignore the markers and re-run everything.
 **Preflight check.** Before launching, the runner prints how many runs will
 execute, their `num_agents`/`num_steps` (when derivable from overrides), and the
 estimated total agent-steps. If more than 50 runs would launch, it asks for
-confirmation — pass `--yes` to skip the prompt (required in non-interactive
+confirmation: pass `--yes` to skip the prompt (required in non-interactive
 sessions such as CI or batch jobs).
 
 **Checkpoint cadence.** By default every run is launched with
@@ -170,7 +170,7 @@ checkpoints, or to `null`/`0`/`false` to disable the injection.
 
 ---
 
-## Step 5 — Analyse results
+## Step 5: Analyse results
 
 After runs complete, open or create `experiments/studies/my_study/notebook.ipynb`.
 
@@ -195,7 +195,7 @@ See `docs/study_schema.md` for the full notebook conventions.
 
 ---
 
-## Step 6 — Record findings and add follow-up hypotheses
+## Step 6: Record findings and add follow-up hypotheses
 
 When a hypothesis is complete, update its `status` and add a `finding`:
 
@@ -231,13 +231,13 @@ h2_model_capacity:
 
 If a condition from an earlier hypothesis serves as the control for a later one,
 reference the same run paths in both condition entries. The organizer handles
-duplicate paths — the run is not re-executed, just re-linked.
+duplicate paths: the run is not re-executed, just re-linked.
 
 ---
 
 ## Where to look next
 
-- **Full study.yaml schema:** `docs/study_schema.md` — all fields, file formats, eval.json spec
-- **Scenario design:** `docs/scenario_guide.md` — how to build the scenario you study
-- **Existing studies:** `experiments/studies/style_diversity/` — a working example
+- **Full study.yaml schema:** `docs/study_schema.md`: all fields, file formats, eval.json spec
+- **Scenario design:** `docs/scenario_guide.md`: how to build the scenario you study
+- **Existing studies:** `experiments/studies/style_diversity/`: a working example
 - **Run study CLI help:** `uv run silisocs-study --help`

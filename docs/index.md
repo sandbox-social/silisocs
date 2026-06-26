@@ -8,13 +8,15 @@ hide:
 <canvas class="sx-hero__net" id="sx-net" aria-hidden="true"></canvas>
 <div class="sx-hero__inner" markdown>
 
-<span class="sx-hero__eyebrow">Social Simulation Sandbox</span>
+<span class="sx-hero__eyebrow">Silicon Society Sandbox</span>
 
 # Spin up <span class="sx-gradient-text">societies of agents</span>
 
-Large-scale social-media simulations populated by LLM-powered generative agents —
-each with a persona, memories, and goals — interacting through configurable
-platform backends. Define everything in YAML; the engine runs the world.
+Configurable multi-agent simulations populated by LLM-powered generative agents,
+each with a persona, memory, and goals. You define four axes in YAML: the
+environment agents inhabit, the agents themselves, the simulation engine that
+schedules how and when they act, and the evaluation that measures them. SiliSocS
+runs the world.
 
 [Get started](quickstart.md){ .md-button .md-button--primary }
 [Browse the guide](usage.md){ .md-button }
@@ -23,16 +25,23 @@ platform backends. Define everything in YAML; the engine runs the world.
 </div>
 </div>
 
-**silisocs turns a research question into a running society.** You describe a
-world in YAML — who the agents are, which platform they inhabit, and what you
-want to measure — and the engine populates it with LLM-driven agents, runs the
-interaction loop, and logs structured results you can analyze or reproduce.
+**SiliSocS turns a research question into a running simulation.** You describe a
+world in YAML: who the agents are, which environment they inhabit, the simulation
+engine that schedules how they act, and what you want to measure. SiliSocS
+populates it with LLM-driven agents, runs the interaction loop, and logs
+structured results you can analyze or reproduce. Social platforms are one of
+several built-in environments, alongside non-social ones such as a resource
+market and a virtual space.
 
-<small>
-Research: [NeurIPS 2024 Workshop](http://arxiv.org/abs/2410.13915) ·
-[IJCAI 2025 Demo](https://www.ijcai.org/proceedings/2025/1271) ·
-Version 2 adds structured scenario configuration with an optional Concordia bridge.
-</small>
+**Research**
+
+- ICML 2026 position paper: [paper (PDF)](https://www.complexdatalab.com/stamina/papers/puelmatouzel_CloseEvalGap.pdf)
+- EASE configuration: [arXiv:2605.30258](https://arxiv.org/abs/2605.30258)
+
+Earlier work centered on a served Mastodon network:
+
+- NeurIPS 2024 workshop: [arXiv:2410.13915](http://arxiv.org/abs/2410.13915)
+- IJCAI 2025 demo: [IJCAI 2025 proceedings](https://www.ijcai.org/proceedings/2025/1271)
 
 ## Choose your path
 
@@ -42,7 +51,7 @@ Version 2 adds structured scenario configuration with an optional Concordia brid
 
     ---
 
-    Design and run simulations entirely in YAML — no Python required. Start from
+    Design and run simulations entirely in YAML, no Python required. Start from
     the default scenario and build out from there.
 
     [Quick Start →](quickstart.md)
@@ -71,9 +80,9 @@ Version 2 adds structured scenario configuration with an optional Concordia brid
 
 A scenario's YAML is composed by Hydra into a single runtime config. The runner
 builds the agent population and their memories, stands up a platform backend, and
-hands control to a **game master** — which decides who acts next, shows each agent
-its slice of the world, and resolves their responses into concrete actions. A
-simulation loop advances episodes, deploys evaluation probes, and writes every
+hands control to a **game master**, which decides who acts next, shows each agent
+its slice of the world, and resolves their responses into concrete actions. The
+simulation engine advances episodes, deploys evaluation probes, and writes every
 action and measurement to disk for analysis.
 
 ```mermaid
@@ -97,8 +106,8 @@ graph LR
 
     ---
 
-    Agents, settings, networks, and probes in YAML — full Hydra composition with
-    CLI overrides and per-agent LLMs.
+    Agents, settings, networks, and probes in YAML, with full Hydra composition,
+    CLI overrides, and per-agent LLMs.
 
     [Scenario Guide →](scenario_guide.md)
 
@@ -115,7 +124,7 @@ graph LR
 
     ---
 
-    Deploy longitudinal surveys — numeric, binary, choice, free-text — to agents
+    Deploy longitudinal surveys (numeric, binary, choice, and free-text) to agents
     during a run.
 
     [Probes →](probes.md)

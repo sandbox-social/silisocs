@@ -275,6 +275,7 @@ uv run pytest tests/test_initializer_bootstrap.py::test_checkpoint_restore_route
 - **Backend state is per GM**: this release does not share one live backend
   object across multiple GMs.
 
+
 ---
 
 ## FAQ
@@ -298,6 +299,6 @@ methods.
 
 ## See Also
 
-- [Environment Layer](environment_layer.md) — GM and engine extensibility
-- [Configuration Reference](configuration.md#gm-components) — Full config schema
+- [Environment Layer](environment_layer.md): GM and engine extensibility
+- [Configuration Reference](configuration.md#gm-components): Full config schema
 - Test files: `tests/test_*.py` for examples

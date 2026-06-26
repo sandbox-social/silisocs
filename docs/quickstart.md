@@ -73,7 +73,7 @@ uv run streamlit run src/silisocs/dashboard/launch_app.py
 ```
 
 The dashboard lets you configure scenarios, agent classes, network topology,
-and probes — then launch simulations with one click.
+and probes, then launch simulations with one click.
 
 ## 5. Analyze a Completed Run
 
@@ -106,12 +106,12 @@ the config directory. No need to manually specify a `world=` override unless
 you are choosing a non-default semantic world variant from `conf/world/`.
 
 A `pip install` without a repo checkout still runs out of the box via the
-packaged base config — omit `--config-path` entirely (see
+packaged base config: omit `--config-path` entirely (see
 [Installation](installation.md#run-the-base-config-no-repo-checkout-needed)).
 
 ## Next Steps
 
-- [Usage Overview](usage.md) — Full end-to-end guide
-- [Configuration Reference](configuration.md) — All config options
-- [Building Agents](building_agents.md) — Create custom agent populations
-- [Election Walkthrough](tutorials/election.md) — Complex scenario tutorial
+- [Usage Overview](usage.md): Full end-to-end guide
+- [Configuration Reference](configuration.md): All config options
+- [Building Agents](building_agents.md): Create custom agent populations
+- [Election Walkthrough](tutorials/election.md): Complex scenario tutorial

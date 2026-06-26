@@ -45,7 +45,7 @@ pip install "silisocs[all,aws]"             # all extras + AWS
 
 The installed package ships a runnable base configuration (`silisocs/conf/`: a
 generic twitter-like world). After `pip install silisocs`, run it directly
-from any directory — no `--config-path` required:
+from any directory, no `--config-path` required:
 
 ```sh
 silisocs num_agents=6 num_steps=5 \
@@ -54,7 +54,7 @@ silisocs num_agents=6 num_steps=5 \
 ```
 
 The named example scenarios (`election`, `misinformation`, ...) are example
-*content*, not part of the engine wheel — they live in the repository's
+*content*, not part of the engine wheel; they live in the repository's
 `scenarios/` directory. From a repo checkout you can run one by name:
 
 ```sh
@@ -115,7 +115,7 @@ directory. Scenario persona pipelines that load Hugging Face datasets (e.g.
 
 ## Environment Variables
 
-Silisocs reads `.env` files through `python-dotenv`, but only integrations that
+SiliSocS reads `.env` files through `python-dotenv`, but only integrations that
 talk to external services require secrets. Keep `.env` local and never commit it.
 
 ### Example `.env` File

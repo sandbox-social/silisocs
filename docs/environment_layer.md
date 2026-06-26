@@ -203,7 +203,7 @@ Pros:
 
 - Components fit directly into native GM routing through explicit slot methods.
 - You get consistent checkpoint state behavior (`get_state`, `set_state`).
-- Easier interoperability with other Silisocs components.
+- Easier interoperability with other SiliSocS components.
 
 Tradeoffs:
 

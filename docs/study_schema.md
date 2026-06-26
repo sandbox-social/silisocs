@@ -44,7 +44,7 @@ experiments/
 outputs/                                # Default simulation output root (gitignored)
 ```
 
-`study.yaml` is the single source of truth — it defines the scientific hierarchy *and* maps conditions to concrete run/eval paths. It is authored by the user and checked into version control. The study runner writes generated reproducibility and evaluation artifacts under `experiments/studies/{study_id}/generated/`.
+`study.yaml` is the single source of truth: it defines the scientific hierarchy *and* maps conditions to concrete run/eval paths. It is authored by the user and checked into version control. The study runner writes generated reproducibility and evaluation artifacts under `experiments/studies/{study_id}/generated/`.
 
 Raw simulation outputs usually live under `outputs/` or a study-specific
 `output_root_override`. The study runner writes reproducibility locks and stable
@@ -161,7 +161,7 @@ hypotheses:
 ### hypothesis.yaml
 
 Generated under `generated/organized/{hypothesis_id}/hypothesis.yaml` from
-`study.yaml`. A flat summary of one hypothesis — no run paths.
+`study.yaml`. A flat summary of one hypothesis, with no run paths.
 
 ```yaml
 id: h1_model_capacity
@@ -352,9 +352,9 @@ Generated at the study level. Two sections: a flat `conditions` list for per-run
 }
 ```
 
-`conditions` contains one entry per (hypothesis, condition, scenario) triple — identical in shape to a per-run `eval.json` entry but without per-agent detail. `metrics_by_condition` averages each metric across scenarios, nested by hypothesis so condition names that appear in multiple hypotheses don't collide.
+`conditions` contains one entry per (hypothesis, condition, scenario) triple, identical in shape to a per-run `eval.json` entry but without per-agent detail. `metrics_by_condition` averages each metric across scenarios, nested by hypothesis so condition names that appear in multiple hypotheses don't collide.
 
-A parallel `metrics_stats_by_condition` section reports cross-replicate statistics for each averaged metric — `n`, `mean`, `stdev`, `ci95_low`, `ci95_high` (same field semantics as `aggregated_stats` in `runs.json`). `metrics_by_condition` keeps its plain-mean shape for backward compatibility; use `metrics_stats_by_condition` when you need error bars or confidence intervals across seed replicates.
+A parallel `metrics_stats_by_condition` section reports cross-replicate statistics for each averaged metric: `n`, `mean`, `stdev`, `ci95_low`, `ci95_high` (same field semantics as `aggregated_stats` in `runs.json`). `metrics_by_condition` keeps its plain-mean shape for backward compatibility; use `metrics_stats_by_condition` when you need error bars or confidence intervals across seed replicates.
 
 ## The eval.py Contract
 
@@ -363,12 +363,12 @@ Every study that needs style-diversity metrics ships `experiments/studies/{study
 ### Required CLI interface
 
 ```bash
-# Primary — called by run_study.py for each run:
+# Primary: called by run_study.py for each run:
 uv run python experiments/studies/{study_name}/eval.py \
     --run-dir <path/to/run_dir> \
     --output  <path/to/eval.json>
 
-# Optional — manual comparison across runs:
+# Optional: manual comparison across runs:
 uv run python experiments/studies/{study_name}/eval.py \
     --compare <run_dir1> <run_dir2> ...
 ```
@@ -385,7 +385,7 @@ uv run python experiments/studies/{study_name}/eval.py \
 
 | File | Required | Purpose |
 |------|----------|---------|
-| `action_events.jsonl` | yes | Post/reply/repost content — drives all text metrics |
+| `action_events.jsonl` | yes | Post/reply/repost content: drives all text metrics |
 | `checkpoints/step_*_checkpoint.json` | no | Optional checkpoint state for evaluators that need it. Study runs enable per-step checkpoints by default for evaluator support; tune or disable this via `study.run_defaults.checkpoint_every_n_steps` (or override `sim.checkpoint.every_n_steps` directly in `study.run_defaults.overrides`) if a study does not need them. If absent, checkpoint-derived metrics should be `null` or omitted rather than crashing. |
 | `probe_events.jsonl` | no | Free-text probe responses for `probe_diversity` section |
 
@@ -429,7 +429,7 @@ evaluations:
 
 ### Writing eval.py for a new study
 
-1. Accept `--run-dir` and `--output` (required) plus `--compare` (optional) — see interface above.
+1. Accept `--run-dir` and `--output` (required) plus `--compare` (optional). See interface above.
 2. Use `load_run_dir(run_dir)` (or equivalent) to obtain posts and raw_log.
 3. Compute metrics; write output as `eval.json` in the schema format above.
 4. Return exit code 0 on success, non-zero on error.
@@ -578,7 +578,7 @@ The results notebook (`experiments/studies/{name}/notebook.ipynb`) follows a fix
 
 ### Conventions
 
-- Load data via `Path(".")` — the notebook lives in the study directory alongside `study.yaml`.
+- Load data via `Path(".")`: the notebook lives in the study directory alongside `study.yaml`.
 - Use `%matplotlib inline`.
 - Working/exploratory style: default matplotlib theme, clear axis labels.
 - Figures approximately 8x5 to 10x6 inches, 100 dpi.
@@ -588,7 +588,7 @@ The results notebook (`experiments/studies/{name}/notebook.ipynb`) follows a fix
 
 ### Adding a new hypothesis to an existing study
 
-1. Add the hypothesis entry to `study.yaml` (the source of truth). Include `statement`, `independent_variable`, `prediction`, `status: testing`, and an empty `conditions` map. The `hypothesis.yaml` files under `experiments/` are generated by the organizer — do not create them by hand.
+1. Add the hypothesis entry to `study.yaml` (the source of truth). Include `statement`, `independent_variable`, `prediction`, `status: testing`, and an empty `conditions` map. The `hypothesis.yaml` files under `experiments/` are generated by the organizer; do not create them by hand.
 2. Run simulations for each condition x scenario combination using `study.run_defaults` as the base, adding per-condition overrides.
 3. Evaluate each run to produce `eval.json`.
 4. Re-run `uv run silisocs-study --study experiments/studies/{study_name} organize`
@@ -618,7 +618,7 @@ hypotheses:
   h2_temperature_effect:
     follows_from: h1_model_capacity
     conditions:
-      temperature=0.2:           # same run as h1 gpt4o-mini baseline — reused
+      temperature=0.2:           # same run as h1 gpt4o-mini baseline, reused
         execution:
           mode: reuse_existing
         reuse:
@@ -657,7 +657,7 @@ A followup hypothesis is motivated by the result of a completed hypothesis. The 
      ...
    ```
 
-3. **Run, evaluate, and organize** as for any new hypothesis (steps 2–4 above).
+3. **Run, evaluate, and organize** as for any new hypothesis (steps 2 to 4 above).
 
 4. **Extend the notebook.** Add a new section after the parent's section. Open with a "Motivation" cell that references the parent finding before presenting the new results. The Section 9 Takeaways should reflect the full hypothesis chain.
 

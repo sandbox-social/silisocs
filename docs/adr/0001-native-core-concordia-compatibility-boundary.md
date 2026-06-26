@@ -6,7 +6,7 @@ Accepted.
 
 ## Context
 
-Silisocs originally borrowed Concordia-style object shapes for agents, game
+SiliSocS originally borrowed Concordia-style object shapes for agents, game
 masters, components, documents, and runtime dispatch. That made config-driven
 simulation possible, but it also left the normal runtime coupled to Concordia
 concepts such as component entities, concat-act components, interactive
@@ -26,7 +26,7 @@ legacy modules that explicitly opt in.
 - Native `ActionSpec` uses `prompt`, `output_type`, `options`, `tag`, and
   `extra_args`; it does not expose `call_to_action`.
 - Native `env.gm.components` remains the config term, but native components are
-  plain Silisocs slot helpers. They expose direct slot methods and do not expose
+  plain SiliSocS slot helpers. They expose direct slot methods and do not expose
   Concordia lifecycle hooks such as `pre_act`, `post_act`, `set_entity`, or
   `get_entity`.
 - Concordia support lives only in `silisocs.adapters.concordia`, backed by the

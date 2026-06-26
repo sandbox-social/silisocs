@@ -355,7 +355,7 @@ To implement a new generic environment:
     ```
 
     Use `agent_name` for the acting agent when an action needs actor identity.
-    Silisocs injects it from the active runtime Agent Name; it is not exposed in
+    SiliSocS injects it from the active runtime Agent Name; it is not exposed in
     tool schemas or generic action prompts, and agents should not provide it.
     Keep target choices such as `target_user` as normal agent-visible
     parameters.

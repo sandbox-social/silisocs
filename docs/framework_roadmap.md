@@ -1,11 +1,11 @@
 # Framework Roadmap
 
-This roadmap focuses on making Silisocs a powerful simulator and extensible
+This roadmap focuses on making SiliSocS a powerful simulator and extensible
 framework without losing the current YAML-first workflow.
 
 ## Target Architecture
 
-Silisocs should make each simulator layer replaceable through a defined shape:
+SiliSocS should make each simulator layer replaceable through a defined shape:
 
 | Layer | Stable shape | Extension path |
 |---|---|---|
@@ -56,7 +56,7 @@ Silisocs should make each simulator layer replaceable through a defined shape:
 | Priority | Feature | Why it matters |
 |---|---|---|
 | P0 | Strict constructor validation for extension `params` | Prevents silent YAML typos and broken custom components |
-| P0 | Reference-world backend docs and samples | Proves Silisocs is a simulator framework, not only social media |
+| P0 | Reference-world backend docs and samples | Proves SiliSocS is a simulator framework, not only social media |
 | P1 | Capability matrix for backends | Makes optional timeline/recsys/live-server features explicit |
 | P1 | Public/internal API labels | Helps extension authors avoid unstable modules |
 | P1 | Typed config schema or generated config reference | Reduces drift between YAML defaults and docs |

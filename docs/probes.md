@@ -1,12 +1,12 @@
 # Evaluation Probes
 
 Probes are structured surveys deployed to agents during the simulation. They
-measure agent attitudes, preferences, and knowledge over time — providing
+measure agent attitudes, preferences, and knowledge over time, providing
 quantitative data for analysis.
 
 !!! probe "What a probe captures"
     A probe asks every agent the same question on a schedule (e.g. every episode)
-    and records typed responses to `probe_events.jsonl` — turning a running
+    and records typed responses to `probe_events.jsonl`, turning a running
     society into a longitudinal panel survey.
 
 ## Overview
@@ -150,7 +150,7 @@ Probe results are saved to `probe_events.jsonl` in the simulation output directo
 ```
 
 The election world demonstrates probes in action with named built-in
-probes (vote preference, favorability, intent) — see the
+probes (vote preference, favorability, intent): see the
 [Election Walkthrough](tutorials/election.md).
 
 ### Default Detailed Probe Evaluators
@@ -179,6 +179,6 @@ For orchestration details and preset usage, see [Experiment Studies](experiments
 
 ## Related
 
-- [Building Agents](building_agents.md) — Agent construction and persona pipeline
-- [Usage Overview](usage.md#evaluation-probes) — Probes in the end-to-end workflow
-- [Configuration Reference](configuration.md) — Full probes config options
+- [Building Agents](building_agents.md): Agent construction and persona pipeline
+- [Usage Overview](usage.md#evaluation-probes): Probes in the end-to-end workflow
+- [Configuration Reference](configuration.md): Full probes config options

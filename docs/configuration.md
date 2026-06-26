@@ -54,8 +54,8 @@ Run parameters live in the `world` config group (placed at config root via
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `num_agents` | `100` | Number of agents to create |
-| `num_steps` | `50` | Simulation steps to run |
+| `num_agents` | `10` | Number of agents to create (any value works; personas recycle past the bundled 100, see below) |
+| `num_steps` | `5` | Simulation steps to run |
 | `run_name` | `run1` | Run identifier (used in output path) |
 | `seed` | `1` | Random seed |
 | `scenario_name` | `default` | Scenario identifier (used in output path) |
@@ -124,13 +124,13 @@ scenarios/
 
 Two mechanisms layer on top of the package defaults:
 
-**Layer 1 — Hydra SearchPath Plugin**: a registered `SearchPathPlugin` prepends
+**Layer 1, Hydra SearchPath Plugin**: a registered `SearchPathPlugin` prepends
 the scenario conf dir to Hydra's search path before composition. This gives
 `world/default.yaml` and `agents/default.yaml` from the scenario conf dir
 higher priority than the package defaults, so they replace the package
 `world/default.yaml` and `agents/default.yaml` entirely.
 
-**Layer 2 — Manual merge** (runs inside `main()` after Hydra composes): handles
+**Layer 2, Manual merge** (runs inside `main()` after Hydra composes): handles
 partial-override flat files that don't replace their group wholesale:
 
 - `env.yaml`, `eval.yaml`, `sim.yaml` → merged into their named groups
@@ -174,7 +174,7 @@ uv run silisocs --config-path scenarios/election/conf --cfg job
 1. Start the dashboard: `streamlit run src/silisocs/dashboard/launch_app.py`
 2. Modify all settings (agents, network, probes, etc.)
 3. Enter a new scenario name in the "Scenario name" field
-4. Click "Save Scenario" — creates files under `scenarios/{name}/conf/`
+4. Click "Save Scenario": creates files under `scenarios/{name}/conf/`
 5. Click "Run Simulation"
 
 **Option 2: Manual**
@@ -183,7 +183,7 @@ uv run silisocs --config-path scenarios/election/conf --cfg job
 mkdir -p scenarios/my_world/conf/world scenarios/my_world/conf/agents
 ```
 
-**`scenarios/my_world/conf/world/default.yaml`** — run parameters and narrative:
+**`scenarios/my_world/conf/world/default.yaml`**, run parameters and narrative:
 ```yaml
 # @package _global_
 scenario_name: my_world
@@ -206,7 +206,7 @@ event:
 data: {}
 ```
 
-**`scenarios/my_world/conf/agents/default.yaml`** — personas:
+**`scenarios/my_world/conf/agents/default.yaml`**, personas:
 ```yaml
 # @package agents
 persona_pipeline:
@@ -246,7 +246,7 @@ still rejects unnamed or duplicate specs before the simulation starts. Agent
 names are the runtime identities used by GMs, backends, flows, probes, logs, and
 checkpoints.
 
-**`scenarios/my_world/conf/env.yaml`** — optional backend/GM overrides:
+**`scenarios/my_world/conf/env.yaml`**, optional backend/GM overrides:
 ```yaml
 gm:
   components:
@@ -377,6 +377,45 @@ initial_observations:
 | `hf_dataset` | `dataset`, `split` | HuggingFace Datasets (cached after first download) |
 | `inline` | `records` | Records defined directly in YAML |
 | `config_path` | `path` | Dot-path reference into another config section (e.g. `candidates`) |
+
+### Count vs. available records (persona recycling)
+
+A class's `count` (commonly `${num_agents}`) sets how many agents the class
+builds; the data source supplies the persona records. The builder reconciles the
+two automatically:
+
+- **`count` ≤ records**: the record list is truncated to `count`.
+- **`count` > records**: the records are **recycled** to reach `count`, and each
+  extra pass gets a numbered suffix so agent names stay unique
+  (`Alex`, `Alex 2`, `Alex 3`, …). A single `WARNING` is logged naming the class
+  and the shortfall.
+
+This means any `num_agents` works out-of-the-box. There is no silent cap at the
+record count. The bundled default agents config ships **100 distinct starter
+personas**, so the default scenario scales to large agent counts before any
+recycling happens. For fully distinct personas at larger scale, point the class
+at a bigger data source (`csv`, `jsonl`, or `hf_dataset`) instead of relying on
+recycling.
+
+### `num_agents` vs. per-class `count`
+
+There are two related knobs, and it is important to understand which one is
+authoritative:
+
+| Field | Scope | Role |
+|-------|-------|------|
+| `num_agents` | run param (config root) | **Declared total.** Convenience value used in the job name and run metadata, and commonly referenced as `count: ${num_agents}`. |
+| `count` | per persona-pipeline class | **Authoritative.** How many agents that class builds. |
+
+The **actual** number of agents is the **sum of every class's `count`**: it is
+neither capped nor padded to `num_agents`. In the default config one class uses
+`count: ${num_agents}` and the others use `count: 0`, so the totals agree. If you
+add classes with explicit counts, make sure they **sum to `num_agents`** (set
+unused classes to `count: 0`).
+
+If the built total diverges from `num_agents`, a `WARNING` is logged at build
+time (and the dashboard's Launch tab shows the same mismatch), since this usually
+indicates the class counts were not kept in sync with the declared total.
 
 ### Alternate Agents Variants
 
@@ -511,11 +550,37 @@ aliases such as `FINISHED`. Unknown names fail during backend construction. If
 an action is matched by both `enabled_actions` and `excluded_actions`, the run
 fails loudly instead of guessing which list wins.
 
+### Action Aliases (agent-facing renaming)
+
+Give backend actions simpler/different agent-facing names without editing backend
+code, to simplify the action vocabulary agents see and emit:
+
+```yaml
+env:
+  gm:
+    backend:
+      action_aliases:
+        create_tweet: post            # rename: agents see + call "post"
+        like_tweet: [like, fav]       # "like" is displayed; "fav" also accepted
+```
+
+- The key is an existing action (its canonical method name or current selectable
+  name); the value is a single new name (rename) or a list (the first is shown to
+  agents, all are accepted by the parser).
+- The renamed name appears in the auto-generated action catalog/prompt, and the
+  canonical name plus every alias all resolve to the same action.
+- Works across resolve modes: `generic`/`tool_calling` dispatch aliases directly;
+  the custom `parsed_action` parser receives the token normalized to the
+  canonical method name.
+- Unknown actions, empty names, or a name that collides with another action fail
+  loudly at backend construction. Aliases are applied before
+  `enabled_actions`/`excluded_actions`, so filters may reference either vocabulary.
+
 #### Per-flow action filters
 
 `env.gm.backend.enabled_actions`/`excluded_actions` apply to every agent on that
-backend. To restrict the action surface *per flow* — e.g. a `lurker` flow that
-may only `like`/`repost` while a `poster` flow may publish — add a
+backend. To restrict the action surface *per flow* (e.g. a `lurker` flow that
+may only `like`/`repost` while a `poster` flow may publish), add a
 `flow_action_filters` map on the resolve component. It is enforced at resolve
 time (the disallowed action is rejected before the backend runs) and only ever
 *further-restricts* the backend-wide filter:
@@ -711,7 +776,7 @@ probes:
 Deployment filters select which agents receive probes and are applied as a
 sequential `AND`: `include_classes` → `exclude_classes` → `include_agents` →
 `exclude_agents` → `include_flows` → `exclude_flows`. `include_flows`/
-`exclude_flows` target by flow tag — e.g. `include_flows: [treatment]` deploys
+`exclude_flows` target by flow tag: e.g. `include_flows: [treatment]` deploys
 probes only to agents whose materialized flow is `treatment`, ideal for measuring
 a treatment cohort. Flow tags come from the same source as scheduling
 (`persona_pipeline.classes.<class>.flow_tag` + `sim.engine.step.params.agent_to_flow`)
@@ -794,7 +859,7 @@ sim:
 
 `sim.engine.turn_policy` is the global default applied to every agent. With
 `flow` or `multi_gm` scheduling you may additionally override the policy per
-flow via `sim.engine.step.params.flow_turn_policies` — keyed by flow tag, each
+flow via `sim.engine.step.params.flow_turn_policies`, keyed by flow tag, each
 value uses the same slot shape as `turn_policy`. Flows absent from the map fall
 back to the global policy, so omitting the key reproduces current behavior
 exactly. Per-flow overrides are ignored under `base`/`sequential` scheduling
@@ -836,10 +901,110 @@ state from `action_events.jsonl`.
 Checkpoint runtime metadata records artifact ownership for every Game Master
 rather than relying on one representative GM for the whole run.
 
-For multi-GM replay, action events are routed through the materialized Agent
-flow and that flow's GM chain. Replay is strict: exactly one GM in the chain
-must expose the replayed backend action. Incomplete or ambiguous routing
-metadata is an error, not a fallback.
+### Backend checkpoint capability
+
+Every backend declares two capability flags (see
+`src/silisocs/environments/backends/base.py`):
+
+- `provides_checkpoint_state`: the backend round-trips authoritative state via
+  `get_state`/`set_state`, so restore is a direct snapshot apply through the
+  default checkpoint loader. **True for every shipped backend.**
+- `supports_action_replay`: the backend exposes an event→action mapping
+  (`event_to_replay_action`) that the built-in `social_action_event_replay`
+  strategy can use to rebuild it by re-resolving logged events. Provided as an
+  extension point for *custom* non-snapshot backends.
+
+Every shipped backend self-restores via `set_state`. The SQL backends snapshot
+their database; **`mastodon`** can't snapshot its external live server, so its
+checkpoint state *is* its action history: `get_state` embeds the logged actions
+and `set_state` rebuilds the server by re-running them (as their original users,
+in order). It therefore restores through the same default `set_state` path, no
+special strategy required:
+
+- **Server reset**: the server must be wiped first (`reset_server_on_setup=true`),
+  otherwise replay duplicates the original run's content. Replay logs a warning
+  when reset is not configured.
+- **Toot-id remapping**: re-creating a post yields a *new* server toot id, so
+  `like`/`boost`/`reply` events are remapped from their logged (pre-resume) id to
+  the new one; an unmapped reference is skipped.
+- **Caveat**: replay re-posts to the live server and reproduces a *similar*, not
+  byte-identical, state (timestamps, ordering, federation differ). Set
+  `perform_operations=true` for the actions to actually reach the server.
+
+A **custom** non-snapshot backend (`provides_checkpoint_state=False`) can either
+do the same (implement `get_state`/`set_state`) or, if it sets
+`supports_action_replay=True`, let the built-in strategy replay its logged events.
+A backend that supports neither fails loudly; supply a custom restore strategy:
+
+```yaml
+sim:
+  checkpoint:
+    restore:
+      class_path: my_pkg.MyRestore   # subclass of CheckpointRestoreStrategy
+      params: {}
+```
+
+`class_path` takes precedence over `built_in`. The class must subclass
+`silisocs.runtime.checkpointing.restore.CheckpointRestoreStrategy`.
+
+### Restore robustness
+
+- **Identity reconciliation**: restoring a checkpoint object onto a runtime
+  object of a different `class_path`/`compat` is rejected, and an object that
+  saved non-empty state but only inherits the no-op `set_state()` raises rather
+  than silently dropping that state. Objects present in the runtime but absent
+  from the checkpoint are left freshly initialized and logged as a warning.
+- **Recsys self-heal**: after restore the in-memory recsys engine is rebuilt
+  empty; the recommendation-update component reconciles configured types against
+  the backend's live `recsys_active_types()` and lazily re-initializes them on
+  the first post-resume update, so algorithmic feeds resume automatically.
+- **Flow scheduling**: flow tags and flow chains are re-materialized from the
+  resume-time config (not the checkpoint). A divergence from the checkpointed
+  scheduling fingerprint is logged as a warning, since it can mis-route replay.
+
+### Multi-GM layout
+
+When more than one Game Master is configured, each GM's backend database and
+`action_events.jsonl` are isolated under a per-GM subdirectory
+(`<output>/<gm_name>/...`) so same-type GMs cannot clobber one another on
+checkpoint restore. Single-GM runs keep the flat layout. Two GMs that would
+resolve to the same backend database path are rejected at build time.
+
+**Per-GM restore**: the authoritative-vs-replay decision is made per game
+master, not all-or-nothing: each GM that carries a backend snapshot restores from
+it directly, and only the remaining (non-authoritative, e.g. Mastodon) GMs are
+handed to the restore strategy. A mixed run (e.g. a `twitter_like` GM and a
+`mastodon` GM) restores the snapshot GM from disk while replaying the Mastodon GM.
+
+For multi-GM replay, restore discovers **every** per-GM `action_events.jsonl`
+(the same flat-or-per-GM lookup eval uses), so multi-GM resumes locate their
+logs. Each event is routed back to the GM that logged it (its `gm_name`) and
+mapped to a backend action by that GM's own backend; events owned by an
+already-restored (snapshot) GM are skipped.
+
+**Per-GM restore override**: a GM may override the global `sim.checkpoint.restore`
+with its own strategy (same schema), for a backend that needs custom loading
+logic rather than the default replay/snapshot:
+
+```yaml
+env:
+  gm_orchestration:
+    gms:
+      - gm_name: mastodon_gm
+        backend: { type: mastodon }      # plus components: { ... }
+        restore:
+          class_path: my_pkg.MyMastodonRestore   # subclass of CheckpointRestoreStrategy
+          params: {}
+```
+
+GMs without a `restore` block use the global default. The key is additive: omit
+it and multi-GM restore behaves exactly as before. Authoritative (snapshot) GMs
+ignore their `restore` override because `set_state` already restored them.
+
+**Evaluation/analysis** read every per-GM `action_events.jsonl` (via
+`silisocs.evaluations.action_events.resolve_action_event_files`), so the default
+evaluators, activity summary, and dashboard cover all game masters, not just a
+flat root log.
 
 ---
 
@@ -857,7 +1022,7 @@ hydra:
 ```
 
 The simulation writes artifacts into the directory resolved by `hydra.run.dir` +
-`hydra.job.name`. See [Usage Overview — Output](usage.md#output) for the complete
+`hydra.job.name`. See [Usage Overview: Output](usage.md#output) for the complete
 list of output files.
 
 ---
@@ -888,8 +1053,8 @@ scheduling.
 
 ## Related
 
-- [Usage Overview](usage.md) — End-to-end workflow and output format
-- [Building Agents](building_agents.md) — Persona pipeline details
-- [Environment Backends](backends.md) — Generic apps, social platforms, and visualizers
-- [Evaluation Probes](probes.md) — Probe type reference
-- [Multi-GM Architecture](multi_gm_architecture.md) — Advanced GM orchestration
+- [Usage Overview](usage.md): End-to-end workflow and output format
+- [Building Agents](building_agents.md): Persona pipeline details
+- [Environment Backends](backends.md): Generic apps, social platforms, and visualizers
+- [Evaluation Probes](probes.md): Probe type reference
+- [Multi-GM Architecture](multi_gm_architecture.md): Advanced GM orchestration

@@ -259,7 +259,7 @@ uv run silisocs-study --study experiments/studies/election_opinion_program_v1 ru
 ```
 
 For clusters, keep site-specific account, partition, module, cache, and model
-startup choices outside the repository. The public templates only wire Silisocs
+startup choices outside the repository. The public templates only wire SiliSocS
 study/runner commands into Slurm; they do not launch any specific model server.
 If you use a local OpenAI-compatible server, configure `sim.llm.provider` and
 `sim.llm.api_base` in your study overrides or scenario config.
@@ -298,7 +298,7 @@ uv run silisocs-study \
   --server-ready-url 'http://127.0.0.1:8000/v1/models'
 ```
 
-Silisocs treats those hooks as user-owned shell commands; it does not ship
+SiliSocS treats those hooks as user-owned shell commands; it does not ship
 model-specific vLLM or cluster defaults.
 
 ### Generic Slurm templates

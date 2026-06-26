@@ -4,8 +4,12 @@
    accent on neutral surfaces — clean and professional, not vibrant.
    This file owns the exact brand hex; properdocs.yml only sets nearest base.
    =========================================================================== */
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap");
 
 :root {
+  /* Display typeface for headings — geometric, technical. Body stays Inter
+     (--md-text-font); code stays JetBrains Mono (--md-code-font). */
+  --sx-font-display: "Space Grotesk", var(--md-text-font, "Inter"), system-ui, sans-serif;
   --sx-accent: #0d9488;          /* brand accent — deep teal */
   --sx-accent-600: #0f766e;
   /* distinct, semantic hues for framework-themed callouts */
@@ -27,6 +31,7 @@
   --sx-border: #e6e8ec;          /* neutral hairline */
   --sx-border-strong: #c7e3df;   /* faint teal — hover only */
   --sx-hero-wash: rgba(13, 148, 136, 0.05);
+  --sx-grid-line: rgba(15, 23, 42, 0.04);   /* technical grid overlay */
 }
 
 /* ---- Dark scheme ----------------------------------------------------------- */
@@ -43,11 +48,67 @@
   --sx-border: #262a36;           /* neutral hairline */
   --sx-border-strong: #2f4a45;
   --sx-hero-wash: rgba(45, 212, 191, 0.06);
+  --sx-grid-line: rgba(148, 163, 184, 0.06);   /* technical grid overlay */
 }
 
-/* Brand accent text — solid, clean */
+/* Brand accent text — violet -> teal gradient for a technical, energetic feel.
+   The gradient slowly drifts (paused for reduced-motion users).
+   Falls back to a solid accent where background-clip:text is unsupported. */
 .sx-gradient-text {
   color: var(--md-primary-fg-color);
+  background: linear-gradient(100deg, #7c3aed 0%, #0d9488 40%, #5eead4 60%, #7c3aed 100%);
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: sx-gradient-drift 8s ease-in-out infinite;
+}
+@keyframes sx-gradient-drift {
+  0%   { background-position:   0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position:   0% 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sx-gradient-text { animation: none; }
+}
+
+/* ===========================================================================
+   DISPLAY TYPE — geometric headings (Space Grotesk) across the site.
+   =========================================================================== */
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4,
+.sx-hero h1 {
+  font-family: var(--sx-font-display);
+  font-feature-settings: "ss01", "ss02"; /* stylistic alternates where present */
+}
+/* Site title in the header bar also gets the display face. */
+.md-header__title,
+.md-ellipsis {
+  font-family: var(--sx-font-display);
+}
+
+/* ===========================================================================
+   MONO SECTION KICKERS — a small "// 01" monospace label above each H2,
+   numbered per page. Gives docs a code-commented, structured rhythm.
+   =========================================================================== */
+.md-typeset {
+  counter-reset: sx-section;
+}
+.md-typeset h2 {
+  counter-increment: sx-section;
+}
+.md-typeset h2::before {
+  content: "// " counter(sx-section, decimal-leading-zero);
+  display: block;
+  font-family: var(--md-code-font, monospace);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--md-accent-fg-color);
+  opacity: 0.9;
+  margin-bottom: 0.2rem;
 }
 
 /* ===========================================================================
@@ -59,9 +120,14 @@
   padding: 4.5rem 1.2rem 3.5rem;
   border-radius: 1rem;
   overflow: hidden;
+  /* Layered: violet/teal corner washes + a faint technical grid over the base. */
   background:
     radial-gradient(900px 360px at 30% -20%, var(--sx-hero-wash), transparent 65%),
+    radial-gradient(700px 320px at 105% 120%, rgba(124, 58, 237, 0.07), transparent 60%),
+    linear-gradient(var(--sx-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--sx-grid-line) 1px, transparent 1px),
     var(--sx-surface-2);
+  background-size: auto, auto, 32px 32px, 32px 32px, auto;
   border: 1px solid var(--sx-border);
 }
 .sx-hero__net {
@@ -70,7 +136,7 @@
   width: 100%;
   height: 100%;
   z-index: 0;
-  opacity: 0.5;
+  opacity: 0.72;
   pointer-events: none;
 }
 .sx-hero__inner {
@@ -85,11 +151,25 @@
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--md-primary-fg-color);
-  padding: 0.25rem 0.7rem;
-  border: 1px solid var(--sx-border);
-  border-radius: 2rem;
+  padding: 0.25rem 0.7rem 0.25rem 0.6rem;
+  border: 1px solid var(--sx-border-strong);
+  border-radius: 0.4rem;   /* squared off — reads more like a terminal tag */
   background: var(--sx-surface);
   margin-bottom: 1.1rem;
+  box-shadow: 0 0 0 1px var(--sx-hero-wash);
+}
+/* Blinking terminal prompt before the eyebrow text. */
+.sx-hero__eyebrow::before {
+  content: "▸ ";
+  color: var(--md-accent-fg-color);
+  animation: sx-blink 1.4s step-end infinite;
+}
+@keyframes sx-blink {
+  0%, 60% { opacity: 1; }
+  61%, 100% { opacity: 0.25; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sx-hero__eyebrow::before { animation: none; }
 }
 .sx-hero h1 {
   font-size: 2.6rem;
@@ -176,6 +256,59 @@
 .md-typeset .probe > .admonition-title::before,      .md-typeset .probe > summary::before      { background-color: var(--sx-c-probe);      -webkit-mask-image: var(--md-admonition-icon--probe);      mask-image: var(--md-admonition-icon--probe); }
 .md-typeset .gamemaster > .admonition-title::before, .md-typeset .gamemaster > summary::before { background-color: var(--sx-c-gamemaster);  -webkit-mask-image: var(--md-admonition-icon--gamemaster); mask-image: var(--md-admonition-icon--gamemaster); }
 .md-typeset .scenario > .admonition-title::before,   .md-typeset .scenario > summary::before   { background-color: var(--sx-c-scenario);   -webkit-mask-image: var(--md-admonition-icon--scenario);   mask-image: var(--md-admonition-icon--scenario); }
+
+/* ===========================================================================
+   TERMINAL WINDOW CHROME — every fenced code block gets a window frame with
+   a title bar and three brand-tinted "traffic light" dots. Scoped to skip the
+   bespoke `.sim-log` blocks (which carry their own chrome).
+   =========================================================================== */
+.md-typeset .highlight:not(.sim-log) {
+  position: relative;
+  border: 1px solid var(--sx-border);
+  border-radius: 0.55rem;
+  padding-top: 1.75rem;        /* room for the title bar */
+  overflow: hidden;
+}
+/* the title bar */
+.md-typeset .highlight:not(.sim-log)::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1.75rem;
+  background: var(--sx-surface-2);
+  border-bottom: 1px solid var(--sx-border);
+}
+/* three window dots: scenario violet / agent teal / gamemaster amber */
+.md-typeset .highlight:not(.sim-log)::after {
+  content: "";
+  position: absolute;
+  top: 0.62rem;
+  left: 0.8rem;
+  width: 2.3rem;
+  height: 0.48rem;
+  background-image:
+    radial-gradient(circle at center, var(--sx-c-scenario) 49%, transparent 53%),
+    radial-gradient(circle at center, var(--sx-c-agent) 49%, transparent 53%),
+    radial-gradient(circle at center, var(--sx-c-gamemaster) 49%, transparent 53%);
+  background-size: 0.48rem 0.48rem;
+  background-position: left center, center center, right center;
+  background-repeat: no-repeat;
+  opacity: 0.92;
+}
+/* square off the inner code corners (the frame supplies the radius) and lift
+   the copy button up into the title bar */
+.md-typeset .highlight:not(.sim-log) > pre,
+.md-typeset .highlight:not(.sim-log) > pre > code,
+.md-typeset .highlight:not(.sim-log) > table {
+  border-radius: 0;
+}
+.md-typeset .highlight:not(.sim-log) > .md-clipboard {
+  top: 0.22rem;
+  right: 0.45rem;
+  color: var(--md-default-fg-color--lighter);
+}
 
 /* ===========================================================================
    "SIMULATION LOG" code style  ( ```text { .sim-log }  )

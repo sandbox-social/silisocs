@@ -4,16 +4,16 @@ For API-level contracts for runtime agents and builder hooks, see
 [Simulation Extensibility API](simulation_extensibility_api.md).
 
 !!! agent "The agent contract"
-    Every agent — native, fixed, or custom — implements the same small interface:
+    Every agent (native, fixed, or custom) implements the same small interface:
     `name`, `observe(observation)`, and `act(action_spec)`. The platform decides
     *what* an agent perceives and *how* its output is resolved; the agent just
     reasons and responds.
 
 There are two ways to produce agent specs for your simulation:
 
-1. **YAML Pipeline** (recommended for most cases) — define agent classes
+1. **YAML Pipeline** (recommended for most cases): define agent classes
    declaratively in your scenario YAML
-2. **Custom Builder** — write a Python class for full programmatic control
+2. **Custom Builder**: write a Python class for full programmatic control
 
 The default `PersonaPipelineAgentBuilder` reads the YAML pipeline config. If a
 world needs programmatic logic, set `agents.builder.class_path` explicitly.
@@ -34,7 +34,7 @@ Builder output contract:
 
 Define a `persona_pipeline` section in your scenario YAML. The builder
 reads class definitions, loads data from various sources, and maps fields
-to agent parameters — no Python code needed.
+to agent parameters: no Python code needed.
 
 ### Minimal Example
 
@@ -87,7 +87,7 @@ field_map:
 ```
 
 `context` is required. The final `AgentConfig` records must also contain a
-unique `name`; Silisocs uses agent names as runtime identities for observations,
+unique `name`; SiliSocS uses agent names as runtime identities for observations,
 backend state, flows, probes, logs, and checkpoints. Most data sources should map
 `field_map.name` explicitly. The default builder also derives names for the
 known `nvidia/Nemotron-Personas-USA` persona dataset, and classes can opt into
@@ -268,7 +268,7 @@ See [Usage Overview](usage.md#per-agent-llm-models) for the full priority chain.
 
 ## Related
 
-- [Memory Initialization](memory_initialization.md) — How agents get their starting knowledge
-- [Configuration Reference](configuration.md) — Full persona_pipeline config options
-- [Election Walkthrough](tutorials/election.md) — Real-world multi-class world
-- [Usage Overview](usage.md#developer-customization-guide) — Engine/GM/backend customization map
+- [Memory Initialization](memory_initialization.md): How agents get their starting knowledge
+- [Configuration Reference](configuration.md): Full persona_pipeline config options
+- [Election Walkthrough](tutorials/election.md): Real-world multi-class world
+- [Usage Overview](usage.md#developer-customization-guide): Engine/GM/backend customization map

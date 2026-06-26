@@ -5814,6 +5814,7 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
+    { name = "click" },
     { name = "dash" },
     { name = "dash-cytoscape" },
     { name = "datasets" },
@@ -5870,6 +5871,7 @@ dashboard = [
     { name = "streamlit" },
 ]
 docs = [
+    { name = "click" },
     { name = "mkdocs-autorefs" },
     { name = "mkdocs-gen-files" },
     { name = "mkdocs-literate-nav" },
@@ -5915,6 +5917,7 @@ dev = [
     { name = "types-requests" },
 ]
 docs = [
+    { name = "click" },
     { name = "mkdocs-gen-files" },
     { name = "mkdocs-literate-nav" },
     { name = "mkdocs-material" },
@@ -5934,6 +5937,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "boto3", marker = "extra == 'aws'", specifier = ">=1.34.139,<2.0.0" },
+    { name = "click", marker = "extra == 'docs'", specifier = ">=8.1.0" },
     { name = "coloredlogs", specifier = ">=15.0.1" },
     { name = "dash", marker = "extra == 'analysis'", specifier = ">=2.18.2,<3.0.0" },
     { name = "dash-cytoscape", marker = "extra == 'analysis'", specifier = ">=1.0.2,<2.0.0" },
@@ -5999,6 +6003,7 @@ dev = [
     { name = "types-requests", specifier = ">=2.32.0.20241016" },
 ]
 docs = [
+    { name = "click", specifier = ">=8.1.0" },
     { name = "mkdocs-gen-files", specifier = ">=0.5.0,<1.0.0" },
     { name = "mkdocs-literate-nav", specifier = ">=0.6.0,<1.0.0" },
     { name = "mkdocs-material", specifier = ">=9.5.0,<10.0.0" },
