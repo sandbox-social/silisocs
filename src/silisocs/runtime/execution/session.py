@@ -44,6 +44,7 @@ from silisocs.runtime.checkpointing import (
     restore_rng_state_from_metadata,
     run_checkpoint_restores,
     save_checkpoint,
+    select_resume_source,
     should_save_checkpoint,
 )
 from silisocs.runtime.configuration.external import (
@@ -390,8 +391,25 @@ def main(cfg: DictConfig):
 
     checkpoint_cfg = getattr(cfg.sim, "checkpoint", None)
     source_run = None
+    auto_resume = True
+    restore_cfg = None
     if checkpoint_cfg is not None:
         source_run = getattr(checkpoint_cfg, "source_run", None)
+        auto_resume = bool(getattr(checkpoint_cfg, "auto_resume", True))
+        restore_cfg = getattr(checkpoint_cfg, "restore", None)
+
+    # An explicit ``source_run`` resumes from that prior run and requires a
+    # ``restore`` strategy; otherwise auto-resume (default on) picks up this
+    # run's own output dir only if it already holds checkpoints.
+    if source_run and restore_cfg is None:
+        raise ValueError("sim.checkpoint.source_run requires sim.checkpoint.restore.")
+    source_path = select_resume_source(
+        source_run,
+        auto_resume=auto_resume,
+        restore_present=restore_cfg is not None,
+        output_dir=output_dir,
+    )
+    is_auto_resume = bool(source_path is not None and not source_run)
 
     start_step = 0
     checkpoint_meta: dict[str, Any] = {}
@@ -399,15 +417,10 @@ def main(cfg: DictConfig):
     checkpoint_action_event_files: list[Path] = []
     checkpoint_data: dict[str, Any] | None = None
     checkpoint_authoritative_gms: frozenset[str] = frozenset()
-    if source_run:
-        if checkpoint_cfg is None or getattr(checkpoint_cfg, "restore", None) is None:
-            raise ValueError("sim.checkpoint.source_run requires sim.checkpoint.restore.")
-        source_path = Path(str(source_run)).expanduser()
-        if not source_path.is_absolute():
-            source_path = (Path.cwd() / source_path).resolve()
+    if source_path is not None:
         resume_path = resolve_checkpoint_source(source_path)
         checkpoint_action_event_files = resolve_action_event_files(source_path)
-        checkpoint_restore = build_checkpoint_restore(getattr(checkpoint_cfg, "restore", None))
+        checkpoint_restore = build_checkpoint_restore(restore_cfg)
 
         with metrics.phase("checkpoint_load"):
             checkpoint_data = load_checkpoint_file(resume_path)
@@ -419,11 +432,19 @@ def main(cfg: DictConfig):
             raise ValueError("Checkpoint is missing required `step` value.")
         start_step = int(default_step)
 
-        logger.info(
-            "Restoring from checkpoint %s at step %d",
-            resume_path,
-            start_step,
-        )
+        if is_auto_resume:
+            logger.info(
+                "Auto-resuming from latest checkpoint in %s at step %d",
+                resume_path,
+                start_step,
+            )
+        else:
+            logger.info(
+                "Restoring from checkpoint %s at step %d",
+                resume_path,
+                start_step,
+            )
+        checkpoint_meta["auto_resumed"] = is_auto_resume
         checkpoint_meta["checkpoint_step"] = start_step
         checkpoint_meta["checkpoint_file"] = str(resume_path)
         checkpoint_meta["source_run"] = str(source_path)

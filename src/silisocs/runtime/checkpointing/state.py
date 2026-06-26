@@ -318,6 +318,51 @@ def resolve_checkpoint_source(source_run: str | Path) -> Path:
     return candidates[-1]
 
 
+def has_checkpoints(output_dir: str | Path) -> bool:
+    """Return whether ``output_dir`` already holds at least one checkpoint file.
+
+    True iff ``<output_dir>/checkpoints`` exists and contains at least one
+    ``step_*_checkpoint.json``. Never raises (a missing or unreadable directory
+    yields False), so it is safe to call before deciding whether to auto-resume.
+    """
+    try:
+        checkpoints_dir = Path(output_dir) / "checkpoints"
+        if not checkpoints_dir.is_dir():
+            return False
+        return any(checkpoints_dir.glob("step_*_checkpoint.json"))
+    except OSError:
+        return False
+
+
+def select_resume_source(
+    source_run: str | Path | None,
+    *,
+    auto_resume: bool,
+    restore_present: bool,
+    output_dir: str | Path,
+) -> Path | None:
+    """Decide which directory (if any) a run should resume its checkpoint from.
+
+    Returns the resume source directory, or ``None`` for a fresh start:
+
+    * an explicit ``source_run`` always wins (returned as an expanded/resolved
+      absolute path), regardless of ``auto_resume`` or whether it has
+      checkpoints — the caller still validates the source and ``restore``;
+    * otherwise, when ``auto_resume`` is set, a ``restore`` strategy is present,
+      and ``output_dir`` already contains checkpoints, the run resumes from its
+      own ``output_dir``;
+    * in every other case the run starts fresh (returns ``None``).
+    """
+    if source_run:
+        source_path = Path(str(source_run)).expanduser()
+        if not source_path.is_absolute():
+            source_path = (Path.cwd() / source_path).resolve()
+        return source_path
+    if auto_resume and restore_present and has_checkpoints(output_dir):
+        return Path(output_dir).resolve()
+    return None
+
+
 def restore_rng_state_from_metadata(metadata: Mapping[str, Any]) -> None:
     """Restore Python's random state from checkpoint metadata if present."""
     raw = metadata.get("rng_state_b64")
