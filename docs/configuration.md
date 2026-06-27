@@ -117,6 +117,7 @@ custom provider (see [Building Agents](building_agents.md)).
 | `sim.checkpoint.restore.built_in` | `social_action_event_replay` | Checkpoint restore strategy when `source_run` is set |
 | `sim.engine.step.built_in` | `base` | Engine step policy: `base`, `sequential`, `flow`, or `multi_gm` |
 | `sim.engine.step.params.chain_execution` | `concurrent` | Multi-GM chain traversal mode (only `multi_gm` step): `concurrent` (flows advance as independent pipelines, serializing only when two flows touch the same GM) or `sequential` (each flow runs its full GM chain to completion before the next) |
+| `sim.engine.step.params.gm_turn_policies` | `{}` | Per-GM turn policy overrides keyed by GM name, each value using the same slot shape as `sim.engine.turn_policy` (`{built_in\|class_path, params}`); applies under any step mode and is resolved per batch by GM name |
 | `sim.roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |
 
 ---
@@ -901,6 +902,22 @@ policy applies at every GM hop. Hop scheduling itself follows the
 own previous hop resolves, serializing only when two flows touch the same GM —
 unless overridden via `sim.engine.step.params.chain_execution` (see
 [Advanced: Multi-GM Orchestration](#advanced-multi-gm-orchestration)).
+
+You may also override the turn policy per GM via
+`sim.engine.step.params.gm_turn_policies`, a `{gm_name: turn_policy_slot}` map
+where each value uses the same slot shape as `turn_policy` and
+`flow_turn_policies` (`{built_in|class_path, params}`). This lets a GM/backend
+set its own per-step action cadence — e.g. `single_action` in a "world" GM but
+`open_ended` in a social GM, or a different cadence at each hop of a multi-GM
+flow chain. The per-GM key disambiguates hops that share one flow, which
+`flow_turn_policies` cannot (it is keyed by flow, so the same per-flow policy
+applies at every GM hop). The policy for a batch is resolved by most-specific
+wins: per-flow (`flow_turn_policies[flow]`) > per-GM
+(`gm_turn_policies[gm_name]`) > global (`sim.engine.turn_policy`). Unset (an
+empty map) means the global turn policy applies everywhere, unchanged. Unlike
+`flow_turn_policies` (which only takes effect under `flow`/`multi_gm`
+scheduling), `gm_turn_policies` applies under any step mode because it is
+resolved per batch by GM name.
 
 Sequential scheduling:
 
