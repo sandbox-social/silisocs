@@ -116,6 +116,7 @@ custom provider (see [Building Agents](building_agents.md)).
 | `sim.checkpoint.auto_resume` | `true` | Resume from this run's own output directory if it already contains checkpoints; ignored when `source_run` is set |
 | `sim.checkpoint.restore.built_in` | `social_action_event_replay` | Checkpoint restore strategy when `source_run` is set |
 | `sim.engine.step.built_in` | `base` | Engine step policy: `base`, `sequential`, `flow`, or `multi_gm` |
+| `sim.engine.step.params.chain_execution` | `concurrent` | Multi-GM chain traversal mode (only `multi_gm` step): `concurrent` (flows advance as independent pipelines, serializing only when two flows touch the same GM) or `sequential` (each flow runs its full GM chain to completion before the next) |
 | `sim.roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |
 
 ---
@@ -895,7 +896,11 @@ value uses the same slot shape as `turn_policy`. Flows absent from the map fall
 back to the global policy, so omitting the key reproduces current behavior
 exactly. Per-flow overrides are ignored under `base`/`sequential` scheduling
 (which do not group agents by flow). For a multi-GM flow chain the same per-flow
-policy applies at every GM hop.
+policy applies at every GM hop. Hop scheduling itself follows the
+`concurrent` chain-execution default — a flow's next hop starts as soon as its
+own previous hop resolves, serializing only when two flows touch the same GM —
+unless overridden via `sim.engine.step.params.chain_execution` (see
+[Advanced: Multi-GM Orchestration](#advanced-multi-gm-orchestration)).
 
 Sequential scheduling:
 
@@ -1079,6 +1084,27 @@ routing and actor selection.
 and materialized before runtime. The Engine and Game Masters both read the same
 final `agent_flow_tags`, so component routing cannot drift from Engine flow
 scheduling.
+
+`sim.engine.step.params.chain_execution` (only the `multi_gm` step strategy uses
+it) selects how flow chains traverse their GMs:
+
+- `concurrent` (DEFAULT): Flows run as independent pipelines through their GM
+  chains. Distinct flows advance concurrently and a flow's next hop starts as
+  soon as its own previous hop completes — turns serialize ONLY when two flows
+  touch the same GM at the same time (enforced by the engine's existing per-GM
+  lock). Flows listed in `flow_order` run first as a strict serial prefix,
+  preserving declared precedence such as seed-then-act (`fixed_pre` before
+  `default`); every other flow runs as the concurrent group. A single agent's
+  own chain hops always stay serial, since each hop observes the prior hop's
+  resolution.
+- `sequential`: Legacy behavior — each flow runs its full GM chain to completion
+  before the next flow, one batch at a time, in a deterministic flow-by-flow
+  ("row-major") order.
+
+`concurrent` is the default, replacing the previously always-sequential chain
+traversal. Independent of the mode: each GM's `update()` still runs once before
+any acting in a step; checkpoint replay is still per-agent-flow-chain; and
+`flow_turn_policies` and per-flow component routing still apply at every hop.
 
 ---
 

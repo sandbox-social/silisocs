@@ -312,6 +312,13 @@ sequence of `StepBatch(flow_name, game_master, turns)`. Each `turns` entry is
 logging, retry telemetry, concurrency limits, and `StepResult` shape. A custom
 step policy may bypass it, but then it owns those responsibilities.
 
+The `multi_gm` step policy emits its chain batches for concurrent execution by
+default: flows run as independent pipelines through their GM chains, gated only
+by shared-GM overlap (the engine's per-GM lock serializes turns when two flows
+touch the same GM at once). The `sim.engine.step.params.chain_execution` knob
+selects this `concurrent` default or legacy `sequential` (each flow runs its full
+chain to completion before the next).
+
 Turn policies own one selected agent's action cadence and implement:
 
 ```python
@@ -341,7 +348,9 @@ def should_run_probe_phase(self, *, step: int, orchestrator: Any) -> bool: ...
 Built-ins:
 
 - Loop policy: `fixed_steps`
-- Step policy: `base`, `sequential`, `flow`, `multi_gm`
+- Step policy: `base`, `sequential`, `flow`, `multi_gm` (emits chain batches for
+  concurrent execution by default; `chain_execution` selects `concurrent` vs
+  `sequential`)
 - Turn policy: `single_action`, `fixed_count`, `open_ended`
 - Probe schedule: `step_schedule`, `fixed_interval`, `disabled`
 

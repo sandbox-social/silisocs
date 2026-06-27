@@ -303,12 +303,27 @@ Flow routing notes:
 - In `multi_gm` mode, every configured GM runs `update(...)` once at the start
   of the episode step, before flow routing and actor selection. Flow chains only
   route selected agent turns through GMs.
+- Flow chain traversal is controlled by `sim.engine.step.params.chain_execution`
+  (only the `multi_gm` step strategy reads this knob):
+  - `concurrent` (DEFAULT): flows run as independent pipelines through their GM
+    chains. Distinct flows advance concurrently, and a flow's next chain hop
+    starts as soon as its own previous hop completes; turns serialize only when
+    two flows touch the same GM at the same time (enforced by the engine's
+    existing per-GM lock). Flows listed in `flow_order` run first as a strict
+    serial prefix, preserving declared precedence such as seed-then-act
+    (`fixed_pre` before `default`); every other flow runs as the concurrent
+    group. A single agent's own chain hops always stay serial, since each hop
+    observes the prior hop's resolution.
+  - `sequential`: legacy behavior — each flow runs its full GM chain to
+    completion before the next flow, one batch at a time, in deterministic
+    flow-by-flow ("row-major") order.
 
 Multi-GM orchestration is configured under `env.gm_orchestration`. Each
 orchestrated GM must declare its own strict `backend` and `components` blocks;
 missing nested keys are not filled from the default `env.gm`. Flow chains must
 reference known GM names, cannot be empty, cannot repeat a GM, and must move
-through strictly increasing GM `sequence` values.
+through strictly increasing GM `sequence` values, which fixes each chain's
+stage ordering regardless of `chain_execution` mode.
 
 Final Agent flow tags are materialized during construction and passed to every
 Game Master. The Engine does not re-apply `agent_to_flow` at turn time.

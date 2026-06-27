@@ -83,17 +83,34 @@ as names, prompts are typed `ActionSpec` objects, and actions are typed
 `ActionOutput` objects.
 
 In `multi_gm` step mode, this same shape is applied across several Game
-Masters:
+Masters. How flow chains traverse their GMs is governed by the
+`chain_execution` mode at `sim.engine.step.params.chain_execution` (only the
+`multi_gm` step strategy uses it):
 
 ```text
 Each step
   -> for each configured GM in sequence order:
        gm.update(step, agents, context)
   -> group agents by flow
-  -> for each flow in flow_order:
-       for each GM in the flow's configured chain:
-         gm.acting_agents(flow_agents)
-         selected agents observe, act, and resolve through that GM
+
+  chain_execution: concurrent (DEFAULT)
+    -> flows in flow_order run first as a strict serial prefix
+       (preserves declared precedence, e.g. fixed_pre before default)
+    -> every other flow runs as the concurrent group:
+         distinct flows advance as independent pipelines through their
+         GM chains; a flow's next hop starts as soon as its own previous
+         hop completes. Turns serialize ONLY when two flows touch the same
+         GM at the same time (the engine's per-GM lock). A single agent's
+         own chain hops always stay serial, since each hop observes the
+         prior hop's resolution.
+
+  chain_execution: sequential (legacy)
+    -> for each flow in flow-by-flow ("row-major") order:
+         each flow runs its full GM chain to completion before the next
+         flow, one batch at a time:
+           for each GM in the flow's configured chain:
+             gm.acting_agents(flow_agents)
+             selected agents observe, act, and resolve through that GM
 ```
 
 The update phase is per GM and per step, not per flow-chain hop. Flow chains
@@ -143,11 +160,16 @@ used during turn scheduling.
 In multi-GM runs, `flow_to_gms` chains must be explicit and valid: each chain
 references known GMs, contains at least one GM, avoids duplicate names, and
 uses increasing GM `sequence` values. Flows without a binding fall back to the
-earliest-sequence GM.
+earliest-sequence GM. By default these chains execute concurrently — distinct
+flows advance as independent pipelines, serializing only when they touch the
+same GM at once — under `chain_execution: concurrent`
+(`sim.engine.step.params.chain_execution`); set `chain_execution: sequential`
+for the legacy flow-by-flow traversal.
 
-Checkpoint replay uses that same flow metadata. In multi-GM replay, exactly one
-GM in the Agent's flow chain must expose the replayed action; otherwise restore
-fails instead of falling back to another GM.
+Checkpoint replay uses that same flow metadata, and is per-agent-flow-chain
+regardless of `chain_execution` mode. In multi-GM replay, exactly one GM in the
+Agent's flow chain must expose the replayed action; otherwise restore fails
+instead of falling back to another GM.
 
 ---
 
