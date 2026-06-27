@@ -292,14 +292,15 @@ class OpenAILanguageModel(LanguageModel):
         tool_mode = str(mode or "single").strip().lower()
         if tool_mode not in {"single", "multi"}:
             tool_mode = "single"
+        multi = tool_mode == "multi"
+        instruction = (
+            "Call every function required to complete the user's request; "
+            "you may call multiple functions."
+            if multi
+            else "Call the single most appropriate function to complete the user's request."
+        )
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are a helpful assistant. "
-                    "Call the single most appropriate function to complete the user's request."
-                ),
-            },
+            {"role": "system", "content": f"You are a helpful assistant. {instruction}"},
             {"role": "user", "content": prompt},
         ]
 
@@ -309,6 +310,8 @@ class OpenAILanguageModel(LanguageModel):
                 messages=messages,
                 tools=tools,
                 tool_choice="required",
+                # Single mode wants exactly one call; multi mode allows several.
+                parallel_tool_calls=multi,
                 temperature=0.5,
                 timeout=60,
                 **kwargs,
@@ -321,7 +324,9 @@ class OpenAILanguageModel(LanguageModel):
             parsed_calls = [
                 call for call in (_parse_tool_call(tc) for tc in msg.tool_calls) if call is not None
             ]
-            if tool_mode == "single":
+            # Defensive: parallel_tool_calls=False should already yield one call,
+            # but not every OpenAI-compatible provider honors it — enforce it here.
+            if not multi:
                 parsed_calls = parsed_calls[:1]
             self._log(
                 prompt,
