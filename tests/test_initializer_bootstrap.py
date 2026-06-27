@@ -91,13 +91,11 @@ class _ReplayGameMaster:
         name: str,
         actions: list[_Action],
         agent_flow_tags: dict[str, str] | None = None,
-        flow_chains: dict[str, list[str]] | None = None,
         owned_flows: tuple[str, ...] = (),
     ) -> None:
         self.name = name
         self.backend = _ReplayBackend(actions)
         self.agent_flow_tags = agent_flow_tags or {}
-        self.flow_chains = flow_chains or {}
         self.owned_flows = owned_flows
         self.replayed: list[tuple[str, str]] = []
 
@@ -166,7 +164,6 @@ def test_checkpoint_restore_routes_replay_to_matching_gm_backend(tmp_path: Path)
         name="router_gm",
         actions=[],
         agent_flow_tags={"Alice": "social"},
-        flow_chains={"social": ["audit_gm", "social_gm"]},
         owned_flows=("social",),
     )
     audit_gm = _ReplayGameMaster(name="audit_gm", actions=[], owned_flows=("social",))
@@ -180,6 +177,7 @@ def test_checkpoint_restore_routes_replay_to_matching_gm_backend(tmp_path: Path)
         game_masters=[router_gm, audit_gm, social_gm],
         action_events_files=[events_file],
         checkpoint_step=1,
+        flow_chains={"social": ["audit_gm", "social_gm"]},
     )
 
     assert router_gm.replayed == []
@@ -220,12 +218,12 @@ def test_checkpoint_restore_rejects_unknown_gm_in_flow_chain(tmp_path: Path) -> 
                     name="router",
                     actions=[],
                     agent_flow_tags={"Alice": "social"},
-                    flow_chains={"social": ["missing"]},
                 ),
                 _ReplayGameMaster(name="other", actions=[]),
             ],
             action_events_files=[_write_replay_event(tmp_path)],
             checkpoint_step=1,
+            flow_chains={"social": ["missing"]},
         )
 
 
@@ -235,13 +233,13 @@ def test_checkpoint_restore_skips_unmatched_action_in_chain(tmp_path: Path) -> N
         name="router",
         actions=[],
         agent_flow_tags={"Alice": "social"},
-        flow_chains={"social": ["router", "audit"]},
     )
     audit = _ReplayGameMaster(name="audit", actions=[])
     SocialActionEventReplayRestore().restore(
         game_masters=[router, audit],
         action_events_files=[_write_replay_event(tmp_path)],
         checkpoint_step=1,
+        flow_chains={"social": ["router", "audit"]},
     )
     assert router.replayed == []
     assert audit.replayed == []
@@ -254,13 +252,13 @@ def test_checkpoint_restore_uses_first_matching_gm_in_chain(tmp_path: Path) -> N
         name="router",
         actions=[post_action],
         agent_flow_tags={"Alice": "social"},
-        flow_chains={"social": ["router", "audit"]},
     )
     audit = _ReplayGameMaster(name="audit", actions=[post_action])
     SocialActionEventReplayRestore().restore(
         game_masters=[router, audit],
         action_events_files=[_write_replay_event(tmp_path)],
         checkpoint_step=1,
+        flow_chains={"social": ["router", "audit"]},
     )
     assert router.replayed == [("Alice", "create_tweet")]
     assert audit.replayed == []

@@ -5,8 +5,9 @@ from __future__ import annotations
 import pytest
 from omegaconf import OmegaConf
 
+from silisocs.runtime.construction.engines import build_engine
 from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType
-from silisocs.simulation_engines.base_engines import FlowRuntimeEngine
+from silisocs.simulation_engines.base_engines import RuntimeEngine
 from silisocs.simulation_engines.policies.factory import build_flow_turn_policies
 from silisocs.simulation_engines.policies.steps import FlowStepStrategy
 from silisocs.simulation_engines.policies.turns import (
@@ -41,7 +42,6 @@ class _GameMaster:
         self.name = name
         self.selected = selected
         self.agent_flow_tags = agent_flow_tags
-        self.flow_chains: dict[str, list[str]] = {}
         self.resolved: list[tuple[str, ActionOutput]] = []
 
     def update(self, *, step: int, agents: list[_Agent], context: object | None = None) -> None:
@@ -120,7 +120,7 @@ def test_build_flow_turn_policies_rejects_non_mapping_slot() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _flow_engine(flow_turn_policies: dict | None = None) -> FlowRuntimeEngine:
+def _flow_engine(flow_turn_policies: dict | None = None) -> RuntimeEngine:
     step_params: dict = {"flow_order": ["chatty", "default"]}
     if flow_turn_policies is not None:
         step_params["flow_turn_policies"] = flow_turn_policies
@@ -134,7 +134,7 @@ def _flow_engine(flow_turn_policies: dict | None = None) -> FlowRuntimeEngine:
             }
         }
     )
-    return FlowRuntimeEngine(config=cfg)
+    return build_engine(cfg)
 
 
 def test_flow_engine_threads_per_flow_policies_into_strategy() -> None:

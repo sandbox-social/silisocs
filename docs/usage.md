@@ -263,6 +263,19 @@ classes:
     model: gpt-4o            # Better model for key agents
 ```
 
+`model` may also be a full LLM block that overrides `sim.llm` per-field (unset
+fields fall back to global); `extra_kwargs` replaces rather than merges:
+```yaml
+classes:
+  candidate:
+    count: 2
+    model:
+      name: gpt-4o
+      temperature: 0.2
+      provider: openai
+      # api_base, api_key, extra_kwargs, disabled also accepted
+```
+
 **Per-agent**, via field mapping:
 ```yaml
 classes:
@@ -277,7 +290,9 @@ classes:
       model: model_name       # Maps to per-agent model assignment
 ```
 
-Priority: per-agent field_map > per-class config > global default.
+Priority: per-agent field_map > per-class config > global default. This priority
+applies to the model `name`; for a per-class block, each other field overrides
+the matching global `sim.llm` field and falls back to global when unset.
 
 ---
 
@@ -700,29 +715,38 @@ The runtime now includes direct engine step strategies:
 - `sim.engine.step.built_in: base` (default): simple execution path, one GM active per episode.
 - `sim.engine.step.built_in: sequential`: one GM, selected agents executed one by one.
 - `sim.engine.step.built_in: flow`: flow-aware execution.
-- `sim.engine.step.built_in: multi_gm`: flow-aware execution with multi-GM routing.
+- `sim.engine.step.built_in: multi_gm` / `multi_gm_serial` / `multi_gm_staged`:
+  flow-aware execution with multi-GM routing; the three variants select the
+  flow-chain traversal mode (see below).
 
-For `multi_gm`, all configured Game Masters update once at the start of each
-episode step, before flow routing and actor selection. Flow chains then route
-selected agent turns through the configured GMs; `gm.update(...)` is not called
-again inside each flow chain.
+For the `multi_gm*` strategies, all configured Game Masters update once at the
+start of each episode step, before flow routing and actor selection. Flow chains
+then route selected agent turns through the configured GMs; `gm.update(...)` is
+not called again inside each flow chain.
 
-Chain traversal is controlled by `sim.engine.step.params.chain_execution` (only
-the `multi_gm` step strategy reads it):
+Chain traversal is selected by `sim.engine.step.built_in` (the former
+`sim.engine.step.params.chain_execution` knob has been removed; a config that
+still sets it raises a `ValueError` with a migration hint):
 
-- `concurrent` (default): flows run as independent pipelines through their GM
-  chains. Distinct flows advance concurrently and a flow's next hop starts as
-  soon as its own previous hop completes — turns serialize only when two flows
-  touch the same GM at the same time (the engine's existing per-GM lock). Flows
-  listed in `flow_order` run first as a strict serial prefix, preserving declared
-  precedence such as seed-then-act (`fixed_pre` before `default`); every other
-  flow runs as the concurrent group. A single agent's own chain hops always stay
-  serial, since each hop observes the prior hop's resolution.
-- `sequential`: legacy opt-in — each flow runs its full GM chain to completion
-  before the next flow, one batch at a time, in a deterministic flow-by-flow
-  ("row-major") order.
+- `multi_gm` (default, concurrent): flows run as independent pipelines through
+  their GM chains. Distinct flows advance concurrently and a flow's next hop
+  starts as soon as its own previous hop completes — turns serialize only when
+  two flows touch the same GM at the same time (the engine's existing per-GM
+  lock). Flows listed in `flow_order` run first as a strict serial prefix,
+  preserving declared precedence such as seed-then-act (`fixed_pre` before
+  `default`); every other flow runs as the concurrent group. A single agent's own
+  chain hops always stay serial, since each hop observes the prior hop's
+  resolution. This is the unchanged default behavior.
+- `multi_gm_serial`: legacy row-major — each flow runs its full GM chain to
+  completion before the next flow, one batch at a time, in a deterministic
+  flow-by-flow order.
+- `multi_gm_staged`: column-major with a global per-stage barrier — `flow_order`
+  flows run first as a serial prefix, then every remaining flow advances one stage
+  at a time, with all flows' stage-N hops running concurrently and stage N+1
+  blocked until all of stage N finishes. A `null` chain entry (empty slot) idles a
+  flow at that stage so differently-shaped chains stay stage-aligned.
 
-Checkpoint replay is per-agent-flow-chain regardless of `chain_execution` mode.
+Checkpoint replay is per-agent-flow-chain regardless of the traversal mode.
 
 The engine is responsible for:
 
@@ -730,8 +754,8 @@ The engine is responsible for:
 - Probe scheduling and deployment timing
 - Selecting acting agents and action specs for each episode
 - Running agent actions concurrently and resolving them through the GM (under
-  `multi_gm` with the default `chain_execution: concurrent`, this also covers
-  cross-flow/cross-chain concurrency, gated by shared-GM overlap)
+  the default `multi_gm` strategy, this also covers cross-flow/cross-chain
+  concurrency, gated by shared-GM overlap)
 - Worker throttling based on retry telemetry
 
 Key implementation: `src/silisocs/simulation_engines/base_engines.py`.

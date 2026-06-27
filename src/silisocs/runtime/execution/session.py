@@ -10,6 +10,8 @@ override package defaults. Use repeated ``--overlay-config-path`` flags to
 layer additional override trees.
 """
 
+import hashlib
+import json
 import logging
 import os
 import random
@@ -59,19 +61,59 @@ from silisocs.runtime.configuration.validation import validate_scenario_config
 from silisocs.runtime.construction.agent_configs import build_agent_configs
 from silisocs.runtime.construction.assembly import construct_runtime_with_metrics
 from silisocs.runtime.construction.engines import build_engine
-from silisocs.runtime.construction.game_masters import build_game_masters
+from silisocs.runtime.construction.game_masters import build_game_masters, resolve_flow_chains
 from silisocs.runtime.construction.initialization_context import (
     build_initializer_context,
     populate_agent_data,
 )
 from silisocs.runtime.io import configure_logging
 from silisocs.runtime.language_models import LanguageModel, select_large_language_model
+from silisocs.runtime.model_fields import MODEL_FIELDS
 from silisocs.runtime.telemetry import SimMetricsCollector
 
 # Package root (src/silisocs)
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 CONF_DIR = PACKAGE_ROOT / "conf"
 RUNTIME_LAYER_NAME = "silisocs-native"
+
+# Fields that make up a fully-resolved (effective) per-instance LLM config. Two
+# instances share a built model iff these fields are byte-identical. Sourced from the
+# shared MODEL_FIELDS so the resolver, dedup signature, and validators stay in lockstep.
+_EFFECTIVE_MODEL_FIELDS = MODEL_FIELDS
+
+
+def _effective_model_config(
+    global_llm: Mapping[str, Any], override: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    """Resolve a per-instance LLM config by layering ``override`` over the global.
+
+    Each field falls back to the global ``sim.llm`` value when the override omits
+    it (or leaves it empty for ``name``). Scalar per-agent model names already
+    arrive as ``{'name': ...}`` so only the seven known fields are consulted.
+    """
+    override = override or {}
+    eff: dict[str, Any] = {field: global_llm.get(field) for field in _EFFECTIVE_MODEL_FIELDS}
+    for field in _EFFECTIVE_MODEL_FIELDS:
+        if field in override and override[field] is not None:
+            eff[field] = override[field]
+    if not eff.get("name"):
+        eff["name"] = global_llm.get("name")
+    temp_val = eff.get("temperature")
+    eff["temperature"] = 0.5 if temp_val is None else float(temp_val)
+    eff["disabled"] = bool(eff.get("disabled", False))
+    eff["api_base"] = eff.get("api_base") or None
+    eff["api_key"] = eff.get("api_key") or None
+    eff["extra_kwargs"] = dict(eff.get("extra_kwargs") or {})
+    return eff
+
+
+def _effective_model_key(eff: Mapping[str, Any]) -> str:
+    """Stable signature for an effective LLM config; api_key is hashed, never embedded raw."""
+    normalized = {field: eff.get(field) for field in _EFFECTIVE_MODEL_FIELDS}
+    api_key = normalized.get("api_key")
+    if api_key:
+        normalized["api_key"] = "sha256:" + hashlib.sha256(str(api_key).encode()).hexdigest()[:16]
+    return f"{eff.get('name')}::{json.dumps(normalized, sort_keys=True, default=str)}"
 
 
 def _initialize_runtime_environment() -> Path:
@@ -310,55 +352,59 @@ def main(cfg: DictConfig):
         if isinstance(raw_llm_extra_kwargs, DictConfig)
         else dict(raw_llm_extra_kwargs),
     )
-    # Build models map and agent->model mapping for all instances.
-    # If an instance doesn't specify a model name, default to `cfg.sim.llm.name`.
+    # Global sim.llm block is the universal baseline; per-instance `model` dicts
+    # (scalar names already arrive as {'name': ...}) override it field-by-field.
+    global_llm: dict[str, Any] = {
+        "name": llm_cfg.name,
+        "temperature": float(getattr(llm_cfg, "temperature", 0.5)),
+        "provider": llm_provider,
+        "api_base": llm_api_base,
+        "api_key": llm_api_key,
+        "disabled": bool(getattr(llm_cfg, "disabled", False)),
+        "extra_kwargs": llm_extra_kwargs,
+    }
+
+    # Build models map and agent->model mapping for all instances. Each instance's
+    # effective config is deduped by an opaque signature key; one model is built
+    # per distinct effective config (so a no-override run yields exactly one).
     t0 = time.time()
     with metrics.phase("model_creation"):
         models: dict[str, LanguageModel] = {}
         object_to_model: dict[str, str] = {}
-        for instance in instances:
-            try:
-                model_name = instance.params["model"]["name"]
-            except Exception:
-                model_name = None
 
-            if not model_name:
-                model_name = llm_cfg.name
-
-            # map agent name to the model name
-            object_to_model[instance.params["name"]] = model_name
-
-            # load the model once per unique name
-            if model_name not in models:
-                models[model_name] = select_large_language_model(
-                    model_name,
+        def _build_for_effective(eff: Mapping[str, Any]) -> str:
+            key = _effective_model_key(eff)
+            if key not in models:
+                models[key] = select_large_language_model(
+                    eff["name"],
                     prompts_file,
                     True,
-                    disable_language_model=getattr(llm_cfg, "disabled", False),
-                    api_base=llm_api_base,
-                    api_key=llm_api_key,
-                    temperature=float(getattr(llm_cfg, "temperature", 0.5)),
-                    provider=llm_provider,
-                    extra_kwargs=llm_extra_kwargs,
+                    disable_language_model=eff["disabled"],
+                    api_base=eff["api_base"],
+                    api_key=eff["api_key"],
+                    temperature=float(eff["temperature"]),
+                    provider=eff["provider"],
+                    extra_kwargs=eff["extra_kwargs"],
                 )
+            return key
 
-        # Use the configured default model for compatibility (should be present in `models`).
-        model = models.get(llm_cfg.name)
-        if model is None:
-            model = select_large_language_model(
-                llm_cfg.name,
-                prompts_file,
-                True,
-                disable_language_model=getattr(llm_cfg, "disabled", False),
-                api_base=llm_api_base,
-                api_key=llm_api_key,
-                temperature=float(getattr(llm_cfg, "temperature", 0.5)),
-                provider=llm_provider,
-                extra_kwargs=llm_extra_kwargs,
-            )
+        for instance in instances:
+            override = instance.params.get("model")
+            if not isinstance(override, Mapping):
+                override = None
+            eff = _effective_model_config(global_llm, override)
+            object_to_model[instance.params["name"]] = _build_for_effective(eff)
+
+        # Default runtime-init model is the global (no-override) effective config;
+        # reuse the already-built object when an instance shares that config.
+        model = models.get(_build_for_effective(_effective_model_config(global_llm, None)))
     _log_startup_phase("model_creation", time.time() - t0, f"unique_models={len(models)}")
 
-    sim_engine = build_engine(cfg)
+    # The flow -> GM-sequence routing topology is engine/scheduling config (not GM
+    # state): the step strategy routes by it and the checkpoint replay router needs
+    # it. Resolve once from config and hand it to both consumers.
+    flow_chains = resolve_flow_chains(cfg)
+    sim_engine = build_engine(cfg, flow_chains=flow_chains)
 
     t0 = time.time()
     runtime_objects = construct_runtime_with_metrics(
@@ -470,7 +516,10 @@ def main(cfg: DictConfig):
                 game_master_initializer=game_master_initializer,
                 simulation_initializer=simulation_initializer if start_step <= 0 else None,
                 initialization_context=initializer_context,
-                initializer_model=runtime_objects.default_model(models),
+                # Use the GLOBAL (no-override) model for runtime initialization, not
+                # whichever model the first-declared class happens to resolve to (a
+                # per-class block could disable it / change provider).
+                initializer_model=model,
             )
             if checkpoint_data is not None:
                 load_checkpoint_into_runtime(
@@ -493,6 +542,7 @@ def main(cfg: DictConfig):
                         action_events_files=checkpoint_action_event_files,
                         checkpoint_step=start_step,
                         authoritative_gm_names=checkpoint_authoritative_gms,
+                        flow_chains=flow_chains,
                     )
             if checkpoint_data is not None:
                 restore_rng_state_from_metadata(checkpoint_meta)

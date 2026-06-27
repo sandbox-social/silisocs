@@ -5,8 +5,10 @@ from __future__ import annotations
 import pytest
 from omegaconf import OmegaConf
 
+from silisocs.runtime.construction.engines import build_engine
 from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType
-from silisocs.simulation_engines.base_engines import MultiGMRuntimeEngine
+from silisocs.simulation_engines.base_engines import RuntimeEngine
+from silisocs.simulation_engines.policies.steps import MultiGMStepStrategy
 
 
 class _Agent:
@@ -30,12 +32,10 @@ class _GameMaster:
         name: str,
         selected: list[str],
         agent_flow_tags: dict[str, str] | None = None,
-        flow_chains: dict[str, list[str]] | None = None,
     ) -> None:
         self.name = name
         self.selected = selected
         self.agent_flow_tags = agent_flow_tags or {}
-        self.flow_chains = flow_chains or {}
         self.resolved: list[tuple[str, ActionOutput]] = []
         self.events: list[str] = []
 
@@ -59,7 +59,7 @@ class _GameMaster:
 
 
 def test_multi_gm_runtime_engine_initializes_without_legacy_introspection() -> None:
-    engine = MultiGMRuntimeEngine()
+    engine = RuntimeEngine(step_strategy=MultiGMStepStrategy())
 
     assert not hasattr(engine, "_gm_sequence_names")
     assert not hasattr(engine, "_agent_gm_map")
@@ -81,14 +81,13 @@ def test_multi_gm_step_strategy_routes_agents_through_flow_chains() -> None:
             }
         }
     )
-    engine = MultiGMRuntimeEngine(config=cfg)
+    engine = build_engine(cfg, flow_chains={"pre": ["pre_gm"], "default": ["main_gm"]})
     alice = _Agent("Alice")
     bob = _Agent("Bob")
     primary = _GameMaster(
         name="primary",
         selected=["Alice", "Bob"],
         agent_flow_tags={"Alice": "pre", "Bob": "default"},
-        flow_chains={"pre": ["pre_gm"], "default": ["main_gm"]},
     )
     pre_gm = _GameMaster(name="pre_gm", selected=["Alice"])
     main_gm = _GameMaster(name="main_gm", selected=["Bob"])
@@ -122,13 +121,12 @@ def test_multi_gm_step_strategy_runs_shared_agent_through_serial_chain() -> None
             }
         }
     )
-    engine = MultiGMRuntimeEngine(config=cfg)
+    engine = build_engine(cfg, flow_chains={"review": ["audit_gm", "main_gm"]})
     alice = _Agent("Alice")
     primary = _GameMaster(
         name="primary",
         selected=[],
         agent_flow_tags={"Alice": "review"},
-        flow_chains={"review": ["audit_gm", "main_gm"]},
     )
     audit_gm = _GameMaster(name="audit_gm", selected=["Alice"])
     main_gm = _GameMaster(name="main_gm", selected=["Alice"])
@@ -165,13 +163,12 @@ def test_multi_gm_step_strategy_uses_materialized_agent_flow_tags() -> None:
             }
         }
     )
-    engine = MultiGMRuntimeEngine(config=cfg)
+    engine = build_engine(cfg, flow_chains={"override": ["override_gm"], "default": ["default_gm"]})
     bob = _Agent("Bob")
     primary = _GameMaster(
         name="primary",
         selected=["Bob"],
         agent_flow_tags={"Bob": "override"},
-        flow_chains={"override": ["override_gm"], "default": ["default_gm"]},
     )
     override_gm = _GameMaster(name="override_gm", selected=["Bob"])
     default_gm = _GameMaster(name="default_gm", selected=["Bob"])
@@ -198,13 +195,12 @@ def test_multi_gm_step_strategy_falls_back_to_default_gm_for_unbound_flow() -> N
             }
         }
     )
-    engine = MultiGMRuntimeEngine(config=cfg)
+    engine = build_engine(cfg)
     alice = _Agent("Alice")
     default_gm = _GameMaster(
         name="default_gm",
         selected=["Alice"],
         agent_flow_tags={"Alice": "unbound"},
-        flow_chains={},
     )
     other_gm = _GameMaster(name="other_gm", selected=["Alice"])
 
@@ -238,14 +234,15 @@ def test_multi_gm_step_strategy_applies_per_flow_policy_at_every_chain_hop() -> 
             }
         }
     )
-    engine = MultiGMRuntimeEngine(config=cfg)
+    engine = build_engine(
+        cfg, flow_chains={"review": ["audit_gm", "main_gm"], "default": ["primary"]}
+    )
     alice = _Agent("Alice")  # review flow -> fixed_count(2)
     dave = _Agent("Dave")  # default flow -> global single_action
     primary = _GameMaster(
         name="primary",
         selected=["Dave"],
         agent_flow_tags={"Alice": "review", "Dave": "default"},
-        flow_chains={"review": ["audit_gm", "main_gm"], "default": ["primary"]},
     )
     audit_gm = _GameMaster(name="audit_gm", selected=["Alice"])
     main_gm = _GameMaster(name="main_gm", selected=["Alice"])
@@ -265,13 +262,14 @@ def test_multi_gm_step_strategy_applies_per_flow_policy_at_every_chain_hop() -> 
 
 
 def test_multi_gm_step_strategy_rejects_unknown_gm_in_chain() -> None:
-    engine = MultiGMRuntimeEngine()
+    engine = RuntimeEngine(
+        step_strategy=MultiGMStepStrategy(flow_chains={"default": ["missing_gm"]})
+    )
     alice = _Agent("Alice")
     primary = _GameMaster(
         name="primary",
         selected=["Alice"],
         agent_flow_tags={"Alice": "default"},
-        flow_chains={"default": ["missing_gm"]},
     )
 
     with pytest.raises(ValueError, match="Unknown GM 'missing_gm'"):

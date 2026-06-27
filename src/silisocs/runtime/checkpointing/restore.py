@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -20,8 +21,10 @@ class CheckpointRestoreStrategy:
     authoritative snapshot, or by a per-GM restore override), so a strategy
     reconstructs only the remaining game masters. ``action_events_files`` is the
     list of per-run action logs (one flat file for single-GM runs, one per-GM
-    file for multi-GM runs). Custom strategies should accept ``**_`` for forward
-    compatibility.
+    file for multi-GM runs). ``flow_chains`` is the flow -> GM-sequence routing
+    topology resolved from config (engine config, not GM state), used to route
+    untagged replay events to their owning GM. Custom strategies should accept
+    ``**_`` for forward compatibility.
     """
 
     def restore(
@@ -31,8 +34,10 @@ class CheckpointRestoreStrategy:
         action_events_files: Sequence[Path],
         checkpoint_step: int,
         authoritative_gm_names: frozenset[str] = frozenset(),
+        flow_chains: Mapping[str, Any] | None = None,
     ) -> None:
         del game_masters, action_events_files, checkpoint_step, authoritative_gm_names
+        del flow_chains
 
 
 class SocialActionEventReplayRestore(CheckpointRestoreStrategy):
@@ -51,9 +56,11 @@ class SocialActionEventReplayRestore(CheckpointRestoreStrategy):
         action_events_files: Sequence[Path],
         checkpoint_step: int,
         authoritative_gm_names: frozenset[str] = frozenset(),
+        flow_chains: Mapping[str, Any] | None = None,
     ) -> None:
         if not game_masters:
             raise ValueError("Checkpoint restore requires at least one game master.")
+        chains = dict(flow_chains or {})
         replay_gms = [
             gm for gm in game_masters if str(getattr(gm, "name", "")) not in authoritative_gm_names
         ]
@@ -75,7 +82,13 @@ class SocialActionEventReplayRestore(CheckpointRestoreStrategy):
                 label, source_user, data = fields
                 owner_name = str(row.get("gm_name", "") or "").strip()
                 target_gm, action = _route_and_map_event(
-                    source_user, label, data, game_masters, replay_names, owner_name=owner_name
+                    source_user,
+                    label,
+                    data,
+                    game_masters,
+                    replay_names,
+                    owner_name=owner_name,
+                    flow_chains=chains,
                 )
                 if target_gm is None or action is None:
                     continue
@@ -186,33 +199,59 @@ def run_checkpoint_restores(
     action_events_files: Sequence[Path],
     checkpoint_step: int,
     authoritative_gm_names: frozenset[str],
+    flow_chains: Mapping[str, Any] | None = None,
 ) -> None:
     """Restore non-authoritative game masters with per-GM strategy overrides.
 
     The default strategy reconstructs every non-authoritative GM that has no
     override; each overridden GM is reconstructed by its own strategy. Every
     strategy receives the full game-master set (so flow-chain routing is intact)
-    but only reconstructs the GMs not named in its skip set.
+    plus ``flow_chains`` (the config-resolved flow -> GM routing topology) and only
+    reconstructs the GMs not named in its skip set.
     """
     names = [str(getattr(gm, "name", "")) for gm in game_masters]
     override_names = frozenset(name for name in names if name in per_gm_strategies)
-    default_strategy.restore(
+    _call_restore(
+        default_strategy,
         game_masters=game_masters,
         action_events_files=action_events_files,
         checkpoint_step=checkpoint_step,
         authoritative_gm_names=authoritative_gm_names | override_names,
+        flow_chains=flow_chains,
     )
     for gm in game_masters:
         name = str(getattr(gm, "name", ""))
         strategy = per_gm_strategies.get(name)
         if strategy is None or name in authoritative_gm_names:
             continue
-        strategy.restore(
+        _call_restore(
+            strategy,
             game_masters=game_masters,
             action_events_files=action_events_files,
             checkpoint_step=checkpoint_step,
             authoritative_gm_names=frozenset(other for other in names if other != name),
+            flow_chains=flow_chains,
         )
+
+
+def _call_restore(
+    strategy: CheckpointRestoreStrategy, *, flow_chains: Mapping[str, Any] | None, **kwargs: Any
+) -> None:
+    """Invoke a restore strategy, passing ``flow_chains`` only if it accepts it.
+
+    ``flow_chains`` was added to the restore contract after custom strategies could
+    already exist. Strategies that declare it (the shipped ones) or follow the
+    documented ``**_`` forward-compat convention receive it; an older custom
+    strategy that declares neither is called without it instead of raising.
+    """
+    params = inspect.signature(strategy.restore).parameters
+    accepts = "flow_chains" in params or any(
+        param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values()
+    )
+    if accepts:
+        strategy.restore(flow_chains=flow_chains, **kwargs)
+    else:
+        strategy.restore(**kwargs)
 
 
 def _load_restore_strategy(class_path: str, params: Any) -> CheckpointRestoreStrategy:
@@ -286,6 +325,7 @@ def _route_and_map_event(
     replay_names: frozenset[str],
     *,
     owner_name: str = "",
+    flow_chains: Mapping[str, Any] | None = None,
 ) -> tuple[Any, ActionOutput | None]:
     """Route an event to its owning GM and map it via that GM's backend.
 
@@ -309,7 +349,7 @@ def _route_and_map_event(
             action = backend.event_to_replay_action(label, data) if backend is not None else None
             return (owner, action) if action is not None else (None, None)
         # owner_name names no current GM -> fall back to flow-chain routing.
-    for game_master in _candidate_game_masters(agent_name, game_masters):
+    for game_master in _candidate_game_masters(agent_name, game_masters, flow_chains):
         if str(getattr(game_master, "name", "")) not in replay_names:
             # Owned by an authoritative GM already restored from its snapshot.
             return None, None
@@ -326,7 +366,9 @@ def _route_and_map_event(
     return None, None
 
 
-def _candidate_game_masters(agent_name: str, game_masters: Sequence[Any]) -> list[Any]:
+def _candidate_game_masters(
+    agent_name: str, game_masters: Sequence[Any], flow_chains: Mapping[str, Any] | None = None
+) -> list[Any]:
     """Return the GM(s) that may own an agent's action, in routing order."""
     if not game_masters:
         raise ValueError("Checkpoint replay requires at least one game master.")
@@ -341,7 +383,7 @@ def _candidate_game_masters(agent_name: str, game_masters: Sequence[Any]) -> lis
         raise ValueError("Checkpoint replay requires unique game master names.")
 
     agent_flow = _flow_for_agent(agent_name, game_masters)
-    chain = _flow_chain_for_flow(agent_flow, game_masters)
+    chain = _flow_chain_for_flow(agent_flow, flow_chains)
     unknown = [name for name in chain if name not in by_name]
     if unknown:
         raise ValueError(
@@ -377,31 +419,26 @@ def _flow_for_agent(agent_name: str, game_masters: Sequence[Any]) -> str:
     return next(iter(flows))
 
 
-def _flow_chain_for_flow(flow: str, game_masters: Sequence[Any]) -> list[str]:
-    chains: set[tuple[str, ...]] = set()
-    for gm in game_masters:
-        flow_chains = getattr(gm, "flow_chains", None)
-        if isinstance(flow_chains, Mapping):
-            raw_chain = flow_chains.get(flow)
-            if isinstance(raw_chain, str):
-                chain = tuple([raw_chain.strip()] if raw_chain.strip() else [])
-            elif isinstance(raw_chain, Sequence) and not isinstance(raw_chain, (str, bytes)):
-                chain = tuple(str(name).strip() for name in raw_chain if str(name).strip())
-            elif raw_chain is None:
-                continue
-            else:
-                raise ValueError(
-                    f"Checkpoint replay flow chain for '{flow}' must be a string or list."
-                )
-            if chain:
-                chains.add(chain)
-    if not chains:
+def _flow_chain_for_flow(flow: str, flow_chains: Mapping[str, Any] | None) -> list[str]:
+    """Resolve a flow's GM chain from the config-resolved routing topology.
+
+    ``flow_chains`` is the single authoritative map (engine config), so there is no
+    longer any cross-GM reconciliation to do — the former "conflicting flow chains"
+    case cannot arise from one source.
+    """
+    raw_chain = flow_chains.get(flow) if isinstance(flow_chains, Mapping) else None
+    if isinstance(raw_chain, str):
+        chain = [raw_chain.strip()] if raw_chain.strip() else []
+    elif isinstance(raw_chain, Sequence) and not isinstance(raw_chain, (str, bytes)):
+        # Skip ``None`` entries (staged "empty slots"): no GM resolves there.
+        chain = [str(name).strip() for name in raw_chain if name is not None and str(name).strip()]
+    elif raw_chain is None:
+        chain = []
+    else:
+        raise ValueError(f"Checkpoint replay flow chain for '{flow}' must be a string or list.")
+    if not chain:
         raise ValueError(f"Checkpoint replay requires flow_chains metadata for flow '{flow}'.")
-    if len(chains) > 1:
-        raise ValueError(
-            f"Checkpoint replay found conflicting flow chains for flow '{flow}': {sorted(chains)}"
-        )
-    return list(next(iter(chains)))
+    return chain
 
 
 def _gm_backend_exposes_action(game_master: Any, action_name: str) -> bool:

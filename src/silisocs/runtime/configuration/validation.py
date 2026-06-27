@@ -18,6 +18,8 @@ from typing import Any
 
 from omegaconf import DictConfig, OmegaConf
 
+from silisocs.runtime.model_fields import MODEL_FIELDS
+
 
 @dataclass
 class BaseScenarioSchema:
@@ -335,7 +337,19 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
         "env",
         {"gm", "gm_orchestration"},
     )
-    _assert_allowed_keys(cfg, "env.gm", {"backend", "components", "name", "class_path"})
+    _assert_allowed_keys(
+        cfg,
+        "env.gm",
+        {
+            "backend",
+            "components",
+            "name",
+            "class_path",
+            "action_mode",
+            "tool_calling_mode",
+            "tool_calling",
+        },
+    )
     _assert_allowed_keys(
         cfg,
         "env.gm.backend",
@@ -366,11 +380,7 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
             "roleplaying_instructions",
         },
     )
-    _assert_allowed_keys(
-        cfg,
-        "sim.llm",
-        {"provider", "name", "temperature", "api_base", "api_key", "disabled", "extra_kwargs"},
-    )
+    _assert_allowed_keys(cfg, "sim.llm", set(MODEL_FIELDS))
     provider = OmegaConf.select(cfg, "sim.llm.provider")
     if provider is not None:
         from silisocs.runtime.language_models.registry import get_llm_provider

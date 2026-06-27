@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from silisocs.simulation_engines.base_engines import (
-    BaseRuntimeEngine,
-    FlowRuntimeEngine,
-    MultiGMRuntimeEngine,
+from silisocs.simulation_engines.base_engines import RuntimeEngine
+from silisocs.simulation_engines.policies.steps import (
+    BaseStepStrategy,
+    FlowStepStrategy,
+    MultiGMStepStrategy,
 )
-from silisocs.simulation_engines.policies.steps import FlowStepStrategy, MultiGMStepStrategy
 
 # Per-flow turn policies are resolved in the step strategy and attached to each
 # StepBatch (consumed by the engine as ``batch.turn_policy or self.turn_policy``).
@@ -15,17 +15,18 @@ from silisocs.simulation_engines.policies.steps import FlowStepStrategy, MultiGM
 
 
 def test_base_engine_has_no_per_flow_policy_methods() -> None:
-    engine = BaseRuntimeEngine()
+    engine = RuntimeEngine()
 
     assert not hasattr(engine, "_build_flow_turn_policies")
     assert not hasattr(engine, "_turn_policy_for_group")
     # Base/sequential strategies have no flow concept; the engine keeps one global
     # turn policy and applies it uniformly.
+    assert isinstance(engine.step_strategy, BaseStepStrategy)
     assert engine.turn_policy is not None
 
 
 def test_flow_engine_keeps_per_flow_resolution_in_the_strategy() -> None:
-    engine = FlowRuntimeEngine()
+    engine = RuntimeEngine(step_strategy=FlowStepStrategy())
 
     assert not hasattr(engine, "_build_flow_turn_policies")
     assert not hasattr(engine, "_turn_policy_for_group")
@@ -35,7 +36,7 @@ def test_flow_engine_keeps_per_flow_resolution_in_the_strategy() -> None:
 
 
 def test_multi_gm_engine_keeps_per_flow_resolution_in_the_strategy() -> None:
-    engine = MultiGMRuntimeEngine()
+    engine = RuntimeEngine(step_strategy=MultiGMStepStrategy())
 
     assert not hasattr(engine, "_build_flow_turn_policies")
     assert not hasattr(engine, "_turn_policy_for_group")

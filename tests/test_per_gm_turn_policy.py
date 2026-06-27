@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from omegaconf import OmegaConf
 
+from silisocs.runtime.construction.engines import build_engine
 from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType
-from silisocs.simulation_engines.base_engines import BaseRuntimeEngine, MultiGMRuntimeEngine
+from silisocs.simulation_engines.base_engines import RuntimeEngine
 from silisocs.simulation_engines.policies.turns import FixedCountTurnPolicy
 
 
@@ -33,12 +34,10 @@ class _GameMaster:
         name: str,
         selected: list[str],
         agent_flow_tags: dict[str, str] | None = None,
-        flow_chains: dict[str, list[str]] | None = None,
     ) -> None:
         self.name = name
         self.selected = selected
         self.agent_flow_tags = agent_flow_tags or {}
-        self.flow_chains = flow_chains or {}
         self.resolved: list[str] = []
 
     def update(self, *, step: int, agents: list[_Agent], context: object | None = None) -> None:
@@ -74,7 +73,8 @@ def _multi_engine(
     gm_turn_policies: dict[str, object] | None = None,
     flow_turn_policies: dict[str, object] | None = None,
     flow_order: list[str] | None = None,
-) -> MultiGMRuntimeEngine:
+    flow_chains: dict[str, list[str]] | None = None,
+) -> RuntimeEngine:
     params: dict[str, object] = {}
     if flow_order is not None:
         params["flow_order"] = flow_order
@@ -92,19 +92,21 @@ def _multi_engine(
             }
         }
     )
-    return MultiGMRuntimeEngine(config=cfg)
+    return build_engine(cfg, flow_chains=flow_chains)
 
 
 def test_gm_turn_policy_sets_action_cadence_per_hop() -> None:
     # A flow chain spanning two GMs with different per-GM cadences: 3 actions in the
     # first hop, 1 in the second. The per-GM key disambiguates hops of one flow.
-    engine = _multi_engine(gm_turn_policies={"tw_gm": _fixed(3), "rd_gm": _single()})
+    engine = _multi_engine(
+        gm_turn_policies={"tw_gm": _fixed(3), "rd_gm": _single()},
+        flow_chains={"browse": ["tw_gm", "rd_gm"]},
+    )
     alice = _Agent("Alice")
     primary = _GameMaster(
         name="primary",
         selected=[],
         agent_flow_tags={"Alice": "browse"},
-        flow_chains={"browse": ["tw_gm", "rd_gm"]},
     )
     tw_gm = _GameMaster(name="tw_gm", selected=["Alice"])
     rd_gm = _GameMaster(name="rd_gm", selected=["Alice"])
@@ -126,13 +128,13 @@ def test_flow_turn_policy_overrides_gm_turn_policy() -> None:
     engine = _multi_engine(
         gm_turn_policies={"gm1": _single()},
         flow_turn_policies={"browse": _fixed(2)},
+        flow_chains={"browse": ["gm1"]},
     )
     alice = _Agent("Alice")
     primary = _GameMaster(
         name="primary",
         selected=[],
         agent_flow_tags={"Alice": "browse"},
-        flow_chains={"browse": ["gm1"]},
     )
     gm1 = _GameMaster(name="gm1", selected=["Alice"])
 
@@ -168,7 +170,7 @@ def test_gm_turn_policy_applies_under_base_step_mode() -> None:
             }
         }
     )
-    engine = BaseRuntimeEngine(config=cfg)
+    engine = build_engine(cfg)
     alice = _Agent("Alice")
     main = _GameMaster(name="main", selected=["Alice"])
 

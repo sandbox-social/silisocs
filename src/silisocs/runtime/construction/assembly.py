@@ -33,12 +33,6 @@ class RuntimeObjects:
     object_specs: dict[str, RuntimeSpec] = field(default_factory=dict)
     checkpoint_counter: int = 0
 
-    def default_model(self, models: dict[str, LanguageModel]) -> LanguageModel:
-        """Return the default model for runtime initialization."""
-        if not models:
-            raise ValueError("No language models available for runtime initialization.")
-        return next(iter(models.values()))
-
     def game_masters_by_sequence(self) -> list[Any]:
         """Return game masters in configured orchestration order."""
 

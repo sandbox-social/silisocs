@@ -82,10 +82,13 @@ No string-prefix dispatch is involved in the native path. Agent names are passed
 as names, prompts are typed `ActionSpec` objects, and actions are typed
 `ActionOutput` objects.
 
-In `multi_gm` step mode, this same shape is applied across several Game
-Masters. How flow chains traverse their GMs is governed by the
-`chain_execution` mode at `sim.engine.step.params.chain_execution` (only the
-`multi_gm` step strategy uses it):
+In the `multi_gm*` step modes, this same shape is applied across several Game
+Masters. How flow chains traverse their GMs is selected by
+`sim.engine.step.built_in`, which offers three multi-GM strategies — `multi_gm`
+(concurrent, default), `multi_gm_serial` (legacy row-major), and
+`multi_gm_staged` (column-major with a global per-stage barrier). The former
+`sim.engine.step.params.chain_execution` knob has been removed (a config that
+still sets it raises a `ValueError` with a migration hint):
 
 ```text
 Each step
@@ -93,7 +96,7 @@ Each step
        gm.update(step, agents, context)
   -> group agents by flow
 
-  chain_execution: concurrent (DEFAULT)
+  built_in: multi_gm (DEFAULT, concurrent)
     -> flows in flow_order run first as a strict serial prefix
        (preserves declared precedence, e.g. fixed_pre before default)
     -> every other flow runs as the concurrent group:
@@ -104,13 +107,25 @@ Each step
          own chain hops always stay serial, since each hop observes the
          prior hop's resolution.
 
-  chain_execution: sequential (legacy)
+  built_in: multi_gm_serial (legacy row-major)
     -> for each flow in flow-by-flow ("row-major") order:
          each flow runs its full GM chain to completion before the next
          flow, one batch at a time:
            for each GM in the flow's configured chain:
              gm.acting_agents(flow_agents)
              selected agents observe, act, and resolve through that GM
+
+  built_in: multi_gm_staged (column-major, global per-stage barrier)
+    -> flows in flow_order run first as a strict serial prefix
+       (same as multi_gm)
+    -> advance every remaining flow ONE STAGE AT A TIME:
+         for stage N = 0, 1, 2, ...:
+           all flows' stage-N hops run concurrently (an empty/null chain
+           slot means the flow idles this stage, resuming at its next
+           non-null hop, so differently-shaped chains stay aligned)
+           GLOBAL BARRIER: stage N+1 does not begin until ALL of stage N
+           finishes (trades throughput for stage alignment: a fast flow
+           waits for slow flows at the barrier)
 ```
 
 The update phase is per GM and per step, not per flow-chain hop. Flow chains
@@ -158,16 +173,19 @@ match the persona class flow.
 used during turn scheduling.
 
 In multi-GM runs, `flow_to_gms` chains must be explicit and valid: each chain
-references known GMs, contains at least one GM, avoids duplicate names, and
-uses increasing GM `sequence` values. Flows without a binding fall back to the
-earliest-sequence GM. By default these chains execute concurrently — distinct
-flows advance as independent pipelines, serializing only when they touch the
-same GM at once — under `chain_execution: concurrent`
-(`sim.engine.step.params.chain_execution`); set `chain_execution: sequential`
-for the legacy flow-by-flow traversal.
+references known GMs, contains at least one real GM, avoids duplicate names, and
+uses increasing GM `sequence` values across its real GMs. Flows without a binding
+fall back to the earliest-sequence GM. The traversal mode is selected by
+`sim.engine.step.built_in`: by default (`multi_gm`) these chains execute
+concurrently — distinct flows advance as independent pipelines, serializing only
+when they touch the same GM at once; set `multi_gm_serial` for the legacy
+flow-by-flow traversal, or `multi_gm_staged` for column-major traversal behind a
+global per-stage barrier (where a `null` chain entry idles a flow at that stage so
+differently-shaped chains stay aligned).
 
-Checkpoint replay uses that same flow metadata, and is per-agent-flow-chain
-regardless of `chain_execution` mode. In multi-GM replay, exactly one GM in the
+Checkpoint replay is per-agent-flow-chain regardless of the traversal mode. The
+replay router receives the resolved `flow_chains` routing topology from config
+(not read off any Game Master), so in multi-GM replay exactly one GM in the
 Agent's flow chain must expose the replayed action; otherwise restore fails
 instead of falling back to another GM.
 

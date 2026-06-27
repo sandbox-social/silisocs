@@ -37,7 +37,6 @@ def __getattr__(name: str):
         "app_action": ("silisocs.environments.backends.base", "app_action"),
         # Engines
         "RuntimeEngine": ("silisocs.simulation_engines.base_engines", "RuntimeEngine"),
-        "BaseRuntimeEngine": ("silisocs.simulation_engines.base_engines", "BaseRuntimeEngine"),
         # GM components
         "BaseComponent": ("silisocs.environments.gm.components.base", "BaseComponent"),
         "InitializeComponent": ("silisocs.environments.gm.components.base", "InitializeComponent"),
@@ -86,7 +85,6 @@ __all__ = [
     "app_action",
     # Engines
     "RuntimeEngine",
-    "BaseRuntimeEngine",
     # GM components
     "BaseComponent",
     "InitializeComponent",

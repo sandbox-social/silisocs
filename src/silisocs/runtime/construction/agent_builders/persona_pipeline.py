@@ -31,8 +31,64 @@ from silisocs.runtime.construction.agent_builders.fixed_actions import FixedActi
 from silisocs.runtime.construction.agent_builders.params import build_agent_params
 from silisocs.runtime.construction.agent_builders.records import RecordLoader
 from silisocs.runtime.construction.specs import AgentConfig
+from silisocs.runtime.model_fields import MODEL_FIELDS
 
 _LOGGER = logging.getLogger(__name__)
+
+# Per-class `model` block fields that override the matching global `sim.llm` field.
+_ALLOWED_MODEL_KEYS = frozenset(MODEL_FIELDS)
+# String-or-None subset of _ALLOWED_MODEL_KEYS, type-checked separately
+# (temperature/disabled/extra_kwargs have their own dedicated checks below).
+_STR_OR_NONE_MODEL_KEYS = ("name", "provider", "api_base", "api_key")
+
+
+def _validate_class_model(class_name: str, class_model: Any) -> None:
+    """Fail fast on a malformed per-class ``model`` block.
+
+    A scalar name (or ``None``) is the legacy form and always valid. A mapping is
+    the per-class LLM override block: reject unknown keys and type-check the known
+    ones so misconfiguration surfaces at build time, naming the offending class.
+    """
+    if not isinstance(class_model, Mapping):
+        return
+    unknown = sorted(str(k) for k in class_model if k not in _ALLOWED_MODEL_KEYS)
+    if unknown:
+        raise ValueError(
+            f"Class `{class_name}` model block has unknown key(s) {unknown}; "
+            f"allowed keys: {sorted(_ALLOWED_MODEL_KEYS)}."
+        )
+    for key in _STR_OR_NONE_MODEL_KEYS:
+        if (
+            key in class_model
+            and class_model[key] is not None
+            and not isinstance(class_model[key], str)
+        ):
+            raise ValueError(
+                f"Class `{class_name}` model.{key} must be a string or null, "
+                f"got {type(class_model[key]).__name__}."
+            )
+    if "temperature" in class_model and class_model["temperature"] is not None:
+        try:
+            float(class_model["temperature"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Class `{class_name}` model.temperature must be float-coercible, "
+                f"got {class_model['temperature']!r}."
+            ) from exc
+    if "disabled" in class_model and not isinstance(class_model["disabled"], (bool, int)):
+        raise ValueError(
+            f"Class `{class_name}` model.disabled must be bool-like, "
+            f"got {type(class_model['disabled']).__name__}."
+        )
+    if (
+        "extra_kwargs" in class_model
+        and class_model["extra_kwargs"] is not None
+        and not isinstance(class_model["extra_kwargs"], Mapping)
+    ):
+        raise ValueError(
+            f"Class `{class_name}` model.extra_kwargs must be a mapping, "
+            f"got {type(class_model['extra_kwargs']).__name__}."
+        )
 
 
 class PersonaPipelineAgentBuilder(AgentBuilder):
@@ -141,6 +197,7 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
         mem_field = class_cfg.get("specific_memories_field", default_mem_field)
         news_posts = self._load_news_posts(class_name, class_cfg)
         class_model = class_cfg.get("model") or default_params.get("model")
+        _validate_class_model(class_name, class_model)
         fixed_action_cfg = class_cfg.get("fixed_action") if isinstance(class_cfg, Mapping) else None
         derive_name_from_context = self._should_derive_name(class_cfg, data_cfg)
         name_words = int(class_cfg.get("name_from_context_words", 2) or 2)

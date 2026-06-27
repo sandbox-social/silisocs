@@ -115,6 +115,33 @@ def build_flow_turn_policies(raw: Any) -> dict[str, Any]:
     return resolved
 
 
+def build_gm_concurrency_caps(raw: Any) -> dict[str, int]:
+    """Resolve a ``{gm_name: int}`` mapping into per-GM concurrency caps.
+
+    Each value caps how many of that GM's agent turns run concurrently. An empty or
+    omitted config is a pure no-op (the global worker limit governs everything).
+    """
+    if raw is None:
+        return {}
+    if isinstance(raw, DictConfig):
+        raw = OmegaConf.to_container(raw, resolve=True)
+    if not isinstance(raw, Mapping):
+        raise ValueError("sim.engine.step.params.gm_concurrency_caps must be a mapping.")
+    resolved: dict[str, int] = {}
+    for gm, cap in raw.items():
+        gm_name = str(gm).strip()
+        if not gm_name:
+            raise ValueError("gm_concurrency_caps contains an empty GM name.")
+        try:
+            value = int(cap)
+        except (TypeError, ValueError):
+            raise ValueError(f"gm_concurrency_caps[{gm_name}] must be an integer >= 1") from None
+        if value < 1:
+            raise ValueError(f"gm_concurrency_caps[{gm_name}] must be an integer >= 1")
+        resolved[gm_name] = value
+    return resolved
+
+
 def build_probe_schedule_policy(slot_cfg: Mapping[str, Any] | None = None) -> Any:
     """Build probe schedule policy from YAML config."""
     return _build_policy(slot_cfg, built_ins=_PROBE_BUILT_INS, default_built_in="step_schedule")

@@ -16,8 +16,9 @@ The multi-GM architecture provides:
 2. **Per-GM backends**: each GM owns exactly one backend for this release.
 3. **Per-GM components**: each GM defines its own typed component slots.
 4. **Concurrent flow chains**: a flow can pass through multiple GMs as a
-   pipeline; by default distinct flows advance concurrently through their GM
-   chains (see `chain_execution`), serializing only when two flows touch the
+   pipeline; under the default `multi_gm` step strategy distinct flows advance
+   concurrently through their GM chains (see [Chain Execution
+   Mode](#chain-execution-mode)), serializing only when two flows touch the
    same GM at the same time.
 
 ### When to Use
@@ -63,10 +64,12 @@ Engine Step Loop:
 
 **Multi-GM Mode (Advanced):**
 
-Chain traversal is governed by `sim.engine.step.params.chain_execution`
-(`concurrent`, the default, or `sequential`).
+Chain traversal is governed by `sim.engine.step.built_in`, which offers three
+multi-GM step strategies: `multi_gm` (concurrent, the default),
+`multi_gm_serial` (legacy row-major), and `multi_gm_staged` (column-major with a
+global per-stage barrier).
 
-*Concurrent (default):*
+*`multi_gm` (concurrent, default):*
 ```
 Engine Step Loop:
   → for each configured GM in sequence order:
@@ -84,7 +87,7 @@ Engine Step Loop:
   → next step
 ```
 
-*Sequential (legacy):*
+*`multi_gm_serial` (legacy row-major):*
 ```
 Engine Step Loop:
   → for each configured GM in sequence order:
@@ -97,6 +100,26 @@ Engine Step Loop:
         → each active agent observes/acts/resolves through that GM
   → next step
 ```
+
+*`multi_gm_staged` (column-major with a global per-stage barrier):*
+```
+Engine Step Loop:
+  → for each configured GM in sequence order:
+    → gm.update(...)
+  → group agents by flow
+  → run flows listed in flow_order first, as a strict serial prefix
+    (same as multi_gm)
+  → advance every remaining flow ONE STAGE AT A TIME:
+    → for stage N = 0, 1, 2, ...:
+      → all flows' stage-N hops run concurrently (an empty/null slot means
+        the flow idles this stage and resumes at its next non-null hop)
+      → GLOBAL BARRIER: stage N+1 does not begin until ALL of stage N's
+        turns finish
+  → next step
+```
+The barrier keeps differently-shaped chains stage-aligned at the cost of leaving
+the worker pool idle at stage tails (a fast flow waits for slow flows at the
+barrier); use `multi_gm` when you do not need stage alignment.
 
 **Key property**: a GM owns one backend. Multi-backend simulations use multiple
 GMs, each with its own backend and components.
@@ -188,6 +211,33 @@ declare its own `backend` and `components`; orchestrated GMs do not inherit
 missing backend or component slots from `env.gm`. Nested backend and component
 keys use the same strict surface as the default GM.
 
+Each GM additionally accepts two **optional** keys, `action_mode` and
+`tool_calling_mode` (alias `tool_calling`, scalar or `{mode: ...}`). Unset, they
+fall back to the global `sim.action_mode` / `sim.tool_calling.mode`. Resolve
+compatibility is validated per GM against each GM's *effective*
+`tool_calling_mode`: a `single`/`multi` GM must use the `tool_calling` resolve
+component, a `none` GM must not.
+
+```yaml
+gm_orchestration:
+  gms:
+    - name: social_gm
+      sequence: 0
+      tool_calling_mode: single        # this GM uses tool-calling...
+      backend: {type: twitter_like, class_path: null, params: {}, enabled_actions: null}
+      components:
+        resolve: {built_in: tool_calling, params: {}}   # ...so resolve must match
+        # ... other slots ...
+
+    - name: market_gm
+      sequence: 1
+      # no overrides -> inherits global sim.action_mode / sim.tool_calling.mode
+      backend: {type: resource_market, class_path: null, params: {}, enabled_actions: null}
+      components:
+        resolve: {built_in: parsed_action, params: {}}
+        # ... other slots ...
+```
+
 Within each GM:
 ```yaml
 engine:
@@ -208,34 +258,89 @@ Game Master component routing use the same flow assignment.
 
 ### Chain Execution Mode
 
-`sim.engine.step.params.chain_execution` controls how flow chains traverse their
-GM chains. It is only read by the `multi_gm` step strategy.
+How flow chains traverse their GM chains is selected by `sim.engine.step.built_in`
+via three multi-GM step strategies. (This replaces the removed
+`sim.engine.step.params.chain_execution` knob; a config that still sets it raises
+a `ValueError` with a migration hint.)
+
+```yaml
+engine:
+  step:
+    built_in: multi_gm   # multi_gm (default) | multi_gm_serial | multi_gm_staged
+    params:
+      flow_order: [fixed_pre, default]
+```
+
+- `multi_gm` (**default**, concurrent): Flows run as independent pipelines through
+  their GM chains. Distinct flows advance concurrently, and a flow's next hop
+  starts as soon as its own previous hop completes; turns serialize only when two
+  flows touch the same GM at the same time (enforced by the engine's existing
+  per-GM lock). Flows listed in `flow_order` run first as a strict serial prefix,
+  preserving declared precedence such as seed-then-act (`fixed_pre` before
+  `default`); every other flow runs as the concurrent group. A single agent's own
+  chain hops always stay serial, since each hop observes the prior hop's
+  resolution. This is the unchanged default behavior.
+- `multi_gm_serial` (legacy row-major): each flow runs its full GM chain to
+  completion before the next flow, one batch at a time, in a deterministic
+  flow-by-flow order.
+- `multi_gm_staged` (column-major with a global per-stage barrier): `flow_order`
+  flows run first as a serial prefix (same as `multi_gm`); then every remaining
+  flow advances ONE STAGE AT A TIME — all flows' stage-N hops run concurrently,
+  and stage N+1 does NOT begin until ALL of stage N's turns finish. The barrier
+  keeps differently-shaped chains stage-aligned; its cost is an idle worker pool
+  at stage tails (a fast flow waits for slow flows). Use `multi_gm` when you do
+  not need stage alignment.
+
+Regardless of mode, each GM's `update()` still runs once before any acting in a
+step, checkpoint replay stays per-agent-flow-chain, and `flow_turn_policies` plus
+per-flow component routing still apply at every hop.
+
+#### Empty Slots (staged mode)
+
+Under `multi_gm_staged`, a flow's `flow_to_gms` chain may contain a `null` entry
+— an **empty slot** — meaning the flow idles at that stage and resumes at its
+next non-null hop. Empty slots let flows with different chain shapes stay
+stage-aligned under the global barrier:
+
+```yaml
+flow_bindings:
+  flow_to_gms:
+    flow_a: [world_gm, social_gm]   # acts at stage 0 (world_gm), stage 1 (social_gm)
+    flow_b: [null, social_gm]       # idles stage 0, acts at stage 1 (social_gm)
+```
+
+Here both flows reach `social_gm` at the same stage (stage 1) because `flow_b`
+idles through stage 0.
+
+Rules: trailing empty slots are trimmed (no effect); a chain made of only empty
+slots is rejected ("cannot be empty"); and the strictly-increasing-by-`sequence`
+rule applies only to the real (non-null) GMs in the chain. Empty slots have no
+effect under `multi_gm` / `multi_gm_serial` — the null hops are simply dropped —
+so they only change behavior under `multi_gm_staged`.
+
+### Per-GM Concurrency Caps
+
+`sim.engine.step.params.gm_concurrency_caps` (a `{gm_name: int}` map) caps how
+many of that GM's agent turns run concurrently, via a per-GM semaphore. The
+effective per-GM limit is `min(cap, worker_limit)`, where `worker_limit` is the
+global `sim.max_concurrent_actions` ceiling (also the default for every
+uncapped GM). An empty map means the global cap governs every GM (unchanged).
+It applies under any step mode.
 
 ```yaml
 engine:
   step:
     built_in: multi_gm
     params:
-      chain_execution: concurrent   # concurrent (default) | sequential
-      flow_order: [fixed_pre, default]
+      gm_concurrency_caps:
+        mastodon_gm: 4        # at most 4 of this GM's turns run at once
 ```
 
-- `concurrent` (**default**): Flows run as independent pipelines through their GM
-  chains. Distinct flows advance concurrently, and a flow's next hop starts as
-  soon as its own previous hop completes; turns serialize only when two flows
-  touch the same GM at the same time (enforced by the engine's existing per-GM
-  lock). Flows listed in `flow_order` run first as a strict serial prefix,
-  preserving declared precedence such as seed-then-act (`fixed_pre` before
-  `default`); every other flow runs as the concurrent group. A single agent's own
-  chain hops always stay serial, since each hop observes the prior hop's
-  resolution.
-- `sequential`: Legacy behavior — each flow runs its full GM chain to completion
-  before the next flow, one batch at a time, in a deterministic flow-by-flow
-  ("row-major") order.
-
-Regardless of mode, each GM's `update()` still runs once before any acting in a
-step, checkpoint replay stays per-agent-flow-chain, and `flow_turn_policies` plus
-per-flow component routing still apply at every hop.
+Use this to throttle a rate-limited backend — for example a live Mastodon
+server — below the global limit. Because the cap is per GM, other GMs keep
+running concurrently at the global limit while the capped GM is serialized to
+its own semaphore. It is orthogonal to `gm_turn_policies` (which controls how
+many actions a single turn takes, not how many turns run at once).
 
 ### Per-Flow Component Configuration
 
@@ -291,23 +396,30 @@ Hydra config into native `GameMasterConfig` specs. In multi-GM mode every item
 under `env.gm_orchestration.gms` must define its own `backend` and
 `components`; defaults are not inherited into orchestrated GMs.
 `flow_bindings.flow_to_gms` is validated up front: every referenced GM must be
-declared, every chain must be non-empty, duplicate GMs in a chain are rejected,
-and multi-GM chains must follow strictly increasing `sequence` values.
+declared, every chain must contain at least one real GM (a chain of only empty
+`null` slots is rejected; trailing empty slots are trimmed), duplicate GMs in a
+chain are rejected, and multi-GM chains must follow strictly increasing
+`sequence` values across their real (non-null) GMs.
 
-### MultiGMRuntimeEngine
+### Multi-GM step strategies
 
-`MultiGMRuntimeEngine` uses `MultiGMStepStrategy`. It reads
-materialized `flow_to_gms` routing metadata, groups agents by flow, and
-executes each flow through its configured GM chain. A flow with no explicit
-binding falls back to the earliest-sequence GM. `agent_to_flow` overrides are
-included in routing metadata even when no persona class declares that flow.
+There is one runtime engine (`RuntimeEngine`); the multi-GM traversal is a step
+strategy selected by `sim.engine.step.built_in` (`multi_gm` / `multi_gm_serial` /
+`multi_gm_staged`). `MultiGMStepStrategy` owns the resolved `flow_chains` routing
+topology (supplied by `build_engine` from config via `resolve_flow_chains`, not
+read off a game master), groups agents by flow, and executes each flow through its
+configured GM chain. A flow with no explicit binding falls back to the
+earliest-sequence GM. `agent_to_flow` overrides are included in routing metadata
+even when no persona class declares that flow.
 
-Chain traversal honors `sim.engine.step.params.chain_execution`. Under the
-default `concurrent` mode, distinct flows run as independent pipelines whose hops
-serialize only when they contend for the same GM (via the engine's existing
-per-GM lock), with `flow_order` flows run first as a serial prefix; under
-`sequential` mode each flow runs its full chain to completion before the next
-flow in deterministic flow-by-flow order.
+Chain traversal mode is selected by `sim.engine.step.built_in`. Under the
+default `multi_gm` (concurrent) mode, distinct flows run as independent pipelines
+whose hops serialize only when they contend for the same GM (via the engine's
+existing per-GM lock), with `flow_order` flows run first as a serial prefix;
+under `multi_gm_serial` each flow runs its full chain to completion before the
+next flow in deterministic flow-by-flow order; under `multi_gm_staged` flows
+advance one stage at a time behind a global per-stage barrier (with empty `null`
+slots idling a flow at a stage to keep chains aligned).
 
 Checkpoint replay for multi-GM runs is strict: the replay strategy uses the
 agent's materialized flow and that flow's GM chain, then requires exactly one
@@ -334,10 +446,15 @@ uv run pytest tests/test_initializer_bootstrap.py::test_checkpoint_restore_route
 
 ## Performance Considerations
 
-- **Flow chains are concurrent by default**: distinct flows advance concurrently
-  through their GM chains, serializing only when two flows touch the same GM at
-  the same time (set `chain_execution: sequential` for the legacy flow-by-flow
+- **Flow chains are concurrent by default**: under the default `multi_gm` step
+  strategy, distinct flows advance concurrently through their GM chains,
+  serializing only when two flows touch the same GM at the same time (use
+  `sim.engine.step.built_in: multi_gm_serial` for the legacy flow-by-flow
   traversal). Within a single flow, an agent's own chain hops stay serial.
+- **Staged mode trades throughput for stage alignment**: `multi_gm_staged`
+  synchronizes all flows at a global per-stage barrier, which can leave the
+  worker pool idle at stage tails (a fast flow waits for slow flows). Prefer
+  `multi_gm` when you do not need stage alignment.
 - **Within-batch agent turns can run in parallel**: agents selected by the same
   GM and flow are isolated as separate turns.
 - **Backend state is per GM**: this release does not share one live backend
@@ -357,15 +474,17 @@ A: Not as a shared backend object in this release. Use one backend per GM, or
 persist shared state externally in custom components.
 
 **Q: Do flow chains run concurrently or sequentially?**
-A: Concurrently by default. With `chain_execution: concurrent` (the default),
+A: Concurrently by default. Under the default `sim.engine.step.built_in: multi_gm`,
 distinct flows run as independent pipelines through their GM chains; a flow's next
 hop starts as soon as its own previous hop completes, and turns serialize only
 when two flows touch the same GM at the same time. Flows in `flow_order` run first
 as a strict serial prefix (preserving precedence like `fixed_pre` before
 `default`), and a single agent's own chain hops always stay serial. Set
-`sim.engine.step.params.chain_execution: sequential` for the legacy behavior, where
-each flow runs its full GM chain to completion before the next flow in
-deterministic flow-by-flow order.
+`sim.engine.step.built_in: multi_gm_serial` for the legacy behavior, where each
+flow runs its full GM chain to completion before the next flow in deterministic
+flow-by-flow order. A third strategy, `multi_gm_staged`, advances every flow one
+stage at a time behind a global per-stage barrier (using empty `null` chain slots
+to keep differently-shaped chains stage-aligned).
 
 **Q: Can I route slots by flow without multi-GM?**
 A: Yes. A single GM can use `instances + flow_map` on any typed component slot.
