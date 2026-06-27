@@ -267,7 +267,7 @@ environment-specific API. Each backend handles:
 
 ### Responsibility Boundary
 
-- Engine (`BaseRuntimeEngine` / `FlowRuntimeEngine`): episode loop, actor concurrency, probe timing
+- Engine (`RuntimeEngine` + step strategy): episode loop, actor concurrency, probe timing
 - GM (`GameMaster` + native GM components): timeline observation, action parsing, dispatch
 - Backend app (`BackendApp` implementation): environment state transitions,
   action execution, optional capability surfaces, persistence

@@ -9,7 +9,12 @@ from typing import Any
 from omegaconf import DictConfig, OmegaConf
 
 from silisocs.environments.backends.factory import resolve_backend_db_path
-from silisocs.runtime.configuration.projection import RuntimeProjection
+from silisocs.runtime.configuration.projection import (
+    RuntimeProjection,
+    normalize_action_mode,
+    normalize_tool_calling_mode,
+    validate_resolve_tool_calling,
+)
 from silisocs.runtime.configuration.validation import (
     validate_component_slot_shape,
     validate_runtime_structure,
@@ -47,12 +52,13 @@ def _collect_declared_flow_tags(cfg: DictConfig) -> set[str]:
 
 def _build_action_prompt(
     cfg: DictConfig,
+    action_mode: str,
     tool_calling_mode: str,
     action_prompt_params: Mapping[str, Any] | None = None,
 ) -> str:
     from silisocs.runtime.prompts.action_prompts import build_action_prompt_with_app_instance
 
-    action_mode = str(getattr(cfg.sim, "action_mode", "custom") or "custom").strip().lower()
+    action_mode = str(action_mode or "custom").strip().lower()
     if action_mode == "generic":
         return ""
 
@@ -189,6 +195,23 @@ def _isolate_backend_paths(entries: list[tuple[str, dict[str, Any]]]) -> None:
         seen[db_key] = gm_name
 
 
+def _gm_tool_calling_mode(explicit: Any, alias: Any, *, path: str) -> str:
+    """Resolve a per-GM tool_calling_mode from the explicit key or the tool_calling alias.
+
+    ``tool_calling`` may be a scalar string or a mapping carrying a ``mode`` key.
+    Returns '' (unset) when neither is provided.
+    """
+    if explicit is not None and str(explicit).strip():
+        return str(explicit).strip()
+    if alias is None:
+        return ""
+    if isinstance(alias, Mapping):
+        if "mode" not in alias:
+            raise ValueError(f"{path}.tool_calling mapping must set 'mode'.")
+        return str(alias.get("mode") or "").strip()
+    return str(alias).strip()
+
+
 def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
     default_gm = cfg.env.gm
     default_class_path = str(
@@ -207,6 +230,14 @@ def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
         "backend": _plain_mapping(OmegaConf.select(cfg, "env.gm.backend", default={}) or {}),
         "backend_path": "env.gm.backend",
         "components": _gm_components_cfg(cfg),
+        "action_mode": str(OmegaConf.select(cfg, "env.gm.action_mode", default="") or "").strip(),
+        "tool_calling_mode": _gm_tool_calling_mode(
+            OmegaConf.select(cfg, "env.gm.tool_calling_mode"),
+            OmegaConf.select(cfg, "env.gm.tool_calling"),
+            path="env.gm",
+        ),
+        "index": 0,
+        "resolve_path": "env.gm.components.resolve.built_in",
     }
 
     gm_orchestration_cfg = getattr(cfg.env, "gm_orchestration", None)
@@ -234,6 +265,9 @@ def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
                 "backend",
                 "components",
                 "restore",
+                "action_mode",
+                "tool_calling_mode",
+                "tool_calling",
             }
         )
         if unsupported:
@@ -273,6 +307,14 @@ def _resolve_gm_specs(cfg: DictConfig) -> list[dict[str, Any]]:
                     components.get("initialize"),
                     path=f"env.gm_orchestration.gms[{idx}].components",
                 ),
+                "action_mode": str(gm_raw.get("action_mode", "") or "").strip(),
+                "tool_calling_mode": _gm_tool_calling_mode(
+                    gm_raw.get("tool_calling_mode"),
+                    gm_raw.get("tool_calling"),
+                    path=f"env.gm_orchestration.gms[{idx}]",
+                ),
+                "index": idx,
+                "resolve_path": (f"env.gm_orchestration.gms[{idx}].components.resolve.built_in"),
             }
         )
         if not spec["gm_name"]:
@@ -290,7 +332,7 @@ def _resolve_flow_chains(
     cfg: DictConfig,
     gm_specs: list[dict[str, Any]],
     declared_flows: set[str],
-) -> dict[str, list[str]]:
+) -> dict[str, list[str | None]]:
     if not gm_specs:
         return {}
 
@@ -298,7 +340,7 @@ def _resolve_flow_chains(
     gm_sequences = {str(spec["gm_name"]): int(spec["sequence"]) for spec in gm_specs}
     default_gm = str(min(gm_specs, key=lambda item: int(item["sequence"]))["gm_name"])
 
-    chains: dict[str, list[str]] = {}
+    chains: dict[str, list[str | None]] = {}
     gm_orchestration_cfg = getattr(cfg.env, "gm_orchestration", None)
     bindings = getattr(gm_orchestration_cfg, "flow_bindings", None)
     if isinstance(bindings, Mapping):
@@ -314,17 +356,25 @@ def _resolve_flow_chains(
                 if not flow_name:
                     continue
                 if isinstance(gm_chain, str):
-                    gm_chain_list = [gm_chain]
+                    gm_chain_list: list[Any] = [gm_chain]
                 elif isinstance(gm_chain, Sequence) and not isinstance(gm_chain, (str, bytes)):
                     gm_chain_list = list(gm_chain)
                 else:
                     raise ValueError(
                         f"flow_to_gms['{flow_name}'] must be a string or list of strings."
                     )
-                resolved = [str(gm).strip() for gm in gm_chain_list if str(gm).strip()]
-                if not resolved:
+                # A null/empty entry is an "empty slot": the flow idles at that stage
+                # (only meaningful under the multi_gm_staged traversal) and resumes at
+                # its next non-empty hop. Trailing slots have no effect, so trim them.
+                resolved: list[str | None] = [
+                    (str(gm).strip() or None) if gm is not None else None for gm in gm_chain_list
+                ]
+                while resolved and resolved[-1] is None:
+                    resolved.pop()
+                real = [gm for gm in resolved if gm is not None]
+                if not real:
                     raise ValueError(f"flow_to_gms['{flow_name}'] cannot be empty.")
-                unknown = [gm for gm in resolved if gm not in gm_names]
+                unknown = [gm for gm in real if gm not in gm_names]
                 if unknown:
                     raise ValueError(f"Unknown GMs in flow_to_gms['{flow_name}']: {unknown}")
                 chains[flow_name] = resolved
@@ -336,11 +386,12 @@ def _resolve_flow_chains(
     chains.setdefault(DEFAULT_FLOW_TAG, [default_gm])
 
     for flow_name, gm_chain in chains.items():
-        if len(set(gm_chain)) != len(gm_chain):
+        real_chain = [gm for gm in gm_chain if gm is not None]
+        if len(set(real_chain)) != len(real_chain):
             raise ValueError(f"Flow '{flow_name}' has duplicate GMs in chain: {gm_chain}")
-        if len(gm_chain) < 2:
+        if len(real_chain) < 2:
             continue
-        for left, right in zip(gm_chain, gm_chain[1:], strict=False):
+        for left, right in zip(real_chain, real_chain[1:], strict=False):
             if gm_sequences[left] >= gm_sequences[right]:
                 raise ValueError(
                     "Flow chain must be strictly serial by sequence for multi-GM flows: "
@@ -349,6 +400,19 @@ def _resolve_flow_chains(
                 )
 
     return chains
+
+
+def resolve_flow_chains(cfg: DictConfig) -> dict[str, list[str | None]]:
+    """Resolve the flow -> GM-sequence routing topology from config.
+
+    This is engine/scheduling config (the step strategy and the checkpoint replay
+    router consume it), NOT game-master state. Exposed so callers that build the
+    engine/restore path (``session.py``) can source the chains directly from config
+    rather than introspecting them off a constructed game master.
+    """
+    gm_specs = _resolve_gm_specs(cfg)
+    declared_flows = _collect_declared_flow_tags(cfg)
+    return _resolve_flow_chains(cfg, gm_specs, declared_flows)
 
 
 def build_game_masters(cfg: DictConfig) -> list[GameMasterConfig]:
@@ -374,14 +438,32 @@ def build_game_masters(cfg: DictConfig) -> list[GameMasterConfig]:
     game_masters: list[GameMasterConfig] = []
     for spec in gm_specs:
         gm_name = str(spec["gm_name"])
+        # owned_flows is the per-GM scalar derivation the GM still needs (component
+        # routing); the full flow_chains topology is engine config and no longer
+        # copied onto every GM. See resolve_flow_chains / the step strategy.
         owned_flows = [flow for flow, chain in flow_chains.items() if gm_name in chain]
         gm_components_cfg = dict(spec["components"])
         action_prompt_params = dict(
             dict(gm_components_cfg.get("action_prompt", {}) or {}).get("params", {}) or {}
         )
+        # Per-GM overrides fall back to the global projection when unset (today's behavior).
+        eff_action_mode = normalize_action_mode(spec.get("action_mode")) or projection.action_mode
+        eff_tool_calling_mode = (
+            normalize_tool_calling_mode(spec.get("tool_calling_mode"))
+            or projection.tool_calling_mode
+        )
+        resolve_built_in = str(
+            dict(gm_components_cfg.get("resolve", {}) or {}).get("built_in") or "parsed_action"
+        )
+        validate_resolve_tool_calling(
+            tool_calling_mode=eff_tool_calling_mode,
+            resolve_built_in=resolve_built_in,
+            resolve_path=str(spec["resolve_path"]),
+        )
         action_prompt = _build_action_prompt(
             cfg,
-            tool_calling_mode=projection.tool_calling_mode,
+            action_mode=eff_action_mode,
+            tool_calling_mode=eff_tool_calling_mode,
             action_prompt_params=action_prompt_params,
         )
         gm_components_cfg["initialize"] = dict(spec["initializer"])
@@ -390,12 +472,11 @@ def build_game_masters(cfg: DictConfig) -> list[GameMasterConfig]:
             "backend_config": backend_config_by_gm[gm_name],
             "components": gm_components_cfg,
             "action_prompt_template": action_prompt,
-            "action_mode": projection.action_mode,
-            "tool_calling_mode": projection.tool_calling_mode,
+            "action_mode": eff_action_mode,
+            "tool_calling_mode": eff_tool_calling_mode,
             "sim_roles": {},
             "agent_flow_tags": {},
             "owned_flows": owned_flows,
-            "flow_chains": flow_chains,
             "prompt_config": dict(action_prompt_params),
             "sequence": int(spec["sequence"]),
             "mode": str(spec["mode"]),

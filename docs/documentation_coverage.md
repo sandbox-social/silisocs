@@ -15,7 +15,7 @@ Last reviewed: 2026-05-11.
 | Timeline/recsys capability interface | `twitter_like/`, `reddit_like/`, `mastodon/` | [Backends](backends.md), [Configuration](configuration.md) | Covered; `SocialBackendApp` wording is capability-scoped |
 | Reference-world backends | `resource_market/`, `virtual_space/`, packaged env/agent/world configs | [Backends](backends.md), [Environment Layer](environment_layer.md) | Covered; keep examples synced with packaged defaults |
 | GM component slots | `environments/gm/components/` | [Environment Layer](environment_layer.md), [Simulation Extensibility API](simulation_extensibility_api.md) | Covered; strict `params` behavior must be called out |
-| Flow and multi-GM routing | `gm/game_master.py`, `simulation_engines/multi_gm.py` | [Multi-GM Architecture](multi_gm_architecture.md), `agent_docs/architecture.md` | Covered but duplicated; public docs should be canonical |
+| Flow and multi-GM routing | `gm/game_master.py`, `simulation_engines/policies/steps.py` | [Multi-GM Architecture](multi_gm_architecture.md), `agent_docs/architecture.md` | Covered but duplicated; public docs should be canonical |
 | Engine policies | `src/silisocs/simulation_engines/policies/` | [Environment Layer](environment_layer.md), [Simulation Extensibility API](simulation_extensibility_api.md) | Covered after path correction |
 | Evaluation probes and studies | `evaluations/probes/`, study docs | [Probes](probes.md), [Study Guide](study_guide.md), [Study Schema](study_schema.md) | Covered; update when evaluator APIs change |
 | Dashboard | `src/silisocs/dashboard/launch_app.py` | [Dashboard](dashboard.md) | Covered; advanced config controls need periodic UI sync |

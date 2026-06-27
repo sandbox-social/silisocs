@@ -49,7 +49,10 @@ engine:
     class_path: null
     params: {}
   step:
-    built_in: base                  # base | sequential | flow | multi_gm
+    # base | sequential | flow | multi_gm (concurrent flow-chain traversal,
+    # the default) | multi_gm_serial (legacy flow-by-flow) | multi_gm_staged
+    # (global per-stage barrier, supports empty/idle chain slots)
+    built_in: base
     class_path: null
     params:
       flow_order: [fixed_pre, default]
@@ -59,13 +62,9 @@ engine:
       # in a "world" GM but open_ended in a social GM. Precedence: per-flow
       # (flow_turn_policies) > per-GM (this) > global turn_policy.
       gm_turn_policies: {}
-      # multi_gm only: how flow chains are scheduled across GMs.
-      #   concurrent (default) - flows run as independent pipelines, gated only by
-      #                          shared-GM overlap; flow_order-listed flows run first
-      #                          as a strict serial prefix (e.g. seed-then-act).
-      #   sequential           - legacy: each flow runs its full chain to completion
-      #                          before the next, one batch at a time.
-      chain_execution: concurrent
+      # Per-GM concurrency cap keyed by GM name; effective = min(cap, global
+      # worker_limit); empty = global cap governs everything.
+      gm_concurrency_caps: {}
   turn_policy:
     built_in: single_action         # single_action | fixed_count | open_ended
     class_path: null

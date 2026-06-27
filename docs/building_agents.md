@@ -253,6 +253,29 @@ classes:
     model: gpt-4o            # Better model for key agents
 ```
 
+`model` accepts either a scalar model name (above) or a full LLM block that
+overrides `sim.llm` per-field:
+
+```yaml
+classes:
+  candidate:
+    count: 2
+    model:
+      name: gpt-4o
+      temperature: 0.2       # Each present field overrides the matching
+      provider: openai       # sim.llm field; unset fields fall back to global.
+      api_base: null
+      api_key: null
+      extra_kwargs: {}       # REPLACE (not deep-merged) over sim.llm.extra_kwargs
+      disabled: false
+```
+
+The seven block fields are `name`, `temperature`, `provider`, `api_base`,
+`api_key`, `extra_kwargs`, and `disabled`. Models are deduped by **effective**
+config: two classes sharing a name but differing in (say) temperature get
+distinct model objects, while a run with no overrides still builds one shared
+model.
+
 Or per-agent via field mapping (your data source must include a model field):
 
 ```yaml

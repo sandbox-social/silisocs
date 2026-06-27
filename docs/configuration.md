@@ -115,10 +115,35 @@ custom provider (see [Building Agents](building_agents.md)).
 | `sim.checkpoint.source_run` | `null` | Previous output directory to restore from (explicit resume) |
 | `sim.checkpoint.auto_resume` | `true` | Resume from this run's own output directory if it already contains checkpoints; ignored when `source_run` is set |
 | `sim.checkpoint.restore.built_in` | `social_action_event_replay` | Checkpoint restore strategy when `source_run` is set |
-| `sim.engine.step.built_in` | `base` | Engine step policy: `base`, `sequential`, `flow`, or `multi_gm` |
-| `sim.engine.step.params.chain_execution` | `concurrent` | Multi-GM chain traversal mode (only `multi_gm` step): `concurrent` (flows advance as independent pipelines, serializing only when two flows touch the same GM) or `sequential` (each flow runs its full GM chain to completion before the next) |
+| `sim.engine.step.built_in` | `base` | Engine step policy: `base`, `sequential`, `flow`, `multi_gm`, `multi_gm_serial`, or `multi_gm_staged`. The three `multi_gm*` strategies select the flow-chain traversal mode: `multi_gm` (concurrent, default — flows advance as independent pipelines, serializing only when two flows touch the same GM), `multi_gm_serial` (legacy row-major — each flow runs its full GM chain to completion before the next), `multi_gm_staged` (column-major with a global per-stage barrier — all flows advance one stage at a time) |
 | `sim.engine.step.params.gm_turn_policies` | `{}` | Per-GM turn policy overrides keyed by GM name, each value using the same slot shape as `sim.engine.turn_policy` (`{built_in\|class_path, params}`); applies under any step mode and is resolved per batch by GM name |
+| `sim.engine.step.params.gm_concurrency_caps` | `{}` | Per-GM concurrency caps (`{gm_name: int}`); caps how many of that GM's agent turns run at once via a per-GM semaphore. Effective per-GM limit = `min(cap, sim.max_concurrent_actions)`; empty map = the global cap governs every GM. Applies under any step mode |
 | `sim.roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |
+
+### Per-GM action_mode and tool_calling overrides
+
+`sim.action_mode` and `sim.tool_calling.mode` set the global defaults. A single
+default GM (`env.gm`) and each orchestrated GM (`env.gm_orchestration.gms[*]`)
+may additionally set optional per-GM overrides:
+
+```yaml
+env:
+  gm_orchestration:
+    gms:
+      - name: social_gm
+        action_mode: generic
+        tool_calling_mode: single   # alias: tool_calling (scalar or {mode: ...})
+        # ... backend + components ...
+```
+
+Each unset key falls back to the global `sim.action_mode` / `sim.tool_calling.mode`
+(today's behavior). The `tool_calling_mode` key also accepts the alias
+`tool_calling`, as either a scalar (`single`) or a mapping (`{mode: single}`).
+
+Resolve compatibility is validated **per GM** against each GM's *effective*
+`tool_calling_mode`: a GM whose effective mode is `single`/`multi` must pair its
+`components.resolve.built_in` with `tool_calling`, and a GM whose effective mode is
+`none` must not use the `tool_calling` resolve component.
 
 ---
 
@@ -376,7 +401,15 @@ persona_pipeline:
       class_path: silisocs.agents.native.NativeAgent
       sim_role_name: user               # Role name for activity rates
       flow_tag: default                 # Optional class-level flow tag
-      model: null                       # Per-class LLM override
+      model: null                       # Per-class LLM override: scalar name OR
+                                        # a full {name, temperature, provider,
+                                        # api_base, api_key, extra_kwargs,
+                                        # disabled} block overriding sim.llm
+                                        # per-field (unset fields fall back to
+                                        # global). Models are deduped by effective
+                                        # config, so a no-override run still shares
+                                        # one model while classes differing in any
+                                        # field get distinct model objects.
       data:
         source: inline                 # inline | config_path | local_json | hf_dataset
         records:
@@ -897,10 +930,11 @@ value uses the same slot shape as `turn_policy`. Flows absent from the map fall
 back to the global policy, so omitting the key reproduces current behavior
 exactly. Per-flow overrides are ignored under `base`/`sequential` scheduling
 (which do not group agents by flow). For a multi-GM flow chain the same per-flow
-policy applies at every GM hop. Hop scheduling itself follows the
-`concurrent` chain-execution default — a flow's next hop starts as soon as its
-own previous hop resolves, serializing only when two flows touch the same GM —
-unless overridden via `sim.engine.step.params.chain_execution` (see
+policy applies at every GM hop. Hop scheduling itself follows the chosen
+`multi_gm*` step strategy — under the default `multi_gm` (concurrent), a flow's
+next hop starts as soon as its own previous hop resolves, serializing only when
+two flows touch the same GM; select `multi_gm_serial` or `multi_gm_staged` via
+`sim.engine.step.built_in` for the other traversal modes (see
 [Advanced: Multi-GM Orchestration](#advanced-multi-gm-orchestration)).
 
 You may also override the turn policy per GM via
@@ -918,6 +952,17 @@ empty map) means the global turn policy applies everywhere, unchanged. Unlike
 `flow_turn_policies` (which only takes effect under `flow`/`multi_gm`
 scheduling), `gm_turn_policies` applies under any step mode because it is
 resolved per batch by GM name.
+
+A sibling key, `sim.engine.step.params.gm_concurrency_caps`
+(a `{gm_name: int}` map), caps how many of *that* GM's agent turns run
+concurrently via a per-GM semaphore. It is orthogonal to `gm_turn_policies`:
+the turn policy controls how *many* actions a single turn takes, while the cap
+controls how many turns run *at once*. The global `sim.max_concurrent_actions`
+remains the overall ceiling and the default for every GM, so the effective per-GM
+limit is `min(cap, sim.max_concurrent_actions)`; an empty map means the global
+cap governs everything (unchanged). This lets you throttle a rate-limited backend
+(e.g. a live Mastodon server) below the global limit while other GMs keep running
+concurrently. Like `gm_turn_policies`, it applies under any step mode.
 
 Sequential scheduling:
 
@@ -1011,9 +1056,11 @@ sim:
   empty; the recommendation-update component reconciles configured types against
   the backend's live `recsys_active_types()` and lazily re-initializes them on
   the first post-resume update, so algorithmic feeds resume automatically.
-- **Flow scheduling**: flow tags and flow chains are re-materialized from the
-  resume-time config (not the checkpoint). A divergence from the checkpointed
-  scheduling fingerprint is logged as a warning, since it can mis-route replay.
+- **Flow scheduling**: the agent->flow tag assignment is re-materialized from the
+  resume-time config (not the checkpoint); a divergence from the checkpointed
+  agent->flow fingerprint is logged as a warning, since it can mis-route replay.
+  The flow->GM routing topology (flow chains) is engine config, re-materialized
+  from config and not part of the GM checkpoint at all.
 
 ### Multi-GM layout
 
@@ -1102,25 +1149,38 @@ and materialized before runtime. The Engine and Game Masters both read the same
 final `agent_flow_tags`, so component routing cannot drift from Engine flow
 scheduling.
 
-`sim.engine.step.params.chain_execution` (only the `multi_gm` step strategy uses
-it) selects how flow chains traverse their GMs:
+`sim.engine.step.built_in` selects how flow chains traverse their GMs, via three
+`multi_gm*` step strategies:
 
-- `concurrent` (DEFAULT): Flows run as independent pipelines through their GM
-  chains. Distinct flows advance concurrently and a flow's next hop starts as
-  soon as its own previous hop completes — turns serialize ONLY when two flows
-  touch the same GM at the same time (enforced by the engine's existing per-GM
-  lock). Flows listed in `flow_order` run first as a strict serial prefix,
+- `multi_gm` (DEFAULT, concurrent): Flows run as independent pipelines through
+  their GM chains. Distinct flows advance concurrently and a flow's next hop
+  starts as soon as its own previous hop completes — turns serialize ONLY when
+  two flows touch the same GM at the same time (enforced by the engine's existing
+  per-GM lock). Flows listed in `flow_order` run first as a strict serial prefix,
   preserving declared precedence such as seed-then-act (`fixed_pre` before
   `default`); every other flow runs as the concurrent group. A single agent's
   own chain hops always stay serial, since each hop observes the prior hop's
   resolution.
-- `sequential`: Legacy behavior — each flow runs its full GM chain to completion
-  before the next flow, one batch at a time, in a deterministic flow-by-flow
-  ("row-major") order.
+- `multi_gm_serial` (legacy row-major): each flow runs its full GM chain to
+  completion before the next flow, one batch at a time, in a deterministic
+  flow-by-flow order.
+- `multi_gm_staged` (column-major with a global per-stage barrier): `flow_order`
+  flows run first as a serial prefix (same as `multi_gm`); then every remaining
+  flow advances ONE STAGE AT A TIME — all flows' stage-N hops run concurrently,
+  and stage N+1 does NOT begin until ALL of stage N's turns finish. A flow's
+  chain may contain an empty slot (a `null` entry in `flow_to_gms`) so it idles
+  at that stage and resumes at its next non-null hop, letting flows with
+  different chain shapes stay stage-aligned (see
+  [Advanced: Multi-GM Orchestration](#advanced-multi-gm-orchestration)). The
+  barrier can leave the worker pool idle at stage tails (a fast flow waits for
+  slow flows); use `multi_gm` when you don't need stage alignment.
 
-`concurrent` is the default, replacing the previously always-sequential chain
-traversal. Independent of the mode: each GM's `update()` still runs once before
-any acting in a step; checkpoint replay is still per-agent-flow-chain; and
+`multi_gm` is the default; its behavior is unchanged from prior releases (it was
+formerly selected by the now-removed `sim.engine.step.params.chain_execution:
+concurrent`, and `multi_gm_serial` was `chain_execution: sequential` — a config
+that still sets `chain_execution` now raises a `ValueError` with a migration
+hint). Independent of the mode: each GM's `update()` still runs once before any
+acting in a step; checkpoint replay is still per-agent-flow-chain; and
 `flow_turn_policies` and per-flow component routing still apply at every hop.
 
 ---

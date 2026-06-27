@@ -10,7 +10,7 @@ from silisocs.runtime.construction.initialization_context import (
     populate_agent_data,
 )
 from silisocs.runtime.construction.specs import AgentConfig, GameMasterConfig
-from silisocs.runtime.execution.session import build_game_masters
+from silisocs.runtime.execution.session import build_game_masters, resolve_flow_chains
 
 
 def _base_cfg(processing_mode: str):
@@ -378,6 +378,34 @@ def test_multi_gm_flow_bindings_validate_unknown_duplicate_and_sequence() -> Non
     cfg.env.gm_orchestration.flow_bindings.flow_to_gms.review = ["first", "second"]
     with pytest.raises(ValueError, match="strictly serial"):
         build_game_masters(cfg)
+
+
+def test_multi_gm_flow_chain_empty_slots_are_preserved_and_validated() -> None:
+    cfg = _base_cfg("raw")
+    components = cast(dict[str, Any], OmegaConf.to_container(cfg.env.gm.components, resolve=True))
+    backend = OmegaConf.to_container(cfg.env.gm.backend, resolve=True)
+    cfg.env.gm_orchestration = {
+        "gms": [
+            {"gm_name": "first", "sequence": 1, "backend": backend, "components": components},
+            {"gm_name": "second", "sequence": 0, "backend": backend, "components": components},
+        ],
+        # 'second'(seq 0), an empty slot, then 'first'(seq 1): the None is an idle
+        # stage preserved in place; the real chain stays strictly serial by sequence.
+        "flow_bindings": {"flow_to_gms": {"review": ["second", None, "first"]}},
+    }
+
+    # flow_chains is engine config (resolved via resolve_flow_chains), not GM params.
+    assert resolve_flow_chains(cfg)["review"] == ["second", None, "first"]
+    assert "flow_chains" not in build_game_masters(cfg)[0].params
+
+    # Trailing empty slots have no effect under any traversal, so they are trimmed.
+    cfg.env.gm_orchestration.flow_bindings.flow_to_gms.review = ["second", "first", None]
+    assert resolve_flow_chains(cfg)["review"] == ["second", "first"]
+
+    # A chain made up only of empty slots has no real GM and is rejected.
+    cfg.env.gm_orchestration.flow_bindings.flow_to_gms.review = [None, None]
+    with pytest.raises(ValueError, match="cannot be empty"):
+        resolve_flow_chains(cfg)
 
 
 def test_build_game_masters_includes_agent_to_flow_override_in_owned_flows() -> None:

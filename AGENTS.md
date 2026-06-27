@@ -48,8 +48,11 @@ Core runtime layers:
 - To add custom component: implement `Component` interface, set in `env.gm.components.{role}.class_path`
 
 ### 4. Engine Layer (Execution Policies)
-- `src/silisocs/simulation_engines/base_engines.py` — BaseRuntimeEngine, FlowRuntimeEngine (multi-flow scheduling)
-- `src/silisocs/simulation_engines/multi_gm.py` — MultiGMRuntimeEngine (multi-GM orchestration)
+- `src/silisocs/simulation_engines/base_engines.py` — `RuntimeEngine`, the single
+  strategy-driven engine (startup, per-step GM updates, action concurrency, retry
+  telemetry, probe phases). Scheduling/traversal is owned entirely by the step
+  strategy; `build_engine` selects it from `sim.engine.step.built_in`. Adding a new
+  traversal means writing a step strategy and registering it — no new engine class.
 - `src/silisocs/simulation_engines/policies/` — loop, step, and turn policies:
   - Turn policy: `single_action`, `fixed_count`, `open_ended`
   - Step policy: `base`, `sequential`, `flow`, `multi_gm`
@@ -95,11 +98,16 @@ Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 | `sim.llm.disabled` | false | No-op model for testing |
 | `sim.action_mode` | custom | Prompt style (`custom` or `generic`) |
 | `sim.tool_calling.mode` | single | `none` \| `single` \| `multi` |
-| `sim.engine.step.built_in` | base | `base`, `sequential`, `flow`, or `multi_gm` |
+| `sim.engine.step.built_in` | base | `base`, `sequential`, `flow`, `multi_gm`, `multi_gm_serial`, or `multi_gm_staged` (the three `multi_gm*` strategies select the flow-chain traversal mode; see below) |
 | `sim.engine.turn_policy.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended` |
-| `sim.engine.step.params.chain_execution` | concurrent | `concurrent` \| `sequential` (multi_gm chain traversal) |
 | `sim.engine.step.params.gm_turn_policies` | {} | Per-GM turn policy map (`gm_name -> {built_in\|class_path, params}`); applies under any step mode |
+| `sim.engine.step.params.gm_concurrency_caps` | {} | Per-GM concurrency caps (`gm_name -> int`); effective per-GM = `min(cap, sim.max_concurrent_actions)` via a per-GM semaphore; empty = global cap everywhere; applies under any step mode |
 | `sim.checkpoint.every_n_steps` | null | Checkpoint frequency (run_study.py sets 1 by default) |
+
+`agents.persona_pipeline.classes.<class>.model` accepts a scalar model name OR a
+full `{name, temperature, provider, api_base, api_key, extra_kwargs, disabled}`
+block overriding `sim.llm` per-field (unset fields fall back to global;
+`extra_kwargs` replaces, not deep-merges); models are deduped by effective config.
 
 Key run params live in `world/default.yaml` (at config root via `@package _global_`):
 
@@ -161,6 +169,14 @@ Use class-level behavior flows instead of adding custom manager branches:
   `open_ended` in a social GM — and disambiguates multi-GM-chain hops that share
   one flow (which `flow_turn_policies`, being flow-keyed, cannot). Unset/empty =
   the global turn policy applies everywhere (unchanged behavior).
+- Optional per-GM concurrency cap (how many of a GM's turns run AT ONCE):
+  `sim.engine.step.params.gm_concurrency_caps` (map gm_name -> int) caps that GM's
+  concurrent agent turns via a per-GM semaphore; effective per-GM =
+  `min(cap, sim.max_concurrent_actions)` (the global stays the overall ceiling and
+  per-GM default). Orthogonal to `gm_turn_policies` (turn policy = how MANY actions
+  a turn takes; this = how many turns run AT ONCE). Empty = global cap everywhere;
+  applies under ANY step mode. Use to throttle a rate-limited backend below the
+  global limit while other GMs keep running concurrently.
 
 6. Optional per-flow action enforcement (which actions a flow may execute):
 - `env.gm.components.resolve.params.flow_action_filters` (map flow_tag ->
@@ -172,15 +188,38 @@ Use class-level behavior flows instead of adding custom manager branches:
   agents in the named flow(s); empty = all agents).
 
 8. Advanced multi-GM orchestration (optional):
-- `env.gm_orchestration.gms`
+- `env.gm_orchestration.gms` (each `gms[*]` — and the single default `env.gm` —
+  accepts optional per-GM `action_mode` and `tool_calling_mode` (alias
+  `tool_calling`, scalar or `{mode: ...}`) overrides; unset falls back to the
+  global `sim.action_mode` / `sim.tool_calling.mode`. Resolve compatibility is
+  validated PER-GM against each GM's effective mode: an effective `single`/`multi`
+  GM must use `components.resolve.built_in: tool_calling`, a `none` GM must not.)
 - `env.gm_orchestration.flow_bindings.flow_to_gms` (maps a flow to a GM or a
-  strictly-increasing-`sequence` GM chain; the only supported flow binding key)
-- `sim.engine.step.params.chain_execution` (`concurrent` default | `sequential`;
-  only the `multi_gm` step strategy uses it). The default `concurrent` mode runs
-  flows as independent pipelines through their GM chains — distinct flows advance
-  concurrently and serialize only on shared-GM overlap (the per-GM lock), with
-  `flow_order` flows running first as a strict serial prefix; `sequential` is the
-  legacy flow-by-flow ("row-major") chain traversal.
+  strictly-increasing-`sequence` GM chain; the only supported flow binding key).
+  A chain entry may be `null` (an **empty slot**) — meaningful only under
+  `multi_gm_staged` — meaning the flow IDLES at that stage and resumes at its
+  next non-null hop. Trailing empty slots are trimmed (no effect); an all-empty
+  chain is rejected ("cannot be empty"); the strictly-increasing-`sequence` rule
+  applies to the real (non-null) GMs only. Under `multi_gm` / `multi_gm_serial`
+  null hops are simply dropped.
+- The multi-GM flow-chain traversal mode is selected by `sim.engine.step.built_in`
+  (`multi_gm` / `multi_gm_serial` / `multi_gm_staged`); the former
+  `sim.engine.step.params.chain_execution` knob has been removed (a config that
+  still sets it raises a `ValueError` with a migration hint):
+  - `multi_gm` (concurrent, **default** — unchanged behavior): runs flows as
+    independent pipelines through their GM chains. Distinct flows advance
+    concurrently and serialize only on shared-GM overlap (the per-GM lock), with
+    `flow_order` flows running first as a strict serial prefix.
+  - `multi_gm_serial` (legacy row-major): each flow runs its full GM chain to
+    completion before the next flow starts, one batch at a time, in deterministic
+    flow-order.
+  - `multi_gm_staged` (column-major with a global per-stage barrier): `flow_order`
+    flows run first as a serial prefix (same as concurrent); then every remaining
+    flow advances ONE STAGE AT A TIME — all flows' stage-N hops run concurrently
+    and stage N+1 does not begin until ALL of stage N's turns finish. Empty slots
+    (`null` chain entries) let flows with different chain shapes stay stage-aligned.
+    Tradeoff: the barrier can leave the worker pool idle at stage tails (a fast
+    flow waits for slow flows); use `multi_gm` when you don't need stage alignment.
 
 Default UX rule:
 - Keep users on the default `ComponentGameMaster`, with advanced dashboard toggles off.

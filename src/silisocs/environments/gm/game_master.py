@@ -97,7 +97,6 @@ class ComponentGameMaster(BaseGameMaster):
         sim_roles: Mapping[str, str] | None = None,
         agent_flow_tags: Mapping[str, str] | None = None,
         owned_flows: Sequence[str] = (),
-        flow_chains: Mapping[str, Sequence[str]] | None = None,
         prompt_config: Mapping[str, Any] | None = None,
         sequence: int = 0,
         mode: str = "shared",
@@ -108,10 +107,6 @@ class ComponentGameMaster(BaseGameMaster):
         self.sim_roles = dict(sim_roles or {})
         self.agent_flow_tags = dict(agent_flow_tags or {})
         self.owned_flows = tuple(str(flow) for flow in owned_flows)
-        self.flow_chains = {
-            str(flow): tuple(str(gm) for gm in chain)
-            for flow, chain in dict(flow_chains or {}).items()
-        }
         self.sequence = int(sequence)
         self.mode = str(mode)
         if backend is None:
@@ -248,14 +243,14 @@ class ComponentGameMaster(BaseGameMaster):
                 for key, component in self._component_registry.items()
                 if callable(getattr(component, "get_state", None))
             },
-            # Flow scheduling is re-materialized from config on resume, not from
+            # agent->flow tags are re-materialized from config on resume, not from
             # the checkpoint. Record a fingerprint so a config change that would
-            # silently mis-route checkpoint replay (or diverge the second half of
-            # a run) is detected on restore. See set_state's validation below.
+            # silently mis-route checkpoint replay (or diverge the second half of a
+            # run) is detected on restore. See set_state's validation below. The
+            # flow->GM routing topology (flow_chains) is engine config, not GM state.
             "scheduling": {
                 "agent_flow_tags": dict(self.agent_flow_tags),
                 "owned_flows": list(self.owned_flows),
-                "flow_chains": {str(flow): list(chain) for flow, chain in self.flow_chains.items()},
             },
         }
         # Use the explicit capability signal, not dict-truthiness: a backend that
@@ -298,13 +293,17 @@ class ComponentGameMaster(BaseGameMaster):
                 component.set_state(value)
 
     def _warn_on_scheduling_drift(self, checkpointed: Mapping[str, Any]) -> None:
-        """Warn loudly if resume-time flow scheduling diverges from the checkpoint.
+        """Warn loudly if resume-time agent->flow tags diverge from the checkpoint.
 
-        Flow scheduling (agent->flow tags and flow chains) is rebuilt from the
-        live config, not restored from the checkpoint. If it changed, checkpoint
-        replay routes historical events by the *new* tags, which can mis-route or
-        raise. We warn rather than hard-fail because some changes (e.g. adding
-        agents) are legitimate, but the divergence must be visible.
+        The agent->flow mapping (this GM's component-routing surface) is rebuilt
+        from the live config, not restored from the checkpoint. If a tag changed,
+        checkpoint replay routes historical events by the *new* tag, which can
+        mis-route or raise. We warn rather than hard-fail because some changes
+        (e.g. adding agents) are legitimate, but the divergence must be visible.
+        We compare only agents present in BOTH maps, so a legitimate roster change
+        (an agent added or removed) does not warn — only a changed existing tag.
+        (The flow->GM routing topology is engine config, owned by the step strategy
+        and the restore router; it is not checkpointed here.)
         """
         saved_tags = dict(checkpointed.get("agent_flow_tags") or {})
         live_tags = {str(k): str(v) for k, v in self.agent_flow_tags.items()}
@@ -313,23 +312,14 @@ class ComponentGameMaster(BaseGameMaster):
             for agent in set(saved_tags) & set(live_tags)
             if str(saved_tags.get(agent)) != str(live_tags.get(agent))
         }
-        saved_chains = {
-            str(flow): [str(gm) for gm in chain]
-            for flow, chain in dict(checkpointed.get("flow_chains") or {}).items()
-        }
-        live_chains = {
-            str(flow): [str(gm) for gm in chain] for flow, chain in self.flow_chains.items()
-        }
-        if changed_tags or saved_chains != live_chains:
+        if changed_tags:
             _LOGGER.warning(
-                "Game master %r resumed with flow scheduling that differs from the "
-                "checkpoint (changed agent->flow tags: %s; flow_chains changed: %s). "
-                "Checkpoint replay routes historical events by the current config, so "
-                "this can mis-route actions. Resume with the original flow configuration "
-                "unless the change is intentional.",
+                "Game master %r resumed with agent->flow tags that differ from the "
+                "checkpoint (changed: %s). Checkpoint replay routes historical events "
+                "by the current config, so this can mis-route actions. Resume with the "
+                "original flow configuration unless the change is intentional.",
                 self.name,
-                changed_tags or "none",
-                saved_chains != live_chains,
+                changed_tags,
             )
 
     def _build_components(

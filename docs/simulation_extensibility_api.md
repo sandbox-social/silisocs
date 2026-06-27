@@ -272,9 +272,11 @@ Factory entrypoint: `build_engine(cfg)` in
 
 `RuntimeEngine` provides startup initialization, per-step GM updates,
 per-agent observe/act/resolve, action concurrency, retry telemetry, and probe
-phase orchestration. The preset wrappers select default step policies:
-`BaseRuntimeEngine` uses base scheduling, `FlowRuntimeEngine` uses flow
-scheduling, and `MultiGMRuntimeEngine` uses multi-GM flow routing.
+phase orchestration. There is a single engine class; the scheduling behavior is
+chosen entirely by its step strategy, which `build_engine` selects from
+`sim.engine.step.built_in` (`base`, `sequential`, `flow`, or the `multi_gm*`
+traversals). To add a new traversal, write a step strategy and register it — no
+new engine class is needed.
 
 ## 6) Engine Policy API
 
@@ -312,12 +314,14 @@ sequence of `StepBatch(flow_name, game_master, turns)`. Each `turns` entry is
 logging, retry telemetry, concurrency limits, and `StepResult` shape. A custom
 step policy may bypass it, but then it owns those responsibilities.
 
-The `multi_gm` step policy emits its chain batches for concurrent execution by
-default: flows run as independent pipelines through their GM chains, gated only
-by shared-GM overlap (the engine's per-GM lock serializes turns when two flows
-touch the same GM at once). The `sim.engine.step.params.chain_execution` knob
-selects this `concurrent` default or legacy `sequential` (each flow runs its full
-chain to completion before the next).
+The `multi_gm` step policy emits its chain batches for concurrent execution:
+flows run as independent pipelines through their GM chains, gated only by
+shared-GM overlap (the engine's per-GM lock serializes turns when two flows touch
+the same GM at once). Two sibling step policies selected via
+`sim.engine.step.built_in` offer the other traversal modes: `multi_gm_serial`
+(legacy row-major — each flow runs its full chain to completion before the next)
+and `multi_gm_staged` (column-major with a global per-stage barrier — all flows
+advance one stage at a time, with `null` chain entries idling a flow at a stage).
 
 Turn policies own one selected agent's action cadence and implement:
 
@@ -348,9 +352,9 @@ def should_run_probe_phase(self, *, step: int, orchestrator: Any) -> bool: ...
 Built-ins:
 
 - Loop policy: `fixed_steps`
-- Step policy: `base`, `sequential`, `flow`, `multi_gm` (emits chain batches for
-  concurrent execution by default; `chain_execution` selects `concurrent` vs
-  `sequential`)
+- Step policy: `base`, `sequential`, `flow`, `multi_gm` (concurrent chain
+  batches), `multi_gm_serial` (legacy row-major chain traversal), `multi_gm_staged`
+  (column-major chain traversal behind a global per-stage barrier)
 - Turn policy: `single_action`, `fixed_count`, `open_ended`
 - Probe schedule: `step_schedule`, `fixed_interval`, `disabled`
 

@@ -5,10 +5,8 @@ from __future__ import annotations
 from omegaconf import OmegaConf
 
 from silisocs.runtime.construction.engines import build_engine
-from silisocs.simulation_engines.base_engines import (
-    BaseRuntimeEngine,
-    FlowRuntimeEngine,
-)
+from silisocs.simulation_engines.base_engines import RuntimeEngine
+from silisocs.simulation_engines.policies.steps import BaseStepStrategy, FlowStepStrategy
 
 
 def _cfg(engine_preset: str):
@@ -41,7 +39,8 @@ def test_base_gm_with_base_engine() -> None:
 
     engine = build_engine(cfg)
 
-    assert isinstance(engine, BaseRuntimeEngine)
+    assert isinstance(engine, RuntimeEngine)
+    assert isinstance(engine.step_strategy, BaseStepStrategy)
 
 
 def test_base_gm_with_flow_engine() -> None:
@@ -50,7 +49,8 @@ def test_base_gm_with_flow_engine() -> None:
 
     engine = build_engine(cfg)
 
-    assert isinstance(engine, FlowRuntimeEngine)
+    assert isinstance(engine, RuntimeEngine)
+    assert isinstance(engine.step_strategy, FlowStepStrategy)
 
 
 def test_shared_flow_gm_with_base_engine() -> None:
@@ -60,4 +60,5 @@ def test_shared_flow_gm_with_base_engine() -> None:
 
     engine = build_engine(cfg)
 
-    assert isinstance(engine, BaseRuntimeEngine)
+    assert isinstance(engine, RuntimeEngine)
+    assert isinstance(engine.step_strategy, BaseStepStrategy)

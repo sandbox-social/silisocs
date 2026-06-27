@@ -13,6 +13,8 @@ from silisocs.simulation_engines.policies.probe_schedule import (
 from silisocs.simulation_engines.policies.steps import (
     BaseStepStrategy,
     FlowStepStrategy,
+    MultiGMSerialStepStrategy,
+    MultiGMStagedStepStrategy,
     MultiGMStepStrategy,
     SequentialStepStrategy,
 )
@@ -29,6 +31,8 @@ __all__ = [
     "FixedIntervalProbeSchedulePolicy",
     "FixedStepsLoopStrategy",
     "FlowStepStrategy",
+    "MultiGMSerialStepStrategy",
+    "MultiGMStagedStepStrategy",
     "MultiGMStepStrategy",
     "OpenEndedTurnPolicy",
     "SequentialStepStrategy",

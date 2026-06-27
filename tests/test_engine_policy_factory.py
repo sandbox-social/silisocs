@@ -9,7 +9,7 @@ from omegaconf import OmegaConf
 from silisocs.agents.base_agent import Agent
 from silisocs.runtime.construction.engines import build_engine
 from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType, ToolCall
-from silisocs.simulation_engines.base_engines import BaseRuntimeEngine, RuntimeEngine
+from silisocs.simulation_engines.base_engines import RuntimeEngine
 from silisocs.simulation_engines.policies.factory import (
     build_probe_schedule_policy,
     build_turn_policy,
@@ -177,7 +177,7 @@ def test_engine_single_action_uses_direct_gm_methods_without_name_prefix() -> No
 
     agent = _Agent()
     gm = _GameMaster()
-    engine = BaseRuntimeEngine()
+    engine = RuntimeEngine()
 
     result = engine.run_agent_step(
         game_master=cast(Agent, gm),
@@ -290,7 +290,7 @@ def test_engine_runs_three_initialization_phases_once_before_loop(tmp_path) -> N
             assert [agent.name for agent in kwargs["agents"]] == ["Alice"]
             assert [gm.name for gm in kwargs["game_masters"]] == ["gm"]
 
-    engine = BaseRuntimeEngine(config=cfg)
+    engine = build_engine(cfg)
     game_masters = [cast(Agent, type("_GM", (), {"name": "gm"})())]
     agents = [cast(Agent, _AgentForEngine("Alice"))]
     engine.initialize(
@@ -348,7 +348,7 @@ def test_engine_calls_gm_update_before_actor_selection() -> None:
         def resolve_action(self, agent_name: str, action: ActionOutput) -> str:
             return f"resolved:{agent_name}:{action.text}"
 
-    engine = BaseRuntimeEngine()
+    engine = RuntimeEngine()
     result = engine.run_step(
         step_index=7,
         game_masters=[_GameMaster()],

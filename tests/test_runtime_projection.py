@@ -5,7 +5,10 @@ from __future__ import annotations
 import pytest
 from omegaconf import OmegaConf
 
-from silisocs.runtime.configuration.projection import RuntimeProjection
+from silisocs.runtime.configuration.projection import (
+    RuntimeProjection,
+    validate_resolve_tool_calling,
+)
 
 
 def _cfg(*, action_mode: str = "custom", tool_mode: str = "single", resolve: str = "tool_calling"):
@@ -38,3 +41,21 @@ def test_runtime_projection_rejects_mismatched_resolver() -> None:
     """Tool-calling mode and resolver selection must stay aligned."""
     with pytest.raises(ValueError, match="Tool-calling mode must match"):
         RuntimeProjection.from_cfg(_cfg(tool_mode="single", resolve="parsed_action"))
+
+
+def test_validate_resolve_tool_calling_helper() -> None:
+    """The shared helper raises on mismatch and passes on aligned pairs."""
+    with pytest.raises(ValueError, match="Tool-calling mode must match"):
+        validate_resolve_tool_calling(
+            tool_calling_mode="single", resolve_built_in="parsed_action", resolve_path="p"
+        )
+    with pytest.raises(ValueError, match="Tool-calling mode must match"):
+        validate_resolve_tool_calling(
+            tool_calling_mode="none", resolve_built_in="tool_calling", resolve_path="p"
+        )
+    validate_resolve_tool_calling(
+        tool_calling_mode="single", resolve_built_in="tool_calling", resolve_path="p"
+    )
+    validate_resolve_tool_calling(
+        tool_calling_mode="none", resolve_built_in="parsed_action", resolve_path="p"
+    )

@@ -100,10 +100,17 @@ def build_agent_params(
     if shared:
         params["shared_memories"] = shared
 
-    model_name = mapped.get("model") or class_model
-    if isinstance(model_name, dict):
-        params["model"] = model_name
-    elif model_name:
-        params["model"] = {"name": str(model_name)}
+    # Per-class `model` may be a scalar name (today) or a full LLM block (dict).
+    # A per-agent field_map name (mapped['model']) wins for the name but keeps the
+    # class block's other override fields when present.
+    mapped_model = mapped.get("model")
+    if mapped_model and isinstance(class_model, dict):
+        params["model"] = {**class_model, "name": str(mapped_model)}
+    elif isinstance(class_model, dict) and not mapped_model:
+        params["model"] = dict(class_model)
+    else:
+        model_name = mapped_model or class_model
+        if model_name:
+            params["model"] = {"name": str(model_name)}
 
     return params
