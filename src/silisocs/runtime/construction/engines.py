@@ -90,14 +90,23 @@ def _build_step_strategy(step_cfg: Mapping[str, Any]) -> Any:
     built_in = str(step_cfg.get("built_in") or "base").strip()
     flow_order = tuple(str(item) for item in (params.get("flow_order") or ["fixed_pre", "default"]))
     flow_turn_policies = build_flow_turn_policies(params.get("flow_turn_policies"))
+    chain_execution = str(params.get("chain_execution") or "concurrent").strip().lower()
     if built_in == "base":
         return None
     if built_in == "sequential":
         return SequentialStepStrategy()
     if built_in == "flow":
-        return FlowStepStrategy(flow_order=flow_order, flow_turn_policies=flow_turn_policies)
+        return FlowStepStrategy(
+            flow_order=flow_order,
+            flow_turn_policies=flow_turn_policies,
+            chain_execution=chain_execution,
+        )
     if built_in == "multi_gm":
-        return MultiGMStepStrategy(flow_order=flow_order, flow_turn_policies=flow_turn_policies)
+        return MultiGMStepStrategy(
+            flow_order=flow_order,
+            flow_turn_policies=flow_turn_policies,
+            chain_execution=chain_execution,
+        )
     raise ValueError(f"Unknown sim.engine.step.built_in='{built_in}'.")
 
 

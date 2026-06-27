@@ -250,59 +250,63 @@ class RuntimeEngine(RuntimeEngineBase):
                     results[task_name] = ""
             return results
 
-    def _execute_batches(
+    @staticmethod
+    def _empty_step_result() -> StepResult:
+        return StepResult(
+            skipped=True,
+            primary_game_master="",
+            probe_phase=probe_empty(0),
+            action_phase={"active_agents": 0, "duration_s": 0.0, "retry": retry_empty()},
+        )
+
+    def _batch_tasks(
+        self, batch: StepBatch
+    ) -> tuple[dict[str, Callable[[], str]], list[str], list[Any]]:
+        """Build the {task_name: thunk} map, acting names, and models for one batch."""
+        batch_policy = batch.turn_policy or self.turn_policy
+        tasks: dict[str, Callable[[], str]] = {}
+        names: list[str] = []
+        for agent, spec in batch.turns:
+            names.append(agent.name)
+            task_name = f"{batch.game_master.name}::{agent.name}"
+            tasks[task_name] = functools.partial(
+                batch_policy.run,
+                engine=self,
+                game_master=batch.game_master,
+                agent=agent,
+                action_spec=spec,
+                verbose=False,
+            )
+        models = list(collect_unique_models(batch.game_master, [agent for agent, _ in batch.turns]))
+        return tasks, names, models
+
+    def _run_action_phase(
         self,
         *,
-        step_index: int,
-        batches: Sequence[StepBatch],
-        verbose: bool,
+        requested_workers: int,
+        active_names: set[str],
+        models: list[Any],
+        primary_gm_name: str,
+        runner: Callable[[int, list[str]], None],
     ) -> StepResult:
-        del verbose
-        if not batches:
-            return StepResult(
-                skipped=True,
-                primary_game_master="",
-                probe_phase=probe_empty(0),
-                action_phase={"active_agents": 0, "duration_s": 0.0, "retry": retry_empty()},
-            )
+        """Wrap an action-phase ``runner`` with the once-per-step telemetry envelope.
 
-        tasks_by_flow: list[tuple[str, dict[str, Callable[[], str]]]] = []
-        model_pool: dict[int, Any] = {}
-        active_names: set[str] = set()
-        for batch in batches:
-            flow_tasks: dict[str, Callable[[], str]] = {}
-            batch_policy = batch.turn_policy or self.turn_policy
-            for agent, spec in batch.turns:
-                active_names.add(agent.name)
-                task_name = f"{batch.game_master.name}::{agent.name}"
-                flow_tasks[task_name] = functools.partial(
-                    batch_policy.run,
-                    engine=self,
-                    game_master=batch.game_master,
-                    agent=agent,
-                    action_spec=spec,
-                    verbose=False,
-                )
-            tasks_by_flow.append((f"{batch.game_master.name}:{batch.flow_name}", flow_tasks))
-            for model_obj in collect_unique_models(
-                batch.game_master, [agent for agent, _ in batch.turns]
-            ):
-                model_pool[id(model_obj)] = model_obj
-
-        requested_workers = max(1, sum(len(tasks) for _, tasks in tasks_by_flow))
+        ``runner(worker_limit, failed_tasks)`` executes the turns however it likes
+        (serial batches or the concurrent chain scheduler); worker-limit sizing,
+        retry-phase bracketing, the adaptive cap update, and StepResult assembly are
+        identical regardless of how the turns were scheduled.
+        """
         dynamic_cap, worker_limit = compute_dynamic_worker_limit(
             requested_workers=requested_workers,
             phase_cap=self._action_phase_cap,
             configured_worker_cap=self._configured_worker_cap,
         )
-        models = list(model_pool.values())
         before = capture_retry_counters(models)
         set_model_retry_phase(models, "action")
         action_start = time.time()
         failed_tasks: list[str] = []
         try:
-            for _flow_name, tasks in tasks_by_flow:
-                self._run_tasks_with_limit(tasks, worker_limit, failed_tasks=failed_tasks)
+            runner(worker_limit, failed_tasks)
         finally:
             set_model_retry_phase(models, "other")
         action_duration = time.time() - action_start
@@ -332,8 +336,170 @@ class RuntimeEngine(RuntimeEngineBase):
                 "failed_turns": len(failed_tasks),
             },
             probe_phase=probe_empty(len(active_names)),
-            primary_game_master=batches[0].game_master.name if batches else "",
-            failed_turns=tuple(failed_tasks),
+            primary_game_master=primary_gm_name,
+            # Sorted so the failure set is deterministic across concurrent driver
+            # threads, mirroring the sorted active_agent_names above.
+            failed_turns=tuple(sorted(failed_tasks)),
+        )
+
+    def _execute_batches(
+        self,
+        *,
+        step_index: int,
+        batches: Sequence[StepBatch],
+        verbose: bool,
+    ) -> StepResult:
+        """Run a flat batch list strictly serially (one batch fully drained at a time).
+
+        This is the legacy execution path used by the base/sequential/flow step
+        strategies and by multi-GM ``chain_execution: sequential``.
+        """
+        del verbose, step_index
+        if not batches:
+            return self._empty_step_result()
+
+        task_groups: list[dict[str, Callable[[], str]]] = []
+        model_pool: dict[int, Any] = {}
+        active_names: set[str] = set()
+        requested_workers = 0
+        for batch in batches:
+            tasks, names, models = self._batch_tasks(batch)
+            task_groups.append(tasks)
+            active_names.update(names)
+            requested_workers += len(tasks)
+            for model_obj in models:
+                model_pool[id(model_obj)] = model_obj
+
+        def runner(worker_limit: int, failed_tasks: list[str]) -> None:
+            for tasks in task_groups:
+                self._run_tasks_with_limit(tasks, worker_limit, failed_tasks=failed_tasks)
+
+        return self._run_action_phase(
+            requested_workers=max(1, requested_workers),
+            active_names=active_names,
+            models=list(model_pool.values()),
+            primary_gm_name=batches[0].game_master.name,
+            runner=runner,
+        )
+
+    @staticmethod
+    def _drain_tasks_on_pool(
+        pool: concurrent.futures.ThreadPoolExecutor,
+        tasks: dict[str, Callable[[], str]],
+        failed_tasks: list[str],
+    ) -> None:
+        """Submit one group of turn thunks to a shared pool and wait for completion.
+
+        Mirrors ``_run_tasks_with_limit``'s per-turn failure isolation (a raising
+        turn is logged, counted, and recorded in ``failed_tasks``; it never aborts
+        siblings) but reuses an externally owned executor so independent chains share
+        a single worker budget. CPython's GIL makes the ``failed_tasks.append`` and
+        the metrics counter increment safe across concurrent driver threads.
+        """
+        if not tasks:
+            return
+        future_to_name = {pool.submit(task_fn): task_name for task_name, task_fn in tasks.items()}
+        for future in concurrent.futures.as_completed(future_to_name):
+            task_name = future_to_name[future]
+            try:
+                future.result()
+            except Exception:
+                _LOGGER.exception("Agent turn failed (isolated): %s", task_name)
+                SimMetricsCollector.get().increment_counter("agent_turn_failures")
+                failed_tasks.append(task_name)
+
+    def _run_chain_pipeline(
+        self,
+        pool: concurrent.futures.ThreadPoolExecutor,
+        hop_task_groups: list[dict[str, Callable[[], str]]],
+        failed_tasks: list[str],
+    ) -> None:
+        """Drive one flow's GM chain: drain each hop in order before the next.
+
+        Runs on a driver thread (not a turn-pool worker), so blocking on a hop's
+        futures keeps that flow's hops serial — preserving per-agent chain order —
+        without consuming a turn-worker slot or stalling sibling chains. A failed
+        turn at one hop is isolated and counted but does not abort later hops (same
+        as the legacy serial path); a downstream hop may then observe a GM the failed
+        hop never resolved into.
+        """
+        for tasks in hop_task_groups:
+            self._drain_tasks_on_pool(pool, tasks, failed_tasks)
+
+    def _execute_chain_groups(
+        self,
+        *,
+        ordered_batches: Sequence[StepBatch],
+        concurrent_chains: Sequence[Sequence[StepBatch]],
+    ) -> StepResult:
+        """Concurrent multi-GM execution.
+
+        ``ordered_batches`` (flow_order-listed flows) run first as a strict serial
+        prefix, preserving declared cross-flow precedence (e.g. seed-then-act). The
+        remaining ``concurrent_chains`` — one per flow, each a GM-chain of hop
+        batches — then run as independent pipelines. Turns execute on one shared,
+        worker-limit-bounded turn pool (different GMs proceed in parallel; turns on
+        the same GM serialize on the per-GM lock in ``run_agent_step``). The chain
+        drivers run on a SEPARATE pool capped at ``worker_limit`` so the live driver
+        thread count stays bounded regardless of how many flows there are — the turn
+        pool is the throughput bottleneck, so capping drivers is throughput-neutral.
+        """
+        active_names: set[str] = set()
+        model_pool: dict[int, Any] = {}
+        requested_workers = 0
+        primary_gm_name = ""
+
+        def prep(batch: StepBatch) -> dict[str, Callable[[], str]]:
+            nonlocal requested_workers, primary_gm_name
+            tasks, names, models = self._batch_tasks(batch)
+            active_names.update(names)
+            requested_workers += len(tasks)
+            for model_obj in models:
+                model_pool[id(model_obj)] = model_obj
+            if not primary_gm_name:
+                primary_gm_name = batch.game_master.name
+            return tasks
+
+        ordered_groups = [prep(batch) for batch in ordered_batches]
+        concurrent_groups = [[prep(batch) for batch in chain] for chain in concurrent_chains]
+        active_chains = [groups for groups in concurrent_groups if groups]
+
+        # Mirror _execute_batches: short-circuit only when there are genuinely no
+        # batches, not merely no selected turns, so an all-inactive step still emits
+        # the full telemetry envelope identically to the serial path.
+        if not primary_gm_name:
+            return self._empty_step_result()
+
+        def runner(worker_limit: int, failed_tasks: list[str]) -> None:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=max(1, worker_limit)
+            ) as turn_pool:
+                for tasks in ordered_groups:
+                    self._drain_tasks_on_pool(turn_pool, tasks, failed_tasks)
+                if not active_chains:
+                    return
+                driver_count = min(max(1, worker_limit), len(active_chains))
+                with concurrent.futures.ThreadPoolExecutor(max_workers=driver_count) as driver_pool:
+                    driver_futures = [
+                        driver_pool.submit(
+                            self._run_chain_pipeline, turn_pool, groups, failed_tasks
+                        )
+                        for groups in active_chains
+                    ]
+                    for future in concurrent.futures.as_completed(driver_futures):
+                        # Per-turn failures are already isolated inside the driver;
+                        # this only surfaces an unexpected driver-level error (e.g. a
+                        # pool/scheduling fault) so it is logged rather than swallowed.
+                        exc = future.exception()
+                        if exc is not None:
+                            _LOGGER.error("Chain pipeline driver failed", exc_info=exc)
+
+        return self._run_action_phase(
+            requested_workers=max(1, requested_workers),
+            active_names=active_names,
+            models=list(model_pool.values()),
+            primary_gm_name=primary_gm_name,
+            runner=runner,
         )
 
     def run_step(
@@ -402,6 +568,20 @@ def _extract_flow_turn_policies(cfg: Any | None) -> dict[str, Any]:
     return build_flow_turn_policies(raw)
 
 
+def _extract_chain_execution(cfg: Any | None) -> str:
+    """Read sim.engine.step.params.chain_execution (multi-GM chain scheduling mode).
+
+    ``concurrent`` (default) runs flow chains as independent pipelines gated only by
+    shared-GM overlap; ``sequential`` reproduces the legacy strictly-serial,
+    flow-by-flow execution. Only the multi-GM step strategy consults this.
+    """
+    default = "concurrent"
+    if cfg is None:
+        return default
+    raw = OmegaConf.select(cfg, "sim.engine.step.params.chain_execution", default=default)
+    return str(raw or default).strip().lower()
+
+
 def _apply_engine_defaults(kwargs: dict[str, Any], step_strategy: Any) -> None:
     """Set shared defaults (loop strategy, step strategy, turn policy) on kwargs."""
     cfg = kwargs.get("config")
@@ -431,9 +611,14 @@ class FlowRuntimeEngine(RuntimeEngine):
         cfg = kwargs.get("config")
         flow_order = _extract_flow_order(cfg)
         flow_turn_policies = _extract_flow_turn_policies(cfg)
+        chain_execution = _extract_chain_execution(cfg)
         _apply_engine_defaults(
             kwargs,
-            self.step_strategy_class(flow_order=flow_order, flow_turn_policies=flow_turn_policies),
+            self.step_strategy_class(
+                flow_order=flow_order,
+                flow_turn_policies=flow_turn_policies,
+                chain_execution=chain_execution,
+            ),
         )
         super().__init__(*args, **kwargs)
 

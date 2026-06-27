@@ -707,12 +707,31 @@ episode step, before flow routing and actor selection. Flow chains then route
 selected agent turns through the configured GMs; `gm.update(...)` is not called
 again inside each flow chain.
 
+Chain traversal is controlled by `sim.engine.step.params.chain_execution` (only
+the `multi_gm` step strategy reads it):
+
+- `concurrent` (default): flows run as independent pipelines through their GM
+  chains. Distinct flows advance concurrently and a flow's next hop starts as
+  soon as its own previous hop completes — turns serialize only when two flows
+  touch the same GM at the same time (the engine's existing per-GM lock). Flows
+  listed in `flow_order` run first as a strict serial prefix, preserving declared
+  precedence such as seed-then-act (`fixed_pre` before `default`); every other
+  flow runs as the concurrent group. A single agent's own chain hops always stay
+  serial, since each hop observes the prior hop's resolution.
+- `sequential`: legacy opt-in — each flow runs its full GM chain to completion
+  before the next flow, one batch at a time, in a deterministic flow-by-flow
+  ("row-major") order.
+
+Checkpoint replay is per-agent-flow-chain regardless of `chain_execution` mode.
+
 The engine is responsible for:
 
 - Episode loop orchestration (`run_loop`)
 - Probe scheduling and deployment timing
 - Selecting acting agents and action specs for each episode
-- Running agent actions concurrently and resolving them through the GM
+- Running agent actions concurrently and resolving them through the GM (under
+  `multi_gm` with the default `chain_execution: concurrent`, this also covers
+  cross-flow/cross-chain concurrency, gated by shared-GM overlap)
 - Worker throttling based on retry telemetry
 
 Key implementation: `src/silisocs/simulation_engines/base_engines.py`.

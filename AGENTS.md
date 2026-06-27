@@ -97,6 +97,7 @@ Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 | `sim.tool_calling.mode` | single | `none` \| `single` \| `multi` |
 | `sim.engine.step.built_in` | base | `base`, `sequential`, `flow`, or `multi_gm` |
 | `sim.engine.turn_policy.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended` |
+| `sim.engine.step.params.chain_execution` | concurrent | `concurrent` \| `sequential` (multi_gm chain traversal) |
 | `sim.checkpoint.every_n_steps` | null | Checkpoint frequency (run_study.py sets 1 by default) |
 
 Key run params live in `world/default.yaml` (at config root via `@package _global_`):
@@ -165,6 +166,12 @@ Use class-level behavior flows instead of adding custom manager branches:
 - `env.gm_orchestration.gms`
 - `env.gm_orchestration.flow_bindings.flow_to_gms` (maps a flow to a GM or a
   strictly-increasing-`sequence` GM chain; the only supported flow binding key)
+- `sim.engine.step.params.chain_execution` (`concurrent` default | `sequential`;
+  only the `multi_gm` step strategy uses it). The default `concurrent` mode runs
+  flows as independent pipelines through their GM chains — distinct flows advance
+  concurrently and serialize only on shared-GM overlap (the per-GM lock), with
+  `flow_order` flows running first as a strict serial prefix; `sequential` is the
+  legacy flow-by-flow ("row-major") chain traversal.
 
 Default UX rule:
 - Keep users on the default `ComponentGameMaster`, with advanced dashboard toggles off.
