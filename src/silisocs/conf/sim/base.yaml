@@ -54,6 +54,11 @@ engine:
     params:
       flow_order: [fixed_pre, default]
       agent_to_flow: {}
+      # Per-GM turn policies, keyed by GM name (same slot shape as the global
+      # turn_policy). Lets a backend set its own action cadence, e.g. one action
+      # in a "world" GM but open_ended in a social GM. Precedence: per-flow
+      # (flow_turn_policies) > per-GM (this) > global turn_policy.
+      gm_turn_policies: {}
       # multi_gm only: how flow chains are scheduled across GMs.
       #   concurrent (default) - flows run as independent pipelines, gated only by
       #                          shared-GM overlap; flow_order-listed flows run first

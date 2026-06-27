@@ -98,6 +98,7 @@ Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 | `sim.engine.step.built_in` | base | `base`, `sequential`, `flow`, or `multi_gm` |
 | `sim.engine.turn_policy.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended` |
 | `sim.engine.step.params.chain_execution` | concurrent | `concurrent` \| `sequential` (multi_gm chain traversal) |
+| `sim.engine.step.params.gm_turn_policies` | {} | Per-GM turn policy map (`gm_name -> {built_in\|class_path, params}`); applies under any step mode |
 | `sim.checkpoint.every_n_steps` | null | Checkpoint frequency (run_study.py sets 1 by default) |
 
 Key run params live in `world/default.yaml` (at config root via `@package _global_`):
@@ -152,6 +153,14 @@ Use class-level behavior flows instead of adding custom manager branches:
 - `sim.engine.step.params.flow_turn_policies` (map flow_tag ->
   `{built_in|class_path, params}`; unlisted flows use `sim.engine.turn_policy`).
   Only effective under `engine.step.built_in` of `flow`/`multi_gm`.
+- Optional per-GM turn policy (per-backend action cadence):
+  `sim.engine.step.params.gm_turn_policies` (map gm_name -> turn policy slot, same
+  `{built_in|class_path, params}` shape; precedence per-flow > per-GM > global;
+  resolved per batch by GM name, so it applies under ANY step mode). Lets a
+  GM/backend set its own cadence — e.g. `single_action` in a "world" GM but
+  `open_ended` in a social GM — and disambiguates multi-GM-chain hops that share
+  one flow (which `flow_turn_policies`, being flow-keyed, cannot). Unset/empty =
+  the global turn policy applies everywhere (unchanged behavior).
 
 6. Optional per-flow action enforcement (which actions a flow may execute):
 - `env.gm.components.resolve.params.flow_action_filters` (map flow_tag ->

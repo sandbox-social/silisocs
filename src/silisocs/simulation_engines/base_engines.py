@@ -85,6 +85,7 @@ class RuntimeEngine(RuntimeEngineBase):
         loop_strategy: LoopStrategy | None = None,
         step_strategy: StepStrategy | None = None,
         turn_policy: TurnPolicy | None = None,
+        gm_turn_policies: Mapping[str, TurnPolicy] | None = None,
         probe_runner: ProbeRunner | None = None,
         recorder: EngineRecorder | None = None,
     ) -> None:
@@ -94,6 +95,9 @@ class RuntimeEngine(RuntimeEngineBase):
         self.turn_policy = turn_policy or build_turn_policy(
             {"built_in": "single_action", "params": {}}
         )
+        # Per-GM turn policies (keyed by GM name) let a backend set its own action
+        # cadence; consulted in _batch_tasks below per-flow override but above global.
+        self.gm_turn_policies: dict[str, TurnPolicy] = dict(gm_turn_policies or {})
         self.probe_runner = probe_runner
         output_rootname = ""
         if config is not None:
@@ -263,7 +267,13 @@ class RuntimeEngine(RuntimeEngineBase):
         self, batch: StepBatch
     ) -> tuple[dict[str, Callable[[], str]], list[str], list[Any]]:
         """Build the {task_name: thunk} map, acting names, and models for one batch."""
-        batch_policy = batch.turn_policy or self.turn_policy
+        # Precedence: per-flow override (set by the step strategy) > per-GM default
+        # (keyed by GM name, lets a backend dictate its own action cadence) > global.
+        batch_policy = (
+            batch.turn_policy
+            or self.gm_turn_policies.get(batch.game_master.name)
+            or self.turn_policy
+        )
         tasks: dict[str, Callable[[], str]] = {}
         names: list[str] = []
         for agent, spec in batch.turns:
@@ -568,6 +578,19 @@ def _extract_flow_turn_policies(cfg: Any | None) -> dict[str, Any]:
     return build_flow_turn_policies(raw)
 
 
+def _extract_gm_turn_policies(cfg: Any | None) -> dict[str, Any]:
+    """Resolve per-GM turn policies from sim.engine.step.params.gm_turn_policies.
+
+    A ``{gm_name: turn_policy_slot}`` map (same slot shape as flow_turn_policies),
+    letting a backend/GM set its own action cadence. Empty when unset, so the global
+    turn policy applies everywhere (current behavior).
+    """
+    if cfg is None:
+        return {}
+    raw = OmegaConf.select(cfg, "sim.engine.step.params.gm_turn_policies", default=None)
+    return build_flow_turn_policies(raw)
+
+
 def _extract_chain_execution(cfg: Any | None) -> str:
     """Read sim.engine.step.params.chain_execution (multi-GM chain scheduling mode).
 
@@ -588,6 +611,7 @@ def _apply_engine_defaults(kwargs: dict[str, Any], step_strategy: Any) -> None:
     kwargs.setdefault("loop_strategy", FixedStepsLoopStrategy())
     kwargs.setdefault("step_strategy", step_strategy)
     kwargs.setdefault("turn_policy", build_turn_policy(_engine_turn_policy_cfg(cfg)))
+    kwargs.setdefault("gm_turn_policies", _extract_gm_turn_policies(cfg))
 
 
 class BaseRuntimeEngine(RuntimeEngine):
