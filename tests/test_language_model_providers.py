@@ -245,6 +245,66 @@ def test_sample_tool_calls_returns_typed_tool_calls() -> None:
     assert result == [ToolCall("toot", {"status": "hello"})]
 
 
+def test_sample_tool_calls_mode_shapes_request_and_truncation() -> None:
+    """Single mode forces one call; multi mode invites and keeps several."""
+
+    class _Function:
+        def __init__(self, name: str, arguments: str) -> None:
+            self.name = name
+            self.arguments = arguments
+
+    class _ToolCall:
+        def __init__(self, name: str, arguments: str) -> None:
+            self.function = _Function(name, arguments)
+
+    class _ToolMessage:
+        content = None
+        tool_calls = [
+            _ToolCall("toot", '{"status": "first"}'),
+            _ToolCall("like", '{"post_id": "1"}'),
+        ]
+
+    class _ToolChoice:
+        message = _ToolMessage()
+
+    class _ToolResponse:
+        choices = [_ToolChoice()]
+
+    class _ToolCompletions(_Completions):
+        def create(self, **kwargs: Any) -> _ToolResponse:
+            self.calls.append(kwargs)
+            return _ToolResponse()
+
+    def _build() -> tuple[OpenAILanguageModel, _ToolCompletions]:
+        model = OpenAILanguageModel.__new__(OpenAILanguageModel)
+        model._temperature = 0.1
+        model._model_name = "gpt-4o-mini"
+        model._max_retries = 0
+        model._measurements = None
+        model.debug = False
+        model._extra_kwargs = {}
+        completions = _ToolCompletions()
+        cast(Any, model)._client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+        cast(Any, model)._record_retry_outcome = lambda retries, success: None
+        return model, completions
+
+    # multi: the API is allowed to emit several and we keep them all.
+    model, completions = _build()
+    multi_result = model.sample_tool_calls("prompt", [{"type": "function"}], mode="multi")
+    assert len(multi_result) == 2
+    multi_req = completions.calls[-1]
+    assert multi_req["parallel_tool_calls"] is True
+    assert "multiple functions" in multi_req["messages"][0]["content"].lower()
+
+    # single: the request disables parallel calls and we truncate as a backstop.
+    model, completions = _build()
+    single_result = model.sample_tool_calls("prompt", [{"type": "function"}], mode="single")
+    assert len(single_result) == 1
+    single_req = completions.calls[-1]
+    assert single_req["parallel_tool_calls"] is False
+    assert "single most appropriate" in single_req["messages"][0]["content"].lower()
+
+
 class _ToyModel:
     """Minimal custom provider for registry tests."""
 
