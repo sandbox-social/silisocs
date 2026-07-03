@@ -22,7 +22,11 @@ from types import SimpleNamespace
 import pytest
 
 from silisocs.agents.base_agent import Agent
-from silisocs.environments.backends.base import SocialBackendApp
+from silisocs.environments.backends.base import (
+    BackendApp,
+    SocialBackendApp,
+    microblog_event_to_replay_action,
+)
 from silisocs.environments.backends.mastodon.apps import SocialNetworkApp
 from silisocs.environments.backends.reddit_like.app import RedditLikeApp
 from silisocs.environments.backends.resource_market.app import ResourceMarketApp
@@ -189,8 +193,12 @@ def test_backend_capability_flags():
     # Mastodon now self-restores too: get_state embeds its action history and
     # set_state replays it, so it restores via the default set_state path.
     assert SocialNetworkApp.provides_checkpoint_state is True
-    assert SocialNetworkApp.supports_action_replay is True
-    assert TwitterLikeApp.supports_action_replay is True
+    # Replay capability = implementing event_to_replay_action (the mapping IS the
+    # capability, not a flag). Twitter/Mastodon do; Reddit intentionally does not
+    # (it has no valid microblog mapping and self-restores via snapshot).
+    assert SocialNetworkApp.event_to_replay_action is not BackendApp.event_to_replay_action
+    assert TwitterLikeApp.event_to_replay_action is not BackendApp.event_to_replay_action
+    assert RedditLikeApp.event_to_replay_action is BackendApp.event_to_replay_action
 
 
 def test_build_checkpoint_restore_built_in_and_class_path():
@@ -221,13 +229,13 @@ def test_build_checkpoint_restore_rejects_unknown_and_non_strategy():
 
 
 def test_replay_strategy_rejects_non_replayable_backend(tmp_path):
-    """Built-in replay refuses a backend that cannot be safely replayed."""
+    """Built-in replay refuses a backend that doesn't implement the mapping seam."""
     gm = SimpleNamespace(
         name="gm1",
-        backend_type="mastodon",
-        backend=SimpleNamespace(supports_action_replay=False),
+        backend_type="reddit_like",
+        backend=RedditLikeApp.__new__(RedditLikeApp),
     )
-    with pytest.raises(ValueError, match="cannot be reconstructed"):
+    with pytest.raises(ValueError, match="does not implement event_to_replay_action"):
         SocialActionEventReplayRestore().restore(
             game_masters=[gm],
             action_events_files=[tmp_path / "missing.jsonl"],
@@ -235,27 +243,22 @@ def test_replay_strategy_rejects_non_replayable_backend(tmp_path):
         )
 
 
-class _DummySocialBackend(SocialBackendApp):
-    """Concrete SocialBackendApp for testing the default replay mapping."""
-
-    def name(self) -> str:
-        return "dummy"
-
-    def description(self) -> str:
-        return "dummy"
-
-
-def test_default_backend_replay_mapping_is_microblog():
-    """The base social backend maps logged labels to the microblog vocabulary."""
-    backend = _DummySocialBackend()
-    post = backend.event_to_replay_action("post", {"post_text": "hello"})
+def test_microblog_replay_mapping_helper():
+    """The shared microblog helper maps logged labels to the microblog vocabulary."""
+    post = microblog_event_to_replay_action("post", {"post_text": "hello"})
     assert post.tool_calls[0].name == "create_tweet"
     assert post.tool_calls[0].arguments == {"status": "hello"}
-    like = backend.event_to_replay_action("like", {"post_id": "7"})
+    like = microblog_event_to_replay_action("like", {"post_id": "7"})
     assert like.tool_calls[0].name == "like_tweet"
     assert like.tool_calls[0].arguments == {"post_id": "7"}
-    follow = backend.event_to_replay_action("follow", {"target_user": "bob"})
+    follow = microblog_event_to_replay_action("follow", {"target_user": "bob"})
     assert follow.tool_calls[0].name == "follow_user"
+
+
+def test_social_base_does_not_supply_default_replay_mapping():
+    """SocialBackendApp no longer provides a default mapping; Twitter opts in."""
+    assert SocialBackendApp.event_to_replay_action is BackendApp.event_to_replay_action
+    assert TwitterLikeApp.event_to_replay_action is not BackendApp.event_to_replay_action
 
 
 def test_mastodon_replay_mapping_and_id_remap():
@@ -494,8 +497,6 @@ def test_multi_gm_db_path_collision_raises():
 
 class _CapturingBackend:
     """Replayable backend that maps every post to create_tweet."""
-
-    supports_action_replay = True
 
     def event_to_replay_action(self, label, data):
         return ActionOutput.from_tool_calls(

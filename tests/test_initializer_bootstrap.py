@@ -68,8 +68,6 @@ class _Action:
 
 
 class _ReplayBackend:
-    supports_action_replay = True
-
     def __init__(self, actions: list[_Action]) -> None:
         self._actions = actions
 

@@ -12,12 +12,17 @@ import os
 from collections.abc import Mapping
 from typing import Any
 
-from silisocs.environments.backends.base import SocialBackendApp, app_action
+from silisocs.environments.backends.base import (
+    SocialBackendApp,
+    app_action,
+    microblog_event_to_replay_action,
+)
 from silisocs.environments.backends.sqlite_state import (
     restore_sqlite_database,
     snapshot_sqlite_database,
 )
 from silisocs.environments.backends.twitter_like.engine import TwitterLikePlatform
+from silisocs.runtime.types import ActionOutput
 
 
 @dataclasses.dataclass
@@ -47,6 +52,10 @@ class TwitterLikeApp(SocialBackendApp):
     # ------------------------------------------------------------------ #
     # SocialBackendApp required interface
     # ------------------------------------------------------------------ #
+
+    def event_to_replay_action(self, label: str, data: Mapping[str, Any]) -> ActionOutput | None:
+        """Map a logged microblog event to its replayable action."""
+        return microblog_event_to_replay_action(label, data)
 
     def name(self) -> str:
         """Return the name of the app."""

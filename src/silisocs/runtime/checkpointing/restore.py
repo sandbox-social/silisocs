@@ -10,6 +10,7 @@ from typing import Any
 
 from omegaconf import OmegaConf
 
+from silisocs.environments.backends.base import BackendApp
 from silisocs.runtime.types import ActionOutput
 
 
@@ -128,18 +129,28 @@ def _replay_event_fields(
 
 
 def _assert_backends_replayable(game_masters: Sequence[Any]) -> None:
-    """Reject backends the built-in replay strategy cannot safely reconstruct."""
+    """Reject backends that don't implement the replay-mapping seam.
+
+    A backend "supports replay" exactly when it overrides
+    ``event_to_replay_action`` — the capability is having the mapping, not a
+    separate flag. Backends without it must restore from an authoritative
+    snapshot or a custom strategy.
+    """
     for game_master in game_masters:
         backend = getattr(game_master, "backend", None)
-        if backend is not None and not getattr(backend, "supports_action_replay", False):
+        if backend is None:
+            continue
+        method = getattr(type(backend), "event_to_replay_action", None)
+        if method is None or method is BackendApp.event_to_replay_action:
             gm_name = str(getattr(game_master, "name", "")) or "<unnamed>"
             backend_type = str(getattr(game_master, "backend_type", "") or "unknown")
             raise ValueError(
-                f"Game master {gm_name!r} uses backend {backend_type!r}, which cannot be "
-                "reconstructed by the built-in 'social_action_event_replay' strategy "
-                "(its actions mutate external, non-idempotent state). Provide a custom "
-                "sim.checkpoint.restore.class_path strategy for this backend, or disable "
-                "checkpoint restore for it."
+                f"Game master {gm_name!r} uses backend {backend_type!r}, which does not "
+                "implement event_to_replay_action, so the built-in "
+                "'social_action_event_replay' strategy cannot reconstruct it. Restore it "
+                "from an authoritative snapshot (provides_checkpoint_state=True), implement "
+                "the event->action mapping, or configure a custom "
+                "sim.checkpoint.restore.class_path strategy."
             )
 
 
