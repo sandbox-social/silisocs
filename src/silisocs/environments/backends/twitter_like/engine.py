@@ -862,20 +862,18 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
 
                 posts = []
                 for row in cursor.fetchall():
-                    # Column order follows the posts schema (SELECT p.*, ...):
-                    # id(0) user_id(1) content(2) created_at(3) type(4) reply_to_id(5)
-                    # quote_of_id(6) likes_count(7) dislikes_count(8) reposts_count(9)
-                    # reply_count(10), then username(-2), engagement(-1).
+                    # Named access (sqlite3.Row) so a schema column reorder can't
+                    # silently corrupt the projection.
                     posts.append(
                         {
-                            "id": row[0],
-                            "user_id": row[1],
-                            "content": row[2],
-                            "created_at": row[3],
-                            "likes_count": row[7],
-                            "reposts_count": row[9],
-                            "username": row[-2],
-                            "engagement_score": row[-1],
+                            "id": row["id"],
+                            "user_id": row["user_id"],
+                            "content": row["content"],
+                            "created_at": row["created_at"],
+                            "likes_count": row["likes_count"],
+                            "reposts_count": row["reposts_count"],
+                            "username": row["username"],
+                            "engagement_score": row["engagement"],
                         }
                     )
                 return posts
@@ -1659,46 +1657,6 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
             logger.error("Error in TWHIN recsys: %s", e, exc_info=True)
             return {}
 
-    def get_recommendations(
-        self,
-        username: str,
-        limit: int = 10,
-        recsys_type: str | None = None,
-    ) -> list[dict]:
-        """Get recommended posts for a user."""
-        try:
-            with self.get_connection() as conn:
-                user_id = self.get_user_id(username)
-                if not user_id:
-                    return []
-
-                if recsys_type:
-                    cursor = conn.execute(
-                        """
-                        SELECT p.*, u.username
-                        FROM recommendations r
-                        JOIN posts p ON r.post_id = p.id
-                        JOIN users u ON p.user_id = u.id
-                        WHERE r.user_id = ? AND r.recsys_type = ?
-                        LIMIT ?
-                        """,
-                        (user_id, recsys_type, limit),
-                    )
-                else:
-                    cursor = conn.execute(
-                        """
-                        SELECT p.*, u.username
-                        FROM recommendations r
-                        JOIN posts p ON r.post_id = p.id
-                        JOIN users u ON p.user_id = u.id
-                        WHERE r.user_id = ?
-                        LIMIT ?
-                        """,
-                        (user_id, limit),
-                    )
-
-                posts = self._parse_posts(cursor.fetchall())
-                return posts
-        except Exception as e:
-            logger.error(f"Error getting recommendations: {e}")
-            return []
+    def _recommendation_posts(self, rows) -> list[dict]:
+        """Twitter enriches recommendation rows via _parse_posts (base uses dict())."""
+        return self._parse_posts(rows)

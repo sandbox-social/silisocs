@@ -878,17 +878,19 @@ class RedditLikePlatform(SqliteSocialEngineBase):
 
                 posts = []
                 for row in cursor.fetchall():
+                    # Named access (sqlite3.Row) so a schema column reorder can't
+                    # silently corrupt the projection.
                     posts.append(
                         {
-                            "id": row[0],
-                            "user_id": row[1],
-                            "title": row[3],
-                            "content": row[4],
-                            "created_at": row[5],
-                            "upvotes": row[6],
-                            "downvotes": row[7],
-                            "username": row[-2],
-                            "engagement_score": row[-1],
+                            "id": row["id"],
+                            "user_id": row["user_id"],
+                            "title": row["title"],
+                            "content": row["content"],
+                            "created_at": row["created_at"],
+                            "upvotes": row["upvotes"],
+                            "downvotes": row["downvotes"],
+                            "username": row["username"],
+                            "engagement_score": row["engagement"],
                         }
                     )
                 return posts
@@ -1138,46 +1140,3 @@ class RedditLikePlatform(SqliteSocialEngineBase):
         except Exception as e:
             logger.error(f"Error in embedding recsys: {e}", exc_info=True)
             return {}
-
-    def get_recommendations(
-        self,
-        username: str,
-        limit: int = 10,
-        recsys_type: str | None = None,
-    ) -> list[dict]:
-        """Get recommended posts for a user."""
-        try:
-            with self.get_connection() as conn:
-                user_id = self.get_user_id(username)
-                if not user_id:
-                    return []
-
-                if recsys_type:
-                    cursor = conn.execute(
-                        """
-                        SELECT p.*, u.username
-                        FROM recommendations r
-                        JOIN posts p ON r.post_id = p.id
-                        JOIN users u ON p.user_id = u.id
-                        WHERE r.user_id = ? AND r.recsys_type = ?
-                        LIMIT ?
-                        """,
-                        (user_id, recsys_type, limit),
-                    )
-                else:
-                    cursor = conn.execute(
-                        """
-                        SELECT p.*, u.username
-                        FROM recommendations r
-                        JOIN posts p ON r.post_id = p.id
-                        JOIN users u ON p.user_id = u.id
-                        WHERE r.user_id = ?
-                        LIMIT ?
-                        """,
-                        (user_id, limit),
-                    )
-
-                return [dict(r) for r in cursor.fetchall()]
-        except Exception as e:
-            logger.error(f"Error getting recommendations: {e}")
-            return []
