@@ -59,7 +59,10 @@ def make_checkpoint_data(runtime: RuntimeObjects, *, step: int | None = None) ->
             "params": json_safe(copy.deepcopy(spec.params)),
             "state": json_safe(state_getter() if callable(state_getter) else {}),
         }
-    runtime.checkpoint_counter += 1
+    # Only the auto-numbering path (no explicit step) advances the counter, so an
+    # explicit-step call has no side effect on it.
+    if step is None:
+        runtime.checkpoint_counter += 1
     return payload
 
 
@@ -80,7 +83,9 @@ def save_checkpoint(
     os.makedirs(checkpoint_path, exist_ok=True)
     checkpoint_file = os.path.join(checkpoint_path, f"step_{step}_checkpoint.json")
     with open(checkpoint_file, "w", encoding="utf-8") as f:
-        json.dump(json_safe(checkpoint_data), f, indent=2)
+        # Object params/state are already json_safe'd in make_checkpoint_data and
+        # runtime_metadata carries only str/int, so no second whole-tree walk here.
+        json.dump(checkpoint_data, f, indent=2)
     print(f"Step {step}: Saved checkpoint to {checkpoint_file}")
 
 

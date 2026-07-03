@@ -399,13 +399,11 @@ def test_model_field_lists_share_one_source_of_truth() -> None:
     from silisocs.runtime.construction.agent_builders.persona_pipeline import (
         _ALLOWED_MODEL_KEYS,
     )
-    from silisocs.runtime.execution.session import _EFFECTIVE_MODEL_FIELDS
     from silisocs.runtime.model_fields import MODEL_FIELDS
 
-    # The session dedup signature iterates exactly MODEL_FIELDS (so adding a field
-    # there automatically makes the signature aware of it).
-    assert tuple(_EFFECTIVE_MODEL_FIELDS) == MODEL_FIELDS
-    # The per-class `model` block allowlist is exactly MODEL_FIELDS.
+    # The session dedup signature iterates MODEL_FIELDS directly, and the per-class
+    # `model` block allowlist is exactly MODEL_FIELDS, so adding a field there keeps
+    # the resolver, dedup signature, and validator in lockstep.
     assert frozenset(MODEL_FIELDS) == _ALLOWED_MODEL_KEYS
 
 

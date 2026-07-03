@@ -321,22 +321,21 @@ class RuntimeEngine(RuntimeEngineBase):
         tasks: Mapping[str, Callable[[], str]],
         worker_limit: int,
         failed_tasks: list[str] | None = None,
-    ) -> dict[str, str]:
+    ) -> None:
+        # Turn results are consumed via side effects (resolve_action), not returned;
+        # the caller only needs completion + per-turn failure isolation.
         if not tasks:
-            return {}
+            return
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, worker_limit)) as executor:
             future_to_name = {
                 executor.submit(task_fn): task_name for task_name, task_fn in tasks.items()
             }
-            results: dict[str, str] = {}
             for future in concurrent.futures.as_completed(future_to_name):
                 task_name = future_to_name[future]
                 try:
-                    results[task_name] = str(future.result() or "")
+                    future.result()
                 except Exception:
                     _record_isolated_failure(task_name, failed_tasks)
-                    results[task_name] = ""
-            return results
 
     @staticmethod
     def _empty_step_result() -> StepResult:
@@ -467,7 +466,9 @@ class RuntimeEngine(RuntimeEngineBase):
             tasks, names, models = self._batch_tasks(batch)
             task_groups.append((batch.game_master, tasks))
             active_names.update(names)
-            requested_workers += len(tasks)
+            # Batches run strictly one at a time here, so peak concurrency is the
+            # widest single batch, not the sum (matches the grouped paths' sizing).
+            requested_workers = max(requested_workers, len(tasks))
             for model_obj in models:
                 model_pool[id(model_obj)] = model_obj
 

@@ -261,8 +261,9 @@ class ComponentGameMaster(BaseGameMaster):
         }
         # Use the explicit capability signal, not dict-truthiness: a backend that
         # legitimately has empty state this step must still be marked authoritative,
-        # while a non-snapshotable backend (e.g. Mastodon) must be left out so the
-        # restore path falls through to the configured restore strategy.
+        # while a non-snapshotable backend (e.g. a live external server with
+        # perform_operations) must be left out so the restore path falls through to
+        # the configured restore strategy.
         if getattr(self.backend, "provides_checkpoint_state", False):
             state["backend"] = {
                 "backend_type": self.backend_type,
