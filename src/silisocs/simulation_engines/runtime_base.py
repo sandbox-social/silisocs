@@ -1,4 +1,13 @@
-"""Native runtime engine contracts and shared dataclasses."""
+"""Native runtime engine contracts and shared dataclasses.
+
+Seam-style convention: policy interfaces that are pure structural seams
+(``TurnPolicy``, ``StepStrategy``, ``LoopStrategy``, ``ProbeRunner``,
+``EngineRecorder``, ``ProbeSchedulePolicy``) are :class:`typing.Protocol`s here, so
+any conforming object plugs in without nominal inheritance. Policies whose base
+enforces overrides or carries shared behavior (``ParticipationPolicy`` in
+``policies/participation.py`` and ``Router`` in ``policies/routers.py``, both with
+``@abstractmethod``) are nominal ``ABC``s instead.
+"""
 
 from __future__ import annotations
 
@@ -157,6 +166,20 @@ class EngineRecorder(Protocol):
         total_agents: int,
         step_result: StepResult,
     ) -> None: ...
+
+
+class ProbeSchedulePolicy(Protocol):
+    """Gates whether the engine runs its probe phase on a given step.
+
+    The engine owns probe-phase *gating* (this seam), while the evaluation layer
+    owns probe *deployment* (:class:`ProbeRunner`); both live here so the seam is
+    discoverable next to the other engine policies. Built-ins live in
+    ``policies/probe_schedule.py``; select via ``eval.probes.schedule``.
+    """
+
+    name: str
+
+    def should_run_probe_phase(self, *, step: int, orchestrator: Any) -> bool: ...
 
 
 class RuntimeEngineBase:

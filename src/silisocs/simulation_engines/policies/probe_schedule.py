@@ -1,4 +1,12 @@
-"""Probe scheduling policies for engine probe-phase gating."""
+"""Probe scheduling policies for engine probe-phase gating.
+
+These conform to the
+:class:`~silisocs.simulation_engines.runtime_base.ProbeSchedulePolicy` protocol.
+They live in the engine package (not ``evaluations``) because probe-phase *gating*
+is an engine-loop concern — the engine decides whether to invoke the evaluation
+layer's ``ProbeRunner`` each step; the evaluation layer owns the probe *deployment*
+that runs when gated in. Built via ``build_probe_schedule_policy``.
+"""
 
 from __future__ import annotations
 
