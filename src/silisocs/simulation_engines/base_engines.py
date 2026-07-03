@@ -321,21 +321,25 @@ class RuntimeEngine(RuntimeEngineBase):
         tasks: Mapping[str, Callable[[], str]],
         worker_limit: int,
         failed_tasks: list[str] | None = None,
-    ) -> None:
-        # Turn results are consumed via side effects (resolve_action), not returned;
-        # the caller only needs completion + per-turn failure isolation.
+    ) -> dict[str, str]:
+        # Production callers drive turns via side effects (resolve_action) and ignore
+        # the returned map, but returning it keeps the per-turn failure-isolation
+        # behavior directly unit-testable (see test_engine_batch_failure).
         if not tasks:
-            return
+            return {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, worker_limit)) as executor:
             future_to_name = {
                 executor.submit(task_fn): task_name for task_name, task_fn in tasks.items()
             }
+            results: dict[str, str] = {}
             for future in concurrent.futures.as_completed(future_to_name):
                 task_name = future_to_name[future]
                 try:
-                    future.result()
+                    results[task_name] = str(future.result() or "")
                 except Exception:
                     _record_isolated_failure(task_name, failed_tasks)
+                    results[task_name] = ""
+            return results
 
     @staticmethod
     def _empty_step_result() -> StepResult:

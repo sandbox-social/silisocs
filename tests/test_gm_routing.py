@@ -57,9 +57,7 @@ def test_random_router_is_deterministic_per_agent_step_seed() -> None:
 
 def test_random_router_respects_zero_weight() -> None:
     router = RandomChoiceRouter(weights={"tw": 1.0, "rd": 0.0})
-    picks = {
-        router.route(_ctx(f"agent{i}", choices=("tw", "rd"))) for i in range(50)
-    }
+    picks = {router.route(_ctx(f"agent{i}", choices=("tw", "rd"))) for i in range(50)}
     assert picks == {"tw"}  # rd has zero weight, never chosen
 
 
@@ -124,7 +122,9 @@ def test_resolve_chain_with_branch() -> None:
     cfg = _cfg_with_chain(
         ["seed", {"branch": {"router": {"built_in": "random"}, "choices": ["tw", "rd"]}}, "wrap"]
     )
-    chains = _resolve_flow_chains(cfg, _gm_specs(("seed", 0), ("tw", 1), ("rd", 1), ("wrap", 2)), set())
+    chains = _resolve_flow_chains(
+        cfg, _gm_specs(("seed", 0), ("tw", 1), ("rd", 1), ("wrap", 2)), set()
+    )
     chain = chains["social"]
     assert chain[0] == "seed"
     assert isinstance(chain[1], BranchSpec) and chain[1].choices == ("tw", "rd")
@@ -229,8 +229,13 @@ class _Agent:
 
 
 class _GameMaster:
-    def __init__(self, *, name: str, agent_flow_tags: dict[str, str] | None = None,
-                 log: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        name: str,
+        agent_flow_tags: dict[str, str] | None = None,
+        log: list[str] | None = None,
+    ) -> None:
         self.name = name
         self.agent_flow_tags = agent_flow_tags or {}
         self.resolved: list[str] = []
@@ -299,8 +304,9 @@ def _branch_engine(mode: str, *, log: list[str] | None = None, seed: int = 0):
 
 def test_branch_concurrent_fans_per_agent_and_shares_tail() -> None:
     engine, gms, by_name = _branch_engine("concurrent")
-    engine.run_step(step_index=0, game_masters=gms, agents=[_Agent("Alice"), _Agent("Zed")],
-                    verbose=False)
+    engine.run_step(
+        step_index=0, game_masters=gms, agents=[_Agent("Alice"), _Agent("Zed")], verbose=False
+    )
     # Shared seed/wrap GMs run ONCE on every agent; the branch fans per agent.
     assert set(by_name["seed_gm"].resolved) == {"Alice", "Zed"}
     assert by_name["tw_gm"].resolved == ["Alice"]
@@ -311,8 +317,9 @@ def test_branch_concurrent_fans_per_agent_and_shares_tail() -> None:
 def test_branch_serial_flattens_into_one_chain() -> None:
     log: list[str] = []
     engine, gms, by_name = _branch_engine("serial", log=log)
-    engine.run_step(step_index=0, game_masters=gms, agents=[_Agent("Alice"), _Agent("Zed")],
-                    verbose=False)
+    engine.run_step(
+        step_index=0, game_masters=gms, agents=[_Agent("Alice"), _Agent("Zed")], verbose=False
+    )
     # seed (both) -> branch (tw:Alice, rd:Zed) -> wrap (both), batch by batch.
     assert set(log[0:2]) == {"seed_gm:Alice", "seed_gm:Zed"}
     assert set(log[2:4]) == {"tw_gm:Alice", "rd_gm:Zed"}
@@ -324,8 +331,9 @@ def test_branch_staged_router_acts_first_with_aligned_stages() -> None:
     # barrier every seed turn precedes the branch turns, which precede every wrap turn.
     log: list[str] = []
     engine, gms, by_name = _branch_engine("staged", log=log)
-    engine.run_step(step_index=0, game_masters=gms, agents=[_Agent("Alice"), _Agent("Zed")],
-                    verbose=False)
+    engine.run_step(
+        step_index=0, game_masters=gms, agents=[_Agent("Alice"), _Agent("Zed")], verbose=False
+    )
     assert set(log[0:2]) == {"seed_gm:Alice", "seed_gm:Zed"}
     assert set(log[2:4]) == {"tw_gm:Alice", "rd_gm:Zed"}
     assert set(log[4:6]) == {"wrap_gm:Alice", "wrap_gm:Zed"}
@@ -337,15 +345,17 @@ def test_random_router_fan_out_is_replay_stable() -> None:
     def _run() -> dict[str, list[str]]:
         branch = BranchSpec(choices=("tw_gm", "rd_gm"), router=RandomChoiceRouter())
         engine = build_engine(_cfg("multi_gm", seed=7))
-        engine.step_strategy = MultiGMStepStrategy(
-            flow_chains={"social": [branch]}, seed=7
-        )
+        engine.step_strategy = MultiGMStepStrategy(flow_chains={"social": [branch]}, seed=7)
         names = [f"agent{i}" for i in range(12)]
         primary = _GameMaster(name="primary", agent_flow_tags=dict.fromkeys(names, "social"))
         tw = _GameMaster(name="tw_gm")
         rd = _GameMaster(name="rd_gm")
-        engine.run_step(step_index=0, game_masters=[primary, tw, rd],
-                        agents=[_Agent(n) for n in names], verbose=False)
+        engine.run_step(
+            step_index=0,
+            game_masters=[primary, tw, rd],
+            agents=[_Agent(n) for n in names],
+            verbose=False,
+        )
         return {"tw_gm": sorted(tw.resolved), "rd_gm": sorted(rd.resolved)}
 
     first, second = _run(), _run()
