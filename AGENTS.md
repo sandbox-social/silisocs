@@ -481,20 +481,24 @@ For **tool-calling mode** specifically: The entity layer is responsible for call
 - `sim.checkpoint.restore`
 - Resume restores game-master and entity component state plus raw log.
 
-**Backend restore contract** (backend authors): declare two class-level capability
-flags (`base.py`): `provides_checkpoint_state` (get_state/set_state round-trip an
-authoritative snapshot — restore applies it directly) and `supports_action_replay`
-(the built-in `social_action_event_replay` strategy can rebuild the backend by
-re-resolving logged events). A replayable backend maps its own logged labels to
-its own actions via `event_to_replay_action(label, data) -> ActionOutput | None`
-(the default is the microblog mapping). Every shipped backend self-restores via
-`set_state` (`provides_checkpoint_state=True`); Mastodon — which can't snapshot
-its live server — does so by embedding its action history in `get_state` and
-replaying it (with old→new toot-id remapping) in `set_state`. The
-`social_action_event_replay` strategy + `supports_action_replay` remain an
-extension point for *custom* non-snapshot backends. The authoritative-vs-replay
-decision is **per game master**: snapshot GMs restore from their block, the rest
-go to the strategy.
+**Backend restore contract** (backend authors): a backend supports either (or both)
+of two restore paths. (1) Authoritative snapshot — set the class flag
+`provides_checkpoint_state = True` and make get_state/set_state round-trip the full
+state; restore applies it directly. (2) Action-event replay — *implement*
+`event_to_replay_action(label, data) -> ActionOutput | None`, mapping the backend's
+own logged vocabulary to its own actions (return `None` to skip a bookkeeping
+label). Implementing that method IS the "supports replay" capability — there is no
+separate flag; the built-in `social_action_event_replay` strategy detects the
+override and, for any backend routed to replay that lacks it, fails loudly.
+Microblog backends can delegate to `microblog_event_to_replay_action` (Twitter
+does); Reddit deliberately does not implement it (no valid microblog mapping) and
+relies on its snapshot. Every shipped backend self-restores via `set_state`
+(`provides_checkpoint_state=True`); Mastodon — which can't snapshot its live
+server — does so by embedding its action history in `get_state` and replaying it
+(with old→new toot-id remapping) in `set_state`, and also implements
+`event_to_replay_action` so a custom replay strategy can drive it. The
+authoritative-vs-replay decision is **per game master**: snapshot GMs restore from
+their block, the rest go to the strategy (which requires the mapping).
 Multi-GM runs isolate each GM's backend db + `action_events.jsonl` under
 `<output>/<gm_name>/`; both restore and eval discover these via
 `silisocs.evaluations.action_events.resolve_action_event_files` (restore passes

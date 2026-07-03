@@ -1037,16 +1037,19 @@ rather than relying on one representative GM for the whole run.
 
 ### Backend checkpoint capability
 
-Every backend declares two capability flags (see
+A backend supports either (or both) of two restore paths (see
 `src/silisocs/environments/backends/base.py`):
 
-- `provides_checkpoint_state`: the backend round-trips authoritative state via
-  `get_state`/`set_state`, so restore is a direct snapshot apply through the
-  default checkpoint loader. **True for every shipped backend.**
-- `supports_action_replay`: the backend exposes an event→action mapping
-  (`event_to_replay_action`) that the built-in `social_action_event_replay`
-  strategy can use to rebuild it by re-resolving logged events. Provided as an
-  extension point for *custom* non-snapshot backends.
+- `provides_checkpoint_state` (class flag): the backend round-trips authoritative
+  state via `get_state`/`set_state`, so restore is a direct snapshot apply through
+  the default checkpoint loader. **True for every shipped backend.**
+- Action-event replay — *implement* `event_to_replay_action(label, data)`, mapping
+  the backend's own logged vocabulary to its own actions. **Implementing that
+  method IS the capability** (there is no separate flag): the built-in
+  `social_action_event_replay` strategy detects the override, and any backend
+  routed to replay that lacks it fails loudly. Microblog backends can delegate to
+  `microblog_event_to_replay_action` (Twitter does); Reddit deliberately does not
+  implement it (no valid microblog mapping) and relies on its snapshot instead.
 
 Every shipped backend self-restores via `set_state`. The SQL backends snapshot
 their database; **`mastodon`** can't snapshot its external live server, so its
@@ -1066,8 +1069,8 @@ special strategy required:
   `perform_operations=true` for the actions to actually reach the server.
 
 A **custom** non-snapshot backend (`provides_checkpoint_state=False`) can either
-do the same (implement `get_state`/`set_state`) or, if it sets
-`supports_action_replay=True`, let the built-in strategy replay its logged events.
+do the same (implement `get_state`/`set_state`) or implement
+`event_to_replay_action` to let the built-in strategy replay its logged events.
 A backend that supports neither fails loudly; supply a custom restore strategy:
 
 ```yaml

@@ -102,9 +102,8 @@ class SocialNetworkApp(SocialBackendApp):
     # reply targets are remapped from the old toot id to the new one. Replay yields
     # a *similar*, not identical, server state.
     provides_checkpoint_state = True
-    # The event->action replay mapping is also exposed for custom restore
-    # strategies, though Mastodon itself restores via set_state above.
-    supports_action_replay = True
+    # Mastodon restores via set_state (above); it also implements
+    # event_to_replay_action (below) so a custom replay strategy can drive it.
     perform_operations: bool = False
     reset_server_on_setup: bool = False
     app_description: str = "MastodonSocialNetworkApp"
