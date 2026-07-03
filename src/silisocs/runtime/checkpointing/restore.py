@@ -10,7 +10,7 @@ from typing import Any
 
 from omegaconf import OmegaConf
 
-from silisocs.environments.backends.base import BackendApp
+from silisocs.runtime.checkpointing.replay_mappers import get_replay_mapper
 from silisocs.runtime.types import ActionOutput
 
 
@@ -44,9 +44,10 @@ class SocialActionEventReplayRestore(CheckpointRestoreStrategy):
     """Replay social backend action events through the native GM resolve surface.
 
     Each event is routed to its owning game master and mapped to a backend action
-    by that GM's own backend (``event_to_replay_action``), so heterogeneous
-    backends (twitter/reddit/mastodon) each translate their own logged vocabulary.
-    Game masters already restored authoritatively from a snapshot are skipped.
+    by the replay mapper registered for that GM's ``backend_type`` (see
+    ``replay_mappers.py``), so heterogeneous backends each translate their own
+    logged vocabulary without carrying a replay-specific method. Game masters
+    already restored authoritatively from a snapshot are skipped.
     """
 
     def restore(
@@ -128,27 +129,24 @@ def _replay_event_fields(
 
 
 def _assert_backends_replayable(game_masters: Sequence[Any]) -> None:
-    """Reject backends that don't implement the replay-mapping seam.
+    """Reject backends whose ``backend_type`` has no registered replay mapper.
 
-    A backend "supports replay" exactly when it overrides
-    ``event_to_replay_action`` — the capability is having the mapping, not a
-    separate flag. Backends without it must restore from an authoritative
-    snapshot or a custom strategy.
+    A backend "supports replay" exactly when a mapper is registered for its
+    ``backend_type`` (see ``replay_mappers.register_replay_mapper``). Backends
+    without one must restore from an authoritative snapshot or a custom strategy.
     """
     for game_master in game_masters:
-        backend = getattr(game_master, "backend", None)
-        if backend is None:
+        if getattr(game_master, "backend", None) is None:
             continue
-        method = getattr(type(backend), "event_to_replay_action", None)
-        if method is None or method is BackendApp.event_to_replay_action:
+        backend_type = str(getattr(game_master, "backend_type", "") or "")
+        if get_replay_mapper(backend_type) is None:
             gm_name = str(getattr(game_master, "name", "")) or "<unnamed>"
-            backend_type = str(getattr(game_master, "backend_type", "") or "unknown")
             raise ValueError(
-                f"Game master {gm_name!r} uses backend {backend_type!r}, which does not "
-                "implement event_to_replay_action, so the built-in "
+                f"Game master {gm_name!r} uses backend {backend_type or 'unknown'!r}, which "
+                "has no registered replay mapper, so the built-in "
                 "'social_action_event_replay' strategy cannot reconstruct it. Restore it "
-                "from an authoritative snapshot (provides_checkpoint_state=True), implement "
-                "the event->action mapping, or configure a custom "
+                "from an authoritative snapshot (provides_checkpoint_state=True), register a "
+                "replay mapper (replay_mappers.register_replay_mapper), or configure a custom "
                 "sim.checkpoint.restore.class_path strategy."
             )
 
@@ -337,7 +335,7 @@ def _route_and_map_event(
     owner_name: str = "",
     flow_chains: Mapping[str, Any] | None = None,
 ) -> tuple[Any, ActionOutput | None]:
-    """Route an event to its owning GM and map it via that GM's backend.
+    """Route an event to its owning GM and map it via that GM's backend_type.
 
     When the row names its owning GM (``owner_name``, present on every real
     run's logs), the event is routed straight to that GM — correct even when
@@ -346,7 +344,7 @@ def _route_and_map_event(
 
     Returns ``(game_master, action)`` to replay, or ``(None, None)`` to skip the
     event because its owning GM was already restored authoritatively (not in
-    ``replay_names``) or its backend does not map the label.
+    ``replay_names``) or no registered mapper maps the label.
     """
     if owner_name:
         owner = next(
@@ -355,18 +353,17 @@ def _route_and_map_event(
         if owner is not None:
             if owner_name not in replay_names:
                 return None, None  # owner restored from an authoritative snapshot
-            backend = getattr(owner, "backend", None)
-            action = backend.event_to_replay_action(label, data) if backend is not None else None
+            action = _map_event_for_gm(owner, label, data)
             return (owner, action) if action is not None else (None, None)
         # owner_name names no current GM -> fall back to flow-chain routing.
     for game_master in _candidate_game_masters(agent_name, game_masters, flow_chains):
         if str(getattr(game_master, "name", "")) not in replay_names:
             # Owned by an authoritative GM already restored from its snapshot.
             return None, None
-        backend = getattr(game_master, "backend", None)
-        if backend is None:
+        mapper = get_replay_mapper(str(getattr(game_master, "backend_type", "") or ""))
+        if mapper is None:
             continue
-        action = backend.event_to_replay_action(label, data)
+        action = mapper(label, data)
         if action is None:
             return None, None
         action_name = _first_tool_name(action)
@@ -374,6 +371,12 @@ def _route_and_map_event(
             continue
         return game_master, action
     return None, None
+
+
+def _map_event_for_gm(game_master: Any, label: str, data: Mapping[str, Any]) -> ActionOutput | None:
+    """Map one event using the mapper registered for a GM's ``backend_type``."""
+    mapper = get_replay_mapper(str(getattr(game_master, "backend_type", "") or ""))
+    return mapper(label, data) if mapper is not None else None
 
 
 def _candidate_game_masters(

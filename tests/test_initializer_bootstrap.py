@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -18,7 +18,7 @@ from silisocs.initialization.game_masters import (
 from silisocs.initialization.simulation import SeedPostsSimulationInitializer
 from silisocs.initialization.simulation.seed_posts import SeedPostProvider
 from silisocs.runtime.checkpointing import SocialActionEventReplayRestore
-from silisocs.runtime.types import ActionOutput, ToolCall
+from silisocs.runtime.types import ActionOutput
 
 
 @dataclass
@@ -74,13 +74,6 @@ class _ReplayBackend:
     def actions(self) -> list[_Action]:
         return list(self._actions)
 
-    def event_to_replay_action(self, label: str, data: Mapping[str, Any]) -> ActionOutput:
-        """Map every logged event to a create_tweet action for routing tests."""
-        del label
-        return ActionOutput.from_tool_calls(
-            [ToolCall("create_tweet", {"status": str(data.get("post_text", ""))})]
-        )
-
 
 class _ReplayGameMaster:
     def __init__(
@@ -92,6 +85,8 @@ class _ReplayGameMaster:
         owned_flows: tuple[str, ...] = (),
     ) -> None:
         self.name = name
+        # twitter_like routes to the shared microblog mapper (post -> create_tweet).
+        self.backend_type = "twitter_like"
         self.backend = _ReplayBackend(actions)
         self.agent_flow_tags = agent_flow_tags or {}
         self.owned_flows = owned_flows
