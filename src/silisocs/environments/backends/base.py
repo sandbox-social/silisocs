@@ -18,7 +18,6 @@ import docstring_parser
 import termcolor
 
 from silisocs.exceptions import ActionError, BackendError
-from silisocs.runtime.types import ActionOutput, ToolCall
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -278,10 +277,9 @@ class BackendApp(metaclass=abc.ABCMeta):
     # state, so a checkpoint restores this backend directly from its snapshot.
     # Backends that leave it False (e.g. live external servers) must rely on a
     # configured ``sim.checkpoint.restore`` strategy instead. Action-event replay
-    # is the other restore path, and it is opt-in by *implementing*
-    # ``event_to_replay_action`` (below) — not a separate flag: a backend either
-    # has a mapping from its own logged vocabulary or it does not, and the replay
-    # strategy checks for the override directly.
+    # is one such strategy; it owns its per-backend event->action mapping in a
+    # registry (runtime/checkpointing/replay_mappers.py) keyed by backend_type, so
+    # backends themselves carry no replay-specific method.
     provides_checkpoint_state: bool = False
 
     def __init__(self) -> None:
@@ -774,26 +772,6 @@ class BackendApp(metaclass=abc.ABCMeta):
         """No-op terminal action for open-ended loops and constrained action sets."""
         return "Finished action episode"
 
-    def event_to_replay_action(self, label: str, data: Mapping[str, Any]) -> ActionOutput | None:
-        """Translate one logged action event into a replayable action (opt-in seam).
-
-        The built-in ``social_action_event_replay`` restore strategy calls this on
-        the owning game master's backend to rebuild state by re-resolving each
-        logged write action. Implementing this method IS the "supports replay"
-        capability — a backend maps its own logged vocabulary to its own actions,
-        returning ``None`` to skip a non-replayable bookkeeping label. Backends
-        that do not implement it cannot be reconstructed by the replay strategy
-        (the strategy detects the missing override and fails loudly). Microblog
-        backends can delegate to :func:`microblog_event_to_replay_action`.
-        """
-        raise NotImplementedError(
-            f"{type(self).__name__} does not implement event_to_replay_action, so it "
-            "cannot be reconstructed by the 'social_action_event_replay' restore "
-            "strategy. Implement the mapping, restore from an authoritative snapshot "
-            "(provides_checkpoint_state=True), or configure a custom "
-            "sim.checkpoint.restore.class_path strategy."
-        )
-
 
 # --------------------------------------------------------------------------- #
 # Argument Text Parser
@@ -846,63 +824,6 @@ def _param_to_json_schema(param: "Parameter") -> dict:
 # --------------------------------------------------------------------------- #
 # SocialBackendApp - social-specific backend base
 # --------------------------------------------------------------------------- #
-
-
-def _replay_target_id(label: str, data: Mapping[str, Any]) -> str:
-    """Extract the post/toot id a replayed social action targets."""
-    target = (
-        data.get("post_id") or data.get("tweet_id") or data.get("toot_id") or data.get("target_id")
-    )
-    if target is None:
-        raise ValueError(f"{label} event missing target id: {data}")
-    return str(target)
-
-
-def microblog_event_to_replay_action(label: str, data: Mapping[str, Any]) -> ActionOutput | None:
-    """Map a logged microblog action event to its replayable action.
-
-    The canonical microblog vocabulary (create/like/repost/reply/follow) shared by
-    Twitter-like and Mastodon-style backends. A backend opts into replay by
-    implementing ``event_to_replay_action`` and delegating here; returns ``None``
-    for a non-replayable bookkeeping label.
-    """
-    if label == "post":
-        text = (
-            data.get("post_text") or data.get("text") or data.get("content") or data.get("status")
-        )
-        if not text:
-            raise ValueError(f"Post event missing text: {data}")
-        return ActionOutput.from_tool_calls([ToolCall("create_tweet", {"status": str(text)})])
-    if label in {"like", "like_toot"}:
-        return ActionOutput.from_tool_calls(
-            [ToolCall("like_tweet", {"post_id": _replay_target_id("Like", data)})]
-        )
-    if label in {"repost", "boost_toot"}:
-        return ActionOutput.from_tool_calls(
-            [ToolCall("repost_tweet", {"post_id": _replay_target_id("Repost", data)})]
-        )
-    if label == "reply":
-        text = (
-            data.get("post_text") or data.get("text") or data.get("content") or data.get("status")
-        )
-        if not text:
-            raise ValueError(f"Reply event missing text: {data}")
-        return ActionOutput.from_tool_calls(
-            [
-                ToolCall(
-                    "reply_to_tweet",
-                    {"post_id": _replay_target_id("Reply", data), "status": str(text)},
-                )
-            ]
-        )
-    if label in {"follow", "unfollow"}:
-        target = data.get("target_user") or data.get("target") or data.get("user")
-        if not target:
-            raise ValueError(f"{label} event missing target user: {data}")
-        return ActionOutput.from_tool_calls(
-            [ToolCall(f"{label}_user", {"target_user": str(target)})]
-        )
-    raise ValueError(f"Unknown microblog action event label for checkpoint replay: {label}")
 
 
 class SocialBackendApp(BackendApp):

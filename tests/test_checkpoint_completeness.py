@@ -25,7 +25,6 @@ from silisocs.agents.base_agent import Agent
 from silisocs.environments.backends.base import (
     BackendApp,
     SocialBackendApp,
-    microblog_event_to_replay_action,
 )
 from silisocs.environments.backends.mastodon.apps import SocialNetworkApp
 from silisocs.environments.backends.reddit_like.app import RedditLikeApp
@@ -37,6 +36,11 @@ from silisocs.environments.gm.components.social_media.update import (
 )
 from silisocs.evaluations.action_events import resolve_action_event_files
 from silisocs.runtime.checkpointing.policy import CHECKPOINT_SCHEMA_VERSION
+from silisocs.runtime.checkpointing.replay_mappers import (
+    get_replay_mapper,
+    microblog_event_to_replay_action,
+    register_replay_mapper,
+)
 from silisocs.runtime.checkpointing.restore import (
     CheckpointRestoreStrategy,
     SocialActionEventReplayRestore,
@@ -194,12 +198,13 @@ def test_backend_capability_flags():
     # Mastodon now self-restores too: get_state embeds its action history and
     # set_state replays it, so it restores via the default set_state path.
     assert SocialNetworkApp.provides_checkpoint_state is True
-    # Replay capability = implementing event_to_replay_action (the mapping IS the
-    # capability, not a flag). Twitter/Mastodon do; Reddit intentionally does not
-    # (it has no valid microblog mapping and self-restores via snapshot).
-    assert SocialNetworkApp.event_to_replay_action is not BackendApp.event_to_replay_action
-    assert TwitterLikeApp.event_to_replay_action is not BackendApp.event_to_replay_action
-    assert RedditLikeApp.event_to_replay_action is BackendApp.event_to_replay_action
+    # Replay capability = a mapper registered for the backend_type (the mapping
+    # lives with the replay strategy, not on the backend). twitter_like has one;
+    # reddit_like does not (no valid microblog mapping; self-restores via snapshot).
+    # Mastodon self-restores via snapshot, so it is not replay-strategy-driven.
+    assert get_replay_mapper("twitter_like") is not None
+    assert get_replay_mapper("reddit_like") is None
+    assert get_replay_mapper("mastodon") is None
 
 
 def test_build_checkpoint_restore_built_in_and_class_path():
@@ -236,7 +241,7 @@ def test_replay_strategy_rejects_non_replayable_backend(tmp_path):
         backend_type="reddit_like",
         backend=RedditLikeApp.__new__(RedditLikeApp),
     )
-    with pytest.raises(ValueError, match="does not implement event_to_replay_action"):
+    with pytest.raises(ValueError, match="has no registered replay mapper"):
         SocialActionEventReplayRestore().restore(
             game_masters=[gm],
             action_events_files=[tmp_path / "missing.jsonl"],
@@ -256,10 +261,40 @@ def test_microblog_replay_mapping_helper():
     assert follow.tool_calls[0].name == "follow_user"
 
 
-def test_social_base_does_not_supply_default_replay_mapping():
-    """SocialBackendApp no longer provides a default mapping; Twitter opts in."""
-    assert SocialBackendApp.event_to_replay_action is BackendApp.event_to_replay_action
-    assert TwitterLikeApp.event_to_replay_action is not BackendApp.event_to_replay_action
+def test_backends_carry_no_replay_method():
+    """The replay mapping lives in the registry, not as a backend method."""
+    for cls in (BackendApp, SocialBackendApp, TwitterLikeApp, RedditLikeApp):
+        assert not hasattr(cls, "event_to_replay_action")
+    # twitter_like's replay is served by the shared microblog mapper.
+    assert get_replay_mapper("twitter_like") is microblog_event_to_replay_action
+
+
+def test_register_replay_mapper_extends_the_strategy(tmp_path):
+    """A custom backend_type opts into the built-in replay strategy via the registry."""
+
+    def _custom_mapper(label, data):
+        return ActionOutput.from_tool_calls([ToolCall("create_tweet", {"status": label})])
+
+    assert get_replay_mapper("custom_social") is None
+    register_replay_mapper("custom_social", _custom_mapper)
+    try:
+        assert get_replay_mapper("custom_social") is _custom_mapper
+        # A non-authoritative GM on that backend_type now passes the replayability
+        # guard (an unregistered type would raise "has no registered replay mapper").
+        gm = _CapturingGM("gm1")
+        gm.backend_type = "custom_social"
+        log = tmp_path / "action_events.jsonl"
+        log.write_text("", encoding="utf-8")
+        SocialActionEventReplayRestore().restore(
+            game_masters=[gm],
+            action_events_files=[log],
+            checkpoint_step=1,
+        )
+    finally:
+        # Keep the module-global registry clean for other tests.
+        from silisocs.runtime.checkpointing import replay_mappers
+
+        replay_mappers._REPLAY_MAPPERS.pop("custom_social", None)
 
 
 def test_mastodon_replay_mapping_and_id_remap():
@@ -267,44 +302,44 @@ def test_mastodon_replay_mapping_and_id_remap():
     app = SocialNetworkApp()
     app.begin_action_replay()
 
-    post = app.event_to_replay_action("post", {"toot_id": "OLD1", "post_text": "hello"})
+    post = app._replay_event_to_action("post", {"toot_id": "OLD1", "post_text": "hello"})
     assert post.tool_calls[0].name == "post_toot"
     assert post.tool_calls[0].arguments == {"status": "hello"}
 
     # Simulate the server assigning a new id when the post is re-created.
     app._record_replayed_post_id("NEW1")
 
-    like = app.event_to_replay_action("like_toot", {"toot_id": "OLD1"})
+    like = app._replay_event_to_action("like_toot", {"toot_id": "OLD1"})
     assert like.tool_calls[0].name == "like_toot"
     assert like.tool_calls[0].arguments == {"toot_id": "NEW1"}
 
-    boost = app.event_to_replay_action("boost_toot", {"toot_id": "OLD1"})
+    boost = app._replay_event_to_action("boost_toot", {"toot_id": "OLD1"})
     assert boost.tool_calls[0].name == "boost_toot"
     assert boost.tool_calls[0].arguments == {"toot_id": "NEW1"}
 
     # A reply answers its parent (reply_to.toot_id), uses the in_reply_to_id arg,
     # and is itself a new toot whose own id (data.toot_id) is captured for chains.
-    reply = app.event_to_replay_action(
+    reply = app._replay_event_to_action(
         "reply", {"reply_to": {"toot_id": "OLD1"}, "toot_id": "OLDR", "post_text": "hi"}
     )
     assert reply.tool_calls[0].name == "reply_to_toot"
     assert reply.tool_calls[0].arguments == {"in_reply_to_id": "NEW1", "status": "hi"}
 
-    follow = app.event_to_replay_action("follow", {"target_user": "bob"})
+    follow = app._replay_event_to_action("follow", {"target_user": "bob"})
     assert follow.tool_calls[0].name == "follow_user"
 
     # A reference to a toot that was never re-created is skipped, not crashed.
-    assert app.event_to_replay_action("like_toot", {"toot_id": "UNSEEN"}) is None
+    assert app._replay_event_to_action("like_toot", {"toot_id": "UNSEEN"}) is None
 
     # Reply chain: the reply re-created above gets a new id, and a like on the
     # *reply* must remap the reply's own old id (OLDR -> NEWR) so it connects.
     app._record_replayed_post_id("NEWR")
-    like_on_reply = app.event_to_replay_action("like_toot", {"toot_id": "OLDR"})
+    like_on_reply = app._replay_event_to_action("like_toot", {"toot_id": "OLDR"})
     assert like_on_reply.tool_calls[0].arguments == {"toot_id": "NEWR"}
 
     # begin_action_replay clears the id map for a fresh replay session.
     app.begin_action_replay()
-    assert app.event_to_replay_action("like_toot", {"toot_id": "OLD1"}) is None
+    assert app._replay_event_to_action("like_toot", {"toot_id": "OLD1"}) is None
 
 
 def test_mastodon_get_state_embeds_action_history(tmp_path):
@@ -497,12 +532,7 @@ def test_multi_gm_db_path_collision_raises():
 
 
 class _CapturingBackend:
-    """Replayable backend that maps every post to create_tweet."""
-
-    def event_to_replay_action(self, label, data):
-        return ActionOutput.from_tool_calls(
-            [ToolCall("create_tweet", {"status": str(data.get("post_text", ""))})]
-        )
+    """Backend stub whose ``backend_type`` (twitter_like) routes to the microblog mapper."""
 
     def actions(self):
         return [SimpleNamespace(name="create_tweet", selectable_name="create_tweet")]

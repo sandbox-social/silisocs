@@ -1048,20 +1048,21 @@ A backend supports either (or both) of two restore paths (see
 - `provides_checkpoint_state` (class flag): the backend round-trips authoritative
   state via `get_state`/`set_state`, so restore is a direct snapshot apply through
   the default checkpoint loader. **True for every shipped backend.**
-- Action-event replay — *implement* `event_to_replay_action(label, data)`, mapping
-  the backend's own logged vocabulary to its own actions. **Implementing that
-  method IS the capability** (there is no separate flag): the built-in
-  `social_action_event_replay` strategy detects the override, and any backend
-  routed to replay that lacks it fails loudly. Microblog backends can delegate to
-  `microblog_event_to_replay_action` (Twitter does); Reddit deliberately does not
-  implement it (no valid microblog mapping) and relies on its snapshot instead.
+- Action-event replay — a restore *mechanism* owned by the `sim.checkpoint.restore`
+  strategy, **not** a backend method. The built-in `social_action_event_replay`
+  strategy keeps its per-backend event→action mappings in a registry keyed by
+  `backend_type` (`runtime/checkpointing/replay_mappers.py`); a backend "supports
+  replay" exactly when a mapper is registered for its `backend_type`. Any backend
+  routed to replay whose `backend_type` has no mapper fails loudly. The registry
+  ships `twitter_like` → `microblog_event_to_replay_action`; `reddit_like` has none
+  (no valid microblog mapping) and relies on its snapshot instead.
 
 Every shipped backend self-restores via `set_state`. The SQL backends snapshot
 their database; **`mastodon`** can't snapshot its external live server, so its
 checkpoint state *is* its action history: `get_state` embeds the logged actions
-and `set_state` rebuilds the server by re-running them (as their original users,
-in order). It therefore restores through the same default `set_state` path, no
-special strategy required:
+and `set_state` rebuilds the server by re-running them through a private mapper (as
+their original users, in order). It therefore restores through the same default
+`set_state` path, no special strategy required:
 
 - **Server reset**: the server must be wiped first (`reset_server_on_setup=true`),
   otherwise replay duplicates the original run's content. Replay logs a warning
@@ -1074,9 +1075,10 @@ special strategy required:
   `perform_operations=true` for the actions to actually reach the server.
 
 A **custom** non-snapshot backend (`provides_checkpoint_state=False`) can either
-do the same (implement `get_state`/`set_state`) or implement
-`event_to_replay_action` to let the built-in strategy replay its logged events.
-A backend that supports neither fails loudly; supply a custom restore strategy:
+do the same (implement `get_state`/`set_state`) or call
+`register_replay_mapper(backend_type, mapper)` (before the resume runs) to let the
+built-in strategy replay its logged events. A backend that supports neither fails
+loudly; supply a custom restore strategy:
 
 ```yaml
 sim:

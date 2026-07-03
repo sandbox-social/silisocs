@@ -102,8 +102,9 @@ class SocialNetworkApp(SocialBackendApp):
     # reply targets are remapped from the old toot id to the new one. Replay yields
     # a *similar*, not identical, server state.
     provides_checkpoint_state = True
-    # Mastodon restores via set_state (above); it also implements
-    # event_to_replay_action (below) so a custom replay strategy can drive it.
+    # Mastodon restores via set_state (above): its embedded action history is
+    # replayed through its own ``_replay_event_to_action`` mapping, which is a
+    # private detail of that snapshot restore, not a shared backend seam.
     perform_operations: bool = False
     reset_server_on_setup: bool = False
     app_description: str = "MastodonSocialNetworkApp"
@@ -245,7 +246,7 @@ class SocialNetworkApp(SocialBackendApp):
 
     def _replay_logged_action(self, event: Mapping[str, Any]) -> None:
         """Remap and re-execute one logged action as its original user."""
-        action = self.event_to_replay_action(str(event.get("label", "")), event.get("data") or {})
+        action = self._replay_event_to_action(str(event.get("label", "")), event.get("data") or {})
         if action is None:
             return
         agent = str(event.get("source_user", "") or "")
@@ -259,8 +260,12 @@ class SocialNetworkApp(SocialBackendApp):
                 payload[RUNTIME_AGENT_PARAM] = agent
             self.invoke_action_with_kwargs(tool_call.name, payload)
 
-    def event_to_replay_action(self, label: str, data: Mapping[str, Any]) -> ActionOutput | None:
+    def _replay_event_to_action(self, label: str, data: Mapping[str, Any]) -> ActionOutput | None:
         """Map a logged Mastodon action event to a replayable action.
+
+        Private to Mastodon's snapshot restore (``set_state`` replays its embedded
+        action history through this). Unlike the stateless microblog mapper, it is
+        instance-stateful: it remaps old->new toot ids for references.
 
         Creates (``post``) and follow/unfollow replay directly. ``like``/
         ``boost``/``reply`` reference a server-assigned toot id that changes when
