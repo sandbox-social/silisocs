@@ -180,6 +180,13 @@ class RuntimeEngine(RuntimeEngineBase):
         semaphore BEFORE the per-GM lock — permit-holders only take the brief per-GM
         lock afterward and always make progress, so there is no pool-starvation
         deadlock.
+
+        Operational envelope: a gated turn blocks on the permit *while occupying a
+        turn-pool worker*, so a heavily-capped GM with many queued turns can hold
+        up to ``worker_limit`` workers waiting on its permits while other GMs' turns
+        get no thread (a throughput cliff, not a deadlock). Keep per-GM caps well
+        below ``sim.max_concurrent_actions`` so the pool is never dominated by one
+        capped GM's blocked turns.
         """
         if not self.gm_concurrency_caps:
             return thunk

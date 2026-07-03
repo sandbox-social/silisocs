@@ -1000,6 +1000,11 @@ cap governs everything (unchanged). This lets you throttle a rate-limited backen
 (e.g. a live Mastodon server) below the global limit while other GMs keep running
 concurrently. Like `gm_turn_policies`, it applies under any step mode.
 
+Keep a cap well below `sim.max_concurrent_actions`: a capped GM's turns block on
+its permit *while holding a worker thread*, so a heavily-capped GM with many
+queued turns can occupy up to `worker_limit` threads waiting on its own permits
+and starve other GMs of throughput (a slowdown, not a deadlock).
+
 Sequential scheduling:
 
 ```yaml
