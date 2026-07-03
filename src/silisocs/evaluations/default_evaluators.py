@@ -20,6 +20,7 @@ import re
 import statistics
 from collections import Counter, defaultdict
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -771,6 +772,83 @@ def _build_per_label_probe_output(
     return per_label_out
 
 
+@dataclass
+class _ProbeAccumulation:
+    """Counters accumulated over one filtered pass of probe rows."""
+
+    per_type: dict[str, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
+    per_label_counts: dict[str, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
+    per_label_modes: dict[str, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
+    per_episode_counts: dict[int, int] = field(default_factory=lambda: defaultdict(int))
+    per_agent_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    per_agent_episode_counts: dict[str, dict[int, int]] = field(
+        default_factory=lambda: defaultdict(lambda: defaultdict(int))
+    )
+    numeric_values: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
+    free_text_lengths: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
+    free_text_word_counts: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
+    free_text_tokens: dict[str, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
+    choice_values: dict[str, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
+    kept_rows: int = 0
+    dropped_rows: int = 0
+
+
+def _accumulate_probe_rows(
+    probe_rows: list[dict[str, Any]],
+    type_map: dict[str, str],
+    probe_type_filter: str | None,
+) -> _ProbeAccumulation:
+    """Fold probe rows into per-type/label/episode/agent counters (one pass)."""
+    acc = _ProbeAccumulation()
+    for row in probe_rows:
+        label = str(row.get("label", "")).strip() or "unknown"
+        episode = _safe_int(row.get("episode"), 0)
+        agent = str(row.get("source_user", "")).strip() or "unknown"
+
+        data = row.get("data", {})
+        data = data if isinstance(data, dict) else {}
+        response = data.get("probe_return")
+        has_response = response is not None and str(response).strip() != ""
+
+        probe_type = type_map.get(label) or _infer_probe_type(response)
+
+        if probe_type_filter is not None and probe_type != probe_type_filter:
+            acc.dropped_rows += 1
+            continue
+
+        acc.kept_rows += 1
+        acc.per_type[probe_type]["total_events"] += 1
+        acc.per_type[probe_type]["responses_present" if has_response else "responses_missing"] += 1
+
+        acc.per_label_counts[label]["total_events"] += 1
+        acc.per_label_counts[label][
+            "responses_present" if has_response else "responses_missing"
+        ] += 1
+
+        probe_mode = str(data.get("probe_mode", "")).strip() or "unknown"
+        acc.per_label_modes[label][probe_mode] += 1
+
+        acc.per_episode_counts[episode] += 1
+        acc.per_agent_counts[agent] += 1
+        acc.per_agent_episode_counts[agent][episode] += 1
+
+        if not has_response:
+            continue
+
+        _accumulate_typed_response(
+            probe_type,
+            label,
+            response,
+            per_type=acc.per_type,
+            numeric_values=acc.numeric_values,
+            choice_values=acc.choice_values,
+            free_text_lengths=acc.free_text_lengths,
+            free_text_word_counts=acc.free_text_word_counts,
+            free_text_tokens=acc.free_text_tokens,
+        )
+    return acc
+
+
 def _build_probe_metrics_with_context(
     events: list[dict[str, Any]],
     run_dir: Path,
@@ -784,87 +862,22 @@ def _build_probe_metrics_with_context(
     )
     type_map = _load_probe_type_map(run_dir)
 
-    per_type: dict[str, Counter[str]] = defaultdict(Counter)
-    per_label_counts: dict[str, Counter[str]] = defaultdict(Counter)
-    per_label_modes: dict[str, Counter[str]] = defaultdict(Counter)
-    per_episode_counts: dict[int, int] = defaultdict(int)
-    per_agent_counts: dict[str, int] = defaultdict(int)
-    per_agent_episode_counts: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
-
-    numeric_values: dict[str, list[float]] = defaultdict(list)
-    free_text_lengths: dict[str, list[float]] = defaultdict(list)
-    free_text_word_counts: dict[str, list[float]] = defaultdict(list)
-    free_text_tokens: dict[str, Counter[str]] = defaultdict(Counter)
-    choice_values: dict[str, Counter[str]] = defaultdict(Counter)
-
-    kept_rows = 0
-    dropped_rows = 0
-
-    for row in probe_rows:
-        label = str(row.get("label", "")).strip() or "unknown"
-        episode = _safe_int(row.get("episode"), 0)
-        agent = str(row.get("source_user", "")).strip() or "unknown"
-
-        data = row.get("data", {})
-        data = data if isinstance(data, dict) else {}
-        response = data.get("probe_return")
-        has_response = response is not None and str(response).strip() != ""
-
-        mapped_type = type_map.get(label)
-        probe_type = mapped_type or _infer_probe_type(response)
-
-        if probe_type_filter is not None and probe_type != probe_type_filter:
-            dropped_rows += 1
-            continue
-
-        kept_rows += 1
-        per_type[probe_type]["total_events"] += 1
-        if has_response:
-            per_type[probe_type]["responses_present"] += 1
-        else:
-            per_type[probe_type]["responses_missing"] += 1
-
-        per_label_counts[label]["total_events"] += 1
-        per_label_counts[label]["responses_present" if has_response else "responses_missing"] += 1
-
-        probe_mode = str(data.get("probe_mode", "")).strip() or "unknown"
-        per_label_modes[label][probe_mode] += 1
-
-        per_episode_counts[episode] += 1
-        per_agent_counts[agent] += 1
-        per_agent_episode_counts[agent][episode] += 1
-
-        if not has_response:
-            continue
-
-        _accumulate_typed_response(
-            probe_type,
-            label,
-            response,
-            per_type=per_type,
-            numeric_values=numeric_values,
-            choice_values=choice_values,
-            free_text_lengths=free_text_lengths,
-            free_text_word_counts=free_text_word_counts,
-            free_text_tokens=free_text_tokens,
-        )
+    acc = _accumulate_probe_rows(probe_rows, type_map, probe_type_filter)
 
     probe_type_by_label = {
-        label: (type_map.get(label) or "inferred") for label in sorted(per_label_counts.keys())
+        label: (type_map.get(label) or "inferred") for label in sorted(acc.per_label_counts.keys())
     }
-
     per_label_out = _build_per_label_probe_output(
-        per_label_counts,
-        per_label_modes,
+        acc.per_label_counts,
+        acc.per_label_modes,
         type_map,
-        numeric_values=numeric_values,
-        choice_values=choice_values,
-        free_text_lengths=free_text_lengths,
-        free_text_word_counts=free_text_word_counts,
-        free_text_tokens=free_text_tokens,
+        numeric_values=acc.numeric_values,
+        choice_values=acc.choice_values,
+        free_text_lengths=acc.free_text_lengths,
+        free_text_word_counts=acc.free_text_word_counts,
+        free_text_tokens=acc.free_text_tokens,
     )
-
-    per_type_out = {ptype: dict(counter) for ptype, counter in sorted(per_type.items())}
+    per_type_out = {ptype: dict(counter) for ptype, counter in sorted(acc.per_type.items())}
 
     return {
         "summary_type": "probe_metrics",
@@ -873,16 +886,16 @@ def _build_probe_metrics_with_context(
         "total_probe_events": len(probe_rows),
         "total_probe_events_raw": len(probe_rows_raw),
         "carry_forward_enabled": hold_last_response,
-        "filtered_probe_events": kept_rows,
-        "filtered_out_probe_events": dropped_rows,
+        "filtered_probe_events": acc.kept_rows,
+        "filtered_out_probe_events": acc.dropped_rows,
         "probe_type_by_label": probe_type_by_label,
         "per_type": per_type_out,
         "per_label": per_label_out,
-        "per_episode": {str(k): int(v) for k, v in sorted(per_episode_counts.items())},
-        "per_agent": {k: int(v) for k, v in sorted(per_agent_counts.items())},
+        "per_episode": {str(k): int(v) for k, v in sorted(acc.per_episode_counts.items())},
+        "per_agent": {k: int(v) for k, v in sorted(acc.per_agent_counts.items())},
         "per_agent_per_episode": {
             agent: {str(ep): int(cnt) for ep, cnt in sorted(ep_map.items())}
-            for agent, ep_map in sorted(per_agent_episode_counts.items())
+            for agent, ep_map in sorted(acc.per_agent_episode_counts.items())
         },
     }
 
