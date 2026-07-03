@@ -118,6 +118,8 @@ custom provider (see [Building Agents](building_agents.md)).
 | `sim.engine.step.built_in` | `base` | Engine step policy: `base`, `sequential`, `flow`, `multi_gm`, `multi_gm_serial`, or `multi_gm_staged`. The three `multi_gm*` strategies select the flow-chain traversal mode: `multi_gm` (concurrent, default — flows advance as independent pipelines, serializing only when two flows touch the same GM), `multi_gm_serial` (legacy row-major — each flow runs its full GM chain to completion before the next), `multi_gm_staged` (column-major with a global per-stage barrier — all flows advance one stage at a time) |
 | `sim.engine.step.params.gm_turn_policies` | `{}` | Per-GM turn policy overrides keyed by GM name, each value using the same slot shape as `sim.engine.turn_policy` (`{built_in\|class_path, params}`); applies under any step mode and is resolved per batch by GM name |
 | `sim.engine.step.params.gm_concurrency_caps` | `{}` | Per-GM concurrency caps (`{gm_name: int}`); caps how many of that GM's agent turns run at once via a per-GM semaphore. Effective per-GM limit = `min(cap, sim.max_concurrent_actions)`; empty map = the global cap governs every GM. Applies under any step mode |
+| `sim.engine.turn_policy.built_in` | `single_action` | Global turn policy — how many actions an agent takes per step: `single_action`, `fixed_count`, or `open_ended` |
+| `sim.engine.participation.built_in` | `activity_probability` (base.yaml) | Sim-level roster filter applied before scheduling and every GM `next_acting`: `all` (pass-through), `activity_probability`, `activity_markov`, or a `class_path`. Effective acting = participation ∩ `next_acting`. Set `all` for deterministic/turn-based runs. A missing slot defaults to `all` in code; `sim/base.yaml` ships `activity_probability` |
 | `sim.roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |
 
 ### Per-GM action_mode and tool_calling overrides
@@ -810,6 +812,14 @@ referenced via `class_path`; declare a `sim_roles` constructor param to receive
 the agent→role mapping. Set `built_in: all` (pass-through) for deterministic or
 turn-based runs (e.g. `fixed_order` environments), where every agent should stay
 in the roster.
+
+Two defaults to keep straight: `sim/base.yaml` ships `built_in:
+activity_probability`, so any scenario inheriting base without overriding the
+slot gets probability filtering (a new turn-based scenario must set `built_in:
+all` explicitly). When the `participation` slot is *absent entirely* — e.g. a
+programmatic `build_engine` call — the code fallback is `all` (pass-through),
+not `activity_probability`; the active default is opted into by base.yaml, not
+by the engine.
 
 ### Timeline Observation
 

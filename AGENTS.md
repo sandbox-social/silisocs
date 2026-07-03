@@ -55,7 +55,7 @@ Core runtime layers:
   traversal means writing a step strategy and registering it — no new engine class.
 - `src/silisocs/simulation_engines/policies/` — loop, step, and turn policies:
   - Turn policy: `single_action`, `fixed_count`, `open_ended`
-  - Step policy: `base`, `sequential`, `flow`, `multi_gm`
+  - Step policy: `base`, `sequential`, `flow`, `multi_gm`, `multi_gm_serial`, `multi_gm_staged`
   - Loop policy: default episode loop
 - To add custom policy: implement the relevant policy ABC and reference it via `class_path`
 
