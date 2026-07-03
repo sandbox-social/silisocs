@@ -236,6 +236,7 @@ experiments/studies/**/*.db-wal
 SESSION_STATE.md
 
 refactor_notes.md
+CODEBASE_AUDIT_PLAN.md
 
 #LLM-Coding files
 .claude
