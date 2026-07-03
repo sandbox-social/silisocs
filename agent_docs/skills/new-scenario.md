@@ -114,12 +114,14 @@ Collect or confirm:
   (default) or `pure_recsys`
 - Network topology:
   - Any roles that should follow *everyone* (bridge/journalist roles)?
-  - `base_followership_probability` (default 0.5)
+  - `base_followership_probability` (default 0.3)
   - `network_type`: `barabasi_albert` (scale-free, default) or `fully_connected`
   - Per-role activity rates under
-    `env.gm.components.next_acting.params.activity_transition_rates`
-    (`inactive_to_active` / `active_to_inactive`; higher = more active; suggest
-    0.6–0.9 for key roles, 0.1–0.3 for passive ones)
+    `sim.engine.participation.params.activity_transition_rates` (with
+    `sim.engine.participation.built_in: activity_probability`;
+    `inactive_to_active` / `active_to_inactive`; higher = more active; suggest
+    0.6–0.9 for key roles, 0.1–0.3 for passive ones). The GM `next_acting`
+    slot no longer accepts activity models — it is env-derived selection only.
 
 ---
 
