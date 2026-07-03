@@ -275,26 +275,22 @@ def test_register_replay_mapper_extends_the_strategy(tmp_path):
     def _custom_mapper(label, data):
         return ActionOutput.from_tool_calls([ToolCall("create_tweet", {"status": label})])
 
+    # The autouse _isolate_replay_mappers fixture (tests/conftest.py) restores the
+    # registry after the test, so no manual cleanup is needed here.
     assert get_replay_mapper("custom_social") is None
     register_replay_mapper("custom_social", _custom_mapper)
-    try:
-        assert get_replay_mapper("custom_social") is _custom_mapper
-        # A non-authoritative GM on that backend_type now passes the replayability
-        # guard (an unregistered type would raise "has no registered replay mapper").
-        gm = _CapturingGM("gm1")
-        gm.backend_type = "custom_social"
-        log = tmp_path / "action_events.jsonl"
-        log.write_text("", encoding="utf-8")
-        SocialActionEventReplayRestore().restore(
-            game_masters=[gm],
-            action_events_files=[log],
-            checkpoint_step=1,
-        )
-    finally:
-        # Keep the module-global registry clean for other tests.
-        from silisocs.runtime.checkpointing import replay_mappers
-
-        replay_mappers._REPLAY_MAPPERS.pop("custom_social", None)
+    assert get_replay_mapper("custom_social") is _custom_mapper
+    # A non-authoritative GM on that backend_type now passes the replayability guard
+    # (an unregistered type would raise "has no registered replay mapper").
+    gm = _CapturingGM("gm1")
+    gm.backend_type = "custom_social"
+    log = tmp_path / "action_events.jsonl"
+    log.write_text("", encoding="utf-8")
+    SocialActionEventReplayRestore().restore(
+        game_masters=[gm],
+        action_events_files=[log],
+        checkpoint_step=1,
+    )
 
 
 def test_mastodon_replay_mapping_and_id_remap():
