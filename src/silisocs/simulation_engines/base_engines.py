@@ -470,9 +470,10 @@ class RuntimeEngine(RuntimeEngineBase):
             tasks, names, models = self._batch_tasks(batch)
             task_groups.append((batch.game_master, tasks))
             active_names.update(names)
-            # Batches run strictly one at a time here, so peak concurrency is the
-            # widest single batch, not the sum (matches the grouped paths' sizing).
-            requested_workers = max(requested_workers, len(tasks))
+            # Total turns this step. Batches drain one at a time so the peak is the
+            # widest batch, but requested_workers is reported as the sum across
+            # batches (a step-size signal) — kept stable as observable telemetry.
+            requested_workers += len(tasks)
             for model_obj in models:
                 model_pool[id(model_obj)] = model_obj
 
