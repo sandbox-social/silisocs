@@ -12,7 +12,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
+
+pytestmark = pytest.mark.subprocess
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STUDY_ID = "e2e_scripted_smoke"

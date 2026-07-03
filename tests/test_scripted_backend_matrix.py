@@ -7,9 +7,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 from silisocs.runtime.types import ToolCall
+
+pytestmark = pytest.mark.subprocess
 
 # Each scripted test spawns a full `silisocs.runtime.runner` subprocess. A cold
 # import of the package (first run, or after the OS page cache is evicted by a

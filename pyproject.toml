@@ -200,6 +200,7 @@ testpaths = ["tests"]
 xfail_strict = true
 markers = [
   "llm_e2e: real-LLM end-to-end simulation tests (opt-in, expensive)",
+  "subprocess: tests that shell out to a runner subprocess (slow; run by default, deselect with -m 'not subprocess')",
 ]
 
 [tool.ruff]  # https://github.com/charliermarsh/ruff
