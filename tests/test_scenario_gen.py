@@ -53,4 +53,10 @@ def test_scenario_writer_emits_component_owned_env_config(tmp_path) -> None:
 
     assert env_cfg["gm"]["backend"]["type"] == "twitter_like"
     assert env_cfg["gm"]["components"]["initialize"]["params"]["graph"]
-    assert "activity_transition_rates" in env_cfg["gm"]["components"]["next_acting"]["params"]
+    # Activity models are sim-level participation config, not env next_acting.
+    assert env_cfg["gm"]["components"]["next_acting"]["built_in"] == "all_agents"
+
+    sim_cfg = yaml.safe_load((tmp_path / spec.name / "conf" / "sim.yaml").read_text())
+    participation = sim_cfg["engine"]["participation"]
+    assert participation["built_in"] == "activity_probability"
+    assert "activity_transition_rates" in participation["params"]

@@ -137,8 +137,9 @@ persona_pipeline:
 
 ### File 3: GM Component Behavior (`env.yaml`)
 
-Controls followership graph setup and activity selection through the GM's
-initialize and next-acting component params:
+Controls followership graph setup through the GM's initialize component params.
+Activity selection is sim-level participation config — set it in the scenario's
+`conf/sim.yaml` (`engine.participation`), not here:
 
 ```yaml
 gm:
@@ -152,15 +153,21 @@ gm:
           fully_connected_targets:
             - candidate
             - news_account
-    next_acting:
-      params:
-        activity_transition_rates:
-          voter:
-            inactive_to_active: 0.1
-            active_to_inactive: 0.2
-          candidate:
-            inactive_to_active: 0.8
-            active_to_inactive: 0.1
+```
+
+```yaml
+# conf/sim.yaml
+engine:
+  participation:
+    built_in: activity_probability
+    params:
+      activity_transition_rates:
+        voter:
+          inactive_to_active: 0.1
+          active_to_inactive: 0.2
+        candidate:
+          inactive_to_active: 0.8
+          active_to_inactive: 0.1
 ```
 
 ### File 4: Shared Memories
@@ -349,16 +356,21 @@ persona_pipeline:
 
 gm:
   class_path: silisocs.environments.gm.game_master.MultiFlowGameMaster
-  components:
-    next_acting:
-      params:
-        activity_transition_rates:
-          active:
-            inactive_to_active: 0.9
-            active_to_inactive: 0.1
-          inactive:
-            inactive_to_active: 0.05
-            active_to_inactive: 0.5
+```
+
+```yaml
+# conf/sim.yaml — activity selection is sim-level participation config
+engine:
+  participation:
+    built_in: activity_probability
+    params:
+      activity_transition_rates:
+        active:
+          inactive_to_active: 0.9
+          active_to_inactive: 0.1
+        inactive:
+          inactive_to_active: 0.05
+          active_to_inactive: 0.5
 ```
 
 ### Pattern 2: Different Recommendation Algorithms per Agent Class

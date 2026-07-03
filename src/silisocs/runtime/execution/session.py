@@ -61,7 +61,11 @@ from silisocs.runtime.configuration.validation import validate_scenario_config
 from silisocs.runtime.construction.agent_configs import build_agent_configs
 from silisocs.runtime.construction.assembly import construct_runtime_with_metrics
 from silisocs.runtime.construction.engines import build_engine
-from silisocs.runtime.construction.game_masters import build_game_masters, resolve_flow_chains
+from silisocs.runtime.construction.game_masters import (
+    build_game_masters,
+    collapse_flow_chains,
+    resolve_flow_chains,
+)
 from silisocs.runtime.construction.initialization_context import (
     build_initializer_context,
     populate_agent_data,
@@ -404,7 +408,7 @@ def main(cfg: DictConfig):
     # state): the step strategy routes by it and the checkpoint replay router needs
     # it. Resolve once from config and hand it to both consumers.
     flow_chains = resolve_flow_chains(cfg)
-    sim_engine = build_engine(cfg, flow_chains=flow_chains)
+    sim_engine = build_engine(cfg, flow_chains=flow_chains, sim_roles=initializer_context.sim_roles)
 
     t0 = time.time()
     runtime_objects = construct_runtime_with_metrics(
@@ -542,7 +546,7 @@ def main(cfg: DictConfig):
                         action_events_files=checkpoint_action_event_files,
                         checkpoint_step=start_step,
                         authoritative_gm_names=checkpoint_authoritative_gms,
-                        flow_chains=flow_chains,
+                        flow_chains=collapse_flow_chains(flow_chains),
                     )
             if checkpoint_data is not None:
                 restore_rng_state_from_metadata(checkpoint_meta)

@@ -55,13 +55,9 @@ gm:
           network_type: barabasi_albert
           barabasi_albert_m: 2
     next_acting:
-      built_in: activity_probability
+      built_in: all_agents
       class_path: null
-      params:
-        activity_transition_rates:
-          hobbyist:
-            inactive_to_active: 0.65
-            active_to_inactive: 0.25
+      params: {}
     observe:
       built_in: timeline_every_turn
       class_path: null

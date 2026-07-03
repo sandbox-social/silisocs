@@ -44,9 +44,9 @@ _ACTION_MODES = ["custom", "generic", "tool_calling"]
 _NETWORK_TYPES = ["barabasi_albert", "random", "lfr_benchmark"]
 _RUNTIME_INITIALIZERS = ["raw_memory", "formative_memory", "none"]
 _PERSONA_SOURCES = ["inline", "local_json", "config_path", "hf_dataset"]
+# Config-derived activity models (activity_probability/activity_markov) moved to
+# sim.engine.participation; the GM slot keeps environment-derived selection only.
 _GM_NEXT_ACTING_OPTIONS = [
-    "activity_probability",
-    "activity_markov",
     "all_agents",
     "fixed_order",
 ]
@@ -1491,9 +1491,9 @@ with tab_env:
         initialize_defaults = _gm_components_defaults.get("initialize", {})
         if selected_backend_for_actions in _SOCIAL_BACKENDS:
             next_acting_default = (
-                next_acting_defaults.get("built_in", "activity_probability")
+                next_acting_defaults.get("built_in", "all_agents")
                 if isinstance(next_acting_defaults, dict)
-                else "activity_probability"
+                else "all_agents"
             )
             observe_default = (
                 observe_defaults.get("built_in", "timeline_every_turn")
@@ -2106,6 +2106,14 @@ with tab_launch:
         "engine.step.built_in": (
             "flow" if st.session_state.get("enable_engine_multi_flow", False) else "base"
         ),
+        # Sim-level participation filter; turn-based (non-social) backends keep
+        # every agent in the roster so fixed_order turn cycles stay deterministic.
+        "engine.participation.built_in": st.session_state.get(
+            "engine_participation_built_in",
+            "activity_probability"
+            if st.session_state.get("backend_type", "twitter_like") in _SOCIAL_BACKENDS
+            else "all",
+        ),
         "engine.turn_policy.built_in": st.session_state.get(
             "engine_turn_policy_built_in", "single_action"
         ),
@@ -2159,7 +2167,7 @@ with tab_launch:
         ),
         "gm.components.next_acting.built_in": st.session_state.get(
             "gm_next_acting_built_in",
-            "activity_probability" if selected_backend in _SOCIAL_BACKENDS else "fixed_order",
+            "all_agents" if selected_backend in _SOCIAL_BACKENDS else "fixed_order",
         ),
         "gm.components.next_acting.class_path": (
             st.session_state.get("gm_next_acting_class_path") or None
@@ -2358,7 +2366,7 @@ with tab_launch:
                         st.session_state.get("gm_initializer_class_path") or None
                     ),
                     "gm.components.next_acting.built_in": st.session_state.get(
-                        "gm_next_acting_built_in", "activity_markov"
+                        "gm_next_acting_built_in", "all_agents"
                     ),
                     "gm.components.observe.built_in": st.session_state.get(
                         "gm_observe_built_in", "timeline_every_turn"
@@ -2492,7 +2500,7 @@ with tab_launch:
                     st.session_state.get("gm_initializer_class_path") or None
                 ),
                 "gm.components.next_acting.built_in": st.session_state.get(
-                    "gm_next_acting_built_in", "activity_markov"
+                    "gm_next_acting_built_in", "all_agents"
                 ),
                 "gm.components.observe.built_in": st.session_state.get(
                     "gm_observe_built_in", "timeline_every_turn"

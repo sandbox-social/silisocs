@@ -57,17 +57,7 @@ def _base_cfg() -> Any:
                                 }
                             },
                         },
-                        "next_acting": {
-                            "built_in": "activity_probability",
-                            "params": {
-                                "activity_transition_rates": {
-                                    "user": {
-                                        "inactive_to_active": 0.3,
-                                        "active_to_inactive": 0.3,
-                                    }
-                                }
-                            },
-                        },
+                        "next_acting": {"built_in": "all_agents"},
                         "observe": {
                             "built_in": "timeline_every_turn",
                             "params": {"timeline_mode": "follower_chronological"},

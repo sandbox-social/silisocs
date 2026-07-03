@@ -78,13 +78,9 @@ gm:
           fully_connected_targets: []
           base_followership_probability: 0.0
     next_acting:
-      built_in: activity_probability
+      built_in: all_agents
       class_path: null
-      params:
-        activity_transition_rates:
-          user:
-            inactive_to_active: 0.8
-            active_to_inactive: 0.1
+      params: {}
     observe:
       built_in: timeline_every_turn
       class_path: null

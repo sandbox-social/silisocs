@@ -312,12 +312,19 @@ gm:
           base_followership_probability: 0.3
           fully_connected_targets:
             - news_account
-    next_acting:
-      params:
-        activity_transition_rates:
-          user:
-            inactive_to_active: 0.3
-            active_to_inactive: 0.3
+```
+
+Activity selection is sim-level participation config (`conf/sim.yaml`):
+
+```yaml
+engine:
+  participation:
+    built_in: activity_probability
+    params:
+      activity_transition_rates:
+        user:
+          inactive_to_active: 0.3
+          active_to_inactive: 0.3
 ```
 
 The activity model uses a two-state Markov process: each step, an agent
@@ -626,12 +633,19 @@ gm:
           network_type: barabasi_albert
           barabasi_albert_m: 10
           base_followership_probability: 0.3
-    next_acting:
-      params:
-        activity_transition_rates:
-          user:
-            inactive_to_active: 0.3
-            active_to_inactive: 0.3
+```
+
+Activity selection is sim-level participation config (`conf/sim.yaml`):
+
+```yaml
+engine:
+  participation:
+    built_in: activity_probability
+    params:
+      activity_transition_rates:
+        user:
+          inactive_to_active: 0.3
+          active_to_inactive: 0.3
 ```
 
 ### 3. Run It

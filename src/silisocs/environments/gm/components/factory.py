@@ -20,8 +20,6 @@ from silisocs.environments.gm.components.base import (
     UpdateComponent,
 )
 from silisocs.environments.gm.components.next_acting import (
-    ActivityMarkovNextActing,
-    ActivityProbabilityNextActing,
     AllAgentsNextActing,
     FixedOrderNextActing,
 )
@@ -69,11 +67,26 @@ _RESOLVE_BUILT_INS = {
 }
 
 _NEXT_ACTING_BUILT_INS = {
-    "activity_markov": ActivityMarkovNextActing,
-    "activity_probability": ActivityProbabilityNextActing,
     "all_agents": AllAgentsNextActing,
     "fixed_order": FixedOrderNextActing,
 }
+
+# Config-derived activity models moved from this (environment) slot to the sim
+# layer. A stale config naming them here gets a migration hint instead of a
+# generic unknown-built-in error.
+_MOVED_TO_PARTICIPATION = ("activity_markov", "activity_probability")
+
+
+def _reject_moved_next_acting(slot_cfg: Mapping[str, Any] | None) -> None:
+    built_in = str((dict(slot_cfg or {})).get("built_in") or "").strip()
+    if built_in in _MOVED_TO_PARTICIPATION:
+        raise ValueError(
+            f"env.gm.components.next_acting.built_in='{built_in}' has moved to the sim "
+            f"layer: set sim.engine.participation.built_in='{built_in}' (same params, "
+            "minus agent_names) and use next_acting 'all_agents' or 'fixed_order' here. "
+            "Participation filters the step roster before every GM's next_acting runs."
+        )
+
 
 _UPDATE_BUILT_INS = {
     "app_update": AppUpdateComponent,
@@ -364,12 +377,13 @@ def build_next_acting_component(
     sim_roles: Mapping[str, str] | None = None,
 ) -> NextActingComponent:
     """Build next-acting component from slot config."""
+    _reject_moved_next_acting(slot_cfg)
     return cast(
         NextActingComponent,
         _build_from_slot(
             slot_cfg,
             built_ins=_NEXT_ACTING_BUILT_INS,
-            default_built_in="activity_markov",
+            default_built_in="all_agents",
             runtime_kwargs={
                 "context": context,
                 "agent_names": list(context.agent_names),

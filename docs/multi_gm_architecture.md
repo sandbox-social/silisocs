@@ -147,7 +147,7 @@ gm:
       built_in: social_media
       params: {graph: {}}
     next_acting:
-      built_in: activity_probability
+      built_in: all_agents
     observe:
       built_in: timeline_every_turn
     resolve:
@@ -174,7 +174,7 @@ gm_orchestration:
         enabled_actions: null
       components:
         initialize: {built_in: social_media, params: {graph: {}}}
-        next_acting: {built_in: activity_probability, params: {}}
+        next_acting: {built_in: all_agents, params: {}}
         observe: {built_in: timeline_every_turn, params: {}}
         resolve: {built_in: tool_calling, params: {}}
         update: {built_in: social_recommendation, params: {}}

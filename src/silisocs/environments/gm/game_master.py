@@ -200,16 +200,22 @@ class ComponentGameMaster(BaseGameMaster):
             ),
         )
         names: list[str] = []
+        known = set(self.agent_flow_tags)
         for raw_name in component.acting_agent_names():
             name = str(raw_name).strip()
             if not name:
                 continue
             if name not in by_name:
-                _LOGGER.warning(
-                    "Ignoring unknown acting agent '%s' from game master '%s'.",
-                    name,
-                    self.name,
-                )
+                # A known agent outside this batch's candidates was excluded by
+                # scheduling (sim-level participation filter or flow subsetting) —
+                # expected, skip silently. A name the GM has never heard of is a
+                # config error worth flagging.
+                if name not in known:
+                    _LOGGER.warning(
+                        "Ignoring unknown acting agent '%s' from game master '%s'.",
+                        name,
+                        self.name,
+                    )
                 continue
             names.append(name)
         return names
