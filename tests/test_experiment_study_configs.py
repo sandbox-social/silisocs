@@ -19,6 +19,8 @@ from silisocs.studies.run_study import (
 )
 from silisocs.studies.study_artifacts import extract_run_metadata, load_study_definition
 
+pytestmark = pytest.mark.subprocess
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STUDY_ROOT = PROJECT_ROOT / "experiments" / "studies"
 

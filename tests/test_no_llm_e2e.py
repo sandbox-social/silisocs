@@ -5,7 +5,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
+
+pytestmark = pytest.mark.subprocess
 
 
 def _read_jsonl(path: Path) -> list[dict]:

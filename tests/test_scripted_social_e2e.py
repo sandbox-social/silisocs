@@ -8,9 +8,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 from silisocs.runtime.types import ToolCall
+
+pytestmark = pytest.mark.subprocess
 
 
 def _read_jsonl(path: Path) -> list[dict]:

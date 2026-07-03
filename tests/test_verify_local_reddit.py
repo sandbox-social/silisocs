@@ -1,5 +1,4 @@
 import os
-import time
 
 from silisocs.environments.backends.reddit_like.engine import RedditLikePlatform
 
@@ -58,7 +57,8 @@ def test_reddit_flow():
 
     rp.vote("alice", c1, "comment", 1)  # Alice upvotes Bob's comment
 
-    time.sleep(0.5)  # Wait for queue
+    # All writes above use sync=True (the default), so each has already committed
+    # via its resolved write future — no queue-drain wait needed before reading.
 
     # 6. Verify Feeds
     print("\nChecking Feeds...")
