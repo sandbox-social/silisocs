@@ -18,6 +18,7 @@ import queue
 import sqlite3
 import threading
 import time
+from collections.abc import Callable
 from contextlib import contextmanager
 from typing import Any, ClassVar
 
@@ -465,3 +466,64 @@ class SqliteSocialEngineBase:
         except Exception as e:
             logger.error(f"Error getting recommendations: {e}")
             return []
+
+    # get_feed is provided by each subclass (signatures vary per backend); the shared
+    # timeline dispatch below calls it as get_feed(strategy, username, limit=...).
+    get_feed: Callable[..., dict[str, Any]]
+
+    # Feed strategy name for the "follower" source in get_timeline's blends. Twitter
+    # overrides this to "chronological_home"; Reddit inherits the default "home". A
+    # class attribute so subclasses pick their own home-feed name without
+    # reimplementing the (identical) strategy dispatch and blend below.
+    _follower_feed_strategy: str = "home"
+
+    def get_timeline(
+        self,
+        strategy: str,
+        username: str,
+        limit: int = 10,
+        recsys_type: str | None = None,
+        **timeline_config: Any,
+    ) -> list[dict]:
+        """Resolve a timeline strategy shared across the SQLite social backends.
+
+        Handles the strategies common to every backend (``follower_chronological``,
+        ``pure_recsys``, ``hybrid_recsys_follower``). A subclass with extra strategies
+        (e.g. Twitter's ``curated_global``) handles those first and delegates the rest
+        here via ``super().get_timeline``.
+        """
+        if strategy == "follower_chronological":
+            feed = self.get_feed(self._follower_feed_strategy, username, limit=limit)
+            return (feed or {}).get("posts", [])
+        if strategy == "pure_recsys":
+            return self.get_recommendations(username, limit, recsys_type=recsys_type)
+        if strategy == "hybrid_recsys_follower":
+            return self._blend_recsys_and_follower(
+                username, limit, recsys_type=recsys_type, **timeline_config
+            )
+        raise ValueError(f"Unknown timeline strategy: {strategy}")
+
+    def _blend_recsys_and_follower(
+        self,
+        username: str,
+        limit: int,
+        recsys_type: str | None = None,
+        **timeline_config: Any,
+    ) -> list[dict]:
+        """Blend recommendations (higher priority) with the follower feed, deduped by id."""
+        recsys_ratio = timeline_config.get("recsys_ratio", 0.6)
+        follower_ratio = timeline_config.get("follower_ratio", 0.4)
+        rec_count = max(1, int(limit * recsys_ratio))
+        follower_count = max(1, int(limit * follower_ratio))
+        rec_posts = self.get_recommendations(username, rec_count, recsys_type=recsys_type)
+        follow_feed = self.get_feed(self._follower_feed_strategy, username, limit=follower_count)
+        follow_posts = (follow_feed or {}).get("posts", [])
+        # Recsys first (higher priority), then the follower feed; dedup by post id.
+        seen_ids: set[Any] = set()
+        combined: list[dict] = []
+        for post in list(rec_posts or []) + list(follow_posts):
+            post_id = post.get("id", post.get("post_id"))
+            if post_id not in seen_ids:
+                combined.append(post)
+                seen_ids.add(post_id)
+        return combined[:limit]

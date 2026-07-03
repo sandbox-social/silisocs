@@ -730,72 +730,9 @@ class RedditLikePlatform(SqliteSocialEngineBase):
         },
     }
 
-    def get_timeline(
-        self,
-        strategy: str,
-        username: str,
-        limit: int = 10,
-        recsys_type: str | None = None,
-        **timeline_config: Any,
-    ) -> list[dict]:
-        """Get timeline using specified strategy.
-
-        Args:
-            strategy: Timeline strategy name (see TIMELINE_STRATEGIES)
-            username: User to get timeline for
-            limit: Total posts to return
-            recsys_type: Optional recommendation algorithm override.
-            **timeline_config: Strategy-specific config (e.g., recsys_ratio, follower_ratio)
-
-        Returns
-        -------
-            List of posts ordered by strategy
-        """
-        if strategy == "follower_chronological":
-            feed = self.get_feed("home", username, limit)
-            return feed.get("posts", []) if feed else []
-
-        if strategy == "pure_recsys":
-            # Pure recommendations only
-            return self.get_recommendations(username, limit, recsys_type=recsys_type)
-
-        if strategy == "hybrid_recsys_follower":
-            # Blend recommendations and home feed with configurable ratio
-            recsys_ratio = timeline_config.get("recsys_ratio", 0.6)
-            follower_ratio = timeline_config.get("follower_ratio", 0.4)
-
-            rec_count = max(1, int(limit * recsys_ratio))
-            home_count = max(1, int(limit * follower_ratio))
-
-            rec_posts = self.get_recommendations(
-                username,
-                rec_count,
-                recsys_type=recsys_type,
-            )
-            home_feed = self.get_feed("home", username, home_count)
-            home_posts = home_feed.get("posts", []) if home_feed else []
-
-            # Merge and deduplicate
-            seen_ids = set()
-            combined = []
-
-            # Add recsys first (higher priority)
-            for post in rec_posts or []:
-                post_id = post.get("id", post.get("post_id"))
-                if post_id not in seen_ids:
-                    combined.append(post)
-                    seen_ids.add(post_id)
-
-            # Then add home feed posts
-            for post in home_posts:
-                post_id = post.get("id", post.get("post_id"))
-                if post_id not in seen_ids:
-                    combined.append(post)
-                    seen_ids.add(post_id)
-
-            return combined[:limit]
-
-        raise ValueError(f"Unknown timeline strategy: {strategy}")
+    # get_timeline (follower_chronological / pure_recsys / hybrid_recsys_follower) is
+    # inherited from SqliteSocialEngineBase; Reddit uses the default "home" follower
+    # feed, so no override is needed.
 
     # ================================================================ #
     # Extended social methods (mirrored from Twitter)
