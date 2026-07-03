@@ -10,6 +10,7 @@ serial fallback, and the staged barrier + empty-slot behavior.
 from __future__ import annotations
 
 import threading
+from collections.abc import Sequence
 
 import pytest
 from omegaconf import OmegaConf
@@ -33,7 +34,7 @@ class _KeepOnly(ParticipationPolicy):
         self._keep = set(keep or [])
 
     def participating_agents(
-        self, *, agent_names: list[str], step_index: int, seed: int
+        self, *, agent_names: Sequence[str], step_index: int, seed: int
     ) -> list[str]:
         del step_index, seed
         return [name for name in agent_names if name in self._keep]
