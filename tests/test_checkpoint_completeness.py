@@ -50,9 +50,10 @@ from silisocs.runtime.checkpointing.state import (
     load_checkpoint_into_runtime,
 )
 from silisocs.runtime.construction.assembly import RuntimeObjects
-from silisocs.runtime.construction.game_masters import _isolate_backend_paths
+from silisocs.runtime.construction.game_masters import _isolate_backend_paths, collapse_flow_chains
 from silisocs.runtime.construction.specs import RuntimeRole, RuntimeSpec
 from silisocs.runtime.types import ActionOutput, ToolCall
+from silisocs.simulation_engines.policies.routers import BranchSpec
 
 # --------------------------------------------------------------------------- #
 # Stub agents
@@ -534,6 +535,44 @@ def test_checkpoint_authoritative_gm_names_identifies_snapshot_gms():
         }
     }
     assert checkpoint_authoritative_gm_names(checkpoint) == frozenset({"gm_a"})
+
+
+def test_replay_routes_a_branch_flow_chain_to_a_choice_gm(tmp_path):
+    """End-to-end replay of a flow whose chain contains a branch node.
+
+    collapse_flow_chains spreads the branch to its choices, and restore routes the
+    branch-flow agent's logged event to a choice GM that owns the action. This is
+    the one restore path where a single flow maps to several candidate GMs.
+    """
+    tw = _CapturingGM("tw_gm")
+    rd = _CapturingGM("rd_gm")
+    for gm in (tw, rd):
+        gm.agent_flow_tags = {"alice": "social"}
+    log = tmp_path / "action_events.jsonl"
+    _write_action_log(
+        log,
+        [
+            {
+                "event_type": "action",
+                "episode": 0,
+                "label": "post",
+                "source_user": "alice",
+                "data": {"post_text": "hi"},
+            }
+        ],
+    )
+    # A rich chain with a branch; restore consumes its collapsed (spread) form.
+    rich_chains = {"social": [BranchSpec(choices=("tw_gm", "rd_gm"))]}
+    SocialActionEventReplayRestore().restore(
+        game_masters=[tw, rd],
+        action_events_files=[log],
+        checkpoint_step=5,
+        authoritative_gm_names=frozenset(),
+        flow_chains=collapse_flow_chains(rich_chains),
+    )
+    # The event replays through the first branch choice that owns the action.
+    assert [name for name, _ in tw.resolved] == ["alice"]
+    assert rd.resolved == []
 
 
 def test_replay_skips_authoritative_gms(tmp_path):

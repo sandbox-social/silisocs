@@ -16,11 +16,28 @@ from omegaconf import OmegaConf
 
 from silisocs.runtime.construction.engines import build_engine
 from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType
+from silisocs.simulation_engines.policies.participation import ParticipationPolicy
 from silisocs.simulation_engines.policies.steps import (
     MultiGMSerialStepStrategy,
     MultiGMStagedStepStrategy,
     MultiGMStepStrategy,
 )
+
+
+class _KeepOnly(ParticipationPolicy):
+    """Participation policy that keeps only a fixed set of agents (test double)."""
+
+    name = "keep_only"
+
+    def __init__(self, keep: list[str] | None = None) -> None:
+        self._keep = set(keep or [])
+
+    def participating_agents(
+        self, *, agent_names: list[str], step_index: int, seed: int
+    ) -> list[str]:
+        del step_index, seed
+        return [name for name in agent_names if name in self._keep]
+
 
 _BUILT_IN_BY_MODE = {
     "concurrent": "multi_gm",
@@ -417,6 +434,51 @@ def test_staged_mode_barriers_between_stages() -> None:
     # Within a stage the order is nondeterministic, but the barrier fixes the split.
     assert set(log[:2]) == {"g1:Alice", "g1:Bob"}
     assert set(log[2:]) == {"g2:Alice", "g2:Bob"}
+
+
+def test_staged_mode_respects_participation_filter() -> None:
+    # Participation removes Bob from the roster BEFORE staged scheduling, so only
+    # Alice runs her chain [g1, g2]; the staged barrier still splits g1 before g2.
+    log: list[str] = []
+    cfg = OmegaConf.create(
+        {
+            "sim": {
+                "engine": {
+                    "turn_policy": {"built_in": "single_action"},
+                    "step": {
+                        "built_in": "multi_gm_staged",
+                        "params": {"flow_order": ["fixed_pre", "default"]},
+                    },
+                    "participation": {
+                        "class_path": f"{__name__}._KeepOnly",
+                        "params": {"keep": ["Alice"]},
+                    },
+                }
+            }
+        }
+    )
+    engine = build_engine(cfg, flow_chains={"flow_a": ["g1", "g2"], "flow_b": ["g1", "g2"]})
+    alice = _Agent("Alice")
+    bob = _Agent("Bob")
+    primary = _GameMaster(
+        name="primary",
+        selected=[],
+        agent_flow_tags={"Alice": "flow_a", "Bob": "flow_b"},
+    )
+    g1 = _GameMaster(name="g1", selected=["Alice", "Bob"], log=log)
+    g2 = _GameMaster(name="g2", selected=["Alice", "Bob"], log=log)
+
+    result = engine.run_step(
+        step_index=0,
+        game_masters=[primary, g1, g2],
+        agents=[alice, bob],
+        verbose=False,
+    )
+
+    # Bob was filtered out entirely; Alice traverses g1 then g2 (barrier holds).
+    assert log == ["g1:Alice", "g2:Alice"]
+    assert result.failed_turns == ()
+    assert bob.actions == []
 
 
 def test_staged_mode_runs_stage_hops_concurrently() -> None:
