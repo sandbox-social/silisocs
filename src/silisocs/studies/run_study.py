@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import copy
-import datetime as dt
 import hashlib
 import importlib.metadata
 import json
@@ -32,7 +31,6 @@ import time
 import urllib.request
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -44,8 +42,21 @@ from silisocs.studies.study_artifacts import (
     organize_study_outputs,
     resolve_study_definition_path,
 )
+from silisocs.studies.study_schema import _validate_schema
+from silisocs.studies.study_types import (
+    SCHEMA_VERSION,
+    EvalSpec,
+    RunSpec,
+    StudyConfigError,
+    _ensure_mapping,
+    _ensure_string_list,
+    _format_command_template,
+    _format_template_token,
+    _now_iso,
+    _resolve_command_tokens,
+    _resolve_study_id,
+)
 
-SCHEMA_VERSION = 1
 DEFAULT_RUNNER_MODULE = "silisocs.runtime.runner"
 PROCESS_TIMEOUT_RC = 124
 PLAN_PREVIEW_ROWS = 10
@@ -184,64 +195,6 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
 }
 
 
-class StudyConfigError(ValueError):
-    """Raised when a study file violates schema rules."""
-
-
-@dataclass(frozen=True)
-class EvalSpec:
-    """Evaluation hook configuration for one evaluator."""
-
-    eval_id: str
-    enabled: bool
-    command: tuple[str, ...]
-    input_mode: str
-    output_arg: str
-    run_dir_arg: str
-    static_args: tuple[str, ...]
-    explicit_args: dict[str, str]
-    include_run_dir_in_explicit: bool
-    output_subpath: str
-    manage_io_args: bool
-
-
-@dataclass(frozen=True)
-class RunSpec:
-    """Concrete executable run specification expanded from study YAML."""
-
-    run_id: str
-    study_name: str
-    study_id: str
-    hypothesis_id: str
-    condition_id: str
-    sub_experiment: str
-    scenario: str
-    seed: int
-    run_name: str
-    execution_mode: str
-    overrides: dict[str, Any]
-    config_path: str | None
-    runner_module: str
-    re_evaluate: bool
-    output_rootname: str | None = None
-    command_override: tuple[str, ...] | None = None
-    eval_specs: tuple[EvalSpec, ...] = ()
-    reused_source: str | None = None
-    reused_eval: str | None = None
-
-
-def _resolve_study_id(study: dict[str, Any]) -> str:
-    study_name = str(study.get("name", "")).strip()
-    study_id = str(study.get("study_id", study_name)).strip()
-    if not study_id:
-        raise StudyConfigError("study.study_id (or study.name) must be a non-empty string")
-    return study_id
-
-
-def _now_iso() -> str:
-    return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
-
-
 def _load_yaml(path: Path) -> dict[str, Any]:
     try:
         return load_study_definition(path)
@@ -253,22 +206,6 @@ def _write_yaml(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, sort_keys=False, allow_unicode=False)
-
-
-def _ensure_mapping(name: str, value: Any) -> dict[str, Any]:
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise StudyConfigError(f"{name} must be a mapping")
-    return value
-
-
-def _ensure_string_list(name: str, value: Any) -> list[str]:
-    if value is None:
-        return []
-    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
-        raise StudyConfigError(f"{name} must be a list of strings")
-    return value
 
 
 def _hash_file(path: Path) -> str | None:
@@ -385,25 +322,6 @@ def _checkpoint_cadence_overrides(run_defaults: dict[str, Any]) -> dict[str, Any
             "or null/0/false to disable checkpoint injection"
         )
     return {"sim.checkpoint.every_n_steps": cadence}
-
-
-def _resolve_command_tokens(value: Any, label: str) -> tuple[str, ...]:
-    if isinstance(value, list) and all(isinstance(v, str) for v in value):
-        return tuple(value)
-    if isinstance(value, str) and value.strip():
-        return tuple(shlex.split(value))
-    raise StudyConfigError(f"{label} must be a non-empty command string or list[str]")
-
-
-def _format_template_token(token: str, context: dict[str, Any]) -> str:
-    formatted = token
-    for key, value in context.items():
-        formatted = formatted.replace(f"{{{key}}}", str(value))
-    return formatted
-
-
-def _format_command_template(template: tuple[str, ...], context: dict[str, Any]) -> tuple[str, ...]:
-    return tuple(_format_template_token(token, context) for token in template)
 
 
 def _resolve_scenarios(study: dict[str, Any], run_defaults: dict[str, Any]) -> list[str]:
@@ -593,96 +511,6 @@ def _resolve_condition_eval_specs(
     for spec in specs:
         dedup[spec.eval_id] = spec
     return tuple(dedup.values())
-
-
-def _validate_schema(study_data: dict[str, Any]) -> None:  # noqa: C901, PLR0912, PLR0915
-    schema_version = study_data.get("schema_version")
-    if schema_version != SCHEMA_VERSION:
-        raise StudyConfigError(
-            f"Unsupported schema_version={schema_version}; expected {SCHEMA_VERSION}"
-        )
-    if "evaluation" in study_data:
-        raise StudyConfigError("Use top-level evaluations: [...] instead of evaluation")
-
-    study = _ensure_mapping("study", study_data.get("study"))
-    if not isinstance(study.get("name"), str) or not study["name"].strip():
-        raise StudyConfigError("study.name is required and must be a non-empty string")
-    _resolve_study_id(study)
-
-    if "parent_studies" in study:
-        _ensure_string_list("study.parent_studies", study.get("parent_studies"))
-
-    derived = study.get("derived_from_runs")
-    if derived is not None:
-        if not isinstance(derived, list):
-            raise StudyConfigError("study.derived_from_runs must be a list")
-        for idx, item in enumerate(derived):
-            if not isinstance(item, dict):
-                raise StudyConfigError(f"study.derived_from_runs[{idx}] must be a mapping")
-            source_study = str(item.get("source_study_id", "")).strip()
-            run_id = str(item.get("run_id", "")).strip()
-            run_path = str(item.get("run_path", "")).strip()
-            if not source_study:
-                raise StudyConfigError(
-                    f"study.derived_from_runs[{idx}].source_study_id is required"
-                )
-            if not run_id and not run_path:
-                raise StudyConfigError(
-                    f"study.derived_from_runs[{idx}] must include run_id or run_path"
-                )
-
-    run_defaults = _ensure_mapping("study.run_defaults", study.get("run_defaults"))
-    if "overrides" in run_defaults and not isinstance(run_defaults["overrides"], dict):
-        raise StudyConfigError("study.run_defaults.overrides must be a mapping")
-
-    hypotheses = _ensure_mapping("hypotheses", study_data.get("hypotheses"))
-    if not hypotheses:
-        raise StudyConfigError("hypotheses must include at least one hypothesis")
-
-    for hyp_id, hyp_node in hypotheses.items():
-        if not isinstance(hyp_node, dict):
-            raise StudyConfigError(f"hypotheses.{hyp_id} must be a mapping")
-        if "conditions" not in hyp_node:
-            raise StudyConfigError(f"hypotheses.{hyp_id} must define conditions")
-
-        cond_map = hyp_node.get("conditions")
-        if not isinstance(cond_map, dict) or not cond_map:
-            raise StudyConfigError(f"hypotheses.{hyp_id}.conditions must be a non-empty mapping")
-
-        for cond_id, cond_node in cond_map.items():
-            if not isinstance(cond_node, dict):
-                raise StudyConfigError(
-                    f"hypotheses.{hyp_id}.conditions.{cond_id} must be a mapping"
-                )
-            overrides = cond_node.get("overrides", {})
-            if not isinstance(overrides, dict):
-                raise StudyConfigError(
-                    f"hypotheses.{hyp_id}.conditions.{cond_id}.overrides must be a mapping"
-                )
-            execution = _ensure_mapping(
-                f"hypotheses.{hyp_id}.conditions.{cond_id}.execution",
-                cond_node.get("execution"),
-            )
-            mode = str(execution.get("mode", "run"))
-            if mode not in {"run", "reuse_existing"}:
-                raise StudyConfigError(
-                    f"hypotheses.{hyp_id}.conditions.{cond_id}.execution.mode must be run or reuse_existing"
-                )
-            if "command" in execution:
-                _resolve_command_tokens(
-                    execution.get("command"),
-                    f"hypotheses.{hyp_id}.conditions.{cond_id}.execution.command",
-                )
-            if mode == "reuse_existing":
-                reuse = _ensure_mapping(
-                    f"hypotheses.{hyp_id}.conditions.{cond_id}.reuse",
-                    cond_node.get("reuse"),
-                )
-                runs = reuse.get("runs")
-                if not isinstance(runs, list) or not runs:
-                    raise StudyConfigError(
-                        f"hypotheses.{hyp_id}.conditions.{cond_id}.reuse.runs must be a non-empty list"
-                    )
 
 
 def _expand_runs(  # noqa: C901, PLR0912, PLR0915
