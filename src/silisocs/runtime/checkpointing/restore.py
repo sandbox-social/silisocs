@@ -37,8 +37,7 @@ class CheckpointRestoreStrategy:
         authoritative_gm_names: frozenset[str] = frozenset(),
         flow_chains: Mapping[str, Any] | None = None,
     ) -> None:
-        del game_masters, action_events_files, checkpoint_step, authoritative_gm_names
-        del flow_chains
+        del game_masters, action_events_files, checkpoint_step, authoritative_gm_names, flow_chains
 
 
 class SocialActionEventReplayRestore(CheckpointRestoreStrategy):

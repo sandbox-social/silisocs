@@ -80,10 +80,9 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 CONF_DIR = PACKAGE_ROOT / "conf"
 RUNTIME_LAYER_NAME = "silisocs-native"
 
-# Fields that make up a fully-resolved (effective) per-instance LLM config. Two
-# instances share a built model iff these fields are byte-identical. Sourced from the
-# shared MODEL_FIELDS so the resolver, dedup signature, and validators stay in lockstep.
-_EFFECTIVE_MODEL_FIELDS = MODEL_FIELDS
+# MODEL_FIELDS are the fields that make up a fully-resolved (effective) per-instance
+# LLM config: two instances share a built model iff these fields are byte-identical.
+# Used directly below so the resolver, dedup signature, and validators stay in lockstep.
 
 
 def _effective_model_config(
@@ -96,8 +95,8 @@ def _effective_model_config(
     arrive as ``{'name': ...}`` so only the seven known fields are consulted.
     """
     override = override or {}
-    eff: dict[str, Any] = {field: global_llm.get(field) for field in _EFFECTIVE_MODEL_FIELDS}
-    for field in _EFFECTIVE_MODEL_FIELDS:
+    eff: dict[str, Any] = {field: global_llm.get(field) for field in MODEL_FIELDS}
+    for field in MODEL_FIELDS:
         if field in override and override[field] is not None:
             eff[field] = override[field]
     if not eff.get("name"):
@@ -113,7 +112,7 @@ def _effective_model_config(
 
 def _effective_model_key(eff: Mapping[str, Any]) -> str:
     """Stable signature for an effective LLM config; api_key is hashed, never embedded raw."""
-    normalized = {field: eff.get(field) for field in _EFFECTIVE_MODEL_FIELDS}
+    normalized = {field: eff.get(field) for field in MODEL_FIELDS}
     api_key = normalized.get("api_key")
     if api_key:
         normalized["api_key"] = "sha256:" + hashlib.sha256(str(api_key).encode()).hexdigest()[:16]
