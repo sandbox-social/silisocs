@@ -419,3 +419,49 @@ class SqliteSocialEngineBase:
         except Exception as e:
             logger.error(f"Error reporting post {post_id}: {e}")
             return False
+
+    def _recommendation_posts(self, rows: list[sqlite3.Row]) -> list[dict]:
+        """Project recommendation query rows into post dicts.
+
+        The default is a plain row->dict mapping; a backend that enriches posts
+        (e.g. Twitter's ``_parse_posts``) overrides this.
+        """
+        return [dict(r) for r in rows]
+
+    def get_recommendations(
+        self, username: str, limit: int = 10, recsys_type: str | None = None
+    ) -> list[dict]:
+        """Get recommended posts for a user (shared across social backends)."""
+        try:
+            with self.get_connection() as conn:
+                user_id = self.get_user_id(username)
+                if not user_id:
+                    return []
+                if recsys_type:
+                    cursor = conn.execute(
+                        """
+                        SELECT p.*, u.username
+                        FROM recommendations r
+                        JOIN posts p ON r.post_id = p.id
+                        JOIN users u ON p.user_id = u.id
+                        WHERE r.user_id = ? AND r.recsys_type = ?
+                        LIMIT ?
+                        """,
+                        (user_id, recsys_type, limit),
+                    )
+                else:
+                    cursor = conn.execute(
+                        """
+                        SELECT p.*, u.username
+                        FROM recommendations r
+                        JOIN posts p ON r.post_id = p.id
+                        JOIN users u ON p.user_id = u.id
+                        WHERE r.user_id = ?
+                        LIMIT ?
+                        """,
+                        (user_id, limit),
+                    )
+                return self._recommendation_posts(cursor.fetchall())
+        except Exception as e:
+            logger.error(f"Error getting recommendations: {e}")
+            return []
