@@ -27,24 +27,16 @@ from dotenv import find_dotenv, load_dotenv
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
-from silisocs.evaluations.action_events import resolve_action_event_files
 from silisocs.evaluations.probes.deployment import DefaultProbeRunner
 from silisocs.initialization.agents import build_agent_initializer
-from silisocs.initialization.context import InitializationContext
 from silisocs.initialization.game_masters import build_game_master_initializer_strategy
 from silisocs.initialization.simulation import build_simulation_initializer
 from silisocs.runtime.checkpointing import (
-    build_checkpoint_restore,
     build_per_gm_checkpoint_restores,
-    checkpoint_authoritative_gm_names,
-    checkpoint_runtime_metadata,
-    load_checkpoint_file,
     load_checkpoint_into_runtime,
-    resolve_checkpoint_source,
     restore_rng_state_from_metadata,
     run_checkpoint_restores,
     save_checkpoint,
-    select_resume_source,
     should_save_checkpoint,
 )
 from silisocs.runtime.configuration.external import (
@@ -69,6 +61,7 @@ from silisocs.runtime.construction.initialization_context import (
     populate_agent_data,
 )
 from silisocs.runtime.construction.models import build_deduped_models
+from silisocs.runtime.execution.resume import plan_checkpoint_resume
 from silisocs.runtime.io import configure_logging
 from silisocs.runtime.telemetry import SimMetricsCollector
 
@@ -358,74 +351,20 @@ def main(cfg: DictConfig):
     _log_startup_phase("runtime_construction", time.time() - t0)
 
     checkpoint_cfg = getattr(cfg.sim, "checkpoint", None)
-    source_run = None
-    auto_resume = True
-    restore_cfg = None
-    if checkpoint_cfg is not None:
-        source_run = getattr(checkpoint_cfg, "source_run", None)
-        auto_resume = bool(getattr(checkpoint_cfg, "auto_resume", True))
-        restore_cfg = getattr(checkpoint_cfg, "restore", None)
-
-    # An explicit ``source_run`` resumes from that prior run and requires a
-    # ``restore`` strategy; otherwise auto-resume (default on) picks up this
-    # run's own output dir only if it already holds checkpoints.
-    if source_run and restore_cfg is None:
-        raise ValueError("sim.checkpoint.source_run requires sim.checkpoint.restore.")
-    source_path = select_resume_source(
-        source_run,
-        auto_resume=auto_resume,
-        restore_present=restore_cfg is not None,
+    resume = plan_checkpoint_resume(
+        checkpoint_cfg=checkpoint_cfg,
         output_dir=output_dir,
+        initializer_context=initializer_context,
+        metrics=metrics,
+        logger=logger,
     )
-    is_auto_resume = bool(source_path is not None and not source_run)
-
-    start_step = 0
-    checkpoint_meta: dict[str, Any] = {}
-    checkpoint_restore = None
-    checkpoint_action_event_files: list[Path] = []
-    checkpoint_data: dict[str, Any] | None = None
-    checkpoint_authoritative_gms: frozenset[str] = frozenset()
-    if source_path is not None:
-        resume_path = resolve_checkpoint_source(source_path)
-        checkpoint_action_event_files = resolve_action_event_files(source_path)
-        checkpoint_restore = build_checkpoint_restore(restore_cfg)
-
-        with metrics.phase("checkpoint_load"):
-            checkpoint_data = load_checkpoint_file(resume_path)
-            checkpoint_authoritative_gms = checkpoint_authoritative_gm_names(checkpoint_data)
-            checkpoint_meta = checkpoint_runtime_metadata(checkpoint_data)
-
-        default_step = checkpoint_data.get("step")
-        if default_step is None:
-            raise ValueError("Checkpoint is missing required `step` value.")
-        start_step = int(default_step)
-
-        if is_auto_resume:
-            logger.info(
-                "Auto-resuming from latest checkpoint in %s at step %d",
-                resume_path,
-                start_step,
-            )
-        else:
-            logger.info(
-                "Restoring from checkpoint %s at step %d",
-                resume_path,
-                start_step,
-            )
-        checkpoint_meta["auto_resumed"] = is_auto_resume
-        checkpoint_meta["checkpoint_step"] = start_step
-        checkpoint_meta["checkpoint_file"] = str(resume_path)
-        checkpoint_meta["source_run"] = str(source_path)
-        checkpoint_meta["action_events_files"] = [str(p) for p in checkpoint_action_event_files]
-        initializer_context = InitializationContext(
-            shared_memories=initializer_context.shared_memories,
-            player_specific_memories=initializer_context.player_specific_memories,
-            player_specific_context=initializer_context.player_specific_context,
-            sim_roles=initializer_context.sim_roles,
-            agent_flow_tags=initializer_context.agent_flow_tags,
-            agent_bios=initializer_context.agent_bios,
-            checkpoint=checkpoint_meta,
-        )
+    start_step = resume.start_step
+    checkpoint_data = resume.checkpoint_data
+    checkpoint_restore = resume.checkpoint_restore
+    checkpoint_action_event_files = resume.action_event_files
+    checkpoint_authoritative_gms = resume.authoritative_gm_names
+    checkpoint_meta = resume.checkpoint_meta
+    initializer_context = resume.initializer_context
 
     probes_cfg = OmegaConf.select(cfg, "eval.probes") or OmegaConf.select(cfg, "evaluations.probes")
     probes_cfg_map = (
