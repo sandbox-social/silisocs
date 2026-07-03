@@ -177,3 +177,15 @@ def test_gm_turn_policy_applies_under_base_step_mode() -> None:
     engine.run_step(step_index=0, game_masters=[main], agents=[alice], verbose=False)
 
     assert main.resolved == ["Alice", "Alice"]
+
+
+def test_build_gm_turn_policies_error_uses_gm_noun() -> None:
+    """A malformed gm_turn_policies map names 'GM', not 'flow' (own error vocabulary)."""
+    import pytest
+
+    from silisocs.simulation_engines.policies.factory import build_gm_turn_policies
+
+    with pytest.raises(ValueError, match="gm_turn_policies must be a mapping"):
+        build_gm_turn_policies(["main"])
+    with pytest.raises(ValueError, match="empty GM name"):
+        build_gm_turn_policies({"  ": {"built_in": "single_action"}})

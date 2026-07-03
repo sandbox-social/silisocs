@@ -17,6 +17,7 @@ from silisocs.simulation_engines.base_engines import RuntimeEngine
 from silisocs.simulation_engines.policies.factory import (
     build_flow_turn_policies,
     build_gm_concurrency_caps,
+    build_gm_turn_policies,
     build_participation_policy,
     build_router,
     build_turn_policy,
@@ -283,7 +284,7 @@ def build_engine(
                 "loop_strategy": _build_loop_strategy(loop_cfg),
                 "step_strategy": _build_step_strategy(step_cfg, flow_chains, seed),
                 "turn_policy": turn_policy,
-                "gm_turn_policies": build_flow_turn_policies(
+                "gm_turn_policies": build_gm_turn_policies(
                     dict(step_cfg.get("params") or {}).get("gm_turn_policies")
                 ),
                 "gm_concurrency_caps": build_gm_concurrency_caps(
@@ -312,7 +313,7 @@ def build_engine(
         loop_strategy=_build_loop_strategy(loop_cfg),
         step_strategy=_build_step_strategy(step_cfg, flow_chains, seed),
         turn_policy=turn_policy,
-        gm_turn_policies=build_flow_turn_policies(step_params.get("gm_turn_policies")),
+        gm_turn_policies=build_gm_turn_policies(step_params.get("gm_turn_policies")),
         gm_concurrency_caps=build_gm_concurrency_caps(step_params.get("gm_concurrency_caps")),
         participation=participation,
         seed=seed,
