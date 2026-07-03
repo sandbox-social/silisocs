@@ -74,6 +74,25 @@ def test_inherited_operations_work_on_both_engines(tmp_path) -> None:
         rd.shutdown()
 
 
+def test_view_dms_with_marks_thread_read_on_both_engines(tmp_path) -> None:
+    """The inherited view_dms_with marks the viewer's unread messages read."""
+    tw = _twitter(tmp_path)
+    rd = _reddit(tmp_path)
+    try:
+        for p in (tw, rd):
+            p.create_user("alice")
+            p.create_user("bob")
+            p.send_dm("alice", "bob", "hi bob")
+            thread = p.view_dms_with("bob", "alice")
+            assert len(thread) == 1
+            # A second view shows the message now marked read (previously a
+            # reddit-vs-twitter drift: reddit never cleared unread state).
+            assert all(msg["read"] for msg in p.view_dms_with("bob", "alice"))
+    finally:
+        tw.shutdown()
+        rd.shutdown()
+
+
 def test_connection_recovers_after_error_in_block(tmp_path) -> None:
     """An error inside a get_connection block must discard the thread-local conn."""
     p = _twitter(tmp_path)
