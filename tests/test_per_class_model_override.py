@@ -27,7 +27,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from silisocs.runtime.construction.agent_builders import PersonaPipelineAgentBuilder
 from silisocs.runtime.construction.agent_builders.params import build_agent_params
-from silisocs.runtime.execution.session import (
+from silisocs.runtime.construction.models import (
     _effective_model_config,
     _effective_model_key,
 )
