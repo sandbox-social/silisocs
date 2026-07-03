@@ -459,40 +459,6 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
 
     # --- Direct Messages ---
 
-    def view_dms_with(
-        self, username: str, target_username: str, limit: int = 50
-    ) -> list[dict[str, Any]]:
-        user_id = self.get_user_id(username)
-        target_id = self.get_user_id(target_username)
-        if not user_id or not target_id:
-            raise ValueError("User not found")
-
-        with self.get_connection() as conn:
-            rows = conn.execute(
-                """
-                SELECT dm.*, u1.username as sender_username, u2.username as receiver_username
-                FROM direct_messages dm
-                JOIN users u1 ON dm.sender_id = u1.id
-                JOIN users u2 ON dm.receiver_id = u2.id
-                WHERE (dm.sender_id = ? AND dm.receiver_id = ?)
-                   OR (dm.sender_id = ? AND dm.receiver_id = ?)
-                ORDER BY dm.created_at ASC
-                LIMIT ?
-                """,
-                (user_id, target_id, target_id, user_id, limit),
-            ).fetchall()
-
-            # Mark as read
-            unread_ids = [r["id"] for r in rows if r["receiver_id"] == user_id and not r["read"]]
-            if unread_ids:
-                placeholders = ",".join(["?"] * len(unread_ids))
-                conn.execute(
-                    f"UPDATE direct_messages SET read = 1 WHERE id IN ({placeholders})", unread_ids
-                )
-                conn.commit()
-
-            return [dict(r) for r in rows]
-
     # --- Notifications / Activities ---
 
     def view_activities(self, username: str, limit: int = 50) -> list[dict[str, Any]]:
