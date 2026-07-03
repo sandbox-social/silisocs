@@ -15,6 +15,14 @@ from typing import Any
 import streamlit as st
 import yaml
 
+from silisocs.dashboard.config_builder import (
+    _SOCIAL_BACKENDS,
+    _as_int,
+    build_hydra_overrides,
+    build_world_config,
+    participation_sim_data,
+    world_config_warnings,
+)
 from silisocs.dashboard.config_writer import (
     save_scenario as _save_scenario,
 )
@@ -38,7 +46,6 @@ _PROJECT_ROOT = _PACKAGE_ROOT.parents[2]
 _ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
 _BACKEND_OPTIONS = ["twitter_like", "reddit_like", "mastodon", "resource_market", "virtual_space"]
-_SOCIAL_BACKENDS = {"twitter_like", "reddit_like", "mastodon"}
 _MEMORY_BACKENDS = ["list", "associative"]
 _ACTION_MODES = ["custom", "generic", "tool_calling"]
 _NETWORK_TYPES = ["barabasi_albert", "random", "lfr_benchmark"]
@@ -109,28 +116,6 @@ def _load_yaml(path: Path) -> dict:
         return yaml.safe_load(path.read_text()) or {}
     except Exception:
         return {}
-
-
-def _as_int(value: object, default: int) -> int:
-    """Best-effort int coercion that tolerates Hydra interpolations like ${...}."""
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value)
-    if isinstance(value, str):
-        text = value.strip()
-        if not text or text.startswith("${"):
-            return default
-        try:
-            return int(text)
-        except ValueError:
-            try:
-                return int(float(text))
-            except ValueError:
-                return default
-    return default
 
 
 def _as_float(value: object, default: float) -> float:
@@ -394,251 +379,19 @@ def _get_config_path_for_scenario(scenarios_root: Path, scenario_key: str) -> st
     return None
 
 
-def _collect_activity_rates() -> dict[str, dict[str, float]]:
-    """Per-role activity transition rates from the activity sliders."""
-    rates: dict[str, dict[str, float]] = {}
-    for cls in st.session_state.get("_agent_classes", []):
-        role = cls.get("sim_role_name") or cls.get("name", "")
-        if role:
-            rates[role] = {
-                "inactive_to_active": st.session_state.get(f"act_{role}_i2a", 0.3),
-                "active_to_inactive": st.session_state.get(f"act_{role}_a2i", 0.3),
-            }
-    return rates
-
-
 def _participation_sim_data(backend_type: str) -> dict[str, object]:
-    """Dotted-key ``sim.engine.participation`` config for save/launch.
-
-    Emits the built-in plus the per-role ``activity_transition_rates`` collected
-    from the sliders; ``min_active_agents`` / ``active_probability`` are inherited
-    from ``sim/base.yaml`` via merge (no dashboard control yet).
-    """
-    built_in = st.session_state.get(
-        "engine_participation_built_in",
-        "activity_probability" if backend_type in _SOCIAL_BACKENDS else "all",
-    )
-    data: dict[str, object] = {"engine.participation.built_in": built_in}
-    rates = _collect_activity_rates()
-    if rates:
-        data["engine.participation.params.activity_transition_rates"] = rates
-    return data
+    """UI wrapper: snapshot session state and build the participation config."""
+    return participation_sim_data(dict(st.session_state), backend_type)
 
 
 def _build_world_config() -> dict:
-    """Build a complete world config dict from session state."""
-    scenario_name = st.session_state.get(
-        "scenario_name_edit", st.session_state.get("_loaded_scenario_name", "default")
-    )
-    _sc_cfg = st.session_state.get("_loaded_world", {})
-
-    # Build classes config from session state.
-    classes_dict: dict[str, dict] = {}
-    for cls in st.session_state.get("_agent_classes", []):
-        cls_cfg: dict = {}
-        if cls.get("count"):
-            cls_cfg["count"] = cls["count"]
-        if cls.get("class_path"):
-            cls_cfg["class_path"] = cls["class_path"]
-        if cls.get("sim_role_name"):
-            cls_cfg["sim_role_name"] = cls["sim_role_name"]
-        if cls.get("flow_tag"):
-            cls_cfg["flow_tag"] = cls["flow_tag"]
-        if cls.get("data"):
-            cls_cfg["data"] = cls["data"]
-        if cls.get("field_map"):
-            cls_cfg["field_map"] = cls["field_map"]
-        if cls.get("model"):
-            cls_cfg["model"] = cls["model"]
-        if isinstance(cls.get("fixed_action"), dict):
-            fixed_cfg = dict(cls["fixed_action"])
-            if fixed_cfg.get("enabled"):
-                cls_cfg["fixed_action"] = fixed_cfg
-        classes_dict[cls.get("name", f"class_{len(classes_dict)}")] = cls_cfg
-
-    fixed_action_sets: dict = {}
-    fixed_action_file = str(st.session_state.get("fixed_action_sets_file", "") or "").strip()
-    if fixed_action_file:
-        fixed_action_sets["file"] = fixed_action_file
-
-    inline_text = str(st.session_state.get("fixed_action_sets_inline_yaml", "") or "").strip()
-    if inline_text:
-        try:
-            inline_sets = yaml.safe_load(inline_text) or {}
-            if isinstance(inline_sets, dict):
-                fixed_action_sets["inline"] = inline_sets
-        except yaml.YAMLError:
-            pass
-
-    # Parse shared memories.
-    shared_text = st.session_state.get("shared_memories_edit", "")
-    shared_list = [line.strip() for line in shared_text.splitlines() if line.strip()]
-
-    # Assemble world data.
-    bg_text = st.session_state.get("setting_background", "")
-    bg_list = [line.strip() for line in bg_text.splitlines() if line.strip()]
-
-    config = {
-        "scenario_name": scenario_name,
-        "jobname_format": "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}",
-        "setting": {
-            "name": st.session_state.get("setting_name", ""),
-            "background": bg_list,
-        },
-        "event": {
-            "name": st.session_state.get("event_name", ""),
-            "context": st.session_state.get("event_context", ""),
-        },
-        "builder": {"class_path": None, "params": {}},
-        "persona_pipeline": {
-            "defaults": {
-                "params": {
-                    "seed_post": "",
-                    "bio": "",
-                    "style": "",
-                    "goal": None,
-                    "world_context": "${event.context}",
-                },
-                "shared_memories": shared_list,
-            },
-            "classes": classes_dict,
-        },
-        "shared_memories": shared_list,
-        "initial_observations": [
-            '"{name} is at home checking their social media feed."',
-            '"{name} decides to browse and maybe post something."',
-        ],
-    }
-
-    # Build probes from dashboard state (generalist structure).
-    probe_items = st.session_state.get("_probe_items", [])
-    configured_probes: dict[str, dict] = {}
-    for idx, item in enumerate(probe_items):
-        if not isinstance(item, dict):
-            continue
-        probe_name = str(item.get("probe_name") or f"probe_{idx}")
-        probe_type = str(item.get("probe_type") or "FreeTextProbe")
-        probe_data = item.get("probe_data", {})
-        if not isinstance(probe_data, dict):
-            probe_data = {}
-        if "name" not in probe_data or not probe_data.get("name"):
-            probe_data["name"] = probe_name
-        configured_probes[probe_name] = {
-            "probe_name": probe_name,
-            "probe_type": probe_type,
-            "probe_data": probe_data,
-        }
-
-    config["probes"] = {
-        "deployment": {
-            "enabled": bool(st.session_state.get("probes_enabled", True)),
-            "start_step": _as_int(st.session_state.get("probe_start", 1), 1),
-            "every_n_steps": max(1, _as_int(st.session_state.get("probe_interval", 1), 1)),
-            "include_agents": st.session_state.get("probes_include_agents", []),
-            "exclude_agents": st.session_state.get("probes_exclude_agents", []),
-        },
-        "probes": configured_probes,
-    }
-
-    # Copy any extra sections from loaded config (candidates, news_account, etc.)
-    for key in ("candidates", "news_account", "data", "partisan_types"):
-        if key in _sc_cfg:
-            config[key] = _sc_cfg[key]
-
-    if fixed_action_sets:
-        config["fixed_action_sets"] = fixed_action_sets
-
-    return config
-
-
-def _build_hydra_overrides(
-    sim: dict,
-    env: dict,
-    backend_group: str,
-    world: dict,
-    eval_cfg: dict | None = None,
-) -> list[str]:
-    """Build Hydra CLI override strings from sim, env, eval, and world dicts."""
-    overrides: list[str] = []
-    for key, val in sim.items():
-        if val is None:
-            overrides.append(f"sim.{key}=null")
-        elif isinstance(val, bool):
-            overrides.append(f"sim.{key}={'true' if val else 'false'}")
-        elif isinstance(val, list):
-            if not val:
-                overrides.append(f"sim.{key}=[]")
-            else:
-                inner = ",".join(str(item) for item in val)
-                overrides.append(f"sim.{key}=[{inner}]")
-        elif isinstance(val, str) and " " in val:
-            overrides.append(f'sim.{key}="{val}"')
-        else:
-            overrides.append(f"sim.{key}={val}")
-    overrides.append(f"env={backend_group}")
-    for key, val in env.items():
-        if val is None:
-            overrides.append(f"env.{key}=null")
-        elif isinstance(val, bool):
-            overrides.append(f"env.{key}={'true' if val else 'false'}")
-        elif isinstance(val, list):
-            if not val:
-                overrides.append(f"env.{key}=[]")
-            else:
-                inner = ",".join(str(item) for item in val)
-                overrides.append(f"env.{key}=[{inner}]")
-        elif isinstance(val, str) and " " in val:
-            overrides.append(f'env.{key}="{val}"')
-        else:
-            overrides.append(f"env.{key}={val}")
-    for key, val in (eval_cfg or {}).items():
-        if val is None:
-            overrides.append(f"eval.{key}=null")
-        elif isinstance(val, bool):
-            overrides.append(f"eval.{key}={'true' if val else 'false'}")
-        elif isinstance(val, list):
-            if not val:
-                overrides.append(f"eval.{key}=[]")
-            else:
-                inner = ",".join(str(item) for item in val)
-                overrides.append(f"eval.{key}=[{inner}]")
-        elif isinstance(val, str) and " " in val:
-            overrides.append(f'eval.{key}="{val}"')
-        else:
-            overrides.append(f"eval.{key}={val}")
-    for key, val in world.items():
-        if val is None:
-            continue
-        prefix = "env" if key.startswith("gm.") else "sim"
-        if isinstance(val, bool):
-            overrides.append(f"{prefix}.{key}={'true' if val else 'false'}")
-        elif isinstance(val, (int, float)):
-            overrides.append(f"{prefix}.{key}={val}")
-        elif isinstance(val, str) and val:
-            overrides.append(f'{prefix}.{key}="{val}"' if " " in val else f"{prefix}.{key}={val}")
-    return overrides
+    """UI wrapper: snapshot session state and build the world config dict."""
+    return build_world_config(dict(st.session_state))
 
 
 def _validate_config(sim_params: dict, classes: list[dict]) -> None:
     """Show validation warnings in the Launch tab."""
-    warnings = []
-    if not classes:
-        warnings.append("No agent classes defined. Add at least one in the Agent Classes tab.")
-    for cls in classes:
-        if not cls.get("class_path"):
-            warnings.append(f"Class '{cls.get('name', '?')}' has no agent class set.")
-        if not cls.get("data", {}).get("source"):
-            warnings.append(f"Class '{cls.get('name', '?')}' has no data source.")
-    total_count = sum(_as_int(c.get("count", 0), 0) for c in classes)
-    declared = _as_int(sim_params.get("num_agents", 0), 0)
-    if total_count and declared and total_count != declared:
-        warnings.append(
-            f"Agent classes sum to {total_count}, but num_agents is {declared}. "
-            f"The actual number of agents built is the sum of the class counts "
-            f"({total_count}); num_agents does not cap or pad the total. Set unused "
-            f"classes to count 0, or align num_agents with the class counts."
-        )
-    for w in warnings:
+    for w in world_config_warnings(sim_params, classes):
         st.warning(w)
 
 
@@ -2287,7 +2040,7 @@ with tab_launch:
         if selected_backend in _SOCIAL_BACKENDS
         else {}
     )
-    overrides = _build_hydra_overrides(
+    overrides = build_hydra_overrides(
         sim_params,
         env_params,
         selected_backend,
