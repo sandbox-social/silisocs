@@ -34,6 +34,29 @@ class StepBatch:
     turn_policy: TurnPolicy | None = None
 
 
+@dataclass(frozen=True)
+class BranchHop:
+    """One chain stage that fans a flow's agents across several GMs — a resolved branch.
+
+    Holds one ``StepBatch`` per chosen GM and occupies a single chain position, so the
+    staged traversal's stage-column alignment is preserved (a branch is one stage, not
+    several). The serial and concurrent traversals flatten it via ``expand_hop``.
+    """
+
+    sub_batches: tuple[StepBatch, ...]
+
+
+def expand_hop(hop: StepBatch | BranchHop | None) -> list[StepBatch]:
+    """Flatten one chain hop into its concrete batches: ``[]`` for an idle slot, the
+    single batch for a normal hop, or every sub-batch of a branch.
+    """
+    if hop is None:
+        return []
+    if isinstance(hop, BranchHop):
+        return list(hop.sub_batches)
+    return [hop]
+
+
 @dataclass
 class StepResult:
     """Per-episode step summary emitted by step strategies."""

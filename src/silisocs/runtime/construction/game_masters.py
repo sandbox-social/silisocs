@@ -20,6 +20,7 @@ from silisocs.runtime.configuration.validation import (
     validate_runtime_structure,
 )
 from silisocs.runtime.construction.specs import GameMasterConfig
+from silisocs.simulation_engines.policies.routers import BranchSpec
 
 DEFAULT_FLOW_TAG = "default"
 
@@ -332,7 +333,7 @@ def _resolve_flow_chains(
     cfg: DictConfig,
     gm_specs: list[dict[str, Any]],
     declared_flows: set[str],
-) -> dict[str, list[str | None]]:
+) -> dict[str, list[str | None | BranchSpec]]:
     if not gm_specs:
         return {}
 
@@ -340,7 +341,7 @@ def _resolve_flow_chains(
     gm_sequences = {str(spec["gm_name"]): int(spec["sequence"]) for spec in gm_specs}
     default_gm = str(min(gm_specs, key=lambda item: int(item["sequence"]))["gm_name"])
 
-    chains: dict[str, list[str | None]] = {}
+    chains: dict[str, list[str | None | BranchSpec]] = {}
     gm_orchestration_cfg = getattr(cfg.env, "gm_orchestration", None)
     bindings = getattr(gm_orchestration_cfg, "flow_bindings", None)
     if isinstance(bindings, Mapping):
@@ -361,20 +362,33 @@ def _resolve_flow_chains(
                     gm_chain_list = list(gm_chain)
                 else:
                     raise ValueError(
-                        f"flow_to_gms['{flow_name}'] must be a string or list of strings."
+                        f"flow_to_gms['{flow_name}'] must be a string or a list of GM names "
+                        "and/or {branch: ...} nodes."
                     )
-                # A null/empty entry is an "empty slot": the flow idles at that stage
-                # (only meaningful under the multi_gm_staged traversal) and resumes at
-                # its next non-empty hop. Trailing slots have no effect, so trim them.
-                resolved: list[str | None] = [
-                    (str(gm).strip() or None) if gm is not None else None for gm in gm_chain_list
-                ]
+                # An entry is a GM name, ``None``/empty (an "empty slot": the flow idles
+                # that stage — only meaningful under multi_gm_staged), or a {branch: ...}
+                # node that fans the flow's agents across several GMs at one stage.
+                resolved: list[str | None | BranchSpec] = []
+                branch_count = 0
+                for entry in gm_chain_list:
+                    if isinstance(entry, (Mapping, DictConfig)):
+                        resolved.append(_parse_branch(flow_name, entry, gm_names))
+                        branch_count += 1
+                    elif entry is None:
+                        resolved.append(None)
+                    else:
+                        resolved.append(str(entry).strip() or None)
+                if branch_count > 1:
+                    raise ValueError(
+                        f"flow_to_gms['{flow_name}'] has {branch_count} branch nodes; at most "
+                        "one branch per chain is supported."
+                    )
+                # Trailing empty slots have no effect, so trim them.
                 while resolved and resolved[-1] is None:
                     resolved.pop()
-                real = [gm for gm in resolved if gm is not None]
-                if not real:
+                if not any(isinstance(item, (str, BranchSpec)) for item in resolved):
                     raise ValueError(f"flow_to_gms['{flow_name}'] cannot be empty.")
-                unknown = [gm for gm in real if gm not in gm_names]
+                unknown = [gm for gm in resolved if isinstance(gm, str) and gm not in gm_names]
                 if unknown:
                     raise ValueError(f"Unknown GMs in flow_to_gms['{flow_name}']: {unknown}")
                 chains[flow_name] = resolved
@@ -386,33 +400,110 @@ def _resolve_flow_chains(
     chains.setdefault(DEFAULT_FLOW_TAG, [default_gm])
 
     for flow_name, gm_chain in chains.items():
-        real_chain = [gm for gm in gm_chain if gm is not None]
-        if len(set(real_chain)) != len(real_chain):
+        # Each non-idle position contributes a sequence band: a single GM is a point band
+        # [seq, seq]; a branch spans [min, max] over its choices. Positions must be
+        # strictly increasing band-to-band, so a branch occupies one stage that sits
+        # cleanly between its neighbours (and the whole chain has no duplicate GM).
+        positions: list[tuple[int, int]] = []
+        all_names: list[str] = []
+        for entry in gm_chain:
+            names = flow_chain_gm_names([entry])
+            if not names:
+                continue
+            seqs = [gm_sequences[name] for name in names]
+            positions.append((min(seqs), max(seqs)))
+            all_names.extend(names)
+        if len(set(all_names)) != len(all_names):
             raise ValueError(f"Flow '{flow_name}' has duplicate GMs in chain: {gm_chain}")
-        if len(real_chain) < 2:
-            continue
-        for left, right in zip(real_chain, real_chain[1:], strict=False):
-            if gm_sequences[left] >= gm_sequences[right]:
+        for (_, left_max), (right_min, _) in zip(positions, positions[1:], strict=False):
+            if left_max >= right_min:
                 raise ValueError(
                     "Flow chain must be strictly serial by sequence for multi-GM flows: "
                     f"flow='{flow_name}' chain={gm_chain}. "
-                    "Ensure each subsequent GM has a higher sequence number."
+                    "Ensure each subsequent GM (or branch) has a higher sequence number."
                 )
 
     return chains
 
 
-def resolve_flow_chains(cfg: DictConfig) -> dict[str, list[str | None]]:
+def resolve_flow_chains(cfg: DictConfig) -> dict[str, list[str | None | BranchSpec]]:
     """Resolve the flow -> GM-sequence routing topology from config.
 
     This is engine/scheduling config (the step strategy and the checkpoint replay
     router consume it), NOT game-master state. Exposed so callers that build the
     engine/restore path (``session.py``) can source the chains directly from config
-    rather than introspecting them off a constructed game master.
+    rather than introspecting them off a constructed game master. A chain entry is a GM
+    name, ``None`` (an idle slot), or a :class:`BranchSpec` (a ``{branch: ...}`` node).
     """
     gm_specs = _resolve_gm_specs(cfg)
     declared_flows = _collect_declared_flow_tags(cfg)
     return _resolve_flow_chains(cfg, gm_specs, declared_flows)
+
+
+def flow_chain_gm_names(chain: Sequence[Any]) -> list[str]:
+    """Every concrete GM name a flow chain can route to, branch choices included.
+
+    Used where a branch must be treated as "any of its choices": per-GM owned-flow
+    derivation and the checkpoint-restore chain view.
+    """
+    names: list[str] = []
+    for entry in chain:
+        if isinstance(entry, BranchSpec):
+            names.extend(entry.choices)
+        elif isinstance(entry, str):
+            names.append(entry)
+    return names
+
+
+def collapse_flow_chains(
+    chains: Mapping[str, Sequence[Any]],
+) -> dict[str, list[str | None]]:
+    """Flatten branch nodes to their choices so non-routing consumers see plain names.
+
+    The step strategy needs the rich chains (with ``BranchSpec`` routers); checkpoint
+    restore only needs the set of GMs a flow can reach, so each branch is spread inline
+    into its choices. Position is not meaningful to restore, so spreading is sufficient.
+    """
+    collapsed: dict[str, list[str | None]] = {}
+    for flow, chain in chains.items():
+        out: list[str | None] = []
+        for entry in chain:
+            if isinstance(entry, BranchSpec):
+                out.extend(entry.choices)
+            else:
+                out.append(entry)
+        collapsed[flow] = out
+    return collapsed
+
+
+def _parse_branch(flow_name: str, raw: Any, gm_names: set[str]) -> BranchSpec:
+    """Parse a ``{branch: {router, choices}}`` chain node into a :class:`BranchSpec`.
+
+    Validates only the static shape here (>= 2 known, distinct choices); the router is
+    built later by the engine, and the branch's sequence band is checked against its
+    chain neighbours by the caller.
+    """
+    data = OmegaConf.to_container(raw, resolve=True) if isinstance(raw, DictConfig) else dict(raw)
+    if not isinstance(data, Mapping) or "branch" not in data:
+        raise ValueError(
+            f"flow_to_gms['{flow_name}'] chain entry must be a GM name, null, or a "
+            f"{{branch: ...}} node; got {data!r}."
+        )
+    branch = dict(data.get("branch") or {})
+    choices = tuple(str(c).strip() for c in (branch.get("choices") or []) if str(c).strip())
+    if len(choices) < 2:
+        raise ValueError(
+            f"branch in flow_to_gms['{flow_name}'] needs at least 2 choices, got {list(choices)}."
+        )
+    if len(set(choices)) != len(choices):
+        raise ValueError(f"branch in flow_to_gms['{flow_name}'] has duplicate choices: {choices}.")
+    unknown = [c for c in choices if c not in gm_names]
+    if unknown:
+        raise ValueError(
+            f"branch in flow_to_gms['{flow_name}'] references unknown GM(s): {unknown}."
+        )
+    router_slot = dict(branch.get("router") or {})
+    return BranchSpec(choices=choices, router_slot=router_slot)
 
 
 def build_game_masters(cfg: DictConfig) -> list[GameMasterConfig]:
@@ -441,7 +532,9 @@ def build_game_masters(cfg: DictConfig) -> list[GameMasterConfig]:
         # owned_flows is the per-GM scalar derivation the GM still needs (component
         # routing); the full flow_chains topology is engine config and no longer
         # copied onto every GM. See resolve_flow_chains / the step strategy.
-        owned_flows = [flow for flow, chain in flow_chains.items() if gm_name in chain]
+        owned_flows = [
+            flow for flow, chain in flow_chains.items() if gm_name in flow_chain_gm_names(chain)
+        ]
         gm_components_cfg = dict(spec["components"])
         action_prompt_params = dict(
             dict(gm_components_cfg.get("action_prompt", {}) or {}).get("params", {}) or {}

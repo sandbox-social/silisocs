@@ -28,10 +28,6 @@ from silisocs.environments.backends.reddit_like.app import RedditLikeApp
 from silisocs.environments.backends.resource_market.app import ResourceMarketApp
 from silisocs.environments.backends.twitter_like.app import TwitterLikeApp
 from silisocs.environments.backends.virtual_space.app import VirtualSpaceApp
-from silisocs.environments.gm.components.next_acting import (
-    ActivityMarkovNextActing,
-    ActivityProbabilityNextActing,
-)
 from silisocs.environments.gm.components.social_media.update import (
     SocialRecommendationUpdateComponent,
 )
@@ -451,31 +447,9 @@ def test_reddit_init_recsys_accepts_component_kwargs():
     } <= params
 
 
-# --------------------------------------------------------------------------- #
-# Multi-flow next_acting fixes
-# --------------------------------------------------------------------------- #
-
-
-def test_activity_markov_set_state_tolerates_missing_key():
-    """ActivityMarkov.set_state tolerates an empty/malformed state dict."""
-    component = ActivityMarkovNextActing(agent_names=["a", "b"])
-    before = dict(component._users_activity_state)
-    component.set_state({})  # previously raised KeyError
-    assert component._users_activity_state == before
-
-
-def test_activity_probability_does_not_round_trip_config():
-    """ActivityProbability persists no config, so resume-time edits are honored."""
-    prob = 0.5
-    min_active = 1
-    component = ActivityProbabilityNextActing(
-        agent_names=["a", "b"], active_probability=prob, min_active_agents=min_active
-    )
-    assert component.get_state() == {}
-    # A stale checkpoint must not clobber resume-time config edits.
-    component.set_state({"global_active_probability": 0.99, "min_active_agents": 9})
-    assert component._global_active_probability == prob
-    assert component._min_active_agents == min_active
+# Activity components moved to sim-level participation policies
+# (simulation_engines/policies/participation.py), which are stateless by design;
+# their coverage lives in tests/test_participation_policy.py.
 
 
 # --------------------------------------------------------------------------- #

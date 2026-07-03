@@ -16,4 +16,22 @@ engine:
     params:
       max_actions: 10
       finished_action_signal: FINISHED
-      finished_action_signal: FINISHED
+  participation:
+    built_in: activity_probability
+    class_path: null
+    params:
+      active_probability: null
+      min_active_agents: 0
+      activity_transition_rates:
+        senior:
+          inactive_to_active: 0.6
+          active_to_inactive: 0.3
+        middle_aged_resident:
+          inactive_to_active: 0.7
+          active_to_inactive: 0.2
+        young_adult:
+          inactive_to_active: 0.7
+          active_to_inactive: 0.2
+        teen:
+          inactive_to_active: 0.5
+          active_to_inactive: 0.4

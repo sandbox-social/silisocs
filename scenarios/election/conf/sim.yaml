@@ -1,0 +1,17 @@
+engine:
+  participation:
+    built_in: activity_probability
+    class_path: null
+    params:
+      active_probability: null
+      min_active_agents: 0
+      activity_transition_rates:
+        voter:
+          inactive_to_active: 0.1
+          active_to_inactive: 0.2
+        candidate:
+          inactive_to_active: 0.8
+          active_to_inactive: 0.1
+        news_account:
+          inactive_to_active: 1
+          active_to_inactive: 0

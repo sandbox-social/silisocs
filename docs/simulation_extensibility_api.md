@@ -193,7 +193,7 @@ Built-in component names:
 - `action_prompt`: `default`
 - `observe`: `app_observation`, `timeline_every_turn`, `episode_only`
 - `resolve`: `parsed_action`, `generic_action`, `tool_calling`
-- `next_acting`: `activity_markov`, `activity_probability`, `all_agents`, `fixed_order`
+- `next_acting`: `all_agents`, `fixed_order` (activity models are sim-level: `sim.engine.participation`)
 - `update`: `social_recommendation`, `disabled`, `none`
 
 Generic component bases and defaults live directly under
@@ -214,8 +214,9 @@ Subcomponent interfaces in `components/base.py`:
 Default baselines are available for backends that only need `BackendApp`:
 
 - `AppInitializeComponent` calls a backend's `initialize(...)`.
-- `AllAgentsNextActing`, `FixedOrderNextActing`, `ActivityProbabilityNextActing`,
-  and `ActivityMarkovNextActing` select agents without social timeline logic.
+- `AllAgentsNextActing` and `FixedOrderNextActing` select agents without social
+  timeline logic; activity models live in
+  `silisocs.simulation_engines.policies.participation`.
 - `AppObservationComponent` delegates to `BackendApp.observe(...)`.
 - `EpisodeObservation` returns episode-index observations for scripted flows.
 - generic action and tool-calling resolvers dispatch backend actions discovered

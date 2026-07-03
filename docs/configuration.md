@@ -308,12 +308,19 @@ gm:
           base_followership_probability: 0.3
           network_type: barabasi_albert
           barabasi_albert_m: 10
-    next_acting:
-      params:
-        activity_transition_rates:
-          user:
-            inactive_to_active: 0.5
-            active_to_inactive: 0.2
+```
+
+**`scenarios/my_world/conf/sim.yaml`**, optional sim overrides — activity rates
+are sim-level participation config (see "Participation" below):
+```yaml
+engine:
+  participation:
+    built_in: activity_probability
+    params:
+      activity_transition_rates:
+        user:
+          inactive_to_active: 0.5
+          active_to_inactive: 0.2
 ```
 
 ### Output Structure
@@ -744,7 +751,7 @@ env:
   gm:
     components:
       next_acting:
-        built_in: activity_probability  # activity_markov | activity_probability | all_agents | fixed_order
+        built_in: all_agents            # all_agents | fixed_order (activity models moved to sim.engine.participation)
       observe:
         built_in: timeline_every_turn   # app_observation | timeline_every_turn | episode_only
         params:
@@ -760,10 +767,13 @@ the simulation starts unless the target component accepts `**kwargs`. Observe
 components that explicitly accept `observation_params` can use `params` as
 forwarded observation settings.
 
-### Social Setup and Activity Components
+### Social Setup and Participation
 
-Graph fields are owned by the GM initialize component. Activity rates are owned
-by the GM next-acting component.
+Graph fields are owned by the GM initialize component (environment layer).
+Activity selection is owned by the sim-level participation policy
+(`sim.engine.participation`): it filters which agents are in each step's roster
+before any scheduling and before every GM's `next_acting` component runs
+(effective acting = participation filter ∩ next_acting output).
 
 ```yaml
 env:
@@ -777,13 +787,29 @@ env:
             base_followership_probability: 0.3
             fully_connected_targets:
               - news_account
-      next_acting:
-        params:
-          activity_transition_rates:
-            <role_name>:
-              inactive_to_active: 0.3
-              active_to_inactive: 0.3
+sim:
+  engine:
+    participation:
+      built_in: activity_probability  # all | activity_probability | activity_markov
+      class_path: null                # or a custom ParticipationPolicy class
+      params:
+        active_probability: null      # global override; null = per-role rates below
+        min_active_agents: 1          # top up a too-small draw (deterministic)
+        activity_transition_rates:
+          <role_name>:
+            inactive_to_active: 0.3
+            active_to_inactive: 0.3
 ```
+
+Participation policies are pure functions of `(agent_names, step_index, seed)` —
+stateless, so runs replay and resume identically with nothing to checkpoint.
+`activity_markov` re-derives its per-agent activity chain from step 0 on each
+call. A custom policy subclasses
+`silisocs.simulation_engines.policies.participation.ParticipationPolicy` and is
+referenced via `class_path`; declare a `sim_roles` constructor param to receive
+the agent→role mapping. Set `built_in: all` (pass-through) for deterministic or
+turn-based runs (e.g. `fixed_order` environments), where every agent should stay
+in the roster.
 
 ### Timeline Observation
 
@@ -1182,6 +1208,46 @@ that still sets `chain_execution` now raises a `ValueError` with a migration
 hint). Independent of the mode: each GM's `update()` still runs once before any
 acting in a step; checkpoint replay is still per-agent-flow-chain; and
 `flow_turn_policies` and per-flow component routing still apply at every hop.
+
+#### Branch nodes: routing one flow across alternative GMs
+
+A chain entry may be a **branch node** — `{branch: {router, choices}}` — instead of
+a GM name or `null`. At that stage each of the flow's agents is routed by the
+configured `router` to exactly one of `choices` (real GM names); agents that pick
+the same GM are batched together. The branch is a single chain stage, so the GMs
+before and after it still run once on every agent (shared pre/post hops are not
+split), and under `multi_gm_staged` the branch occupies one stage column so
+alignment is preserved.
+
+```yaml
+env:
+  gm_orchestration:
+    flow_bindings:
+      flow_to_gms:
+        social_flow:
+          - seed_gm
+          - branch:
+              router: { built_in: random, params: { weights: { twitter_gm: 0.7, reddit_gm: 0.3 } } }
+              choices: [twitter_gm, reddit_gm]
+          - wrapup_gm        # shared tail — both branches re-converge here
+```
+
+The router is a `{built_in | class_path, params}` slot, like a turn policy. The one
+built-in is `random` (`RandomChoiceRouter`): a weighted random pick, deterministic
+per `(seed, flow, step, agent)` — so a run reproduces and replays identically. A
+`class_path` router is the extension seam for "a custom function chooses": point it
+at a `silisocs.simulation_engines.policies.routers.Router` subclass.
+
+Routing is resolved at materialization (before any turn runs), so the router decides
+*first* — including under the staged barrier. v1 ships only this pure path: a router
+that declares it needs live GM state or an agent's own choice
+(`reads_live_state`/`drives_agent`) is rejected at build time with a not-yet-supported
+message (reserved for a future execution-time path).
+
+Constraints (validated at config/engine build): at most one branch per chain; at
+least two distinct, known choices; the branch's choice sequences must sit strictly
+between its chain neighbours; a branch requires a `multi_gm*` step mode; and a branch
+may not sit in a `flow_order` (serial-prefix) flow.
 
 ---
 

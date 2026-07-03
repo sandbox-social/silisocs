@@ -14,3 +14,7 @@ engine:
     built_in: single_action
     class_path: null
     params: {}
+  participation:
+    built_in: all
+    class_path: null
+    params: {}

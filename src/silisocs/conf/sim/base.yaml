@@ -69,6 +69,22 @@ engine:
     built_in: single_action         # single_action | fixed_count | open_ended
     class_path: null
     params: {}
+  # Sim-level participation filter: which agents are in a step's roster at all,
+  # applied before scheduling and before every GM's next_acting component.
+  # all (pass-through) | activity_probability | activity_markov, or class_path
+  # to a custom ParticipationPolicy. Policies are pure functions of
+  # (agent_names, step_index, seed) — replay- and resume-stable. Set
+  # built_in: all for deterministic/turn-based runs (e.g. fixed_order envs).
+  participation:
+    built_in: activity_probability
+    class_path: null
+    params:
+      active_probability: null
+      min_active_agents: 1
+      activity_transition_rates:
+        user:
+          inactive_to_active: 0.3
+          active_to_inactive: 0.3
 
 roleplaying_instructions: |
   <general_instructions>

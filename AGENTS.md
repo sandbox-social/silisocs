@@ -100,6 +100,7 @@ Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 | `sim.tool_calling.mode` | single | `none` \| `single` \| `multi` |
 | `sim.engine.step.built_in` | base | `base`, `sequential`, `flow`, `multi_gm`, `multi_gm_serial`, or `multi_gm_staged` (the three `multi_gm*` strategies select the flow-chain traversal mode; see below) |
 | `sim.engine.turn_policy.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended` |
+| `sim.engine.participation.built_in` | activity_probability | Sim-level per-step roster filter: `all` \| `activity_probability` \| `activity_markov` (or `class_path` to a custom `ParticipationPolicy`). Filters who is in the step's roster BEFORE scheduling and every GM's next_acting (effective acting = participation ∩ next_acting). Stateless/seed-derived, so replay- and resume-stable. The GM `next_acting` slot keeps only env-derived built-ins (`all_agents`, `fixed_order`); a config naming the moved built-ins there gets a migration error. Set `all` for deterministic/turn-based runs |
 | `sim.engine.step.params.gm_turn_policies` | {} | Per-GM turn policy map (`gm_name -> {built_in\|class_path, params}`); applies under any step mode |
 | `sim.engine.step.params.gm_concurrency_caps` | {} | Per-GM concurrency caps (`gm_name -> int`); effective per-GM = `min(cap, sim.max_concurrent_actions)` via a per-GM semaphore; empty = global cap everywhere; applies under any step mode |
 | `sim.checkpoint.every_n_steps` | null | Checkpoint frequency (run_study.py sets 1 by default) |
@@ -202,6 +203,20 @@ Use class-level behavior flows instead of adding custom manager branches:
   chain is rejected ("cannot be empty"); the strictly-increasing-`sequence` rule
   applies to the real (non-null) GMs only. Under `multi_gm` / `multi_gm_serial`
   null hops are simply dropped.
+  A chain entry may also be a **branch node** — `{branch: {router, choices}}` —
+  that routes each of the flow's agents to one of `choices` (alternative GMs) at
+  that one stage. The `router` is a `{built_in|class_path, params}` slot built by
+  the engine (`policies/routers.py` + `build_router`); built-in `random`
+  (`RandomChoiceRouter`, weighted, deterministic per `(seed, flow, step, agent)`),
+  and a `class_path` router is the "a custom function chooses" seam. The branch is
+  ONE stage resolved at materialization, so the router acts FIRST (incl. under the
+  staged barrier) and the GMs before/after it still run once on every agent (shared
+  hops are not split per choice). v1 resolves only PURE routers; a router declaring
+  `reads_live_state`/`drives_agent` is rejected (the reserved execution-time path).
+  Rules: ≤1 branch/chain, ≥2 distinct known choices whose `sequence`s sit strictly
+  between the branch's neighbours, `multi_gm*` mode only, not inside a `flow_order`
+  flow. Restore + per-GM `owned_flows` treat a branch as any of its choices via
+  `collapse_flow_chains` / `flow_chain_gm_names`.
 - The multi-GM flow-chain traversal mode is selected by `sim.engine.step.built_in`
   (`multi_gm` / `multi_gm_serial` / `multi_gm_staged`); the former
   `sim.engine.step.params.chain_execution` knob has been removed (a config that

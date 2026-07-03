@@ -206,9 +206,8 @@ env:
         built_in: social_media
         params: {}
       next_acting:
-        built_in: activity_probability
-        params:
-          min_active_agents: 1
+        built_in: all_agents
+        params: {}
       action_prompt:
         built_in: default
         params: {}

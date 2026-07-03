@@ -7,7 +7,6 @@ llm:
     extra_body:
       chat_template_kwargs:
         enable_thinking: false
-
 action_mode: generic
 tool_calling:
   mode: multi
@@ -26,4 +25,19 @@ engine:
     params:
       max_actions: 20
       finished_action_signal: FINISHED
-      finished_action_signal: FINISHED
+  participation:
+    built_in: activity_probability
+    class_path: null
+    params:
+      active_probability: null
+      min_active_agents: 0
+      activity_transition_rates:
+        voter:
+          inactive_to_active: 0.2
+          active_to_inactive: 0.2
+        candidate:
+          inactive_to_active: 0.9
+          active_to_inactive: 0.1
+        news_account:
+          inactive_to_active: 1.0
+          active_to_inactive: 0.0

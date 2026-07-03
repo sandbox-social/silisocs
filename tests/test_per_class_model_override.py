@@ -104,7 +104,10 @@ def _native_class(model: Any = None, *, field_map: dict[str, str] | None = None)
     cls: dict[str, Any] = {
         "count": 1,
         "class_path": "silisocs.agents.native.NativeAgent",
-        "data": {"source": "inline", "records": [{"name": "Alex", "persona": "P.", "m": "rec-mdl"}]},
+        "data": {
+            "source": "inline",
+            "records": [{"name": "Alex", "persona": "P.", "m": "rec-mdl"}],
+        },
         "field_map": field_map or {"name": "name", "context": "persona"},
     }
     if model is not None:
@@ -174,7 +177,9 @@ def test_scalar_model_name_still_works() -> None:
 # 4) Per-field fallback: a class that sets only provider keeps global for the rest.
 # ---------------------------------------------------------------------------
 def test_partial_override_falls_back_per_field() -> None:
-    agents = _builder({"user": _native_class({"provider": "openai_compatible"})}).build_agent_configs()
+    agents = _builder(
+        {"user": _native_class({"provider": "openai_compatible"})}
+    ).build_agent_configs()
     block = agents[0].params["model"]
     assert block == {"provider": "openai_compatible"}
 
@@ -401,7 +406,7 @@ def test_model_field_lists_share_one_source_of_truth() -> None:
     # there automatically makes the signature aware of it).
     assert tuple(_EFFECTIVE_MODEL_FIELDS) == MODEL_FIELDS
     # The per-class `model` block allowlist is exactly MODEL_FIELDS.
-    assert _ALLOWED_MODEL_KEYS == frozenset(MODEL_FIELDS)
+    assert frozenset(MODEL_FIELDS) == _ALLOWED_MODEL_KEYS
 
 
 def test_per_class_model_block_rejects_key_outside_model_fields() -> None:

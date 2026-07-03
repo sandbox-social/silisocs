@@ -11,14 +11,13 @@ from __future__ import annotations
 import threading
 import time
 
+import pytest
 from omegaconf import DictConfig, OmegaConf
 
 from silisocs.runtime.construction.engines import build_engine
 from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType
 from silisocs.simulation_engines.base_engines import RuntimeEngine
 from silisocs.simulation_engines.policies.factory import build_gm_concurrency_caps
-
-import pytest
 
 
 class _ConcurrencyTracker:

@@ -6,6 +6,7 @@ import importlib
 import inspect
 import logging
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any, cast
 
 from omegaconf import DictConfig, OmegaConf
@@ -16,9 +17,12 @@ from silisocs.simulation_engines.base_engines import RuntimeEngine
 from silisocs.simulation_engines.policies.factory import (
     build_flow_turn_policies,
     build_gm_concurrency_caps,
+    build_participation_policy,
+    build_router,
     build_turn_policy,
 )
 from silisocs.simulation_engines.policies.loops import FixedStepsLoopStrategy
+from silisocs.simulation_engines.policies.routers import BranchSpec
 from silisocs.simulation_engines.policies.steps import (
     FlowStepStrategy,
     MultiGMSerialStepStrategy,
@@ -91,8 +95,57 @@ _MULTI_GM_STRATEGIES: dict[str, type[Any]] = {
 }
 
 
+def _chains_have_branch(chains: Mapping[str, Any]) -> bool:
+    return any(isinstance(entry, BranchSpec) for chain in chains.values() for entry in chain)
+
+
+def _prepare_branch_chains(
+    chains: Mapping[str, Any], *, flow_order: tuple[str, ...], allow_branches: bool
+) -> dict[str, list[Any]]:
+    """Build each branch node's router and validate its placement.
+
+    A branch is only meaningful under a multi-GM step strategy, so a branch reached
+    with ``allow_branches=False`` is rejected. A branch may not sit in a ``flow_order``
+    (serial-prefix) flow — the prefix must stay deterministic. v1 resolves only PURE
+    routers at materialization; a router that declares it needs live state or an agent
+    choice is rejected here with a clear not-yet-supported message (the extension seam).
+    """
+    listed = {str(flow).strip() for flow in flow_order}
+    prepared: dict[str, list[Any]] = {}
+    for flow, chain in chains.items():
+        new_chain: list[Any] = []
+        for entry in chain:
+            if isinstance(entry, BranchSpec):
+                if not allow_branches:
+                    raise ValueError(
+                        f"flow_to_gms['{flow}'] uses a branch node, which requires a "
+                        "multi_gm* step strategy (sim.engine.step.built_in)."
+                    )
+                if flow in listed:
+                    raise ValueError(
+                        f"flow '{flow}' is listed in flow_order and cannot contain a branch; "
+                        "the serial prefix must be deterministic."
+                    )
+                router = build_router(entry.router_slot)
+                if getattr(router, "reads_live_state", False) or getattr(
+                    router, "drives_agent", False
+                ):
+                    raise NotImplementedError(
+                        f"Router '{getattr(router, 'name', '?')}' for flow '{flow}' declares "
+                        "reads_live_state/drives_agent; execution-time routing is not yet "
+                        "supported. v1 resolves pure routers at materialization."
+                    )
+                new_chain.append(replace(entry, router=router))
+            else:
+                new_chain.append(entry)
+        prepared[flow] = new_chain
+    return prepared
+
+
 def _build_step_strategy(
-    step_cfg: Mapping[str, Any], flow_chains: Mapping[str, Any] | None = None
+    step_cfg: Mapping[str, Any],
+    flow_chains: Mapping[str, Any] | None = None,
+    seed: int = 0,
 ) -> Any:
     class_path = str(step_cfg.get("class_path") or "").strip()
     params = dict(step_cfg.get("params") or {})
@@ -105,12 +158,24 @@ def _build_step_strategy(
         # when the strategy declares it and the user did not pass chains explicitly),
         # so a strategy that does not use chains is never rejected for an extra kwarg.
         if "flow_chains" not in params and hasattr(strategy, "flow_chains"):
-            strategy.flow_chains = chains
+            custom_flow_order = tuple(str(item) for item in (params.get("flow_order") or ()))
+            strategy.flow_chains = _prepare_branch_chains(
+                chains, flow_order=custom_flow_order, allow_branches=True
+            )
+        if "seed" not in params and hasattr(strategy, "seed"):
+            strategy.seed = seed
         return strategy
     _reject_retired_chain_execution(params)
     built_in = str(step_cfg.get("built_in") or "base").strip()
     flow_order = tuple(str(item) for item in (params.get("flow_order") or ["fixed_pre", "default"]))
     flow_turn_policies = build_flow_turn_policies(params.get("flow_turn_policies"))
+    strategy_cls = _MULTI_GM_STRATEGIES.get(built_in)
+    if strategy_cls is None and _chains_have_branch(chains):
+        raise ValueError(
+            "A branch node in env.gm_orchestration.flow_bindings.flow_to_gms requires a "
+            f"multi_gm* step strategy; sim.engine.step.built_in='{built_in}' does not route "
+            "by flow chain."
+        )
     if built_in == "base":
         return None
     if built_in == "sequential":
@@ -120,7 +185,6 @@ def _build_step_strategy(
             flow_order=flow_order,
             flow_turn_policies=flow_turn_policies,
         )
-    strategy_cls = _MULTI_GM_STRATEGIES.get(built_in)
     if strategy_cls is not None:
         if not chains:
             _LOGGER.warning(
@@ -132,7 +196,8 @@ def _build_step_strategy(
         return strategy_cls(
             flow_order=flow_order,
             flow_turn_policies=flow_turn_policies,
-            flow_chains=chains,
+            flow_chains=_prepare_branch_chains(chains, flow_order=flow_order, allow_branches=True),
+            seed=seed,
         )
     raise ValueError(f"Unknown sim.engine.step.built_in='{built_in}'.")
 
@@ -160,7 +225,11 @@ def _build_turn_policy(engine_cfg: Mapping[str, Any]) -> Any:
     return build_turn_policy(turn_policy_cfg)
 
 
-def build_engine(cfg: DictConfig, flow_chains: Mapping[str, Any] | None = None):
+def build_engine(
+    cfg: DictConfig,
+    flow_chains: Mapping[str, Any] | None = None,
+    sim_roles: Mapping[str, str] | None = None,
+):
     """Build runtime engine from strategy-based config.
 
     ``flow_chains`` is the resolved flow -> GM-sequence routing topology (engine
@@ -168,6 +237,10 @@ def build_engine(cfg: DictConfig, flow_chains: Mapping[str, Any] | None = None):
     ``game_masters.resolve_flow_chains(cfg)``. When omitted it defaults to empty,
     which is correct for base/sequential/flow modes; a ``multi_gm*`` strategy built
     without chains logs a warning and routes every flow to the default game master.
+
+    ``sim_roles`` (agent name -> sim role) parameterizes role-conditioned
+    participation policies (``sim.engine.participation``); it is injected only when
+    the resolved policy's constructor accepts it.
     """
     raw_engine_cfg = getattr(cfg.sim, "engine", object())
     if isinstance(raw_engine_cfg, DictConfig):
@@ -190,6 +263,16 @@ def build_engine(cfg: DictConfig, flow_chains: Mapping[str, Any] | None = None):
         default={"built_in": "base", "class_path": None, "params": {}},
     )
     turn_policy = _build_turn_policy(engine_cfg)
+    # Branch routers and participation policies derive replay-stable per-agent
+    # decisions from the run seed.
+    seed = int(OmegaConf.select(cfg, "seed", default=0) or 0)
+    participation = build_participation_policy(
+        _slot_to_mapping(
+            engine_cfg.get("participation"),
+            default={"built_in": "all", "class_path": None, "params": {}},
+        ),
+        sim_roles=sim_roles,
+    )
 
     if class_path:
         cls = _load_class(class_path)
@@ -198,7 +281,7 @@ def build_engine(cfg: DictConfig, flow_chains: Mapping[str, Any] | None = None):
             {
                 "config": cfg,
                 "loop_strategy": _build_loop_strategy(loop_cfg),
-                "step_strategy": _build_step_strategy(step_cfg, flow_chains),
+                "step_strategy": _build_step_strategy(step_cfg, flow_chains, seed),
                 "turn_policy": turn_policy,
                 "gm_turn_policies": build_flow_turn_policies(
                     dict(step_cfg.get("params") or {}).get("gm_turn_policies")
@@ -206,6 +289,8 @@ def build_engine(cfg: DictConfig, flow_chains: Mapping[str, Any] | None = None):
                 "gm_concurrency_caps": build_gm_concurrency_caps(
                     dict(step_cfg.get("params") or {}).get("gm_concurrency_caps")
                 ),
+                "participation": participation,
+                "seed": seed,
             },
         )
 
@@ -225,8 +310,10 @@ def build_engine(cfg: DictConfig, flow_chains: Mapping[str, Any] | None = None):
     return RuntimeEngine(
         config=cfg,
         loop_strategy=_build_loop_strategy(loop_cfg),
-        step_strategy=_build_step_strategy(step_cfg, flow_chains),
+        step_strategy=_build_step_strategy(step_cfg, flow_chains, seed),
         turn_policy=turn_policy,
         gm_turn_policies=build_flow_turn_policies(step_params.get("gm_turn_policies")),
         gm_concurrency_caps=build_gm_concurrency_caps(step_params.get("gm_concurrency_caps")),
+        participation=participation,
+        seed=seed,
     )

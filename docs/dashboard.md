@@ -93,7 +93,7 @@ Runtime environment controls:
 Environment levers in expanders:
 
 - **GM Components**
-- Next-acting choice: `activity_probability`, `activity_markov`, `all_agents`, `fixed_order`
+- Next-acting choice: `all_agents`, `fixed_order` (activity models are sim-level: `sim.engine.participation`)
 - Observe choice: `timeline_every_turn`, `app_observation`, `episode_only`
 - Resolve choice: `parsed_action`, `generic_action`, `tool_calling`
 - Optional custom class path override field for each GM slot

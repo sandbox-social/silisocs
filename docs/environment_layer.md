@@ -52,7 +52,7 @@ env:
   gm:
     components:
       next_acting:
-        built_in: activity_markov
+        built_in: all_agents
         class_path: null
         params: {}
 
@@ -74,10 +74,14 @@ forwarded observation-settings bag.
 
 ### Built-in Next-Acting Components
 
-- `activity_markov`: role-conditioned active/inactive transitions (baseline behavior).
-- `activity_probability`: independent per-step activation using role or global probabilities.
 - `all_agents`: all agents are active each step.
 - `fixed_order`: one active agent in cyclic order.
+
+This slot is the home of environment-derived selection. Config-derived activity
+models (`activity_probability`, `activity_markov`) are sim-level participation
+policies — `sim.engine.participation` — applied to the step roster before every
+GM's next_acting runs (effective acting = participation ∩ next_acting). See
+`docs/configuration.md` ("Social Setup and Participation").
 
 ### Built-in Observe Components
 
@@ -333,6 +337,20 @@ reference known GM names, must contain at least one real (non-null) GM, cannot
 repeat a GM, and must move through strictly increasing GM `sequence` values
 across their real GMs, which fixes each chain's stage ordering regardless of the
 traversal mode.
+
+A chain entry may also be a **branch node** — `{branch: {router, choices}}` — that
+routes each of the flow's agents to one of `choices` (alternative GMs) at that
+stage. The router is a `{built_in | class_path, params}` slot resolved by the engine
+(`build_router`); the one built-in is `random` (weighted, deterministic per
+`(seed, flow, step, agent)`), and a `class_path` router is the "custom function
+chooses" seam. The branch is a single chain stage resolved at materialization (so it
+acts before any turn, including under the staged barrier) and fans the flow's agents
+across its choices while the shared pre/post hops still run once on every agent. v1
+resolves only pure routers; one that declares `reads_live_state`/`drives_agent` is
+rejected (the reserved execution-time path). A branch requires a `multi_gm*` mode,
+may not sit in a `flow_order` flow, and its choices' sequences must lie strictly
+between the branch's chain neighbours. Restore and per-GM owned-flow derivation treat
+a branch as "any of its choices" (`collapse_flow_chains` / `flow_chain_gm_names`).
 
 Final Agent flow tags are materialized during construction and passed to every
 Game Master. The Engine does not re-apply `agent_to_flow` at turn time.

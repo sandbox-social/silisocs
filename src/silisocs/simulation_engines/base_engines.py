@@ -29,6 +29,7 @@ from silisocs.simulation_engines.policies.steps import BaseStepStrategy
 from silisocs.simulation_engines.recorders import DefaultEngineRecorder, probe_empty, retry_empty
 from silisocs.simulation_engines.runtime_base import (
     AgentStepResult,
+    BranchHop,
     EngineRecorder,
     LoopStrategy,
     ProbeRunner,
@@ -37,9 +38,16 @@ from silisocs.simulation_engines.runtime_base import (
     StepResult,
     StepStrategy,
     TurnPolicy,
+    expand_hop,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# One prepped agent batch (a GM and its {task_name: thunk} map) and one chain stage
+# (the groups that drain together — a single group for a normal hop, several for a
+# resolved branch). Used by the multi-GM grouped/staged execution paths.
+_Group = tuple[Any, dict[str, Callable[[], str]]]
+_Stage = list[_Group]
 
 
 def _ensure_gm_method(game_master: Any, method: str) -> Callable[..., Any]:
@@ -91,6 +99,8 @@ class RuntimeEngine(RuntimeEngineBase):
         turn_policy: TurnPolicy | None = None,
         gm_turn_policies: Mapping[str, TurnPolicy] | None = None,
         gm_concurrency_caps: Mapping[str, int] | None = None,
+        participation: Any | None = None,
+        seed: int = 0,
         probe_runner: ProbeRunner | None = None,
         recorder: EngineRecorder | None = None,
     ) -> None:
@@ -106,6 +116,10 @@ class RuntimeEngine(RuntimeEngineBase):
         # Per-GM concurrency caps (keyed by GM name): a per-GM BoundedSemaphore caps
         # how many of that GM's turns run concurrently; empty = global cap only.
         self.gm_concurrency_caps: dict[str, int] = dict(gm_concurrency_caps or {})
+        # Sim-level participation policy: filters each step's agent roster before
+        # any scheduling or GM next_acting runs. None = every agent participates.
+        self.participation = participation
+        self.seed = int(seed)
         self.probe_runner = probe_runner
         output_rootname = ""
         if config is not None:
@@ -500,60 +514,65 @@ class RuntimeEngine(RuntimeEngineBase):
     def _run_chain_pipeline(
         self,
         pool: concurrent.futures.ThreadPoolExecutor,
-        hop_task_groups: list[tuple[Any, dict[str, Callable[[], str]]]],
+        stages: list[_Stage],
         failed_tasks: list[str],
         worker_limit: int,
     ) -> None:
-        """Drive one flow's GM chain: drain each hop in order before the next.
+        """Drive one flow's GM chain: drain each stage in order before the next.
 
-        Runs on a driver thread (not a turn-pool worker), so blocking on a hop's
-        futures keeps that flow's hops serial — preserving per-agent chain order —
-        without consuming a turn-worker slot or stalling sibling chains. A failed
-        turn at one hop is isolated and counted but does not abort later hops (same
-        as the legacy serial path); a downstream hop may then observe a GM the failed
-        hop never resolved into.
+        A normal hop is a one-group stage; a resolved branch is a multi-group stage
+        whose groups (distinct agent subsets on different GMs) drain together as one
+        barrier before the chain advances. Runs on a driver thread (not a turn-pool
+        worker), so blocking on a stage's futures keeps that flow's stages serial —
+        preserving per-agent chain order — without consuming a turn-worker slot or
+        stalling sibling chains. A failed turn at one stage is isolated and counted but
+        does not abort later stages (same as the legacy serial path); a downstream stage
+        may then observe a GM the failed stage never resolved into.
         """
-        for game_master, tasks in hop_task_groups:
-            self._drain_tasks_on_pool(
-                pool, self._wrap_group(game_master, worker_limit, tasks), failed_tasks
-            )
+        for stage in stages:
+            stage_tasks: dict[str, Callable[[], str]] = {}
+            for game_master, tasks in stage:
+                stage_tasks.update(self._wrap_group(game_master, worker_limit, tasks))
+            self._drain_tasks_on_pool(pool, stage_tasks, failed_tasks)
 
     def _run_grouped_action_phase(
         self,
         *,
         ordered_batches: Sequence[StepBatch],
-        rest_chains: Sequence[Sequence[StepBatch | None]],
+        rest_chains: Sequence[Sequence[StepBatch | BranchHop | None]],
         build_runner: Callable[..., Callable[[int, list[str]], None]],
     ) -> StepResult:
         """Shared prep + telemetry envelope for the concurrent and staged multi-GM paths.
 
         ``ordered_batches`` is the flow_order serial prefix; ``rest_chains`` is the
-        remaining flows' hop-batch lists IN FLOW ORDER, with ``None`` marking an idle
-        "empty slot". Batches are prepped in flow order, so ``primary_game_master`` and
-        the rest of the telemetry envelope are identical across both paths regardless of
-        how the caller later schedules the groups. ``build_runner(ordered_groups,
-        rest_groups)`` receives the prepped ``(game_master, tasks)`` ordered groups and
-        per-flow rest groups (``None`` preserved in place) and returns the action-phase
-        runner.
+        remaining flows' hop lists IN FLOW ORDER. A hop is a normal ``StepBatch``,
+        ``None`` (an idle slot), or a ``BranchHop`` (a resolved branch); each hop is
+        prepped into a *stage* — a list of ``(game_master, tasks)`` groups (empty for an
+        idle slot, one group for a normal hop, several for a branch). Stages are prepped
+        in flow order, so ``primary_game_master`` and the rest of the telemetry envelope
+        are identical across both paths regardless of how the caller later schedules
+        them. ``build_runner(ordered_groups, rest_groups)`` receives the flattened prefix
+        groups and the per-flow list of stages, and returns the action-phase runner.
         """
         active_names: set[str] = set()
         model_pool: dict[int, Any] = {}
         primary_gm_name = ""
 
-        def prep(batch: StepBatch | None) -> tuple[Any, dict[str, Callable[[], str]]] | None:
+        def prep_stage(hop: StepBatch | BranchHop | None) -> _Stage:
             nonlocal primary_gm_name
-            if batch is None:
-                return None
-            tasks, names, models = self._batch_tasks(batch)
-            active_names.update(names)
-            for model_obj in models:
-                model_pool[id(model_obj)] = model_obj
-            if not primary_gm_name:
-                primary_gm_name = batch.game_master.name
-            return batch.game_master, tasks
+            stage: _Stage = []
+            for batch in expand_hop(hop):
+                tasks, names, models = self._batch_tasks(batch)
+                active_names.update(names)
+                for model_obj in models:
+                    model_pool[id(model_obj)] = model_obj
+                if not primary_gm_name:
+                    primary_gm_name = batch.game_master.name
+                stage.append((batch.game_master, tasks))
+            return stage
 
-        ordered_groups = [g for g in (prep(batch) for batch in ordered_batches) if g is not None]
-        rest_groups = [[prep(batch) for batch in chain] for chain in rest_chains]
+        ordered_groups = [group for hop in ordered_batches for group in prep_stage(hop)]
+        rest_groups = [[prep_stage(hop) for hop in chain] for chain in rest_chains]
 
         # Short-circuit only when there are genuinely no batches, not merely no selected
         # turns, so an all-inactive step still emits the full telemetry envelope.
@@ -562,14 +581,14 @@ class RuntimeEngine(RuntimeEngineBase):
 
         # Size the pool to PEAK concurrent turns, not the sum across sequential work: the
         # flow_order prefix runs before the rest (they never overlap), and within a flow
-        # chain only one hop runs at a time. The widest single wave is the prefix's widest
-        # group vs. the sum over flows of each flow's widest hop; that sum also upper-bounds
-        # the staged path's widest stage column, so one formula sizes both paths without
-        # ever undersizing (summing every hop would only inflate the pool and skew the
-        # adaptive worker cap).
+        # chain only one stage runs at a time. The widest single wave is the prefix's widest
+        # group vs. the sum over flows of each flow's widest stage (a branch's groups drain
+        # together, so a stage's width is the total turns across its groups); that sum also
+        # upper-bounds the staged path's widest stage column, so one formula sizes both
+        # paths without ever undersizing.
         prefix_peak = max((len(tasks) for _, tasks in ordered_groups), default=0)
         rest_peak = sum(
-            max((len(tasks) for _, tasks in (g for g in chain if g is not None)), default=0)
+            max((sum(len(tasks) for _, tasks in stage) for stage in chain), default=0)
             for chain in rest_groups
         )
 
@@ -600,7 +619,7 @@ class RuntimeEngine(RuntimeEngineBase):
         self,
         *,
         ordered_batches: Sequence[StepBatch],
-        rest_chains: Sequence[Sequence[StepBatch | None]],
+        rest_chains: Sequence[Sequence[StepBatch | BranchHop | None]],
     ) -> StepResult:
         """Concurrent multi-GM execution.
 
@@ -616,10 +635,10 @@ class RuntimeEngine(RuntimeEngineBase):
         """
 
         def build_runner(
-            ordered_groups: list[tuple[Any, dict[str, Callable[[], str]]]],
-            rest_groups: list[list[tuple[Any, dict[str, Callable[[], str]]] | None]],
+            ordered_groups: list[_Group],
+            rest_groups: list[list[_Stage]],
         ) -> Callable[[int, list[str]], None]:
-            active_chains = [[g for g in chain if g is not None] for chain in rest_groups]
+            active_chains = [[stage for stage in chain if stage] for chain in rest_groups]
             active_chains = [chain for chain in active_chains if chain]
 
             def runner(worker_limit: int, failed_tasks: list[str]) -> None:
@@ -661,7 +680,7 @@ class RuntimeEngine(RuntimeEngineBase):
         self,
         *,
         ordered_batches: Sequence[StepBatch],
-        rest_chains: Sequence[Sequence[StepBatch | None]],
+        rest_chains: Sequence[Sequence[StepBatch | BranchHop | None]],
     ) -> StepResult:
         """Staged multi-GM execution with a global per-stage barrier.
 
@@ -678,20 +697,22 @@ class RuntimeEngine(RuntimeEngineBase):
         """
 
         def build_runner(
-            ordered_groups: list[tuple[Any, dict[str, Callable[[], str]]]],
-            rest_groups: list[list[tuple[Any, dict[str, Callable[[], str]]] | None]],
+            ordered_groups: list[_Group],
+            rest_groups: list[list[_Stage]],
         ) -> Callable[[int, list[str]], None]:
-            # Transpose per-flow rest groups into stage columns; idle slots drop out.
+            # Transpose per-flow stages into stage columns; idle slots (empty stages)
+            # contribute nothing, and a branch stage flattens its groups into the column.
             depth = max((len(chain) for chain in rest_groups), default=0)
-            stages: list[list[tuple[Any, dict[str, Callable[[], str]]]]] = []
+            stages: list[_Stage] = []
             for stage_index in range(depth):
-                column = [
-                    chain[stage_index]
+                column: _Stage = [
+                    group
                     for chain in rest_groups
-                    if stage_index < len(chain) and chain[stage_index] is not None
+                    if stage_index < len(chain)
+                    for group in chain[stage_index]
                 ]
                 if column:
-                    stages.append(cast(list[tuple[Any, dict[str, Callable[[], str]]]], column))
+                    stages.append(column)
 
             def runner(worker_limit: int, failed_tasks: list[str]) -> None:
                 with concurrent.futures.ThreadPoolExecutor(
@@ -715,6 +736,24 @@ class RuntimeEngine(RuntimeEngineBase):
             ordered_batches=ordered_batches, rest_chains=rest_chains, build_runner=build_runner
         )
 
+    def _participating_agents(self, agents: list[Any], step_index: int) -> list[Any]:
+        """Apply the sim-level participation filter to this step's roster.
+
+        The policy can only remove agents: its returned names are intersected with
+        the live roster (order preserved), so it never adds or reorders. GM updates
+        and probes still see the full roster — participation gates only who is
+        scheduled to act.
+        """
+        if self.participation is None:
+            return agents
+        names = self.participation.participating_agents(
+            agent_names=[agent.name for agent in agents],
+            step_index=step_index,
+            seed=self.seed,
+        )
+        allowed = {str(name).strip() for name in names}
+        return [agent for agent in agents if agent.name in allowed]
+
     def run_step(
         self,
         *,
@@ -733,7 +772,7 @@ class RuntimeEngine(RuntimeEngineBase):
             engine=self,
             step_index=step_index,
             game_masters=game_masters,
-            agents=agents,
+            agents=self._participating_agents(agents, step_index),
             verbose=verbose,
         )
 

@@ -135,15 +135,7 @@ def _write_scenario(conf_dir: Path, scenario_name: str) -> None:
                                     base_followership_probability: 1.0
                                     network_type: random
                         next_acting:
-                            built_in: activity_probability
-                            params:
-                                activity_transition_rates:
-                                    fixed_seed:
-                                        inactive_to_active: 1.0
-                                        active_to_inactive: 0.0
-                                    llm_user:
-                                        inactive_to_active: 1.0
-                                        active_to_inactive: 0.0
+                            built_in: all_agents
                         observe:
                             built_in: timeline_every_turn
                             params: {}
@@ -205,6 +197,7 @@ def _run_simulation(
         f"sim.engine.step.built_in={engine_preset}",
         "sim.engine.turn_policy.built_in=single_action",
         "env.gm.components.next_acting.built_in=all_agents",
+        "sim.engine.participation.built_in=all",
         f"env.gm.components.resolve.built_in={resolve_built_in}",
         f"sim.tool_calling.mode={resolved_tool_mode}",
         f"env.gm.components.observe.params.timeline_mode={timeline_mode}",

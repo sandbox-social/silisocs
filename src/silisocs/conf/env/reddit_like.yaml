@@ -30,15 +30,11 @@ gm:
             roles: all
           default_subreddit: general
     next_acting:
-      built_in: activity_probability
+      # Environment-derived selection only; config-derived activity models live
+      # at sim.engine.participation (applied before this component runs).
+      built_in: all_agents
       class_path: null
-      params:
-        active_probability: null
-        min_active_agents: 1
-        activity_transition_rates:
-          user:
-            inactive_to_active: 0.3
-            active_to_inactive: 0.3
+      params: {}
     update:
       built_in: social_recommendation
       class_path: null

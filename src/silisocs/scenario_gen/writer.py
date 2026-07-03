@@ -64,7 +64,7 @@ def write_scenario(spec: ScenarioSpec, root: Path | str) -> None:
     _write_agents_yaml(spec, conf)
     _write_env_yaml(spec, conf)
     _write_eval_yaml(conf)
-    _write_sim_yaml(conf)
+    _write_sim_yaml(spec, conf)
 
 
 def _write_scenario_yaml(spec: ScenarioSpec, conf: Path) -> None:
@@ -148,14 +148,6 @@ def _write_agents_yaml(spec: ScenarioSpec, conf: Path) -> None:
 
 def _write_env_yaml(spec: ScenarioSpec, conf: Path) -> None:
     """Write the env.yaml backend and game-master component configuration."""
-    activity_rates = {
-        ac.sim_role_name: {
-            "inactive_to_active": ac.activity.inactive_to_active,
-            "active_to_inactive": ac.activity.active_to_inactive,
-        }
-        for ac in spec.agent_classes
-    }
-
     data = {
         "gm": {
             "backend": {
@@ -180,9 +172,9 @@ def _write_env_yaml(spec: ScenarioSpec, conf: Path) -> None:
                     },
                 },
                 "next_acting": {
-                    "built_in": "activity_probability",
+                    "built_in": "all_agents",
                     "class_path": None,
-                    "params": {"activity_transition_rates": activity_rates},
+                    "params": {},
                 },
                 "observe": {
                     "built_in": "timeline_every_turn",
@@ -230,8 +222,15 @@ def _write_eval_yaml(conf: Path) -> None:
     _write(conf / "eval.yaml", _dump(data))
 
 
-def _write_sim_yaml(conf: Path) -> None:
+def _write_sim_yaml(spec: ScenarioSpec, conf: Path) -> None:
     """Write the sim.yaml action mode, initialization, and engine settings."""
+    activity_rates = {
+        ac.sim_role_name: {
+            "inactive_to_active": ac.activity.inactive_to_active,
+            "active_to_inactive": ac.activity.active_to_inactive,
+        }
+        for ac in spec.agent_classes
+    }
     data = {
         "action_mode": "generic",
         "tool_calling": {"mode": "multi"},
@@ -257,6 +256,15 @@ def _write_sim_yaml(conf: Path) -> None:
                 "params": {
                     "max_actions": 10,
                     "finished_action_signal": "FINISHED",
+                },
+            },
+            "participation": {
+                "built_in": "activity_probability",
+                "class_path": None,
+                "params": {
+                    "active_probability": None,
+                    "min_active_agents": 0,
+                    "activity_transition_rates": activity_rates,
                 },
             },
         },
