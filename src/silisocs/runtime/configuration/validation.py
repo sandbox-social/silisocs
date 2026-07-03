@@ -16,9 +16,32 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from silisocs.runtime.model_fields import MODEL_FIELDS
+
+# Shared config-key vocabularies (single source of truth for both the config
+# validator here and the GM-spec builder in construction/game_masters.py).
+COMPONENT_SLOT_NAMES: tuple[str, ...] = (
+    "initialize",
+    "next_acting",
+    "action_prompt",
+    "observe",
+    "resolve",
+    "update",
+)
+BACKEND_ALLOWED_KEYS: frozenset[str] = frozenset(
+    {"type", "class_path", "params", "enabled_actions", "excluded_actions", "action_aliases"}
+)
+# Framework-defined keys under sim.engine.step.params (apply across built-in step
+# modes; a custom class_path step strategy may use its own params, so this set is
+# only enforced for built-in step strategies).
+ENGINE_STEP_PARAM_KEYS: frozenset[str] = frozenset(
+    {"flow_order", "agent_to_flow", "gm_turn_policies", "gm_concurrency_caps", "flow_turn_policies"}
+)
+# The uniform policy-slot shape ({built_in|class_path, params}) used by every
+# sim.engine sub-slot.
+_POLICY_SLOT_KEYS: frozenset[str] = frozenset({"built_in", "class_path", "params"})
 
 
 @dataclass
@@ -350,19 +373,11 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
             "tool_calling",
         },
     )
-    _assert_allowed_keys(
-        cfg,
-        "env.gm.backend",
-        {"type", "class_path", "params", "enabled_actions", "excluded_actions"},
-    )
+    _assert_allowed_keys(cfg, "env.gm.backend", set(BACKEND_ALLOWED_KEYS))
     _assert_allowed_keys(cfg, "env.gm_orchestration", {"gms", "flow_bindings"})
     _assert_allowed_keys(cfg, "env.gm_orchestration.flow_bindings", {"flow_to_gms"})
-    _assert_allowed_keys(
-        cfg,
-        "env.gm.components",
-        {"initialize", "next_acting", "action_prompt", "observe", "resolve", "update"},
-    )
-    for slot in ("initialize", "next_acting", "action_prompt", "observe", "resolve", "update"):
+    _assert_allowed_keys(cfg, "env.gm.components", set(COMPONENT_SLOT_NAMES))
+    for slot in COMPONENT_SLOT_NAMES:
         _assert_component_slot(cfg, f"env.gm.components.{slot}")
 
     _assert_allowed_keys(
@@ -400,8 +415,74 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
         "sim.engine",
         {"class_path", "params", "loop", "step", "turn_policy", "participation"},
     )
+    _validate_engine_slots(cfg)
     _assert_allowed_keys(cfg, "eval", {"probes"})
     print("✓ Runtime section validation passed")
+
+
+def _validate_engine_slots(cfg: DictConfig) -> None:
+    """Validate the shape of each ``sim.engine`` sub-slot and its GM-scoped maps.
+
+    Without this, a typo in the newest, most actively-configured knobs (e.g.
+    ``sim.engine.step.buit_in`` or a bogus ``step.params`` key) would silently fall
+    back to defaults instead of failing loudly.
+    """
+    for slot in ("step", "loop", "turn_policy", "participation"):
+        _assert_allowed_keys(cfg, f"sim.engine.{slot}", set(_POLICY_SLOT_KEYS))
+
+    # step.params keys are framework-defined for built-in step strategies; a custom
+    # class_path step strategy may carry its own params, so only enforce for built-ins.
+    step_class_path = OmegaConf.select(cfg, "sim.engine.step.class_path")
+    if not step_class_path:
+        step_params = OmegaConf.select(cfg, "sim.engine.step.params")
+        if isinstance(step_params, (Mapping, DictConfig)) and "chain_execution" in step_params:
+            # Preserve the dedicated migration hint (also raised at engine-build time)
+            # instead of a generic "unsupported key" error.
+            raise ValueError(
+                "sim.engine.step.params.chain_execution has been removed. Select the "
+                "traversal via sim.engine.step.built_in instead: 'multi_gm' (concurrent, "
+                "the default), 'multi_gm_serial' (legacy flow-by-flow), or 'multi_gm_staged' "
+                "(global per-stage barrier)."
+            )
+        _assert_allowed_keys(cfg, "sim.engine.step.params", set(ENGINE_STEP_PARAM_KEYS))
+
+    _validate_gm_scoped_maps(cfg)
+
+
+def _declared_gm_names(cfg: DictConfig) -> set[str]:
+    """Collect GM names declared in config (single ``env.gm`` and/or orchestration)."""
+    names: set[str] = set()
+    single = OmegaConf.select(cfg, "env.gm.name")
+    if single:
+        names.add(str(single))
+    gms = OmegaConf.select(cfg, "env.gm_orchestration.gms")
+    if isinstance(gms, (list, ListConfig)):
+        for gm in gms:
+            name = gm.get("name") if isinstance(gm, (Mapping, DictConfig)) else None
+            if name:
+                names.add(str(name))
+    return names
+
+
+def _validate_gm_scoped_maps(cfg: DictConfig) -> None:
+    """Reject unknown GM names in the per-GM maps under ``sim.engine.step.params``.
+
+    Mirrors the loud-failure standard set by the retired ``chain_execution`` knob:
+    a typo'd GM key would otherwise silently no-op.
+    """
+    declared = _declared_gm_names(cfg)
+    if not declared:
+        return
+    for key in ("gm_turn_policies", "gm_concurrency_caps"):
+        mapping = OmegaConf.select(cfg, f"sim.engine.step.params.{key}")
+        if not isinstance(mapping, (Mapping, DictConfig)):
+            continue
+        unknown = sorted(str(name) for name in mapping if str(name) not in declared)
+        if unknown:
+            raise ValueError(
+                f"sim.engine.step.params.{key} references unknown game master(s) "
+                f"{unknown}; declared GMs are {sorted(declared)}. Check the GM name(s)."
+            )
 
 
 def _assert_allowed_keys(cfg: DictConfig, path: str, allowed: set[str]) -> None:

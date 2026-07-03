@@ -16,6 +16,8 @@ from silisocs.runtime.configuration.projection import (
     validate_resolve_tool_calling,
 )
 from silisocs.runtime.configuration.validation import (
+    BACKEND_ALLOWED_KEYS,
+    COMPONENT_SLOT_NAMES,
     validate_component_slot_shape,
     validate_runtime_structure,
 )
@@ -108,8 +110,7 @@ def _plain_mapping(value: Any) -> dict[str, Any]:
 
 
 def _validate_components_cfg(components: Mapping[str, Any], *, path: str) -> None:
-    allowed_slots = {"initialize", "next_acting", "action_prompt", "observe", "resolve", "update"}
-    extras = sorted(str(key) for key in components if str(key) not in allowed_slots)
+    extras = sorted(str(key) for key in components if str(key) not in COMPONENT_SLOT_NAMES)
     if extras:
         raise ValueError(f"Unsupported config key(s) under {path}: {extras}")
     for slot, slot_cfg in components.items():
@@ -128,17 +129,7 @@ def _backend_config(
     *,
     path: str,
 ) -> dict[str, Any]:
-    unsupported = sorted(
-        set(raw_backend)
-        - {
-            "type",
-            "class_path",
-            "params",
-            "enabled_actions",
-            "excluded_actions",
-            "action_aliases",
-        }
-    )
+    unsupported = sorted(set(raw_backend) - BACKEND_ALLOWED_KEYS)
     if unsupported:
         raise ValueError(f"Unsupported config key(s) under {path}: {unsupported}")
     backend_type = str(raw_backend.get("type", "") or "").strip()
