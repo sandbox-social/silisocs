@@ -153,32 +153,43 @@ def build_participation_policy(
     )
 
 
-def build_flow_turn_policies(raw: Any) -> dict[str, Any]:
-    """Resolve a ``{flow_tag: turn_policy_slot}`` mapping into per-flow policies.
+def build_named_turn_policies(raw: Any, *, config_key: str, key_noun: str) -> dict[str, Any]:
+    """Resolve a ``{name: turn_policy_slot}`` mapping into per-name turn policies.
 
-    Each value mirrors the ``sim.engine.turn_policy`` slot shape
-    (``{built_in|class_path, params}``). Flows absent from the returned map fall
-    back to the engine's single global turn policy at execution time, so an empty
-    or omitted config is a pure no-op.
+    Shared by the per-flow (``flow_turn_policies``) and per-GM (``gm_turn_policies``)
+    maps: each value mirrors the ``sim.engine.turn_policy`` slot shape
+    (``{built_in|class_path, params}``). ``config_key``/``key_noun`` only shape the
+    error text so it names the map and key kind actually being parsed. Names absent
+    from the returned map fall back to the global turn policy, so an empty or
+    omitted config is a pure no-op.
     """
     if raw is None:
         return {}
     if isinstance(raw, DictConfig):
         raw = OmegaConf.to_container(raw, resolve=True)
     if not isinstance(raw, Mapping):
-        raise ValueError("sim.engine.step.params.flow_turn_policies must be a mapping.")
+        raise ValueError(f"sim.engine.step.params.{config_key} must be a mapping.")
     resolved: dict[str, Any] = {}
-    for flow, slot in raw.items():
-        flow_name = str(flow).strip()
-        if not flow_name:
-            raise ValueError("flow_turn_policies contains an empty flow name.")
+    for name, slot in raw.items():
+        key = str(name).strip()
+        if not key:
+            raise ValueError(f"{config_key} contains an empty {key_noun} name.")
         if slot is not None and not isinstance(slot, Mapping):
             raise ValueError(
-                f"flow_turn_policies['{flow_name}'] must be a mapping of "
-                "{built_in|class_path, params}."
+                f"{config_key}['{key}'] must be a mapping of {{built_in|class_path, params}}."
             )
-        resolved[flow_name] = build_turn_policy(dict(slot or {}))
+        resolved[key] = build_turn_policy(dict(slot or {}))
     return resolved
+
+
+def build_flow_turn_policies(raw: Any) -> dict[str, Any]:
+    """Per-flow turn policies (``{flow_tag: slot}``); see :func:`build_named_turn_policies`."""
+    return build_named_turn_policies(raw, config_key="flow_turn_policies", key_noun="flow")
+
+
+def build_gm_turn_policies(raw: Any) -> dict[str, Any]:
+    """Per-GM turn policies (``{gm_name: slot}``); see :func:`build_named_turn_policies`."""
+    return build_named_turn_policies(raw, config_key="gm_turn_policies", key_noun="GM")
 
 
 def build_gm_concurrency_caps(raw: Any) -> dict[str, int]:
@@ -201,9 +212,9 @@ def build_gm_concurrency_caps(raw: Any) -> dict[str, int]:
         try:
             value = int(cap)
         except (TypeError, ValueError):
-            raise ValueError(f"gm_concurrency_caps[{gm_name}] must be an integer >= 1") from None
+            raise ValueError(f"gm_concurrency_caps['{gm_name}'] must be an integer >= 1") from None
         if value < 1:
-            raise ValueError(f"gm_concurrency_caps[{gm_name}] must be an integer >= 1")
+            raise ValueError(f"gm_concurrency_caps['{gm_name}'] must be an integer >= 1")
         resolved[gm_name] = value
     return resolved
 
