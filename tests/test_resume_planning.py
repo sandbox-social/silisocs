@@ -19,7 +19,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _context() -> InitializationContext:
-    return InitializationContext(shared_memories=["seed"])
+    return InitializationContext(shared_memories=("seed",))
 
 
 def test_fresh_start_returns_defaults_and_passes_context_through(tmp_path):
