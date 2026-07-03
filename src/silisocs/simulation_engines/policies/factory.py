@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import inspect
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from omegaconf import DictConfig, OmegaConf
 
@@ -53,7 +53,10 @@ def _load_class(class_path: str) -> type[Any]:
     """Load and return a class from its fully-qualified path."""
     module_path, class_name = class_path.rsplit(".", 1)
     module = importlib.import_module(module_path)
-    return getattr(module, class_name)
+    loaded = getattr(module, class_name)
+    if not inspect.isclass(loaded):
+        raise TypeError(f"{class_path} is not a class.")
+    return cast(type[Any], loaded)
 
 
 def _instantiate_with_supported_kwargs(cls: type[Any], kwargs: Mapping[str, Any]) -> Any:
