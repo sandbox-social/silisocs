@@ -300,6 +300,9 @@ def _split_loaded_config(
             "event": loaded_sim.get("event", {}),
             "data": loaded_sim.get("data", {}),
             "graph": graph_cfg or {},
+            "activity_transition_rates": (
+                ((loaded_sim.get("engine") or {}).get("participation") or {}).get("params") or {}
+            ).get("activity_transition_rates", {}),
             "persona_pipeline": loaded_agent.get("persona_pipeline", {}),
             "shared_memories": loaded_agent.get("shared_memories", []),
             "initial_observations": loaded_agent.get("initial_observations", []),
@@ -391,6 +394,37 @@ def _get_config_path_for_scenario(scenarios_root: Path, scenario_key: str) -> st
     return None
 
 
+def _collect_activity_rates() -> dict[str, dict[str, float]]:
+    """Per-role activity transition rates from the activity sliders."""
+    rates: dict[str, dict[str, float]] = {}
+    for cls in st.session_state.get("_agent_classes", []):
+        role = cls.get("sim_role_name") or cls.get("name", "")
+        if role:
+            rates[role] = {
+                "inactive_to_active": st.session_state.get(f"act_{role}_i2a", 0.3),
+                "active_to_inactive": st.session_state.get(f"act_{role}_a2i", 0.3),
+            }
+    return rates
+
+
+def _participation_sim_data(backend_type: str) -> dict[str, object]:
+    """Dotted-key ``sim.engine.participation`` config for save/launch.
+
+    Emits the built-in plus the per-role ``activity_transition_rates`` collected
+    from the sliders; ``min_active_agents`` / ``active_probability`` are inherited
+    from ``sim/base.yaml`` via merge (no dashboard control yet).
+    """
+    built_in = st.session_state.get(
+        "engine_participation_built_in",
+        "activity_probability" if backend_type in _SOCIAL_BACKENDS else "all",
+    )
+    data: dict[str, object] = {"engine.participation.built_in": built_in}
+    rates = _collect_activity_rates()
+    if rates:
+        data["engine.participation.params.activity_transition_rates"] = rates
+    return data
+
+
 def _build_world_config() -> dict:
     """Build a complete world config dict from session state."""
     scenario_name = st.session_state.get(
@@ -443,18 +477,6 @@ def _build_world_config() -> dict:
     # Assemble world data.
     bg_text = st.session_state.get("setting_background", "")
     bg_list = [line.strip() for line in bg_text.splitlines() if line.strip()]
-
-    # Collect activity rates from session state.
-    activity_rates = {}
-    for cls in st.session_state.get("_agent_classes", []):
-        role = cls.get("sim_role_name") or cls.get("name", "")
-        if role:
-            i2a = st.session_state.get(f"act_{role}_i2a", 0.3)
-            a2i = st.session_state.get(f"act_{role}_a2i", 0.3)
-            activity_rates[role] = {
-                "inactive_to_active": i2a,
-                "active_to_inactive": a2i,
-            }
 
     config = {
         "scenario_name": scenario_name,
@@ -1871,7 +1893,7 @@ with tab_env:
     with nc2:
         st.markdown("**Activity transition rates**")
         st.caption("Two-state Markov process: P(inactive->active) and P(active->inactive).")
-        activity = net_cfg.get("activity_transition_rates", {})
+        activity = _world_cfg.get("activity_transition_rates", {})
         # Show rates for known classes, plus allow editing.
         all_roles = set(activity.keys())
         for cls in st.session_state.get("_agent_classes", []):
@@ -2403,6 +2425,7 @@ with tab_launch:
                 )
 
             selected_backend = st.session_state.get("backend_type", "twitter_like")
+            sim_data_to_save.update(_participation_sim_data(selected_backend))
             save_path = _save_scenario(
                 name,
                 scenario_data,
@@ -2537,6 +2560,7 @@ with tab_launch:
             )
 
         selected_backend = st.session_state.get("backend_type", "twitter_like")
+        sim_data_to_save.update(_participation_sim_data(selected_backend))
         _save_scenario(
             name,
             scenario_data,
