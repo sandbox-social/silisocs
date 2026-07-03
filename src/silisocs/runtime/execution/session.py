@@ -10,8 +10,6 @@ override package defaults. Use repeated ``--overlay-config-path`` flags to
 layer additional override trees.
 """
 
-import hashlib
-import json
 import logging
 import os
 import random
@@ -70,53 +68,14 @@ from silisocs.runtime.construction.initialization_context import (
     build_initializer_context,
     populate_agent_data,
 )
+from silisocs.runtime.construction.models import build_deduped_models
 from silisocs.runtime.io import configure_logging
-from silisocs.runtime.language_models import LanguageModel, select_large_language_model
-from silisocs.runtime.model_fields import MODEL_FIELDS
 from silisocs.runtime.telemetry import SimMetricsCollector
 
 # Package root (src/silisocs)
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 CONF_DIR = PACKAGE_ROOT / "conf"
 RUNTIME_LAYER_NAME = "silisocs-native"
-
-# MODEL_FIELDS are the fields that make up a fully-resolved (effective) per-instance
-# LLM config: two instances share a built model iff these fields are byte-identical.
-# Used directly below so the resolver, dedup signature, and validators stay in lockstep.
-
-
-def _effective_model_config(
-    global_llm: Mapping[str, Any], override: Mapping[str, Any] | None
-) -> dict[str, Any]:
-    """Resolve a per-instance LLM config by layering ``override`` over the global.
-
-    Each field falls back to the global ``sim.llm`` value when the override omits
-    it (or leaves it empty for ``name``). Scalar per-agent model names already
-    arrive as ``{'name': ...}`` so only the seven known fields are consulted.
-    """
-    override = override or {}
-    eff: dict[str, Any] = {field: global_llm.get(field) for field in MODEL_FIELDS}
-    for field in MODEL_FIELDS:
-        if field in override and override[field] is not None:
-            eff[field] = override[field]
-    if not eff.get("name"):
-        eff["name"] = global_llm.get("name")
-    temp_val = eff.get("temperature")
-    eff["temperature"] = 0.5 if temp_val is None else float(temp_val)
-    eff["disabled"] = bool(eff.get("disabled", False))
-    eff["api_base"] = eff.get("api_base") or None
-    eff["api_key"] = eff.get("api_key") or None
-    eff["extra_kwargs"] = dict(eff.get("extra_kwargs") or {})
-    return eff
-
-
-def _effective_model_key(eff: Mapping[str, Any]) -> str:
-    """Stable signature for an effective LLM config; api_key is hashed, never embedded raw."""
-    normalized = {field: eff.get(field) for field in MODEL_FIELDS}
-    api_key = normalized.get("api_key")
-    if api_key:
-        normalized["api_key"] = "sha256:" + hashlib.sha256(str(api_key).encode()).hexdigest()[:16]
-    return f"{eff.get('name')}::{json.dumps(normalized, sort_keys=True, default=str)}"
 
 
 def _initialize_runtime_environment() -> Path:
@@ -367,40 +326,11 @@ def main(cfg: DictConfig):
         "extra_kwargs": llm_extra_kwargs,
     }
 
-    # Build models map and agent->model mapping for all instances. Each instance's
-    # effective config is deduped by an opaque signature key; one model is built
-    # per distinct effective config (so a no-override run yields exactly one).
+    # One model per distinct effective config (global sim.llm layered with each
+    # instance's per-class `model` override); deduped in construction/models.py.
     t0 = time.time()
     with metrics.phase("model_creation"):
-        models: dict[str, LanguageModel] = {}
-        object_to_model: dict[str, str] = {}
-
-        def _build_for_effective(eff: Mapping[str, Any]) -> str:
-            key = _effective_model_key(eff)
-            if key not in models:
-                models[key] = select_large_language_model(
-                    eff["name"],
-                    prompts_file,
-                    True,
-                    disable_language_model=eff["disabled"],
-                    api_base=eff["api_base"],
-                    api_key=eff["api_key"],
-                    temperature=float(eff["temperature"]),
-                    provider=eff["provider"],
-                    extra_kwargs=eff["extra_kwargs"],
-                )
-            return key
-
-        for instance in instances:
-            override = instance.params.get("model")
-            if not isinstance(override, Mapping):
-                override = None
-            eff = _effective_model_config(global_llm, override)
-            object_to_model[instance.params["name"]] = _build_for_effective(eff)
-
-        # Default runtime-init model is the global (no-override) effective config;
-        # reuse the already-built object when an instance shares that config.
-        model = models.get(_build_for_effective(_effective_model_config(global_llm, None)))
+        models, object_to_model, model = build_deduped_models(instances, global_llm, prompts_file)
     _log_startup_phase("model_creation", time.time() - t0, f"unique_models={len(models)}")
 
     # The flow -> GM-sequence routing topology is engine/scheduling config (not GM
