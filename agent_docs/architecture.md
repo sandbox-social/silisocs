@@ -189,6 +189,97 @@ replay router receives the resolved `flow_chains` routing topology from config
 Agent's flow chain must expose the replayed action; otherwise restore fails
 instead of falling back to another GM.
 
+### Branch Routing (dynamic GM selection)
+
+A `flow_to_gms` chain entry may be a **branch node** —
+`{branch: {router, choices}}` — that routes each of the flow's agents to one of
+`choices` (alternative GM names) at that one stage (the GMs before and after the
+branch still run once on every agent). The `router` is a
+`{built_in|class_path, params}` slot built by `build_router`
+(`simulation_engines/policies/routers.py`, `policies/factory.py`) into a **plain
+callable** — there is no base class:
+
+```python
+def route(agents, gms, ctx):
+    # agents: the flow's agents (call agent.act(...) freely)
+    # gms:    {gm name: game master} (one per choice; read gm.backend freely)
+    # ctx:    RouteInfo(flow, step, seed)
+    return {agent.name: <chosen gm name> for agent in agents}
+```
+
+The engine resolves the branch when the flow's chain reaches the branch stage —
+after the flow's earlier hops drain, so the router sees their backend effects and
+may call the agents — in all three traversals: on the flow's driver thread under
+`multi_gm`, at the stage column (after the barrier) under `multi_gm_staged`, and
+when the row-major traversal reaches it under `multi_gm_serial`. In flight the
+unresolved branch is a `BranchHop` (`simulation_engines/runtime_base.py`), resolved
+in `scheduling.py::_resolve_branch`. The engine owns only *when* the router runs,
+*locking* (the router call runs unlocked; only the follow-up per-chosen-GM
+`selected_turns` is locked per-GM via `_gm_lock`), and *validation* of the returned
+assignment (every agent covered, every GM a real choice). Everything else — reading
+`gms[...].backend`, asking an agent via a self-built `ActionSpec` — the router does
+itself; there are no capability flags or context facades. A `class_path` may be a
+function (config `params` bound as kwargs) or a class (built with `params`).
+Built-ins: `random` (weighted, deterministic per `(seed, flow, step, agent)`) and
+`agent_choice` (asks each agent via a CHOICE probe; `prompt` / `on_invalid` params;
+uses the shared, importable `match_choice` helper). The full config schema and
+rules (≤1 branch per chain, ≥2 choices, `multi_gm*` only) live in
+[configuration.md](../docs/configuration.md); the custom-router authoring recipe
+is in [simulation_extensibility_api.md](../docs/simulation_extensibility_api.md).
+
+### Sim-Level Participation
+
+Participation is the Engine-layer half of agent selection. It filters the step's
+agent roster **before** any scheduling (flow grouping, chain hops) and before
+every Game Master's `next_acting` component runs. The GM slot stays the home of
+environment-derived selection (turn order, backend state); participation is the
+home of config-derived simulation logic (activity models). Effective acting per
+hop is `participation ∩ next_acting`.
+
+```yaml
+sim:
+  engine:
+    participation:
+      built_in: activity_probability   # all | activity_probability | activity_markov
+      params:
+        activity_transition_rates:
+          voter: {inactive_to_active: 0.1, active_to_inactive: 0.2}
+          candidate: {inactive_to_active: 0.8, active_to_inactive: 0.1}
+```
+
+- `all` — pass-through; every agent participates every step (use for
+  deterministic / turn-based runs).
+- `activity_probability` — independent per-step activation draw per agent, keyed
+  by agent name or sim role.
+- `activity_markov` — a role-conditioned active/inactive Markov chain per agent.
+- Or a `class_path` to a custom `ParticipationPolicy`.
+
+Participation policies are **pure functions of `(agent_names, step_index, seed)`**
+— they hold no evolving runtime state, so there is nothing to checkpoint and a
+resumed run reproduces the exact same participation draws as an uninterrupted
+one (the Markov policy achieves this by re-deriving its chain from step 0 rather
+than persisting per-agent state).
+
+### Per-GM Cadence and Concurrency
+
+Two per-GM knobs tune each Game Master's turn behavior. Both are resolved per
+batch by GM name, so they apply under **any** step mode (not just multi-GM), and
+both default to empty (global behavior everywhere).
+
+- `sim.engine.step.params.gm_turn_policies` — a `gm_name -> {built_in|class_path,
+  params}` map setting how MANY actions each turn takes for that GM. Precedence is
+  per-flow (`flow_turn_policies`) > per-GM > global `sim.engine.turn_policy`. Lets
+  a "world" GM run `single_action` while a social GM runs `open_ended`, and
+  disambiguates multi-GM-chain hops that share one flow (which flow-keyed policies
+  cannot).
+- `sim.engine.step.params.gm_concurrency_caps` — a `gm_name -> int` map capping how
+  many of that GM's agent turns run AT ONCE, via a per-GM semaphore. Effective
+  per-GM concurrency is `min(cap, sim.max_concurrent_actions)`; the global stays
+  the overall ceiling and per-GM default. Orthogonal to `gm_turn_policies`: turn
+  policy is how many actions a turn takes, this is how many turns run at once. Use
+  it to throttle a rate-limited backend below the global limit while other GMs keep
+  running concurrently.
+
 ---
 
 ## Part 2: Game Master Component Routing

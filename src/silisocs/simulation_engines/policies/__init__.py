@@ -19,10 +19,12 @@ from silisocs.simulation_engines.policies.probe_schedule import (
     StepProbeSchedulePolicy,
 )
 from silisocs.simulation_engines.policies.routers import (
+    AgentChoiceRouter,
     BranchSpec,
     RandomChoiceRouter,
-    RouteContext,
+    RouteInfo,
     Router,
+    match_choice,
 )
 from silisocs.simulation_engines.policies.steps import (
     BaseStepStrategy,
@@ -41,6 +43,7 @@ from silisocs.simulation_engines.policies.turns import (
 __all__ = [
     "ActivityMarkovParticipation",
     "ActivityProbabilityParticipation",
+    "AgentChoiceRouter",
     "AllParticipation",
     "BaseStepStrategy",
     "BranchSpec",
@@ -55,7 +58,7 @@ __all__ = [
     "OpenEndedTurnPolicy",
     "ParticipationPolicy",
     "RandomChoiceRouter",
-    "RouteContext",
+    "RouteInfo",
     "Router",
     "SequentialStepStrategy",
     "SingleActionTurnPolicy",
@@ -64,4 +67,5 @@ __all__ = [
     "build_probe_schedule_policy",
     "build_router",
     "build_turn_policy",
+    "match_choice",
 ]

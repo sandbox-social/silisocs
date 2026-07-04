@@ -3,10 +3,11 @@
 Seam-style convention: policy interfaces that are pure structural seams
 (``TurnPolicy``, ``StepStrategy``, ``LoopStrategy``, ``ProbeRunner``,
 ``EngineRecorder``, ``ProbeSchedulePolicy``) are :class:`typing.Protocol`s here, so
-any conforming object plugs in without nominal inheritance. Policies whose base
-enforces overrides or carries shared behavior (``ParticipationPolicy`` in
-``policies/participation.py`` and ``Router`` in ``policies/routers.py``, both with
-``@abstractmethod``) are nominal ``ABC``s instead.
+any conforming object plugs in without nominal inheritance. A branch router follows
+the same convention (``policies/routers.py`` defines the ``Router`` Protocol — any
+conforming callable, positional-only parameters); only ``ParticipationPolicy``
+(``policies/participation.py``), whose base carries shared behavior, is a nominal
+``ABC``.
 """
 
 from __future__ import annotations
@@ -45,24 +46,48 @@ class StepBatch:
 
 @dataclass(frozen=True)
 class BranchHop:
-    """One chain stage that fans a flow's agents across several GMs — a resolved branch.
+    """One chain stage that fans a flow's agents across alternative GMs (a branch node).
 
-    Holds one ``StepBatch`` per chosen GM and occupies a single chain position, so the
-    staged traversal's stage-column alignment is preserved (a branch is one stage, not
-    several). The serial and concurrent traversals flatten it via ``expand_hop``.
+    Carried UNRESOLVED through materialization: the branch's router runs only when the
+    flow's chain reaches this stage — after its earlier hops have drained — so it can
+    read live backend state or involve the agents in the choice. The fields are exactly
+    the inputs late resolution needs: the router and its candidate GMs (``gms``, one
+    entry per branch choice in config order), the flow's agents to route, the stable
+    decision scalars (flow/step/seed), and the flow's per-flow turn policy to stamp
+    onto the resolved batches. Loosely typed to keep this contract module free of a
+    ``routers``/``agents`` import; the engine resolves it in ``scheduling.py``.
+    ``expand_hop`` refuses to flatten it, so an unresolved branch can never silently
+    reach a runner.
     """
 
-    sub_batches: tuple[StepBatch, ...]
+    router: Any  # routers.Router — any (agents, gms, ctx) -> {agent: gm} callable
+    gms: Mapping[str, Any]  # choice GM name -> game master, in config order
+    candidates: tuple[Any, ...]  # the flow's agents to route at this stage
+    flow_name: str
+    step_index: int
+    seed: int  # run seed, so the router's decision stays replay-stable
+    turn_policy: TurnPolicy | None  # per-flow turn policy applied to the resolved batches
 
 
-def expand_hop(hop: StepBatch | BranchHop | None) -> list[StepBatch]:
+# One chain hop: a normal batch, a branch (resolved at execution time), or None (an
+# idle slot). ``expand_hop`` flattens the concrete kinds.
+Hop = StepBatch | BranchHop | None
+
+
+def expand_hop(hop: Hop) -> list[StepBatch]:
     """Flatten one chain hop into its concrete batches: ``[]`` for an idle slot, the
-    single batch for a normal hop, or every sub-batch of a branch.
+    single batch for a normal hop.
+
+    A :class:`BranchHop` raises — its router runs at execution time and the engine
+    resolves it into per-GM batches then; reaching here unresolved is a bug.
     """
     if hop is None:
         return []
     if isinstance(hop, BranchHop):
-        return list(hop.sub_batches)
+        raise RuntimeError(
+            "A BranchHop resolves at execution time; the engine must route it into "
+            "per-GM batches before flattening."
+        )
     return [hop]
 
 

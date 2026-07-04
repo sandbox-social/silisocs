@@ -255,7 +255,6 @@ class TwitterLikeApp(SocialBackendApp):
         """
         result = ""
         for post in timeline:
-            formatted_date = post.get("formatted_date", "")
             result += (
                 f"\n\nUser: {post['username']}\n"
                 f"Content: {post['content']}\n"
@@ -643,7 +642,6 @@ class TwitterLikeApp(SocialBackendApp):
             query: The search text to look for in tweet content.
             limit: Maximum number of results to return.
         """
-        actor_display_name = str(agent_name)
         try:
             results = self._platform.search_posts(query, limit=limit)
             if results:

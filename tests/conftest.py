@@ -16,7 +16,6 @@ from __future__ import annotations
 import pytest
 
 from silisocs.runtime.checkpointing import replay_mappers
-from silisocs.runtime.language_models import NoLanguageModel
 
 
 @pytest.fixture(autouse=True)
@@ -34,9 +33,3 @@ def _isolate_replay_mappers():
     finally:
         replay_mappers._REPLAY_MAPPERS.clear()
         replay_mappers._REPLAY_MAPPERS.update(snapshot)
-
-
-@pytest.fixture
-def no_language_model() -> NoLanguageModel:
-    """Return a shared no-op ``LanguageModel`` for tests that only need a non-calling model."""
-    return NoLanguageModel()

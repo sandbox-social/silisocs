@@ -289,6 +289,56 @@ Subclass `SocialBackendApp` only when your backend needs to satisfy the
 timeline, feed, parsed-social-action, or recommendation hooks used by the
 social-media-oriented GM components.
 
+### Checkpoint & restore contract
+
+A backend supports checkpoint restore in either (or both) of two ways.
+
+1. **Authoritative snapshot.** Set the class flag
+   `provides_checkpoint_state = True` and make `get_state()` / `set_state()`
+   round-trip the full backend state. Restore applies the saved block directly.
+   Every shipped backend does this — it is the simplest and most robust path.
+
+    ```python
+    class YourBackendApp(BackendApp):
+        provides_checkpoint_state = True
+
+        def get_state(self) -> dict:
+            return {"posts": self._posts, "follows": self._follows}
+
+        def set_state(self, state: dict) -> None:
+            if state:
+                self._posts = state["posts"]
+                self._follows = state["follows"]
+    ```
+
+2. **Action-event replay.** This is a mechanism owned by the pluggable
+   `sim.checkpoint.restore` strategy, **not** by the backend. Backends implement
+   no replay method. Instead, the built-in `social_action_event_replay` strategy
+   consults a registry keyed by `backend_type` that maps a backend family's
+   logged action vocabulary to the actions that reconstruct it. A backend
+   "supports replay" exactly when a mapper is registered for its `backend_type`.
+   Register one with `register_replay_mapper` (mirrors `register_llm_provider`)
+   — no core edit and no backend method required:
+
+    ```python
+    from silisocs.runtime.checkpointing import register_replay_mapper
+
+    def my_event_to_action(label, data):
+        # return an ActionOutput that replays (label, data), or None to skip
+        ...
+
+    register_replay_mapper("your_backend", my_event_to_action)
+    ```
+
+    Import the module that calls this before a resume runs. The shipped registry
+    maps `twitter_like` to a stateless microblog mapper; `reddit_like` has no
+    mapper and self-restores via its snapshot instead.
+
+A bespoke restore that a stateless mapper cannot express is a custom
+`sim.checkpoint.restore.class_path` strategy rather than a backend method. (There
+is no `event_to_replay_action` method to override and no `supports_action_replay`
+flag — restore support is expressed through the two paths above.)
+
 ---
 
 ## Built-in Visualizers

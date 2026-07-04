@@ -8,6 +8,10 @@ config-shaping logic is covered here with plain dicts.
 
 from __future__ import annotations
 
+from importlib import resources
+
+import yaml
+
 from silisocs.dashboard.config_builder import (
     _as_int,
     build_hydra_overrides,
@@ -15,6 +19,11 @@ from silisocs.dashboard.config_builder import (
     collect_activity_rates,
     participation_sim_data,
     world_config_warnings,
+)
+from silisocs.dashboard.defaults import (
+    default_initial_observations,
+    default_jobname_format,
+    default_persona_defaults,
 )
 
 
@@ -122,6 +131,27 @@ def test_build_world_config_assembles_classes_probes_and_fixed_actions():
     assert cfg["probes"]["deployment"]["every_n_steps"] == 3
     assert cfg["probes"]["probes"]["p1"]["probe_data"]["name"] == "p1"  # name backfilled
     assert cfg["fixed_action_sets"]["inline"] == {"seedset": [{"post": "hi"}]}
+
+
+def test_dashboard_defaults_match_packaged_conf():
+    """Drift canary: dashboard defaults are read from conf/, never re-typed literals."""
+    world = yaml.safe_load(
+        resources.files("silisocs").joinpath("conf", "world", "default.yaml").read_text()
+    )
+    agents = yaml.safe_load(
+        resources.files("silisocs").joinpath("conf", "agents", "default.yaml").read_text()
+    )
+    assert default_jobname_format() == world["jobname_format"]
+    assert default_persona_defaults() == agents["persona_pipeline"]["defaults"]["params"]
+    assert default_initial_observations() == agents["initial_observations"]
+    # The assembled world config carries the base-config values through unchanged.
+    cfg = build_world_config({})
+    assert cfg["jobname_format"] == world["jobname_format"]
+    assert cfg["initial_observations"] == agents["initial_observations"]
+    assert (
+        cfg["persona_pipeline"]["defaults"]["params"]
+        == agents["persona_pipeline"]["defaults"]["params"]
+    )
 
 
 def test_build_world_config_drops_disabled_fixed_action():

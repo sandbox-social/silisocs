@@ -42,19 +42,19 @@ from silisocs.studies.study_artifacts import (
     organize_study_outputs,
     resolve_study_definition_path,
 )
-from silisocs.studies.study_schema import _validate_schema
+from silisocs.studies.study_schema import validate_schema
 from silisocs.studies.study_types import (
     SCHEMA_VERSION,
     EvalSpec,
     RunSpec,
     StudyConfigError,
-    _ensure_mapping,
-    _ensure_string_list,
-    _format_command_template,
-    _format_template_token,
-    _now_iso,
-    _resolve_command_tokens,
-    _resolve_study_id,
+    ensure_mapping,
+    ensure_string_list,
+    format_command_template,
+    format_template_token,
+    now_iso,
+    resolve_command_tokens,
+    resolve_study_id,
 )
 
 DEFAULT_RUNNER_MODULE = "silisocs.runtime.runner"
@@ -253,7 +253,7 @@ def _environment_provenance(repo_root: Path) -> dict[str, Any]:
         "platform": platform.platform(),
         "silisocs_version": silisocs_version,
         "uv_lock_sha256": _hash_file(repo_root / "uv.lock"),
-        "captured_at": _now_iso(),
+        "captured_at": now_iso(),
     }
 
 
@@ -325,9 +325,9 @@ def _checkpoint_cadence_overrides(run_defaults: dict[str, Any]) -> dict[str, Any
 
 
 def _resolve_scenarios(study: dict[str, Any], run_defaults: dict[str, Any]) -> list[str]:
-    scenarios = _ensure_string_list("study.scenarios", study.get("scenarios"))
+    scenarios = ensure_string_list("study.scenarios", study.get("scenarios"))
     if not scenarios:
-        scenarios = _ensure_string_list("study.base_scenarios", study.get("base_scenarios"))
+        scenarios = ensure_string_list("study.base_scenarios", study.get("base_scenarios"))
     if not scenarios:
         scenario = run_defaults.get("scenario")
         if isinstance(scenario, str) and scenario:
@@ -395,7 +395,7 @@ def _resolve_eval_spec(  # noqa: C901
     if not eval_id:
         raise StudyConfigError(f"{source}.id must be non-empty")
 
-    command = _resolve_command_tokens(eval_item.get("command"), f"{source}.command")
+    command = resolve_command_tokens(eval_item.get("command"), f"{source}.command")
     resolved_cmd: list[str] = []
     for token in command:
         if token.startswith("./"):
@@ -420,7 +420,7 @@ def _resolve_eval_spec(  # noqa: C901
         "prompts": "--prompts-path",
         "run_stats": "--run-stats-path",
     }
-    explicit_cfg = _ensure_mapping(f"{source}.explicit_args", eval_item.get("explicit_args"))
+    explicit_cfg = ensure_mapping(f"{source}.explicit_args", eval_item.get("explicit_args"))
     for key, value in explicit_cfg.items():
         if key not in explicit_args:
             raise StudyConfigError(
@@ -516,12 +516,12 @@ def _resolve_condition_eval_specs(
 def _expand_runs(  # noqa: C901, PLR0912, PLR0915
     study_path: Path, study_data: dict[str, Any]
 ) -> tuple[list[RunSpec], tuple[EvalSpec, ...], dict[str, Any]]:
-    _validate_schema(study_data)
+    validate_schema(study_data)
 
     study_root = study_path.parent
-    study = _ensure_mapping("study", study_data["study"])
-    hypotheses = _ensure_mapping("hypotheses", study_data["hypotheses"])
-    run_defaults = _ensure_mapping("study.run_defaults", study.get("run_defaults"))
+    study = ensure_mapping("study", study_data["study"])
+    hypotheses = ensure_mapping("hypotheses", study_data["hypotheses"])
+    run_defaults = ensure_mapping("study.run_defaults", study.get("run_defaults"))
     base_scenarios = _resolve_scenarios(study, run_defaults)
 
     global_eval_specs = _resolve_eval_specs(study_root, study_data)
@@ -532,7 +532,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
         # studies can also override via run_defaults.overrides.
         _checkpoint_cadence_overrides(run_defaults),
         _extract_inline_overrides(run_defaults),
-        _ensure_mapping("study.run_defaults.overrides", run_defaults.get("overrides")),
+        ensure_mapping("study.run_defaults.overrides", run_defaults.get("overrides")),
     )
 
     config_path = run_defaults.get("config_path")
@@ -543,7 +543,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
 
     run_specs: list[RunSpec] = []
     study_name = str(study["name"]).strip()
-    study_id = _resolve_study_id(study)
+    study_id = resolve_study_id(study)
     default_run_name_template = str(
         run_defaults.get(
             "run_name_template",
@@ -557,26 +557,26 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
         raise StudyConfigError("study.run_defaults.output_root_override must be a string")
 
     for hyp_id, hyp_node_any in hypotheses.items():
-        hyp_node = _ensure_mapping(f"hypotheses.{hyp_id}", hyp_node_any)
-        hyp_overrides = _ensure_mapping(f"hypotheses.{hyp_id}.overrides", hyp_node.get("overrides"))
-        cond_map = _ensure_mapping(
+        hyp_node = ensure_mapping(f"hypotheses.{hyp_id}", hyp_node_any)
+        hyp_overrides = ensure_mapping(f"hypotheses.{hyp_id}.overrides", hyp_node.get("overrides"))
+        cond_map = ensure_mapping(
             f"hypotheses.{hyp_id}.conditions",
             hyp_node.get("conditions"),
         )
 
         for cond_id, cond_node_any in cond_map.items():
-            cond_node = _ensure_mapping(f"hypotheses.{hyp_id}.conditions.{cond_id}", cond_node_any)
-            cond_overrides = _ensure_mapping(
+            cond_node = ensure_mapping(f"hypotheses.{hyp_id}.conditions.{cond_id}", cond_node_any)
+            cond_overrides = ensure_mapping(
                 f"hypotheses.{hyp_id}.conditions.{cond_id}.overrides",
                 cond_node.get("overrides"),
             )
-            cond_scenarios = _ensure_string_list(
+            cond_scenarios = ensure_string_list(
                 f"hypotheses.{hyp_id}.conditions.{cond_id}.scenarios",
                 cond_node.get("scenarios"),
             )
             sub_experiment = str(cond_node.get("sub_experiment", cond_id)).strip() or cond_id
             scenarios = cond_scenarios or base_scenarios
-            execution = _ensure_mapping(
+            execution = ensure_mapping(
                 f"hypotheses.{hyp_id}.conditions.{cond_id}.execution",
                 cond_node.get("execution"),
             )
@@ -591,7 +591,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
 
             command_template: tuple[str, ...] | None = None
             if "command" in execution:
-                command_template = _resolve_command_tokens(
+                command_template = resolve_command_tokens(
                     execution.get("command"),
                     f"hypotheses.{hyp_id}.conditions.{cond_id}.execution.command",
                 )
@@ -612,7 +612,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                 )
 
             if mode == "reuse_existing":
-                reuse = _ensure_mapping(
+                reuse = ensure_mapping(
                     f"hypotheses.{hyp_id}.conditions.{cond_id}.reuse",
                     cond_node.get("reuse"),
                 )
@@ -677,9 +677,9 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                         "scenario": scenario,
                         "seed": seed,
                     }
-                    run_name = _format_template_token(run_name_template, template_context)
+                    run_name = format_template_token(run_name_template, template_context)
                     if output_root_override:
-                        output_rootname = _format_template_token(
+                        output_rootname = format_template_token(
                             output_root_override, template_context
                         )
                     else:
@@ -689,13 +689,13 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                         )
                     command_override = None
                     if command_template is not None:
-                        command_override = _format_command_template(
+                        command_override = format_command_template(
                             command_template,
                             template_context,
                         )
 
                     resolved_config_path = (
-                        _format_template_token(cond_config_path, template_context)
+                        format_template_token(cond_config_path, template_context)
                         if cond_config_path
                         else None
                     )
@@ -854,7 +854,7 @@ def _enrich_study_with_results(
 ) -> dict[str, Any]:
     enriched = copy.deepcopy(study_data)
     generated = {
-        "generated_at": _now_iso(),
+        "generated_at": now_iso(),
         "schema_version": SCHEMA_VERSION,
         "records": records,
     }
@@ -910,8 +910,8 @@ def _resolve_eval_command(
     eval_output: Path,
     context: dict[str, Any],
 ) -> list[str]:
-    cmd = list(_format_command_template(eval_spec.command, context))
-    cmd.extend(_format_command_template(eval_spec.static_args, context))
+    cmd = list(format_command_template(eval_spec.command, context))
+    cmd.extend(format_command_template(eval_spec.static_args, context))
 
     if not eval_spec.manage_io_args:
         return cmd
@@ -1093,7 +1093,7 @@ def _run_reused_spec(
         )
         record["eval_paths"] = _build_eval_paths(record["evaluations"])
 
-    record["finished_at"] = _now_iso()
+    record["finished_at"] = now_iso()
     return record
 
 
@@ -1161,7 +1161,7 @@ def _run_new_spec(
             run_dir_path / RUN_COMPLETE_MARKER,
             {
                 "run_id": spec.run_id,
-                "finished_at": _now_iso(),
+                "finished_at": now_iso(),
                 "effective_config_sha256": record["lock"]["effective_config_sha256"],
                 "return_code": rc,
             },
@@ -1169,7 +1169,7 @@ def _run_new_spec(
     else:
         record["status"] = "failed" if rc != PROCESS_TIMEOUT_RC else "timeout"
 
-    record["finished_at"] = _now_iso()
+    record["finished_at"] = now_iso()
     return record
 
 
@@ -1180,7 +1180,7 @@ def _run_one_spec(
     timeout_seconds: int | None,
     assigned_gpu: str | None = None,
 ) -> dict[str, Any]:
-    record = _initialize_run_record(spec, assigned_gpu, _now_iso())
+    record = _initialize_run_record(spec, assigned_gpu, now_iso())
     exec_env = {"CUDA_VISIBLE_DEVICES": assigned_gpu} if assigned_gpu else None
     if spec.execution_mode == "reuse_existing":
         return _run_reused_spec(spec, record, repo_root, generated_dir, timeout_seconds, exec_env)
@@ -1211,7 +1211,7 @@ def _load_complete_marker(run_dir: Path) -> dict[str, Any] | None:
 
 def _skipped_complete_record(spec: RunSpec, run_dir: Path, generated_dir: Path) -> dict[str, Any]:
     """Build a repro record for a run skipped because RUN_COMPLETE.json exists."""
-    now = _now_iso()
+    now = now_iso()
     effective_cfg = run_dir / "effective_config.yaml"
     record: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
@@ -1394,7 +1394,7 @@ def _filter_run_specs(
 
 
 def _study_workspace_dir(repo_root: Path, study: dict[str, Any]) -> Path:
-    study_id = _resolve_study_id(study)
+    study_id = resolve_study_id(study)
     return repo_root / "experiments" / "studies" / study_id
 
 
@@ -1405,13 +1405,13 @@ def _study_generated_dir(repo_root: Path, study: dict[str, Any]) -> Path:
 def _write_study_index(
     path: Path, study_data: dict[str, Any], records: list[dict[str, Any]]
 ) -> None:
-    study = _ensure_mapping("study", study_data.get("study"))
+    study = ensure_mapping("study", study_data.get("study"))
     payload = {
         "schema_version": SCHEMA_VERSION,
-        "generated_at": _now_iso(),
+        "generated_at": now_iso(),
         "study": {
             "name": study.get("name"),
-            "study_id": _resolve_study_id(study),
+            "study_id": resolve_study_id(study),
             "study_version": study.get("study_version"),
             "parent_studies": study.get("parent_studies", []),
             "derived_from_runs": study.get("derived_from_runs", []),
@@ -1422,8 +1422,8 @@ def _write_study_index(
 
 
 def _resolve_summary_paths(repo_root: Path, study_data: dict[str, Any]) -> tuple[Path, Path]:
-    study = _ensure_mapping("study", study_data.get("study"))
-    study_id = _resolve_study_id(study)
+    study = ensure_mapping("study", study_data.get("study"))
+    study_id = resolve_study_id(study)
 
     summary_md_raw = str(
         study.get("study_summary_path", f"experiments/studies/{study_id}/SUMMARY.md")
@@ -1453,10 +1453,10 @@ def cmd_summary_append(args: argparse.Namespace) -> int:
     study_data = _load_yaml(study_path)
 
     summary_md, summary_log = _resolve_summary_paths(repo_root, study_data)
-    study = _ensure_mapping("study", study_data.get("study"))
+    study = ensure_mapping("study", study_data.get("study"))
     entry = {
-        "created_at": _now_iso(),
-        "study_id": _resolve_study_id(study),
+        "created_at": now_iso(),
+        "study_id": resolve_study_id(study),
         "study_name": study.get("name"),
         "author": str(args.author),
         "hypothesis": args.hypothesis,
@@ -1608,7 +1608,7 @@ def _execute_pending_runs(
                     "execution_mode": spec.execution_mode,
                     "status": "failed",
                     "error": str(e),
-                    "finished_at": _now_iso(),
+                    "finished_at": now_iso(),
                 }
             records.append(record)
             _write_jsonl_line(lock_jsonl, record, lock=write_lock)
@@ -1747,7 +1747,7 @@ def cmd_organize(args: argparse.Namespace) -> int:
 
     study_data = _load_yaml(study_path)
     generated_dir = _study_generated_dir(
-        repo_root, _ensure_mapping("study", study_data.get("study"))
+        repo_root, ensure_mapping("study", study_data.get("study"))
     )
     lock_json = generated_dir / "repro_lock.json"
 
@@ -2065,7 +2065,7 @@ def cmd_slurm_array(args: argparse.Namespace) -> int:
 
     study_rel = os.path.relpath(study_path, repo_root)
     plan_json = (
-        repo_root / "logs" / f"study_plan_{Path(study_rel).stem}_{array_mode}_{_now_iso()}.json"
+        repo_root / "logs" / f"study_plan_{Path(study_rel).stem}_{array_mode}_{now_iso()}.json"
     )
     plan_json.parent.mkdir(parents=True, exist_ok=True)
     _write_json(plan_json, {"schema_version": SCHEMA_VERSION, "plan": _plan_rows(run_specs)})

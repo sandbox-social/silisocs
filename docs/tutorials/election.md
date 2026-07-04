@@ -93,9 +93,12 @@ candidates:
 
 ### GM Component Behavior
 
-Candidates and the news account are fully connected targets, everyone follows them:
+Candidates and the news account are fully connected targets, everyone follows
+them. The GM `next_acting` slot now keeps only environment-derived selection
+(`all_agents` / `fixed_order`):
 
 ```yaml
+# scenarios/election/conf/env.yaml
 gm:
   components:
     initialize:
@@ -105,18 +108,35 @@ gm:
             - candidate
             - news_account
     next_acting:
-      params:
-        activity_transition_rates:
-          voter:
-            inactive_to_active: 0.1     # Voters are mostly passive
-            active_to_inactive: 0.2
-          candidate:
-            inactive_to_active: 0.8     # Candidates are very active
-            active_to_inactive: 0.1
-          news_account:
-            inactive_to_active: 1       # News always posts
-            active_to_inactive: 0
+      built_in: all_agents
 ```
+
+Who acts each step is a **sim-level participation model**. The config-derived
+activity models moved out of the GM's `next_acting` slot to
+`sim.engine.participation`; a config that still puts
+`activity_transition_rates` under `next_acting` raises a build-time migration
+error. Per-role activity rates now live under participation:
+
+```yaml
+# scenarios/election/conf/sim.yaml
+engine:
+  participation:
+    built_in: activity_probability
+    params:
+      activity_transition_rates:
+        voter:
+          inactive_to_active: 0.1     # Voters are mostly passive
+          active_to_inactive: 0.2
+        candidate:
+          inactive_to_active: 0.8     # Candidates are very active
+          active_to_inactive: 0.1
+        news_account:
+          inactive_to_active: 1       # News always posts
+          active_to_inactive: 0
+```
+
+The participation filter runs before every GM's `next_acting`, so effective
+acting each step is participation ∩ `next_acting`.
 
 ### Probes
 

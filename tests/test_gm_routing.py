@@ -1,10 +1,10 @@
 """Tests for branch routing between GMs (``{branch: {router, choices}}`` chain nodes).
 
 Covers the router primitive (weighted-random determinism), config parsing/validation
-of branch nodes, the engine-build guards (mode/flow_order/non-pure-router), and the
-end-to-end fan-out under all three multi-GM traversals — including that a branch is a
-single stage resolved before execution, so the router "acts first" under the staged
-barrier and shared pre/post GMs run once on every agent.
+of branch nodes, the engine-build guards (mode/flow_order), ``build_router`` accepting a
+class or a plain function, and the end-to-end fan-out under all three multi-GM
+traversals — including that a branch is a single stage, so under the staged barrier the
+router routes at its stage and shared pre/post GMs run once on every agent.
 """
 
 from __future__ import annotations
@@ -24,8 +24,7 @@ from silisocs.simulation_engines.policies.factory import build_router
 from silisocs.simulation_engines.policies.routers import (
     BranchSpec,
     RandomChoiceRouter,
-    RouteContext,
-    Router,
+    RouteInfo,
 )
 from silisocs.simulation_engines.policies.steps import (
     MultiGMSerialStepStrategy,
@@ -43,34 +42,38 @@ _BUILT_IN_BY_MODE = {
 # --------------------------------------------------------------------------- routers
 
 
-def _ctx(agent: str, *, choices: tuple[str, ...], step: int = 0, seed: int = 1) -> RouteContext:
-    return RouteContext(
-        agent_name=agent, flow_name="social", step_index=step, seed=seed, choices=choices
-    )
+class _Named:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+def _route(router, names, choices, *, step=0, seed=1):
+    """Call a router with agents ``names`` and GM ``choices``; return its assignment."""
+    gms = {c: object() for c in choices}
+    return router([_Named(n) for n in names], gms, RouteInfo(flow="social", step=step, seed=seed))
 
 
 def test_random_router_is_deterministic_per_agent_step_seed() -> None:
     router = RandomChoiceRouter()
-    ctx = _ctx("Alice", choices=("tw", "rd"))
-    assert router.route(ctx) == router.route(ctx)  # same inputs -> same pick
+    assert _route(router, ["Alice"], ("tw", "rd")) == _route(router, ["Alice"], ("tw", "rd"))
 
 
 def test_random_router_respects_zero_weight() -> None:
     router = RandomChoiceRouter(weights={"tw": 1.0, "rd": 0.0})
-    picks = {router.route(_ctx(f"agent{i}", choices=("tw", "rd"))) for i in range(50)}
-    assert picks == {"tw"}  # rd has zero weight, never chosen
+    route = _route(router, [f"agent{i}" for i in range(50)], ("tw", "rd"))
+    assert set(route.values()) == {"tw"}  # rd has zero weight, never chosen
 
 
 def test_random_router_returns_a_listed_choice() -> None:
     router = RandomChoiceRouter()
-    for i in range(50):
-        assert router.route(_ctx(f"a{i}", choices=("tw", "rd", "mast"))) in {"tw", "rd", "mast"}
+    route = _route(router, [f"a{i}" for i in range(50)], ("tw", "rd", "mast"))
+    assert set(route.values()) <= {"tw", "rd", "mast"}
 
 
 def test_random_router_all_zero_weights_falls_back_to_uniform() -> None:
     router = RandomChoiceRouter(weights={"tw": 0.0, "rd": 0.0})
-    picks = {router.route(_ctx(f"a{i}", choices=("tw", "rd"))) for i in range(50)}
-    assert picks == {"tw", "rd"}  # degenerate weights -> uniform, both reachable
+    route = _route(router, [f"a{i}" for i in range(50)], ("tw", "rd"))
+    assert set(route.values()) == {"tw", "rd"}  # degenerate weights -> uniform
 
 
 def test_build_router_default_and_class_path() -> None:
@@ -78,6 +81,20 @@ def test_build_router_default_and_class_path() -> None:
     assert isinstance(build_router({"built_in": "random"}), RandomChoiceRouter)
     custom = build_router({"class_path": f"{__name__}._ByNameRouter"})
     assert isinstance(custom, _ByNameRouter)
+
+
+def test_build_router_function_without_params_is_the_function() -> None:
+    # A plain-function router with no params is used as-is (no wrapping).
+    router = build_router({"class_path": f"{__name__}._route_all_first"})
+    assert router is _route_all_first
+
+
+def test_build_router_function_with_params_binds_them() -> None:
+    router = build_router(
+        {"class_path": f"{__name__}._favorite_router", "params": {"favorite": "rd"}}
+    )
+    out = router([_Named("Alice")], {"tw": object(), "rd": object()}, RouteInfo("f", 0, 0))
+    assert out == {"Alice": "rd"}  # bound kwarg honored
 
 
 # ------------------------------------------------------------------- config parsing
@@ -193,14 +210,19 @@ def test_branch_rejected_in_flow_order_flow() -> None:
         build_engine(_cfg("multi_gm", flow_order=["social"]), flow_chains=chains)
 
 
-def test_non_pure_router_is_rejected() -> None:
+def test_function_router_builds_under_multi_gm() -> None:
+    # A router written as a plain function (no class, no base) is built into a callable
+    # on the branch and left for the step strategy to run at execution time.
     chains = {
         "social": [
-            BranchSpec(choices=("tw", "rd"), router_slot={"class_path": f"{__name__}._LiveRouter"})
+            BranchSpec(
+                choices=("tw", "rd"), router_slot={"class_path": f"{__name__}._route_all_first"}
+            )
         ]
     }
-    with pytest.raises(NotImplementedError, match="execution-time routing is not yet supported"):
-        build_engine(_cfg("multi_gm"), flow_chains=chains)
+    engine = build_engine(_cfg("multi_gm"), flow_chains=chains)
+    branch = engine.step_strategy.flow_chains["social"][0]
+    assert branch.router is _route_all_first
 
 
 def test_build_engine_builds_branch_router() -> None:
@@ -261,22 +283,25 @@ class _GameMaster:
         return f"resolved:{self.name}:{agent_name}"
 
 
-class _ByNameRouter(Router):
+class _ByNameRouter:
     """Deterministic test router: agents before 'M' take the first choice, else the second."""
 
     name = "by_name"
 
-    def route(self, ctx: RouteContext) -> str:
-        return ctx.choices[0] if ctx.agent_name < "M" else ctx.choices[1]
+    def __call__(self, agents, gms, ctx):
+        names = list(gms)
+        return {a.name: (names[0] if a.name < "M" else names[1]) for a in agents}
 
 
-class _LiveRouter(Router):
-    """Non-pure router used to exercise the v1 rejection seam."""
+def _route_all_first(agents, gms, ctx):
+    """Plain-function router: everyone goes to the first choice GM."""
+    first = next(iter(gms))
+    return {a.name: first for a in agents}
 
-    reads_live_state = True
 
-    def route(self, ctx: RouteContext) -> str:
-        return ctx.choices[0]
+def _favorite_router(agents, gms, ctx, *, favorite):
+    """Plain-function router parameterized (via config ``params``) with a fixed target."""
+    return {a.name: favorite for a in agents}
 
 
 def _branch_engine(mode: str, *, log: list[str] | None = None, seed: int = 0):
@@ -326,9 +351,10 @@ def test_branch_serial_flattens_into_one_chain() -> None:
     assert set(log[4:6]) == {"wrap_gm:Alice", "wrap_gm:Zed"}
 
 
-def test_branch_staged_router_acts_first_with_aligned_stages() -> None:
-    # The branch is a single stage resolved at materialization, so under the staged
-    # barrier every seed turn precedes the branch turns, which precede every wrap turn.
+def test_branch_staged_routes_at_its_stage_with_aligned_stages() -> None:
+    # The branch is a single stage: under the staged barrier the router routes AT its
+    # stage (after every seed turn), so seed precedes the branch turns, which precede
+    # every wrap turn.
     log: list[str] = []
     engine, gms, by_name = _branch_engine("staged", log=log)
     engine.run_step(

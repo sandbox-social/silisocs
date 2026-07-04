@@ -188,19 +188,27 @@ def _isolate_backend_paths(entries: list[tuple[str, dict[str, Any]]]) -> None:
 
 
 def _gm_tool_calling_mode(explicit: Any, alias: Any, *, path: str) -> str:
-    """Resolve a per-GM tool_calling_mode from the explicit key or the tool_calling alias.
+    """Resolve a per-GM tool-calling mode from the scalar ``tool_calling`` override.
 
-    ``tool_calling`` may be a scalar string or a mapping carrying a ``mode`` key.
-    Returns '' (unset) when neither is provided.
+    The single supported per-GM spelling is a scalar ``tool_calling: <none|single|multi>``
+    (a sibling to the scalar ``action_mode``). Returns '' (unset) when ``tool_calling``
+    is absent — the global ``sim.tool_calling.mode`` then governs. The retired
+    ``tool_calling_mode`` key and the ``tool_calling: {mode: ...}`` block form each raise
+    a migration error pointing at the scalar spelling (``explicit`` is the value of the
+    retired ``tool_calling_mode`` key, ``alias`` the value of ``tool_calling``).
     """
-    if explicit is not None and str(explicit).strip():
-        return str(explicit).strip()
+    if explicit is not None:
+        raise ValueError(
+            f"{path}.tool_calling_mode is retired; use the scalar "
+            f"{path}.tool_calling: <none|single|multi> instead."
+        )
     if alias is None:
         return ""
     if isinstance(alias, Mapping):
-        if "mode" not in alias:
-            raise ValueError(f"{path}.tool_calling mapping must set 'mode'.")
-        return str(alias.get("mode") or "").strip()
+        raise ValueError(
+            f"{path}.tool_calling must be a scalar mode string (none|single|multi); "
+            f"the '{{mode: ...}}' block form is retired — write {path}.tool_calling: <mode>."
+        )
     return str(alias).strip()
 
 

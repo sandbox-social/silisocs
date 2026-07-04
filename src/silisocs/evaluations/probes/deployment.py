@@ -14,6 +14,7 @@ from typing import Any
 from silisocs.evaluations.probes.agent_speech import _resolve_probe_class, deploy_probes
 from silisocs.runtime.io import EventLogger
 from silisocs.simulation_engines.policies.factory import build_probe_schedule_policy
+from silisocs.simulation_engines.runtime_base import ProbeSchedulePolicy
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +235,7 @@ class DefaultProbeRunner:
         self._logger = EventLogger("probe", os.path.join(output_rootname, "probe_events.jsonl"))
         self._orchestrator = ProbeDeploymentOrchestrator(config, self._logger)
         schedule_cfg = dict(config.get("schedule", {}) or {})
-        self._schedule_policy = build_probe_schedule_policy(schedule_cfg)
+        self._schedule_policy: ProbeSchedulePolicy = build_probe_schedule_policy(schedule_cfg)
 
     def maybe_run(
         self,

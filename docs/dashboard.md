@@ -71,7 +71,7 @@ Configure the persona pipeline:
 - **Field map**: YAML editor for mapping data fields to agent parameters
 - **Per-class LLM model**: Optional model override per agent class
 - **Count**: Number of agents in each class
-- **Sim role name**: Role key used by GM component params such as activity rates
+- **Sim role name**: Role key used by sim-level participation params, such as the per-role activity rates in `sim.engine.participation.params.activity_transition_rates`
 - **Flow tag** (advanced only): Class-level action flow used by multi-GM orchestration
 - **Fixed-action agent mode** (optional):
 - Enable fixed actions for a class

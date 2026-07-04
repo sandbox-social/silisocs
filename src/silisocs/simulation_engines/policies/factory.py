@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
-import importlib
+import functools
 import inspect
 from collections.abc import Mapping
-from typing import Any, cast
+from typing import Any
 
 from omegaconf import DictConfig, OmegaConf
 
+from silisocs.runtime.class_loading import (
+    instantiate_with_supported_kwargs as _instantiate_with_supported_kwargs,
+)
+from silisocs.runtime.class_loading import (
+    load_attr as _load_attr,
+)
+from silisocs.runtime.class_loading import (
+    load_class as _load_class,
+)
 from silisocs.simulation_engines.policies.participation import (
     ActivityMarkovParticipation,
     ActivityProbabilityParticipation,
@@ -19,12 +28,13 @@ from silisocs.simulation_engines.policies.probe_schedule import (
     FixedIntervalProbeSchedulePolicy,
     StepProbeSchedulePolicy,
 )
-from silisocs.simulation_engines.policies.routers import RandomChoiceRouter
+from silisocs.simulation_engines.policies.routers import AgentChoiceRouter, RandomChoiceRouter
 from silisocs.simulation_engines.policies.turns import (
     FixedCountTurnPolicy,
     OpenEndedTurnPolicy,
     SingleActionTurnPolicy,
 )
+from silisocs.simulation_engines.runtime_base import ProbeSchedulePolicy
 
 _TURN_BUILT_INS = {
     "single_action": SingleActionTurnPolicy,
@@ -34,6 +44,7 @@ _TURN_BUILT_INS = {
 
 _ROUTER_BUILT_INS = {
     "random": RandomChoiceRouter,
+    "agent_choice": AgentChoiceRouter,
 }
 
 _PARTICIPATION_BUILT_INS = {
@@ -47,37 +58,6 @@ _PROBE_BUILT_INS = {
     "fixed_interval": FixedIntervalProbeSchedulePolicy,
     "disabled": DisabledProbeSchedulePolicy,
 }
-
-
-def _load_class(class_path: str) -> type[Any]:
-    """Load and return a class from its fully-qualified path."""
-    module_path, class_name = class_path.rsplit(".", 1)
-    module = importlib.import_module(module_path)
-    loaded = getattr(module, class_name)
-    if not inspect.isclass(loaded):
-        raise TypeError(f"{class_path} is not a class.")
-    return cast(type[Any], loaded)
-
-
-def _instantiate_with_supported_kwargs(cls: type[Any], kwargs: Mapping[str, Any]) -> Any:
-    """Instantiate a class using only kwargs supported by its constructor."""
-    params = inspect.signature(cls.__init__).parameters
-    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
-        return cls(**dict(kwargs))
-    supported = {
-        name
-        for name, param in params.items()
-        if name != "self"
-        and param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
-    }
-    unsupported = sorted(set(kwargs) - supported)
-    if unsupported:
-        raise ValueError(
-            f"Unsupported config param(s) for {cls.__module__}.{cls.__name__}: "
-            f"{unsupported}. Supported params: {sorted(supported)}"
-        )
-    filtered = {k: v for k, v in kwargs.items() if k in supported}
-    return cls(**filtered)
 
 
 def _build_policy(
@@ -124,12 +104,31 @@ def build_turn_policy(slot_cfg: Mapping[str, Any] | None = None) -> Any:
 
 
 def build_router(slot_cfg: Mapping[str, Any] | None = None) -> Any:
-    """Build a branch :class:`Router` from a slot config (``{built_in|class_path, params}``).
+    """Build a branch router from a slot config (``{built_in|class_path, params}``).
 
-    A ``class_path`` router is the extension seam for "any function chooses": point it
-    at a custom :class:`~silisocs.simulation_engines.policies.routers.Router` subclass.
+    A router is any callable ``(agents, gms, ctx) -> {agent name: gm name}`` (see
+    ``policies/routers.py``). ``class_path`` — the "a custom function chooses" seam —
+    may point at a class (instantiated with ``params``) or a plain function (``params``,
+    if any, bound as keyword arguments).
     """
-    return _build_policy(slot_cfg, built_ins=_ROUTER_BUILT_INS, default_built_in="random")
+    cfg = dict(slot_cfg or {})
+    class_path = str(cfg.get("class_path") or "").strip()
+    if class_path:
+        params = dict(cfg.get("params") or {})
+        target = _load_attr(class_path)
+        if inspect.isclass(target):
+            router: Any = _instantiate_with_supported_kwargs(target, params)
+        elif params:
+            router = functools.partial(target, **params)
+        else:
+            router = target
+        if not callable(router):
+            raise TypeError(
+                f"Router '{class_path}' must be callable "
+                "((agents, gms, ctx) -> {agent name: gm name})."
+            )
+        return router
+    return _build_policy(cfg, built_ins=_ROUTER_BUILT_INS, default_built_in="random")
 
 
 def build_participation_policy(
@@ -222,6 +221,9 @@ def build_gm_concurrency_caps(raw: Any) -> dict[str, int]:
     return resolved
 
 
-def build_probe_schedule_policy(slot_cfg: Mapping[str, Any] | None = None) -> Any:
-    """Build probe schedule policy from YAML config."""
-    return _build_policy(slot_cfg, built_ins=_PROBE_BUILT_INS, default_built_in="step_schedule")
+def build_probe_schedule_policy(slot_cfg: Mapping[str, Any] | None = None) -> ProbeSchedulePolicy:
+    """Build a :class:`ProbeSchedulePolicy` from ``eval.probes.schedule`` config."""
+    policy: ProbeSchedulePolicy = _build_policy(
+        slot_cfg, built_ins=_PROBE_BUILT_INS, default_built_in="step_schedule"
+    )
+    return policy

@@ -14,12 +14,34 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from omegaconf import DictConfig, OmegaConf
+
 from silisocs.runtime.language_models import LanguageModel, select_large_language_model
 from silisocs.runtime.model_fields import MODEL_FIELDS
 
 # MODEL_FIELDS are the fields that make up a fully-resolved (effective) per-instance
 # LLM config: two instances share a built model iff these fields are byte-identical,
 # keeping the resolver, dedup signature, and validators in lockstep.
+
+
+def build_global_llm_config(llm_cfg: Any) -> dict[str, Any]:
+    """Extract the global ``sim.llm`` block into the effective-config baseline dict.
+
+    Reads exactly ``MODEL_FIELDS`` off the resolved ``sim.llm`` config (with
+    ``extra_kwargs`` unwrapped from OmegaConf) so the global baseline can never omit a
+    field the per-instance resolver expects — the drift the single ``MODEL_FIELDS``
+    source exists to prevent. Per-field coercion (temperature float, ``disabled`` bool,
+    empty ``api_base``/``api_key`` -> None) is applied by ``_effective_model_config``
+    when overrides layer on top, so this stays a plain, drift-proof field walk.
+    """
+    baseline: dict[str, Any] = {field: getattr(llm_cfg, field, None) for field in MODEL_FIELDS}
+    raw_extra = baseline.get("extra_kwargs") or {}
+    baseline["extra_kwargs"] = (
+        OmegaConf.to_container(raw_extra, resolve=True)
+        if isinstance(raw_extra, DictConfig)
+        else dict(raw_extra)
+    )
+    return baseline
 
 
 def _effective_model_config(

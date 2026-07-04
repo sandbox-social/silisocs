@@ -15,7 +15,7 @@ from silisocs.studies.run_study import (
     _build_submitit_job_commands,
     _expand_runs,
     _submitit_group_filters,
-    _validate_schema,
+    validate_schema,
 )
 from silisocs.studies.study_artifacts import extract_run_metadata, load_study_definition
 
@@ -251,7 +251,7 @@ def test_study_schema_rejects_old_singular_evaluation() -> None:
     }
 
     with pytest.raises(StudyConfigError, match="evaluations"):
-        _validate_schema(study)
+        validate_schema(study)
 
 
 def test_study_schema_rejects_old_cases_name() -> None:
@@ -262,7 +262,7 @@ def test_study_schema_rejects_old_cases_name() -> None:
     }
 
     with pytest.raises(StudyConfigError, match="must define conditions"):
-        _validate_schema(study)
+        validate_schema(study)
 
 
 def test_study_artifact_metadata_reads_current_effective_config(tmp_path: Path) -> None:

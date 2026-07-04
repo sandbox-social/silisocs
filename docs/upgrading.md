@@ -30,3 +30,34 @@ Notes for moving between releases. Each entry lists only user-affecting changes.
   `fireworks`, `xai`, `ollama`). Set `sim.llm.provider` to the name; see
   [Configuration](configuration.md). Existing `openai` / `openai_compatible`
   configs are unchanged.
+- **`sim.engine.step.params.chain_execution` was removed (BREAKING).** The
+  multi-GM flow-chain traversal mode is now selected by `sim.engine.step.built_in`
+  — `multi_gm` (concurrent, default), `multi_gm_serial` (legacy row-major), or
+  `multi_gm_staged` (column-major with a per-stage barrier). A config that still
+  sets `chain_execution` raises a `ValueError` with a migration hint. Map the old
+  value to the matching `built_in`.
+- **Activity models moved to the sim layer (BREAKING).** The config-derived
+  participation models (`activity_probability`, `activity_markov`) moved out of the
+  GM's `env.gm.components.next_acting` slot to `sim.engine.participation`. A config
+  that names them under `next_acting` raises a build-time migration error. Set
+  `sim.engine.participation.built_in: <model>` with the same `params` (minus
+  `agent_names`), and leave `next_acting` on an environment-derived built-in
+  (`all_agents` or `fixed_order`). Effective acting each step is participation ∩
+  `next_acting`.
+- **Branch routers are now plain callables (BREAKING for custom routers only).**
+  A custom `{branch: {router: {class_path: ...}}}` router is no longer a `Router`
+  subclass. The `Router` ABC, `RouteContext`, `RouterGMView`, and the
+  `reads_live_state` / `drives_agent` capability flags are gone. A router is now any
+  callable `route(agents, gms, ctx) -> {agent name: chosen gm name}`: it receives the
+  flow's agent objects (call `agent.act(...)` directly to involve them), `gms`
+  (`{gm name: game master}`, one per choice — read `gm.backend` directly for live
+  state), and `ctx` (`RouteInfo(flow, step, seed)`). `class_path` accepts a plain
+  function (config `params` bound as keyword arguments) or a class (built with
+  `params`). The built-in `random` and `agent_choice` configs are unchanged. Branch
+  routing now runs at execution time under **all three** `multi_gm*` traversals —
+  `multi_gm_serial` no longer rejects live-state/agent-driven routers. To migrate a
+  custom router: drop the base class and flags, rename `route(self, ctx)` to a
+  callable taking `(agents, gms, ctx)`, read `gms[name].backend` instead of
+  `ctx.gm_views[name].backend`, ask agents by building an `ActionSpec` and calling
+  `agent.act(...)` yourself (import `match_choice` for the same lenient answer
+  matching), and return a per-agent `{name: gm}` mapping instead of one choice.

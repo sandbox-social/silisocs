@@ -340,17 +340,19 @@ traversal mode.
 
 A chain entry may also be a **branch node** — `{branch: {router, choices}}` — that
 routes each of the flow's agents to one of `choices` (alternative GMs) at that
-stage. The router is a `{built_in | class_path, params}` slot resolved by the engine
-(`build_router`); the one built-in is `random` (weighted, deterministic per
-`(seed, flow, step, agent)`), and a `class_path` router is the "custom function
-chooses" seam. The branch is a single chain stage resolved at materialization (so it
-acts before any turn, including under the staged barrier) and fans the flow's agents
-across its choices while the shared pre/post hops still run once on every agent. v1
-resolves only pure routers; one that declares `reads_live_state`/`drives_agent` is
-rejected (the reserved execution-time path). A branch requires a `multi_gm*` mode,
-may not sit in a `flow_order` flow, and its choices' sequences must lie strictly
-between the branch's chain neighbours. Restore and per-GM owned-flow derivation treat
-a branch as "any of its choices" (`collapse_flow_chains` / `flow_chain_gm_names`).
+stage. The router is a `{built_in | class_path, params}` slot built by the engine
+(`build_router`) into a **plain callable**
+`route(agents, gms, ctx) -> {agent name: gm name}` — no base class. Built-ins are
+`random` (weighted, deterministic per `(seed, flow, step, agent)`) and `agent_choice`
+(asks each agent via a CHOICE probe); a `class_path` (a function or a callable class)
+is the "custom function chooses" seam. The branch is a single chain stage; the engine
+runs the router when the flow's chain reaches it — after the flow's earlier hops
+drain, so the router sees live backend state and may call the agents — in all three
+`multi_gm*` traversals, and fans the flow's agents across its choices while the shared
+pre/post hops still run once on every agent. A branch requires a `multi_gm*` mode, may
+not sit in a `flow_order` flow, and its choices' sequences must lie strictly between
+the branch's chain neighbours. Restore and per-GM owned-flow derivation treat a branch
+as "any of its choices" (`collapse_flow_chains` / `flow_chain_gm_names`).
 
 Final Agent flow tags are materialized during construction and passed to every
 Game Master. The Engine does not re-apply `agent_to_flow` at turn time.

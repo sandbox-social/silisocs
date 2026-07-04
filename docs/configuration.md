@@ -120,6 +120,7 @@ custom provider (see [Building Agents](building_agents.md)).
 | `sim.engine.step.params.gm_concurrency_caps` | `{}` | Per-GM concurrency caps (`{gm_name: int}`); caps how many of that GM's agent turns run at once via a per-GM semaphore. Effective per-GM limit = `min(cap, sim.max_concurrent_actions)`; empty map = the global cap governs every GM. Applies under any step mode |
 | `sim.engine.turn_policy.built_in` | `single_action` | Global turn policy — how many actions an agent takes per step: `single_action`, `fixed_count`, or `open_ended` |
 | `sim.engine.participation.built_in` | `activity_probability` (base.yaml) | Sim-level roster filter applied before scheduling and every GM `next_acting`: `all` (pass-through), `activity_probability`, `activity_markov`, or a `class_path`. Effective acting = participation ∩ `next_acting`. Set `all` for deterministic/turn-based runs. A missing slot defaults to `all` in code; `sim/base.yaml` ships `activity_probability` |
+| `sim.engine.class_path` | `null` | Whole-engine swap seam: a fully-qualified path to a custom `RuntimeEngine` subclass. When set, the engine is that class, built with the standard kwargs (`config`, `loop_strategy`, `step_strategy`, `turn_policy`, `gm_turn_policies`, `gm_concurrency_caps`, `participation`, `seed`); unset uses the built-in `RuntimeEngine`. Prefer the policy seams (loop/step/turn_policy/participation `class_path`) unless you must replace the engine lifecycle itself |
 | `sim.roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |
 
 ### Per-GM action_mode and tool_calling overrides
@@ -134,16 +135,18 @@ env:
     gms:
       - name: social_gm
         action_mode: generic
-        tool_calling_mode: single   # alias: tool_calling (scalar or {mode: ...})
+        tool_calling: single        # scalar: none | single | multi
         # ... backend + components ...
 ```
 
 Each unset key falls back to the global `sim.action_mode` / `sim.tool_calling.mode`
-(today's behavior). The `tool_calling_mode` key also accepts the alias
-`tool_calling`, as either a scalar (`single`) or a mapping (`{mode: single}`).
+(today's behavior). The per-GM override is a **scalar** `tool_calling: <mode>`
+(a sibling to the scalar `action_mode`). The retired `tool_calling_mode` key and the
+`tool_calling: {mode: ...}` block form each raise a migration error pointing at the
+scalar spelling — the block form survives only at the global `sim.tool_calling.mode`.
 
 Resolve compatibility is validated **per GM** against each GM's *effective*
-`tool_calling_mode`: a GM whose effective mode is `single`/`multi` must pair its
+tool-calling mode: a GM whose effective mode is `single`/`multi` must pair its
 `components.resolve.built_in` with `tool_calling`, and a GM whose effective mode is
 `none` must not use the `tool_calling` resolve component.
 
@@ -1252,17 +1255,47 @@ env:
           - wrapup_gm        # shared tail — both branches re-converge here
 ```
 
-The router is a `{built_in | class_path, params}` slot, like a turn policy. The one
-built-in is `random` (`RandomChoiceRouter`): a weighted random pick, deterministic
-per `(seed, flow, step, agent)` — so a run reproduces and replays identically. A
-`class_path` router is the extension seam for "a custom function chooses": point it
-at a `silisocs.simulation_engines.policies.routers.Router` subclass.
+The router is a `{built_in | class_path, params}` slot, like a turn policy. Built-ins:
 
-Routing is resolved at materialization (before any turn runs), so the router decides
-*first* — including under the staged barrier. v1 ships only this pure path: a router
-that declares it needs live GM state or an agent's own choice
-(`reads_live_state`/`drives_agent`) is rejected at build time with a not-yet-supported
-message (reserved for a future execution-time path).
+- `random` (`RandomChoiceRouter`): a weighted random pick, deterministic per
+  `(seed, flow, step, agent)` — so a run reproduces and replays identically.
+- `agent_choice` (`AgentChoiceRouter`): the **agent itself** picks its GM (see below).
+
+**Custom routers — any callable.** A `class_path` router is the "a custom function
+chooses" seam. A router is just a callable
+`route(agents, gms, ctx) -> {agent name: chosen gm name}` — no base class, no
+registration. It receives the flow's agent objects (call `agent.act(...)` freely),
+`gms` (`{gm name: game master}`, one per choice, in config order — read `gm.backend`
+freely), and `ctx` (`RouteInfo(flow, step, seed)` for a replay-stable decision), and
+returns each agent's chosen GM. `class_path` may point at a plain function (config
+`params` are bound as keyword arguments) or a class (built with `params`, instances
+callable).
+
+**When it runs.** The engine runs the router when the flow's chain reaches the branch
+stage — after the flow's earlier hops have drained, so the router sees live backend
+state and may involve the agents. This holds in all three `multi_gm*` traversals
+(under `multi_gm_staged`, after the prior stage's barrier). The router call runs
+unlocked; only the follow-up per-chosen-GM turn selection is serialized under that
+GM's lock; and the engine validates the returned assignment (every agent covered,
+every GM one of `choices`). An LLM-driven router is only as reproducible as the model
+it calls.
+
+`agent_choice` params: `prompt` (a template; placeholders `{choices}`, `{flow}`, `{step}`,
+`{agent}`) and `on_invalid` (`random` — the default, a replay-stable fallback;
+`first`; or `raise`). It matches the agent's answer with the shared `match_choice`
+helper (exact → case-insensitive → contained-once), which custom routers can import.
+Example:
+
+```yaml
+        social_flow:
+          - branch:
+              router:
+                built_in: agent_choice
+                params:
+                  prompt: "You can act on {choices} this round. Reply with exactly one."
+                  on_invalid: random
+              choices: [twitter_gm, reddit_gm]
+```
 
 Constraints (validated at config/engine build): at most one branch per chain; at
 least two distinct, known choices; the branch's choice sequences must sit strictly

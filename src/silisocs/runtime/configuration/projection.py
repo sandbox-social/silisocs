@@ -102,16 +102,22 @@ class RuntimeProjection:
 
 
 def _gm_has_tool_calling_override(cfg: DictConfig, prefix: str) -> bool:
-    """True if a GM declares its own tool_calling_mode/tool_calling at ``prefix``."""
-    if str(OmegaConf.select(cfg, f"{prefix}.tool_calling_mode") or "").strip():
+    """True if a GM declares its own ``tool_calling`` (or a retired form) at ``prefix``.
+
+    A declared override — or a retired ``tool_calling_mode``/``tool_calling: {mode: ...}``
+    form — makes the global resolve-mode check skip this GM so the per-GM validator in
+    build_game_masters governs. That surfaces either the effective-mode mismatch or the
+    targeted migration error (game_masters._gm_tool_calling_mode) instead of a generic
+    global resolve-mismatch error.
+    """
+    if OmegaConf.select(cfg, f"{prefix}.tool_calling_mode") is not None:
         return True
     alias = OmegaConf.select(cfg, f"{prefix}.tool_calling")
     if alias is None:
         return False
     if isinstance(alias, Mapping):
-        # A tool_calling mapping is an override attempt regardless of contents; the
-        # required 'mode' key is validated per-GM (game_masters._gm_tool_calling_mode),
-        # so the actionable "must set 'mode'" error surfaces instead of a generic one.
+        # A retired mapping form is still an override attempt: routing it here lets the
+        # targeted migration error surface per-GM instead of a generic global one.
         return True
     return bool(str(alias).strip())
 

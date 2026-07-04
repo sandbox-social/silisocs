@@ -190,11 +190,13 @@ Use class-level behavior flows instead of adding custom manager branches:
 
 8. Advanced multi-GM orchestration (optional):
 - `env.gm_orchestration.gms` (each `gms[*]` — and the single default `env.gm` —
-  accepts optional per-GM `action_mode` and `tool_calling_mode` (alias
-  `tool_calling`, scalar or `{mode: ...}`) overrides; unset falls back to the
-  global `sim.action_mode` / `sim.tool_calling.mode`. Resolve compatibility is
-  validated PER-GM against each GM's effective mode: an effective `single`/`multi`
-  GM must use `components.resolve.built_in: tool_calling`, a `none` GM must not.)
+  accepts optional per-GM `action_mode` and `tool_calling` (a scalar mode string,
+  `none`/`single`/`multi`, sibling to the scalar `action_mode`) overrides; unset
+  falls back to the global `sim.action_mode` / `sim.tool_calling.mode`. The retired
+  `tool_calling_mode` key and the `tool_calling: {mode: ...}` block form each raise a
+  migration error pointing at the scalar spelling. Resolve compatibility is validated
+  PER-GM against each GM's effective mode: an effective `single`/`multi` GM must use
+  `components.resolve.built_in: tool_calling`, a `none` GM must not.)
 - `env.gm_orchestration.flow_bindings.flow_to_gms` (maps a flow to a GM or a
   strictly-increasing-`sequence` GM chain; the only supported flow binding key).
   A chain entry may be `null` (an **empty slot**) — meaningful only under
@@ -206,17 +208,29 @@ Use class-level behavior flows instead of adding custom manager branches:
   A chain entry may also be a **branch node** — `{branch: {router, choices}}` —
   that routes each of the flow's agents to one of `choices` (alternative GMs) at
   that one stage. The `router` is a `{built_in|class_path, params}` slot built by
-  the engine (`policies/routers.py` + `build_router`); built-in `random`
-  (`RandomChoiceRouter`, weighted, deterministic per `(seed, flow, step, agent)`),
-  and a `class_path` router is the "a custom function chooses" seam. The branch is
-  ONE stage resolved at materialization, so the router acts FIRST (incl. under the
-  staged barrier) and the GMs before/after it still run once on every agent (shared
-  hops are not split per choice). v1 resolves only PURE routers; a router declaring
-  `reads_live_state`/`drives_agent` is rejected (the reserved execution-time path).
-  Rules: ≤1 branch/chain, ≥2 distinct known choices whose `sequence`s sit strictly
-  between the branch's neighbours, `multi_gm*` mode only, not inside a `flow_order`
-  flow. Restore + per-GM `owned_flows` treat a branch as any of its choices via
-  `collapse_flow_chains` / `flow_chain_gm_names`.
+  the engine (`policies/routers.py` + `build_router`) into a **plain callable** —
+  there is no base class to subclass (the signature is formalized by the structural
+  `Router` Protocol, positional-only parameters):
+  `route(agents, gms, ctx) -> {agent name: chosen gm name}`, where `agents` is the
+  flow's agent objects (call `agent.act(...)` freely), `gms` is `{gm name: game
+  master}` (one per choice, in config order; read `gm.backend` freely), and `ctx`
+  is `RouteInfo(flow, step, seed)` for replay-stable decisions. A `class_path` may
+  point at a class (built with `params`) or a plain function (`params` bound as
+  kwargs) — the "a custom function chooses" seam. The engine runs the router when
+  the flow's chain reaches the branch stage — after the flow's earlier hops have
+  drained, so the router sees live backend state; under `multi_gm_staged`, after the
+  prior stage's barrier — in **all three `multi_gm*` traversals**. The router call
+  runs UNLOCKED; the follow-up per-chosen-GM turn selection runs under that GM's
+  lock; and the engine validates the returned assignment (every agent covered, every
+  GM a real choice). Shared hops before/after the branch still run once on every
+  agent (not split per choice). Built-ins: `random` (`RandomChoiceRouter`, weighted,
+  deterministic per `(seed, flow, step, agent)`) and `agent_choice`
+  (`AgentChoiceRouter` — asks each agent to pick a GM via a CHOICE probe; params
+  `prompt` template + `on_invalid: random|first|raise`). An LLM-driven router is only
+  as reproducible as the model it calls. Rules: ≤1 branch/chain, ≥2 distinct known
+  choices whose `sequence`s sit strictly between the branch's neighbours, `multi_gm*`
+  mode only, not inside a `flow_order` flow. Restore + per-GM `owned_flows` treat a
+  branch as any of its choices via `collapse_flow_chains` / `flow_chain_gm_names`.
 - The multi-GM flow-chain traversal mode is selected by `sim.engine.step.built_in`
   (`multi_gm` / `multi_gm_serial` / `multi_gm_staged`); the former
   `sim.engine.step.params.chain_execution` knob has been removed (a config that

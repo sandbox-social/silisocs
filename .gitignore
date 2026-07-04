@@ -228,6 +228,7 @@ experiments/studies/**/run_stats.log
 experiments/studies/**/*.db
 experiments/studies/**/*.db-shm
 experiments/studies/**/*.db-wal
+emnlp_demo_planning/
 
 # SQLite transient files from local backend tests
 *.db-shm

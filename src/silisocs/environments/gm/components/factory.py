@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 import inspect
 import re
 from collections.abc import Mapping
@@ -42,6 +41,7 @@ from silisocs.initialization.game_masters.runtime import (
     NoOpGameMasterInitializer,
     SocialMediaGameMasterInitializer,
 )
+from silisocs.runtime.class_loading import load_class as _load_class
 
 _INITIALIZE_BUILT_INS = {
     "none": NoOpGameMasterInitializer,
@@ -105,27 +105,32 @@ _MULTI_INSTANCE_RESERVED_KEYS = {
 }
 
 
-def _load_class(class_path: str) -> type[Any]:
-    """Load and return a class from its fully-qualified path."""
-    module_path, class_name = class_path.rsplit(".", 1)
-    module = importlib.import_module(module_path)
-    return getattr(module, class_name)
-
-
 def _build_from_slot(
     slot_cfg: Mapping[str, Any] | None,
     *,
     built_ins: Mapping[str, type[Any]],
     default_built_in: str,
     runtime_kwargs: Mapping[str, Any] | None = None,
+    expected_base: type[Any] | None = None,
 ) -> Any:
-    """Build a component from a slot config, using class_path or a built-in name."""
+    """Build a component from a slot config, using class_path or a built-in name.
+
+    A ``class_path`` component must subclass ``expected_base`` (the slot's role ABC),
+    so naming the wrong kind of class fails loudly at build time — with the required
+    role named — instead of as a late ``AttributeError`` mid-run. Built-ins are trusted
+    and never re-checked.
+    """
     cfg = dict(slot_cfg or {})
     class_path = cfg.get("class_path")
     params = dict(cfg.get("params") or {})
 
     if class_path:
         cls = _load_class(str(class_path))
+        if expected_base is not None and not issubclass(cls, expected_base):
+            raise TypeError(
+                f"Component class_path '{class_path}' must subclass "
+                f"{expected_base.__name__} to fill this slot."
+            )
         all_kwargs = dict(runtime_kwargs or {})
         all_kwargs.update(params)
         return _instantiate_with_supported_kwargs(cls, all_kwargs, config_param_keys=params.keys())
@@ -213,6 +218,7 @@ def build_initialize_component(
         _build_from_slot(
             slot_cfg,
             built_ins=_INITIALIZE_BUILT_INS,
+            expected_base=InitializeComponent,
             default_built_in="none",
             runtime_kwargs={"context": context},
         ),
@@ -246,6 +252,7 @@ def build_action_prompt_component(
         _build_from_slot(
             slot_cfg,
             built_ins=_ACTION_PROMPT_BUILT_INS,
+            expected_base=ActionPromptComponent,
             default_built_in="default",
             runtime_kwargs={
                 "context": context,
@@ -327,6 +334,7 @@ def build_observe_component(
         _build_from_slot(
             slot_cfg,
             built_ins=_OBSERVE_BUILT_INS,
+            expected_base=ObservationComponent,
             default_built_in="timeline_every_turn",
             runtime_kwargs={
                 "context": context,
@@ -357,6 +365,7 @@ def build_resolve_component(
         _build_from_slot(
             slot_cfg,
             built_ins=_RESOLVE_BUILT_INS,
+            expected_base=ResolveComponent,
             default_built_in="parsed_action",
             runtime_kwargs={
                 "context": context,
@@ -383,6 +392,7 @@ def build_next_acting_component(
         _build_from_slot(
             slot_cfg,
             built_ins=_NEXT_ACTING_BUILT_INS,
+            expected_base=NextActingComponent,
             default_built_in="all_agents",
             runtime_kwargs={
                 "context": context,
@@ -406,6 +416,7 @@ def build_update_component(
         _build_from_slot(
             slot_cfg,
             built_ins=_UPDATE_BUILT_INS,
+            expected_base=UpdateComponent,
             default_built_in="none",
             runtime_kwargs={
                 "context": context,
