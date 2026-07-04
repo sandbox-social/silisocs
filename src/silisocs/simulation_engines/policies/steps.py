@@ -9,9 +9,10 @@ from typing import Any, cast
 
 from silisocs.agents.base_agent import Agent
 from silisocs.runtime.types import ActionSpec
-from silisocs.simulation_engines.policies.routers import BranchSpec, RouteContext
+from silisocs.simulation_engines.policies.routers import BranchSpec
 from silisocs.simulation_engines.runtime_base import (
     BranchHop,
+    Hop,
     StepBatch,
     StepResult,
     StepStrategy,
@@ -26,7 +27,7 @@ def _group_agents_by_flow(
     """Group agents by their flow tag, resolved against ``game_master``."""
     agents_by_flow: OrderedDict[str, list[Agent]] = OrderedDict()
     for agent in agents:
-        flow = engine._agent_flow_tag(game_master, agent.name)
+        flow = engine.agent_flow_tag(game_master, agent.name)
         agents_by_flow.setdefault(flow, []).append(agent)
     return agents_by_flow
 
@@ -65,8 +66,8 @@ class BaseStepStrategy(StepStrategy):
         if not game_masters:
             raise ValueError("No game masters configured.")
         gm = game_masters[0]
-        turns = engine._selected_turns(game_master=gm, candidate_agents=cast(list[Agent], agents))
-        return engine._execute_batches(
+        turns = engine.selected_turns(game_master=gm, candidate_agents=cast(list[Agent], agents))
+        return engine.execute_batches(
             step_index=0,
             batches=[StepBatch(flow_name="default", game_master=gm, turns=turns)],
             verbose=False,
@@ -91,13 +92,13 @@ class SequentialStepStrategy(StepStrategy):
         if not game_masters:
             raise ValueError("No game masters configured.")
         gm = game_masters[0]
-        turns = engine._selected_turns(game_master=gm, candidate_agents=cast(list[Agent], agents))
+        turns = engine.selected_turns(game_master=gm, candidate_agents=cast(list[Agent], agents))
         batches = [
             StepBatch(flow_name=f"sequential:{agent.name}", game_master=gm, turns=[turn])
             for turn in turns
             for agent, _spec in [turn]
         ]
-        return engine._execute_batches(step_index=0, batches=batches, verbose=False)
+        return engine.execute_batches(step_index=0, batches=batches, verbose=False)
 
 
 @dataclass
@@ -128,7 +129,7 @@ class FlowStepStrategy(StepStrategy):
         agents_by_flow = _group_agents_by_flow(engine, gm, cast(list[Agent], agents))
         groups: OrderedDict[str, list[tuple[Agent, ActionSpec]]] = OrderedDict()
         for flow, flow_agents in agents_by_flow.items():
-            turns = engine._selected_turns(game_master=gm, candidate_agents=flow_agents)
+            turns = engine.selected_turns(game_master=gm, candidate_agents=flow_agents)
             groups.setdefault(flow, []).extend(turns)
         batches = [
             StepBatch(
@@ -139,7 +140,7 @@ class FlowStepStrategy(StepStrategy):
             )
             for flow_name in _order_flows(self.flow_order, groups)
         ]
-        return engine._execute_batches(step_index=0, batches=batches, verbose=False)
+        return engine.execute_batches(step_index=0, batches=batches, verbose=False)
 
 
 @dataclass(frozen=True)
@@ -153,7 +154,7 @@ class _MultiGMPlan:
 
     ordered_flow_names: list[str]
     listed: set[str]
-    hops_by_flow: dict[str, list[StepBatch | BranchHop | None]]
+    hops_by_flow: dict[str, list[Hop]]
 
 
 @dataclass
@@ -237,25 +238,26 @@ class MultiGMStepStrategy(StepStrategy):
         gm_by_name: Mapping[str, Any],
         default_gm: Any,
         step_index: int,
-    ) -> list[StepBatch | BranchHop | None]:
+    ) -> list[Hop]:
         """Materialize one flow's GM chain into ordered hops.
 
-        A hop is a normal ``StepBatch``, ``None`` (an idle slot), or a ``BranchHop``
-        (a resolved branch — one stage that fans the flow's agents across several GMs).
-        Turn selection (next_acting/action_prompt, which carry mutable state) stays
-        single-threaded here, before any concurrent execution begins. Each hop's
-        ActionSpec is therefore materialized up-front, before earlier hops resolve; a
+        A hop is a normal ``StepBatch``, ``None`` (an idle slot), or a ``BranchHop``.
+        For a normal hop, turn selection (next_acting/action_prompt, which carry mutable
+        state) stays single-threaded here, before any concurrent execution begins, so
+        each hop's ActionSpec is materialized up-front, before earlier hops resolve; a
         custom ActionPromptComponent must not depend on backend state mutated by an
         earlier hop of the same chain (the live observation, which does reflect prior
-        hops, is built at execution time in run_agent_step).
+        hops, is built at execution time in run_agent_step). A branch is the exception:
+        its routing AND its turn selection run at execution time (when the chain reaches
+        the branch stage), so its router observes prior hops' effects.
         """
         candidates = flow_to_agents.get(flow_name, [])
         chain = flow_chains.get(flow_name) or [default_gm.name]
-        hop_batches: list[StepBatch | BranchHop | None] = []
+        hop_batches: list[Hop] = []
         for entry in chain:
             if isinstance(entry, BranchSpec):
                 hop_batches.append(
-                    self._branch_hop(engine, flow_name, entry, candidates, gm_by_name, step_index)
+                    self._branch_hop(flow_name, entry, candidates, gm_by_name, step_index)
                 )
                 continue
             gm_name = "" if entry is None else str(entry).strip()
@@ -265,7 +267,7 @@ class MultiGMStepStrategy(StepStrategy):
             gm = gm_by_name.get(gm_name)
             if gm is None:
                 raise ValueError(f"Unknown GM '{gm_name}' in flow chain for flow '{flow_name}'.")
-            turns = engine._selected_turns(game_master=gm, candidate_agents=candidates)
+            turns = engine.selected_turns(game_master=gm, candidate_agents=candidates)
             hop_batches.append(
                 StepBatch(
                     flow_name=flow_name,
@@ -278,63 +280,40 @@ class MultiGMStepStrategy(StepStrategy):
 
     def _branch_hop(
         self,
-        engine: Any,
         flow_name: str,
         branch: BranchSpec,
         candidates: list[Agent],
         gm_by_name: Mapping[str, Any],
         step_index: int,
     ) -> BranchHop:
-        """Resolve a branch into one ``StepBatch`` per chosen GM (per-agent routing).
+        """Carry a branch unresolved: its router runs when the chain reaches this stage.
 
-        Each candidate is routed by ``branch.router`` to exactly one of the branch's
-        choices; agents that pick the same GM are batched together. The decision is
-        made here, at materialization, before any turn runs — so under the staged
-        traversal the router has already acted before the stage barrier begins.
+        Turn selection on the chosen GMs also happens then (under the per-GM lock), so
+        the router — and the resulting turns — observe the earlier hops' effects. The
+        choice GMs are resolved to objects here so an unknown GM fails at build time.
         """
         if branch.router is None:
             raise ValueError(
-                f"Branch in flow '{flow_name}' was not resolved; build_engine must build "
-                "its router before the step strategy runs."
+                f"Branch in flow '{flow_name}' has no router; build_engine must build "
+                "it before the step strategy runs."
             )
-        by_choice: OrderedDict[str, list[Agent]] = OrderedDict()
-        for agent in candidates:
-            choice = str(
-                branch.router.route(
-                    RouteContext(
-                        agent_name=agent.name,
-                        flow_name=flow_name,
-                        step_index=step_index,
-                        seed=self.seed,
-                        choices=branch.choices,
-                    )
-                )
-            ).strip()
-            if choice not in branch.choices:
-                raise ValueError(
-                    f"Router for flow '{flow_name}' returned '{choice}', which is not one "
-                    f"of its choices {list(branch.choices)}."
-                )
-            by_choice.setdefault(choice, []).append(agent)
-        sub_batches: list[StepBatch] = []
-        for gm_name, gm_agents in by_choice.items():
-            gm = gm_by_name.get(gm_name)
+        gms: dict[str, Any] = {}
+        for name in branch.choices:
+            gm = gm_by_name.get(name)
             if gm is None:
-                raise ValueError(f"Unknown GM '{gm_name}' in branch for flow '{flow_name}'.")
-            turns = engine._selected_turns(game_master=gm, candidate_agents=gm_agents)
-            sub_batches.append(
-                StepBatch(
-                    flow_name=flow_name,
-                    game_master=gm,
-                    turns=turns,
-                    turn_policy=self.flow_turn_policies.get(flow_name),
-                )
-            )
-        return BranchHop(tuple(sub_batches))
+                raise ValueError(f"Unknown GM '{name}' in branch for flow '{flow_name}'.")
+            gms[name] = gm
+        return BranchHop(
+            router=branch.router,
+            gms=gms,
+            candidates=tuple(candidates),
+            flow_name=flow_name,
+            step_index=step_index,
+            seed=self.seed,
+            turn_policy=self.flow_turn_policies.get(flow_name),
+        )
 
-    def _prefix_and_rest(
-        self, plan: _MultiGMPlan
-    ) -> tuple[list[StepBatch], list[list[StepBatch | BranchHop | None]]]:
+    def _prefix_and_rest(self, plan: _MultiGMPlan) -> tuple[list[StepBatch], list[list[Hop]]]:
         """Split flows into the serial prefix (flow_order-listed, hops flattened) and
         the per-flow hop lists for the remaining flows (idle/branch hops preserved).
 
@@ -343,7 +322,7 @@ class MultiGMStepStrategy(StepStrategy):
         correct regardless.
         """
         prefix: list[StepBatch] = []
-        rest: list[list[StepBatch | BranchHop | None]] = []
+        rest: list[list[Hop]] = []
         for flow_name in plan.ordered_flow_names:
             hops = plan.hops_by_flow[flow_name]
             if flow_name in plan.listed:
@@ -357,7 +336,7 @@ class MultiGMStepStrategy(StepStrategy):
         prefix, rest = self._prefix_and_rest(plan)
         # The engine drops idle (None) slots and runs each remaining flow's chain as
         # an independent pipeline.
-        return engine._execute_chain_groups(ordered_batches=prefix, rest_chains=rest)
+        return engine.execute_chain_groups(ordered_batches=prefix, rest_chains=rest)
 
 
 @dataclass
@@ -372,11 +351,13 @@ class MultiGMSerialStepStrategy(MultiGMStepStrategy):
     name: str = "multi_gm_serial"
 
     def _schedule(self, engine: Any, plan: _MultiGMPlan) -> StepResult:
-        batches: list[StepBatch] = []
+        # Pass hops through (idle None slots dropped); the engine resolves a branch
+        # hop's router when the row-major traversal reaches it, after every earlier
+        # batch has drained.
+        hops: list[Hop] = []
         for flow_name in plan.ordered_flow_names:
-            for hop in plan.hops_by_flow[flow_name]:
-                batches.extend(expand_hop(hop))
-        return engine._execute_batches(step_index=0, batches=batches, verbose=False)
+            hops.extend(hop for hop in plan.hops_by_flow[flow_name] if hop is not None)
+        return engine.execute_batches(step_index=0, batches=hops, verbose=False)
 
 
 @dataclass
@@ -398,4 +379,4 @@ class MultiGMStagedStepStrategy(MultiGMStepStrategy):
         prefix, rest = self._prefix_and_rest(plan)
         # The engine transposes each remaining flow's hop list into stage columns
         # (idle None slots drop out) and runs them with a global per-stage barrier.
-        return engine._execute_staged_groups(ordered_batches=prefix, rest_chains=rest)
+        return engine.execute_staged_groups(ordered_batches=prefix, rest_chains=rest)

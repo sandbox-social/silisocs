@@ -20,6 +20,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, cast
 
 from silisocs.agents.base_agent import Agent
@@ -34,9 +35,11 @@ from silisocs.runtime.telemetry import (
     update_adaptive_worker_cap,
 )
 from silisocs.runtime.types import ActionSpec
+from silisocs.simulation_engines.policies.routers import RouteInfo
 from silisocs.simulation_engines.recorders import probe_empty, retry_empty
 from silisocs.simulation_engines.runtime_base import (
     BranchHop,
+    Hop,
     StepBatch,
     StepResult,
     TurnPolicy,
@@ -50,6 +53,33 @@ _LOGGER = logging.getLogger(__name__)
 # resolved branch). Used by the multi-GM grouped/staged execution paths.
 _Group = tuple[Any, dict[str, Callable[[], str]]]
 _Stage = list[_Group]
+
+
+@dataclass
+class _BranchStage:
+    """A branch stage whose routing is resolved at drain time.
+
+    Carried through prep in place of a concrete ``_Stage`` so the router runs only
+    after the flow's earlier hops have drained (concurrent path: on the flow's driver
+    thread; staged path: after the prior stage barrier; serial path: when the traversal
+    reaches it). Stage-width stats are estimated optimistically from the branch's
+    candidate count in ``prep_stage``.
+    """
+
+    hop: BranchHop
+
+
+# One prepped chain stage: concrete groups, or a branch resolved at drain time.
+_ChainStage = _Stage | _BranchStage
+
+
+def _stage_width(stage: _ChainStage) -> int:
+    """Turns in a stage: the sum of its group sizes, or a branch's candidate count
+    (every candidate acts on one chosen GM, so the count bounds the resolved width).
+    """
+    if isinstance(stage, _BranchStage):
+        return len(stage.hop.candidates)
+    return sum(len(tasks) for _, tasks in stage)
 
 
 def _ensure_gm_method(game_master: Any, method: str) -> Callable[..., Any]:
@@ -77,9 +107,10 @@ class SchedulingMixin:
 
     # State provided by RuntimeEngine.__init__ that the scheduling methods read.
     # The host class owns their construction; annotated here so the mixin type-checks
-    # in isolation. The per-GM lock (``_gm_lock``/``_gm_locks``) and ``run_agent_step``
-    # deliberately stay on the host and are reached only via the engine handle the
-    # turn thunks close over, never touched directly here.
+    # in isolation. ``run_agent_step`` stays on the host and is reached only via the
+    # engine handle the turn thunks close over. The per-GM lock (``_gm_lock``) is
+    # normally reached the same way, but branch resolution calls it directly to
+    # serialize mid-step ``selected_turns`` against concurrent turns.
     turn_policy: TurnPolicy
     gm_turn_policies: dict[str, TurnPolicy]
     gm_concurrency_caps: dict[str, int]
@@ -87,6 +118,7 @@ class SchedulingMixin:
     _action_phase_cap: int | None
     _gm_sems: dict[int, threading.BoundedSemaphore]
     _gm_sems_guard: threading.Lock
+    _gm_lock: Callable[[Any], Any]  # host: gm -> threading.Lock (per-GM turn serialization)
 
     def _reset_gm_semaphores(self) -> None:
         """Drop cached per-GM semaphores so they re-size against the active phase cap."""
@@ -158,16 +190,18 @@ class SchedulingMixin:
             name: self._wrap_turn(game_master, worker_limit, thunk) for name, thunk in tasks.items()
         }
 
-    def _agent_flow_tag(self, game_master: Any, agent_name: str) -> str:
+    def agent_flow_tag(self, game_master: Any, agent_name: str) -> str:
+        """Public step-strategy API: the flow tag a game master assigns an agent."""
         flow_map = dict(getattr(game_master, "agent_flow_tags", {}) or {})
         return str(flow_map.get(agent_name, "default") or "default")
 
-    def _selected_turns(
+    def selected_turns(
         self,
         *,
         game_master: Any,
         candidate_agents: Sequence[Agent],
     ) -> list[tuple[Agent, ActionSpec]]:
+        """Public step-strategy API: (agent, ActionSpec) turns a GM selects to act."""
         by_name = {agent.name: agent for agent in candidate_agents}
         acting_fn = _ensure_gm_method(game_master, "acting_agents")
         prompt_fn = _ensure_gm_method(game_master, "action_prompt")
@@ -183,6 +217,70 @@ class SchedulingMixin:
                 continue
             selected.append((by_name[name], cast(ActionSpec, prompt_fn(name))))
         return selected
+
+    # --- Branch routing (resolved when the flow's chain reaches the branch) ---
+
+    def _resolve_branch(self, hop: BranchHop) -> list[StepBatch]:
+        """Run a branch's router, validate its assignment, and select turns per chosen GM.
+
+        The router call runs unlocked — it may take real time (call agents, read live
+        backend state). The per-chosen-GM ``selected_turns`` that follows mutates GM
+        next_acting state, so it runs under that GM's lock — the same lock
+        ``run_agent_step`` takes — so mid-step selection cannot race a concurrent turn.
+        Iterating ``hop.gms`` (config order) and candidate order keeps a deterministic
+        router's resolution deterministic.
+        """
+        info = RouteInfo(flow=hop.flow_name, step=hop.step_index, seed=hop.seed)
+        route = hop.router(hop.candidates, hop.gms, info)
+        if not isinstance(route, Mapping):
+            raise TypeError(
+                f"Router for flow '{hop.flow_name}' must return a mapping of agent name "
+                f"-> GM name; got {type(route).__name__}."
+            )
+        assigned = {str(name): str(gm_name).strip() for name, gm_name in route.items()}
+        by_name = {agent.name: agent for agent in hop.candidates}
+        unknown = sorted(set(assigned) - set(by_name))
+        if unknown:
+            raise ValueError(
+                f"Router for flow '{hop.flow_name}' routed unknown agent(s) {unknown}; "
+                f"this stage's agents are {sorted(by_name)}."
+            )
+        missing = sorted(set(by_name) - set(assigned))
+        if missing:
+            raise ValueError(
+                f"Router for flow '{hop.flow_name}' left agent(s) {missing} unrouted; "
+                "every agent must be assigned one of the branch's GMs."
+            )
+        bad = sorted({gm for gm in assigned.values() if gm not in hop.gms})
+        if bad:
+            raise ValueError(
+                f"Router for flow '{hop.flow_name}' returned {bad}, not among its "
+                f"choices {list(hop.gms)}."
+            )
+        batches: list[StepBatch] = []
+        for gm_name, gm in hop.gms.items():
+            chosen = [agent for agent in hop.candidates if assigned[agent.name] == gm_name]
+            if not chosen:
+                continue
+            with self._gm_lock(gm):
+                turns = self.selected_turns(game_master=gm, candidate_agents=chosen)
+            batches.append(
+                StepBatch(
+                    flow_name=hop.flow_name,
+                    game_master=gm,
+                    turns=turns,
+                    turn_policy=hop.turn_policy,
+                )
+            )
+        return batches
+
+    def _resolve_branch_stage(self, hop: BranchHop) -> _Stage:
+        """Resolve a branch and prep its per-GM batches into a drain-ready stage."""
+        stage: _Stage = []
+        for batch in self._resolve_branch(hop):
+            tasks, _names, _models = self._batch_tasks(batch)
+            stage.append((batch.game_master, tasks))
+        return stage
 
     @staticmethod
     def _run_tasks_with_limit(
@@ -314,29 +412,46 @@ class SchedulingMixin:
             failed_turns=tuple(sorted(failed_tasks)),
         )
 
-    def _execute_batches(
+    def execute_batches(
         self,
         *,
         step_index: int,
-        batches: Sequence[StepBatch],
+        batches: Sequence[Hop],
         verbose: bool,
     ) -> StepResult:
-        """Run a flat batch list strictly serially (one batch fully drained at a time).
+        """Public step-strategy API: run hops strictly serially, one batch at a time.
 
-        This is the legacy execution path used by the base/sequential/flow step
-        strategies and by the ``multi_gm_serial`` traversal.
+        Accepts full hops: ``None`` (idle) slots are skipped, and a ``BranchHop`` is
+        resolved IN PLACE when the traversal reaches it — its router runs after every
+        earlier batch has drained (the serial analogue of the concurrent/staged paths'
+        stage-time routing) and its per-GM batches then drain one at a time. This is the
+        execution path used by the base/sequential/flow step strategies and by the
+        ``multi_gm_serial`` traversal.
         """
         del verbose, step_index
-        if not batches:
-            return self._empty_step_result()
-
-        task_groups: list[tuple[Any, dict[str, Callable[[], str]]]] = []
+        work: list[_Group | _BranchStage] = []
         model_pool: dict[int, Any] = {}
         active_names: set[str] = set()
         requested_workers = 0
-        for batch in batches:
-            tasks, names, models = self._batch_tasks(batch)
-            task_groups.append((batch.game_master, tasks))
+        primary_gm_name = ""
+        for hop in batches:
+            if hop is None:
+                continue
+            if isinstance(hop, BranchHop):
+                # Optimistic prep (mirrors the grouped paths): every candidate acts on
+                # one of the choice GMs, so all candidates count and every choice GM's
+                # models are unioned in.
+                active_names.update(agent.name for agent in hop.candidates)
+                requested_workers += len(hop.candidates)
+                for gm in hop.gms.values():
+                    for model_obj in collect_unique_models(gm, list(hop.candidates)):
+                        model_pool[id(model_obj)] = model_obj
+                    if not primary_gm_name:
+                        primary_gm_name = str(gm.name)
+                work.append(_BranchStage(hop))
+                continue
+            tasks, names, models = self._batch_tasks(hop)
+            work.append((hop.game_master, tasks))
             active_names.update(names)
             # Total turns this step. Batches drain one at a time so the peak is the
             # widest batch, but requested_workers is reported as the sum across
@@ -344,20 +459,31 @@ class SchedulingMixin:
             requested_workers += len(tasks)
             for model_obj in models:
                 model_pool[id(model_obj)] = model_obj
+            if not primary_gm_name:
+                primary_gm_name = hop.game_master.name
+
+        if not work:
+            return self._empty_step_result()
 
         def runner(worker_limit: int, failed_tasks: list[str]) -> None:
-            for game_master, tasks in task_groups:
-                self._run_tasks_with_limit(
-                    self._wrap_group(game_master, worker_limit, tasks),
-                    worker_limit,
-                    failed_tasks=failed_tasks,
+            for item in work:
+                groups = (
+                    self._resolve_branch_stage(item.hop)
+                    if isinstance(item, _BranchStage)
+                    else [item]
                 )
+                for game_master, tasks in groups:
+                    self._run_tasks_with_limit(
+                        self._wrap_group(game_master, worker_limit, tasks),
+                        worker_limit,
+                        failed_tasks=failed_tasks,
+                    )
 
         return self._run_action_phase(
             requested_workers=max(1, requested_workers),
             active_names=active_names,
             models=list(model_pool.values()),
-            primary_gm_name=batches[0].game_master.name,
+            primary_gm_name=primary_gm_name,
             runner=runner,
         )
 
@@ -388,7 +514,7 @@ class SchedulingMixin:
     def _run_chain_pipeline(
         self,
         pool: concurrent.futures.ThreadPoolExecutor,
-        stages: list[_Stage],
+        stages: list[_ChainStage],
         failed_tasks: list[str],
         worker_limit: int,
     ) -> None:
@@ -396,16 +522,22 @@ class SchedulingMixin:
 
         A normal hop is a one-group stage; a resolved branch is a multi-group stage
         whose groups (distinct agent subsets on different GMs) drain together as one
-        barrier before the chain advances. Runs on a driver thread (not a turn-pool
-        worker), so blocking on a stage's futures keeps that flow's stages serial —
-        preserving per-agent chain order — without consuming a turn-worker slot or
-        stalling sibling chains. A failed turn at one stage is isolated and counted but
-        does not abort later stages (same as the legacy serial path); a downstream stage
-        may then observe a GM the failed stage never resolved into.
+        barrier before the chain advances. A ``_BranchStage`` is resolved HERE, after
+        the flow's earlier stages have drained — so the router observes their effects
+        (or asks the agent) — then drains like any other stage. Runs on a driver thread
+        (not a turn-pool worker), so blocking on a stage's futures keeps that flow's
+        stages serial — preserving per-agent chain order — without consuming a
+        turn-worker slot or stalling sibling chains. A failed turn at one stage is
+        isolated and counted but does not abort later stages (same as the legacy serial
+        path); a downstream stage may then observe a GM the failed stage never resolved
+        into.
         """
         for stage in stages:
+            concrete = (
+                self._resolve_branch_stage(stage.hop) if isinstance(stage, _BranchStage) else stage
+            )
             stage_tasks: dict[str, Callable[[], str]] = {}
-            for game_master, tasks in stage:
+            for game_master, tasks in concrete:
                 stage_tasks.update(self._wrap_group(game_master, worker_limit, tasks))
             self._drain_tasks_on_pool(pool, stage_tasks, failed_tasks)
 
@@ -413,27 +545,35 @@ class SchedulingMixin:
         self,
         *,
         ordered_batches: Sequence[StepBatch],
-        rest_chains: Sequence[Sequence[StepBatch | BranchHop | None]],
+        rest_chains: Sequence[Sequence[Hop]],
         build_runner: Callable[..., Callable[[int, list[str]], None]],
     ) -> StepResult:
         """Shared prep + telemetry envelope for the concurrent and staged multi-GM paths.
 
         ``ordered_batches`` is the flow_order serial prefix; ``rest_chains`` is the
         remaining flows' hop lists IN FLOW ORDER. A hop is a normal ``StepBatch``,
-        ``None`` (an idle slot), or a ``BranchHop`` (a resolved branch); each hop is
-        prepped into a *stage* — a list of ``(game_master, tasks)`` groups (empty for an
-        idle slot, one group for a normal hop, several for a branch). Stages are prepped
-        in flow order, so ``primary_game_master`` and the rest of the telemetry envelope
-        are identical across both paths regardless of how the caller later schedules
-        them. ``build_runner(ordered_groups, rest_groups)`` receives the flattened prefix
-        groups and the per-flow list of stages, and returns the action-phase runner.
+        ``None`` (an idle slot), or a ``BranchHop`` (routing resolved at drain time).
+        Each hop is prepped into a *stage*: concrete ``(game_master, tasks)`` groups, or
+        a ``_BranchStage`` marker. A branch stage estimates its stats optimistically —
+        every candidate acts on one of the choice GMs, so all candidates count and every
+        choice GM's models are unioned in — so ``primary_game_master`` and the worker
+        envelope stay identical whether or not a hop is a branch.
+        ``build_runner(ordered_groups, rest_groups)`` returns the action-phase runner.
         """
         active_names: set[str] = set()
         model_pool: dict[int, Any] = {}
         primary_gm_name = ""
 
-        def prep_stage(hop: StepBatch | BranchHop | None) -> _Stage:
+        def prep_stage(hop: Hop) -> _ChainStage:
             nonlocal primary_gm_name
+            if isinstance(hop, BranchHop):
+                active_names.update(agent.name for agent in hop.candidates)
+                for gm in hop.gms.values():
+                    for model_obj in collect_unique_models(gm, list(hop.candidates)):
+                        model_pool[id(model_obj)] = model_obj
+                    if not primary_gm_name:
+                        primary_gm_name = str(gm.name)
+                return _BranchStage(hop)
             stage: _Stage = []
             for batch in expand_hop(hop):
                 tasks, names, models = self._batch_tasks(batch)
@@ -445,8 +585,17 @@ class SchedulingMixin:
                 stage.append((batch.game_master, tasks))
             return stage
 
-        ordered_groups = [group for hop in ordered_batches for group in prep_stage(hop)]
-        rest_groups = [[prep_stage(hop) for hop in chain] for chain in rest_chains]
+        # flow_order (prefix) flows cannot contain a branch (rejected at build), so every
+        # prefix stage is concrete; guard rather than iterate a branch marker.
+        ordered_groups: list[_Group] = []
+        for hop in ordered_batches:
+            prefix_stage = prep_stage(hop)
+            if isinstance(prefix_stage, _BranchStage):
+                raise RuntimeError("A flow_order prefix flow cannot contain a branch.")
+            ordered_groups.extend(prefix_stage)
+        rest_groups: list[list[_ChainStage]] = [
+            [prep_stage(hop) for hop in chain] for chain in rest_chains
+        ]
 
         # Short-circuit only when there are genuinely no batches, not merely no selected
         # turns, so an all-inactive step still emits the full telemetry envelope.
@@ -457,13 +606,12 @@ class SchedulingMixin:
         # flow_order prefix runs before the rest (they never overlap), and within a flow
         # chain only one stage runs at a time. The widest single wave is the prefix's widest
         # group vs. the sum over flows of each flow's widest stage (a branch's groups drain
-        # together, so a stage's width is the total turns across its groups); that sum also
-        # upper-bounds the staged path's widest stage column, so one formula sizes both
-        # paths without ever undersizing.
+        # together, so a stage's width is the total turns across its groups; a deferred
+        # branch is bounded by its candidate count); that sum also upper-bounds the staged
+        # path's widest stage column, so one formula sizes both paths without undersizing.
         prefix_peak = max((len(tasks) for _, tasks in ordered_groups), default=0)
         rest_peak = sum(
-            max((sum(len(tasks) for _, tasks in stage) for stage in chain), default=0)
-            for chain in rest_groups
+            max((_stage_width(stage) for stage in chain), default=0) for chain in rest_groups
         )
 
         return self._run_action_phase(
@@ -489,13 +637,13 @@ class SchedulingMixin:
                 turn_pool, self._wrap_group(game_master, worker_limit, tasks), failed_tasks
             )
 
-    def _execute_chain_groups(
+    def execute_chain_groups(
         self,
         *,
         ordered_batches: Sequence[StepBatch],
-        rest_chains: Sequence[Sequence[StepBatch | BranchHop | None]],
+        rest_chains: Sequence[Sequence[Hop]],
     ) -> StepResult:
-        """Concurrent multi-GM execution.
+        """Public step-strategy API: concurrent multi-GM execution.
 
         ``ordered_batches`` (flow_order-listed flows) run first as a strict serial
         prefix, preserving declared cross-flow precedence (e.g. seed-then-act). Each
@@ -510,8 +658,9 @@ class SchedulingMixin:
 
         def build_runner(
             ordered_groups: list[_Group],
-            rest_groups: list[list[_Stage]],
+            rest_groups: list[list[_ChainStage]],
         ) -> Callable[[int, list[str]], None]:
+            # Drop empty concrete stages (idle slots); a _BranchStage is truthy and kept.
             active_chains = [[stage for stage in chain if stage] for chain in rest_groups]
             active_chains = [chain for chain in active_chains if chain]
 
@@ -550,59 +699,60 @@ class SchedulingMixin:
             ordered_batches=ordered_batches, rest_chains=rest_chains, build_runner=build_runner
         )
 
-    def _execute_staged_groups(
+    def execute_staged_groups(
         self,
         *,
         ordered_batches: Sequence[StepBatch],
-        rest_chains: Sequence[Sequence[StepBatch | BranchHop | None]],
+        rest_chains: Sequence[Sequence[Hop]],
     ) -> StepResult:
-        """Staged multi-GM execution with a global per-stage barrier.
+        """Public step-strategy API: staged multi-GM execution with a per-stage barrier.
 
         ``ordered_batches`` (flow_order-listed flows) run first as a strict serial
-        prefix, exactly as in ``_execute_chain_groups``. The remaining flows' per-flow
-        hop lists are then transposed into stage columns and advanced one column at a
-        time: every hop in a stage is submitted to the shared turn pool together
-        (different GMs run in parallel; turns on the same GM serialize on the per-GM
-        lock in ``run_agent_step``), and the next stage does not start until ALL of the
-        current stage's turns finish — the global barrier. Unlike the concurrent path
-        there is no driver pool: the engine sequences the stages directly, so each
-        stage is one flat concurrent batch drained to completion. A flow that idles
-        (``None``) or ends at a stage simply contributes no hop to that column.
+        prefix, exactly as in ``execute_chain_groups``. The remaining flows' per-flow
+        hop lists are then advanced one stage column at a time: every hop in a stage is
+        submitted to the shared turn pool together (different GMs run in parallel; turns
+        on the same GM serialize on the per-GM lock in ``run_agent_step``), and the next
+        stage does not start until ALL of the current stage's turns finish — the global
+        barrier. A ``_BranchStage`` in a column is resolved when the column runs — after
+        the prior stage's barrier — so its router observes the earlier stages' effects.
+        Unlike the concurrent path there is no driver pool: the engine sequences the
+        stages directly. A flow that idles (``None``) or ends at a stage contributes no
+        hop to that column.
         """
 
         def build_runner(
             ordered_groups: list[_Group],
-            rest_groups: list[list[_Stage]],
+            rest_groups: list[list[_ChainStage]],
         ) -> Callable[[int, list[str]], None]:
-            # Transpose per-flow stages into stage columns; idle slots (empty stages)
-            # contribute nothing, and a branch stage flattens its groups into the column.
             depth = max((len(chain) for chain in rest_groups), default=0)
-            stages: list[_Stage] = []
-            for stage_index in range(depth):
-                column: _Stage = [
-                    group
-                    for chain in rest_groups
-                    if stage_index < len(chain)
-                    for group in chain[stage_index]
-                ]
-                if column:
-                    stages.append(column)
 
             def runner(worker_limit: int, failed_tasks: list[str]) -> None:
                 with concurrent.futures.ThreadPoolExecutor(
                     max_workers=max(1, worker_limit)
                 ) as turn_pool:
                     self._drain_prefix(turn_pool, ordered_groups, worker_limit, failed_tasks)
-                    for groups in stages:
-                        # One global barrier per stage: gather every hop in the column
-                        # into a single submission so all GMs in the stage run together,
-                        # then block on the whole column before advancing. Task names
-                        # are f"{gm}::{agent}" and each agent is in exactly one flow, so
-                        # a column's keys never collide.
+                    for stage_index in range(depth):
+                        # Build stage column N (transpose across flows), resolving any
+                        # branch AFTER the prior column's barrier so its router sees
+                        # earlier stages' effects. One global barrier per column: task
+                        # names are f"{gm}::{agent}" and each agent is in one flow, so keys
+                        # never collide.
                         column_tasks: dict[str, Callable[[], str]] = {}
-                        for game_master, tasks in groups:
-                            column_tasks.update(self._wrap_group(game_master, worker_limit, tasks))
-                        self._drain_tasks_on_pool(turn_pool, column_tasks, failed_tasks)
+                        for chain in rest_groups:
+                            if stage_index >= len(chain):
+                                continue
+                            stage = chain[stage_index]
+                            concrete = (
+                                self._resolve_branch_stage(stage.hop)
+                                if isinstance(stage, _BranchStage)
+                                else stage
+                            )
+                            for game_master, tasks in concrete:
+                                column_tasks.update(
+                                    self._wrap_group(game_master, worker_limit, tasks)
+                                )
+                        if column_tasks:
+                            self._drain_tasks_on_pool(turn_pool, column_tasks, failed_tasks)
 
             return runner
 

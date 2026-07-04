@@ -318,6 +318,88 @@ rule applies only to the real (non-null) GMs in the chain. Empty slots have no
 effect under `multi_gm` / `multi_gm_serial` — the null hops are simply dropped —
 so they only change behavior under `multi_gm_staged`.
 
+### Branch Routing
+
+A `flow_to_gms` chain entry may also be a **branch node** —
+`{branch: {router, choices}}` — that routes each of the flow's agents to exactly
+ONE of `choices` (alternative GM names) at that one stage. A branch occupies a
+single chain position (one stage), so the GMs before and after it still run once
+on every agent; the branch only fans agents across its choices at its own stage.
+
+```yaml
+flow_bindings:
+  flow_to_gms:
+    social_flow:
+      - branch:
+          router:
+            built_in: agent_choice
+            params: { prompt: "You can act on {choices} this round. Reply with one.", on_invalid: random }
+          choices: [twitter_gm, reddit_gm]
+```
+
+Rules: at most one branch per chain; at least two distinct, known choices whose
+`sequence` values sit strictly between the branch's chain neighbours;
+`multi_gm*` step mode only; and never inside a `flow_order` prefix flow. For
+restore and per-GM `owned_flows`, a branch counts as any of its choices.
+
+**Router.** The `router` is a `{built_in|class_path, params}` slot, built by
+`build_router` (`simulation_engines/policies/routers.py`,
+`simulation_engines/policies/factory.py`) into a **plain callable** — there is no
+base class and nothing to subclass (the shape is formalized by the structural
+`Router` Protocol in `routers.py`):
+
+```python
+def route(agents, gms, ctx):
+    # agents: the flow's agent objects  -> call agent.act(...) / agent.observe(...) freely
+    # gms:    {gm name: game master}     -> one per choice, config order; read gm.backend freely
+    # ctx:    RouteInfo(flow, step, seed) -> stable inputs for a replay-friendly decision
+    return {agent.name: <chosen gm name> for agent in agents}   # cover every agent
+```
+
+**When it runs.** The engine resolves the branch when the flow's chain reaches
+the branch stage — after the flow's earlier hops have drained, so the router sees
+their backend effects (and may call the agents). This is the same in all three
+traversals: under `multi_gm` (concurrent) the flow's own driver thread resolves it
+once its prior hops finish; under `multi_gm_staged` when its stage column runs,
+after the prior barrier; under `multi_gm_serial` when the row-major traversal
+reaches it. In flight the unresolved branch is a `BranchHop`
+(`simulation_engines/runtime_base.py`); the engine resolves it in
+`scheduling.py::_resolve_branch`.
+
+**What the engine owns** (all invisible to the router author):
+
+1. *When* the router runs (above).
+2. *Locking* — the router call runs UNLOCKED (it may be slow: LLM calls, backend
+   reads). Only the follow-up per-chosen-GM `selected_turns` runs under that GM's
+   lock (`_gm_lock`), the same lock a turn takes, so mid-step selection can never
+   race a concurrent turn on the same GM.
+3. *Validation* of the returned mapping — every agent covered, no unknown agent
+   names, every value one of the branch's GMs; otherwise a clear `ValueError`.
+
+**What the router does itself** — everything else. To read live backend state it
+just reads `gms["twitter_gm"].backend`. To let the agent decide it builds its own
+`ActionSpec` and calls `agent.act(...)`, interpreting the answer however it likes.
+No capability flags, no context facade, no engine-provided ask helper.
+
+**Built-in routers:**
+
+- `random` (`RandomChoiceRouter`) — weighted pick, deterministic per
+  `(seed, flow, step, agent)`, so a run reproduces and replays identically.
+  `weights` maps a GM name to a relative weight (absent choices weigh 1.0).
+- `agent_choice` (`AgentChoiceRouter`) — asks each agent to pick, via a CHOICE
+  `ActionSpec`. Params: a `prompt` template with placeholders `{choices}` /
+  `{flow}` / `{step}` / `{agent}`, and `on_invalid` = `random` (default) | `first`
+  | `raise` — the fallback when the agent's answer names no choice (default
+  `random` is a replay-stable pick). It uses the shared `match_choice` helper
+  (exact, then case-insensitive, then contained-once), which custom routers can
+  import too.
+
+A custom router is a `class_path` to a callable — a plain function (config
+`params` bound as keyword arguments) or a class (built with `params`, instances
+callable). An LLM-driven router is only as reproducible as the model it calls. See
+[Simulation Extensibility API](simulation_extensibility_api.md) for the
+custom-router authoring recipe.
+
 ### Per-GM Concurrency Caps
 
 `sim.engine.step.params.gm_concurrency_caps` (a `{gm_name: int}` map) caps how

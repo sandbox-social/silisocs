@@ -7,14 +7,15 @@ from typing import Any
 from silisocs.studies.study_types import (
     SCHEMA_VERSION,
     StudyConfigError,
-    _ensure_mapping,
-    _ensure_string_list,
-    _resolve_command_tokens,
-    _resolve_study_id,
+    ensure_mapping,
+    ensure_string_list,
+    resolve_command_tokens,
+    resolve_study_id,
 )
 
 
-def _validate_schema(study_data: dict[str, Any]) -> None:  # noqa: C901, PLR0912, PLR0915
+def validate_schema(study_data: dict[str, Any]) -> None:  # noqa: C901, PLR0912, PLR0915
+    """Validate ``study_data`` against study schema version 1."""
     schema_version = study_data.get("schema_version")
     if schema_version != SCHEMA_VERSION:
         raise StudyConfigError(
@@ -23,13 +24,13 @@ def _validate_schema(study_data: dict[str, Any]) -> None:  # noqa: C901, PLR0912
     if "evaluation" in study_data:
         raise StudyConfigError("Use top-level evaluations: [...] instead of evaluation")
 
-    study = _ensure_mapping("study", study_data.get("study"))
+    study = ensure_mapping("study", study_data.get("study"))
     if not isinstance(study.get("name"), str) or not study["name"].strip():
         raise StudyConfigError("study.name is required and must be a non-empty string")
-    _resolve_study_id(study)
+    resolve_study_id(study)
 
     if "parent_studies" in study:
-        _ensure_string_list("study.parent_studies", study.get("parent_studies"))
+        ensure_string_list("study.parent_studies", study.get("parent_studies"))
 
     derived = study.get("derived_from_runs")
     if derived is not None:
@@ -50,11 +51,11 @@ def _validate_schema(study_data: dict[str, Any]) -> None:  # noqa: C901, PLR0912
                     f"study.derived_from_runs[{idx}] must include run_id or run_path"
                 )
 
-    run_defaults = _ensure_mapping("study.run_defaults", study.get("run_defaults"))
+    run_defaults = ensure_mapping("study.run_defaults", study.get("run_defaults"))
     if "overrides" in run_defaults and not isinstance(run_defaults["overrides"], dict):
         raise StudyConfigError("study.run_defaults.overrides must be a mapping")
 
-    hypotheses = _ensure_mapping("hypotheses", study_data.get("hypotheses"))
+    hypotheses = ensure_mapping("hypotheses", study_data.get("hypotheses"))
     if not hypotheses:
         raise StudyConfigError("hypotheses must include at least one hypothesis")
 
@@ -78,7 +79,7 @@ def _validate_schema(study_data: dict[str, Any]) -> None:  # noqa: C901, PLR0912
                 raise StudyConfigError(
                     f"hypotheses.{hyp_id}.conditions.{cond_id}.overrides must be a mapping"
                 )
-            execution = _ensure_mapping(
+            execution = ensure_mapping(
                 f"hypotheses.{hyp_id}.conditions.{cond_id}.execution",
                 cond_node.get("execution"),
             )
@@ -88,12 +89,12 @@ def _validate_schema(study_data: dict[str, Any]) -> None:  # noqa: C901, PLR0912
                     f"hypotheses.{hyp_id}.conditions.{cond_id}.execution.mode must be run or reuse_existing"
                 )
             if "command" in execution:
-                _resolve_command_tokens(
+                resolve_command_tokens(
                     execution.get("command"),
                     f"hypotheses.{hyp_id}.conditions.{cond_id}.execution.command",
                 )
             if mode == "reuse_existing":
-                reuse = _ensure_mapping(
+                reuse = ensure_mapping(
                     f"hypotheses.{hyp_id}.conditions.{cond_id}.reuse",
                     cond_node.get("reuse"),
                 )

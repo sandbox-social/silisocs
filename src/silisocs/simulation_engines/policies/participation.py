@@ -140,6 +140,9 @@ class ActivityMarkovParticipation(ParticipationPolicy):
     sim role. The chain is re-derived from step 0 on every call with
     per-``(seed, agent, step)`` draws, so the policy is stateless: resume and
     replay land on the exact same activity states without any persisted state.
+    This re-derives the Markov chain from step 0 each call — O(steps^2) over a
+    run — the deliberate price of statelessness/replay-stability; fine at
+    current scales.
     """
 
     activity_transition_rates: Mapping[str, Mapping[str, float]] = field(default_factory=dict)

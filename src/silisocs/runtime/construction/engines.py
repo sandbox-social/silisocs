@@ -79,9 +79,9 @@ def _prepare_branch_chains(
 
     A branch is only meaningful under a multi-GM step strategy, so a branch reached
     with ``allow_branches=False`` is rejected. A branch may not sit in a ``flow_order``
-    (serial-prefix) flow — the prefix must stay deterministic. v1 resolves only PURE
-    routers at materialization; a router that declares it needs live state or an agent
-    choice is rejected here with a clear not-yet-supported message (the extension seam).
+    (serial-prefix) flow — the prefix must stay deterministic. The router slot (config)
+    is turned into a callable here; the step strategy runs it when the flow's chain
+    reaches the branch stage.
     """
     listed = {str(flow).strip() for flow in flow_order}
     prepared: dict[str, list[Any]] = {}
@@ -99,15 +99,9 @@ def _prepare_branch_chains(
                         f"flow '{flow}' is listed in flow_order and cannot contain a branch; "
                         "the serial prefix must be deterministic."
                     )
+                # Config -> callable router; the step strategy runs it at the branch
+                # stage (after earlier hops drain) under any multi_gm* traversal.
                 router = build_router(entry.router_slot)
-                if getattr(router, "reads_live_state", False) or getattr(
-                    router, "drives_agent", False
-                ):
-                    raise NotImplementedError(
-                        f"Router '{getattr(router, 'name', '?')}' for flow '{flow}' declares "
-                        "reads_live_state/drives_agent; execution-time routing is not yet "
-                        "supported. v1 resolves pure routers at materialization."
-                    )
                 new_chain.append(replace(entry, router=router))
             else:
                 new_chain.append(entry)

@@ -26,6 +26,7 @@ from silisocs.dashboard.config_builder import (
 from silisocs.dashboard.config_writer import (
     save_scenario as _save_scenario,
 )
+from silisocs.dashboard.defaults import default_jobname_format
 from silisocs.dashboard.results import (
     HEALTH_COUNTERS,
     discover_result_run_dirs,
@@ -523,7 +524,7 @@ with st.sidebar:
             # Create from selected preset default.
             default_cfg = {
                 "scenario_name": clean_name,
-                "jobname_format": "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}",
+                "jobname_format": default_jobname_format(),
                 "setting": {"name": "", "background": []},
                 "event": {"name": "", "context": ""},
                 "persona_pipeline": {},

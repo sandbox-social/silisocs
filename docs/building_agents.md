@@ -289,6 +289,59 @@ See [Usage Overview](usage.md#per-agent-llm-models) for the full priority chain.
 
 ---
 
+## Registering a Custom LLM Provider
+
+`sim.llm.provider` selects which language-model backend agents call. There are
+three ways to point it at a model, none of which require editing core code:
+
+1. **Registry decorator.** Decorate a `LanguageModel` subclass (or a factory
+   returning one) and import the module before the runner builds models:
+
+    ```python
+    from silisocs.runtime.language_models.registry import register_llm_provider
+    from silisocs.runtime.language_models import LanguageModel
+
+    @register_llm_provider("my_provider")
+    class MyModel(LanguageModel):
+        ...
+    ```
+
+    ```yaml
+    sim:
+      llm:
+        provider: my_provider
+    ```
+
+2. **Fully-qualified class path.** Skip registration and name the class
+   directly; the factory imports and instantiates it:
+
+    ```yaml
+    sim:
+      llm:
+        provider: mypkg.models.MyModel
+    ```
+
+3. **Built-in OpenAI-compatible presets.** Common providers ship as named
+   presets — `anthropic`, `gemini`, `openrouter`, `groq`, `together`,
+   `deepseek`, `mistral`, `fireworks`, `xai`, `ollama`. Set the provider to the
+   preset name and supply the key via the provider's env var (for example
+   `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`; `ollama` is local and needs none):
+
+    ```yaml
+    sim:
+      llm:
+        provider: openrouter
+        name: anthropic/claude-3.5-sonnet
+    ```
+
+Providers that speak an OpenAI-compatible HTTP API should subclass
+`OpenAICompatibleLanguageModel` to inherit retry/backoff and telemetry support.
+The factory calls a provider with the standard kwargs (`model_name`, `log_file`,
+`debug`, `api_base`, `api_key`, `temperature`, `extra_kwargs`) and drops any it
+does not accept.
+
+---
+
 ## Related
 
 - [Memory Initialization](memory_initialization.md): How agents get their starting knowledge

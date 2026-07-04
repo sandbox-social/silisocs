@@ -128,7 +128,7 @@ def test_per_gm_action_mode_differs() -> None:
 
 
 # ---------------------------------------------------------------------------
-# (2) Per-GM tool_calling differs across two GMs (+ tool_calling:{mode} alias)
+# (2) Per-GM tool_calling differs across two GMs (scalar spelling)
 # ---------------------------------------------------------------------------
 def test_per_gm_tool_calling_mode_differs() -> None:
     cfg = _base_cfg()
@@ -141,7 +141,7 @@ def test_per_gm_tool_calling_mode_differs() -> None:
             {
                 "gm_name": "gm0",
                 "sequence": 0,
-                "tool_calling_mode": "single",
+                "tool_calling": "single",
                 "backend": backend,
                 "components": gm0_components,
             },
@@ -161,38 +161,11 @@ def test_per_gm_tool_calling_mode_differs() -> None:
     assert by_name["gm1"].params["tool_calling_mode"] == "none"
 
 
-def test_per_gm_tool_calling_mapping_alias() -> None:
-    cfg = _base_cfg()
-    components = _components(cfg)
-    backend = _backend(cfg)
-    gm0_components = dict(components)
-    gm0_components["resolve"] = {"built_in": "tool_calling"}
-    cfg.env.gm_orchestration = {
-        "gms": [
-            {
-                "gm_name": "gm0",
-                "sequence": 0,
-                # tool_calling:{mode: single} alias form.
-                "tool_calling": {"mode": "single"},
-                "backend": backend,
-                "components": gm0_components,
-            },
-            {
-                "gm_name": "gm1",
-                "sequence": 1,
-                "backend": backend,
-                "components": components,
-            },
-        ],
-        "flow_bindings": {"flow_to_gms": {}},
-    }
-
-    by_name = _gms_by_name(cfg)
-    assert by_name["gm0"].params["tool_calling_mode"] == "single"
-    assert by_name["gm1"].params["tool_calling_mode"] == "none"
-
-
-def test_tool_calling_mapping_alias_without_mode_raises() -> None:
+# ---------------------------------------------------------------------------
+# The retired per-GM spellings each raise a targeted migration error pointing at
+# the surviving scalar ``tool_calling: <mode>`` form.
+# ---------------------------------------------------------------------------
+def test_per_gm_tool_calling_mode_key_is_retired() -> None:
     cfg = _base_cfg()
     components = _components(cfg)
     backend = _backend(cfg)
@@ -201,7 +174,7 @@ def test_tool_calling_mapping_alias_without_mode_raises() -> None:
             {
                 "gm_name": "gm0",
                 "sequence": 0,
-                "tool_calling": {"foo": "bar"},
+                "tool_calling_mode": "single",
                 "backend": backend,
                 "components": components,
             }
@@ -209,18 +182,14 @@ def test_tool_calling_mapping_alias_without_mode_raises() -> None:
         "flow_bindings": {"flow_to_gms": {}},
     }
 
-    with pytest.raises(ValueError, match="tool_calling mapping must set 'mode'"):
+    with pytest.raises(ValueError, match="tool_calling_mode is retired"):
         build_game_masters(cfg)
 
 
-# ---------------------------------------------------------------------------
-# Fix #4: a per-GM tool_calling MAPPING (even empty / without 'mode') is treated
-# as an override attempt by projection, so from_cfg defers to the per-GM check in
-# build_game_masters and the actionable "must set 'mode'" error surfaces instead
-# of a generic resolve-mismatch error.
-# ---------------------------------------------------------------------------
-@pytest.mark.parametrize("bad_mapping", [{}, {"foo": "bar"}])
-def test_tool_calling_mapping_without_mode_surfaces_must_set_mode(bad_mapping: dict) -> None:
+@pytest.mark.parametrize("mapping", [{"mode": "single"}, {"foo": "bar"}, {}])
+def test_per_gm_tool_calling_mapping_form_is_retired(mapping: dict) -> None:
+    # The ``tool_calling: {mode: ...}`` block form is retired regardless of contents;
+    # a per-GM override must be the scalar ``tool_calling: <mode>``.
     cfg = _base_cfg()
     components = _components(cfg)
     backend = _backend(cfg)
@@ -229,7 +198,7 @@ def test_tool_calling_mapping_without_mode_surfaces_must_set_mode(bad_mapping: d
             {
                 "gm_name": "gm0",
                 "sequence": 0,
-                "tool_calling": bad_mapping,
+                "tool_calling": mapping,
                 "backend": backend,
                 "components": components,
             }
@@ -237,15 +206,15 @@ def test_tool_calling_mapping_without_mode_surfaces_must_set_mode(bad_mapping: d
         "flow_bindings": {"flow_to_gms": {}},
     }
 
-    with pytest.raises(ValueError, match="tool_calling mapping must set 'mode'"):
+    with pytest.raises(ValueError, match="block form is retired"):
         build_game_masters(cfg)
 
 
 @pytest.mark.parametrize("mapping", [{}, {"foo": "bar"}, {"mode": "single"}])
 def test_gm_has_tool_calling_override_true_for_any_mapping(mapping: dict) -> None:
-    # A tool_calling mapping (empty, missing 'mode', or valid) is always an override
-    # attempt: _gm_has_tool_calling_override returns True so the resolve slot is
-    # skipped in the global projection check and deferred to the per-GM validator.
+    # A tool_calling mapping (a retired form) is still treated as an override attempt:
+    # _gm_has_tool_calling_override returns True so the resolve slot is skipped in the
+    # global projection check and the targeted migration error surfaces per-GM.
     cfg = OmegaConf.create({"env": {"gm": {"tool_calling": mapping}}})
     assert _gm_has_tool_calling_override(cfg, "env.gm") is True
 
@@ -269,7 +238,7 @@ def test_per_gm_validation_single_with_parsed_action_raises() -> None:
             {
                 "gm_name": "gm0",
                 "sequence": 0,
-                "tool_calling_mode": "single",
+                "tool_calling": "single",
                 "backend": backend,
                 "components": components,  # resolve parsed_action
             },
@@ -361,7 +330,7 @@ def test_default_gm_override_wins_over_sim() -> None:
 def test_default_gm_tool_calling_override_wins_over_sim() -> None:
     cfg = _base_cfg()
     # sim.tool_calling.mode is none globally; override the default GM to single.
-    cfg.env.gm.tool_calling_mode = "single"
+    cfg.env.gm.tool_calling = "single"
     cfg.env.gm.components.resolve = {"built_in": "tool_calling"}
 
     [gm] = build_game_masters(cfg)

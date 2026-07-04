@@ -17,7 +17,7 @@ GM components, engines, engine policies, or probe/evaluator code.
 | GMs | `src/silisocs/environments/gm/base_game_master.py`, `gm/game_master.py` |
 | GM components | `src/silisocs/environments/gm/components/` |
 | Engines | `src/silisocs/simulation_engines/base_engines.py`, `simulation_engines/runtime_base.py` |
-| Engine policies | `src/silisocs/simulation_engines/policies/loops.py`, `steps.py`, `turns.py`, `probe_schedule.py` |
+| Engine policies | `src/silisocs/simulation_engines/policies/loops.py`, `steps.py`, `turns.py`, `routers.py`, `probe_schedule.py` |
 
 ## 1) Agents API
 
@@ -350,6 +350,37 @@ Probe-schedule policies live in
 def should_run_probe_phase(self, *, step: int, orchestrator: Any) -> bool: ...
 ```
 
+### Branch router policies (dynamic GM selection)
+
+Branch routers decide which GM each of a flow's agents acts on at a
+`{branch: {router, choices}}` node in a `flow_to_gms` chain (see
+[Multi-GM Architecture](multi_gm_architecture.md#branch-routing)). The built-ins
+live in `src/silisocs/simulation_engines/policies/routers.py` and are built by
+`build_router` from a `{built_in|class_path, params}` slot. A router is **any
+callable** — no base class, no registration; the signature is formalized by the
+structural `Router` Protocol in `routers.py` (its parameters are positional-only,
+so your function may name them freely):
+
+```python
+def route(agents, gms, ctx):
+    # agents: the flow's agent objects  -> call agent.act(...) freely
+    # gms:    {gm name: game master}     -> one per choice, config order; read gm.backend freely
+    # ctx:    RouteInfo(flow, step, seed) -> stable inputs for a replay-friendly decision
+    return {agent.name: <chosen gm name> for agent in agents}   # cover every agent
+```
+
+The engine runs the router when the flow's chain reaches the branch stage — after
+the flow's earlier hops have drained, so the router sees live backend state and
+may call the agents — in all three `multi_gm*` traversals. It owns only three
+things, all invisible to the author: *when* the router runs, *locking* (the router
+call runs unlocked; the follow-up per-chosen-GM turn selection runs under that GM's
+lock), and *validation* of the returned assignment (every agent covered, every GM
+a real choice). Everything else the router does itself — read `gms[...].backend`,
+build an `ActionSpec` and call `agent.act(...)`, decide from `ctx.seed`. There are
+no capability flags, no context facade, and no engine-provided ask helper. The
+shared `match_choice(answer, choices)` helper (exact → case-insensitive →
+contained-once) is importable for routers that ask agents free-text questions.
+
 Built-ins:
 
 - Loop policy: `fixed_steps`
@@ -357,6 +388,9 @@ Built-ins:
   batches), `multi_gm_serial` (legacy row-major chain traversal), `multi_gm_staged`
   (column-major chain traversal behind a global per-stage barrier)
 - Turn policy: `single_action`, `fixed_count`, `open_ended`
+- Branch router: `random` (`RandomChoiceRouter`, weighted pick, deterministic per
+  `(seed, flow, step, agent)`), `agent_choice` (`AgentChoiceRouter` — asks each
+  agent via a CHOICE probe; `prompt` / `on_invalid` params)
 - Probe schedule: `step_schedule`, `fixed_interval`, `disabled`
 
 Turn policy params include `observe_before_act: first | always | never`.
@@ -410,6 +444,37 @@ class MySequentialStepPolicy:
             for agent, _spec in [turn]
         ]
         return engine._execute_batches(step_index=0, batches=batches, verbose=False)
+```
+
+Add a custom branch router:
+
+1. Write a callable `route(agents, gms, ctx) -> {agent name: gm name}` — a plain
+   function or a class whose instances are callable. Read `gms[name].backend` for
+   live state, call `agent.act(...)` to involve the agent, and use `ctx.seed` /
+   `ctx.flow` / `ctx.step` for a replay-stable decision. Cover every agent and
+   return only GM names from `gms`.
+2. Reference it from a branch node in a flow chain (`params`, if any, are bound as
+   keyword arguments for a function, or constructor args for a class):
+
+```python
+# my_pkg/routers.py
+def route_by_load(agents, gms, ctx, *, threshold=5):
+    busy = gms["twitter_gm"].backend.recent_post_count() > threshold
+    target = "reddit_gm" if busy else "twitter_gm"
+    return {agent.name: target for agent in agents}
+```
+
+```yaml
+env:
+  gm_orchestration:
+    flow_bindings:
+      flow_to_gms:
+        social_flow:
+          - branch:
+              router:
+                class_path: my_pkg.routers.route_by_load
+                params: {threshold: 5}
+              choices: [twitter_gm, reddit_gm]
 ```
 
 Add a custom probe schedule policy by implementing `should_run_probe_phase(...)`

@@ -12,6 +12,8 @@ A study is a self-contained investigation of a research question using simulatio
 ```
 src/silisocs/studies/
   run_study.py                           # Study planner/runner/evaluator orchestrator
+  study_types.py                         # Shared leaf types/helpers (specs, validators, formatters)
+  study_schema.py                        # schema_version validation for study.yaml
   study_artifacts.py                     # Artifact organization helpers
   templates.py                           # Locates study templates in a repo checkout
 experiments/

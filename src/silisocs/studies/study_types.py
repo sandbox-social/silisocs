@@ -63,7 +63,8 @@ class RunSpec:
     reused_eval: str | None = None
 
 
-def _resolve_study_id(study: dict[str, Any]) -> str:
+def resolve_study_id(study: dict[str, Any]) -> str:
+    """Resolve the study id, falling back to ``study.name``; raise if empty."""
     study_name = str(study.get("name", "")).strip()
     study_id = str(study.get("study_id", study_name)).strip()
     if not study_id:
@@ -71,11 +72,13 @@ def _resolve_study_id(study: dict[str, Any]) -> str:
     return study_id
 
 
-def _now_iso() -> str:
+def now_iso() -> str:
+    """Return the current UTC time as a filesystem-safe ISO-8601 timestamp."""
     return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
 
 
-def _ensure_mapping(name: str, value: Any) -> dict[str, Any]:
+def ensure_mapping(name: str, value: Any) -> dict[str, Any]:
+    """Validate that ``value`` is a mapping (``None`` becomes ``{}``)."""
     if value is None:
         return {}
     if not isinstance(value, dict):
@@ -83,7 +86,8 @@ def _ensure_mapping(name: str, value: Any) -> dict[str, Any]:
     return value
 
 
-def _ensure_string_list(name: str, value: Any) -> list[str]:
+def ensure_string_list(name: str, value: Any) -> list[str]:
+    """Validate that ``value`` is a list of strings (``None`` becomes ``[]``)."""
     if value is None:
         return []
     if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
@@ -91,7 +95,8 @@ def _ensure_string_list(name: str, value: Any) -> list[str]:
     return value
 
 
-def _resolve_command_tokens(value: Any, label: str) -> tuple[str, ...]:
+def resolve_command_tokens(value: Any, label: str) -> tuple[str, ...]:
+    """Normalise a command given as a string or ``list[str]`` into a token tuple."""
     if isinstance(value, list) and all(isinstance(v, str) for v in value):
         return tuple(value)
     if isinstance(value, str) and value.strip():
@@ -99,12 +104,14 @@ def _resolve_command_tokens(value: Any, label: str) -> tuple[str, ...]:
     raise StudyConfigError(f"{label} must be a non-empty command string or list[str]")
 
 
-def _format_template_token(token: str, context: dict[str, Any]) -> str:
+def format_template_token(token: str, context: dict[str, Any]) -> str:
+    """Substitute ``{key}`` placeholders in ``token`` using ``context``."""
     formatted = token
     for key, value in context.items():
         formatted = formatted.replace(f"{{{key}}}", str(value))
     return formatted
 
 
-def _format_command_template(template: tuple[str, ...], context: dict[str, Any]) -> tuple[str, ...]:
-    return tuple(_format_template_token(token, context) for token in template)
+def format_command_template(template: tuple[str, ...], context: dict[str, Any]) -> tuple[str, ...]:
+    """Apply :func:`format_template_token` to every token in ``template``."""
+    return tuple(format_template_token(token, context) for token in template)

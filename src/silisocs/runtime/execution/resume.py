@@ -11,7 +11,7 @@ decision unit-testable in isolation.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -106,15 +106,9 @@ def plan_checkpoint_resume(
     checkpoint_meta["checkpoint_file"] = str(resume_path)
     checkpoint_meta["source_run"] = str(source_path)
     checkpoint_meta["action_events_files"] = [str(p) for p in action_event_files]
-    enriched_context = InitializationContext(
-        shared_memories=initializer_context.shared_memories,
-        player_specific_memories=initializer_context.player_specific_memories,
-        player_specific_context=initializer_context.player_specific_context,
-        sim_roles=initializer_context.sim_roles,
-        agent_flow_tags=initializer_context.agent_flow_tags,
-        agent_bios=initializer_context.agent_bios,
-        checkpoint=checkpoint_meta,
-    )
+    # Only ``checkpoint`` changes; ``replace`` copies every other field verbatim so a
+    # new field on InitializationContext can never be silently dropped here.
+    enriched_context = replace(initializer_context, checkpoint=checkpoint_meta)
     return ResumePlan(
         initializer_context=enriched_context,
         start_step=start_step,

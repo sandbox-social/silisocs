@@ -15,6 +15,12 @@ from typing import Any
 
 import yaml
 
+from silisocs.dashboard.defaults import (
+    default_initial_observations,
+    default_jobname_format,
+    default_persona_defaults,
+)
+
 # Backends that default to activity-gated participation (vs. deterministic "all").
 _SOCIAL_BACKENDS = {"twitter_like", "reddit_like", "mastodon"}
 
@@ -123,9 +129,11 @@ def build_world_config(state: Mapping[str, Any]) -> dict:
     bg_text = state.get("setting_background", "")
     bg_list = [line.strip() for line in bg_text.splitlines() if line.strip()]
 
+    # jobname_format / persona defaults / initial_observations are sourced from the
+    # packaged base config (dashboard/defaults.py) so they can't drift from conf/.
     config = {
         "scenario_name": scenario_name,
-        "jobname_format": "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}",
+        "jobname_format": default_jobname_format(),
         "setting": {
             "name": state.get("setting_name", ""),
             "background": bg_list,
@@ -137,22 +145,13 @@ def build_world_config(state: Mapping[str, Any]) -> dict:
         "builder": {"class_path": None, "params": {}},
         "persona_pipeline": {
             "defaults": {
-                "params": {
-                    "seed_post": "",
-                    "bio": "",
-                    "style": "",
-                    "goal": None,
-                    "world_context": "${event.context}",
-                },
+                "params": default_persona_defaults(),
                 "shared_memories": shared_list,
             },
             "classes": classes_dict,
         },
         "shared_memories": shared_list,
-        "initial_observations": [
-            '"{name} is at home checking their social media feed."',
-            '"{name} decides to browse and maybe post something."',
-        ],
+        "initial_observations": default_initial_observations(),
     }
 
     # Build probes from dashboard state (generalist structure).

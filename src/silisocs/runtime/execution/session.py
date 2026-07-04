@@ -60,7 +60,7 @@ from silisocs.runtime.construction.initialization_context import (
     build_initializer_context,
     populate_agent_data,
 )
-from silisocs.runtime.construction.models import build_deduped_models
+from silisocs.runtime.construction.models import build_deduped_models, build_global_llm_config
 from silisocs.runtime.execution.resume import plan_checkpoint_resume
 from silisocs.runtime.io import configure_logging
 from silisocs.runtime.telemetry import SimMetricsCollector
@@ -128,6 +128,111 @@ def _resolve_project_root() -> Path:
 # ============================================================================
 
 
+def _setup_run_environment(
+    cfg: DictConfig,
+) -> tuple[DictConfig, SimMetricsCollector, logging.Logger]:
+    """Print the banner and bring up the run environment.
+
+    Initializes the runtime environment + metrics collector + logging, loads ``.env``,
+    applies external group overrides, and projects the runtime config. Returns the
+    merged ``cfg``, the metrics collector, and the logger the rest of ``main`` uses.
+    """
+    print("\n" + "=" * 80)
+    print("STARTING SIMULATION")
+    print("=" * 80)
+    _initialize_runtime_environment()
+
+    metrics = SimMetricsCollector.reset()
+    metrics.mark_sim_start()
+
+    logger = logging.getLogger(__name__)
+    if load_dotenv(find_dotenv()):
+        logger.info(f"Successfully loaded .env file from: {find_dotenv()}")
+    else:
+        logger.warning("Warning: .env file not found or empty.")
+
+    configure_logging(logger)
+    cfg = merge_external_group_overrides(cfg)
+    RuntimeProjection.from_cfg(cfg)
+    return cfg, metrics, logger
+
+
+def _resolve_output_directory(
+    cfg: DictConfig, metrics: SimMetricsCollector, logger: logging.Logger
+) -> str:
+    """Validate the scenario config and resolve/persist the run output directory.
+
+    Runs schema validation, resolves the output directory (explicit ``output_rootname``
+    or Hydra's job dir), stamps it back onto ``cfg``, and writes the runtime-effective
+    config plus a snapshot next to Hydra's. Returns the resolved output directory.
+    """
+    project_root = _resolve_project_root()
+    top_scenario = project_root / "scenarios" / cfg.scenario_name
+    pkg_scenario = PACKAGE_ROOT / "scenarios" / cfg.scenario_name
+    scenario_path = top_scenario if top_scenario.is_dir() else pkg_scenario
+
+    with metrics.phase("config_validation"):
+        try:
+            validate_scenario_config(cfg, scenario_path)
+        except Exception as e:
+            logger.error(f"Configuration validation failed: {e}")
+            raise
+
+    configured_output_rootname = str(
+        OmegaConf.select(cfg, "output_rootname", default="") or ""
+    ).strip()
+    if configured_output_rootname:
+        output_dir = configured_output_rootname
+        if not os.path.isabs(output_dir):
+            output_dir = os.path.abspath(output_dir)
+    else:
+        output_dir = os.path.join(
+            HydraConfig.get().runtime.output_dir,
+            HydraConfig.get().job.name,
+        )
+
+    # Disable struct mode to allow setting new keys, then re-enable.
+    OmegaConf.set_struct(cfg, False)
+    cfg.output_rootname = output_dir
+    cfg.scenario_name = str(getattr(cfg, "scenario_name", "default") or "default")
+    OmegaConf.set_struct(cfg, True)
+
+    print(f"\nOutput directory: {output_dir}")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Persist runtime-effective config after external overrides are applied.
+    effective_cfg_path = os.path.join(output_dir, "effective_config.yaml")
+    OmegaConf.save(config=cfg, f=effective_cfg_path, resolve=True)
+    logger.info("Wrote runtime-effective config to: %s", effective_cfg_path)
+
+    # Mirror it next to Hydra's composed snapshot (configs/<run_root_name>/).
+    run_root_name = os.path.basename(HydraConfig.get().runtime.output_dir)
+    config_snapshot_dir = os.path.join(
+        HydraConfig.get().runtime.output_dir, "configs", run_root_name
+    )
+    os.makedirs(config_snapshot_dir, exist_ok=True)
+    effective_cfg_snapshot_path = os.path.join(config_snapshot_dir, "effective_config.yaml")
+    OmegaConf.save(config=cfg, f=effective_cfg_snapshot_path, resolve=True)
+    logger.info("Wrote runtime-effective config snapshot to: %s", effective_cfg_snapshot_path)
+    return output_dir
+
+
+def _warn_degraded_health(metrics: SimMetricsCollector, logger: logging.Logger) -> None:
+    """Surface degraded-run signals so silent failures cannot pass as clean runs."""
+    health_counters = {
+        "agent_turn_failures": "agent turns raised an exception",
+        "action_parse_failures": "agent actions were dropped as unparseable",
+        "action_invalid_targets": "agent actions referenced invalid target ids",
+        "backend_action_errors": "backend actions raised unexpected exceptions",
+    }
+    for counter_name, description in health_counters.items():
+        count = metrics.counter(counter_name)
+        if count:
+            health_line = f"⚠ DEGRADED RUN: {count} {description} (see sim_metrics.json)"
+            logger.warning(health_line)
+            print(health_line)
+
+
 @hydra.main(version_base=None, config_path=str(CONF_DIR), config_name="experiment")
 def main(cfg: DictConfig):
     """Hydra entrypoint for running an experiment.
@@ -145,85 +250,9 @@ def main(cfg: DictConfig):
     agent construction, and delegates execution to the configured simulation
     engine.
     """
-    print("\n" + "=" * 80)
-    print("STARTING SIMULATION")
-    print("=" * 80)
-    _initialize_runtime_environment()
-
-    # Initialize metrics collector
-    metrics = SimMetricsCollector.reset()
-    metrics.mark_sim_start()
-
-    # Setup Logging and Environment
-    logger = logging.getLogger(__name__)
-
-    # Load environment variables
-    if load_dotenv(find_dotenv()):
-        logger.info(f"Successfully loaded .env file from: {find_dotenv()}")
-    else:
-        logger.warning("Warning: .env file not found or empty.")
-
-    configure_logging(logger)
-    cfg = merge_external_group_overrides(cfg)
-    RuntimeProjection.from_cfg(cfg)
-
-    # Determine scenario path for file validation.
-    # Check top-level scenarios/ first, fall back to in-package.
-    project_root = _resolve_project_root()
-    top_scenario = project_root / "scenarios" / cfg.scenario_name
-    pkg_scenario = PACKAGE_ROOT / "scenarios" / cfg.scenario_name
-    scenario_path = top_scenario if top_scenario.is_dir() else pkg_scenario
-
-    # Run all config schema validation checks
-    with metrics.phase("config_validation"):
-        try:
-            validate_scenario_config(cfg, scenario_path)
-        except Exception as e:
-            logger.error(f"Configuration validation failed: {e}")
-            raise
-
-    configured_output_rootname = str(
-        OmegaConf.select(cfg, "output_rootname", default="") or ""
-    ).strip()
-    if configured_output_rootname:
-        output_dir = configured_output_rootname
-        if not os.path.isabs(output_dir):
-            output_dir = os.path.abspath(output_dir)
-    else:
-        # Add hydra-generated output path
-        output_dir = os.path.join(
-            HydraConfig.get().runtime.output_dir,
-            HydraConfig.get().job.name,
-        )
-
-    # Update config with output directory
-    # Disable struct mode to allow setting new keys
-    OmegaConf.set_struct(cfg, False)
-    cfg.output_rootname = output_dir
-    cfg.scenario_name = str(getattr(cfg, "scenario_name", "default") or "default")
-    OmegaConf.set_struct(cfg, True)
-
-    print(f"\nOutput directory: {output_dir}")
-    os.makedirs(output_dir, exist_ok=True)
+    cfg, metrics, logger = _setup_run_environment(cfg)
+    output_dir = _resolve_output_directory(cfg, metrics, logger)
     run_stats_path = os.path.join(output_dir, "run_stats.log")
-
-    # Persist runtime-effective config after external overrides are applied.
-    effective_cfg_path = os.path.join(output_dir, "effective_config.yaml")
-    OmegaConf.save(config=cfg, f=effective_cfg_path, resolve=True)
-    logger.info("Wrote runtime-effective config to: %s", effective_cfg_path)
-
-    # Mirror runtime-effective config next to Hydra's composed snapshot.
-    # Hydra writes config.yaml under configs/<run_root_name>/ for this project.
-    run_root_name = os.path.basename(HydraConfig.get().runtime.output_dir)
-    config_snapshot_dir = os.path.join(
-        HydraConfig.get().runtime.output_dir,
-        "configs",
-        run_root_name,
-    )
-    os.makedirs(config_snapshot_dir, exist_ok=True)
-    effective_cfg_snapshot_path = os.path.join(config_snapshot_dir, "effective_config.yaml")
-    OmegaConf.save(config=cfg, f=effective_cfg_snapshot_path, resolve=True)
-    logger.info("Wrote runtime-effective config snapshot to: %s", effective_cfg_snapshot_path)
 
     def _log_startup_phase(phase_name: str, duration_s: float, details: str = "") -> None:
         """Log a named startup phase's duration to the logger and run-stats file."""
@@ -296,28 +325,10 @@ def main(cfg: DictConfig):
     metrics.set_meta("agent_names", [inst.params["name"] for inst in agent_configs])
 
     prompts_file = os.path.join(output_dir, "prompts_and_responses.jsonl")
-    llm_cfg = cfg.sim.llm
-    llm_api_base = getattr(llm_cfg, "api_base", None) or None
-    llm_api_key = getattr(llm_cfg, "api_key", None) or None
-    llm_provider = getattr(llm_cfg, "provider", None)
-    raw_llm_extra_kwargs = getattr(llm_cfg, "extra_kwargs", {}) or {}
-    llm_extra_kwargs = cast(
-        dict[str, Any],
-        OmegaConf.to_container(raw_llm_extra_kwargs, resolve=True)
-        if isinstance(raw_llm_extra_kwargs, DictConfig)
-        else dict(raw_llm_extra_kwargs),
-    )
     # Global sim.llm block is the universal baseline; per-instance `model` dicts
     # (scalar names already arrive as {'name': ...}) override it field-by-field.
-    global_llm: dict[str, Any] = {
-        "name": llm_cfg.name,
-        "temperature": float(getattr(llm_cfg, "temperature", 0.5)),
-        "provider": llm_provider,
-        "api_base": llm_api_base,
-        "api_key": llm_api_key,
-        "disabled": bool(getattr(llm_cfg, "disabled", False)),
-        "extra_kwargs": llm_extra_kwargs,
-    }
+    # Built off MODEL_FIELDS in construction/models.py so it can't drift from the resolver.
+    global_llm = build_global_llm_config(cfg.sim.llm)
 
     # One model per distinct effective config (global sim.llm layered with each
     # instance's per-class `model` override); deduped in construction/models.py.
@@ -465,19 +476,7 @@ def main(cfg: DictConfig):
         logger.info(completion_line)
         print(completion_line)
 
-        # Surface degraded-run signals so silent failures cannot pass as clean runs.
-        health_counters = {
-            "agent_turn_failures": "agent turns raised an exception",
-            "action_parse_failures": "agent actions were dropped as unparseable",
-            "action_invalid_targets": "agent actions referenced invalid target ids",
-            "backend_action_errors": "backend actions raised unexpected exceptions",
-        }
-        for counter_name, description in health_counters.items():
-            count = metrics.counter(counter_name)
-            if count:
-                health_line = f"⚠ DEGRADED RUN: {count} {description} (see sim_metrics.json)"
-                logger.warning(health_line)
-                print(health_line)
+        _warn_degraded_health(metrics, logger)
         with open(run_stats_path, "a", encoding="utf-8") as f:
             f.write(completion_line + "\n")
 

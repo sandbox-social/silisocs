@@ -43,6 +43,7 @@ __all__ = [
     "boost_check",
     "boost_toot",
     "check_env",
+    "clear_mastodon_server",
     "create_app",
     "create_app_and_env_if_not_exists",
     "delete_posts",
