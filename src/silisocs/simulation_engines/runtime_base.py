@@ -118,6 +118,11 @@ class TurnPolicy(Protocol):
     """Configurable per-agent turn policy.
 
     A turn policy may call ``engine.run_agent_step(...)`` multiple times.
+
+    A policy MAY additionally provide ``run_async(**same kwargs)`` (awaiting
+    ``engine.run_agent_step_async``); the asyncio turn executor uses it when
+    present and otherwise runs the sync ``run`` on a helper thread, so sync-only
+    custom policies keep working under either executor.
     """
 
     name: str

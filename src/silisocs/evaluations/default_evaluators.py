@@ -19,7 +19,7 @@ import json
 import re
 import statistics
 from collections import Counter, defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -66,16 +66,16 @@ def _slug(text: str) -> str:
     return slug or "unknown"
 
 
-def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    """Read a JSONL file and return its non-empty lines as parsed dicts."""
-    rows: list[dict[str, Any]] = []
+def _read_jsonl(path: Path) -> Iterator[dict[str, Any]]:
+    """Stream a JSONL file's non-empty lines as parsed dicts (event logs grow
+    with the whole run's action history; don't materialize them per file).
+    """
     with path.open("r", encoding="utf-8") as f:
         for raw in f:
             line = raw.strip()
             if not line:
                 continue
-            rows.append(json.loads(line))
-    return rows
+            yield json.loads(line)
 
 
 def _safe_int(value: Any, default: int = 0) -> int:

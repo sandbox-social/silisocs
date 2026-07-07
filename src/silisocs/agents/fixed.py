@@ -384,6 +384,12 @@ class FixedAgent(Agent):
         }
         return action_output
 
+    async def act_async(self, action_spec: Any) -> ActionOutput:
+        """Run the scripted (pure-computation, non-blocking) ``act`` directly on
+        the event loop — no helper-thread hop needed.
+        """
+        return self.act(action_spec)
+
     def get_last_log(self) -> dict[str, Any]:
         """Return a copy of the log entry for the most recent action."""
         return dict(self._last_log)

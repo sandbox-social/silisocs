@@ -228,7 +228,7 @@ def _run_one_step(engine: RuntimeEngine, gm: _GM, agents: list[_Agent]) -> None:
     engine.run_step(step_index=0, game_masters=[gm], agents=agents, verbose=False)
 
 
-def test_engine_filters_step_roster_but_not_gm_updates() -> None:
+def test_engine_filters_step_roster_and_gm_updates() -> None:
     strategy = _CapturingStrategy()
     engine = RuntimeEngine(step_strategy=strategy, participation=_KeepFirstPolicy(), seed=5)
     gm = _GM()
@@ -236,8 +236,10 @@ def test_engine_filters_step_roster_but_not_gm_updates() -> None:
     _run_one_step(engine, gm, agents)
     # The strategy sees only the participating subset (unknown names ignored)...
     assert strategy.rosters == [["alice"]]
-    # ...while GM updates still see the full roster.
-    assert gm.update_rosters == [["alice", "bob", "carol"]]
+    # ...and GM updates receive the same ACTIVE roster (participation runs first,
+    # so per-step GM work is O(active)). Update components that need the full
+    # population opt in via requires_full_roster; see ComponentGameMaster.update.
+    assert gm.update_rosters == [["alice"]]
 
 
 def test_engine_without_participation_passes_full_roster() -> None:

@@ -529,6 +529,7 @@ This means your scenario files only need to specify what's **different** from de
 - `sim.tool_calling.mode`: single
 - `sim.engine.step.built_in`: base
 - `sim.engine.turn_policy.built_in`: single_action
+- `sim.engine.executor`: threads (or `asyncio`; see docs/configuration.md)
 
 **From `src/silisocs/conf/env/twitter_like.yaml`:**
 - `env.gm.backend.type`: twitter_like

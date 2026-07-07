@@ -1,12 +1,78 @@
-"""Built-in Engine turn policies."""
+"""Built-in Engine turn policies.
+
+Each policy states its per-turn logic ONCE as a ``_drive`` generator that yields
+``observe_before_action`` for each agent step and receives the resulting
+:class:`AgentStepResult`. Two mechanical drivers execute that generator against
+the engine: ``run`` (sync, via ``engine.run_agent_step``) and ``run_async``
+(via ``engine.run_agent_step_async``), so the policies behave identically under
+the threaded and asyncio turn executors. ``run_async`` is optional on the
+``TurnPolicy`` seam — the engine runs a custom sync-only policy on a helper
+thread under the asyncio executor.
+"""
 
 from __future__ import annotations
 
 import re
+from collections.abc import Generator
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from silisocs.runtime.types import ActionOutput, OutputType
+
+# One policy drive: yields observe_before_action per agent step, receives the
+# engine's AgentStepResult, and returns the policy's final action.
+_PolicyDrive = Generator[bool, Any, Any]
+
+
+def _drive_policy(
+    drive: _PolicyDrive,
+    *,
+    engine: Any,
+    game_master: Any,
+    agent: Any,
+    action_spec: Any,
+    verbose: bool,
+) -> Any:
+    """Execute one policy drive synchronously via ``engine.run_agent_step``."""
+    try:
+        observe = next(drive)
+        while True:
+            result = engine.run_agent_step(
+                game_master=game_master,
+                agent=agent,
+                action_spec=action_spec,
+                verbose=verbose,
+                observe_before_action=observe,
+            )
+            observe = drive.send(result)
+    except StopIteration as stop:
+        return stop.value
+
+
+async def _drive_policy_async(
+    drive: _PolicyDrive,
+    *,
+    engine: Any,
+    game_master: Any,
+    agent: Any,
+    action_spec: Any,
+    verbose: bool,
+) -> Any:
+    """Execute one policy drive on the event loop via ``engine.run_agent_step_async``."""
+    try:
+        observe = next(drive)
+        while True:
+            result = await engine.run_agent_step_async(
+                game_master=game_master,
+                agent=agent,
+                action_spec=action_spec,
+                verbose=verbose,
+                observe_before_action=observe,
+            )
+            observe = drive.send(result)
+    except StopIteration as stop:
+        return stop.value
+
 
 ObserveBeforeAct = Literal["first", "always", "never"]
 
@@ -89,12 +155,11 @@ def _is_finished_event(
     return False
 
 
-@dataclass
-class SingleActionTurnPolicy:
-    """Default policy: one action per active agent per step."""
+class _DrivenTurnPolicy:
+    """Shared sync/async drivers over a policy's ``_drive`` generator."""
 
-    observe_before_act: str = "first"
-    name: str = "single_action"
+    def _drive(self) -> _PolicyDrive:
+        raise NotImplementedError
 
     def run(
         self,
@@ -105,46 +170,63 @@ class SingleActionTurnPolicy:
         action_spec: Any,
         verbose: bool,
     ) -> str:
-        mode = _normalize_observe_before_act(self.observe_before_act)
-        return engine.run_agent_step(
+        return _drive_policy(
+            self._drive(),
+            engine=engine,
             game_master=game_master,
             agent=agent,
             action_spec=action_spec,
             verbose=verbose,
-            observe_before_action=_should_observe(mode, action_index=0),
-        ).rendered_action
+        )
+
+    async def run_async(
+        self,
+        *,
+        engine: Any,
+        game_master: Any,
+        agent: Any,
+        action_spec: Any,
+        verbose: bool,
+    ) -> str:
+        return await _drive_policy_async(
+            self._drive(),
+            engine=engine,
+            game_master=game_master,
+            agent=agent,
+            action_spec=action_spec,
+            verbose=verbose,
+        )
 
 
 @dataclass
-class FixedCountTurnPolicy:
+class SingleActionTurnPolicy(_DrivenTurnPolicy):
+    """Default policy: one action per active agent per step."""
+
+    observe_before_act: str = "first"
+    name: str = "single_action"
+
+    def _drive(self) -> _PolicyDrive:
+        mode = _normalize_observe_before_act(self.observe_before_act)
+        result = yield _should_observe(mode, action_index=0)
+        return result.rendered_action
+
+
+@dataclass
+class FixedCountTurnPolicy(_DrivenTurnPolicy):
     """Execute exactly N actions per active agent each step."""
 
     count: int = 2
     observe_before_act: str = "first"
     name: str = "fixed_count"
 
-    def run(
-        self,
-        *,
-        engine: Any,
-        game_master: Any,
-        agent: Any,
-        action_spec: Any,
-        verbose: bool,
-    ) -> str:
+    def _drive(self) -> _PolicyDrive:
         last_action = ""
         remaining_actions = max(1, self.count)
         action_index = 0
         mode = _normalize_observe_before_act(self.observe_before_act)
 
         while remaining_actions > 0:
-            action_result = engine.run_agent_step(
-                game_master=game_master,
-                agent=agent,
-                action_spec=action_spec,
-                verbose=verbose,
-                observe_before_action=_should_observe(mode, action_index=action_index),
-            )
+            action_result = yield _should_observe(mode, action_index=action_index)
             raw_action = action_result.raw_action
             rendered_action = action_result.rendered_action
 
@@ -161,7 +243,7 @@ class FixedCountTurnPolicy:
 
 
 @dataclass
-class OpenEndedTurnPolicy:
+class OpenEndedTurnPolicy(_DrivenTurnPolicy):
     """Execute actions until the agent emits a terminal action or max cap is reached."""
 
     max_actions: int = 3
@@ -169,15 +251,7 @@ class OpenEndedTurnPolicy:
     observe_before_act: str = "first"
     name: str = "open_ended"
 
-    def run(
-        self,
-        *,
-        engine: Any,
-        game_master: Any,
-        agent: Any,
-        action_spec: Any,
-        verbose: bool,
-    ) -> str:
+    def _drive(self) -> _PolicyDrive:
         last_action = ""
         max_actions = max(1, self.max_actions)
         finished_signal = self.finished_action_signal.strip().upper()
@@ -186,13 +260,7 @@ class OpenEndedTurnPolicy:
         actions_used = 0
         action_index = 0
         while actions_used < max_actions:
-            action_result = engine.run_agent_step(
-                game_master=game_master,
-                agent=agent,
-                action_spec=action_spec,
-                verbose=verbose,
-                observe_before_action=_should_observe(mode, action_index=action_index),
-            )
+            action_result = yield _should_observe(mode, action_index=action_index)
 
             raw_action = action_result.raw_action
             rendered_action = action_result.rendered_action

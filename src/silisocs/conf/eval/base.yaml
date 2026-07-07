@@ -5,3 +5,9 @@ probes:
     built_in: step_schedule
     class_path: null
     params: {}
+  # deployment also accepts sampling caps applied AFTER the include/exclude
+  # filters (seed-derived per (seed, step, agent), replay/resume stable):
+  #   deployment:
+  #     sample_k: 50          # probe at most 50 filtered agents per due step
+  #     sample_fraction: 0.1  # or a fraction (ceil), in (0, 1]; not both
+  # Unset (the default) probes every filtered agent.

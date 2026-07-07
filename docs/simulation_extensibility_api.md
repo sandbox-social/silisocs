@@ -343,6 +343,12 @@ That helper performs observation, `agent.act(...)`, GM resolution, and result
 observation. A custom turn policy may bypass it only when it intentionally owns
 the full observe/act/resolve cycle.
 
+Under `sim.engine.executor: asyncio` a policy may additionally implement
+`run_async(...)` (awaiting `engine.run_agent_step_async(...)`, the coroutine twin
+of `run_agent_step`); the built-in policies do. `run_async` is optional — a
+sync-only policy is run whole-turn on a helper thread under the asyncio executor,
+so it keeps working unchanged.
+
 Probe-schedule policies live in
 `src/silisocs/simulation_engines/policies/probe_schedule.py` and implement:
 

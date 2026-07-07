@@ -11,6 +11,10 @@ from silisocs.environments.gm.components.observe import ObservationComponent
 class TimelineMakeObservation(ObservationComponent):
     """Fetch a formatted social-media timeline for the active agent."""
 
+    # Timeline reads + thread-safe event logging only; safe without the GM lock,
+    # so a step's timeline fetches run concurrently on thread-local connections.
+    read_only = True
+
     def __init__(
         self,
         *,

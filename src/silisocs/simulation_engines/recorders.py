@@ -36,8 +36,12 @@ def probe_empty(total_agents: int) -> dict[str, Any]:
 class DefaultEngineRecorder(EngineRecorder):
     """Small metrics/log writer used by the runtime loop."""
 
-    def __init__(self, *, output_rootname: str) -> None:
+    def __init__(self, *, output_rootname: str, record_active_agent_names: bool = False) -> None:
         self._output_rootname = output_rootname
+        # Per-episode active-agent NAME lists are O(active x steps) memory held
+        # for the whole run (and dumped into sim_metrics.json); counts are always
+        # recorded, names only when sim.telemetry.record_active_agent_names asks.
+        self._record_active_agent_names = bool(record_active_agent_names)
         self._metrics = SimMetricsCollector.get()
 
     def record_episode(
@@ -69,13 +73,15 @@ class DefaultEngineRecorder(EngineRecorder):
             action_phase=action_phase,
         )
 
-        active_names = sorted(step_result.active_agent_names)
+        episode_extra: dict[str, Any] = {}
+        if self._record_active_agent_names:
+            episode_extra["active_agent_names"] = sorted(step_result.active_agent_names)
         self._metrics.log_episode(
             episode=episode,
             duration_s=round(duration_s, 4),
             total_agents=total_agents,
-            active_agents=len(active_names),
-            active_agent_names=active_names,
+            active_agents=len(step_result.active_agent_names),
+            **episode_extra,
             skipped=bool(step_result.skipped),
             degraded=step_result.degraded,
             failed_turns=list(step_result.failed_turns),

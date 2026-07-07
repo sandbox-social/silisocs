@@ -230,6 +230,8 @@ def build_engine(
         default={"built_in": "base", "class_path": None, "params": {}},
     )
     turn_policy = _build_turn_policy(engine_cfg)
+    # Turn executor: threads (default) or asyncio; value validated by the engine.
+    executor = str(engine_cfg.get("executor") or "threads")
     # Branch routers and participation policies derive replay-stable per-agent
     # decisions from the run seed.
     seed = int(OmegaConf.select(cfg, "seed", default=0) or 0)
@@ -258,6 +260,7 @@ def build_engine(
                 ),
                 "participation": participation,
                 "seed": seed,
+                "executor": executor,
             },
         )
 
@@ -283,4 +286,5 @@ def build_engine(
         gm_concurrency_caps=build_gm_concurrency_caps(step_params.get("gm_concurrency_caps")),
         participation=participation,
         seed=seed,
+        executor=executor,
     )

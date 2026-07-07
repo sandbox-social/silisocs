@@ -239,6 +239,28 @@ and skip actions. It fails loudly when a spec is missing required typed data,
 such as `extra_args["tools"]` for tool calls or `extra_args["schema"]` for
 structured outputs.
 
+### Optional async fast path
+
+Sync `act()` is the required contract. When the engine runs with
+`sim.engine.executor: asyncio` (see the configuration reference), each turn is a
+coroutine on one event loop instead of a pool thread. An agent that only
+implements `act()` still works — the base class runs it on a helper thread — but
+an agent can act loop-native (letting thousands of model calls overlap on a
+handful of threads) by overriding `act_async()` and routing through
+`_call_model_async()`, the async twin of `_call_model()`:
+
+```python
+    def act(self, action_spec: ActionSpec) -> ActionOutput:        # required
+        return self._call_model(self._context(), action_spec)
+
+    async def act_async(self, action_spec: ActionSpec) -> ActionOutput:  # optional
+        return await self._call_model_async(self._context(), action_spec)
+```
+
+`_call_model_async` awaits the model's `sample_*_async` methods (native on the
+OpenAI-compatible providers, a thread-wrapped default elsewhere). Async and sync
+agents mix freely in the same step, so overriding `act_async` is purely additive.
+
 ## Per-Class LLM Models
 
 Assign different LLM models per agent class:

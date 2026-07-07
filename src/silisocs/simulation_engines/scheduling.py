@@ -14,6 +14,7 @@ turn thunks re-enter).
 
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
 import functools
 import logging
@@ -51,7 +52,7 @@ _LOGGER = logging.getLogger(__name__)
 # One prepped agent batch (a GM and its {task_name: thunk} map) and one chain stage
 # (the groups that drain together — a single group for a normal hop, several for a
 # resolved branch). Used by the multi-GM grouped/staged execution paths.
-_Group = tuple[Any, dict[str, Callable[[], str]]]
+_Group = tuple[Any, dict[str, Callable[[], Any]]]
 _Stage = list[_Group]
 
 
@@ -117,13 +118,20 @@ class SchedulingMixin:
     _configured_worker_cap: int | None
     _action_phase_cap: int | None
     _gm_sems: dict[int, threading.BoundedSemaphore]
+    _gm_async_sems: dict[int, asyncio.Semaphore]
     _gm_sems_guard: threading.Lock
     _gm_lock: Callable[[Any], Any]  # host: gm -> threading.Lock (per-GM turn serialization)
+    # Asyncio turn-executor state (host-owned): whether turns run as coroutines,
+    # the lazily-started event-loop thread, and the per-phase global in-flight gate.
+    _async_turns: bool
+    _async_gate: asyncio.Semaphore | None
+    _ensure_loop_runner: Callable[[], Any]  # host: -> EventLoopThread
 
     def _reset_gm_semaphores(self) -> None:
         """Drop cached per-GM semaphores so they re-size against the active phase cap."""
         with self._gm_sems_guard:
             self._gm_sems.clear()
+            self._gm_async_sems.clear()
 
     def _gm_semaphore(
         self, game_master: Any, worker_limit: int
@@ -138,17 +146,44 @@ class SchedulingMixin:
         if cap is None:
             return None
         key = id(game_master)
-        with self._gm_sems_guard:
-            sem = self._gm_sems.get(key)
-            if sem is None:
-                permits = max(1, min(int(cap), max(1, worker_limit)))
-                sem = threading.BoundedSemaphore(permits)
-                self._gm_sems[key] = sem
+        # Lock-free hot path (mirrors _gm_lock): dict reads are GIL-atomic; the
+        # guard only covers first creation for a given phase sizing.
+        sem = self._gm_sems.get(key)
+        if sem is None:
+            with self._gm_sems_guard:
+                sem = self._gm_sems.get(key)
+                if sem is None:
+                    permits = max(1, min(int(cap), max(1, worker_limit)))
+                    sem = threading.BoundedSemaphore(permits)
+                    self._gm_sems[key] = sem
+        return sem
+
+    def _gm_async_semaphore(self, game_master: Any, worker_limit: int) -> asyncio.Semaphore | None:
+        """Asyncio twin of :meth:`_gm_semaphore` for the asyncio turn executor.
+
+        Same effective permit count; an ``asyncio.Semaphore`` so waiting turns
+        suspend on the loop instead of blocking a thread. Constructed off-loop
+        from the drain threads (safe on Python >= 3.10: asyncio primitives bind
+        to the running loop on first await, not at construction).
+        """
+        name = str(getattr(game_master, "name", "") or "")
+        cap = self.gm_concurrency_caps.get(name)
+        if cap is None:
+            return None
+        key = id(game_master)
+        sem = self._gm_async_sems.get(key)
+        if sem is None:
+            with self._gm_sems_guard:
+                sem = self._gm_async_sems.get(key)
+                if sem is None:
+                    permits = max(1, min(int(cap), max(1, worker_limit)))
+                    sem = asyncio.Semaphore(permits)
+                    self._gm_async_sems[key] = sem
         return sem
 
     def _wrap_turn(
-        self, game_master: Any, worker_limit: int, thunk: Callable[[], str]
-    ) -> Callable[[], str]:
+        self, game_master: Any, worker_limit: int, thunk: Callable[[], Any]
+    ) -> Callable[[], Any]:
         """Wrap a turn thunk so it holds one per-GM permit for its whole duration.
 
         Single acquire/release seam for the per-GM cap. The permit wraps the WHOLE
@@ -162,10 +197,21 @@ class SchedulingMixin:
         up to ``worker_limit`` workers waiting on its permits while other GMs' turns
         get no thread (a throughput cliff, not a deadlock). Keep per-GM caps well
         below ``sim.max_concurrent_actions`` so the pool is never dominated by one
-        capped GM's blocked turns.
+        capped GM's blocked turns. (Under the asyncio executor a waiting turn merely
+        suspends its coroutine — it holds an in-flight permit, not a thread.)
         """
         if not self.gm_concurrency_caps:
             return thunk
+        if self._async_turns:
+            async_sem = self._gm_async_semaphore(game_master, worker_limit)
+            if async_sem is None:
+                return thunk
+
+            async def _gated_async() -> Any:
+                async with async_sem:
+                    return await thunk()
+
+            return _gated_async
         sem = self._gm_semaphore(game_master, worker_limit)
         if sem is None:
             return thunk
@@ -177,8 +223,8 @@ class SchedulingMixin:
         return _gated
 
     def _wrap_group(
-        self, game_master: Any, worker_limit: int, tasks: dict[str, Callable[[], str]]
-    ) -> dict[str, Callable[[], str]]:
+        self, game_master: Any, worker_limit: int, tasks: dict[str, Callable[[], Any]]
+    ) -> dict[str, Callable[[], Any]]:
         """Wrap every thunk in a batch with the per-GM cap, gating on ``game_master``.
 
         Returns the same dict unchanged when no caps are configured, so the empty-map
@@ -191,8 +237,12 @@ class SchedulingMixin:
         }
 
     def agent_flow_tag(self, game_master: Any, agent_name: str) -> str:
-        """Public step-strategy API: the flow tag a game master assigns an agent."""
-        flow_map = dict(getattr(game_master, "agent_flow_tags", {}) or {})
+        """Public step-strategy API: the flow tag a game master assigns an agent.
+
+        Reads the GM's mapping in place — callers invoke this once per agent per
+        step, so copying the full tag dict here would be O(N^2) per step.
+        """
+        flow_map = getattr(game_master, "agent_flow_tags", None) or {}
         return str(flow_map.get(agent_name, "default") or "default")
 
     def selected_turns(
@@ -316,10 +366,34 @@ class SchedulingMixin:
             action_phase={"active_agents": 0, "duration_s": 0.0, "retry": retry_empty()},
         )
 
+    async def _policy_turn_coro(
+        self, policy: TurnPolicy, game_master: Any, agent: Any, action_spec: ActionSpec
+    ) -> Any:
+        """One turn as a coroutine: the policy's ``run_async`` when it has one,
+        otherwise its sync ``run`` on a helper thread (the floor for custom
+        sync-only turn policies under the asyncio executor).
+        """
+        run_async = getattr(policy, "run_async", None)
+        kwargs: dict[str, Any] = {
+            "engine": self,
+            "game_master": game_master,
+            "agent": agent,
+            "action_spec": action_spec,
+            "verbose": False,
+        }
+        if callable(run_async):
+            return await run_async(**kwargs)
+        return await asyncio.to_thread(functools.partial(policy.run, **kwargs))
+
     def _batch_tasks(
         self, batch: StepBatch
-    ) -> tuple[dict[str, Callable[[], str]], list[str], list[Any]]:
-        """Build the {task_name: thunk} map, acting names, and models for one batch."""
+    ) -> tuple[dict[str, Callable[[], Any]], list[str], list[Any]]:
+        """Build the {task_name: thunk} map, acting names, and models for one batch.
+
+        Under the threads executor a thunk returns the turn's result directly;
+        under the asyncio executor it returns the turn's coroutine (drained via
+        ``_drain_tasks_on_loop``). Everything downstream treats both opaquely.
+        """
         # Precedence: per-flow override (set by the step strategy) > per-GM default
         # (keyed by GM name, lets a backend dictate its own action cadence) > global.
         batch_policy = (
@@ -327,19 +401,24 @@ class SchedulingMixin:
             or self.gm_turn_policies.get(batch.game_master.name)
             or self.turn_policy
         )
-        tasks: dict[str, Callable[[], str]] = {}
+        tasks: dict[str, Callable[[], Any]] = {}
         names: list[str] = []
         for agent, spec in batch.turns:
             names.append(agent.name)
             task_name = f"{batch.game_master.name}::{agent.name}"
-            tasks[task_name] = functools.partial(
-                batch_policy.run,
-                engine=self,
-                game_master=batch.game_master,
-                agent=agent,
-                action_spec=spec,
-                verbose=False,
-            )
+            if self._async_turns:
+                tasks[task_name] = functools.partial(
+                    self._policy_turn_coro, batch_policy, batch.game_master, agent, spec
+                )
+            else:
+                tasks[task_name] = functools.partial(
+                    batch_policy.run,
+                    engine=self,
+                    game_master=batch.game_master,
+                    agent=agent,
+                    action_spec=spec,
+                    verbose=False,
+                )
         models = list(collect_unique_models(batch.game_master, [agent for agent, _ in batch.turns]))
         return tasks, names, models
 
@@ -373,10 +452,19 @@ class SchedulingMixin:
         # entirely when no caps are configured, so the default path is untouched.
         if self.gm_concurrency_caps:
             self._reset_gm_semaphores()
+        # Asyncio executor: worker_limit becomes the phase's global in-flight
+        # turn gate (the coroutine analogue of the turn pool's size). Start the
+        # event loop here, single-threaded, BEFORE the runner fans out to driver
+        # threads — so the concurrent multi-GM drivers all see one live runner
+        # (belt-and-suspenders with the guard inside _ensure_loop_runner).
+        if self._async_turns:
+            self._ensure_loop_runner()
+            self._async_gate = asyncio.Semaphore(max(1, worker_limit))
         try:
             runner(worker_limit, failed_tasks)
         finally:
             set_model_retry_phase(models, "other")
+            self._async_gate = None
             if self.gm_concurrency_caps:
                 self._reset_gm_semaphores()
         action_duration = time.time() - action_start
@@ -466,18 +554,24 @@ class SchedulingMixin:
             return self._empty_step_result()
 
         def runner(worker_limit: int, failed_tasks: list[str]) -> None:
-            for item in work:
-                groups = (
-                    self._resolve_branch_stage(item.hop)
-                    if isinstance(item, _BranchStage)
-                    else [item]
-                )
-                for game_master, tasks in groups:
-                    self._run_tasks_with_limit(
-                        self._wrap_group(game_master, worker_limit, tasks),
-                        worker_limit,
-                        failed_tasks=failed_tasks,
+            # One turn pool for the whole step (batches still drain one at a
+            # time); creating/tearing down a pool per batch costs worker_limit
+            # thread spawns per group for no isolation benefit.
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=max(1, worker_limit)
+            ) as turn_pool:
+                for item in work:
+                    groups = (
+                        self._resolve_branch_stage(item.hop)
+                        if isinstance(item, _BranchStage)
+                        else [item]
                     )
+                    for game_master, tasks in groups:
+                        self._drain_tasks_on_pool(
+                            turn_pool,
+                            self._wrap_group(game_master, worker_limit, tasks),
+                            failed_tasks,
+                        )
 
         return self._run_action_phase(
             requested_workers=max(1, requested_workers),
@@ -487,10 +581,10 @@ class SchedulingMixin:
             runner=runner,
         )
 
-    @staticmethod
     def _drain_tasks_on_pool(
+        self,
         pool: concurrent.futures.ThreadPoolExecutor,
-        tasks: dict[str, Callable[[], str]],
+        tasks: dict[str, Callable[[], Any]],
         failed_tasks: list[str],
     ) -> None:
         """Submit one group of turn thunks to a shared pool and wait for completion.
@@ -500,10 +594,48 @@ class SchedulingMixin:
         siblings) but reuses an externally owned executor so independent chains share
         a single worker budget. CPython's GIL makes the ``failed_tasks.append`` and
         the metrics counter increment safe across concurrent driver threads.
+
+        This is the single drain primitive under every traversal path; the asyncio
+        executor swaps it for the event-loop drain here — the pool is then unused
+        (idle executors never spawn threads) and the calling thread still blocks
+        until the group completes, so every barrier/ordering semantic upstream is
+        preserved by construction.
         """
+        if self._async_turns:
+            self._drain_tasks_on_loop(tasks, failed_tasks)
+            return
         if not tasks:
             return
         future_to_name = {pool.submit(task_fn): task_name for task_name, task_fn in tasks.items()}
+        for future in concurrent.futures.as_completed(future_to_name):
+            task_name = future_to_name[future]
+            try:
+                future.result()
+            except Exception:
+                _record_isolated_failure(task_name, failed_tasks)
+
+    async def _gated_turn(self, coro_factory: Callable[[], Any]) -> Any:
+        """Run one turn coroutine under the phase's global in-flight gate."""
+        gate = self._async_gate
+        if gate is None:
+            return await coro_factory()
+        async with gate:
+            return await coro_factory()
+
+    def _drain_tasks_on_loop(
+        self, tasks: dict[str, Callable[[], Any]], failed_tasks: list[str]
+    ) -> None:
+        """Asyncio-executor drain: run one group's turn coroutines on the shared
+        event loop and block the calling (main or chain-driver) thread until all
+        complete, with the same per-turn failure isolation as the pool drain.
+        """
+        if not tasks:
+            return
+        runner = self._ensure_loop_runner()
+        future_to_name = {
+            runner.submit(self._gated_turn(task_fn)): task_name
+            for task_name, task_fn in tasks.items()
+        }
         for future in concurrent.futures.as_completed(future_to_name):
             task_name = future_to_name[future]
             try:
@@ -536,7 +668,7 @@ class SchedulingMixin:
             concrete = (
                 self._resolve_branch_stage(stage.hop) if isinstance(stage, _BranchStage) else stage
             )
-            stage_tasks: dict[str, Callable[[], str]] = {}
+            stage_tasks: dict[str, Callable[[], Any]] = {}
             for game_master, tasks in concrete:
                 stage_tasks.update(self._wrap_group(game_master, worker_limit, tasks))
             self._drain_tasks_on_pool(pool, stage_tasks, failed_tasks)
@@ -625,7 +757,7 @@ class SchedulingMixin:
     def _drain_prefix(
         self,
         turn_pool: concurrent.futures.ThreadPoolExecutor,
-        ordered_groups: list[tuple[Any, dict[str, Callable[[], str]]]],
+        ordered_groups: list[tuple[Any, dict[str, Callable[[], Any]]]],
         worker_limit: int,
         failed_tasks: list[str],
     ) -> None:
@@ -737,7 +869,7 @@ class SchedulingMixin:
                         # earlier stages' effects. One global barrier per column: task
                         # names are f"{gm}::{agent}" and each agent is in one flow, so keys
                         # never collide.
-                        column_tasks: dict[str, Callable[[], str]] = {}
+                        column_tasks: dict[str, Callable[[], Any]] = {}
                         for chain in rest_groups:
                             if stage_index >= len(chain):
                                 continue

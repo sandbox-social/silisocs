@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -308,8 +308,10 @@ _IGNORED_ACTION_LABELS = {
 }
 
 
-def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
+def _read_jsonl(path: Path) -> Iterator[dict[str, Any]]:
+    """Stream JSONL rows one at a time — replay logs grow with the whole run's
+    action history, so materializing them as a list is O(total actions) memory.
+    """
     try:
         with path.open(encoding="utf-8") as f:
             for line_no, line in enumerate(f, start=1):
@@ -319,10 +321,9 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
                 parsed = json.loads(stripped)
                 if not isinstance(parsed, dict):
                     raise ValueError(f"JSONL row {line_no} must be an object.")
-                rows.append(parsed)
+                yield parsed
     except json.JSONDecodeError as exc:
         raise ValueError(f"Malformed action_events JSONL: {path}") from exc
-    return rows
 
 
 def _route_and_map_event(

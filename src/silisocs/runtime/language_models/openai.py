@@ -1,12 +1,13 @@
 """OpenAI chat-completions language-model provider."""
 
+import asyncio
 import json
 import os
 import random
 import threading
 import time
 from collections import deque
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from typing import Any, cast
 
 import httpx
@@ -17,6 +18,7 @@ from silisocs.runtime.language_models.base import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_TERMINATORS,
     DEFAULT_TIMEOUT_SECONDS,
+    ContextLocal,
     InvalidResponseError,
     LanguageModel,
     extract_choice_response,
@@ -58,11 +60,13 @@ class OpenAILanguageModel(LanguageModel):
         channel: str = DEFAULT_STATS_CHANNEL,
         log_file: str = "prompts_and_outputs.jsonl",
         debug: bool | None = True,
+        debug_log_max_chars: int = 20_000,
         extra_kwargs: dict[str, Any] | None = None,
     ):
         if api_key is None:
             api_key = os.environ["OPENAI_API_KEY"]
         self._api_key = api_key
+        self._api_base = api_base
         self._model_name = model_name
         self._temperature = temperature
         self._measurements = measurements
@@ -78,12 +82,28 @@ class OpenAILanguageModel(LanguageModel):
         if api_base:
             client_kwargs["base_url"] = api_base
         self._client = cast(Any, openai.OpenAI)(**client_kwargs)
+        # Async twin of the client, created lazily on first *_async call so
+        # sync-only runs never build it. httpx.AsyncClient binds its pool to the
+        # loop of first use, and the engine tears its event loop down at the end
+        # of each run (creating a fresh one next run), so the client is keyed by
+        # the loop it was built on and rebuilt whenever the running loop changes
+        # — otherwise a model reused across runs would call on a closed loop.
+        self._async_client: Any | None = None
+        self._async_client_loop: Any | None = None
+        self._async_client_guard = threading.Lock()
         self._log_file = log_file
         self.debug = debug
+        # Per-record cap on logged prompt/output text. Debug logging writes the
+        # FULL prompt of every LLM call to one JSONL; as histories grow this
+        # becomes GBs per episode and the async writer back-pressures the turn
+        # workers. <= 0 disables truncation.
+        self.debug_log_max_chars = int(debug_log_max_chars)
         self.meta_data = {"episode_idx": -1, "agent_name": "", "phase": "", "tag": ""}
         self.agent_names: list[str] = []
         self._agent_name_index: dict[str, str] = {}
-        self._local = threading.local()
+        # Per-call runtime context, isolated per thread AND per asyncio task so
+        # interleaved async turns on one loop thread cannot clobber each other.
+        self._local = ContextLocal()
         self._max_retries = int(os.getenv("SIM_LLM_MAX_RETRIES", _DEFAULT_MAX_RETRIES))
         self._backoff_base_seconds = float(
             os.getenv("SIM_LLM_BACKOFF_BASE_SECONDS", _DEFAULT_BACKOFF_BASE_SECONDS)
@@ -108,9 +128,51 @@ class OpenAILanguageModel(LanguageModel):
         merged.update(self._extra_kwargs)
         return merged
 
+    def _get_async_client(self) -> Any:
+        """Return the AsyncOpenAI client bound to the CURRENT running loop.
+
+        Built lazily and rebuilt whenever the running event loop differs from the
+        one the cached client was created on (the engine replaces its loop each
+        run). Called only from ``*_async`` methods, which always run on the loop,
+        so ``get_running_loop()`` is valid here.
+        """
+        running_loop = asyncio.get_running_loop()
+        client = self._async_client
+        if client is None or self._async_client_loop is not running_loop:
+            with self._async_client_guard:
+                client = self._async_client
+                if client is None or self._async_client_loop is not running_loop:
+                    client_kwargs: dict[str, Any] = {
+                        "api_key": self._api_key,
+                        "http_client": httpx.AsyncClient(
+                            limits=httpx.Limits(
+                                max_connections=1024, max_keepalive_connections=256
+                            ),
+                            timeout=httpx.Timeout(timeout=180.0, connect=30.0),
+                        ),
+                    }
+                    if self._api_base:
+                        client_kwargs["base_url"] = self._api_base
+                    client = cast(Any, openai.AsyncOpenAI)(**client_kwargs)
+                    # The previous client (if any) was bound to a now-replaced
+                    # loop; drop the reference and let it be GC'd with that loop.
+                    self._async_client = client
+                    self._async_client_loop = running_loop
+        return client
+
+    def _truncate_for_log(self, text: str) -> str:
+        limit = self.debug_log_max_chars
+        if limit <= 0 or len(text) <= limit:
+            return text
+        head = limit * 3 // 4
+        tail = limit - head
+        return f"{text[:head]}\n...[log truncated {len(text) - limit} chars]...\n{text[-tail:]}"
+
     def _log(self, prompt: str, output: str):
         if not self.debug:
             return
+        prompt = self._truncate_for_log(prompt)
+        output = self._truncate_for_log(output)
         agent_name = getattr(self._local, "agent_name", None) if hasattr(self, "_local") else None
         if not agent_name:
             prefix = prompt[:110]
@@ -199,17 +261,20 @@ class OpenAILanguageModel(LanguageModel):
                 "retries_total": self._retries_total,
             }
 
-    def sample_text(
+    def _text_request_kwargs(
         self,
         prompt: str,
         *,
-        max_tokens: int = DEFAULT_MAX_TOKENS,
-        terminators: Collection[str] | None = DEFAULT_TERMINATORS,
-        temperature: float | None = None,
-        timeout: float = DEFAULT_TIMEOUT_SECONDS,
-        media: Sequence[str] | None = None,
-        seed: int | None = 0,
-    ) -> str:
+        max_tokens: int,
+        terminators: Collection[str] | None,
+        temperature: float | None,
+        timeout: float,
+        media: Sequence[str] | None,
+        seed: int | None,
+    ) -> dict[str, Any]:
+        """Build the chat.completions request for one ``sample_text`` call (shared
+        by the sync and async paths).
+        """
         if temperature is None:
             temperature = self._temperature
         max_tokens = min(max_tokens, 4000)
@@ -224,23 +289,20 @@ class OpenAILanguageModel(LanguageModel):
         else:
             messages.append({"role": "user", "content": prompt})
             stop_param = terminators
+        kwargs = self._request_kwargs(
+            model=self._model_name,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+            seed=seed,
+        )
+        if stop_param is not None:
+            kwargs["stop"] = stop_param
+        return kwargs
 
-        def _attempt(attempt: int) -> Any:
-            kwargs = self._request_kwargs(
-                model=self._model_name,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                timeout=timeout,
-                seed=seed,
-            )
-            if stop_param is not None:
-                kwargs["stop"] = stop_param
-            result = cast(Any, self._client.chat.completions.create)(**kwargs)
-            self._record_retry_outcome(attempt, success=True)
-            return result
-
-        response = self._retry_request(_attempt, label="LLM call")
+    def _finish_sample_text(self, prompt: str, response: Any) -> str:
+        """Extract, meter, and log one text completion (shared sync/async)."""
         answer = response.choices[0].message.content
         if answer is None:
             raise ValueError("Response content is None.")
@@ -249,6 +311,81 @@ class OpenAILanguageModel(LanguageModel):
         if self.debug:
             self._log(prompt, answer)
         return answer
+
+    def sample_text(
+        self,
+        prompt: str,
+        *,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        terminators: Collection[str] | None = DEFAULT_TERMINATORS,
+        temperature: float | None = None,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        media: Sequence[str] | None = None,
+        seed: int | None = 0,
+    ) -> str:
+        request_kwargs = self._text_request_kwargs(
+            prompt,
+            max_tokens=max_tokens,
+            terminators=terminators,
+            temperature=temperature,
+            timeout=timeout,
+            media=media,
+            seed=seed,
+        )
+
+        def _attempt(attempt: int) -> Any:
+            result = cast(Any, self._client.chat.completions.create)(**request_kwargs)
+            self._record_retry_outcome(attempt, success=True)
+            return result
+
+        response = self._retry_request(_attempt, label="LLM call")
+        return self._finish_sample_text(prompt, response)
+
+    async def sample_text_async(
+        self,
+        prompt: str,
+        *,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        terminators: Collection[str] | None = DEFAULT_TERMINATORS,
+        temperature: float | None = None,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        media: Sequence[str] | None = None,
+        seed: int | None = 0,
+    ) -> str:
+        """Loop-native ``sample_text``: awaits the AsyncOpenAI client instead of
+        holding a thread per in-flight request.
+        """
+        request_kwargs = self._text_request_kwargs(
+            prompt,
+            max_tokens=max_tokens,
+            terminators=terminators,
+            temperature=temperature,
+            timeout=timeout,
+            media=media,
+            seed=seed,
+        )
+        client = self._get_async_client()
+
+        async def _attempt(attempt: int) -> Any:
+            result = await cast(Any, client.chat.completions.create)(**request_kwargs)
+            self._record_retry_outcome(attempt, success=True)
+            return result
+
+        response = await self._retry_request_async(_attempt, label="LLM call")
+        return self._finish_sample_text(prompt, response)
+
+    def _finish_choice_attempt(
+        self, sample: str, responses: Sequence[str], attempts: int
+    ) -> tuple[int, str, dict[str, float]] | None:
+        """Match one escalation attempt's sample against the allowed responses."""
+        answer = extract_choice_response(sample)
+        try:
+            idx = responses.index(answer)
+        except ValueError:
+            return None
+        if self._measurements is not None:
+            self._measurements.publish_datum(self._channel, {"choices_calls": attempts})
+        return idx, responses[idx], {}
 
     def sample_choice(
         self,
@@ -259,36 +396,49 @@ class OpenAILanguageModel(LanguageModel):
         **kwargs: Any,
     ) -> tuple[int, str, dict[str, float]]:
         del kwargs
-        prompt = (
-            prompt
-            + "\nRespond EXACTLY with one of the following strings:\n"
-            + "\n".join(responses)
-            + "."
-        )
+        prompt = _choice_prompt(prompt, responses)
         sample = ""
-        answer = ""
         for attempts in range(_MAX_MULTIPLE_CHOICE_ATTEMPTS):
             temperature = dynamically_adjust_temperature(attempts, _MAX_MULTIPLE_CHOICE_ATTEMPTS)
             sample = self.sample_text(prompt, temperature=temperature, seed=seed)
-            answer = extract_choice_response(sample)
-            try:
-                idx = responses.index(answer)
-            except ValueError:
-                continue
-            if self._measurements is not None:
-                self._measurements.publish_datum(self._channel, {"choices_calls": attempts})
-            return idx, responses[idx], {}
+            matched = self._finish_choice_attempt(sample, responses, attempts)
+            if matched is not None:
+                return matched
         raise InvalidResponseError(
-            f"Too many multiple choice attempts.\nLast attempt: {sample}, extracted: {answer}"
+            f"Too many multiple choice attempts.\nLast attempt: {sample}, "
+            f"extracted: {extract_choice_response(sample)}"
         )
 
-    def sample_tool_calls(
+    async def sample_choice_async(
         self,
         prompt: str,
-        tools: list[dict[str, Any]],
-        mode: str | None = None,
+        responses: Sequence[str],
+        *,
+        seed: int | None = None,
         **kwargs: Any,
-    ) -> list[ToolCall]:
+    ) -> tuple[int, str, dict[str, float]]:
+        """Loop-native ``sample_choice``: the same temperature-escalation loop,
+        awaiting ``sample_text_async`` per attempt (attempts stay sequential —
+        each escalation depends on the previous failure).
+        """
+        del kwargs
+        prompt = _choice_prompt(prompt, responses)
+        sample = ""
+        for attempts in range(_MAX_MULTIPLE_CHOICE_ATTEMPTS):
+            temperature = dynamically_adjust_temperature(attempts, _MAX_MULTIPLE_CHOICE_ATTEMPTS)
+            sample = await self.sample_text_async(prompt, temperature=temperature, seed=seed)
+            matched = self._finish_choice_attempt(sample, responses, attempts)
+            if matched is not None:
+                return matched
+        raise InvalidResponseError(
+            f"Too many multiple choice attempts.\nLast attempt: {sample}, "
+            f"extracted: {extract_choice_response(sample)}"
+        )
+
+    def _tool_request_kwargs(
+        self, prompt: str, tools: list[dict[str, Any]], mode: str | None, **kwargs: Any
+    ) -> tuple[dict[str, Any], bool]:
+        """Build the tool-calling request and resolve the multi flag (shared sync/async)."""
         tool_mode = str(mode or "single").strip().lower()
         if tool_mode not in {"single", "multi"}:
             tool_mode = "single"
@@ -303,40 +453,77 @@ class OpenAILanguageModel(LanguageModel):
             {"role": "system", "content": f"You are a helpful assistant. {instruction}"},
             {"role": "user", "content": prompt},
         ]
+        request_kwargs = self._request_kwargs(
+            model=self._model_name,
+            messages=messages,
+            tools=tools,
+            tool_choice="required",
+            # Single mode wants exactly one call; multi mode allows several.
+            parallel_tool_calls=multi,
+            temperature=0.5,
+            timeout=60,
+            **kwargs,
+        )
+        return request_kwargs, multi
+
+    def _finish_tool_calls(self, prompt: str, response: Any, multi: bool) -> list[ToolCall]:
+        """Parse and log one tool-calls response; raises (so the retry loop
+        re-attempts) when the model returned none.
+        """
+        msg = response.choices[0].message
+        if not msg.tool_calls:
+            raise ValueError("Model returned no tool calls.")
+        parsed_calls = [
+            call for call in (_parse_tool_call(tc) for tc in msg.tool_calls) if call is not None
+        ]
+        # Defensive: parallel_tool_calls=False should already yield one call,
+        # but not every OpenAI-compatible provider honors it — enforce it here.
+        if not multi:
+            parsed_calls = parsed_calls[:1]
+        self._log(
+            prompt,
+            "tool_calls:"
+            + ", ".join(f"{call.name}({dict(call.arguments)})" for call in parsed_calls),
+        )
+        return parsed_calls
+
+    def sample_tool_calls(
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        mode: str | None = None,
+        **kwargs: Any,
+    ) -> list[ToolCall]:
+        request_kwargs, multi = self._tool_request_kwargs(prompt, tools, mode, **kwargs)
 
         def _attempt(attempt: int) -> list[ToolCall]:
-            request_kwargs = self._request_kwargs(
-                model=self._model_name,
-                messages=messages,
-                tools=tools,
-                tool_choice="required",
-                # Single mode wants exactly one call; multi mode allows several.
-                parallel_tool_calls=multi,
-                temperature=0.5,
-                timeout=60,
-                **kwargs,
-            )
             response = cast(Any, self._client.chat.completions.create)(**request_kwargs)
             self._record_retry_outcome(attempt, success=True)
-            msg = response.choices[0].message
-            if not msg.tool_calls:
-                raise ValueError("Model returned no tool calls.")
-            parsed_calls = [
-                call for call in (_parse_tool_call(tc) for tc in msg.tool_calls) if call is not None
-            ]
-            # Defensive: parallel_tool_calls=False should already yield one call,
-            # but not every OpenAI-compatible provider honors it — enforce it here.
-            if not multi:
-                parsed_calls = parsed_calls[:1]
-            self._log(
-                prompt,
-                "tool_calls:"
-                + ", ".join(f"{call.name}({dict(call.arguments)})" for call in parsed_calls),
-            )
-            return parsed_calls
+            return self._finish_tool_calls(prompt, response, multi)
 
         return cast(
             list[ToolCall], self._retry_request(_attempt, label="Tool call", catch_all=True)
+        )
+
+    async def sample_tool_calls_async(
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        mode: str | None = None,
+        **kwargs: Any,
+    ) -> list[ToolCall]:
+        """Loop-native ``sample_tool_calls`` on the AsyncOpenAI client."""
+        request_kwargs, multi = self._tool_request_kwargs(prompt, tools, mode, **kwargs)
+        client = self._get_async_client()
+
+        async def _attempt(attempt: int) -> list[ToolCall]:
+            response = await cast(Any, client.chat.completions.create)(**request_kwargs)
+            self._record_retry_outcome(attempt, success=True)
+            return self._finish_tool_calls(prompt, response, multi)
+
+        return cast(
+            list[ToolCall],
+            await self._retry_request_async(_attempt, label="Tool call", catch_all=True),
         )
 
     def sample_structured(
@@ -422,7 +609,10 @@ class OpenAILanguageModel(LanguageModel):
         except Exception:
             return None
 
-    def _sleep_or_fail(self, attempt: int, label: str) -> None:
+    def _backoff_delay_or_fail(self, attempt: int, label: str) -> float:
+        """Return the next backoff delay, or raise once retries are exhausted
+        (shared by the sync and async retry loops).
+        """
         if attempt >= self._max_retries:
             self._record_retry_outcome(attempt, success=False)
             raise RuntimeError(
@@ -433,8 +623,21 @@ class OpenAILanguageModel(LanguageModel):
             self._backoff_base_seconds * (2**attempt),
             self._backoff_max_seconds,
         )
-        sleep_seconds += random.uniform(0, self._backoff_base_seconds)
-        time.sleep(sleep_seconds)
+        return sleep_seconds + random.uniform(0, self._backoff_base_seconds)
+
+    def _sleep_or_fail(self, attempt: int, label: str) -> None:
+        time.sleep(self._backoff_delay_or_fail(attempt, label))
+
+    @staticmethod
+    def _retry_exceptions(catch_all: bool) -> tuple[type[BaseException], ...]:
+        retry_excs: tuple[type[BaseException], ...] = (
+            openai.APIError,
+            openai.APIConnectionError,
+            openai.RateLimitError,
+        )
+        if catch_all:
+            retry_excs = (*retry_excs, Exception)
+        return retry_excs
 
     def _retry_request(
         self, attempt_fn: Callable[[int], Any], *, label: str, catch_all: bool = False
@@ -448,13 +651,7 @@ class OpenAILanguageModel(LanguageModel):
         ``_sleep_or_fail`` raises; the trailing ``RuntimeError`` is a defensive
         backstop that the loop never reaches in practice.
         """
-        retry_excs: tuple[type[BaseException], ...] = (
-            openai.APIError,
-            openai.APIConnectionError,
-            openai.RateLimitError,
-        )
-        if catch_all:
-            retry_excs = (*retry_excs, Exception)
+        retry_excs = self._retry_exceptions(catch_all)
         for attempt in range(self._max_retries + 1):
             try:
                 return attempt_fn(attempt)
@@ -462,6 +659,34 @@ class OpenAILanguageModel(LanguageModel):
                 print(f"{label} error (attempt {attempt + 1}): {exc}")
             self._sleep_or_fail(attempt, label)
         raise RuntimeError(f"{label} did not produce a response.")
+
+    async def _retry_request_async(
+        self,
+        attempt_fn: Callable[[int], Awaitable[Any]],
+        *,
+        label: str,
+        catch_all: bool = False,
+    ) -> Any:
+        """Async twin of :meth:`_retry_request`: same bounded retry/backoff
+        semantics, but sleeps suspend the coroutine instead of blocking a thread.
+        """
+        retry_excs = self._retry_exceptions(catch_all)
+        for attempt in range(self._max_retries + 1):
+            try:
+                return await attempt_fn(attempt)
+            except retry_excs as exc:
+                print(f"{label} error (attempt {attempt + 1}): {exc}")
+            await asyncio.sleep(self._backoff_delay_or_fail(attempt, label))
+        raise RuntimeError(f"{label} did not produce a response.")
+
+
+def _choice_prompt(prompt: str, responses: Sequence[str]) -> str:
+    return (
+        prompt
+        + "\nRespond EXACTLY with one of the following strings:\n"
+        + "\n".join(responses)
+        + "."
+    )
 
 
 def _parse_tool_call(tool_call: Any) -> ToolCall | None:

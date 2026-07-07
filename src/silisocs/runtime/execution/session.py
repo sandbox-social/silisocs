@@ -32,6 +32,7 @@ from silisocs.initialization.agents import build_agent_initializer
 from silisocs.initialization.game_masters import build_game_master_initializer_strategy
 from silisocs.initialization.simulation import build_simulation_initializer
 from silisocs.runtime.checkpointing import (
+    build_checkpoint_save_strategy,
     build_per_gm_checkpoint_restores,
     load_checkpoint_into_runtime,
     restore_rng_state_from_metadata,
@@ -383,7 +384,9 @@ def main(cfg: DictConfig):
         if isinstance(probes_cfg, DictConfig)
         else cast(dict[str, Any], probes_cfg or {})
     )
-    probe_runner = DefaultProbeRunner(probes_cfg_map, output_dir)
+    probe_runner = DefaultProbeRunner(
+        probes_cfg_map, output_dir, seed=int(getattr(cfg, "seed", 0) or 0)
+    )
     sim_engine.probe_runner = probe_runner
 
     checkpoint_output_dir = os.path.join(output_dir, "checkpoints")
@@ -433,6 +436,9 @@ def main(cfg: DictConfig):
 
         t0 = time.time()
         with metrics.phase("engine_run_loop"):
+            checkpoint_save_strategy = build_checkpoint_save_strategy(
+                getattr(checkpoint_cfg, "save", None)
+            )
 
             def checkpoint_callback(step: int) -> None:
                 if should_save_checkpoint(step, checkpoint_cfg):
@@ -440,6 +446,7 @@ def main(cfg: DictConfig):
                         runtime_objects,
                         step=step,
                         checkpoint_path=checkpoint_output_dir,
+                        save_strategy=checkpoint_save_strategy,
                     )
 
             sim_engine.run_loop(

@@ -16,6 +16,12 @@ from silisocs.runtime.checkpointing.restore import (
     build_per_gm_checkpoint_restores,
     run_checkpoint_restores,
 )
+from silisocs.runtime.checkpointing.save import (
+    CheckpointSaveStrategy,
+    MonolithicJsonSaveStrategy,
+    ShardedCheckpointSaveStrategy,
+    build_checkpoint_save_strategy,
+)
 from silisocs.runtime.checkpointing.serialization import json_safe
 from silisocs.runtime.checkpointing.state import (
     checkpoint_authoritative_gm_names,
@@ -34,8 +40,12 @@ from silisocs.runtime.checkpointing.state import (
 __all__ = [
     "CHECKPOINT_SCHEMA_VERSION",
     "CheckpointRestoreStrategy",
+    "CheckpointSaveStrategy",
+    "MonolithicJsonSaveStrategy",
+    "ShardedCheckpointSaveStrategy",
     "SocialActionEventReplayRestore",
     "build_checkpoint_restore",
+    "build_checkpoint_save_strategy",
     "build_per_gm_checkpoint_restores",
     "checkpoint_authoritative_gm_names",
     "checkpoint_has_backend_state",

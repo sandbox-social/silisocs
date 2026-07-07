@@ -5,7 +5,9 @@ Keeps probe scheduling and agent selection logic out of the simulation engine.
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import math
 import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -34,6 +36,13 @@ class ProbeDeploymentPolicy:
     exclude_agents: tuple[str, ...] = ()
     include_flows: tuple[str, ...] = ()
     exclude_flows: tuple[str, ...] = ()
+    # Sampling caps applied AFTER the include/exclude filters: deploy probes to at
+    # most sample_k agents, or to ceil(sample_fraction * filtered) agents.
+    # Selection is seed-derived per (seed, step, agent) — replay/resume stable —
+    # so each due step probes a fresh but reproducible subset. None = probe every
+    # filtered agent (unchanged default).
+    sample_k: int | None = None
+    sample_fraction: float | None = None
 
     @classmethod
     def from_probes_config(cls, probes_config: Mapping[str, Any] | None) -> ProbeDeploymentPolicy:
@@ -50,6 +59,17 @@ class ProbeDeploymentPolicy:
         include_flows = tuple(str(x) for x in deployment_cfg.get("include_flows", []) or [])
         exclude_flows = tuple(str(x) for x in deployment_cfg.get("exclude_flows", []) or [])
 
+        raw_sample_k = deployment_cfg.get("sample_k")
+        sample_k = int(raw_sample_k) if raw_sample_k is not None else None
+        if sample_k is not None and sample_k < 1:
+            raise ValueError("probes.deployment.sample_k must be >= 1 (or null)")
+        raw_sample_fraction = deployment_cfg.get("sample_fraction")
+        sample_fraction = float(raw_sample_fraction) if raw_sample_fraction is not None else None
+        if sample_fraction is not None and not 0.0 < sample_fraction <= 1.0:
+            raise ValueError("probes.deployment.sample_fraction must be in (0, 1] (or null)")
+        if sample_k is not None and sample_fraction is not None:
+            raise ValueError("probes.deployment: set sample_k or sample_fraction, not both.")
+
         return cls(
             enabled=bool(deployment_cfg.get("enabled", True)),
             start_step=int(deployment_cfg.get("start_step", 1)),
@@ -60,6 +80,8 @@ class ProbeDeploymentPolicy:
             exclude_agents=exclude_agents,
             include_flows=include_flows,
             exclude_flows=exclude_flows,
+            sample_k=sample_k,
+            sample_fraction=sample_fraction,
         )
 
 
@@ -71,11 +93,18 @@ class ProbeDeploymentOrchestrator:
         probes_config: Mapping[str, Any] | None,
         probe_event_logger: Any,
         policy: ProbeDeploymentPolicy | None = None,
+        seed: int = 0,
     ):
-        """Initialize the orchestrator with probes config, logger, and policy."""
+        """Initialize the orchestrator with probes config, logger, policy, and seed.
+
+        ``seed`` anchors the sampling caps (``sample_k``/``sample_fraction``):
+        selection is derived per (seed, step, agent), so the same run config
+        probes the same agents on replay/resume.
+        """
         self._probes_config = dict(probes_config or {})
         self._probe_event_logger = probe_event_logger
         self._policy = policy or ProbeDeploymentPolicy.from_probes_config(self._probes_config)
+        self._seed = int(seed)
         self._cached_probes: list[Any] | None = None
 
     def _get_probes(self) -> list[Any]:
@@ -124,12 +153,15 @@ class ProbeDeploymentOrchestrator:
         self,
         agents: Sequence[Any],
         agent_flows: Mapping[str, str] | None = None,
+        *,
+        step: int = 0,
     ) -> list[Any]:
         """Select probe targets by class, agent name, and flow filters.
 
         ``agent_flows`` maps agent name -> flow tag (authoritative source is the
         game master's ``agent_flow_tags``). It is required only when flow filters
         are configured; agents missing from the map resolve to the default flow.
+        ``step`` anchors the seed-derived sampling cap applied after the filters.
         """
 
         def _agent_name(agent: Any) -> str:
@@ -189,7 +221,33 @@ class ProbeDeploymentOrchestrator:
         if self._policy.exclude_flows:
             exclude_flows = set(self._policy.exclude_flows)
             selected = [agent for agent in selected if _agent_flow(agent) not in exclude_flows]
-        return selected
+        return self._sample_agents(selected, step=step)
+
+    def _sample_agents(self, selected: list[Any], *, step: int) -> list[Any]:
+        """Apply the sample_k/sample_fraction cap to the filtered agents.
+
+        Selection is a deterministic ranking: each agent gets a
+        sha256(seed:step:name) score and the smallest ``target`` scores win.
+        Hash-based (not ``random``) so it is independent of roster order, process
+        hash randomization, and the shared RNG's consumption — replay/resume
+        yield the identical probe subset for a given (seed, step).
+        """
+        policy = self._policy
+        if policy.sample_k is None and policy.sample_fraction is None:
+            return selected
+        if policy.sample_k is not None:
+            target = policy.sample_k
+        else:
+            target = math.ceil(float(policy.sample_fraction or 0.0) * len(selected))
+        if target >= len(selected):
+            return selected
+
+        def _score(agent: Any) -> str:
+            name = str(getattr(agent, "_agent_name", getattr(agent, "name", "")))
+            token = f"{self._seed}:{int(step)}:probe_sample:{name}"
+            return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+        return sorted(selected, key=_score)[:target]
 
     def maybe_deploy(
         self,
@@ -202,7 +260,7 @@ class ProbeDeploymentOrchestrator:
         if not self.should_deploy(step):
             return False, 0
 
-        selected_agents = self._select_agents(agents, agent_flows)
+        selected_agents = self._select_agents(agents, agent_flows, step=step)
         if not selected_agents:
             logger.warning(
                 "Probe deployment skipped at step=%s: no agents matched filters "
@@ -230,10 +288,12 @@ class ProbeDeploymentOrchestrator:
 class DefaultProbeRunner:
     """Evaluation-owned probe runner for in-loop deployment."""
 
-    def __init__(self, probes_config: Mapping[str, Any] | None, output_rootname: str):
+    def __init__(
+        self, probes_config: Mapping[str, Any] | None, output_rootname: str, seed: int = 0
+    ):
         config = dict(probes_config or {})
         self._logger = EventLogger("probe", os.path.join(output_rootname, "probe_events.jsonl"))
-        self._orchestrator = ProbeDeploymentOrchestrator(config, self._logger)
+        self._orchestrator = ProbeDeploymentOrchestrator(config, self._logger, seed=seed)
         schedule_cfg = dict(config.get("schedule", {}) or {})
         self._schedule_policy: ProbeSchedulePolicy = build_probe_schedule_policy(schedule_cfg)
 

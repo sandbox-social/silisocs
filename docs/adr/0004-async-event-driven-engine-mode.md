@@ -4,6 +4,16 @@
 
 Proposed.
 
+> **Note (2026-07-07):** This ADR is about a distinct feature — an *event-driven*
+> (discrete-event) engine mode — and remains proposed. Its Context/Decision claim
+> that the language-model layer stays synchronous is now **out of date**: an
+> optional asyncio *turn executor* plus additive `sample_*_async` / `act_async`
+> methods have since landed, selected by `sim.engine.executor: asyncio` (default
+> `threads`). That async path is an execution-throughput change with identical
+> round-based behavior; it does **not** implement the event-driven semantics this
+> ADR proposes. See `docs/configuration.md` (`sim.engine.executor`) and
+> `SCALABILITY_PLAN.md` Phase 2.
+
 ## Context
 
 The runtime engine today is round-based but already compute-parallel. The

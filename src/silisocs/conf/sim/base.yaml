@@ -12,6 +12,11 @@ llm:
 
 max_concurrent_actions: 1000
 action_mode: custom
+telemetry:
+  # Retain each episode's active-agent NAME list in sim_metrics.json (and in
+  # memory for the whole run). Counts are always recorded; the name lists are
+  # O(active x steps), so they are off by default.
+  record_active_agent_names: false
 tool_calling:
   mode: single                 # none | single | multi
 prompt_additions:
@@ -36,6 +41,13 @@ checkpoint:
   explicit_steps: []           # list[int]
   source_run: null             # optional previous output directory to restore from
   auto_resume: true            # resume from THIS run's own output dir if it already has checkpoints; ignored when source_run is set
+  save:
+    # On-disk checkpoint layout: monolithic_json (one JSON per step, the
+    # long-standing format) | sharded (manifest + NDJSON object shards + raw DB
+    # sidecar files; params: objects_per_shard). Restore reads both transparently.
+    built_in: monolithic_json
+    class_path: null
+    params: {}
   restore:
     built_in: social_action_event_replay
     class_path: null
@@ -44,6 +56,12 @@ checkpoint:
 engine:
   class_path: null
   params: {}
+  # Turn executor: threads (one pool worker per in-flight turn, the default) |
+  # asyncio (turns run as coroutines on one event loop; agents/models that
+  # provide act_async / sample_*_async stay loop-native, sync-only ones run on
+  # helper threads — both kinds mix freely in one step). max_concurrent_actions
+  # keeps its meaning — max in-flight turns — under either executor.
+  executor: threads
   loop:
     built_in: fixed_steps
     class_path: null

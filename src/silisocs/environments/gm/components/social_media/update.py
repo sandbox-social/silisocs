@@ -15,6 +15,7 @@ caching, and lazy evaluation.
 
 from __future__ import annotations
 
+import inspect
 import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -77,6 +78,7 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
         self._last_update_episode: int | None = None
         self._initialized_recsys_types: set[str] = set()
         self._recsys_disabled = False
+        self._supports_active_scoping: bool | None = None
 
     _SUPPORTED_RECSYS_BY_BACKEND = {
         "twitter_like": {"twitter", "twitter_tfidf", "twhin"},
@@ -141,11 +143,24 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
         agents: Sequence[Any],
         context: Any | None = None,
     ) -> None:
-        del step, agents, context
-        self.update_recommendations()
+        del step, context
+        # ``agents`` is the step's ACTIVE roster (the engine applies participation
+        # before GM updates). Under lazy scoping (the default) only these users'
+        # recommendation rows are recomputed each step — O(active), not
+        # O(population); ``lazy: false`` keeps the full-population recompute.
+        active_names = (
+            [str(getattr(agent, "name", "") or "") for agent in agents] if self.lazy else None
+        )
+        self.update_recommendations(active_agent_names=active_names)
 
-    def update_recommendations(self) -> None:
-        """Run the scheduled recommendation update if due."""
+    def update_recommendations(self, active_agent_names: Sequence[str] | None = None) -> None:
+        """Run the scheduled recommendation update if due.
+
+        ``active_agent_names`` scopes the recompute to those agents' users (rows
+        for everyone else are left as-is); ``None`` recomputes the full
+        population. Backends that don't accept the scoping parameter get the
+        full-population call, preserving custom-backend compatibility.
+        """
         self._step_count += 1
 
         if self._recsys_disabled:
@@ -172,6 +187,16 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
                 self._log_recsys_event(
                     "recsys_update_skipped",
                     {"reason": "no_backend"},
+                )
+                return
+
+            if active_agent_names is not None and not active_agent_names:
+                # An all-inactive step has nobody whose recommendations need
+                # refreshing; existing rows stay as-is (deliberately NOT a
+                # full-population recompute).
+                self._log_recsys_event(
+                    "recsys_update_skipped",
+                    {"reason": "no_active_agents", "backend_type": self.backend_type},
                 )
                 return
 
@@ -224,6 +249,9 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
 
             # Update recommendations via backend
             if hasattr(backend, "update_recommendations"):
+                scoped = active_agent_names is not None and self._backend_supports_active_scoping(
+                    backend
+                )
                 self._log_recsys_event(
                     "recsys_update_attempt",
                     {
@@ -231,12 +259,19 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
                         "recsys_types": sorted(self._initialized_recsys_types),
                         "max_posts": int(self.max_posts),
                         "episode_idx": current_episode,
+                        "active_agents": len(active_agent_names or []) if scoped else None,
                     },
                 )
-                backend.update_recommendations(
-                    active_user_ids=None,  # Not available from ActionSpec
-                    max_posts=self.max_posts,
-                )
+                if scoped:
+                    backend.update_recommendations(
+                        active_agent_names=list(active_agent_names or []),
+                        max_posts=self.max_posts,
+                    )
+                else:
+                    backend.update_recommendations(
+                        active_user_ids=None,
+                        max_posts=self.max_posts,
+                    )
 
                 if current_episode is not None:
                     self._last_update_episode = current_episode
@@ -284,6 +319,22 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
         if self.default_recsys_type:
             unique_types.add(self.default_recsys_type)
         return unique_types
+
+    def _backend_supports_active_scoping(self, backend: Any) -> bool:
+        """Whether ``backend.update_recommendations`` accepts ``active_agent_names``.
+
+        Custom backends written before the scoping parameter existed keep
+        receiving the original full-population call. Resolved once per component
+        instance (signature inspection is not free on a per-step path).
+        """
+        if self._supports_active_scoping is None:
+            try:
+                parameters = inspect.signature(backend.update_recommendations).parameters
+            except (TypeError, ValueError):
+                self._supports_active_scoping = False
+            else:
+                self._supports_active_scoping = "active_agent_names" in parameters
+        return self._supports_active_scoping
 
     @staticmethod
     def _backend_active_recsys_types(backend: Any) -> set[str]:

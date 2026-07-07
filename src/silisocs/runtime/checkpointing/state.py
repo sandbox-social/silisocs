@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-import copy
+import hashlib
 import importlib
 import json
 import logging
@@ -18,6 +18,11 @@ from silisocs.agents.base_agent import Agent
 from silisocs.environments.gm.base_game_master import BaseGameMaster
 from silisocs.exceptions import CheckpointError
 from silisocs.runtime.checkpointing.policy import CHECKPOINT_SCHEMA_VERSION
+from silisocs.runtime.checkpointing.save import (
+    CheckpointSaveStrategy,
+    MonolithicJsonSaveStrategy,
+    reassemble_sharded_checkpoint,
+)
 from silisocs.runtime.checkpointing.serialization import json_safe
 from silisocs.runtime.construction.assembly import RuntimeObjects, add_agent, add_game_master
 from silisocs.runtime.construction.specs import RuntimeRole, RuntimeSpec
@@ -36,15 +41,53 @@ def _set_state_is_noop(obj: Any) -> bool:
     return func in _NOOP_SET_STATE
 
 
+_SHARED_MEMORIES_REF = "__shared_memories_ref__"
+
+
+def _dedupe_shared_memories(params: dict[str, Any], table: dict[str, Any]) -> dict[str, Any]:
+    """Replace a params ``shared_memories`` value with a reference into ``table``.
+
+    Every agent of a class carries the identical shared_memories block, so
+    serializing it per object multiplies the same text N times in every
+    checkpoint. It is stored once, keyed by content hash;
+    :func:`_resolve_shared_memories_ref` swaps it back on load.
+    """
+    value = params.get("shared_memories")
+    if not value or isinstance(value, Mapping):
+        return params
+    key = hashlib.sha256(json.dumps(value, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+    table.setdefault(key, value)
+    params["shared_memories"] = {_SHARED_MEMORIES_REF: key}
+    return params
+
+
+def _resolve_shared_memories_ref(
+    params: dict[str, Any], table: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Inverse of :func:`_dedupe_shared_memories`; pass-through for old payloads."""
+    value = params.get("shared_memories")
+    if isinstance(value, Mapping) and _SHARED_MEMORIES_REF in value:
+        key = str(value[_SHARED_MEMORIES_REF])
+        if key not in table:
+            raise ValueError(
+                f"Checkpoint shared_memories reference {key!r} is missing from "
+                "shared_memories_table; the checkpoint is corrupt or truncated."
+            )
+        params["shared_memories"] = table[key]
+    return params
+
+
 def make_checkpoint_data(runtime: RuntimeObjects, *, step: int | None = None) -> dict[str, Any]:
     """Create a JSON-serializable checkpoint payload."""
     objects: dict[str, Any] = {}
+    shared_memories_table: dict[str, Any] = {}
     payload: dict[str, Any] = {
         "schema_version": CHECKPOINT_SCHEMA_VERSION,
         "step": runtime.checkpoint_counter if step is None else int(step),
         "objects": objects,
         "checkpoint_counter": runtime.checkpoint_counter,
         "runtime_metadata": _runtime_metadata(runtime),
+        "shared_memories_table": shared_memories_table,
     }
     for obj in [*runtime.agents, *runtime.game_masters_by_sequence()]:
         spec = runtime.object_specs.get(obj.name)
@@ -52,11 +95,16 @@ def make_checkpoint_data(runtime: RuntimeObjects, *, step: int | None = None) ->
             raise ValueError(f"Runtime spec not found for object {obj.name}")
         state_getter = getattr(obj, "get_state", None)
         role = spec.role if isinstance(spec.role, RuntimeRole) else RuntimeRole(str(spec.role))
+        # json_safe builds fresh containers recursively (it never mutates its
+        # input), so no defensive deepcopy is needed before it.
+        params = json_safe(spec.params)
+        if isinstance(params, dict):
+            params = _dedupe_shared_memories(params, shared_memories_table)
         objects[obj.name] = {
             "class_path": spec.class_path,
             "role": role.value,
             "compat": spec.compat,
-            "params": json_safe(copy.deepcopy(spec.params)),
+            "params": params,
             "state": json_safe(state_getter() if callable(state_getter) else {}),
         }
     # Only the auto-numbering path (no explicit step) advances the counter, so an
@@ -72,20 +120,22 @@ def save_checkpoint(
     step: int,
     checkpoint_path: str | None,
     state_callback: Callable[[dict[str, Any]], None] | None = None,
+    save_strategy: CheckpointSaveStrategy | None = None,
 ) -> None:
-    """Save a checkpoint file and optionally notify a callback."""
+    """Save a checkpoint and optionally notify a callback.
+
+    The payload always comes from :func:`make_checkpoint_data`; the on-disk
+    layout is delegated to ``save_strategy`` (``sim.checkpoint.save``), which
+    defaults to the monolithic single-JSON format.
+    """
     flush_jsonl_writers(timeout_s=5.0)
     checkpoint_data = make_checkpoint_data(runtime, step=step)
     if state_callback is not None:
         state_callback(checkpoint_data)
     if not checkpoint_path:
         return
-    os.makedirs(checkpoint_path, exist_ok=True)
-    checkpoint_file = os.path.join(checkpoint_path, f"step_{step}_checkpoint.json")
-    with open(checkpoint_file, "w", encoding="utf-8") as f:
-        # Object params/state are already json_safe'd in make_checkpoint_data and
-        # runtime_metadata carries only str/int, so no second whole-tree walk here.
-        json.dump(checkpoint_data, f, indent=2)
+    strategy = save_strategy or MonolithicJsonSaveStrategy()
+    checkpoint_file = strategy.save(checkpoint_data, step=step, checkpoint_path=checkpoint_path)
     print(f"Step {step}: Saved checkpoint to {checkpoint_file}")
 
 
@@ -105,6 +155,9 @@ def _stage_checkpoint_objects(
     objects = checkpoint.get("objects", {})
     if not isinstance(objects, Mapping):
         raise ValueError("Checkpoint field `objects` must be a mapping.")
+    shared_table = checkpoint.get("shared_memories_table") or {}
+    if not isinstance(shared_table, Mapping):
+        raise ValueError("Checkpoint field `shared_memories_table` must be a mapping.")
     by_name = {obj.name: obj for obj in [*runtime.agents, *runtime.game_masters]}
     staged: list[tuple[str, RuntimeSpec, Mapping[str, Any], Any]] = []
     for name, raw in objects.items():
@@ -114,7 +167,7 @@ def _stage_checkpoint_objects(
             class_path=str(raw.get("class_path") or ""),
             role=RuntimeRole(str(raw.get("role") or "")),
             compat=raw.get("compat"),
-            params=dict(raw.get("params") or {}),
+            params=_resolve_shared_memories_ref(dict(raw.get("params") or {}), shared_table),
         )
         if spec.role not in (RuntimeRole.AGENT, RuntimeRole.GAME_MASTER):
             raise ValueError(f"Unsupported checkpoint role for {name}: {spec.role}")
@@ -289,7 +342,13 @@ def checkpoint_runtime_metadata(checkpoint: Mapping[str, Any]) -> dict[str, Any]
 
 
 def load_checkpoint_file(path: str | Path) -> dict[str, Any]:
-    """Load and validate a checkpoint JSON file."""
+    """Load and validate a checkpoint JSON file.
+
+    Handles both save layouts: a monolithic checkpoint is returned as-is; a
+    sharded manifest (``format: sharded``) is reassembled — object shards read
+    back in, sidecar DB files re-inlined — into the same payload shape, so
+    callers never see the difference.
+    """
     checkpoint_path = Path(path).expanduser()
     try:
         with checkpoint_path.open(encoding="utf-8") as f:
@@ -298,6 +357,8 @@ def load_checkpoint_file(path: str | Path) -> dict[str, Any]:
         raise ValueError(f"Malformed checkpoint JSON: {checkpoint_path}") from exc
     if not isinstance(parsed, dict):
         raise ValueError(f"Checkpoint JSON must be an object: {checkpoint_path}")
+    if parsed.get("format") == "sharded":
+        return reassemble_sharded_checkpoint(parsed, checkpoint_path.parent)
     return parsed
 
 
