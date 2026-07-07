@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from silisocs.environments.backends.base import SocialBackendApp, app_action
@@ -112,12 +112,21 @@ class RedditLikeApp(SocialBackendApp):
                 },
             )
 
-        # Create users.
+        # Create users in ONE bulk transaction (N serialized create round-trips
+        # otherwise dominate init), then log the per-user init events.
         for display_name in agent_names:
             username = self._display_name_to_username(display_name)
             self._user_mapping[display_name] = username
-            self._platform.create_user(username, bio=str(agent_bios.get(display_name, "")))
-            self._log_action_event(display_name, "init_create_user", {"username": username})
+        self._platform.create_users(
+            [
+                (self._user_mapping[display_name], str(agent_bios.get(display_name, "")))
+                for display_name in agent_names
+            ]
+        )
+        for display_name in agent_names:
+            self._log_action_event(
+                display_name, "init_create_user", {"username": self._user_mapping[display_name]}
+            )
 
         # Subscribe agents to subreddits based on role.
         sub_count = 0
@@ -263,18 +272,42 @@ class RedditLikeApp(SocialBackendApp):
         return set(getattr(self._platform, "_recsys_types", {}) or {})
 
     def update_recommendations(
-        self, active_user_ids: list[int] | None = None, max_posts: int = 10
+        self,
+        active_user_ids: list[int] | None = None,
+        max_posts: int = 10,
+        active_agent_names: Sequence[str] | None = None,
     ) -> None:
-        """Update recommendation rows via the underlying platform and log counts."""
-        self._platform.update_recommendations(active_user_ids=active_user_ids, max_posts=max_posts)
-        rec_count = 0
-        try:
-            with self._platform.get_connection() as conn:
-                row = conn.execute("SELECT COUNT(*) AS n FROM recommendations").fetchone()
-                rec_count = int(row["n"]) if row else 0
-        except Exception:
-            rec_count = -1
+        """Update recommendation rows via the underlying platform and log counts.
 
+        ``active_agent_names`` scopes the recompute to those agents' users (their
+        rows are replaced; everyone else's are left as-is) — the O(active) path
+        the recommendation-update component uses. ``active_user_ids`` remains for
+        callers that already hold platform ids. Neither set = full recompute.
+        """
+        if active_agent_names is not None and active_user_ids is None:
+            active_user_ids = self._resolve_active_user_ids(active_agent_names)
+            if not active_user_ids:
+                # A scoped update matching no platform users refreshes nothing;
+                # deliberately NOT a fall-through to a full-population recompute.
+                self._log_action_event(
+                    source_user="system",
+                    label="recsys_update",
+                    data={
+                        "active_user_ids_count": 0,
+                        "max_posts": int(max_posts),
+                        "recommendation_rows": 0,
+                        "scoped": True,
+                    },
+                )
+                return
+        # The platform reports rows written this pass — no COUNT(*) scan needed.
+        # (Scoped updates replace only the active users' rows, so this is the
+        # refresh size, not the live table size.)
+        rec_count = int(
+            self._platform.update_recommendations(
+                active_user_ids=active_user_ids, max_posts=max_posts
+            )
+        )
         self._log_action_event(
             source_user="system",
             label="recsys_update",
@@ -282,6 +315,7 @@ class RedditLikeApp(SocialBackendApp):
                 "active_user_ids_count": len(active_user_ids or []),
                 "max_posts": int(max_posts),
                 "recommendation_rows": rec_count,
+                "scoped": active_user_ids is not None,
             },
         )
 

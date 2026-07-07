@@ -31,6 +31,9 @@ class ObservationComponent(ObservationComponentBase):
 class AppObservationComponent(ObservationComponent):
     """Generic observation component that delegates to ``BackendApp.observe``."""
 
+    # Backend reads + thread-safe event logging only; safe without the GM lock.
+    read_only = True
+
     def __init__(
         self,
         *,
@@ -78,6 +81,9 @@ class EpisodeObservation(ObservationComponent):
     Used to differentiate agent behavior based on flow tags
     (e.g., fixed_pre agents see only episode numbers, not timelines).
     """
+
+    # Reads only the action logger's episode index; safe without the GM lock.
+    read_only = True
 
     def __init__(
         self,

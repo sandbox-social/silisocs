@@ -114,13 +114,16 @@ custom provider (see [Building Agents](building_agents.md)).
 | `sim.checkpoint.explicit_steps` | `[]` | Additional explicit checkpoint steps |
 | `sim.checkpoint.source_run` | `null` | Previous output directory to restore from (explicit resume) |
 | `sim.checkpoint.auto_resume` | `true` | Resume from this run's own output directory if it already contains checkpoints; ignored when `source_run` is set |
+| `sim.checkpoint.save.built_in` | `monolithic_json` | On-disk checkpoint layout: `monolithic_json` (one JSON per step, the long-standing format) or `sharded` (a `step_N_checkpoint.json` manifest + NDJSON object shards + raw SQLite sidecar `.db` files with sha256; `params.objects_per_shard`, default 500). Restore reads both layouts transparently; `class_path` accepts a custom `CheckpointSaveStrategy` |
 | `sim.checkpoint.restore.built_in` | `social_action_event_replay` | Checkpoint restore strategy when `source_run` is set |
+| `sim.telemetry.record_active_agent_names` | `false` | Retain each episode's active-agent *name list* in `sim_metrics.json` (kept in memory for the whole run — O(active × steps)). Counts (`active_agents`) are always recorded |
 | `sim.engine.step.built_in` | `base` | Engine step policy: `base`, `sequential`, `flow`, `multi_gm`, `multi_gm_serial`, or `multi_gm_staged`. The three `multi_gm*` strategies select the flow-chain traversal mode: `multi_gm` (concurrent, default — flows advance as independent pipelines, serializing only when two flows touch the same GM), `multi_gm_serial` (legacy row-major — each flow runs its full GM chain to completion before the next), `multi_gm_staged` (column-major with a global per-stage barrier — all flows advance one stage at a time) |
 | `sim.engine.step.params.gm_turn_policies` | `{}` | Per-GM turn policy overrides keyed by GM name, each value using the same slot shape as `sim.engine.turn_policy` (`{built_in\|class_path, params}`); applies under any step mode and is resolved per batch by GM name |
 | `sim.engine.step.params.gm_concurrency_caps` | `{}` | Per-GM concurrency caps (`{gm_name: int}`); caps how many of that GM's agent turns run at once via a per-GM semaphore. Effective per-GM limit = `min(cap, sim.max_concurrent_actions)`; empty map = the global cap governs every GM. Applies under any step mode |
 | `sim.engine.turn_policy.built_in` | `single_action` | Global turn policy — how many actions an agent takes per step: `single_action`, `fixed_count`, or `open_ended` |
-| `sim.engine.participation.built_in` | `activity_probability` (base.yaml) | Sim-level roster filter applied before scheduling and every GM `next_acting`: `all` (pass-through), `activity_probability`, `activity_markov`, or a `class_path`. Effective acting = participation ∩ `next_acting`. Set `all` for deterministic/turn-based runs. A missing slot defaults to `all` in code; `sim/base.yaml` ships `activity_probability` |
-| `sim.engine.class_path` | `null` | Whole-engine swap seam: a fully-qualified path to a custom `RuntimeEngine` subclass. When set, the engine is that class, built with the standard kwargs (`config`, `loop_strategy`, `step_strategy`, `turn_policy`, `gm_turn_policies`, `gm_concurrency_caps`, `participation`, `seed`); unset uses the built-in `RuntimeEngine`. Prefer the policy seams (loop/step/turn_policy/participation `class_path`) unless you must replace the engine lifecycle itself |
+| `sim.engine.executor` | `threads` | Turn executor: `threads` (one pool worker per in-flight turn) or `asyncio` (turns run as coroutines on one background event loop — thousands of LLM calls in flight on a handful of threads). Agents/models that provide `act_async` / `sample_*_async` (the shipped `NativeAgent`, `FixedAgent`, and OpenAI-compatible providers do) run loop-native; sync-only custom agents, models, and turn policies automatically run on helper threads, and both kinds mix freely in one step. `sim.max_concurrent_actions` keeps its meaning — max in-flight turns — under either executor; scheduling semantics (flow chains, barriers, per-GM caps and locks) are identical |
+| `sim.engine.participation.built_in` | `activity_probability` (base.yaml) | Sim-level roster filter applied before scheduling, every GM `next_acting`, **and per-step GM `update`s** (so per-step backend work like the recsys refresh is O(active), not O(population); update components that need the full population declare `requires_full_roster = True`): `all` (pass-through), `activity_probability`, `activity_markov`, or a `class_path`. Effective acting = participation ∩ `next_acting`. Set `all` for deterministic/turn-based runs. A missing slot defaults to `all` in code; `sim/base.yaml` ships `activity_probability` |
+| `sim.engine.class_path` | `null` | Whole-engine swap seam: a fully-qualified path to a custom `RuntimeEngine` subclass. When set, the engine is that class, built with the standard kwargs (`config`, `loop_strategy`, `step_strategy`, `turn_policy`, `gm_turn_policies`, `gm_concurrency_caps`, `participation`, `seed`, `executor`); unset uses the built-in `RuntimeEngine`. Prefer the policy seams (loop/step/turn_policy/participation `class_path`) unless you must replace the engine lifecycle itself |
 | `sim.roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |
 
 ### Per-GM action_mode and tool_calling overrides
@@ -866,6 +869,8 @@ probes:
     exclude_classes: []
     include_flows: []    # Filter by flow tag; empty = all flows
     exclude_flows: []
+    sample_k: null       # After the filters: probe at most K agents per due step
+    sample_fraction: null  # ...or ceil(fraction * filtered), in (0, 1]; not both
 
   probes:
     favorability:
@@ -888,6 +893,13 @@ a treatment cohort. Flow tags come from the same source as scheduling
 and are resolved from the game master's authoritative `agent_flow_tags`, so they
 apply uniformly to native and fixed agents. Empty/omitted flow lists preserve
 current behavior (deploy to all selected agents).
+
+`sample_k` / `sample_fraction` cap how many of the *filtered* agents are probed
+each due step (mutually exclusive; unset probes them all). Selection is a
+deterministic hash ranking per `(seed, step, agent)` — independent of roster
+order and stable across replay/resume — so each due step probes a fresh but
+reproducible subset. Use this to keep probe cost bounded as populations grow
+(e.g. `sample_k: 100` at 10k agents).
 
 ---
 

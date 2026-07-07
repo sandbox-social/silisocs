@@ -4,6 +4,7 @@ import logging
 import os
 import sqlite3
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -97,6 +98,11 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
                 "CREATE INDEX IF NOT EXISTS idx_posts_user_created ON posts(user_id, created_at DESC)"
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC)")
+            # Home-feed fan-out reads are `user_id IN (...) ORDER BY id DESC LIMIT k`;
+            # this composite serves both the membership filter and the id ordering.
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_posts_user_id_desc ON posts(user_id, id DESC)"
+            )
             # FTS-friendly index could be added, but simple glob/like is often fine on local DBs
 
             # Follows table (Many-to-Many)
@@ -123,6 +129,8 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
                     FOREIGN KEY(post_id) REFERENCES posts(id)
                 )
             """)
+            # Reverse lookup ("who liked post X"); the PK only covers user-first.
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_likes_post ON likes(post_id)")
 
             # Blocks table
             conn.execute("""
@@ -413,6 +421,55 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
             return self._execute_write(queries, sync=sync)
         except sqlite3.IntegrityError:
             return False
+
+    def add_follows(self, edges: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
+        """Bulk-apply follow edges in ONE queued transaction (init fast path).
+
+        Dedupes and drops self-follows / unknown users, inserts the edges with
+        ``OR IGNORE``, records one 'follow' activity per applied edge, then
+        recomputes follower/following counters authoritatively from the follows
+        table (immune to duplicate-edge drift). Returns the applied
+        ``(follower, followee)`` username pairs. At setup scale this replaces
+        4·E serialized statements across E writer round-trips with one.
+        """
+        now = time.time()
+        applied: list[tuple[str, str]] = []
+        seen: set[tuple[int, int]] = set()
+        queries: list[tuple[str, tuple[Any, ...]]] = []
+        for follower, followee in edges:
+            follower_id = self.get_user_id(follower)
+            followee_id = self.get_user_id(followee)
+            if not follower_id or not followee_id or follower_id == followee_id:
+                continue
+            pair = (follower_id, followee_id)
+            if pair in seen:
+                continue
+            seen.add(pair)
+            applied.append((follower, followee))
+            queries.append(
+                (
+                    "INSERT OR IGNORE INTO follows (follower_id, followee_id, created_at) VALUES (?, ?, ?)",
+                    (follower_id, followee_id, now),
+                )
+            )
+            queries.append(
+                (
+                    "INSERT INTO activities (target_user_id, source_user_id, action_type, created_at) VALUES (?, ?, 'follow', ?)",
+                    (followee_id, follower_id, now),
+                )
+            )
+        if not queries:
+            return []
+        queries.append(
+            (
+                "UPDATE users SET "
+                "following_count = (SELECT COUNT(*) FROM follows WHERE follower_id = users.id), "
+                "followers_count = (SELECT COUNT(*) FROM follows WHERE followee_id = users.id)",
+                (),
+            )
+        )
+        self._execute_write(queries, sync=True)
+        return applied
 
     def unfollow(self, username: str, target_username: str, sync: bool = True):
         follower_id = self.get_user_id(username)
@@ -1088,22 +1145,45 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
 
     @staticmethod
     def _prune_user_context_cache(
-        embeddings_cache: dict, live_user_keys: set[tuple[Any, ...]]
+        embeddings_cache: dict,
+        live_user_keys: set[tuple[Any, ...]],
+        live_post_ids: set[int] | None = None,
+        scoped_user_ids: set[int] | None = None,
     ) -> None:
-        """Drop stale user-context embeddings, keeping immutable post embeddings.
+        """Drop stale cached embeddings after an update pass.
 
         User-context cache keys embed the full per-step context string (bio +
         recent/liked post snippets), so a user's key changes whenever their
         context changes. Without eviction these per-step keys accumulate without
         bound across update passes. Post embeddings (``post_emb`` keys) are
-        immutable and bounded by post count, so they are retained; only
-        ``user``-prefixed keys not produced in the current pass are removed.
+        immutable per post, but only the current candidate window is ever scored
+        again — retaining a tensor for every post ever seen grows without bound
+        over a long run, so keys outside ``live_post_ids`` are dropped too
+        (``None`` retains all, for callers that don't cache post embeddings).
+        ``scoped_user_ids`` limits user-key eviction to those users — a scoped
+        (active-users-only) pass computes ``live_user_keys`` for the active
+        subset only, so evicting against the whole cache would drop every
+        inactive user's entry; evicting per-user keeps the cache bounded at one
+        key per user without touching users outside the pass.
         """
         stale = [
             key
             for key in embeddings_cache
-            if isinstance(key, tuple) and key and key[0] == "user" and key not in live_user_keys
+            if isinstance(key, tuple)
+            and key
+            and key[0] == "user"
+            and key not in live_user_keys
+            and (scoped_user_ids is None or (len(key) > 1 and key[1] in scoped_user_ids))
         ]
+        if live_post_ids is not None:
+            stale.extend(
+                key
+                for key in embeddings_cache
+                if isinstance(key, tuple)
+                and len(key) == 2
+                and key[0] == "post_emb"
+                and key[1] not in live_post_ids
+            )
         for key in stale:
             del embeddings_cache[key]
 
@@ -1204,7 +1284,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
 
     def update_recommendations(
         self, active_user_ids: list[int] | None = None, max_posts: int = 10
-    ) -> None:
+    ) -> int:
         """Update recommendations for all initialized algorithm types.
 
         Args:
@@ -1212,7 +1292,11 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
             max_posts: Maximum recommendations per user per algorithm.
 
         Generates recommendations for each initialized recsys type and stores them
-        in the database with the algorithm type tagged.
+        in the database with the algorithm type tagged. With ``active_user_ids``
+        only those users' rows are replaced (everyone else's stay as-is) — the
+        O(active) path; without it the whole table is cleared and recomputed.
+        Returns the number of recommendation rows written this pass, or -1 on
+        error.
         """
         if not hasattr(self, "_recsys_types") or not self._recsys_types:
             logger.warning(
@@ -1220,7 +1304,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
                 "will not refresh. After a checkpoint restore the update component should "
                 "re-initialize recsys (via recsys_active_types reconciliation)."
             )
-            return
+            return 0
 
         try:
             with self.get_connection() as conn:
@@ -1254,7 +1338,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
 
                 if not users or not posts:
                     logger.debug("No users or posts found; skipping recommendations update")
-                    return
+                    return 0
 
                 max_recent_posts = max(
                     int(state.get("user_context_recent_posts", 0) or 0)
@@ -1284,26 +1368,48 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
                     user["recent_posts"] = recent_posts_by_user.get(uid, [])
                     user["liked_posts"] = liked_posts_by_user.get(uid, [])
 
-                # Clear old recommendations (once per update)
-                conn.execute("DELETE FROM recommendations")
+                # Replace only the scoped users' rows (every live recsys type is
+                # recomputed for them below); a full update clears the table.
+                if active_user_ids:
+                    delete_placeholders = ",".join("?" * len(active_user_ids))
+                    conn.execute(
+                        f"DELETE FROM recommendations WHERE user_id IN ({delete_placeholders})",
+                        active_user_ids,
+                    )
+                else:
+                    conn.execute("DELETE FROM recommendations")
+                rows_written = 0
 
                 # Generate recommendations for each algorithm type
                 for recsys_type, state in self._recsys_types.items():
                     logger.debug(f"Computing {recsys_type} recommendations for {len(users)} users")
 
                     if recsys_type in ("twitter", "twhin", "twitter_tfidf"):
-                        rec_matrix = self._rec_embedding(users, posts, max_posts, state)
+                        rec_matrix = self._rec_embedding(
+                            users,
+                            posts,
+                            max_posts,
+                            state,
+                            # A scoped pass sees only the active users; cache
+                            # eviction must stay scoped to them or every inactive
+                            # user's cached context would be dropped each step.
+                            scoped_user_ids=set(user_ids) if active_user_ids else None,
+                        )
                     else:
                         logger.warning(f"Unknown recsys_type '{recsys_type}'; skipping")
                         continue
 
-                    # Store recommendations with algorithm type
-                    for user_id, post_ids in rec_matrix.items():
-                        for post_id in post_ids:
-                            conn.execute(
-                                "INSERT OR IGNORE INTO recommendations (user_id, post_id, recsys_type) VALUES (?, ?, ?)",
-                                (user_id, post_id, recsys_type),
-                            )
+                    # Store recommendations with algorithm type (one executemany,
+                    # not N*max_posts single-row round-trips)
+                    cursor = conn.executemany(
+                        "INSERT OR IGNORE INTO recommendations (user_id, post_id, recsys_type) VALUES (?, ?, ?)",
+                        [
+                            (user_id, post_id, recsys_type)
+                            for user_id, post_ids in rec_matrix.items()
+                            for post_id in post_ids
+                        ],
+                    )
+                    rows_written += max(int(cursor.rowcount or 0), 0)
 
                     logger.info(
                         f"Updated {recsys_type} recommendations for {len(rec_matrix)} users"
@@ -1313,11 +1419,18 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
                 logger.info(
                     f"Recommendations update complete for {len(self._recsys_types)} algorithm types"
                 )
+                return rows_written
         except Exception as e:
             logger.error(f"Error updating recommendations: {e}", exc_info=True)
+        return -1
 
     def _rec_embedding(
-        self, users: list, posts: list, max_posts: int, recsys_state: dict | None = None
+        self,
+        users: list,
+        posts: list,
+        max_posts: int,
+        recsys_state: dict | None = None,
+        scoped_user_ids: set[int] | None = None,
     ) -> dict:
         """Embedding-based recommendations.
 
@@ -1327,6 +1440,8 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
             max_posts: Maximum recommendations per user.
             recsys_state: State dict for this algorithm type containing model
                 and embeddings_cache.
+            scoped_user_ids: When the pass covers only the active users, their
+                ids — cache eviction is then limited to those users.
         """
         if recsys_state is None:
             raise ValueError("Embedding recommendations require initialized recsys_state.")
@@ -1368,6 +1483,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
                 context_recent_posts=context_recent_posts,
                 like_trace_window=like_trace_window,
                 include_like_trace_in_context=include_like_trace_in_context,
+                scoped_user_ids=scoped_user_ids,
             )
 
         if model is None:
@@ -1447,7 +1563,12 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
                     max_posts=max_posts,
                 )
 
-            self._prune_user_context_cache(embeddings_cache, live_user_keys)
+            self._prune_user_context_cache(
+                embeddings_cache,
+                live_user_keys,
+                live_post_ids=set(post_ids),
+                scoped_user_ids=scoped_user_ids,
+            )
             return rec_matrix
         except Exception as e:
             logger.error(f"Error in embedding recsys: {e}", exc_info=True)
@@ -1518,6 +1639,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
         context_recent_posts: int = 0,
         like_trace_window: int = 0,
         include_like_trace_in_context: bool = True,
+        scoped_user_ids: set[int] | None = None,
     ) -> dict:
         """TWHIN-BERT recommendations via transformers tokenizer/model."""
         if tokenizer is None or model is None:
@@ -1600,7 +1722,9 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
                     max_posts=max_posts,
                 )
 
-            self._prune_user_context_cache(embeddings_cache, live_user_keys)
+            self._prune_user_context_cache(
+                embeddings_cache, live_user_keys, scoped_user_ids=scoped_user_ids
+            )
             return rec_matrix
         except Exception as e:
             logger.error("Error in TWHIN recsys: %s", e, exc_info=True)

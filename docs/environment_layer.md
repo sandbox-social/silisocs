@@ -5,7 +5,9 @@ For API-level extension contracts (classes, method signatures, and factory hooks
 
 The environment layer is composed of three parts:
 
-1. **Engine**: step loop, concurrency, probe timing, and action execution orchestration.
+1. **Engine**: step loop, concurrency, probe timing, and action execution
+   orchestration. The turn executor is pluggable via `sim.engine.executor`
+   (`threads`, the default, or `asyncio`); see `docs/configuration.md`.
 2. **Game Master (GM)**: who acts next, what agents observe, and how action text is resolved.
 3. **Environment Backend**: domain state and executable actions
    (`@app_action` methods).

@@ -103,6 +103,20 @@ class NativeAgent(Agent):
     def act(self, action_spec: ActionSpec) -> ActionOutput:
         context = self._context()
         result = self._call_model(context, action_spec)
+        return self._record_act(context, action_spec, result)
+
+    async def act_async(self, action_spec: ActionSpec) -> ActionOutput:
+        """Loop-native act: awaits the model's async path instead of holding a
+        thread for the request, so thousands of native-agent turns can be in
+        flight at once under the asyncio turn executor.
+        """
+        context = self._context()
+        result = await self._call_model_async(context, action_spec)
+        return self._record_act(context, action_spec, result)
+
+    def _record_act(
+        self, context: str, action_spec: ActionSpec, result: ActionOutput
+    ) -> ActionOutput:
         self._last_log = {
             "context": context,
             "prompt": action_spec.prompt,

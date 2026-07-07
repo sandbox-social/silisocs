@@ -2,12 +2,15 @@
 
 import importlib
 import json
-import threading
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 from silisocs.runtime.io import write_jsonl_item
-from silisocs.runtime.language_models.base import InvalidResponseError, LanguageModel
+from silisocs.runtime.language_models.base import (
+    ContextLocal,
+    InvalidResponseError,
+    LanguageModel,
+)
 from silisocs.runtime.types import ToolCall
 
 
@@ -48,7 +51,8 @@ class ScriptedLanguageModel(LanguageModel):
         self.debug = debug
         self.meta_data = {"episode_idx": -1, "agent_name": "scripted", "phase": "", "tag": ""}
         self.agent_names: list[str] = []
-        self._local = threading.local()
+        # Thread- AND task-scoped per-call context (see ContextLocal in base).
+        self._local = ContextLocal()
 
     def _log(self, prompt: str, output: str) -> None:
         if not self.debug or not self._log_file:
@@ -82,7 +86,11 @@ class ScriptedLanguageModel(LanguageModel):
             self._local.tag = str(action_tag)
 
     def clear_runtime_context(self) -> None:
-        self._local = threading.local()
+        # Clear only the CURRENT thread/task's context; rebinding the local
+        # object would wipe other in-flight turns' context.
+        for attr in ("agent_name", "episode_idx", "phase", "tag"):
+            if hasattr(self._local, attr):
+                delattr(self._local, attr)
 
     def sample_text(self, prompt: str, **kwargs: Any) -> str:
         del kwargs

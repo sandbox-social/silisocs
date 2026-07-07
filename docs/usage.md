@@ -786,6 +786,11 @@ Built-in turn policies also accept `observe_before_act: first | always | never`.
 The default `first` preserves existing behavior by observing before the first
 action in a repeated-action turn.
 
+Turn scheduling is orthogonal to the policy: `sim.engine.executor` selects
+`threads` (default) or `asyncio` (turns run as coroutines on one event loop —
+thousands of LLM calls in flight on a few threads). Behavior is identical across
+executors; see the configuration reference.
+
 Probe timing is policy-driven through `eval.probes.schedule`.
 
 #### Defining New Agent Behavior Flows

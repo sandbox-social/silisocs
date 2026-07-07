@@ -392,9 +392,11 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
             "initialization",
             "checkpoint",
             "engine",
+            "telemetry",
             "roleplaying_instructions",
         },
     )
+    _assert_allowed_keys(cfg, "sim.telemetry", {"record_active_agent_names"})
     _assert_allowed_keys(cfg, "sim.llm", set(MODEL_FIELDS))
     provider = OmegaConf.select(cfg, "sim.llm.provider")
     if provider is not None:
@@ -413,8 +415,13 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
     _assert_allowed_keys(
         cfg,
         "sim.engine",
-        {"class_path", "params", "loop", "step", "turn_policy", "participation"},
+        {"class_path", "params", "loop", "step", "turn_policy", "participation", "executor"},
     )
+    executor = OmegaConf.select(cfg, "sim.engine.executor")
+    if executor is not None and str(executor).strip().lower() not in {"threads", "asyncio"}:
+        raise ValueError(
+            f"Unsupported sim.engine.executor: {executor!r}. Use 'threads' (default) or 'asyncio'."
+        )
     _validate_engine_slots(cfg)
     _assert_allowed_keys(cfg, "eval", {"probes"})
     print("✓ Runtime section validation passed")

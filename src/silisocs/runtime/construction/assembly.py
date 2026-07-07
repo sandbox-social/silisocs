@@ -59,12 +59,11 @@ def build_runtime_objects(
     agent_specs = [spec for spec in specs if spec.role == RuntimeRole.AGENT]
     gm_specs = [spec for spec in specs if spec.role == RuntimeRole.GAME_MASTER]
 
+    t0 = time.time()
     for spec in agent_specs:
-        t0 = time.time()
-        agent = add_agent(
-            runtime=runtime, spec=spec, models=models, object_to_model=object_to_model
-        )
-        print(f"Built agent '{agent.name}' in {time.time() - t0:.2f}s")
+        add_agent(runtime=runtime, spec=spec, models=models, object_to_model=object_to_model)
+    if agent_specs:
+        print(f"Built {len(agent_specs)} agents in {time.time() - t0:.2f}s")
 
     for spec in gm_specs:
         t0 = time.time()
@@ -90,7 +89,10 @@ def add_agent(
     name = str((spec.params or {}).get("name", "")).strip()
     if not name:
         raise ValueError("Agent runtime specs must include a non-empty `name` param.")
-    if any(agent.name == name for agent in runtime.agents):
+    # O(1) via the spec index (every added object registers there); scanning
+    # runtime.agents per insertion is O(N^2) across construction.
+    existing = runtime.object_specs.get(name)
+    if existing is not None and existing.role == RuntimeRole.AGENT:
         raise ValueError(f"Duplicate agent name: {name}")
     model = models[object_to_model[name]]
     if spec.compat == "concordia":
@@ -134,7 +136,8 @@ def add_game_master(
     if spec.role != RuntimeRole.GAME_MASTER:
         raise ValueError("Runtime spec role must be game_master.")
     name = str(spec.params["name"])
-    if any(gm.name == name for gm in runtime.game_masters):
+    existing = runtime.object_specs.get(name)
+    if existing is not None and existing.role == RuntimeRole.GAME_MASTER:
         raise ValueError(f"Duplicate game master name: {name}")
     model = models[object_to_model[name]]
     if spec.compat == "concordia":

@@ -18,7 +18,7 @@ import queue
 import sqlite3
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import contextmanager
 from typing import Any, ClassVar
 
@@ -33,6 +33,11 @@ class SqliteSocialEngineBase:
     def __init__(self, db_path: str | None = None, use_queue: bool = True):
         self.db_path = db_path or self.default_db_path
         self._local = threading.local()
+        # username -> id memo. Users are never renamed or deleted during a run,
+        # so entries stay valid until the whole DB is replaced (checkpoint
+        # restore), which must call invalidate_user_id_cache(). Saves 1-2 SELECT
+        # round-trips on nearly every action.
+        self._user_id_cache: dict[str, int] = {}
         # Registry of every connection handed out by get_connection() so they can
         # all be closed on shutdown(), regardless of which thread opened them.
         self._connections: set[sqlite3.Connection] = set()
@@ -240,9 +245,40 @@ class SqliteSocialEngineBase:
     # ------------------------------------------------------------------ #
 
     def get_user_id(self, username: str) -> int | None:
+        cached = self._user_id_cache.get(username)
+        if cached is not None:
+            return cached
         with self.get_connection() as conn:
             row = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
-            return row["id"] if row else None
+            if row:
+                self._user_id_cache[username] = int(row["id"])
+                return int(row["id"])
+            return None
+
+    def invalidate_user_id_cache(self) -> None:
+        """Drop the username->id memo. Call whenever the DB is replaced wholesale
+        (checkpoint restore), where ids may no longer match the cached mapping.
+        """
+        self._user_id_cache.clear()
+
+    def create_users(self, users: Sequence[tuple[str, str]], sync: bool = True) -> Any:
+        """Bulk-register users in ONE queued transaction (init fast path).
+
+        ``users`` is ``(username, bio)`` pairs; existing usernames are skipped
+        (same idempotency as :meth:`create_user`). At setup scale this replaces
+        N serialized create round-trips with a single writer-queue item.
+        """
+        now = time.time()
+        queries = [
+            (
+                "INSERT OR IGNORE INTO users (username, bio, created_at) VALUES (?, ?, ?)",
+                (username, bio, now),
+            )
+            for username, bio in users
+        ]
+        if not queries:
+            return None
+        return self._execute_write(queries, sync=sync)
 
     def create_user(self, username: str, bio: str = "", sync: bool = True) -> Any:
         """Register a new user, returning the (existing or new) user id.
@@ -265,7 +301,10 @@ class SqliteSocialEngineBase:
                     (username, bio, time.time()),
                 )
             ]
-            return self._execute_write(queries, sync=sync)
+            result = self._execute_write(queries, sync=sync)
+            if sync and isinstance(result, int):
+                self._user_id_cache[username] = result
+            return result
         except sqlite3.IntegrityError:
             # Lost an insert race (synchronous path): the row now exists.
             return self.get_user_id(username)

@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import abc
 import csv
+import functools
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from silisocs.agents.base_agent import Agent
 from silisocs.initialization.context import InitializationContext
+from silisocs.runtime.execution import concurrency
 from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType, ToolCall
 
 
@@ -43,13 +45,17 @@ class AgentSeedPostProvider(SeedPostProvider):
         del context
         result: dict[str, str] = {}
         spec = ActionSpec(prompt=self.prompt, output_type=OutputType.TEXT, tag="seed_post")
+        pending: dict[str, Callable[[], Any]] = {}
         for agent in agents:
             existing = str(getattr(agent, "seed_post", "") or "").strip()
             if existing:
                 result[agent.name] = existing
                 continue
-            output = agent.act(spec)
-            result[agent.name] = str(output).strip()
+            pending[agent.name] = functools.partial(agent.act, spec)
+        # One LLM round-trip per agent — run them on the shared bounded pool
+        # instead of serially (a serial loop pays O(N) sequential latency at init).
+        for name, output in concurrency.run_tasks(pending).items():
+            result[name] = str(output).strip()
         return result
 
 

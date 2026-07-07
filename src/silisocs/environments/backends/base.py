@@ -849,6 +849,33 @@ class SocialBackendApp(BackendApp):
         """
         return set()
 
+    def _resolve_active_user_ids(self, active_agent_names: Sequence[str]) -> list[int]:
+        """Translate agent display names to backend user ids (unknowns skipped).
+
+        Used by scoped recommendation updates: the update component knows agents
+        by display name while the platform recsys keys on numeric user ids. Names
+        with no platform user (e.g. agents owned by another GM's backend) are
+        dropped silently — a scoped update simply has nothing to refresh for them.
+        Relies on the concrete app's ``_get_username`` mapping and its platform's
+        cached ``get_user_id``.
+        """
+        get_username = getattr(self, "_get_username", None)
+        platform = getattr(self, "_platform", None)
+        if not callable(get_username) or platform is None:
+            return []
+        ids: list[int] = []
+        seen: set[int] = set()
+        for display_name in active_agent_names:
+            try:
+                username = get_username(str(display_name))
+            except ValueError:
+                continue
+            user_id = platform.get_user_id(username)
+            if isinstance(user_id, int) and user_id not in seen:
+                seen.add(user_id)
+                ids.append(user_id)
+        return ids
+
     def setup_social_state(
         self,
         *,

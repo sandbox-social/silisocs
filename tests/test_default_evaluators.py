@@ -58,7 +58,7 @@ def test_action_metrics_include_per_agent_and_episode(tmp_path: Path) -> None:
         ],
     )
 
-    events = _read_jsonl(run_dir / "action_events.jsonl")
+    events = list(_read_jsonl(run_dir / "action_events.jsonl"))
     payload = _build_payload("action_metrics", events, run_dir)
 
     assert payload["total_action_events"] == 3
@@ -128,7 +128,7 @@ def test_probe_metrics_use_configured_probe_types(tmp_path: Path) -> None:
     }
     (run_dir / "effective_config.yaml").write_text(yaml.safe_dump(cfg), encoding="utf-8")
 
-    events = _read_jsonl(run_dir / "action_events.jsonl")
+    events = list(_read_jsonl(run_dir / "action_events.jsonl"))
     payload = _build_payload("probe_metrics", events, run_dir)
 
     assert payload["total_probe_events"] == 3
@@ -181,7 +181,7 @@ def test_probe_type_filtered_mode(tmp_path: Path) -> None:
     }
     (run_dir / "effective_config.yaml").write_text(yaml.safe_dump(cfg), encoding="utf-8")
 
-    events = _read_jsonl(run_dir / "action_events.jsonl")
+    events = list(_read_jsonl(run_dir / "action_events.jsonl"))
     payload = _build_payload("probe_binary", events, run_dir)
 
     assert payload["filter_probe_type"] == "BinaryProbe"
@@ -231,7 +231,7 @@ def test_probe_postprocessor_accepts_nonexistent_output_json_context(tmp_path: P
     }
     (run_dir / "effective_config.yaml").write_text(yaml.safe_dump(cfg), encoding="utf-8")
 
-    events = _read_jsonl(run_dir / "probe_events.jsonl")
+    events = list(_read_jsonl(run_dir / "probe_events.jsonl"))
     output_json = tmp_path / "eval" / "probe_metrics" / "probe_metrics_detailed.json"
     output_json.parent.mkdir(parents=True, exist_ok=True)
 

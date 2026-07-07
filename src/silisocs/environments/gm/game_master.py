@@ -130,6 +130,7 @@ class ComponentGameMaster(BaseGameMaster):
         )
         self.action_output_mode = _action_output_mode(components or {}, action_mode)
         self.enable_tool_calling = str(tool_calling_mode).strip().lower() in {"single", "multi"}
+        self._context_agent_names = tuple(agent.name for agent in self.agents)
         self.context = GameMasterContext(
             gm_name=self.name,
             backend=self.backend,
@@ -186,9 +187,20 @@ class ComponentGameMaster(BaseGameMaster):
         self._initialized = True
 
     def update(self, *, step: int, agents: Sequence[Any], context: Any | None = None) -> None:
-        self._refresh_context(agents)
+        """Run one pre-turn update with the step's ACTIVE roster.
+
+        The engine applies the sim-level participation filter before GM updates,
+        so ``agents`` is who acts this step — per-step update work (e.g. recsys
+        refresh) stays O(active). The GM's own roster/context remain bound to the
+        full roster from ``initialize()``; an update component that genuinely
+        needs the population declares ``requires_full_roster = True`` and receives
+        ``self.agents`` instead.
+        """
         for component in self._components_for_role(role="update"):
-            component.update(step=step, agents=agents, context=context)
+            component_agents = (
+                self.agents if getattr(component, "requires_full_roster", False) else agents
+            )
+            component.update(step=step, agents=component_agents, context=context)
 
     def acting_agents(self, candidate_agents: Sequence[Any]) -> list[str]:
         by_name = {agent.name: agent for agent in candidate_agents}
@@ -233,6 +245,18 @@ class ComponentGameMaster(BaseGameMaster):
             self._component_for_agent_role(agent_name=agent_name, role="observe"),
         )
         return str(component.make_observation(agent_name))
+
+    def observation_is_lock_free(self, agent_name: str) -> bool:
+        """Return whether this agent's observe component may run without the GM lock.
+
+        True only when the routed component declares ``read_only = True`` (it
+        neither mutates GM/component state nor performs backend writes), letting
+        the engine run the step's observation reads concurrently. Components
+        default to False, so custom observe components keep the lock unless they
+        opt in.
+        """
+        component = self._component_for_agent_role(agent_name=agent_name, role="observe")
+        return bool(getattr(component, "read_only", False))
 
     def resolve_action(self, agent_name: str, action: ActionOutput) -> str:
         component = cast(
@@ -378,12 +402,24 @@ class ComponentGameMaster(BaseGameMaster):
         )
 
     def _refresh_context(self, agents: Sequence[Any]) -> None:
-        self.agents = tuple(agents)
+        """Rebind the GM roster/context, rebuilding only when the roster changed.
+
+        Rebuilding N-sized tuples every call is O(population) work; comparing the
+        name tuple first makes the steady-state (unchanged roster) a cheap no-op.
+        Agent names are unique per run, so an identical name tuple means an
+        identical roster.
+        """
+        incoming = tuple(agents)
+        names = tuple(agent.name for agent in incoming)
+        if names == self._context_agent_names:
+            return
+        self.agents = incoming
+        self._context_agent_names = names
         self.context = GameMasterContext(
             gm_name=self.name,
             backend=self.backend,
             agents=self.agents,
-            agent_names=tuple(agent.name for agent in self.agents),
+            agent_names=names,
             agent_flow_tags=self.agent_flow_tags,
             model=self.model,
             event_logger=getattr(self.backend, "action_logger", None),

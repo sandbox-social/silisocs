@@ -53,10 +53,11 @@ def load_run_results(run_dir: Path | str) -> dict[str, Any]:
     """Load action events, probe events, and metrics for one run directory."""
     path = Path(run_dir)
     out: dict[str, Any] = {"actions": [], "probes": [], "metrics": None}
+    # _read_jsonl streams; the dashboard renders whole runs, so materialize here.
     if (path / "action_events.jsonl").is_file():
-        out["actions"] = _read_jsonl(path / "action_events.jsonl")
+        out["actions"] = list(_read_jsonl(path / "action_events.jsonl"))
     if (path / "probe_events.jsonl").is_file():
-        out["probes"] = _read_jsonl(path / "probe_events.jsonl")
+        out["probes"] = list(_read_jsonl(path / "probe_events.jsonl"))
     if (path / "sim_metrics.json").is_file():
         try:
             out["metrics"] = json.loads((path / "sim_metrics.json").read_text(encoding="utf-8"))

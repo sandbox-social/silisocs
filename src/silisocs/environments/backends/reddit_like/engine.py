@@ -898,7 +898,7 @@ class RedditLikePlatform(SqliteSocialEngineBase):
 
     def update_recommendations(
         self, active_user_ids: list[int] | None = None, max_posts: int = 10
-    ) -> None:
+    ) -> int:
         """Update recommendations for all initialized algorithm types.
 
         Args:
@@ -906,7 +906,11 @@ class RedditLikePlatform(SqliteSocialEngineBase):
             max_posts: Maximum recommendations per user per algorithm.
 
         Generates recommendations for each initialized recsys type and stores them
-        in the database with the algorithm type tagged.
+        in the database with the algorithm type tagged. With ``active_user_ids``
+        only those users' rows are replaced (everyone else's stay as-is) — the
+        O(active) path; without it the whole table is cleared and recomputed.
+        Returns the number of recommendation rows written this pass, or -1 on
+        error.
         """
         if not hasattr(self, "_recsys_types") or not self._recsys_types:
             logger.warning(
@@ -914,7 +918,7 @@ class RedditLikePlatform(SqliteSocialEngineBase):
                 "will not refresh. After a checkpoint restore the update component should "
                 "re-initialize recsys (via recsys_active_types reconciliation)."
             )
-            return
+            return 0
 
         try:
             with self.get_connection() as conn:
@@ -950,10 +954,19 @@ class RedditLikePlatform(SqliteSocialEngineBase):
 
                 if not users or not posts:
                     logger.debug("No users or posts found; skipping recommendations update")
-                    return
+                    return 0
 
-                # Clear old recommendations (once per update)
-                conn.execute("DELETE FROM recommendations")
+                # Replace only the scoped users' rows (every live recsys type is
+                # recomputed for them below); a full update clears the table.
+                if active_user_ids:
+                    delete_placeholders = ",".join("?" * len(active_user_ids))
+                    conn.execute(
+                        f"DELETE FROM recommendations WHERE user_id IN ({delete_placeholders})",
+                        active_user_ids,
+                    )
+                else:
+                    conn.execute("DELETE FROM recommendations")
+                rows_written = 0
 
                 # Generate recommendations for each algorithm type
                 for recsys_type, state in self._recsys_types.items():
@@ -968,13 +981,17 @@ class RedditLikePlatform(SqliteSocialEngineBase):
                         logger.warning(f"Unknown recsys_type '{recsys_type}'; skipping")
                         continue
 
-                    # Store recommendations with algorithm type
-                    for user_id, post_ids in rec_matrix.items():
-                        for post_id in post_ids:
-                            conn.execute(
-                                "INSERT OR IGNORE INTO recommendations (user_id, post_id, recsys_type) VALUES (?, ?, ?)",
-                                (user_id, post_id, recsys_type),
-                            )
+                    # Store recommendations with algorithm type (one executemany,
+                    # not N*max_posts single-row round-trips)
+                    cursor = conn.executemany(
+                        "INSERT OR IGNORE INTO recommendations (user_id, post_id, recsys_type) VALUES (?, ?, ?)",
+                        [
+                            (user_id, post_id, recsys_type)
+                            for user_id, post_ids in rec_matrix.items()
+                            for post_id in post_ids
+                        ],
+                    )
+                    rows_written += max(int(cursor.rowcount or 0), 0)
 
                     logger.info(
                         f"Updated {recsys_type} recommendations for {len(rec_matrix)} users"
@@ -984,8 +1001,10 @@ class RedditLikePlatform(SqliteSocialEngineBase):
                 logger.info(
                     f"Recommendations update complete for {len(self._recsys_types)} algorithm types"
                 )
+                return rows_written
         except Exception as e:
             logger.error(f"Error updating recommendations: {e}", exc_info=True)
+        return -1
 
     def _rec_reddit(self, users: list, posts: list, max_posts: int) -> dict:
         """Reddit hot-score recommendations."""
@@ -1072,6 +1091,22 @@ class RedditLikePlatform(SqliteSocialEngineBase):
 
                 scored.sort(key=lambda x: x[1], reverse=True)
                 rec_matrix[user_id] = [p[0] for p in scored[:max_posts]]
+
+            # Evict post embeddings outside the current candidate window — the
+            # cache otherwise accumulates a tensor for every post ever seen,
+            # an unbounded leak over a long run. User keys are stable per user
+            # (bounded), so they are retained.
+            live_post_ids = set(post_ids)
+            stale = [
+                key
+                for key in embeddings_cache
+                if isinstance(key, tuple)
+                and len(key) == 2
+                and key[0] == "post_emb"
+                and key[1] not in live_post_ids
+            ]
+            for key in stale:
+                del embeddings_cache[key]
 
             return rec_matrix
         except Exception as e:

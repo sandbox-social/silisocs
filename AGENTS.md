@@ -100,10 +100,14 @@ Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 | `sim.tool_calling.mode` | single | `none` \| `single` \| `multi` |
 | `sim.engine.step.built_in` | base | `base`, `sequential`, `flow`, `multi_gm`, `multi_gm_serial`, or `multi_gm_staged` (the three `multi_gm*` strategies select the flow-chain traversal mode; see below) |
 | `sim.engine.turn_policy.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended` |
-| `sim.engine.participation.built_in` | activity_probability | Sim-level per-step roster filter: `all` \| `activity_probability` \| `activity_markov` (or `class_path` to a custom `ParticipationPolicy`). Filters who is in the step's roster BEFORE scheduling and every GM's next_acting (effective acting = participation ∩ next_acting). Stateless/seed-derived, so replay- and resume-stable. The GM `next_acting` slot keeps only env-derived built-ins (`all_agents`, `fixed_order`); a config naming the moved built-ins there gets a migration error. Set `all` for deterministic/turn-based runs |
+| `sim.engine.executor` | threads | Turn executor: `threads` (one pool worker per in-flight turn) \| `asyncio` (turns are coroutines on one background event loop — thousands of LLM calls in flight on a handful of threads). Sync `act`/`sample_text` stay the REQUIRED contracts; `act_async` / `sample_*_async` / turn-policy `run_async` are OPTIONAL loop-native overrides (shipped: NativeAgent, FixedAgent, OpenAI-compatible providers, all built-in turn policies), and sync-only agents/models/policies automatically run on helper threads via `asyncio.to_thread` — both kinds mix freely in one step. `max_concurrent_actions` keeps its meaning (max in-flight turns, enforced as an asyncio semaphore); all scheduling semantics (flow chains, barriers, per-GM caps/locks, failure isolation, retry telemetry) are identical across executors |
+| `sim.engine.participation.built_in` | activity_probability | Sim-level per-step roster filter: `all` \| `activity_probability` \| `activity_markov` (or `class_path` to a custom `ParticipationPolicy`). Filters who is in the step's roster BEFORE scheduling, every GM's next_acting (effective acting = participation ∩ next_acting), AND per-step GM `update`s — so per-step backend work (e.g. recsys refresh) is O(active); an update component that needs the population declares `requires_full_roster = True`. Stateless/seed-derived, so replay- and resume-stable. The GM `next_acting` slot keeps only env-derived built-ins (`all_agents`, `fixed_order`); a config naming the moved built-ins there gets a migration error. Set `all` for deterministic/turn-based runs |
 | `sim.engine.step.params.gm_turn_policies` | {} | Per-GM turn policy map (`gm_name -> {built_in\|class_path, params}`); applies under any step mode |
 | `sim.engine.step.params.gm_concurrency_caps` | {} | Per-GM concurrency caps (`gm_name -> int`); effective per-GM = `min(cap, sim.max_concurrent_actions)` via a per-GM semaphore; empty = global cap everywhere; applies under any step mode |
 | `sim.checkpoint.every_n_steps` | null | Checkpoint frequency (run_study.py sets 1 by default) |
+| `sim.checkpoint.save.built_in` | monolithic_json | On-disk checkpoint layout: `monolithic_json` (one JSON per step) \| `sharded` (manifest + NDJSON object shards + raw SQLite sidecar files; `params.objects_per_shard`). Restore reads both transparently; `class_path` accepts a custom `CheckpointSaveStrategy` (mirrors the restore slot) |
+| `sim.telemetry.record_active_agent_names` | false | Retain per-episode active-agent NAME lists in sim_metrics.json (O(active×steps)); counts are always recorded |
+| `eval.probes.deployment.sample_k` / `sample_fraction` | null | Cap probe targets per due step AFTER the include/exclude filters (hash-ranked per `(seed, step, agent)` — replay/resume stable); unset probes every filtered agent |
 
 `agents.persona_pipeline.classes.<class>.model` accepts a scalar model name OR a
 full `{name, temperature, provider, api_base, api_key, extra_kwargs, disabled}`
@@ -290,6 +294,39 @@ class MyAgent(Agent):
 
 The resolve component and agent's configuration determine the output format expected.
 Agents should not be concerned with prescribing action format—that is a platform concern.
+
+### Optional Async Path (`sim.engine.executor: asyncio`)
+
+Sync `act()` is and remains the required contract. Additively, every agent MAY
+override `act_async(action_spec)` (the base `Agent` default runs the sync `act`
+on a helper thread via `asyncio.to_thread`), and every `LanguageModel` has
+`sample_text_async` / `sample_choice_async` / `sample_tool_calls_async` /
+`sample_structured_async` / `sample_float_async` twins (default: the sync method
+on a helper thread; OpenAI-compatible providers implement text/choice/tool-calls
+natively on an `AsyncOpenAI` client).
+
+Under the asyncio executor each turn is a coroutine on one background event
+loop: an agent with `act_async` acts loop-native (thousands in flight at once),
+a sync-only agent's `act` runs on a bounded helper thread — blocking-safe, and
+unable to stall the loop — and both kinds mix freely in the same step. To make a
+custom agent loop-native, override `act_async` and route through the base
+helper `_call_model_async(context, action_spec)` (same dispatch as
+`_call_model`, awaiting the model's `*_async` twins):
+
+```python
+class MyAgent(Agent):
+    def act(self, action_spec):                    # required, sync floor
+        return self._call_model(self._context(), action_spec)
+
+    async def act_async(self, action_spec):        # optional fast path
+        return await self._call_model_async(self._context(), action_spec)
+```
+
+Everything that calls `agent.act(...)` synchronously (probes, seed-post
+initialization, the `agent_choice` router) is unchanged. Custom `TurnPolicy`
+classes may likewise provide an optional `run_async` (awaiting
+`engine.run_agent_step_async`); a sync-only policy runs whole-turn on a helper
+thread under the asyncio executor.
 
 ### Reference Implementation: FixedAgent
 
@@ -523,6 +560,16 @@ Multi-GM runs isolate each GM's backend db + `action_events.jsonl` under
 all per-GM logs to the strategy as `action_events_files`). A GM may override the
 global `sim.checkpoint.restore` with its own strategy via
 `env.gm_orchestration.gms[*].restore` (same schema; absent → global default).
+
+**Save layout** (`sim.checkpoint.save`, mirroring the restore slot): `monolithic_json`
+(default — one JSON per step, the long-standing format) or `sharded` (a
+`step_N_checkpoint.json` manifest plus NDJSON object shards and raw SQLite sidecar
+`.db` files verified by sha256; `params.objects_per_shard`, default 500). The payload
+always comes from `make_checkpoint_data`; only the on-disk layout differs, and
+`load_checkpoint_file` reassembles a sharded checkpoint transparently, so restore
+strategies and `eval.py` never see the difference. A custom layout is a
+`sim.checkpoint.save.class_path` subclassing `CheckpointSaveStrategy`
+(`runtime/checkpointing/save.py`).
 
 **Saving policy**: checkpoint saving is disabled by default when running directly via `run_experiment.py` unless `every_n_steps` or `explicit_steps` is configured. When running via `run_study.py`, checkpointing is enabled automatically (`every_n_steps=1`) so that `eval.py` can access the final checkpoint for action-type metrics. Studies can change the frequency via `run_defaults.overrides: {sim.checkpoint.every_n_steps: N}`.
 
