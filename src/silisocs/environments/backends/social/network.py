@@ -279,7 +279,7 @@ def generate_graph_from_networkx(
             if agent != cand:
                 following_sets[agent].add(cand)
 
-    following: dict[str, list[str]] = {agent: list(s) for agent, s in following_sets.items()}
+    following: dict[str, list[str]] = {agent: sorted(s) for agent, s in following_sets.items()}
     return following
 
 
