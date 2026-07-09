@@ -19,12 +19,14 @@ the monolithic payload shape, so restore code never sees the difference.
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import importlib
+import itertools
 import json
 import os
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -54,11 +56,10 @@ class MonolithicJsonSaveStrategy(CheckpointSaveStrategy):
     def save(self, checkpoint_data: dict[str, Any], *, step: int, checkpoint_path: str) -> str:
         os.makedirs(checkpoint_path, exist_ok=True)
         checkpoint_file = os.path.join(checkpoint_path, f"step_{step}_checkpoint.json")
-        with open(checkpoint_file, "w", encoding="utf-8") as f:
-            # Object params/state are already json_safe'd in make_checkpoint_data.
-            # No indent: pretty-printing roughly doubles the bytes written per
-            # checkpoint, and checkpoints are machine-read.
-            json.dump(checkpoint_data, f)
+        # Object params/state are already json_safe'd in make_checkpoint_data.
+        # No indent: pretty-printing roughly doubles the bytes written per
+        # checkpoint, and checkpoints are machine-read.
+        _write_json_atomic(checkpoint_data, checkpoint_file)
         return checkpoint_file
 
 
@@ -87,6 +88,12 @@ class ShardedCheckpointSaveStrategy(CheckpointSaveStrategy):
 
         shard_files: list[str] = []
         names = list(objects)
+        # Save-wide sidecar sequence: sanitized object names can collide
+        # ("GM 1" and "GM_1" both sanitize to "GM_1"), so a per-object counter
+        # would let one object's sidecar silently overwrite another's. The
+        # object name stays in the filename for debuggability only; restore
+        # resolves sidecars via the FILE_REF markers, never the name.
+        sidecar_seq = itertools.count()
         for shard_index, start in enumerate(range(0, len(names), self.objects_per_shard)):
             shard_name = f"step_{step}_objects_{shard_index:04d}.jsonl"
             shard_files.append(shard_name)
@@ -97,17 +104,27 @@ class ShardedCheckpointSaveStrategy(CheckpointSaveStrategy):
                         object_name=str(name),
                         step=step,
                         checkpoint_path=checkpoint_path,
+                        sidecar_seq=sidecar_seq,
                     )
                     f.write(json.dumps({"name": str(name), "object": entry}) + "\n")
         manifest["objects_shards"] = shard_files
 
         checkpoint_file = os.path.join(checkpoint_path, f"step_{step}_checkpoint.json")
-        with open(checkpoint_file, "w", encoding="utf-8") as f:
-            json.dump(manifest, f)
+        # Atomic replace: the manifest is the discovery key (resume globs it),
+        # so it must never exist half-written. Shards/sidecars are already on
+        # disk by now; a crash before this point leaves no manifest and resume
+        # cleanly falls back to the previous step.
+        _write_json_atomic(manifest, checkpoint_file)
         return checkpoint_file
 
     def _extract_sidecars(
-        self, entry: Any, *, object_name: str, step: int, checkpoint_path: str
+        self,
+        entry: Any,
+        *,
+        object_name: str,
+        step: int,
+        checkpoint_path: str,
+        sidecar_seq: Iterator[int],
     ) -> Any:
         """Return ``entry`` with sidecar-eligible base64 blobs moved to files.
 
@@ -115,10 +132,8 @@ class ShardedCheckpointSaveStrategy(CheckpointSaveStrategy):
         alias live object state via ``get_state``, which must not be mutated);
         untouched subtrees are shared as-is.
         """
-        counter = 0
 
         def _walk(value: Any) -> Any:
-            nonlocal counter
             if not isinstance(value, Mapping):
                 if isinstance(value, list):
                     walked_items = [_walk(item) for item in value]
@@ -131,8 +146,9 @@ class ShardedCheckpointSaveStrategy(CheckpointSaveStrategy):
             replaced: dict[str, Any] | None = None
             for key, sub in value.items():
                 if key in _SIDECAR_B64_KEYS and isinstance(sub, str) and sub:
-                    sidecar_name = f"step_{step}_{_safe_name(object_name)}_{counter:02d}.db"
-                    counter += 1
+                    sidecar_name = (
+                        f"step_{step}_{_safe_name(object_name)}_{next(sidecar_seq):02d}.db"
+                    )
                     raw = base64.b64decode(sub.encode("ascii"))
                     with open(os.path.join(checkpoint_path, sidecar_name), "wb") as f:
                         f.write(raw)
@@ -215,6 +231,25 @@ def _safe_name(name: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in name) or "object"
 
 
+def _write_json_atomic(payload: dict[str, Any], path: str) -> None:
+    """Write JSON via a same-directory temp file + atomic rename.
+
+    ``step_{N}_checkpoint.json`` is what resume discovery globs and loads; a
+    process killed mid-``json.dump`` must not leave a truncated file there
+    (auto_resume would pick it as the latest checkpoint and fail on every
+    subsequent launch instead of falling back to step N-1).
+    """
+    tmp_path = f"{path}.tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        os.replace(tmp_path, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(tmp_path)
+        raise
+
+
 def build_checkpoint_save_strategy(slot_cfg: Any | None) -> CheckpointSaveStrategy:
     """Build the configured checkpoint save strategy (default: monolithic JSON).
 
@@ -232,10 +267,18 @@ def build_checkpoint_save_strategy(slot_cfg: Any | None) -> CheckpointSaveStrate
     kwargs: dict[str, Any] = {}
     if isinstance(params, Mapping):
         kwargs = {str(key): value for key, value in params.items()}
-    if built_in in ("", "monolithic_json"):
-        return MonolithicJsonSaveStrategy()
-    if built_in == "sharded":
-        return ShardedCheckpointSaveStrategy(**kwargs)
+    try:
+        if built_in in ("", "monolithic_json"):
+            return MonolithicJsonSaveStrategy()
+        if built_in == "sharded":
+            return ShardedCheckpointSaveStrategy(**kwargs)
+    except TypeError as exc:
+        # Same friendly wrap as the class_path branch: a typo'd param name
+        # should read as a config error, not a raw TypeError.
+        raise ValueError(
+            f"Could not build sim.checkpoint.save built_in {built_in!r} with "
+            f"params {sorted(kwargs)}: {exc}"
+        ) from exc
     raise ValueError(
         f"Unknown sim.checkpoint.save.built_in {built_in!r}. Available: "
         "monolithic_json, sharded. Set sim.checkpoint.save.class_path for a "

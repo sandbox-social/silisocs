@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from silisocs.agents.base_agent import Agent
+from silisocs.agents.memory import MemoryPolicy, MemoryPolicyFactory, WindowMemory
 from silisocs.initialization.context import AgentInitializationContext
 from silisocs.runtime.language_models import LanguageModel
 from silisocs.runtime.types import ActionOutput, ActionSpec
@@ -34,6 +35,7 @@ class NativeAgent(Agent):
         flow_tag: str | None = None,
         observation_history: int = 100,
         memory_history: int = 1000,
+        memory_policy: MemoryPolicyFactory | None = None,
         **extra_params: Any,
     ) -> None:
         super().__init__(model)
@@ -51,9 +53,19 @@ class NativeAgent(Agent):
         self._observation_history = max(1, int(observation_history or 100))
         self._memory_history = max(1, int(memory_history or 1000))
         self._observations: list[str] = []
-        self._memory_text: list[str] = (
-            _normalize_text_items(shared_memories) + _normalize_text_items(specific_memories)
-        )[-self._memory_history :]
+        # Memory is delegated to a MemoryPolicy (sim.memory). None = the default
+        # window policy, byte-identical to the pre-slot behavior. Seeded memories
+        # go into memory only (not the recent-observation feed), matching the
+        # original construction.
+        self._memory: MemoryPolicy = (
+            memory_policy(model=model, memory_history=self._memory_history)
+            if memory_policy is not None
+            else WindowMemory(memory_history=self._memory_history)
+        )
+        for seeded in _normalize_text_items(shared_memories) + _normalize_text_items(
+            specific_memories
+        ):
+            self._memory.record(seeded)
         self._last_log: dict[str, Any] = {}
 
     @property
@@ -66,8 +78,7 @@ class NativeAgent(Agent):
             return
         self._observations.append(text)
         self._observations = self._observations[-self._observation_history :]
-        self._memory_text.append(text)
-        self._memory_text = self._memory_text[-self._memory_history :]
+        self._memory.record(text)
 
     def initialize(self, context: Any | None = None) -> None:
         memories: list[str] = []
@@ -81,14 +92,14 @@ class NativeAgent(Agent):
         for memory in memories:
             self.observe(memory)
 
-    def _memories(self) -> list[str]:
-        return list(self._memory_text)
-
     def get_all_memories_as_text(self) -> list[str]:
         """Return all stored memory text for logs and tests."""
-        return self._memories()
+        return self._memory.all_memories()
 
     def _context(self) -> str:
+        # The current observation is the retrieval query for the Memory section
+        # (window/summarizing ignore it; retrieval ranks memories against it).
+        query = self._observations[-1] if self._observations else None
         sections: list[tuple[str, str]] = [
             ("Instructions", self._instructions),
             ("Persona", self._persona_context),
@@ -96,7 +107,7 @@ class NativeAgent(Agent):
             ("Goal", self._goal),
             ("Style", self._style),
             ("Recent observations", "\n".join(self._observations[-self._observation_history :])),
-            ("Memory", "\n".join(self._memories()[-10:])),
+            ("Memory", self._memory.render(query=query)),
         ]
         return "\n\n".join(f"{label}:\n{text.strip()}" for label, text in sections if text.strip())
 
@@ -129,19 +140,20 @@ class NativeAgent(Agent):
         return dict(self._last_log)
 
     def get_state(self) -> dict[str, Any]:
-        state: dict[str, Any] = {
+        return {
             "observations": list(self._observations),
-            "memory_text": list(self._memory_text),
+            "memory": self._memory.get_state(),
         }
-        return state
 
     def set_state(self, state: Mapping[str, Any]) -> None:
         self._observations = _normalize_text_items(state.get("observations", ()))[
             -self._observation_history :
         ]
-        self._memory_text = _normalize_text_items(state.get("memory_text", self._observations))[
-            -self._memory_history :
-        ]
+        if "memory" in state:
+            self._memory.set_state(state["memory"])
+        elif "memory_text" in state:
+            # Legacy checkpoint (pre-memory-slot): raw memory list.
+            self._memory.set_state({"memories": _normalize_text_items(state["memory_text"])})
 
 
 def _normalize_text_items(value: Any) -> list[str]:

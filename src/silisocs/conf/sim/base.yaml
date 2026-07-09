@@ -9,6 +9,9 @@ llm:
   api_key: null
   disabled: false
   extra_kwargs: {}
+  # Optional cost reporting: token counts are always recorded in sim_metrics.json
+  # (meta.llm_usage); set a pricing rate to also get estimated_cost_usd.
+  # pricing: {input_per_1m: 2.5, output_per_1m: 10.0}
 
 max_concurrent_actions: 1000
 action_mode: custom
@@ -21,6 +24,17 @@ tool_calling:
   mode: single                 # none | single | multi
 prompt_additions:
   action_count_guidance: true
+
+# Runtime agent memory: how observations are recorded and how the prompt's
+# Memory section is rendered. `window` (default) = today's last-N behavior;
+# `retrieval` = a recent-window floor plus the most relevant older memories;
+# `summarizing` = rolling summaries + retrieved older memories + a recent window.
+# Orthogonal to initialization.agents (which SEEDS memories at step 0). Applies
+# to NativeAgent.
+memory:
+  built_in: window             # window | retrieval | summarizing
+  class_path: null
+  params: {}
 
 initialization:
   agents:

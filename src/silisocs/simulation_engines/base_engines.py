@@ -40,9 +40,10 @@ _LOGGER = logging.getLogger(__name__)
 
 def _set_gm_episode_index(game_master: Any, step_index: int) -> None:
     backend = getattr(game_master, "backend", None)
-    action_logger = getattr(backend, "action_logger", None)
-    if action_logger is not None and hasattr(action_logger, "episode_idx"):
-        action_logger.episode_idx = int(step_index)
+    for logger_attr in ("action_logger", "exposure_logger"):
+        event_logger = getattr(backend, logger_attr, None)
+        if event_logger is not None and hasattr(event_logger, "episode_idx"):
+            event_logger.episode_idx = int(step_index)
 
 
 def _gm_episode_index(game_master: Any) -> int:
@@ -73,6 +74,7 @@ class RuntimeEngine(SchedulingMixin, RuntimeEngineBase):
         gm_turn_policies: Mapping[str, TurnPolicy] | None = None,
         gm_concurrency_caps: Mapping[str, int] | None = None,
         participation: Any | None = None,
+        interventions: Any | None = None,
         seed: int = 0,
         probe_runner: ProbeRunner | None = None,
         recorder: EngineRecorder | None = None,
@@ -94,6 +96,9 @@ class RuntimeEngine(SchedulingMixin, RuntimeEngineBase):
         # Sim-level participation policy: filters each step's agent roster before
         # any scheduling or GM next_acting runs. None = every agent participates.
         self.participation = participation
+        # Declarative mid-run interventions fired at step boundaries by the loop
+        # strategy (None/empty = no-op). See simulation_engines/interventions.py.
+        self.interventions = interventions
         self.seed = int(seed)
         self.probe_runner = probe_runner
         output_rootname = ""

@@ -923,18 +923,20 @@ class RedditLikePlatform(SqliteSocialEngineBase):
         try:
             with self.get_connection() as conn:
                 # Get users
+                user_rows: list[Any] = []
                 if active_user_ids:
-                    placeholders = ",".join("?" * len(active_user_ids))
-                    cursor = conn.execute(
-                        f"SELECT id, username, bio FROM users WHERE id IN ({placeholders})",
-                        active_user_ids,
-                    )
+                    for chunk in self._iter_in_chunks(active_user_ids):
+                        placeholders = ",".join("?" * len(chunk))
+                        user_rows.extend(
+                            conn.execute(
+                                f"SELECT id, username, bio FROM users WHERE id IN ({placeholders})",
+                                chunk,
+                            ).fetchall()
+                        )
                 else:
-                    cursor = conn.execute("SELECT id, username, bio FROM users")
+                    user_rows = conn.execute("SELECT id, username, bio FROM users").fetchall()
 
-                users = [
-                    {"id": r[0], "username": r[1], "bio": r[2] or ""} for r in cursor.fetchall()
-                ]
+                users = [{"id": r[0], "username": r[1], "bio": r[2] or ""} for r in user_rows]
 
                 # Get recent posts
                 cursor = conn.execute(
@@ -959,11 +961,12 @@ class RedditLikePlatform(SqliteSocialEngineBase):
                 # Replace only the scoped users' rows (every live recsys type is
                 # recomputed for them below); a full update clears the table.
                 if active_user_ids:
-                    delete_placeholders = ",".join("?" * len(active_user_ids))
-                    conn.execute(
-                        f"DELETE FROM recommendations WHERE user_id IN ({delete_placeholders})",
-                        active_user_ids,
-                    )
+                    for chunk in self._iter_in_chunks(active_user_ids):
+                        delete_placeholders = ",".join("?" * len(chunk))
+                        conn.execute(
+                            f"DELETE FROM recommendations WHERE user_id IN ({delete_placeholders})",
+                            chunk,
+                        )
                 else:
                     conn.execute("DELETE FROM recommendations")
                 rows_written = 0

@@ -270,6 +270,10 @@ class BackendApp(metaclass=abc.ABCMeta):
     """
 
     action_logger: Any = None
+    # Optional EventLogger for exposure_events.jsonl (what each agent SAW). Wired
+    # by _create_backend next to action_logger; None if the run isn't logging
+    # exposures. See environments/gm/components/social_media/observe.py.
+    exposure_logger: Any = None
     _log_color: COLOR_TYPE = "blue"
 
     # Checkpoint capability contract (see docs/configuration.md#checkpointing).

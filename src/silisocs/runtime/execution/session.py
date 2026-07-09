@@ -27,6 +27,7 @@ from dotenv import find_dotenv, load_dotenv
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
+from silisocs.agents.memory import build_memory_policy
 from silisocs.evaluations.probes.deployment import DefaultProbeRunner
 from silisocs.initialization.agents import build_agent_initializer
 from silisocs.initialization.game_masters import build_game_master_initializer_strategy
@@ -64,12 +65,37 @@ from silisocs.runtime.construction.initialization_context import (
 from silisocs.runtime.construction.models import build_deduped_models, build_global_llm_config
 from silisocs.runtime.execution.resume import plan_checkpoint_resume
 from silisocs.runtime.io import configure_logging
-from silisocs.runtime.telemetry import SimMetricsCollector
+from silisocs.runtime.telemetry import (
+    SimMetricsCollector,
+    collect_usage_summary,
+)
 
 # Package root (src/silisocs)
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 CONF_DIR = PACKAGE_ROOT / "conf"
 RUNTIME_LAYER_NAME = "silisocs-native"
+
+
+def _record_llm_usage_summary(cfg: Any, *, models: Any, metrics: Any) -> None:
+    """Record a run-level LLM token-usage summary (+cost when priced) to sim_metrics.
+
+    ``sim.llm.pricing`` (``{input_per_1m, output_per_1m}``) is optional; without
+    it only token counts are reported. Best-effort — never fails a run.
+    """
+    if not models:
+        return
+    try:
+        pricing = OmegaConf.select(cfg, "sim.llm.pricing")
+        pricing_map = (
+            cast(dict, OmegaConf.to_container(pricing, resolve=True))
+            if isinstance(pricing, DictConfig)
+            else (pricing if isinstance(pricing, dict) else None)
+        )
+        # ``models`` is already deduped by effective config (build_deduped_models).
+        model_list = list(models.values()) if isinstance(models, dict) else list(models)
+        metrics.set_meta("llm_usage", collect_usage_summary(model_list, pricing_map))
+    except Exception:  # pragma: no cover - telemetry must never break a run
+        logging.getLogger(__name__).debug("failed to record llm usage summary", exc_info=True)
 
 
 def _initialize_runtime_environment() -> Path:
@@ -345,10 +371,17 @@ def main(cfg: DictConfig):
     sim_engine = build_engine(cfg, flow_chains=flow_chains, sim_roles=initializer_context.sim_roles)
 
     t0 = time.time()
+    memory_cfg = OmegaConf.select(cfg, "sim.memory")
+    memory_factory = build_memory_policy(
+        cast(dict, OmegaConf.to_container(memory_cfg, resolve=True))
+        if isinstance(memory_cfg, DictConfig)
+        else None
+    )
     runtime_objects = construct_runtime_with_metrics(
         specs=instances,
         models=models,
         object_to_model=object_to_model,
+        memory_factory=memory_factory,
     )
     all_agent_names = [agent.name for agent in runtime_objects.agents]
     for built_model in models.values():
@@ -470,6 +503,7 @@ def main(cfg: DictConfig):
     finally:
         # Finalize and write metrics
         metrics.mark_sim_end()
+        _record_llm_usage_summary(cfg, models=locals().get("models"), metrics=metrics)
         metrics.write_json(output_dir)
 
         completion_line = (

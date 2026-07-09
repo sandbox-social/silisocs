@@ -154,6 +154,27 @@ def _read_retry_counters(model: Any, phase: str = "all") -> dict[str, int]:
     return {"calls_total": 0, "failed_calls_total": 0, "retries_total": 0}
 
 
+_USAGE_FIELDS = (
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
+    "calls_with_usage",
+    "calls_without_usage",
+)
+
+
+def _read_usage_counters(model: Any, phase: str = "all") -> dict[str, int]:
+    """Read token-usage counters from a model (duck-typed; zeros if unsupported)."""
+    getter = getattr(model, "get_usage_counters", None)
+    if callable(getter):
+        try:
+            counters = getter(phase=phase)
+        except TypeError:
+            counters = getter()
+        return {field: int(counters.get(field, 0)) for field in _USAGE_FIELDS}
+    return dict.fromkeys(_USAGE_FIELDS, 0)
+
+
 def capture_retry_counters(models: Sequence[Any]) -> dict[str, dict[str, Any]]:
     """Capture cumulative retry counters for differential phase telemetry."""
     snapshot: dict[str, dict[str, Any]] = {}
@@ -213,6 +234,7 @@ def collect_retry_telemetry(
     retries_total = 0
     retry_samples = 0
     retry_sum = 0
+    usage_total = dict.fromkeys(_USAGE_FIELDS, 0)
 
     for model in models:
         counters = _read_retry_counters(model, phase=phase)
@@ -227,6 +249,7 @@ def collect_retry_telemetry(
         retry_len = len(retry_hist)
         retry_avg = (sum(retry_hist) / retry_len) if retry_len else 0.0
 
+        usage = _read_usage_counters(model, phase=phase)
         per_model.append(
             {
                 "model": str(getattr(model, "_model_name", model.__class__.__name__)),
@@ -238,6 +261,7 @@ def collect_retry_telemetry(
                 "failed_calls_total": model_failed,
                 "retries_total": model_retries,
                 "retry_per_call": round(model_retry_per_call, 4),
+                **usage,
             }
         )
 
@@ -246,6 +270,8 @@ def collect_retry_telemetry(
         calls_total += model_calls
         failed_calls_total += model_failed
         retries_total += model_retries
+        for field in _USAGE_FIELDS:
+            usage_total[field] += usage[field]
 
     retry_avg_global = (retry_sum / retry_samples) if retry_samples else 0.0
     failure_ratio_global = (failed_calls_total / calls_total) if calls_total else 0.0
@@ -260,7 +286,70 @@ def collect_retry_telemetry(
         "failed_calls_total": failed_calls_total,
         "retries_total": retries_total,
         "retry_per_call": round(retry_per_call, 4),
+        "usage": usage_total,
     }
+
+
+_USAGE_PHASES = ("probe", "action", "other")
+
+
+def collect_usage_summary(
+    models: Sequence[Any], pricing: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    """Run-level token usage per model and per phase, with optional dollar cost.
+
+    ``by_phase`` splits the totals across the probe/action/other retry-phase
+    buckets so probe (evaluation) spend is separable from simulation spend;
+    phase-unaware model wrappers report their full totals under every phase.
+    ``pricing`` is a single ``{input_per_1m, output_per_1m}`` rate applied to
+    every model; when given, per-model, per-phase, and total
+    ``estimated_cost_usd`` are added. For a mixed-model run with differing real
+    prices, read the per-model token counts and price them yourself.
+    """
+    input_rate = float((pricing or {}).get("input_per_1m", 0) or 0)
+    output_rate = float((pricing or {}).get("output_per_1m", 0) or 0)
+    has_pricing = bool(input_rate or output_rate)
+
+    def _cost(usage: Mapping[str, Any]) -> float:
+        return (
+            usage["prompt_tokens"] / 1e6 * input_rate
+            + usage["completion_tokens"] / 1e6 * output_rate
+        )
+
+    per_model: list[dict[str, Any]] = []
+    totals = dict.fromkeys(_USAGE_FIELDS, 0)
+    by_phase: dict[str, dict[str, Any]] = {
+        phase: dict.fromkeys(_USAGE_FIELDS, 0) for phase in _USAGE_PHASES
+    }
+    total_cost = 0.0
+    for model in models:
+        usage = _read_usage_counters(model, phase="all")
+        entry: dict[str, Any] = {
+            "model": str(getattr(model, "_model_name", model.__class__.__name__)),
+            **usage,
+        }
+        if has_pricing:
+            cost = _cost(usage)
+            entry["estimated_cost_usd"] = round(cost, 6)
+            total_cost += cost
+        per_model.append(entry)
+        for field in _USAGE_FIELDS:
+            totals[field] += usage[field]
+        for phase in _USAGE_PHASES:
+            phase_usage = _read_usage_counters(model, phase=phase)
+            for field in _USAGE_FIELDS:
+                by_phase[phase][field] += phase_usage[field]
+    summary: dict[str, Any] = {
+        "per_model": per_model,
+        "totals": totals,
+        "by_phase": by_phase,
+        "pricing_applied": has_pricing,
+    }
+    if has_pricing:
+        for phase_totals in by_phase.values():
+            phase_totals["estimated_cost_usd"] = round(_cost(phase_totals), 6)
+        summary["estimated_cost_usd"] = round(total_cost, 6)
+    return summary
 
 
 def append_episode_run_stats(

@@ -42,6 +42,9 @@ def _attach_fake_client(model: OpenAILanguageModel | OpenAICompatibleLanguageMod
     completions = _Completions()
     cast(Any, model)._client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
     cast(Any, model)._record_retry_outcome = lambda retries, success: None
+    # These tests build a minimal model via __new__ (no usage counters); the
+    # response has no usage anyway, so metering is a no-op here.
+    cast(Any, model)._record_usage = lambda response: None
     return completions
 
 
@@ -239,6 +242,7 @@ def test_sample_tool_calls_returns_typed_tool_calls() -> None:
     completions = _ToolCompletions()
     cast(Any, model)._client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
     cast(Any, model)._record_retry_outcome = lambda retries, success: None
+    cast(Any, model)._record_usage = lambda response: None
 
     result = model.sample_tool_calls("prompt", [{"type": "function"}], mode="multi")
 
@@ -286,6 +290,7 @@ def test_sample_tool_calls_mode_shapes_request_and_truncation() -> None:
         completions = _ToolCompletions()
         cast(Any, model)._client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
         cast(Any, model)._record_retry_outcome = lambda retries, success: None
+        cast(Any, model)._record_usage = lambda response: None
         return model, completions
 
     # multi: the API is allowed to emit several and we keep them all.

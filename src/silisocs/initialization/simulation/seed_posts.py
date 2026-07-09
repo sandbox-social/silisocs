@@ -178,11 +178,16 @@ def build_seed_post_action(
     backend_type: str,
     agent_name: str,
     post_text: str,
-    context: InitializationContext,
+    context: InitializationContext | None = None,
     mapping_overrides: Mapping[str, Any] | None = None,
     default_subreddit: str = "general",
 ) -> ActionOutput:
-    """Map seed text to a typed backend action payload."""
+    """Map seed text to a typed backend action payload.
+
+    ``context`` is accepted for API symmetry with the seed-post initializer but
+    is not consulted by the default mappings, so mid-run callers (the
+    ``inject_post`` intervention) may omit it.
+    """
     text = str(post_text or "").strip()
     if not text:
         return ActionOutput.skip()
@@ -201,7 +206,7 @@ def build_seed_post_action(
 
 def _seed_mapping(
     backend_type: str,
-    context: InitializationContext,
+    context: InitializationContext | None,
     overrides: Mapping[str, Any] | None,
 ) -> Mapping[str, Any]:
     normalized = str(backend_type or "").strip().lower()

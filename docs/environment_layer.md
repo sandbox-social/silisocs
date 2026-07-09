@@ -203,6 +203,19 @@ for component-local cursors, caches, or policy state.
 
 Use built-ins under `src/silisocs/environments/gm/components/` as templates.
 
+### Hot-swapping a component mid-run
+
+`ComponentGameMaster.rebuild_component(role_key, slot_cfg)` is the seam for
+replacing a whole component while a run is live (used by the `swap_component`
+intervention). It rebuilds the component from its slot config with the GM's live
+wiring, then re-points both the typed slot attribute and the component registry.
+Only STATELESS components (empty `get_state()`) are swappable — a component that
+carries state (a `fixed_order` cursor, the recsys updater) is refused, and should
+be retuned via `set_params` / the `set_component_params` intervention instead.
+The v1 whitelist is `observe` / `next_acting` / `update`; `resolve` and
+`action_prompt` are excluded because they are validated as a pair against the
+GM's tool-calling mode.
+
 ### Why native component inheritance?
 
 Pros:

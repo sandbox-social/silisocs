@@ -145,6 +145,33 @@ def test_component_gm_update_honors_requires_full_roster() -> None:
     assert received["full"] == ["Alice", "Bob", "Cara"]
 
 
+def test_app_update_component_requires_full_roster() -> None:
+    """Regression: ``BackendApp.update`` has population semantics.
+
+    Participation filtering must not shrink the roster the generic app-update
+    delegate hands to the backend — e.g. resource-market upkeep charges every
+    agent each step, so an inactive agent skipping upkeep changes world state.
+    """
+    from silisocs.environments.gm.components.app_update import AppUpdateComponent
+    from silisocs.environments.gm.game_master import ComponentGameMaster
+
+    received: dict[str, Any] = {}
+
+    class _Backend:
+        def update(self, *, step, agent_names, context=None):
+            received["agent_names"] = agent_names
+
+    gm = object.__new__(ComponentGameMaster)
+    gm.agents = (_Agent("Alice"), _Agent("Bob"), _Agent("Cara"))
+    components = [AppUpdateComponent(backend=cast(Any, _Backend()))]
+    gm._components_for_role = lambda *, role: components  # type: ignore[method-assign]
+    ComponentGameMaster.update(gm, step=1, agents=[_Agent("Bob")])
+
+    assert received["agent_names"] == ["Alice", "Bob", "Cara"], (
+        "AppUpdateComponent must pass the full population to backend.update"
+    )
+
+
 # ----------------------------------------------------------- context caching
 
 
@@ -359,6 +386,56 @@ def test_update_component_passes_active_agents_and_skips_empty_steps() -> None:
     assert calls == [{"active_agent_names": None, "max_posts": 10}]
 
 
+def test_update_component_accumulates_active_agents_across_skipped_steps() -> None:
+    """Regression: with update_every_n_steps > 1, a due refresh must cover
+    everyone active since the LAST refresh, not just the due step's roster —
+    otherwise an agent active only on non-due steps keeps stale/empty rows
+    forever.
+    """
+    calls: list[dict[str, Any]] = []
+
+    class _Backend:
+        action_logger = None
+
+        def recsys_active_types(self) -> set[str]:
+            return {"twitter"}
+
+        def update_recommendations(
+            self, active_user_ids=None, max_posts=10, active_agent_names=None
+        ) -> None:
+            calls.append({"active_agent_names": active_agent_names})
+
+    component = SocialRecommendationUpdateComponent(
+        backend=_Backend(),
+        backend_type="twitter_like",
+        default_recsys_type="twitter",
+        update_every_n_steps=2,
+    )
+    component.update(step=1, agents=[_Agent("Alice")])  # skipped (not due)
+    assert calls == []
+    component.update(step=2, agents=[_Agent("Bob")])  # due: union of both steps
+    assert calls == [{"active_agent_names": ["Alice", "Bob"]}]
+
+    # Next window: an all-inactive due step still refreshes the pending agent.
+    calls.clear()
+    component.update(step=3, agents=[_Agent("Cara")])  # skipped
+    component.update(step=4, agents=[])  # due
+    assert calls == [{"active_agent_names": ["Cara"]}]
+
+    # Pending roster survives checkpoint round-trips.
+    component.update(step=5, agents=[_Agent("Dana")])  # skipped, pending
+    restored = SocialRecommendationUpdateComponent(
+        backend=_Backend(),
+        backend_type="twitter_like",
+        default_recsys_type="twitter",
+        update_every_n_steps=2,
+    )
+    restored.set_state(component.get_state())
+    calls.clear()
+    restored.update(step=6, agents=[])  # due after restore
+    assert calls == [{"active_agent_names": ["Dana"]}]
+
+
 def test_update_component_falls_back_for_backends_without_scoping() -> None:
     calls: list[dict[str, Any]] = []
 
@@ -480,6 +557,70 @@ def test_sharded_checkpoint_round_trips_with_db_sidecar(tmp_path) -> None:
     assert payload["objects"]["gm"]["state"]["backend"]["state"]["db_snapshot_b64"] == original_b64
 
 
+def test_sharded_sidecars_survive_colliding_sanitized_object_names(tmp_path) -> None:
+    """Two objects whose names sanitize identically must not share a sidecar file.
+
+    Regression: the sidecar counter used to reset per object, so "GM 1" and
+    "GM_1" (both sanitizing to "GM_1") wrote the same ``step_3_GM_1_00.db`` —
+    the second silently overwrote the first and restore failed sha256
+    verification on a poisoned checkpoint.
+    """
+    blob_a = b"first gm database bytes"
+    blob_b = b"second gm database bytes"
+    payload = {
+        "step": 3,
+        "objects": {
+            name: {
+                "class_path": "tests.fake.GM",
+                "role": "game_master",
+                "compat": None,
+                "params": {},
+                "state": {
+                    "backend": {
+                        "backend_type": "twitter_like",
+                        "state": {"db_snapshot_b64": base64.b64encode(blob).decode("ascii")},
+                    }
+                },
+            }
+            for name, blob in (("GM 1", blob_a), ("GM_1", blob_b))
+        },
+    }
+    manifest_file = ShardedCheckpointSaveStrategy().save(
+        payload, step=3, checkpoint_path=str(tmp_path)
+    )
+    sidecars = sorted(tmp_path.glob("step_3_GM_1_*.db"))
+    assert len(sidecars) == 2, "colliding sanitized names must yield distinct sidecars"
+    assert load_checkpoint_file(manifest_file) == payload
+
+
+def test_checkpoint_writes_are_atomic_on_failure(tmp_path) -> None:
+    """A save that dies mid-serialization must not leave a truncated checkpoint.
+
+    Resume discovery globs ``step_{N}_checkpoint.json`` and loads the highest
+    step with no fallback, so a half-written file bricks ``auto_resume``.
+    """
+    import pytest
+
+    good = {"step": 3, "objects": {}}
+    strategy = MonolithicJsonSaveStrategy()
+    path = strategy.save(good, step=3, checkpoint_path=str(tmp_path))
+
+    bad = {"step": 3, "objects": {}, "poison": object()}  # not JSON-serializable
+    with pytest.raises(TypeError):
+        strategy.save(bad, step=3, checkpoint_path=str(tmp_path))
+    assert json.loads((tmp_path / "step_3_checkpoint.json").read_text()) == good, (
+        "failed save must leave the previous checkpoint intact"
+    )
+    assert not list(tmp_path.glob("*.tmp")), "failed save must clean up its temp file"
+
+    with pytest.raises(TypeError):
+        ShardedCheckpointSaveStrategy().save(bad, step=4, checkpoint_path=str(tmp_path))
+    assert not (tmp_path / "step_4_checkpoint.json").exists(), (
+        "a failed sharded save must not publish a manifest"
+    )
+    assert load_checkpoint_file(path) == good
+
+
 def test_monolithic_save_matches_previous_format(tmp_path) -> None:
     payload = _checkpoint_payload()
     path = MonolithicJsonSaveStrategy().save(payload, step=3, checkpoint_path=str(tmp_path))
@@ -503,6 +644,9 @@ def test_build_checkpoint_save_strategy_slot() -> None:
     assert strategy.objects_per_shard == 7
     with pytest.raises(ValueError, match="Unknown sim.checkpoint.save.built_in"):
         build_checkpoint_save_strategy(_Slot("bogus"))
+    # A typo'd param name reads as a config error, not a raw TypeError.
+    with pytest.raises(ValueError, match="objects_per_shrad"):
+        build_checkpoint_save_strategy(_Slot("sharded", {"objects_per_shrad": 7}))
 
 
 # ------------------------------------------------------- telemetry O(active)

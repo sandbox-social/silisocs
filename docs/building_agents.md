@@ -364,6 +364,19 @@ does not accept.
 
 ---
 
+## Runtime Memory (`sim.memory`)
+
+How a NativeAgent renders its prompt's Memory section at runtime is a swappable
+policy: `window` (default, last-N), `retrieval` (a recent-window floor plus the
+most relevant older memories), or `summarizing` (rolling summaries + retrieved
+older memories + a recent window). This is
+distinct from *seeding* memories at step 0 (`sim.initialization.agents`). A
+custom policy is a `MemoryPolicy` subclass (`record` / `render` / `all_memories`
+/ `get_state` / `set_state`) referenced via `sim.memory.class_path`; the engine
+injects it only into agents whose constructor accepts a `memory_policy` param, so
+non-NativeAgent agents are unaffected. See
+[Configuration → Agent Memory](configuration.md#agent-memory-simmemory).
+
 ## Related
 
 - [Memory Initialization](memory_initialization.md): How agents get their starting knowledge

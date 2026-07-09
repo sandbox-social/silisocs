@@ -95,6 +95,69 @@ def test_bulk_create_users_and_add_follows(tmp_path) -> None:
     platform.shutdown()
 
 
+def test_add_follows_skips_edges_already_in_db(tmp_path) -> None:
+    """Regression: re-running init over a pre-populated DB must be a no-op.
+
+    ``add_follows`` used to pair INSERT OR IGNORE with an UNCONDITIONAL
+    activity insert and report the edge as applied — duplicating 'follow'
+    notifications and over-reporting init_follow events for existing edges.
+    """
+    platform = _twitter(tmp_path)
+    platform.create_users([("u1", ""), ("u2", ""), ("u3", "")])
+    assert platform.add_follows([("u1", "u2")]) == [("u1", "u2")]
+
+    # Second pass: the existing edge is skipped, only the new one applies.
+    applied = platform.add_follows([("u1", "u2"), ("u2", "u3")])
+    assert applied == [("u2", "u3")]
+
+    with platform.get_connection() as conn:
+        activities = conn.execute(
+            "SELECT COUNT(*) FROM activities WHERE action_type = 'follow'"
+        ).fetchone()[0]
+        assert activities == 2, "one activity per real edge, none for the re-run"
+    platform.shutdown()
+
+
+def test_get_connection_reaps_dead_thread_connections(tmp_path) -> None:
+    """Regression: per-step thread pools must not leak one connection per worker.
+
+    ``get_connection`` registers a thread-local connection per thread; before
+    the reap, connections opened by pool threads stayed registered (and open)
+    forever after their threads died — thousands of fds over a long run.
+    """
+    import threading
+
+    platform = _twitter(tmp_path)
+    platform.create_users([("u1", "")])
+
+    def _touch() -> None:
+        with platform.get_connection() as conn:
+            conn.execute("SELECT 1").fetchone()
+
+    for _round in range(10):
+        threads = [threading.Thread(target=_touch) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    _touch()  # main-thread connection triggers a final reap of the dead ones
+    with platform._connections_lock:
+        live = len(platform._connections)
+    assert live <= 9, f"dead threads' connections must be reaped, found {live} registered"
+    platform.shutdown()
+
+
+def test_iter_in_chunks_stays_under_sqlite_variable_cap() -> None:
+    """Population-scaled IN(...) lists must be chunked below 999 bound vars."""
+    from silisocs.environments.backends.social.sqlite_engine import SqliteSocialEngineBase
+
+    ids = list(range(1234))
+    chunks = list(SqliteSocialEngineBase._iter_in_chunks(ids))
+    assert [len(c) for c in chunks] == [500, 500, 234]
+    assert [i for chunk in chunks for i in chunk] == ids
+    assert list(SqliteSocialEngineBase._iter_in_chunks([])) == []
+
+
 def test_update_recommendations_returns_row_count(tmp_path) -> None:
     platform = _twitter(tmp_path)
     # No recsys types initialized: the no-op path reports 0 rows written, so the

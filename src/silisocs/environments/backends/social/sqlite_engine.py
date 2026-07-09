@@ -18,11 +18,30 @@ import queue
 import sqlite3
 import threading
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any, ClassVar
 
 logger = logging.getLogger("SqliteSocialEngine")
+
+
+def _recsys_source(recsys_type: str | None) -> str:
+    """Exposure-source tag for a recommender-sourced post."""
+    return f"recsys:{recsys_type}" if recsys_type else "recsys"
+
+
+def _tag_source(posts: list[dict], source: str) -> list[dict]:
+    """Annotate each post dict with its timeline ``source`` (for exposure logging).
+
+    Applied at the ``get_timeline`` dispatch (not in the underlying feed/recsys
+    queries, whose other callers must stay untouched), on the freshly-built dicts
+    those queries return. Formatters read a fixed field set, so the extra key
+    leaves observation text unchanged.
+    """
+    for post in posts:
+        if isinstance(post, dict):
+            post["source"] = source
+    return posts
 
 
 class SqliteSocialEngineBase:
@@ -34,13 +53,19 @@ class SqliteSocialEngineBase:
         self.db_path = db_path or self.default_db_path
         self._local = threading.local()
         # username -> id memo. Users are never renamed or deleted during a run,
-        # so entries stay valid until the whole DB is replaced (checkpoint
-        # restore), which must call invalidate_user_id_cache(). Saves 1-2 SELECT
-        # round-trips on nearly every action.
+        # so entries stay valid until the whole DB is replaced. Shipped apps
+        # rebuild the entire platform object on checkpoint restore (fresh empty
+        # cache); a custom backend that swaps the DB file in place instead must
+        # call invalidate_user_id_cache(). Saves 1-2 SELECT round-trips on
+        # nearly every action.
         self._user_id_cache: dict[str, int] = {}
-        # Registry of every connection handed out by get_connection() so they can
-        # all be closed on shutdown(), regardless of which thread opened them.
-        self._connections: set[sqlite3.Connection] = set()
+        # Registry of every connection handed out by get_connection(), keyed to
+        # its owning thread, so they can all be closed on shutdown() AND so
+        # connections stranded by dead threads can be reaped as new ones open.
+        # Without reaping, per-step thread pools (a fresh pool per step under
+        # the threads executor) leak one open connection per worker per step —
+        # thousands of fds over a long run.
+        self._connections: dict[sqlite3.Connection, threading.Thread] = {}
         self._connections_lock = threading.Lock()
         # Schema is created synchronously (DDL only) before the writer thread
         # starts: a concurrent writer connection would contend with _init_db's
@@ -57,6 +82,18 @@ class SqliteSocialEngineBase:
     def _init_db(self) -> None:
         """Create the platform-specific schema. Implemented by each subclass."""
         raise NotImplementedError
+
+    @staticmethod
+    def _iter_in_chunks(ids: Sequence[Any], size: int = 500) -> Iterator[Sequence[Any]]:
+        """Yield ``ids`` in chunks safe for one ``IN (?,...)`` clause.
+
+        SQLite's bound-variable cap (``SQLITE_MAX_VARIABLE_NUMBER``) is 999 on
+        older builds; a population-scaled id list (e.g. active users at 1000+
+        agents) blown into a single IN clause raises "too many SQL variables".
+        Chunking keeps every statement well under the cap.
+        """
+        for start in range(0, len(ids), size):
+            yield ids[start : start + size]
 
     @staticmethod
     def _write_result(cursor: sqlite3.Cursor, sql: str) -> Any:
@@ -86,7 +123,8 @@ class SqliteSocialEngineBase:
             conn.execute("PRAGMA foreign_keys=ON;")
             self._local.conn = conn
             with self._connections_lock:
-                self._connections.add(conn)
+                self._reap_dead_connections_locked()
+                self._connections[conn] = threading.current_thread()
         try:
             yield conn
         except Exception:
@@ -96,9 +134,25 @@ class SqliteSocialEngineBase:
             except Exception:
                 pass
             with self._connections_lock:
-                self._connections.discard(conn)
+                self._connections.pop(conn, None)
             self._local.conn = None
             raise
+
+    def _reap_dead_connections_locked(self) -> None:
+        """Close connections whose owning thread has exited (lock held).
+
+        A thread-local connection is only ever used by its owning thread, so
+        once that thread is dead the handle is unreachable and safe to close.
+        Called on the new-connection path — exactly when pool churn happens —
+        so steady-state per-call overhead is zero.
+        """
+        dead = [c for c, t in self._connections.items() if not t.is_alive()]
+        for conn in dead:
+            del self._connections[conn]
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     def _writer_loop(self):
         """Background thread that consumes from the queue and batches writes."""
@@ -533,9 +587,10 @@ class SqliteSocialEngineBase:
         """
         if strategy == "follower_chronological":
             feed = self.get_feed(self._follower_feed_strategy, username, limit=limit)
-            return (feed or {}).get("posts", [])
+            return _tag_source((feed or {}).get("posts", []), "follower")
         if strategy == "pure_recsys":
-            return self.get_recommendations(username, limit, recsys_type=recsys_type)
+            posts = self.get_recommendations(username, limit, recsys_type=recsys_type)
+            return _tag_source(posts, _recsys_source(recsys_type))
         if strategy == "hybrid_recsys_follower":
             return self._blend_recsys_and_follower(
                 username, limit, recsys_type=recsys_type, **timeline_config
@@ -554,9 +609,12 @@ class SqliteSocialEngineBase:
         follower_ratio = timeline_config.get("follower_ratio", 0.4)
         rec_count = max(1, int(limit * recsys_ratio))
         follower_count = max(1, int(limit * follower_ratio))
-        rec_posts = self.get_recommendations(username, rec_count, recsys_type=recsys_type)
+        rec_posts = _tag_source(
+            self.get_recommendations(username, rec_count, recsys_type=recsys_type),
+            _recsys_source(recsys_type),
+        )
         follow_feed = self.get_feed(self._follower_feed_strategy, username, limit=follower_count)
-        follow_posts = (follow_feed or {}).get("posts", [])
+        follow_posts = _tag_source((follow_feed or {}).get("posts", []), "follower")
         # Recsys first (higher priority), then the follower feed; dedup by post id.
         seen_ids: set[Any] = set()
         combined: list[dict] = []
