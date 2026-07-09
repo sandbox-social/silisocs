@@ -57,6 +57,9 @@ For multi-condition research orchestration (hypothesis trees, seed sweeps, and b
 The primary entry point is the `silisocs` CLI command:
 
 ```sh
+# Check your environment first (Python, optional extras, API keys, writability)
+uv run silisocs doctor
+
 # Run with defaults
 uv run silisocs
 
@@ -562,6 +565,27 @@ REDDIT_LIKE_DB=outputs/my_world/.../reddit_like.db \
 ```
 
 See [Environment Backends](backends.md#built-in-visualizers) for full details.
+
+### Loading Runs Programmatically
+
+Tools and notebooks should load runs through the Run Artifact Module instead of
+re-discovering the file layout:
+
+```python
+from silisocs.evaluations.run_artifact import load_run, load_study
+
+run = load_run("outputs/my_world/run_dir")
+run.status, run.scenario, run.seed        # from run_manifest.json (legacy runs
+run.health, run.llm_usage, run.provenance # fall back to sim_metrics.json)
+for event in run.iter_actions():          # streams flat or per-GM event logs
+    ...
+
+study = load_study("experiments/studies/my_study")
+study.plan, study.summary, study.provenance
+```
+
+The dashboards load runs through this same interface, so a run that loads here
+renders there.
 
 ---
 

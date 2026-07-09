@@ -18,7 +18,7 @@ uv run silisocs-dashboard
 # equivalent to: uv run streamlit run src/silisocs/dashboard/launch_app.py
 ```
 
-The launcher opens in your browser with six tabs.
+The launcher opens in your browser with seven tabs.
 
 ---
 
@@ -148,6 +148,17 @@ Evaluation probe configuration:
 - **Auto-save**: Config is saved before launch
 - **CLI preview**: Shows the exact command that will be run
 - **Run Simulation button**: Launches the simulation as a subprocess
+
+### 7. Results
+
+- **Run History**: Recent runs (newest first) with status, scenario, health
+  issues, token totals, and estimated cost — read from each run's
+  `run_manifest.json`; runs that predate the manifest show what
+  `sim_metrics.json` can recover
+- **Run inspector**: Pick a run (discovered or pasted path) to see overview
+  metrics, degraded-run health counters, action activity charts, and probe
+  responses. Multi-GM runs load merged per-GM event logs via the Run Artifact
+  Module (`silisocs.evaluations.run_artifact.load_run`)
 
 ---
 

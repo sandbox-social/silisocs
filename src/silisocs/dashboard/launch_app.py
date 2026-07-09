@@ -33,6 +33,7 @@ from silisocs.dashboard.results import (
     health_counter_summary,
     load_run_results,
     repo_root,
+    run_history_rows,
     total_health_issues,
 )
 from silisocs.environments.backends.base import ActionDescriptor
@@ -2384,6 +2385,17 @@ def _load_run_results(run_dir_str: str) -> dict[str, Any]:
 
 with tab_results:
     import pandas as pd
+
+    st.subheader("Run History")
+    st.caption(
+        "Recent runs, newest first — status, health, and cost come from each run's "
+        "run_manifest.json (legacy runs show what sim_metrics.json can recover)."
+    )
+    _history = run_history_rows(root=_REPO_ROOT)
+    if _history:
+        st.dataframe(pd.DataFrame(_history), use_container_width=True, hide_index=True)
+    else:
+        st.info("No finished runs found under outputs/, experiments/studies/, or scenarios/.")
 
     st.subheader("Run Results")
     st.caption("Inspect a finished run — overview metrics, run health, and event activity.")

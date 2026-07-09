@@ -8,6 +8,7 @@ from silisocs.dashboard.results import (
     discover_result_run_dirs,
     health_counter_summary,
     load_run_results,
+    run_history_rows,
     total_health_issues,
 )
 
@@ -100,3 +101,34 @@ def test_discover_result_run_dirs_sorts_newest_first(tmp_path: Path) -> None:
     discovered = discover_result_run_dirs(root=tmp_path)
 
     assert discovered[:2] == [newer, older]
+
+
+def test_run_history_rows_mixes_manifest_and_legacy_runs(tmp_path: Path) -> None:
+    manifest_run = tmp_path / "outputs" / "with_manifest"
+    manifest_run.mkdir(parents=True)
+    (manifest_run / "sim_metrics.json").write_text("{}", encoding="utf-8")
+    (manifest_run / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "status": "success",
+                "scenario": "demo",
+                "num_steps": 5,
+                "num_agents": 3,
+                "health": {"agent_turn_failures": 2},
+                "llm_usage": {"totals": {"total_tokens": 99}, "estimated_cost_usd": 1.25},
+            }
+        ),
+        encoding="utf-8",
+    )
+    legacy_run = tmp_path / "outputs" / "legacy"
+    legacy_run.mkdir(parents=True)
+    (legacy_run / "sim_metrics.json").write_text("{}", encoding="utf-8")
+    os.utime(legacy_run, (1000, 1000))
+    os.utime(manifest_run, (2000, 2000))
+
+    rows = run_history_rows(root=tmp_path)
+
+    assert [row["status"] for row in rows] == ["success", "unknown"]  # newest first
+    assert rows[0]["scenario"] == "demo" and rows[0]["issues"] == 2
+    assert rows[0]["total_tokens"] == 99 and rows[0]["est_cost_usd"] == 1.25
+    assert rows[1]["scenario"] is None and rows[1]["issues"] == 0

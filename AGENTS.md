@@ -746,6 +746,9 @@ Start from these files to understand the flow:
 5. **Multi-flow GM**: `src/silisocs/environments/gm/game_master.py` — Advanced component routing
 6. **Component slots**: `src/silisocs/environments/gm/components/` — Pluggable behavior
 7. **Backend actions**: `src/silisocs/environments/backends/twitter_like/app.py` — Example backend
+8. **Run loading**: `src/silisocs/evaluations/run_artifact.py` — `load_run`/`load_study`
+   typed artifact loaders (manifest-first with legacy fallback); dashboards and
+   analysis tools load runs through this, never by rediscovering the file layout
 
 ## 13) Session State
 
