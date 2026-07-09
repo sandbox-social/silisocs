@@ -11,9 +11,7 @@ a study-level analysis layer, not here.
 
 from __future__ import annotations
 
-import json
 from collections import defaultdict
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -21,28 +19,13 @@ from silisocs.evaluations.action_events import (
     resolve_action_event_files,
     resolve_exposure_event_files,
 )
+from silisocs.evaluations.run_artifact import iter_jsonl as _iter_jsonl
 
 # Keys under an action event's ``data`` that may reference a post the agent
 # engaged with. Includes reply/quote parents (the actually-engaged post) as well
 # as the direct target; the acting agent's own newly-created post id is also here
 # but harmlessly never matches an exposed id (a just-created post wasn't shown).
 _TARGET_ID_KEYS = ("reply_to_id", "quote_of_id", "target_id", "post_id", "tweet_id", "id")
-
-
-def _iter_jsonl(files: list[Path]) -> Iterator[dict[str, Any]]:
-    """Stream event rows one at a time so large logs never sit fully in memory."""
-    for path in files:
-        with path.open(encoding="utf-8") as handle:
-            for raw_line in handle:
-                line = raw_line.strip()
-                if not line:
-                    continue
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(row, dict):
-                    yield row
 
 
 def _action_target_ids(event: dict[str, Any]) -> set[str]:
