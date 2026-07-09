@@ -105,8 +105,14 @@ uv run silisocs env.gm.components.next_acting.built_in=all_agents
 For a visual interface:
 
 ```sh
-uv run streamlit run src/silisocs/dashboard/launch_app.py
+uv run silisocs-dashboard          # scenario builder + launcher (Streamlit)
+uv run silisocs-analysis-dashboard # post-run analysis (Dash)
 ```
+
+Both need their optional extra (`silisocs[dashboard]` / `silisocs[analysis]`);
+when it is missing the command prints the exact install line instead of a
+traceback. Extra arguments are forwarded (e.g.
+`silisocs-dashboard --server.port 8600`).
 
 The launcher sidebar loads configs in two steps: choose a scenario first, then
 choose whether to start from the scenario definition or a prior run snapshot.
@@ -458,6 +464,7 @@ outputs/<scenario_name>/<jobname>/<jobname>_<timestamp>/
 
 | File | Format | Description |
 |------|--------|-------------|
+| `run_manifest.json` | JSON | Self-describing run index: status, run params, GM/backend layout, health counters, LLM usage, artifact paths (including per-GM event logs), and provenance (git commit, package version, `uv.lock` hash). Load a run through this instead of guessing the file layout |
 | `action_events.jsonl` | JSONL | Every backend action with episode index, Game Master name, backend type, source user, and action data |
 | `exposure_events.jsonl` | JSONL | What each agent SAW per turn: post ids + per-post source (`follower`/`recsys:<type>`). On by default; disable via `env.gm.components.observe.params.log_exposures: false` |
 | `probe_events.jsonl` | JSONL | Probe/survey responses per agent per deployment step |
@@ -676,7 +683,7 @@ class MyScenarioAgentBuilder(AgentBuilder):
 ### 6. (Optional) Use the Dashboard
 
 ```sh
-uv run streamlit run src/silisocs/dashboard/launch_app.py
+uv run silisocs-dashboard
 ```
 
 Create the world visually, configure agents, and launch. Use the sidebar
