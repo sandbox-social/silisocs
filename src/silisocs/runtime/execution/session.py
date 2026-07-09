@@ -63,6 +63,7 @@ from silisocs.runtime.construction.initialization_context import (
     populate_agent_data,
 )
 from silisocs.runtime.construction.models import build_deduped_models, build_global_llm_config
+from silisocs.runtime.execution.manifest import write_run_manifest
 from silisocs.runtime.execution.resume import plan_checkpoint_resume
 from silisocs.runtime.io import configure_logging
 from silisocs.runtime.telemetry import (
@@ -520,6 +521,20 @@ def main(cfg: DictConfig):
         _warn_degraded_health(metrics, logger)
         with open(run_stats_path, "a", encoding="utf-8") as f:
             f.write(completion_line + "\n")
+
+        # Self-describing run index (never raises; see manifest module docstring).
+        snapshot = metrics.to_dict()
+        manifest_path = write_run_manifest(
+            output_dir=output_dir,
+            status=completion_status,
+            error=completion_error,
+            meta=snapshot.get("meta"),
+            counters=snapshot.get("counters"),
+            game_masters=runtime_objects.game_masters_by_sequence(),
+            project_root=_resolve_project_root(),
+        )
+        if manifest_path is not None:
+            logger.info("Wrote run manifest to: %s", manifest_path)
 
 
 def _inject_external_config_path() -> None:

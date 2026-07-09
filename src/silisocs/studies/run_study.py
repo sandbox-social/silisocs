@@ -17,11 +17,8 @@ from __future__ import annotations
 
 import argparse
 import copy
-import hashlib
-import importlib.metadata
 import json
 import os
-import platform
 import random
 import shlex
 import subprocess
@@ -37,6 +34,8 @@ from typing import Any
 import yaml
 
 from silisocs.runtime.checkpointing import resolve_checkpoint_source
+from silisocs.runtime.provenance import environment_provenance as _environment_provenance
+from silisocs.runtime.provenance import hash_file as _hash_file
 from silisocs.studies.study_artifacts import (
     load_study_definition,
     organize_study_outputs,
@@ -206,55 +205,6 @@ def _write_yaml(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, sort_keys=False, allow_unicode=False)
-
-
-def _hash_file(path: Path) -> str | None:
-    if not path.is_file():
-        return None
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def _environment_provenance(repo_root: Path) -> dict[str, Any]:
-    """Capture the execution environment so a study run can be reproduced.
-
-    Config SHAs alone cannot reproduce a run: results depend on the code
-    revision and dependency set that executed it.
-    """
-
-    def _git(*git_args: str) -> str | None:
-        try:
-            proc = subprocess.run(
-                ["git", *git_args],
-                cwd=repo_root,
-                capture_output=True,
-                text=True,
-                timeout=10,
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return None
-        return proc.stdout.strip() if proc.returncode == 0 else None
-
-    try:
-        silisocs_version = importlib.metadata.version("silisocs")
-    except importlib.metadata.PackageNotFoundError:
-        silisocs_version = None
-
-    dirty_output = _git("status", "--porcelain")
-    return {
-        "git_commit": _git("rev-parse", "HEAD"),
-        "git_branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
-        "git_dirty": bool(dirty_output) if dirty_output is not None else None,
-        "python_version": platform.python_version(),
-        "platform": platform.platform(),
-        "silisocs_version": silisocs_version,
-        "uv_lock_sha256": _hash_file(repo_root / "uv.lock"),
-        "captured_at": now_iso(),
-    }
 
 
 def _normalize_override_value(value: Any) -> str:  # noqa: PLR0911

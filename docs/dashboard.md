@@ -1,16 +1,21 @@
 # Dashboard
 
-The project ships two dashboard experiences:
+The project ships two dashboard experiences, each behind an installed command:
 
-- Streamlit launcher for scenario editing and simulation execution
-- Dash analytics app for post-run interaction/probe analysis
+- `silisocs-dashboard` — Streamlit launcher for scenario editing and simulation
+  execution (needs the `dashboard` extra)
+- `silisocs-analysis-dashboard` — Dash analytics app for post-run
+  interaction/probe analysis (needs the `analysis` extra)
 
-Together they cover end-to-end usage, but they are separate applications.
+Together they cover end-to-end usage, but they are separate applications. When
+an extra is missing, the command prints the exact `pip install "silisocs[...]"`
+line instead of a traceback.
 
 ## Streamlit Launcher
 
 ```sh
-uv run streamlit run src/silisocs/dashboard/launch_app.py
+uv run silisocs-dashboard
+# equivalent to: uv run streamlit run src/silisocs/dashboard/launch_app.py
 ```
 
 The launcher opens in your browser with six tabs.
@@ -190,8 +195,8 @@ Notes:
 The analytics app visualizes run outputs after simulation completes.
 
 ```sh
-uv run python -m silisocs.evaluations.analysis.dashboard.main \
-	--output-dir outputs/<scenario>/<run_dir>
+uv run silisocs-analysis-dashboard \
+	--output_dir outputs/<scenario>/<run_dir>
 ```
 
 ### Required Inputs
