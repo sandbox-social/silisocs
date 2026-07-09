@@ -9,8 +9,9 @@ A **study** is a research question asked on top of one or more scenarios. It def
 Studies live in `experiments/studies/<study_name>/` and are version-controlled.
 The scenario is the stage; the study is the experiment.
 
-**Shortcut:** If you are using a coding agent (Claude Code, Cursor, etc.), you can
-type `/new-study` to be guided through this process interactively.
+**Shortcut:** If you are using a repo-aware coding agent such as Codex, Claude
+Code, Cursor, or another agent that can read `AGENTS.md`, ask it to follow
+`agent_docs/skills/new-study.md` for an interactive `/new-study`-style workflow.
 
 ---
 

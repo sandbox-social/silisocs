@@ -437,6 +437,7 @@ def test_openai_language_model_sample_text_uses_direct_instruct_messages() -> No
     model._extra_kwargs = {}
     cast(Any, model)._client = SimpleNamespace(chat=SimpleNamespace(completions=_Completions()))
     cast(Any, model)._record_retry_outcome = lambda retries, success: None
+    cast(Any, model)._record_usage = lambda response: None
 
     assert model.sample_text("What should Alice do?") == "answer"
 

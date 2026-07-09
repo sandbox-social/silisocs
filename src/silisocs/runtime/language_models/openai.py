@@ -46,6 +46,14 @@ def dynamically_adjust_temperature(attempt: int, max_attempts: int) -> float:
     return min(1.5, 0.1 + (attempt / max_attempts))
 
 
+_USAGE_TOKEN_FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens")
+
+
+def _new_usage_bucket() -> dict[str, int]:
+    """A fresh token-usage accumulator (tokens + calls with/without usage data)."""
+    return dict.fromkeys((*_USAGE_TOKEN_FIELDS, "calls_with_usage", "calls_without_usage"), 0)
+
+
 class OpenAILanguageModel(LanguageModel):
     """Language model backed by the official OpenAI chat-completions API."""
 
@@ -119,8 +127,14 @@ class OpenAILanguageModel(LanguageModel):
         self._retries_total = 0
         self._retry_phase = "other"
         self._phase_counters: dict[str, dict[str, int]] = {
-            "probe": {"calls": 0, "failed": 0, "retries": 0},
-            "action": {"calls": 0, "failed": 0, "retries": 0},
+            phase: {"calls": 0, "failed": 0, "retries": 0} for phase in ("probe", "action", "other")
+        }
+        # Token usage (from the provider's response.usage), guarded by the same
+        # lock as the retry counters. Per-phase mirrors the retry phases so cost
+        # can be split probe/action/other (e.g. memory summarization is "other").
+        self._usage_totals = _new_usage_bucket()
+        self._phase_usage: dict[str, dict[str, int]] = {
+            phase: _new_usage_bucket() for phase in ("probe", "action", "other")
         }
 
     def _request_kwargs(self, **kwargs: Any) -> dict[str, Any]:
@@ -168,7 +182,7 @@ class OpenAILanguageModel(LanguageModel):
         tail = limit - head
         return f"{text[:head]}\n...[log truncated {len(text) - limit} chars]...\n{text[-tail:]}"
 
-    def _log(self, prompt: str, output: str):
+    def _log(self, prompt: str, output: str, *, usage: tuple[int, int] | None = None):
         if not self.debug:
             return
         prompt = self._truncate_for_log(prompt)
@@ -190,7 +204,10 @@ class OpenAILanguageModel(LanguageModel):
         self.meta_data["episode_idx"] = _coerce_int(episode_idx, default=-1)
         self.meta_data["phase"] = str(phase or "")
         self.meta_data["tag"] = str(action_tag or "")
-        write_jsonl_item({"prompt": prompt, "output": output} | self.meta_data, self._log_file)
+        row: dict[str, Any] = {"prompt": prompt, "output": output} | self.meta_data
+        if usage is not None:
+            row["prompt_tokens"], row["completion_tokens"] = usage
+        write_jsonl_item(row, self._log_file)
 
     def set_runtime_context(
         self,
@@ -261,6 +278,40 @@ class OpenAILanguageModel(LanguageModel):
                 "retries_total": self._retries_total,
             }
 
+    def _record_usage(self, response: Any) -> tuple[int, int] | None:
+        """Accumulate token usage from a provider response; return (prompt, completion).
+
+        Providers that omit ``usage`` (some OpenAI-compatible servers) are counted
+        under ``calls_without_usage`` rather than guessed. Returns None when no
+        usage was reported, so ``_log`` can record per-call tokens only when real.
+        """
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            with self._retry_stats_lock:
+                for bucket in (self._usage_totals, self._phase_usage.get(self._retry_phase)):
+                    if bucket is not None:
+                        bucket["calls_without_usage"] += 1
+            return None
+        prompt_toks = int(getattr(usage, "prompt_tokens", 0) or 0)
+        completion_toks = int(getattr(usage, "completion_tokens", 0) or 0)
+        total_toks = int(getattr(usage, "total_tokens", 0) or 0) or (prompt_toks + completion_toks)
+        with self._retry_stats_lock:
+            for bucket in (self._usage_totals, self._phase_usage.get(self._retry_phase)):
+                if bucket is None:
+                    continue
+                bucket["prompt_tokens"] += prompt_toks
+                bucket["completion_tokens"] += completion_toks
+                bucket["total_tokens"] += total_toks
+                bucket["calls_with_usage"] += 1
+        return prompt_toks, completion_toks
+
+    def get_usage_counters(self, phase: str = "all") -> dict[str, int]:
+        """Token totals for a phase (probe/action/other) or the run total ('all')."""
+        normalized = str(phase).strip().lower()
+        with self._retry_stats_lock:
+            bucket = self._phase_usage.get(normalized, self._usage_totals)
+            return dict(bucket)
+
     def _text_request_kwargs(
         self,
         prompt: str,
@@ -304,12 +355,13 @@ class OpenAILanguageModel(LanguageModel):
     def _finish_sample_text(self, prompt: str, response: Any) -> str:
         """Extract, meter, and log one text completion (shared sync/async)."""
         answer = response.choices[0].message.content
+        usage = self._record_usage(response)
         if answer is None:
             raise ValueError("Response content is None.")
         if self._measurements is not None:
             self._measurements.publish_datum(self._channel, {"raw_text_length": len(answer)})
         if self.debug:
-            self._log(prompt, answer)
+            self._log(prompt, answer, usage=usage)
         return answer
 
     def sample_text(
@@ -471,6 +523,7 @@ class OpenAILanguageModel(LanguageModel):
         re-attempts) when the model returned none.
         """
         msg = response.choices[0].message
+        usage = self._record_usage(response)
         if not msg.tool_calls:
             raise ValueError("Model returned no tool calls.")
         parsed_calls = [
@@ -484,6 +537,7 @@ class OpenAILanguageModel(LanguageModel):
             prompt,
             "tool_calls:"
             + ", ".join(f"{call.name}({dict(call.arguments)})" for call in parsed_calls),
+            usage=usage,
         )
         return parsed_calls
 
@@ -580,8 +634,9 @@ class OpenAILanguageModel(LanguageModel):
                         return fallback
                 raise
             parsed = _parse_json_content(response.choices[0].message.content)
+            usage = self._record_usage(response)
             self._record_retry_outcome(attempt, success=True)
-            self._log(prompt, json.dumps(parsed, ensure_ascii=True))
+            self._log(prompt, json.dumps(parsed, ensure_ascii=True), usage=usage)
             return parsed
 
         return cast(
@@ -605,6 +660,7 @@ class OpenAILanguageModel(LanguageModel):
                 "response_format": {"type": "json_object"},
             }
             response = cast(Any, self._client.chat.completions.create)(**kwargs)
+            self._record_usage(response)  # this fallback is a real billed call
             return _parse_json_content(response.choices[0].message.content)
         except Exception:
             return None

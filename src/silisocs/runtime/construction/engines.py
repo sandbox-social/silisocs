@@ -12,6 +12,7 @@ from omegaconf import DictConfig, OmegaConf
 _LOGGER = logging.getLogger(__name__)
 
 from silisocs.simulation_engines.base_engines import RuntimeEngine
+from silisocs.simulation_engines.interventions import InterventionSchedule
 from silisocs.simulation_engines.policies.factory import (
     _instantiate_with_supported_kwargs,
     _load_class,
@@ -242,6 +243,8 @@ def build_engine(
         ),
         sim_roles=sim_roles,
     )
+    # Optional top-level ``interventions`` schedule (empty/absent = no-op).
+    interventions = InterventionSchedule.parse(cfg, sim_roles=sim_roles)
 
     if class_path:
         cls = _load_class(class_path)
@@ -259,6 +262,7 @@ def build_engine(
                     dict(step_cfg.get("params") or {}).get("gm_concurrency_caps")
                 ),
                 "participation": participation,
+                "interventions": interventions,
                 "seed": seed,
                 "executor": executor,
             },
@@ -285,6 +289,7 @@ def build_engine(
         gm_turn_policies=build_gm_turn_policies(step_params.get("gm_turn_policies")),
         gm_concurrency_caps=build_gm_concurrency_caps(step_params.get("gm_concurrency_caps")),
         participation=participation,
+        interventions=interventions,
         seed=seed,
         executor=executor,
     )

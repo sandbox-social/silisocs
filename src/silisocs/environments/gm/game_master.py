@@ -44,6 +44,42 @@ _SLOTS = ("initialize", "next_acting", "action_prompt", "observe", "resolve", "u
 _ACTION_MODE_TO_RESOLVE = {"custom": "parsed_action", "generic": "generic_action"}
 
 
+def _class_id(obj: Any) -> str:
+    """Fully-qualified class name, used to detect a mid-run component swap on resume."""
+    cls = type(obj)
+    return f"{cls.__module__}.{cls.__qualname__}"
+
+
+def _component_state(component: Any) -> Mapping[str, Any]:
+    getter = getattr(component, "get_state", None)
+    return getter() if callable(getter) else {}
+
+
+def _rebuild_observe(gm: ComponentGameMaster, slot: Mapping[str, Any]) -> ObservationComponent:
+    return build_observe_component(slot, context=gm.context)
+
+
+def _rebuild_next_acting(gm: ComponentGameMaster, slot: Mapping[str, Any]) -> NextActingComponent:
+    return build_next_acting_component(slot, context=gm.context, sim_roles=gm.sim_roles)
+
+
+def _rebuild_update(gm: ComponentGameMaster, slot: Mapping[str, Any]) -> UpdateComponent:
+    component = build_update_component(slot, context=gm.context, backend_type=gm.backend_type)
+    _validate_update_component(component)
+    return component
+
+
+# The stateless hot-swap whitelist (the ``swap_component`` intervention): role ->
+# (rebuild-from-slot factory reusing the GM's live wiring, role ABC, typed-slot
+# attribute name). ``resolve``/``action_prompt`` are excluded (coupled to per-GM
+# tool-calling compat) and ``initialize`` is meaningless mid-run.
+_HOT_SWAP_ROLES: dict[str, tuple[Any, type[Any], str]] = {
+    "observe": (_rebuild_observe, ObservationComponent, "observe_component"),
+    "next_acting": (_rebuild_next_acting, NextActingComponent, "next_acting"),
+    "update": (_rebuild_update, UpdateComponent, "update_component"),
+}
+
+
 def build_generic_action_prompt(
     *,
     backend: Any,
@@ -180,6 +216,52 @@ class ComponentGameMaster(BaseGameMaster):
             raise TypeError(f"Component {key!r} is not {type_!r}.")
         return component
 
+    def rebuild_component(self, role_key: str, slot_cfg: Mapping[str, Any]) -> Any:
+        """Hot-swap one STATELESS component (``observe`` | ``next_acting`` | ``update``).
+
+        Rebuilds the component from ``slot_cfg`` with the same per-role factory and
+        live GM wiring the original construction used, then re-points BOTH the typed
+        slot attribute and the registry entry (the runtime, the intervention layer,
+        and checkpointing all read the registry). Refuses the swap when either the
+        outgoing or the freshly built incoming component carries non-empty
+        ``get_state()``: a checkpoint round-trip would silently drop that state, so a
+        stateful component is retuned via ``set_component_params`` instead of
+        replaced. On a MultiFlowGameMaster this targets the role's primary
+        (default-flow) component; flow-specialized instances are not individually
+        swappable in v1.
+        """
+        role = str(role_key).strip()
+        entry = _HOT_SWAP_ROLES.get(role)
+        if entry is None:
+            raise ValueError(f"rebuild_component supports {sorted(_HOT_SWAP_ROLES)}; got {role!r}.")
+        builder, expected_base, slot_attr = entry
+        # The registry key the DEFAULT flow actually routes this role through: the
+        # bare role on a plain GM, or the default-flow-mapped key on a
+        # MultiFlowGameMaster — so the swap reaches the agents the typed slot serves.
+        # Flow-specialized instances of OTHER flows stay put (documented v1 limit).
+        target_key = _component_key(self.flow_to_component_map, flow="default", role=role)
+        outgoing = self._component_registry.get(target_key)
+        if outgoing is not None and dict(_component_state(outgoing)):
+            raise ValueError(
+                f"Cannot hot-swap stateful '{role}' component {type(outgoing).__name__} "
+                "(its get_state() is non-empty); retune it with a set_component_params "
+                "intervention instead of replacing it."
+            )
+        replacement = builder(self, dict(slot_cfg or {}))
+        if not isinstance(replacement, expected_base):
+            raise TypeError(
+                f"Rebuilt '{role}' component {type(replacement).__name__} is not a "
+                f"{expected_base.__name__}."
+            )
+        if dict(_component_state(replacement)):
+            raise ValueError(
+                f"Refusing to hot-swap in a stateful '{role}' component "
+                f"{type(replacement).__name__} (non-empty get_state() at construction)."
+            )
+        self._component_registry[target_key] = replacement
+        setattr(self, slot_attr, replacement)
+        return replacement
+
     def initialize(self, *, agents: Sequence[Any], context: Any) -> None:
         self._refresh_context(agents)
         for component in self._components_for_role(role="initialize"):
@@ -266,13 +348,14 @@ class ComponentGameMaster(BaseGameMaster):
         return str(component.resolve_action(agent_name, action))
 
     def get_state(self) -> dict[str, Any]:
+        component_states = {
+            key: component.get_state()
+            for key, component in self._component_registry.items()
+            if callable(getattr(component, "get_state", None))
+        }
         state: dict[str, Any] = {
             "initialized": self._initialized,
-            "components": {
-                key: component.get_state()
-                for key, component in self._component_registry.items()
-                if callable(getattr(component, "get_state", None))
-            },
+            "components": component_states,
             # agent->flow tags are re-materialized from config on resume, not from
             # the checkpoint. Record a fingerprint so a config change that would
             # silently mis-route checkpoint replay (or diverge the second half of a
@@ -283,6 +366,17 @@ class ComponentGameMaster(BaseGameMaster):
                 "owned_flows": list(self.owned_flows),
             },
         }
+        # Record the class of each STATEFUL component so set_state can detect a
+        # mid-run swap_component that replaced it and skip (not blind-apply) foreign
+        # state onto the wrong class. Only stateful entries need it, so a run with no
+        # swaps keeps the exact legacy payload (additive; old checkpoints lack the key).
+        stateful_classes = {
+            key: _class_id(self._component_registry[key])
+            for key, value in component_states.items()
+            if value
+        }
+        if stateful_classes:
+            state["component_classes"] = stateful_classes
         # Use the explicit capability signal, not dict-truthiness: a backend that
         # legitimately has empty state this step must still be marked authoritative,
         # while a non-snapshotable backend (e.g. a live external server with
@@ -318,10 +412,25 @@ class ComponentGameMaster(BaseGameMaster):
         component_states = data.get("components", {})
         if not isinstance(component_states, Mapping):
             return
+        saved_classes = data.get("component_classes")
+        saved_classes = saved_classes if isinstance(saved_classes, Mapping) else {}
         for key, value in component_states.items():
             component = self._component_registry.get(str(key))
-            if component is not None:
-                component.set_state(value)
+            if component is None:
+                continue
+            expected = saved_classes.get(str(key))
+            if expected and _class_id(component) != str(expected):
+                _LOGGER.warning(
+                    "Skipping checkpoint state for component %r on game master %r: the "
+                    "checkpoint saved %s but the live component is %s (a mid-run "
+                    "swap_component changed it). The live component keeps its fresh state.",
+                    key,
+                    self.name,
+                    expected,
+                    _class_id(component),
+                )
+                continue
+            component.set_state(value)
 
     def _warn_on_scheduling_drift(self, checkpointed: Mapping[str, Any]) -> None:
         """Warn loudly if resume-time agent->flow tags diverge from the checkpoint.
@@ -573,10 +682,11 @@ def _create_backend(backend_config: Mapping[str, Any], *, gm_name: str) -> Any:
     cfg = dict(backend_config or {})
     backend_type = _backend_type(cfg)
     output_rootname = str(cfg.get("output_rootname") or "")
+    static_fields = {"gm_name": gm_name, "backend_type": backend_type}
     action_logger = EventLogger(
         "action",
         os.path.join(output_rootname, "action_events.jsonl"),
-        static_fields={"gm_name": gm_name, "backend_type": backend_type},
+        static_fields=static_fields,
     )
     action_logger.episode_idx = 0
     backend = create_backend_app(
@@ -588,6 +698,16 @@ def _create_backend(backend_config: Mapping[str, Any], *, gm_name: str) -> Any:
         class_path=cfg.get("class_path"),
         params=dict(cfg.get("params") or {}),
     )
+    # Exposure logger (what each agent SAW): a sibling of action_events.jsonl in
+    # the same per-GM directory. Written only when an observe component logs to
+    # it, so the file/writer-thread never materialize for runs that don't.
+    exposure_logger = EventLogger(
+        "exposure",
+        os.path.join(output_rootname, "exposure_events.jsonl"),
+        static_fields=static_fields,
+    )
+    exposure_logger.episode_idx = 0
+    backend.exposure_logger = exposure_logger
     # Apply config-driven agent-facing action renames/aliases before filters so
     # enabled/excluded lists may reference either canonical or aliased names.
     action_aliases = cfg.get("action_aliases")

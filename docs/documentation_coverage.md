@@ -3,7 +3,7 @@
 This page tracks what the documentation covers, where it is stale, and which
 runtime surfaces need explicit docs before they should be treated as stable.
 
-Last reviewed: 2026-05-11.
+Last reviewed: 2026-07-08.
 
 ## Coverage Matrix
 
@@ -20,6 +20,7 @@ Last reviewed: 2026-05-11.
 | Evaluation probes and studies | `evaluations/probes/`, study docs | [Probes](probes.md), [Study Guide](study_guide.md), [Study Schema](study_schema.md) | Covered; update when evaluator APIs change |
 | Dashboard | `src/silisocs/dashboard/launch_app.py` | [Dashboard](dashboard.md) | Covered; advanced config controls need periodic UI sync |
 | Extension API docs | Public extension contracts | [Simulation Extensibility API](simulation_extensibility_api.md) | Curated API reference; generated internal pages are not shipped |
+| Coding-agent guidance | `AGENTS.md`, `agent_docs/` | `AGENTS.md`, `agent_docs/README.md` | Covered; keep tool-neutral and synced with runtime paths |
 
 ## Stale or Risky Content Register
 
@@ -30,6 +31,7 @@ Last reviewed: 2026-05-11.
 | `sim.enable_engine_multi_flow` references | Incorrect config knob | Use `sim.engine.step.built_in: flow` |
 | Prompt addition key mismatch | Users may set a no-op key | Document `sim.prompt_additions.action_count_guidance` |
 | Advanced flow docs duplicated across `docs/` and `agent_docs/` | Divergence risk | Keep public docs canonical; use `agent_docs` as agent-facing deep dives |
+| Agent workflow docs are tool-discoverable only through `AGENTS.md` | Non-Claude agents may miss `/new-scenario` and `/new-study` flows | Keep `agent_docs/README.md` and public shortcut links current |
 | Backend boundary refactor log in docs | Useful history but not a user guide | Keep linked from roadmap or remove before release docs if it becomes stale |
 
 ## Extension Surface Coverage

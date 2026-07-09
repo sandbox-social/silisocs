@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, ClassVar
 
 from silisocs.runtime.types import ActionOutput, ActionSpec
 
@@ -12,10 +12,36 @@ ComponentState = Mapping[str, Any]
 
 
 class BaseComponent:
-    """Small native component base with optional checkpoint hooks."""
+    """Small native component base with optional checkpoint + runtime-tuning hooks."""
+
+    # Parameter names that may be retuned mid-run (the ``set_component_params``
+    # intervention, dashboards, custom orchestration). For each declared name,
+    # ``set_params`` calls ``set_<name>(value)`` when the component defines it,
+    # otherwise assigns the same-named attribute. Undeclared names are ignored
+    # (not applied), so one params mapping can address several components.
+    runtime_tunable: ClassVar[frozenset[str]] = frozenset()
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         del args, kwargs
+
+    def set_params(self, params: Mapping[str, Any]) -> set[str]:
+        """Apply runtime-tunable parameters; return the names actually applied."""
+        applied: set[str] = set()
+        for name, value in params.items():
+            if name not in self.runtime_tunable:
+                continue
+            setter = getattr(self, f"set_{name}", None)
+            if callable(setter):
+                setter(value)
+            elif hasattr(self, name):
+                setattr(self, name, value)
+            else:
+                raise ValueError(
+                    f"{type(self).__name__} declares runtime-tunable '{name}' but has "
+                    f"neither a set_{name}() setter nor a '{name}' attribute."
+                )
+            applied.add(name)
+        return applied
 
     def get_state(self) -> ComponentState:
         return {}

@@ -53,6 +53,7 @@ def build_runtime_objects(
     specs: Sequence[RuntimeSpec],
     models: dict[str, LanguageModel],
     object_to_model: dict[str, str],
+    memory_factory: Any | None = None,
 ) -> RuntimeObjects:
     """Build agents and game masters from direct runtime specs."""
     runtime = RuntimeObjects()
@@ -61,7 +62,13 @@ def build_runtime_objects(
 
     t0 = time.time()
     for spec in agent_specs:
-        add_agent(runtime=runtime, spec=spec, models=models, object_to_model=object_to_model)
+        add_agent(
+            runtime=runtime,
+            spec=spec,
+            models=models,
+            object_to_model=object_to_model,
+            memory_factory=memory_factory,
+        )
     if agent_specs:
         print(f"Built {len(agent_specs)} agents in {time.time() - t0:.2f}s")
 
@@ -82,6 +89,7 @@ def add_agent(
     models: dict[str, LanguageModel],
     object_to_model: dict[str, str],
     state: dict[str, Any] | None = None,
+    memory_factory: Any | None = None,
 ) -> Agent:
     """Build and add one agent."""
     if spec.role != RuntimeRole.AGENT:
@@ -106,7 +114,13 @@ def add_agent(
                 "Set `compat: concordia` so it is wrapped by ConcordiaAgentAdapter."
             )
         cls = _load_object(spec.class_path)
-        built = _instantiate_with_supported_kwargs(cls, {"model": model, **spec.params})
+        agent_kwargs: dict[str, Any] = {"model": model, **spec.params}
+        # Inject the memory-policy factory only into agents that accept it (a
+        # framework kwarg, so it is filtered rather than raising for agents —
+        # e.g. FixedAgent — that don't take it; user params still raise on typo).
+        if memory_factory is not None and _class_accepts(cls, "memory_policy"):
+            agent_kwargs["memory_policy"] = memory_factory
+        built = _instantiate_with_supported_kwargs(cls, agent_kwargs)
         if not isinstance(built, Agent):
             raise TypeError(
                 f"Agent class '{spec.class_path}' returned {type(built).__name__}, "
@@ -172,6 +186,7 @@ def construct_runtime_with_metrics(
     specs: Sequence[RuntimeSpec],
     models: dict[str, LanguageModel],
     object_to_model: dict[str, str],
+    memory_factory: Any | None = None,
 ) -> RuntimeObjects:
     """Build runtime objects under the shared metrics phase."""
     with SimMetricsCollector.get().phase("runtime_construction"):
@@ -179,12 +194,24 @@ def construct_runtime_with_metrics(
             specs=specs,
             models=models,
             object_to_model=object_to_model,
+            memory_factory=memory_factory,
         )
 
 
 def _load_object(class_path: str) -> Any:
     module_path, name = str(class_path).rsplit(".", 1)
     return getattr(importlib.import_module(module_path), name)
+
+
+def _class_accepts(cls: Any, param: str) -> bool:
+    """Whether ``cls.__init__`` accepts ``param`` (directly or via ``**kwargs``)."""
+    try:
+        params = inspect.signature(cls).parameters
+    except (TypeError, ValueError):
+        return True
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return True
+    return param in params
 
 
 def _instantiate_with_supported_kwargs(cls: Any, kwargs: dict[str, Any]) -> Any:

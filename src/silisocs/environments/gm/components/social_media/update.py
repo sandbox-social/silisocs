@@ -40,6 +40,12 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
     component instances and route them from the game master.
     """
 
+    # Mid-run tunable via the generic set_component_params intervention:
+    # recsys_type goes through set_recsys_type below; the rest are plain
+    # attributes read on each scheduled update, safe to reassign at the
+    # single-threaded step boundary where interventions fire.
+    runtime_tunable = frozenset({"recsys_type", "update_every_n_steps", "lazy", "max_posts"})
+
     def __init__(
         self,
         backend: Any | None = None,
@@ -79,6 +85,12 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
         self._initialized_recsys_types: set[str] = set()
         self._recsys_disabled = False
         self._supports_active_scoping: bool | None = None
+        # Active agents seen since the last refresh. With update_every_n_steps
+        # > 1, a scoped refresh on the due step must cover everyone who acted
+        # on the skipped steps too — refreshing only the due step's roster
+        # would leave an agent who was active only on non-due steps with
+        # permanently stale (or empty) recommendation rows.
+        self._pending_scoped_names: set[str] = set()
 
     _SUPPORTED_RECSYS_BY_BACKEND = {
         "twitter_like": {"twitter", "twitter_tfidf", "twhin"},
@@ -166,6 +178,14 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
         if self._recsys_disabled:
             return
 
+        # Accumulate this step's active roster BEFORE any scheduling early
+        # return, so agents active on skipped (non-due) steps are covered by
+        # the next due refresh.
+        if active_agent_names is not None:
+            self._pending_scoped_names.update(
+                name for name in (str(n or "") for n in active_agent_names) if name
+            )
+
         update_interval = max(1, int(self.update_every_n_steps or 1))
         current_episode = self._current_episode()
 
@@ -190,10 +210,9 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
                 )
                 return
 
-            if active_agent_names is not None and not active_agent_names:
-                # An all-inactive step has nobody whose recommendations need
-                # refreshing; existing rows stay as-is (deliberately NOT a
-                # full-population recompute).
+            if active_agent_names is not None and not self._pending_scoped_names:
+                # Nobody has acted since the last refresh; existing rows stay
+                # as-is (deliberately NOT a full-population recompute).
                 self._log_recsys_event(
                     "recsys_update_skipped",
                     {"reason": "no_active_agents", "backend_type": self.backend_type},
@@ -259,12 +278,14 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
                         "recsys_types": sorted(self._initialized_recsys_types),
                         "max_posts": int(self.max_posts),
                         "episode_idx": current_episode,
-                        "active_agents": len(active_agent_names or []) if scoped else None,
+                        "active_agents": len(self._pending_scoped_names) if scoped else None,
                     },
                 )
                 if scoped:
+                    # Refresh everyone active since the last refresh (this
+                    # step's roster plus any skipped steps' rosters).
                     backend.update_recommendations(
-                        active_agent_names=list(active_agent_names or []),
+                        active_agent_names=sorted(self._pending_scoped_names),
                         max_posts=self.max_posts,
                     )
                 else:
@@ -272,6 +293,9 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
                         active_user_ids=None,
                         max_posts=self.max_posts,
                     )
+                # Either branch covered every pending agent (a full recompute
+                # trivially so); start accumulating fresh for the next window.
+                self._pending_scoped_names.clear()
 
                 if current_episode is not None:
                     self._last_update_episode = current_episode
@@ -312,6 +336,20 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
             )
 
         return
+
+    def set_recsys_type(self, recsys_type: str) -> None:
+        """Swap the recommender that is COMPUTED (mid-run ``set_recsys`` intervention).
+
+        The reconcile loop in ``update_recommendations`` initializes the new type
+        on the next due update; the paired observe component's ``set_recsys_type``
+        swaps what agents actually see.
+        """
+        self.default_recsys_type = str(recsys_type).strip() or None
+        # Un-latch: a run that started with no recsys configured latched
+        # _recsys_disabled=True; re-enabling one mid-run must clear it or the
+        # reconcile/init path is short-circuited and nothing is ever computed.
+        if self.default_recsys_type:
+            self._recsys_disabled = False
 
     def _extract_unique_recsys_types(self) -> set[str]:
         """Extract unique configured recommendation types."""
@@ -360,6 +398,7 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
             "last_update_episode": self._last_update_episode,
             "initialized_recsys_types": sorted(self._initialized_recsys_types),
             "recsys_disabled": self._recsys_disabled,
+            "pending_scoped_names": sorted(self._pending_scoped_names),
         }
 
     def set_state(self, state: Mapping[str, Any]) -> None:
@@ -373,6 +412,8 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
         restored_types = state.get("initialized_recsys_types", [])
         self._initialized_recsys_types = {str(v).strip() for v in restored_types if str(v).strip()}
         self._recsys_disabled = bool(state.get("recsys_disabled", self._recsys_disabled))
+        restored_pending = state.get("pending_scoped_names", [])
+        self._pending_scoped_names = {str(v) for v in restored_pending if str(v)}
 
     def get_output_dict(self) -> dict[str, Any]:
         """Return component output metadata."""

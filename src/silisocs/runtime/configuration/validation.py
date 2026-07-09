@@ -390,14 +390,20 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
             "tool_calling",
             "prompt_additions",
             "initialization",
+            "memory",
             "checkpoint",
             "engine",
             "telemetry",
             "roleplaying_instructions",
         },
     )
+    _assert_allowed_keys(cfg, "sim.memory", set(_POLICY_SLOT_KEYS))
     _assert_allowed_keys(cfg, "sim.telemetry", {"record_active_agent_names"})
-    _assert_allowed_keys(cfg, "sim.llm", set(MODEL_FIELDS))
+    # ``pricing`` is telemetry-only (cost reporting): read by the usage summary,
+    # ignored by model construction/dedup (build_global_llm_config reads only
+    # MODEL_FIELDS), so it must be allowed here without entering MODEL_FIELDS.
+    _assert_allowed_keys(cfg, "sim.llm", set(MODEL_FIELDS) | {"pricing"})
+    _assert_allowed_keys(cfg, "sim.llm.pricing", {"input_per_1m", "output_per_1m"})
     provider = OmegaConf.select(cfg, "sim.llm.provider")
     if provider is not None:
         from silisocs.runtime.language_models.registry import get_llm_provider
@@ -424,7 +430,17 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
         )
     _validate_engine_slots(cfg)
     _assert_allowed_keys(cfg, "eval", {"probes"})
+    _validate_interventions_config(cfg)
     print("✓ Runtime section validation passed")
+
+
+def _validate_interventions_config(cfg: DictConfig) -> None:
+    """Validate the optional top-level ``interventions`` schedule (if present)."""
+    from silisocs.simulation_engines.interventions import validate_interventions
+
+    validate_interventions(
+        cfg, gm_names=_declared_gm_names(cfg), flow_names=_declared_flow_names(cfg)
+    )
 
 
 def _validate_engine_slots(cfg: DictConfig) -> None:
@@ -465,9 +481,44 @@ def _declared_gm_names(cfg: DictConfig) -> set[str]:
     gms = OmegaConf.select(cfg, "env.gm_orchestration.gms")
     if isinstance(gms, (list, ListConfig)):
         for gm in gms:
-            name = gm.get("name") if isinstance(gm, (Mapping, DictConfig)) else None
+            if not isinstance(gm, (Mapping, DictConfig)):
+                continue
+            # Construction resolves each GM's name from ``gm_name`` first, then
+            # ``name`` (build_game_masters); mirror that precedence so per-GM
+            # validation (interventions, gm_turn_policies) sees the real names.
+            name = gm.get("gm_name") or gm.get("name")
             if name:
                 names.add(str(name))
+    return names
+
+
+def _declared_flow_names(cfg: DictConfig) -> set[str]:
+    """Collect flow names statically declared in config, for preflight validation.
+
+    Sources mirror how the engine materializes ``agent_flow_tags``: per-class
+    ``flow_tag``, ``flow_order``, ``agent_to_flow`` values, and the keys of
+    ``flow_bindings.flow_to_gms``. An empty set means flows are not statically
+    known (e.g. a custom step strategy) and callers defer to fire-time checks;
+    when any flow IS declared, the implicit ``default`` flow (agents without a
+    ``flow_tag``) is included.
+    """
+    names: set[str] = set()
+    classes = OmegaConf.select(cfg, "agents.persona_pipeline.classes")
+    if isinstance(classes, (Mapping, DictConfig)):
+        for spec in classes.values():
+            if isinstance(spec, (Mapping, DictConfig)) and spec.get("flow_tag"):
+                names.add(str(spec["flow_tag"]))
+    flow_order = OmegaConf.select(cfg, "sim.engine.step.params.flow_order")
+    if isinstance(flow_order, (list, ListConfig)):
+        names.update(str(flow) for flow in flow_order if flow)
+    agent_to_flow = OmegaConf.select(cfg, "sim.engine.step.params.agent_to_flow")
+    if isinstance(agent_to_flow, (Mapping, DictConfig)):
+        names.update(str(flow) for flow in agent_to_flow.values() if flow)
+    flow_to_gms = OmegaConf.select(cfg, "env.gm_orchestration.flow_bindings.flow_to_gms")
+    if isinstance(flow_to_gms, (Mapping, DictConfig)):
+        names.update(str(flow) for flow in flow_to_gms if flow)
+    if names:
+        names.add("default")
     return names
 
 

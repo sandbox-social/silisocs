@@ -69,7 +69,10 @@ Core runtime layers:
 
 ### 6. Runtime Orchestration
 - `src/silisocs/runtime/runner.py` — CLI entrypoint, Hydra config composition
-- `src/silisocs/runtime/config.py` — Config validation and initialization
+- `src/silisocs/runtime/configuration/` — Config projection, external config
+  loading, and validation
+- `src/silisocs/runtime/execution/session.py` — Runtime assembly, simulation
+  execution, checkpoint save/resume, and artifact writing
 - Handles: model creation, direct runtime construction, initialization,
   simulation execution, checkpoint save/resume
 
@@ -263,6 +266,40 @@ the global/default behavior when omitted, and the agent->flow mapping is the sam
 materialized `agent_flow_tags` used by scheduling and component routing.
 
 Fixed agents (`silisocs.agents.fixed.FixedAgent`) are the reference example.
+
+## 4.5) Mid-Run Interventions
+
+An optional top-level `interventions` schedule (see
+`docs/configuration.md` → "Mid-Run Interventions") fires actions at step
+boundaries: `set_participation`, `ban_agents`/`unban_agents`,
+`set_component_params`, `set_recsys`, `set_turn_policy`, `swap_component`
+(persistent state-setters, replayed on resume for `at_step < start_step`),
+`inject_action`, `inject_post`,
+`broadcast_observation` (one-shot events, never replayed), or `custom`
+(`class_path` to an `InterventionHandler` subclass). `inject_action` is the
+generic injection language (any backend catalog action as a typed tool call
+through the GM's resolve component); `inject_post` is sugar over it. Dispatch lives in
+`simulation_engines/interventions.py` and runs at the single-threaded loop
+boundary in `FixedStepsLoopStrategy`, so handlers mutate engine/GM/backend state
+without locks. Fired-ness is a pure function of `(schedule, step)` — no
+checkpoint-schema change. A ban is a `BanFilterParticipation` wrapper over the
+active participation policy (soft ban), not a roster mutation.
+`set_component_params` is the generic component-retuning language: a component
+lists mid-run-safe parameter names in its class-level `runtime_tunable`
+frozenset (`BaseComponent.set_params` routes each through `set_<name>()` or the
+same-named attribute), and `set_recsys` is sugar over it. `set_turn_policy`
+rebuilds a turn policy (global / per-`gm` / per-`flow`) into the maps the
+scheduler reads each batch; `set_router` re-points a flow's branch `router` (a
+stateless plain callable) in the step strategy's flow chain (`multi_gm*` only);
+`flow` targets on both are preflight-validated against the flows statically
+declared in config (deferred to fire time when none are declared);
+`swap_component` hot-swaps a STATELESS `observe` /
+`next_acting` / `update` component via the GM's `rebuild_component` seam (refused
+if the outgoing or incoming component has non-empty `get_state()` — retune
+stateful components with `set_component_params` instead; `resolve`/`action_prompt`
+and `initialize` are out of scope). To add a kind,
+subclass `InterventionHandler` (declare `kind`, `persistent`, `validate`,
+`apply`) and reference it via `kind: custom`.
 
 ## 5) Agent Interface: Concordia vs Custom
 
@@ -571,7 +608,12 @@ strategies and `eval.py` never see the difference. A custom layout is a
 `sim.checkpoint.save.class_path` subclassing `CheckpointSaveStrategy`
 (`runtime/checkpointing/save.py`).
 
-**Saving policy**: checkpoint saving is disabled by default when running directly via `run_experiment.py` unless `every_n_steps` or `explicit_steps` is configured. When running via `run_study.py`, checkpointing is enabled automatically (`every_n_steps=1`) so that `eval.py` can access the final checkpoint for action-type metrics. Studies can change the frequency via `run_defaults.overrides: {sim.checkpoint.every_n_steps: N}`.
+**Saving policy**: checkpoint saving is disabled by default when running directly
+with the `silisocs` CLI unless `every_n_steps` or `explicit_steps` is configured.
+When running via `silisocs-study`, checkpointing is enabled automatically
+(`every_n_steps=1`) so that evaluators can access the final checkpoint for
+action-type metrics. Studies can change the frequency via
+`run_defaults.overrides: {sim.checkpoint.every_n_steps: N}`.
 
 **For custom agents**: Checkpointing is duck-typed — every agent and game master is
 checkpointed by reading its `get_state()` and applying its `set_state()` (there is no
@@ -604,13 +646,13 @@ Use uv-managed workflows (from `docs/contributing.md`):
 - Pre-commit hooks all files: `uv run pre-commit run --all-files --verbose`
 - Commit with Commitizen: `uv run cz c`
 
-Fast contributor workflow (LLM-agent friendly):
+Fast contributor workflow (coding-agent friendly):
 
 1. `uv sync --group dev`
 2. Run targeted tests for changed files first (`uv run pytest <targeted_tests>`)
 3. Run full quality gate: `uv run pre-commit run --all-files --verbose`
 4. Run coverage workflow: `uv run --group dev poe test`
-5. Commit with Conventional Commits (`uv run cz c` or `git commit -m "feat: ..."`)
+5. Commit with Commitizen (`uv run cz c`) or a valid `cz_gitmoji` message
 6. Push branch (`git push origin <branch>`)
 
 **NEVER commit `.env` files or any file containing API keys, passwords, or secrets.**
@@ -633,10 +675,17 @@ backend action catalogs, and checkpoint policy tests.
 
 ## 9) Documentation Map
 
-This guide (AGENTS.md) is for you if you're **extending the framework** — writing new components, backends, agents, or changing architecture.
+This guide (AGENTS.md) is for any coding agent or human contributor who is
+**extending the framework** — writing new components, backends, agents, or
+changing architecture. `CLAUDE.md` intentionally points here so Claude Code,
+Codex, Cursor, and other repo-aware agents share one canonical map.
 
 If instead you want to **design and run experiments via config only**:
 → See [agent_docs/scenario_design.md](agent_docs/scenario_design.md) — Scenario design guide for config-based users
+
+**Agent-doc index**:
+→ See [agent_docs/README.md](agent_docs/README.md) — discoverable map of
+agent-facing guides and guided workflows
 
 **Detailed architecture deep dive** (multi-flow, multi-GM, component routing):
 → See [agent_docs/architecture.md](agent_docs/architecture.md) — Reference for complex orchestration patterns
@@ -678,7 +727,7 @@ When adding features, update docs in:
 - Lint/pre-commit workflow passes
 - New behavior has tests
 - Docs updated for config + usage + architecture
-- Commit message uses gitmoji prefix (see §14)
+- Commit message uses the configured `cz_gitmoji` schema (see §14)
 
 ## 11.5) Branching Rules
 
@@ -691,7 +740,7 @@ When adding features, update docs in:
 Start from these files to understand the flow:
 
 1. **Config composition**: `src/silisocs/runtime/runner.py` — How Hydra merges configs
-2. **Simulation orchestration**: `src/silisocs/runtime/simulation.py` — Full workflow
+2. **Simulation orchestration**: `src/silisocs/runtime/execution/session.py` — Full workflow
 3. **Engine execution**: `src/silisocs/simulation_engines/base_engines.py` — Episode loop
 4. **Game master**: `src/silisocs/environments/gm/game_master.py` — Simple preset
 5. **Multi-flow GM**: `src/silisocs/environments/gm/game_master.py` — Advanced component routing
@@ -731,7 +780,7 @@ Brief description of current task
 
 - Use `uv run` prefix for all commands.
 - Run pre-commit before committing (see section 7 for workflow).
-- Commit messages must use gitmoji prefixes (repo uses `cz_gitmoji` schema):
+- Commit messages must use the configured `cz_gitmoji` schema:
   - `♻️ refactor(...):` — renames, restructuring
   - `🐛 fix(...):` — bug fixes
   - `✨ feat(...):` — new features

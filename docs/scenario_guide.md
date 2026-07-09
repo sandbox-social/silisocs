@@ -6,8 +6,10 @@ many studies. Think of it as the stage: studies are the experiments you run on
 it. The semantic world description for a scenario lives in
 `conf/world/default.yaml`.
 
-**Shortcut:** If you are using a coding agent (Claude Code, Cursor, etc.), you can
-type `/new-scenario` to be guided through this process interactively.
+**Shortcut:** If you are using a repo-aware coding agent such as Codex, Claude
+Code, Cursor, or another agent that can read `AGENTS.md`, ask it to follow
+`agent_docs/skills/new-scenario.md` for an interactive `/new-scenario`-style
+workflow.
 
 ---
 

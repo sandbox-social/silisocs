@@ -35,22 +35,29 @@ class _StubEngine(SqliteSocialEngineBase):
 
 def test_pure_recsys_returns_recommendations_only():
     engine = _StubEngine(recs=[{"id": 1}, {"id": 2}], feed_posts=[{"id": 9}])
-    assert engine.get_timeline("pure_recsys", "alice", limit=5) == [{"id": 1}, {"id": 2}]
+    # get_timeline tags each post with its exposure source (recsys, no type here).
+    assert engine.get_timeline("pure_recsys", "alice", limit=5) == [
+        {"id": 1, "source": "recsys"},
+        {"id": 2, "source": "recsys"},
+    ]
 
 
 def test_follower_chronological_uses_the_configured_feed():
     engine = _StubEngine(recs=[], feed_posts=[{"id": 7}], follower_feed="chronological_home")
-    assert engine.get_timeline("follower_chronological", "alice") == [{"id": 7}]
+    assert engine.get_timeline("follower_chronological", "alice") == [
+        {"id": 7, "source": "follower"}
+    ]
     assert engine.requested_feed == "chronological_home"
 
 
 def test_hybrid_blends_recsys_first_then_follower_deduped():
     engine = _StubEngine(recs=[{"id": 1}, {"id": 2}], feed_posts=[{"id": 2}, {"id": 3}])
-    # Recsys posts lead, the shared post (id 2) is not duplicated, follower posts follow.
+    # Recsys posts lead, the shared post (id 2) is not duplicated (keeps its recsys
+    # source), follower posts follow.
     assert engine.get_timeline("hybrid_recsys_follower", "alice", limit=10) == [
-        {"id": 1},
-        {"id": 2},
-        {"id": 3},
+        {"id": 1, "source": "recsys"},
+        {"id": 2, "source": "recsys"},
+        {"id": 3, "source": "follower"},
     ]
 
 
@@ -58,8 +65,8 @@ def test_hybrid_respects_post_id_fallback_key():
     # Posts may carry "post_id" instead of "id"; dedup keys off whichever is present.
     engine = _StubEngine(recs=[{"post_id": 5}], feed_posts=[{"post_id": 5}, {"post_id": 6}])
     assert engine.get_timeline("hybrid_recsys_follower", "alice", limit=10) == [
-        {"post_id": 5},
-        {"post_id": 6},
+        {"post_id": 5, "source": "recsys"},
+        {"post_id": 6, "source": "follower"},
     ]
 
 

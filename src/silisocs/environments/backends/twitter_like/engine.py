@@ -425,7 +425,9 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
     def add_follows(self, edges: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
         """Bulk-apply follow edges in ONE queued transaction (init fast path).
 
-        Dedupes and drops self-follows / unknown users, inserts the edges with
+        Dedupes and drops self-follows / unknown users / edges already in the
+        DB (a pre-populated DB must not get duplicate 'follow' activities or
+        re-report existing edges as applied), inserts the new edges with
         ``OR IGNORE``, records one 'follow' activity per applied edge, then
         recomputes follower/following counters authoritatively from the follows
         table (immune to duplicate-edge drift). Returns the applied
@@ -433,8 +435,13 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
         4·E serialized statements across E writer round-trips with one.
         """
         now = time.time()
+        with self.get_connection() as conn:
+            existing: set[tuple[int, int]] = {
+                (int(r[0]), int(r[1]))
+                for r in conn.execute("SELECT follower_id, followee_id FROM follows").fetchall()
+            }
         applied: list[tuple[str, str]] = []
-        seen: set[tuple[int, int]] = set()
+        seen: set[tuple[int, int]] = set(existing)
         queries: list[tuple[str, tuple[Any, ...]]] = []
         for follower, followee in edges:
             follower_id = self.get_user_id(follower)
@@ -986,16 +993,20 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
         if not user_ids or limit_per_user <= 0:
             return {}
 
-        placeholders = ",".join("?" for _ in user_ids)
-        rows = conn.execute(
-            f"""
-            SELECT user_id, content
-            FROM posts
-            WHERE user_id IN ({placeholders}) AND type != 'repost'
-            ORDER BY user_id ASC, created_at DESC, id DESC
-            """,
-            tuple(user_ids),
-        ).fetchall()
+        rows: list[Any] = []
+        for chunk in self._iter_in_chunks(user_ids):
+            placeholders = ",".join("?" for _ in chunk)
+            rows.extend(
+                conn.execute(
+                    f"""
+                    SELECT user_id, content
+                    FROM posts
+                    WHERE user_id IN ({placeholders}) AND type != 'repost'
+                    ORDER BY user_id ASC, created_at DESC, id DESC
+                    """,
+                    tuple(chunk),
+                ).fetchall()
+            )
 
         result: dict[int, list[str]] = {}
         for row in rows:
@@ -1018,17 +1029,21 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
         if not user_ids or limit_per_user <= 0:
             return {}
 
-        placeholders = ",".join("?" for _ in user_ids)
-        rows = conn.execute(
-            f"""
-            SELECT l.user_id, p.content
-            FROM likes l
-            JOIN posts p ON p.id = l.post_id
-            WHERE l.user_id IN ({placeholders})
-            ORDER BY l.user_id ASC, l.created_at DESC, l.post_id DESC
-            """,
-            tuple(user_ids),
-        ).fetchall()
+        rows: list[Any] = []
+        for chunk in self._iter_in_chunks(user_ids):
+            placeholders = ",".join("?" for _ in chunk)
+            rows.extend(
+                conn.execute(
+                    f"""
+                    SELECT l.user_id, p.content
+                    FROM likes l
+                    JOIN posts p ON p.id = l.post_id
+                    WHERE l.user_id IN ({placeholders})
+                    ORDER BY l.user_id ASC, l.created_at DESC, l.post_id DESC
+                    """,
+                    tuple(chunk),
+                ).fetchall()
+            )
 
         result: dict[int, list[str]] = {}
         for row in rows:
@@ -1309,16 +1324,20 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
         try:
             with self.get_connection() as conn:
                 # Get users
+                user_rows: list[Any] = []
                 if active_user_ids:
-                    placeholders = ",".join("?" * len(active_user_ids))
-                    cursor = conn.execute(
-                        f"SELECT id, username, bio FROM users WHERE id IN ({placeholders})",
-                        active_user_ids,
-                    )
+                    for chunk in self._iter_in_chunks(active_user_ids):
+                        placeholders = ",".join("?" * len(chunk))
+                        user_rows.extend(
+                            conn.execute(
+                                f"SELECT id, username, bio FROM users WHERE id IN ({placeholders})",
+                                chunk,
+                            ).fetchall()
+                        )
                 else:
-                    cursor = conn.execute("SELECT id, username, bio FROM users")
+                    user_rows = conn.execute("SELECT id, username, bio FROM users").fetchall()
 
-                users = [{"id": r[0], "username": r[1], "bio": r[2]} for r in cursor.fetchall()]
+                users = [{"id": r[0], "username": r[1], "bio": r[2]} for r in user_rows]
                 user_ids = [int(user["id"]) for user in users]
 
                 # Get recent posts
@@ -1371,11 +1390,12 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
                 # Replace only the scoped users' rows (every live recsys type is
                 # recomputed for them below); a full update clears the table.
                 if active_user_ids:
-                    delete_placeholders = ",".join("?" * len(active_user_ids))
-                    conn.execute(
-                        f"DELETE FROM recommendations WHERE user_id IN ({delete_placeholders})",
-                        active_user_ids,
-                    )
+                    for chunk in self._iter_in_chunks(active_user_ids):
+                        delete_placeholders = ",".join("?" * len(chunk))
+                        conn.execute(
+                            f"DELETE FROM recommendations WHERE user_id IN ({delete_placeholders})",
+                            chunk,
+                        )
                 else:
                     conn.execute("DELETE FROM recommendations")
                 rows_written = 0

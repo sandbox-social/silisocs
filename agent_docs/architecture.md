@@ -2,7 +2,7 @@
 
 **This guide is for LLM agents helping understand or extend the framework's architecture.**
 
-**For designing experiments via configuration:** See [world_design.md](world_design.md)
+**For designing experiments via configuration:** See [scenario_design.md](scenario_design.md)
 
 **For code extension points:** See [AGENTS.md](../AGENTS.md)
 

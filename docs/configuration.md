@@ -77,6 +77,21 @@ Run parameters live in the `world` config group (placed at config root via
 | `sim.llm.temperature` | `0.5` | Sampling temperature |
 | `sim.llm.disabled` | `false` | Use a no-op model (for testing without API calls) |
 | `sim.llm.extra_kwargs` | `{}` | Provider request kwargs such as OpenAI-compatible `extra_body` settings |
+| `sim.llm.pricing` | `null` | Optional `{input_per_1m, output_per_1m}` USD rate for cost reporting |
+
+**Token usage & cost.** OpenAI-compatible providers record `response.usage`
+per call, split by phase — `probe` (evaluation spend; the loop brackets probe
+deployment the same way scheduling brackets action turns), `action` (the
+simulation itself), and `other` (initialization and out-of-band calls). Per-model
+token totals ride into `sim_metrics.json` under
+`episode_metrics[].retry_telemetry` (per-episode cumulative) and a run-level
+`meta.llm_usage` summary with `per_model`, `totals`, and a `by_phase` split, so
+instrumentation cost is separable from experiment cost. Providers that
+omit `usage` are counted under `calls_without_usage` rather than guessed. Setting
+`sim.llm.pricing` adds `estimated_cost_usd` per model, per phase, and overall — a
+single rate applied to every model, so for a mixed-model run with differing real
+prices read the per-model token counts and price them yourself. `pricing` is telemetry-only:
+it never affects model construction or the effective-config dedup.
 
 **Built-in provider presets.** Common providers that expose an OpenAI-compatible
 API are available as named presets. Set `sim.llm.provider` to the name and supply
@@ -752,6 +767,39 @@ env:
         params: {}
 ```
 
+### Agent Memory (`sim.memory`)
+
+`sim.memory` governs how a NativeAgent *records* observations and *renders* the
+"Memory" section of its prompt at runtime — distinct from
+`sim.initialization.agents`, which only SEEDS memories at step 0.
+
+```yaml
+sim:
+  memory:
+    built_in: window            # window | retrieval | summarizing
+    class_path: null
+    params: {}
+```
+
+| Built-in | Behavior | Params |
+|----------|----------|--------|
+| `window` (default) | Keep the last N memories, render the last `render_count`. Byte-identical to the pre-slot behavior. | `render_count` (10); store cap defaults to the agent's `memory_history` |
+| `retrieval` | A recency window PLUS relevance recall: always render the last `window_count` memories verbatim, and prepend the `retrieved_count` OLDER memories most relevant to the current observation by deterministic lexical overlap (recency tiebreak) — replay-stable, no embedding API. `window_count: 0` recovers pure retrieval; `retrieved_count: 0` is a plain window. | `window_count` (40), `retrieved_count` (10) |
+| `summarizing` | Three tiers: all rolling summaries, then the `retrieved_count` most relevant OLDER memories, then the recent `render_count` window. When memory exceeds `max_memories`, the oldest `chunk_size` are compressed into one summary via a model call. | `max_memories` (200), `chunk_size` (50), `max_summaries` (20), `render_count` (40), `retrieved_count` (10), `prompt` |
+
+A custom policy is `class_path` to a `MemoryPolicy` subclass (built with
+`params`). Unknown `params` keys fail loudly before the run starts (a typo'd
+param must not silently run with defaults); the built-in framework kwargs
+(`model`, `memory_history`) are the only silently-filtered names. Determinism:
+`window`/`retrieval` are deterministic; `summarizing` is only as reproducible as
+the model it calls (summarization runs at record/observe time, so its tokens are
+counted under the caller's phase in [token usage](#llm): `action` inside a turn,
+`other` for observes outside one — agent initialization,
+`broadcast_observation`). Memory rides inside the agent's
+checkpoint state, so it resumes without extra plumbing; `summarizing` persists
+its summaries so a resumed run never re-summarizes. Applies to NativeAgent —
+Concordia-compat agents manage memory through their own components.
+
 ### GM Components
 
 ```yaml
@@ -844,6 +892,22 @@ env:
 | `pure_recsys` | Twitter, Reddit | Algorithm-selected posts only |
 | `hybrid_recsys_follower` | Twitter, Reddit | Blend of recommendations + followed posts |
 | `curated_global` | Twitter only | Trending posts + personalized recommendations |
+
+#### Exposure logging
+
+The timeline observe component records what each agent SAW — the post ids +
+per-post `source` (`follower` / `recsys:<type>`) shown each turn — to
+`exposure_events.jsonl` (mirroring `action_events.jsonl`, per-GM directories and
+all). Exposure→action is the unit of analysis for recommender/platform studies;
+`silisocs.evaluations.exposure.exposure_action_join(run_dir)` computes per-agent
+engagement of shown posts. On by default; disable with:
+
+```yaml
+env: {gm: {components: {observe: {params: {log_exposures: false}}}}}
+```
+
+It logs ids/source only (not content — recoverable by id), so the payload stays
+small, and it no-ops for backends without a SQLite timeline (e.g. Mastodon).
 
 ---
 
@@ -1166,6 +1230,128 @@ ignore their `restore` override because `set_state` already restored them.
 `silisocs.evaluations.action_events.resolve_action_event_files`), so the default
 evaluators, activity summary, and dashboard cover all game masters, not just a
 flat root log.
+
+---
+
+## Mid-Run Interventions
+
+An optional top-level `interventions` schedule fires actions at step boundaries
+(after probes measure the pre-intervention world, before the step runs), turning
+a "controlled experiment" — swap the recommender at the midpoint, ban an agent,
+inject a breaking-news post — into config instead of a manual
+checkpoint / edit / resume cycle. Absent = no interventions (default).
+
+```yaml
+# top-level (world config root, @package _global_)
+interventions:
+  - at_step: 5
+    actions:
+      - kind: set_participation          # persistent
+        slot: {built_in: activity_probability, params: {active_probability: 0.1}}
+      - kind: ban_agents                 # persistent
+        agents: [Alice, Bob]
+      - kind: set_recsys                 # persistent (sugar for set_component_params)
+        recsys_type: twitter_tfidf
+        gm: null                         # null = the single/default GM; a name for multi-GM
+      - kind: set_component_params       # persistent (the generic form)
+        params: {update_every_n_steps: 3, max_posts: 5}
+        gm: null
+      - kind: set_turn_policy            # persistent
+        slot: {built_in: fixed_count, params: {count: 2}}
+        flow: burst_posters              # scope: at most one of flow / gm; neither = global
+      - kind: set_router                 # persistent (re-point a flow's branch router)
+        flow: choose_platform            # the flow whose branch node to re-point
+        slot: {built_in: random, params: {weights: {gm_a: 3, gm_b: 1}}}
+      - kind: swap_component             # persistent (stateless components only)
+        role: observe                    # observe | next_acting | update
+        slot: {built_in: episode_only}
+        gm: null
+  - at_step: 8
+    actions:
+      - kind: inject_post                # one-shot (sugar for inject_action)
+        author: NewsBot                  # an existing agent / backend user
+        text: "BREAKING: ..."
+      - kind: inject_action              # one-shot (the generic form)
+        agent: Moderator
+        action: follow_user              # any backend catalog action name
+        args: {target_username: NewsBot}
+      - kind: broadcast_observation      # one-shot
+        text: "You hear a rumor that ..."
+        agents: []                       # empty = every agent
+      - kind: unban_agents               # persistent
+        agents: [Alice]
+```
+
+**Action kinds.** Each is either *persistent* (changes live engine/component
+state) or *one-shot* (a single event):
+
+| kind | class | effect |
+|------|-------|--------|
+| `set_participation` | persistent | rebuild the participation policy from `slot` (keeps any active ban) |
+| `ban_agents` / `unban_agents` | persistent | exclude/re-include `agents` from every step's active roster (a *soft* ban — a banned agent still exists in the world, can be mentioned/followed, and still receives `requires_full_roster` updates) |
+| `set_component_params` | persistent | retune declared component parameters on a GM (`params` mapping, applied to every component that declares the name; raises if a name lands nowhere) |
+| `set_recsys` | persistent | sugar for `set_component_params` with `params: {recsys_type: ...}` — swaps the recommender on a GM's observe + update components (the new type initializes on the next recsys refresh) |
+| `set_turn_policy` | persistent | rebuild the turn policy (how many actions a turn takes) from `slot`; scope is `flow` (needs a flow-aware step strategy), `gm`, or neither = the global default. Batch-time precedence is unchanged: per-flow > per-GM > global |
+| `set_router` | persistent | re-point the router at `flow`'s branch node with `slot` (a stateless plain callable, rebuilt via `build_router`); needs a `multi_gm*` step strategy whose chain for `flow` contains a branch |
+| `swap_component` | persistent | hot-swap a **stateless** GM component — `role` ∈ `observe` / `next_acting` / `update` — with `slot` (rebuilt with the GM's live wiring); refused when the outgoing OR incoming component has non-empty `get_state()` (retune stateful components with `set_component_params` instead) |
+| `inject_action` | one-shot | invoke any backend catalog action as `agent` (a typed tool call — `action` name + `args` — resolved through the GM's resolve component, which validates against the catalog and injects the runtime actor) |
+| `inject_post` | one-shot | sugar for `inject_action`: post `text` as `author` via the backend's canonical post action (the same per-backend mapping the seed-post initializer uses; `action_mapping` extends it for custom backends, `subreddit` targets reddit-likes) |
+| `broadcast_observation` | one-shot | deliver `text` to targeted agents' memory (`agents: []` = all) |
+| `custom` | declared by the class | `class_path` to an `InterventionHandler` subclass, built with `params` |
+
+**Component tunables.** `set_component_params` is the extension seam for
+mid-run retuning: a component opts a parameter in by listing it in its
+class-level `runtime_tunable` frozenset (`BaseComponent.set_params` then routes
+each name through a `set_<name>()` setter when the component defines one,
+otherwise assigns the same-named attribute). The shipped social-media
+components declare `recsys_type` (observe + update) and
+`update_every_n_steps` / `lazy` / `max_posts` (update); a custom component —
+recsys or otherwise — declares its own names and is immediately addressable
+from config, no new intervention kind required. Only declare parameters that
+are safe to reassign at a step boundary.
+
+**Turn policies, routers, and stateless components.** `set_turn_policy` rebuilds
+a turn policy from its `slot` and re-points the map the scheduler reads each step
+(global, per-`gm`, or per-`flow`); turn policies carry no checkpoint state, so
+the swap is replay-safe (per-`flow` scope needs a flow-aware step strategy —
+`flow`/`multi_gm*`). `set_router` similarly re-points a flow's branch `router` —
+also a stateless plain callable rebuilt from a slot — in the step strategy's flow
+chain (needs a `multi_gm*` strategy with a branch node in that flow's chain).
+`flow` targets on both are preflight-validated against the flows statically
+declared in config (class `flow_tag`s, `flow_order`, `agent_to_flow`,
+`flow_to_gms`), so a typo'd flow fails at config validation rather than mid-run;
+when no flows are declared (e.g. a custom step strategy) the check defers to
+fire time, mirroring the `gm` target rule.
+`swap_component` replaces a whole GM component (`observe` /
+`next_acting` / `update`) from its `slot`, but ONLY when both the outgoing and
+the freshly built incoming component are stateless (empty `get_state()`) — a
+stateful component (e.g. the recsys updater, or a `fixed_order` next-acting
+cursor) is retuned with `set_component_params`, never replaced. The GM's
+`rebuild_component` seam reuses the same per-role factory and live wiring as
+first construction, and a checkpoint records each stateful component's class so a
+resume after a swap skips (rather than blindly applies) state saved for a
+different class. `resolve` / `action_prompt` (a pair coupled to the GM's
+tool-calling mode) and `initialize` (meaningless mid-run) are out of scope.
+
+**Resume semantics.** Persistent actions with `at_step < start_step` are
+*replayed* on resume (their effect isn't in the checkpoint); one-shot events are
+never replayed (their effect — a post, an observation — is already in restored
+backend/agent state). Fired-ness is a pure function of `(schedule, step)`, so
+resuming reproduces the exact intervention state with no checkpoint-schema
+change. Interventions are recorded in `sim_metrics.json`
+(`meta.interventions` + the `interventions_fired` counter).
+
+**Scope.** Only the whitelisted kinds above are hot-swappable; model/agent
+construction, GM topology, backend schema, the executor / step-strategy / loop
+policies, and the `resolve`/`action_prompt` pair are not mid-run mutable.
+Injections (`inject_action` / `inject_post`) emit typed tool calls, so — like
+seed-post initialization, which shares the path — they require the target GM's
+resolve component to execute tool calls (effective `tool_calling: single|multi`,
+the default); on a `tool_calling: none` GM the text-parsing resolve records a
+parse failure instead of executing the injection. Note that
+any intervention that changes what agents see also changes downstream LLM output,
+so a live-LLM run is only as reproducible as the model it calls (as with the
+`agent_choice` router).
 
 ---
 

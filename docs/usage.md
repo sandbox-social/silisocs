@@ -459,6 +459,7 @@ outputs/<scenario_name>/<jobname>/<jobname>_<timestamp>/
 | File | Format | Description |
 |------|--------|-------------|
 | `action_events.jsonl` | JSONL | Every backend action with episode index, Game Master name, backend type, source user, and action data |
+| `exposure_events.jsonl` | JSONL | What each agent SAW per turn: post ids + per-post source (`follower`/`recsys:<type>`). On by default; disable via `env.gm.components.observe.params.log_exposures: false` |
 | `probe_events.jsonl` | JSONL | Probe/survey responses per agent per deployment step |
 | `prompts_and_responses.jsonl` | JSONL | Every LLM call: prompt, response, episode index, and agent name |
 | `run_stats.log` | Text | Per-episode timing, worker counts, retry telemetry, and startup phase durations |
