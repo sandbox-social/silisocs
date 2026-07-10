@@ -14,6 +14,7 @@ from pathlib import Path
 ACTION_EVENTS_FILENAME = "action_events.jsonl"
 EXPOSURE_EVENTS_FILENAME = "exposure_events.jsonl"
 PROBE_EVENTS_FILENAME = "probe_events.jsonl"
+HARNESS_EVENTS_FILENAME = "harness_events.jsonl"
 
 
 def resolve_event_files(run_dir: str | Path, filename: str) -> list[Path]:
@@ -48,3 +49,12 @@ def resolve_probe_event_files(run_dir: str | Path) -> list[Path]:
     probe discovery uniform with the action/exposure logs.
     """
     return resolve_event_files(run_dir, PROBE_EVENTS_FILENAME)
+
+
+def resolve_harness_event_files(run_dir: str | Path) -> list[Path]:
+    """Return the harness-event log file(s) for a run directory (see resolve_event_files).
+
+    Harness events are written at the backend layer, so they follow the same flat
+    (single-GM) vs per-GM ``<gm_name>/`` layout as action/exposure logs.
+    """
+    return resolve_event_files(run_dir, HARNESS_EVENTS_FILENAME)

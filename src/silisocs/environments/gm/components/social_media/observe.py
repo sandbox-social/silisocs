@@ -16,8 +16,10 @@ class TimelineMakeObservation(ObservationComponent):
     read_only = True
 
     # Mid-run tunable via the generic set_component_params intervention (and its
-    # set_recsys sugar); applied through set_recsys_type below.
-    runtime_tunable = frozenset({"recsys_type"})
+    # set_recsys sugar); applied through the set_* methods below. Both values are
+    # read per make_observation call and the component is stateless, so retuning
+    # is replay-safe.
+    runtime_tunable = frozenset({"recsys_type", "timeline_mode"})
 
     def __init__(
         self,
@@ -49,6 +51,10 @@ class TimelineMakeObservation(ObservationComponent):
     def set_recsys_type(self, recsys_type: str) -> None:
         """Swap the recommender agents SEE (mid-run ``set_recsys`` intervention)."""
         self._default_recsys_type = str(recsys_type or "").strip() or None
+
+    def set_timeline_mode(self, timeline_mode: str) -> None:
+        """Swap the timeline composition mode (mid-run ``set_component_params``)."""
+        self._timeline_mode = str(timeline_mode or "follower_chronological").strip()
 
     def make_observation(self, agent_name: str) -> str:
         active_agent_name = self._agent_name(agent_name)

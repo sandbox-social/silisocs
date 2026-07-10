@@ -377,6 +377,45 @@ injects it only into agents whose constructor accepts a `memory_policy` param, s
 non-NativeAgent agents are unaffected. See
 [Configuration → Agent Memory](configuration.md#agent-memory-simmemory).
 
+## Wrapping your own harness (experimental)
+
+A **harness agent** embeds a real agent harness (its own model→tool loop) as a silisocs
+agent. The framework side is fully generic — you only implement a thin `HarnessAdapter`
+that runs one harness turn; `HarnessAgent` owns observe-buffering, ActionSpec dispatch,
+probes, checkpoint state, and telemetry. See [Harness Agents](harness_agents.md) for the
+full picture; the seam is:
+
+```python
+from silisocs.agents.harness import HarnessAgent, HarnessTurnResult
+from silisocs.agents.harness.adapter import HarnessTurnRequest
+
+class MyHarnessAdapter:
+    def run_turn(self, request: HarnessTurnRequest) -> HarnessTurnResult:
+        # Drive your harness. Execute each tool it picks through the Tool Bridge:
+        #   call = request.surface.execute(action_name, arguments)   # -> real backend result
+        # request.surface.schemas() lists the actions this agent may call (already
+        # filtered to the backend catalog + the agent's flow).
+        final_text = ...  # the harness's closing message
+        return HarnessTurnResult(final_text=final_text, finished=True)
+
+    # Optional: run_turn_async (loop-native), run_probe, snapshot/restore,
+    # bind_model_proxy(base_url, api_key) to route model calls through the Model Proxy.
+
+class MyHarnessAgent(HarnessAgent):
+    def __init__(self, model, *, name, persona="", probe_mode="model", **persona_fields):
+        from silisocs.agents.harness.base import compose_persona
+        super().__init__(
+            model, name=name, adapter=MyHarnessAdapter(),
+            persona=compose_persona(persona, **persona_fields), probe_mode=probe_mode,
+        )
+```
+
+Reference it via `persona_pipeline.classes.<class>.class_path` — no game-master config is
+needed (the default GM binds the Tool Bridge and records the self-describing harness
+turn). `FakeHarnessAdapter` / `FakeHarnessAgent` are the dependency-free reference
+implementation and the subject of the contract tests
+(`tests/test_harness_agent_contract.py`) — the tests are the public spec.
+
 ## Related
 
 - [Memory Initialization](memory_initialization.md): How agents get their starting knowledge

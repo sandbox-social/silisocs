@@ -213,19 +213,38 @@ class SingleActionTurnPolicy(_DrivenTurnPolicy):
 
 @dataclass
 class FixedCountTurnPolicy(_DrivenTurnPolicy):
-    """Execute exactly N actions per active agent each step."""
+    """Execute exactly N actions per active agent each step.
+
+    By default the budget counts EMITTED actions: every action the agent produces
+    consumes from ``count`` whether or not it committed a backend change. Set
+    ``count_committed: true`` to count only actions that COMMITTED (validated +
+    executed) — a tool call that fails resolve (bad args, unknown action, execution
+    error, flow-filtered) no longer burns the budget, so the agent gets ``count``
+    real actions. ``max_attempts`` bounds the retry loop in that mode (default
+    ``2 * count``) so an agent that keeps emitting invalid actions can't loop
+    forever. Both are no-ops when ``count_committed`` is false (identical to before).
+    """
 
     count: int = 2
     observe_before_act: str = "first"
+    count_committed: bool = False
+    max_attempts: int = 0
     name: str = "fixed_count"
 
     def _drive(self) -> _PolicyDrive:
         last_action = ""
         remaining_actions = max(1, self.count)
-        action_index = 0
         mode = _normalize_observe_before_act(self.observe_before_act)
+        # In committed mode, cap total attempts so repeated invalid emissions
+        # (which never decrement the budget) can't spin forever.
+        attempts_left = (
+            (self.max_attempts if self.max_attempts > 0 else 2 * max(1, self.count))
+            if self.count_committed
+            else -1  # unbounded: emitted-counting always makes progress
+        )
+        action_index = 0
 
-        while remaining_actions > 0:
+        while remaining_actions > 0 and attempts_left != 0:
             action_result = yield _should_observe(mode, action_index=action_index)
             raw_action = action_result.raw_action
             rendered_action = action_result.rendered_action
@@ -236,8 +255,15 @@ class FixedCountTurnPolicy(_DrivenTurnPolicy):
             else:
                 break
 
-            consumed = _count_structured_actions(raw_action or action)
-            remaining_actions -= max(1, consumed)
+            emitted = max(1, _count_structured_actions(raw_action or action))
+            if self.count_committed:
+                # Prefer the resolve report's committed count; fall back to emitted
+                # when the resolver can't report per-call outcomes (committed is None).
+                committed = getattr(action_result.resolved_result, "committed", None)
+                remaining_actions -= emitted if committed is None else committed
+                attempts_left -= 1
+            else:
+                remaining_actions -= emitted
             action_index += 1
         return last_action
 

@@ -19,13 +19,14 @@ from silisocs.environments.gm.components.base import (
     ResolveComponent,
 )
 from silisocs.runtime.telemetry.collector import SimMetricsCollector
-from silisocs.runtime.types import ActionOutput, OutputType
+from silisocs.runtime.types import HARNESS_TURN_KEY, ActionOutput, OutputType, ResolveReport
 
 _LOGGER = logging.getLogger(__name__)
 
 PARSE_FAILURE_COUNTER = "action_parse_failures"
 INVALID_TARGET_COUNTER = "action_invalid_targets"
 ACTION_FLOW_FILTERED_COUNTER = "action_flow_filtered"
+HARNESS_TURNS_COUNTER = "harness_turns"
 
 DEFAULT_FLOW_TAG = "default"
 
@@ -79,6 +80,37 @@ def _record_parse_failure(agent_name: str, action_text: str, reason: str) -> Non
         agent_name,
         reason,
         snippet,
+    )
+
+
+def _record_harness_turn(backend: Any, active_agent: str, payload: dict[str, Any]) -> ResolveReport:
+    """Record a completed harness turn (metric + ``turn_completed`` event) and signal
+    completion so an open-ended turn policy stops after one harness run.
+    """
+    SimMetricsCollector.get().increment_counter(HARNESS_TURNS_COUNTER)
+    executed = payload.get("executed") or []
+    tool_calls = int(payload.get("tool_calls") or len(executed))
+    failures = int(payload.get("failures") or 0)
+    log = getattr(getattr(backend, "harness_logger", None), "log", None)
+    if callable(log):
+        log(
+            {
+                "kind": "turn_completed",
+                "agent_name": active_agent,
+                "tool_calls": tool_calls,
+                "failures": failures,
+                "usage": dict(payload.get("usage") or {}),
+                "finished": bool(payload.get("finished", True)),
+            }
+        )
+    final_text = str(payload.get("final_text") or "").strip()
+    summary = final_text or f"Completed a harness turn with {tool_calls} action(s)."
+    # The harness ran its own tool loop inside one act(): report its committed
+    # (tool_calls minus failures) and attempted (tool_calls) counts for free.
+    return ResolveReport(
+        f"{summary}\nFINISHED: harness turn complete.",
+        committed=max(0, tool_calls - failures),
+        attempted=tool_calls,
     )
 
 
@@ -186,7 +218,17 @@ class _BaseResolveComponent(ResolveComponent):
         self._flow_filters = self._build_flow_filters(self.flow_action_filters)
 
     def resolve_action(self, agent_name: str, action: ActionOutput | str) -> str:
-        """Resolve raw action text for one agent."""
+        """Resolve one agent's action.
+
+        A harness agent's output is self-describing — it carries a ``harness_turn``
+        structured payload for a turn already executed through the backend — so it is
+        recorded here, uniformly, whatever concrete resolver is configured (harness agents
+        need no special resolve). Any other output flows to the concrete :meth:`resolve`.
+        """
+        if isinstance(action, ActionOutput) and action.structured:
+            payload = action.structured.get(HARNESS_TURN_KEY)
+            if payload is not None:
+                return _record_harness_turn(self.backend, agent_name, dict(payload))
         return self.resolve(active_agent=agent_name, action=action)
 
     # ------------------------------------------------------------------ #
@@ -327,14 +369,8 @@ class _BaseResolveComponent(ResolveComponent):
 
     def _action_has_parameter(self, action_name: str, parameter_name: str) -> bool:
         """Return whether an app action accepts the named parameter."""
-        actions = getattr(self.backend, "actions", None)
-        if not callable(actions):
-            return False
-        for action in actions():
-            if action_name not in {action.name, action.selectable_name}:
-                continue
-            return any(param.name == parameter_name for param in action.parameters)
-        return False
+        accepts = getattr(self.backend, "action_accepts_param", None)
+        return bool(accepts(action_name, parameter_name)) if callable(accepts) else False
 
     def resolve(self, *, active_agent: str, action: ActionOutput | str) -> str:
         """Resolve raw action text into backend operation result."""
@@ -446,11 +482,29 @@ class ToolCallingResolveComponent(_BaseResolveComponent):
                 payload[RUNTIME_AGENT_PARAM] = active_agent
             plans.append(("call", (tool_name, payload)))
 
+        # Dispatch each planned call, tracking how many COMMITTED a backend change
+        # (validated + executed without error) vs how many were merely attempted, so
+        # a committed-counting turn policy can tell an accepted action from a rejected
+        # or failed one. Rejects are attempted-not-committed. A duck-typed backend that
+        # implements only invoke_action_with_kwargs (not the detailed seam) can't report
+        # commit outcomes -> committed stays None (policy falls back to emitted counting).
+        detailed = getattr(self.backend, "invoke_action_detailed", None)
+        detailed = detailed if callable(detailed) else None
         results: list[str] = []
+        committed: int | None = 0 if detailed is not None else None
         for kind, value in plans:
             if kind == "reject":
                 results.append(str(value))
+                continue
+            tool_name, payload = value
+            if detailed is not None:
+                ok, result = detailed(tool_name, payload)
+                committed = (committed or 0) + int(bool(ok))
             else:
-                tool_name, payload = value
-                results.append(str(self.backend.invoke_action_with_kwargs(tool_name, payload)))
-        return "\n".join(result for result in results if result)
+                result = self.backend.invoke_action_with_kwargs(tool_name, payload)
+            results.append(str(result))
+        return ResolveReport(
+            "\n".join(result for result in results if result),
+            committed=committed,
+            attempted=len(plans),
+        )

@@ -304,6 +304,7 @@ _IGNORED_ACTION_LABELS = {
     "recsys_init",
     "recsys_update",
     "get_trending",
+    "get_post_comments",
     "do_nothing",
 }
 

@@ -102,7 +102,7 @@ Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 | `sim.action_mode` | custom | Prompt style (`custom` or `generic`) |
 | `sim.tool_calling.mode` | single | `none` \| `single` \| `multi` |
 | `sim.engine.step.built_in` | base | `base`, `sequential`, `flow`, `multi_gm`, `multi_gm_serial`, or `multi_gm_staged` (the three `multi_gm*` strategies select the flow-chain traversal mode; see below) |
-| `sim.engine.turn_policy.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended` |
+| `sim.engine.turn_policy.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended`. `fixed_count` params: `count`; optional `count_committed: true` counts only actions that COMMITTED a backend change (a failed-resolve tool call no longer burns the budget), bounded by `max_attempts` (default `2*count`) |
 | `sim.engine.executor` | threads | Turn executor: `threads` (one pool worker per in-flight turn) \| `asyncio` (turns are coroutines on one background event loop — thousands of LLM calls in flight on a handful of threads). Sync `act`/`sample_text` stay the REQUIRED contracts; `act_async` / `sample_*_async` / turn-policy `run_async` are OPTIONAL loop-native overrides (shipped: NativeAgent, FixedAgent, OpenAI-compatible providers, all built-in turn policies), and sync-only agents/models/policies automatically run on helper threads via `asyncio.to_thread` — both kinds mix freely in one step. `max_concurrent_actions` keeps its meaning (max in-flight turns, enforced as an asyncio semaphore); all scheduling semantics (flow chains, barriers, per-GM caps/locks, failure isolation, retry telemetry) are identical across executors |
 | `sim.engine.participation.built_in` | activity_probability | Sim-level per-step roster filter: `all` \| `activity_probability` \| `activity_markov` (or `class_path` to a custom `ParticipationPolicy`). Filters who is in the step's roster BEFORE scheduling, every GM's next_acting (effective acting = participation ∩ next_acting), AND per-step GM `update`s — so per-step backend work (e.g. recsys refresh) is O(active); an update component that needs the population declares `requires_full_roster = True`. Stateless/seed-derived, so replay- and resume-stable. The GM `next_acting` slot keeps only env-derived built-ins (`all_agents`, `fixed_order`); a config naming the moved built-ins there gets a migration error. Set `all` for deterministic/turn-based runs |
 | `sim.engine.step.params.gm_turn_policies` | {} | Per-GM turn policy map (`gm_name -> {built_in\|class_path, params}`); applies under any step mode |
@@ -299,7 +299,13 @@ if the outgoing or incoming component has non-empty `get_state()` — retune
 stateful components with `set_component_params` instead; `resolve`/`action_prompt`
 and `initialize` are out of scope). To add a kind,
 subclass `InterventionHandler` (declare `kind`, `persistent`, `validate`,
-`apply`) and reference it via `kind: custom`.
+`apply`) and reference it via `kind: custom`. Interventions fire BEFORE `run_step`
+stamps the episode index, so a custom handler that logs backend events must stamp
+first via the `InterventionContext` helpers: `ctx.stamp_episode(gm)` (stamps the
+GM's action/exposure/harness loggers with `ctx.step`) or
+`ctx.resolve_action(gm, agent_name, output)` (stamps, then resolves an injected
+action through the GM's resolve pipeline — the seam the built-in `inject_action`/
+`inject_post` handlers use).
 
 ## 5) Agent Interface: Concordia vs Custom
 
@@ -536,6 +542,60 @@ def act(self, action_spec) -> str:
 
 This mode works with any agent (Concordia or custom) that implements the basic interface.
 
+### Harness Agents (real agent harnesses as silisocs agents) — EXPERIMENTAL
+
+> **Experimental.** The harness integration is new and evolving; the deterministic core
+> (Tool Bridge, agent/probe/checkpoint contract, Model Proxy) is tested with the
+> dependency-free `FakeHarnessAgent`, but live Hermes/OpenClaw runs are opt-in and less
+> exercised. Expect the config surface and internals to change.
+
+A **harness agent** (`silisocs.agents.harness`) embeds a real agent harness — Hermes
+(in-process) or OpenClaw (out-of-process) — as an `Agent`. The harness runs its own
+model→tool loop inside ONE `act()` call (bounded by its `max_iterations`), so for a
+harness class the effective turn policy is `single_action` around one complete run. The
+design is deliberately thin at the edges:
+
+- **Harness agents are just `Agent` subclasses** loaded via `class_path`. No engine,
+  scheduler, participation, intervention, or checkpoint changes — those layers are
+  duck-typed. `HarnessAgent` owns observe-buffering, ActionSpec dispatch, probes,
+  checkpoint state, and telemetry.
+- **One thin module — the Tool Bridge (`ToolSurface`).** Built per turn from the acting
+  GM's backend. It adds no filtering of its own — the backend already owns that:
+  `schemas()` returns `backend.generate_tool_schemas()` (already restricted to the
+  backend's enabled/excluded actions) and `execute()` forwards to
+  `backend.invoke_action_with_kwargs()` (which validates the call and logs the
+  `action_events.jsonl` row, just like a native turn). The surface only adds the harness
+  concerns: injecting the actor argument (via `backend.action_accepts_param`, shared with
+  the resolve components), turning exceptions into results the loop reacts to, and
+  recording `harness_events.jsonl`. It is the single seam every adapter consumes, so
+  harness agents are backend-agnostic by construction.
+- **One adapter seam — `HarnessAdapter` (Protocol).** Concrete harnesses implement only
+  `run_turn` (optionally `run_turn_async`/`run_probe`/`snapshot`/`restore`/
+  `bind_model_proxy`). `FakeHarnessAdapter`/`FakeHarnessAgent` are the deterministic,
+  dependency-free reference (and the contract-test subject).
+- **Zero GM config (self-describing).** No `harness` GM built-ins exist. The default
+  action-prompt component binds the Tool Bridge into `ActionSpec.extra_args['tool_surface']`
+  for any acting agent that declares `wants_tool_surface` (harness agents do; native
+  agents don't, so non-harness runs are unchanged). A harness turn's `ActionOutput`
+  carries a `harness_turn` structured payload, so the shared `_BaseResolveComponent.resolve_action`
+  records it uniformly — ANY resolve (`parsed_action`/`tool_calling`/…) handles harness
+  output, and one GM hosts mixed native+harness populations with no special config or
+  validation.
+- **One model plane — the Model Proxy (`agents/harness/proxy.py`).** A loopback
+  OpenAI-compatible server the runtime starts when any harness class is configured
+  (`setup_harness_proxy` in `agents/harness/runtime.py`, stopped in the session
+  `finally`). Harness model calls forward through it byte-for-byte; provider `usage`
+  folds into the SAME `llm_usage` as native agents via a duck-typed `UsageAccumulator`
+  added to the run's `models`. Real keys live only in the proxy; per-agent routing
+  tokens are the harness-side "api key".
+- **Determinism:** harness agents are snapshot-restored, never replay-restored. Per-call
+  detail is written to `harness_events.jsonl` (per-GM in multi-GM runs), indexed in the
+  run manifest and exposed on `RunArtifact.iter_harness_events()`.
+
+To add a new harness: implement a `HarnessAdapter` and a thin `HarnessAgent` subclass.
+See `docs/harness_agents.md`. Non-goals of the current pass: no event-driven engine, no
+MoltBook facade, no live-internet tools (surfaces expose only backend catalogs).
+
 ## 5.5) Action Modes and Platform Configuration
 
 The platform supports different action modes configured via `sim.action_mode`:
@@ -568,6 +628,17 @@ For **tool-calling mode** specifically: The entity layer is responsible for call
   output directory still starts from scratch. Set `false` to force a fresh start.
 - `sim.checkpoint.restore`
 - Resume restores game-master and entity component state plus raw log.
+
+**Committed-only action log** (backend authors): `action_events.jsonl` is the
+canonical log of actions that COMMITTED a state change (or a successful deliberate
+read). Call `_log_action_event` only on an action's success path — never after a
+swallowed exception or an idempotent no-op (already-liked, duplicate mute). This is
+a correctness contract: the replay strategy below re-executes every logged row (a
+logged-but-failed action is re-issued on restore) and eval metrics count every row.
+Errors stay observable via the returned message and the `backend_action_errors`
+counter. `invoke_action_detailed(name, kwargs) -> (committed, result)` is the seam
+that reports the commit outcome (e.g. to a committed-counting turn policy);
+`invoke_action_with_kwargs` is the string-only view over it.
 
 **Backend restore contract** (backend authors): a backend supports either (or both)
 of two restore paths. (1) Authoritative snapshot — set the class flag

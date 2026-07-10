@@ -538,16 +538,25 @@ class RedditLikeApp(SocialBackendApp):
         actor_display_name = str(agent_name)
         username = self._get_username(agent_name)
         try:
-            self._platform.vote(username, target_id, target_type, 1)
-            result_msg = f"{actor_display_name} upvoted {target_type} {target_id}."
+            # Returns False for a re-affirming vote (already upvoted) — a no-op.
+            committed = self._platform.vote(username, target_id, target_type, 1) is not False
+            result_msg = (
+                f"{actor_display_name} upvoted {target_type} {target_id}."
+                if committed
+                else f"{actor_display_name} had already upvoted {target_type} {target_id}."
+            )
         except Exception as e:
             result_msg = f"Error upvoting {target_type} {target_id}: {e}"
+            committed = False
         self._print(result_msg, emoji="⬆️")
-        self._log_action_event(
-            source_user=actor_display_name,
-            label="upvote",
-            data={"target_id": str(target_id), "target_type": target_type},
-        )
+        # Committed state changes only: failures leave no row in the canonical
+        # action log (replay/eval consume it as ground truth).
+        if committed:
+            self._log_action_event(
+                source_user=actor_display_name,
+                label="upvote",
+                data={"target_id": str(target_id), "target_type": target_type},
+            )
         return result_msg
 
     @app_action
@@ -562,16 +571,23 @@ class RedditLikeApp(SocialBackendApp):
         actor_display_name = str(agent_name)
         username = self._get_username(agent_name)
         try:
-            self._platform.vote(username, target_id, target_type, -1)
-            result_msg = f"{actor_display_name} downvoted {target_type} {target_id}."
+            # Returns False for a re-affirming vote (already downvoted) — a no-op.
+            committed = self._platform.vote(username, target_id, target_type, -1) is not False
+            result_msg = (
+                f"{actor_display_name} downvoted {target_type} {target_id}."
+                if committed
+                else f"{actor_display_name} had already downvoted {target_type} {target_id}."
+            )
         except Exception as e:
             result_msg = f"Error downvoting {target_type} {target_id}: {e}"
+            committed = False
         self._print(result_msg, emoji="⬇️")
-        self._log_action_event(
-            source_user=actor_display_name,
-            label="downvote",
-            data={"target_id": str(target_id), "target_type": target_type},
-        )
+        if committed:
+            self._log_action_event(
+                source_user=actor_display_name,
+                label="downvote",
+                data={"target_id": str(target_id), "target_type": target_type},
+            )
         return result_msg
 
     @app_action
@@ -606,14 +622,17 @@ class RedditLikeApp(SocialBackendApp):
         try:
             self._platform.update_profile(username, bio)
             msg = f'Profile updated for {actor_display_name}: "{bio}"'
+            committed = True
         except Exception as e:
             msg = f"Error updating profile: {e}"
+            committed = False
         self._print(msg, emoji="✏️")
-        self._log_action_event(
-            source_user=actor_display_name,
-            label="update_profile",
-            data={"new_bio": bio},
-        )
+        if committed:
+            self._log_action_event(
+                source_user=actor_display_name,
+                label="update_profile",
+                data={"new_bio": bio},
+            )
         return msg
 
     @app_action
@@ -666,14 +685,17 @@ class RedditLikeApp(SocialBackendApp):
                     )
             else:
                 msg = f"No comments on post {post_id}."
+            committed = True
         except Exception as e:
             msg = f"Error fetching comments for post {post_id}: {e}"
+            committed = False
         self._print(msg, emoji="💬")
-        self._log_action_event(
-            source_user=actor_display_name,
-            label="get_post_comments",
-            data={"post_id": str(post_id)},
-        )
+        if committed:
+            self._log_action_event(
+                source_user=actor_display_name,
+                label="get_post_comments",
+                data={"post_id": str(post_id)},
+            )
         return msg
 
     @app_action
@@ -715,11 +737,12 @@ class RedditLikeApp(SocialBackendApp):
         result = self._platform.unlike_post(username, post_id)
         msg = f"{actor_display_name} {'removed upvote from' if result else 'could not remove upvote from'} post {post_id}."
         self._print(msg, emoji="🚫⬆️")
-        self._log_action_event(
-            source_user=actor_display_name,
-            label="unlike_post",
-            data={"post_id": str(post_id)},
-        )
+        if result:
+            self._log_action_event(
+                source_user=actor_display_name,
+                label="unlike_post",
+                data={"post_id": str(post_id)},
+            )
         return msg
 
     @app_action
@@ -735,11 +758,12 @@ class RedditLikeApp(SocialBackendApp):
         result = self._platform.dislike_post(username, post_id)
         msg = f"{actor_display_name} {'downvoted' if result else 'could not downvote'} post {post_id}."
         self._print(msg, emoji="⬇️")
-        self._log_action_event(
-            source_user=actor_display_name,
-            label="dislike_post",
-            data={"post_id": str(post_id)},
-        )
+        if result:
+            self._log_action_event(
+                source_user=actor_display_name,
+                label="dislike_post",
+                data={"post_id": str(post_id)},
+            )
         return msg
 
     @app_action
@@ -755,11 +779,12 @@ class RedditLikeApp(SocialBackendApp):
         result = self._platform.undo_dislike_post(username, post_id)
         msg = f"{actor_display_name} {'removed downvote from' if result else 'could not remove downvote from'} post {post_id}."
         self._print(msg, emoji="🆗")
-        self._log_action_event(
-            source_user=actor_display_name,
-            label="undo_dislike_post",
-            data={"post_id": str(post_id)},
-        )
+        if result:
+            self._log_action_event(
+                source_user=actor_display_name,
+                label="undo_dislike_post",
+                data={"post_id": str(post_id)},
+            )
         return msg
 
     @app_action
@@ -777,11 +802,12 @@ class RedditLikeApp(SocialBackendApp):
         result = self._platform.mute_user(src_username, tgt_username)
         msg = f"{actor_display_name} {'muted' if result else 'could not mute'} {target_user_full}."
         self._print(msg, emoji="🔇")
-        self._log_action_event(
-            source_user=actor_display_name,
-            label="mute_user",
-            data={"target_user": target_user_full},
-        )
+        if result:
+            self._log_action_event(
+                source_user=actor_display_name,
+                label="mute_user",
+                data={"target_user": target_user_full},
+            )
         return msg
 
     @app_action
@@ -799,11 +825,12 @@ class RedditLikeApp(SocialBackendApp):
         result = self._platform.unmute_user(src_username, tgt_username)
         msg = f"{actor_display_name} {'unmuted' if result else 'could not unmute'} {target_user_full}."
         self._print(msg, emoji="🔊")
-        self._log_action_event(
-            source_user=actor_display_name,
-            label="unmute_user",
-            data={"target_user": target_user_full},
-        )
+        if result:
+            self._log_action_event(
+                source_user=actor_display_name,
+                label="unmute_user",
+                data={"target_user": target_user_full},
+            )
         return msg
 
     @app_action
@@ -822,11 +849,12 @@ class RedditLikeApp(SocialBackendApp):
         result = self._platform.report_post(username, post_id, reason)
         msg = f"{actor_display_name} {'reported' if result else 'could not report'} post {post_id} ({reason})."
         self._print(msg, emoji="⚠️")
-        self._log_action_event(
-            source_user=actor_display_name,
-            label="report_post",
-            data={"post_id": str(post_id), "reason": reason},
-        )
+        if result:
+            self._log_action_event(
+                source_user=actor_display_name,
+                label="report_post",
+                data={"post_id": str(post_id), "reason": reason},
+            )
         return msg
 
     @app_action
@@ -851,14 +879,17 @@ class RedditLikeApp(SocialBackendApp):
                     )
             else:
                 msg = "No trending posts found."
+            committed = True
         except Exception as e:
             msg = f"Error getting trending posts: {e}"
+            committed = False
         self._print(msg, emoji="🔥")
-        self._log_action_event(
-            source_user=actor_display_name,
-            label="get_trending",
-            data={"limit": limit, "days": days},
-        )
+        if committed:
+            self._log_action_event(
+                source_user=actor_display_name,
+                label="get_trending",
+                data={"limit": limit, "days": days},
+            )
         return msg
 
     @app_action

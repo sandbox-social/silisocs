@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.metadata
 import importlib.util
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -75,6 +76,25 @@ def run_doctor(output_dir: str | Path | None = None) -> int:
             _line(True, f"{extra}: installed — {unlocks}")
         else:
             _line(None, f'{extra}: not installed — {unlocks}. pip install "silisocs[{extra}]"')
+
+    print("\nHarness agents (real agent harnesses as silisocs agents):")
+    hermes_ok = _importable("run_agent")
+    if hermes_ok:
+        _line(True, "hermes: run_agent importable — HermesAgent ready")
+    else:
+        _line(
+            None,
+            "hermes: not importable — install hermes-agent in an ISOLATED env "
+            "(its openai==2.24.0 pin conflicts with silisocs). See docs/harness_agents.md",
+        )
+    node_bin = shutil.which("node")
+    openclaw_bin = shutil.which("openclaw")
+    _line(True if node_bin else None, f"openclaw: node {'found' if node_bin else 'not found'}")
+    _line(
+        True if openclaw_bin else None,
+        f"openclaw: binary {'found' if openclaw_bin else 'not found'} "
+        "(only needed when sim.harness.openclaw is configured)",
+    )
 
     print("\nModel provider API keys (set/unset only; values never shown):")
     any_key = False

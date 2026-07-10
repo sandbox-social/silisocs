@@ -339,6 +339,18 @@ A bespoke restore that a stateless mapper cannot express is a custom
 is no `event_to_replay_action` method to override and no `supports_action_replay`
 flag — restore support is expressed through the two paths above.)
 
+**Committed-only action log.** `action_events.jsonl` is the canonical log of
+actions that COMMITTED a state change (or a successful deliberate read). An action
+method must call `_log_action_event` only on its success path — never after a
+swallowed exception or an idempotent no-op (an already-liked like, a duplicate
+mute). This is a correctness contract, not a style rule: the replay strategy above
+re-executes every logged row, so a logged-but-failed action would be re-issued on
+restore, and eval metrics count every row. Errors stay observable via the action's
+returned message and the `backend_action_errors` telemetry counter — not the log.
+When you need the commit outcome programmatically (e.g. a committed-counting turn
+policy), call `invoke_action_detailed(name, kwargs) -> (committed, result)`;
+`invoke_action_with_kwargs` is the string-only view over it.
+
 ---
 
 ## Built-in Visualizers

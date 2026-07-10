@@ -80,6 +80,45 @@ def microblog_event_to_replay_action(label: str, data: Mapping[str, Any]) -> Act
         return ActionOutput.from_tool_calls(
             [ToolCall(f"{label}_user", {"target_user": str(target)})]
         )
+    if label == "unlike":
+        return ActionOutput.from_tool_calls(
+            [ToolCall("unlike_tweet", {"post_id": _replay_target_id("Unlike", data)})]
+        )
+    if label == "quote_repost":
+        text = data.get("content") or data.get("post_text") or data.get("status")
+        if not text:
+            raise ValueError(f"Quote-repost event missing text: {data}")
+        return ActionOutput.from_tool_calls(
+            [
+                ToolCall(
+                    "quote_repost_tweet",
+                    {"post_id": _replay_target_id("Quote-repost", data), "status": str(text)},
+                )
+            ]
+        )
+    if label == "update_profile":
+        bio = data.get("new_bio") or data.get("bio")
+        if bio is None:
+            raise ValueError(f"Update-profile event missing bio: {data}")
+        return ActionOutput.from_tool_calls([ToolCall("update_profile", {"bio": str(bio)})])
+    if label in {"unlike_post", "dislike_post", "undo_dislike_post"}:
+        return ActionOutput.from_tool_calls(
+            [ToolCall(label, {"post_id": _replay_target_id(label, data)})]
+        )
+    if label in {"mute_user", "unmute_user"}:
+        target = data.get("target_user") or data.get("target") or data.get("user")
+        if not target:
+            raise ValueError(f"{label} event missing target user: {data}")
+        return ActionOutput.from_tool_calls([ToolCall(label, {"target_user": str(target)})])
+    if label == "report_post":
+        call: dict[str, Any] = {"post_id": _replay_target_id("Report", data)}
+        reason = data.get("reason")
+        # Preserve the original reason verbatim when it was logged (including an
+        # explicit empty string); only omit it when the key is absent so the
+        # backend default applies.
+        if reason is not None:
+            call["reason"] = str(reason)
+        return ActionOutput.from_tool_calls([ToolCall("report_post", call)])
     raise ValueError(f"Unknown microblog action event label for checkpoint replay: {label}")
 
 

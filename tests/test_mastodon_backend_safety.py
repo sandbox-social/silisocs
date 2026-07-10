@@ -154,3 +154,40 @@ def test_mastodon_display_name_lookup_supports_single_and_two_token_names() -> N
     assert "posted a toot" in app.post_toot("user_1", "hello")
     assert "liked post" in app.like_toot("user_1", "123")
     assert "boosted post" in app.boost_toot("user_1", "123")
+
+
+def test_mastodon_already_liked_or_boosted_noop_logs_no_event() -> None:
+    """An already-liked/boosted toot is a no-op and must NOT log an action row.
+
+    get_state embeds the logged action history and set_state replays it on restore,
+    so a redundant like/boost row would be re-issued — the committed-only contract.
+    """
+
+    class Logger:
+        def __init__(self) -> None:
+            self.events: list[dict] = []
+
+        def log(self, event: dict) -> None:
+            self.events.append(event)
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("real like/boost op must not run on an already-done no-op")
+
+    logger = Logger()
+    ops = SimpleNamespace(
+        like_check=lambda _u, _t: True,  # already liked
+        boost_check=lambda _u, _t: True,  # already boosted
+        like_toot=_boom,
+        boost_toot=_boom,
+    )
+    app = SocialNetworkApp(perform_operations=False, action_logger=logger)
+    app.set_user_mapping({"user_1": "user0003"})
+    app.perform_operations = True
+    app._mastodon_ops = ops
+
+    like_msg = app.like_toot("user_1", "123")
+    boost_msg = app.boost_toot("user_1", "123")
+
+    assert "previously liked" in like_msg
+    assert "previously boosted" in boost_msg
+    assert logger.events == []  # neither no-op logged a row

@@ -86,6 +86,40 @@ def test_usage_attributed_per_phase_including_other() -> None:
     assert model.get_usage_counters("all")["prompt_tokens"] == 600
 
 
+def test_memory_summarization_usage_attributed_to_active_phase() -> None:
+    """Memory summarization model calls land in whatever retry phase is active when
+    ``record()`` fires — NOT a stale one.
+
+    Summarization runs on the record/observe side, so it can be triggered outside an
+    agent turn (agent initialization seeding, ``broadcast_observation`` interventions),
+    where the engine leaves the retry phase at its ``other`` default, or inside the
+    engine's ``action`` bracket. Both must be tracked (never untracked), and neither
+    must leak into the other's bucket. This locks in the phase model the
+    ``SummarizingMemory._summarize`` comment documents.
+    """
+    from silisocs.agents.memory import SummarizingMemory
+
+    model = _model(_response(usage=_Usage(7, 3)))
+
+    # Outside a turn: the engine has not bracketed a phase, so it is at 'other'.
+    model.set_retry_phase("other")
+    mem_init = SummarizingMemory(model=cast(Any, model), max_memories=3, chunk_size=2)
+    for i in range(4):  # 4 > max 3 -> exactly one summarization model call
+        mem_init.record(f"init memory {i}")
+    assert model.get_usage_counters("other")["calls_with_usage"] == 1
+    assert model.get_usage_counters("other")["prompt_tokens"] == 7
+    assert model.get_usage_counters("action")["calls_with_usage"] == 0
+
+    # Inside a turn: the engine brackets the phase to 'action'.
+    model.set_retry_phase("action")
+    mem_turn = SummarizingMemory(model=cast(Any, model), max_memories=3, chunk_size=2)
+    for i in range(4):
+        mem_turn.record(f"turn memory {i}")
+    assert model.get_usage_counters("action")["calls_with_usage"] == 1
+    # The 'other' bucket is unchanged: no cross-phase leakage from the second batch.
+    assert model.get_usage_counters("other")["calls_with_usage"] == 1
+
+
 def test_usage_counters_thread_safe() -> None:
     model = _model(_response(usage=_Usage(1, 1)))
 

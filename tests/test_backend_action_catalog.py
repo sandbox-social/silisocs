@@ -207,3 +207,42 @@ def test_action_error_is_returned_without_error_counter() -> None:
     result = app.invoke_action_with_kwargs("nope", {})
     assert "that post does not exist" in result
     assert SimMetricsCollector.get().counter("backend_action_errors") == 0
+
+
+def test_invoke_action_detailed_reports_commit_flag() -> None:
+    from silisocs.environments.backends.base import BackendApp, app_action
+    from silisocs.exceptions import ActionError
+    from silisocs.runtime.telemetry.collector import SimMetricsCollector
+
+    class MixedApp(BackendApp):
+        def name(self) -> str:
+            return "MixedApp"
+
+        def description(self) -> str:
+            return "test app"
+
+        def initialize(self, agent_names, **kwargs) -> None:
+            del agent_names, kwargs
+
+        @app_action(selectable_name="ok")
+        def ok_action(self, value: str) -> str:
+            """Succeed."""
+            return f"did {value}"
+
+        @app_action(selectable_name="refuse")
+        def refuse_action(self) -> str:
+            """Refuse."""
+            raise ActionError("nope")
+
+    SimMetricsCollector.reset()
+    app = MixedApp()
+    # A validated + executed call commits; the string view is unchanged.
+    ok, msg = app.invoke_action_detailed("ok", {"value": "x"})
+    assert ok is True
+    assert msg == "did x"
+    assert app.invoke_action_with_kwargs("ok", {"value": "x"}) == "did x"
+    # Validation failures and raised errors do NOT commit.
+    assert app.invoke_action_detailed("no_such_action", {})[0] is False
+    assert app.invoke_action_detailed("ok", {})[0] is False  # missing required arg
+    assert app.invoke_action_detailed("ok", {"value": "x", "extra": 1})[0] is False  # unexpected
+    assert app.invoke_action_detailed("refuse", {})[0] is False

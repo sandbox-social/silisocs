@@ -117,6 +117,7 @@ nav:
     - Environment Layer: environment_layer.md
     - Multi-GM Architecture: multi_gm_architecture.md
     - Building Agents: building_agents.md
+    - Harness Agents (experimental): harness_agents.md
     - Memory Initialization: memory_initialization.md
     - Environment Backends: backends.md
     - Evaluation Probes: probes.md

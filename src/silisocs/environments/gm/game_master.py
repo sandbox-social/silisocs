@@ -345,7 +345,10 @@ class ComponentGameMaster(BaseGameMaster):
             ResolveComponent,
             self._component_for_agent_role(agent_name=agent_name, role="resolve"),
         )
-        return str(component.resolve_action(agent_name, action))
+        result = component.resolve_action(agent_name, action)
+        # Preserve a ResolveReport (a str subclass carrying commit counts) so a
+        # committed-counting turn policy can read them; str()-wrap anything else.
+        return result if isinstance(result, str) else str(result)
 
     def get_state(self) -> dict[str, Any]:
         component_states = {
@@ -708,6 +711,16 @@ def _create_backend(backend_config: Mapping[str, Any], *, gm_name: str) -> Any:
     )
     exposure_logger.episode_idx = 0
     backend.exposure_logger = exposure_logger
+    # Harness-event logger (per-call detail of harness-agent tool loops): a sibling of
+    # action_events.jsonl in the same per-GM directory. Written only when a harness
+    # agent's Tool Bridge logs to it, so the file/writer never materialize otherwise.
+    harness_logger = EventLogger(
+        "harness",
+        os.path.join(output_rootname, "harness_events.jsonl"),
+        static_fields=static_fields,
+    )
+    harness_logger.episode_idx = 0
+    backend.harness_logger = harness_logger
     # Apply config-driven agent-facing action renames/aliases before filters so
     # enabled/excluded lists may reference either canonical or aliased names.
     action_aliases = cfg.get("action_aliases")

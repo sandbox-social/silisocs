@@ -452,7 +452,7 @@ class RedditLikePlatform(SqliteSocialEngineBase):
             existing_val = existing["vote_value"] if existing else 0
 
         if existing_val == vote_value:
-            return True  # Nothing to do
+            return False  # Nothing to do — no state change (mirrors like/mute no-ops)
 
         queries: list[tuple[str, tuple[Any, ...]]] = []
         # Update or delete vote record

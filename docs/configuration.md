@@ -720,6 +720,17 @@ give that flow its own `action_prompt` instance via `MultiFlowGameMaster`.
 | `reddit_like` | `create_reddit_post`, `create_comment`, `upvote`, `downvote`, `unlike_post`, `dislike_post`, `undo_dislike_post`, `get_home_feed`, `get_post_comments`, `search_subreddits`, `get_trending_posts`, `report_post`, `mute_user`, `unmute_user`, `update_profile`, `view_profile`, `do_nothing`, `FINISHED` |
 | `mastodon` | `post_toot`, `reply_to_toot`, `like_toot`, `boost_toot`, `follow_user`, `unfollow_user` |
 
+### Harness agents (no GM config needed)
+
+**Harness agents** (embedded Hermes/OpenClaw agents — see
+[Harness Agents](harness_agents.md)) need no special game-master components. Point a
+persona class at a harness agent (`class_path: silisocs.agents.harness.fake.FakeHarnessAgent`
+/ `hermes.HermesAgent` / `openclaw.OpenClawAgent`, optional `params.probe_mode` = `model`
+default or `harness`) and run on the **default** GM. The default action-prompt binds the
+per-turn Tool Bridge for agents that want one, and the shared resolve base records the
+self-describing harness turn regardless of which resolve is configured — so harness and
+native agents mix freely in one GM.
+
 ### Seed Posts
 
 Initialize agent feeds with background posts before the simulation starts:
@@ -1011,6 +1022,8 @@ sim:
       params:
         count: 3
         observe_before_act: first   # first | always | never
+        count_committed: false      # true = count only committed actions
+        max_attempts: 0             # 0 -> 2*count (only used when count_committed)
 ```
 
 Policy `params` are strict constructor arguments. Unknown keys fail before the
@@ -1018,6 +1031,18 @@ simulation starts unless the target policy accepts `**kwargs`.
 `observe_before_act` controls whether repeated-action policies refresh the GM
 observation only before the first action, before every action, or never.
 Omit it to preserve the default `first` behavior.
+
+`fixed_count` counts EMITTED actions by default: every action an agent produces
+consumes from `count`, whether or not it committed a backend change. Set
+`count_committed: true` to count only actions that COMMITTED (validated and
+executed) — a tool call that fails resolve (bad arguments, unknown action,
+execution error, or a flow-filtered action) no longer burns the budget, so the
+agent still gets `count` real actions. In that mode `max_attempts` bounds the retry
+loop (default `2 * count`) so an agent that keeps emitting invalid actions cannot
+loop forever. The commit signal comes from the resolve component; a resolver that
+cannot report per-call outcomes falls back to emitted counting. Idempotent no-ops
+(re-liking, re-voting) count as committed — "committed" means the action was
+accepted and executed, distinguishing it from a rejected or failed emission.
 
 Flow scheduling (requires `engine.step.built_in: flow`):
 
@@ -1308,8 +1333,8 @@ mid-run retuning: a component opts a parameter in by listing it in its
 class-level `runtime_tunable` frozenset (`BaseComponent.set_params` then routes
 each name through a `set_<name>()` setter when the component defines one,
 otherwise assigns the same-named attribute). The shipped social-media
-components declare `recsys_type` (observe + update) and
-`update_every_n_steps` / `lazy` / `max_posts` (update); a custom component —
+components declare `recsys_type` + `timeline_mode` (observe) and
+`recsys_type` / `update_every_n_steps` / `lazy` / `max_posts` (update); a custom component —
 recsys or otherwise — declares its own names and is immediately addressable
 from config, no new intervention kind required. Only declare parameters that
 are safe to reassign at a step boundary.
