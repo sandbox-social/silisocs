@@ -118,3 +118,44 @@ def test_analysis_dashboard_loads_directory_without_probe_log(tmp_path) -> None:
     assert serialized is not None
     assert serialized["posts"]["1"]["content"] == "hello"
     assert serialized["probe_data"] == {}
+
+
+def test_analysis_dashboard_loads_multi_gm_directory_via_run_artifact(tmp_path) -> None:
+    """Per-GM event logs (multi-GM layout) are merged through the artifact module."""
+    for gm_name, post_id in (("social_gm", "1"), ("world_gm", "2")):
+        gm_dir = tmp_path / gm_name
+        gm_dir.mkdir()
+        (gm_dir / "action_events.jsonl").write_text(
+            _jsonl(
+                [
+                    {
+                        "episode": 0,
+                        "event_type": "action",
+                        "source_user": "Alice",
+                        "label": "post",
+                        "data": {"post_id": post_id, "post_text": f"hello from {gm_name}"},
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+    (tmp_path / "probe_events.jsonl").write_text(
+        _jsonl(
+            [
+                {
+                    "episode": 0,
+                    "event_type": "probe",
+                    "source_user": "Alice",
+                    "label": "MoodProbe",
+                    "data": {"probe_return": "curious"},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    serialized = load_data_from_directory(tmp_path)
+
+    assert serialized is not None
+    assert set(serialized["posts"]) == {"1", "2"}
+    assert serialized["probe_data"]

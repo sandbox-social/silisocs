@@ -6,6 +6,19 @@ Run your first social media simulation in 5 minutes.
 
 Make sure you have completed the [Installation](installation.md) steps.
 
+## 0. Guided First Run (No API Key Needed)
+
+Two commands verify your setup and show you a complete run end to end:
+
+```sh
+uv run silisocs doctor     # environment health checks
+uv run silisocs tutorial   # deterministic scripted demo + artifact tour
+```
+
+The tutorial runs a small scripted-model simulation, lists the artifacts it
+produced (`run_manifest.json`, `action_events.jsonl`, checkpoints, ...), and
+prints the next commands to try.
+
 ## 1. Run the Default Scenario
 
 The default scenario simulates a small generic social media community using

@@ -553,6 +553,10 @@ def cli_main() -> None:
         from silisocs.runtime.doctor import run_doctor
 
         sys.exit(run_doctor(sys.argv[2] if len(sys.argv) > 2 else None))
+    if len(sys.argv) > 1 and sys.argv[1] == "tutorial":
+        from silisocs.runtime.tutorial import run_tutorial
+
+        sys.exit(run_tutorial(sys.argv[2] if len(sys.argv) > 2 else None))
     if len(sys.argv) > 1 and sys.argv[1] in ("new-scenario", "new-study"):
         from silisocs.scenario_gen.cli import scenario_gen_cli
 

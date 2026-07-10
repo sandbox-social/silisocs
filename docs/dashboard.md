@@ -219,6 +219,10 @@ Optional inputs:
 - `probe_events.jsonl`
 - `prompts_and_responses.jsonl`
 
+When launched with `--output_dir`, discovery goes through the Run Artifact
+Module (`silisocs.evaluations.run_artifact.load_run`): manifest-first, with
+per-GM event logs from multi-GM runs merged automatically.
+
 The app renders generic action trends and probe trends. When social follow or
 post/reply/like/repost events are present, it also renders a follow/interactions
 graph and post-level action details.

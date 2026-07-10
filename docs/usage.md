@@ -60,6 +60,11 @@ The primary entry point is the `silisocs` CLI command:
 # Check your environment first (Python, optional extras, API keys, writability)
 uv run silisocs doctor
 
+# First time? Run a guided deterministic demo (no API key needed) — it runs a
+# small scripted simulation, tours the artifacts it produced, and prints the
+# next commands to try
+uv run silisocs tutorial
+
 # Run with defaults
 uv run silisocs
 
