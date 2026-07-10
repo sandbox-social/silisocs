@@ -108,6 +108,7 @@ nav:
     - Study Schema: study_schema.md
     - Experiment Studies: experiments.md
     - Configuration: configuration.md
+    - Config Reference (Generated): config_reference.md
     - Documentation Coverage: documentation_coverage.md
     - Framework Roadmap: framework_roadmap.md
     - Simulation Extensibility API: simulation_extensibility_api.md

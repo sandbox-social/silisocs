@@ -2,6 +2,10 @@
 
 Complete reference for all YAML configuration options.
 
+For a generated key-by-key table of every packaged default (kept in sync with
+the shipped YAML by a drift test in CI), see
+[config_reference.md](config_reference.md).
+
 ## Config Groups
 
 Configuration is split across named groups, each with a base preset in
