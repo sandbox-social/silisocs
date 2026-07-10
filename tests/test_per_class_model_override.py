@@ -432,3 +432,65 @@ def test_per_class_model_block_rejects_key_outside_model_fields() -> None:
     # An unknown key (e.g. a future provider knob added to only one allowlist) raises.
     with pytest.raises(ValueError, match="unknown key"):
         _validate_class_model("influencer", {"name": "gpt-4o", "max_tokens": 128})
+
+
+def test_add_agent_does_not_clobber_built_model_with_override_block() -> None:
+    """The per-class `model` block in spec params must never reach the constructor.
+
+    Regression: `add_agent` splatted `spec.params` over `{"model": built_model}`, so
+    any agent with a per-class model override received the raw config mapping as its
+    model instead of the built LanguageModel (crashing at first sample call). The
+    block must stay ON the spec (build_deduped_models and checkpoint restore read it)
+    while the constructor gets the built model.
+    """
+    from silisocs.runtime.construction.assembly import RuntimeObjects, add_agent
+    from silisocs.runtime.construction.specs import RuntimeRole, RuntimeSpec
+
+    built = NoLanguageModel()
+    spec = RuntimeSpec(
+        role=RuntimeRole.AGENT,
+        class_path="silisocs.agents.native.NativeAgent",
+        params={
+            "name": "Alice",
+            "context": "Alice is a teacher.",
+            "model": {"name": "special-model", "temperature": 0.9},
+        },
+    )
+    runtime = RuntimeObjects()
+    agent = add_agent(
+        runtime=runtime,
+        spec=spec,
+        models={"key": built},
+        object_to_model={"Alice": "key"},
+    )
+    assert agent._model is built
+    # The directive stays on the spec for model resolution / checkpoint restore.
+    assert runtime.object_specs["Alice"].params["model"] == {
+        "name": "special-model",
+        "temperature": 0.9,
+    }
+
+
+def test_constructor_params_strips_only_model_block() -> None:
+    """All four construction seams (add_agent, add_game_master, both concordia
+    builders) route constructor kwargs through `_constructor_params`, which must strip
+    the framework-owned `model` directive and pass everything else through untouched.
+    """
+    from silisocs.runtime.construction.assembly import _constructor_params
+    from silisocs.runtime.construction.specs import RuntimeRole, RuntimeSpec
+
+    spec = RuntimeSpec(
+        role=RuntimeRole.GAME_MASTER,
+        class_path="some.gm.Class",
+        params={
+            "name": "gm",
+            "model": {"name": "m", "temperature": 0.1},
+            "sequence": 2,
+            "other": "keep",
+        },
+    )
+    out = _constructor_params(spec)
+    assert "model" not in out
+    assert out == {"name": "gm", "sequence": 2, "other": "keep"}
+    # The spec itself is untouched — the model directive survives for restore/dedup.
+    assert spec.params["model"] == {"name": "m", "temperature": 0.1}

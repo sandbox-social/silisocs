@@ -32,18 +32,11 @@ from silisocs.simulation_engines.runtime_base import (
     StepResult,
     StepStrategy,
     TurnPolicy,
+    set_gm_episode_index,
 )
 from silisocs.simulation_engines.scheduling import SchedulingMixin, _ensure_gm_method
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _set_gm_episode_index(game_master: Any, step_index: int) -> None:
-    backend = getattr(game_master, "backend", None)
-    for logger_attr in ("action_logger", "exposure_logger"):
-        event_logger = getattr(backend, logger_attr, None)
-        if event_logger is not None and hasattr(event_logger, "episode_idx"):
-            event_logger.episode_idx = int(step_index)
 
 
 def _gm_episode_index(game_master: Any) -> int:
@@ -223,7 +216,10 @@ class RuntimeEngine(SchedulingMixin, RuntimeEngineBase):
         """Resolve the agent's action against the GM and feed back the result (phase 3)."""
         with self._gm_lock(game_master):
             resolve_fn = _ensure_gm_method(game_master, "resolve_action")
-            resolved = str(resolve_fn(agent.name, action_output))
+            raw_resolved = resolve_fn(agent.name, action_output)
+        # Keep a ResolveReport (str subclass with commit counts) intact for the turn
+        # policy; coerce any non-str return to str. resolved stays a str either way.
+        resolved = raw_resolved if isinstance(raw_resolved, str) else str(raw_resolved)
         if resolved.strip():
             agent.observe(resolved)
         return resolved
@@ -330,7 +326,7 @@ class RuntimeEngine(SchedulingMixin, RuntimeEngineBase):
         verbose: bool,
     ) -> StepResult:
         for game_master in game_masters:
-            _set_gm_episode_index(game_master, step_index)
+            set_gm_episode_index(game_master, step_index)
         # Participation FIRST: GM updates and scheduling both receive the step's
         # active roster, so per-step GM work scales with who acts, not with the
         # population (the GM keeps the full roster from initialize()).

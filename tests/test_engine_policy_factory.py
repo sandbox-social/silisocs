@@ -450,6 +450,122 @@ def test_fixed_count_policy_runs_exact_number_of_actions() -> None:
     assert len(engine.calls) == 3
 
 
+def _committed_step(text: str, *, committed: int | None, calls: int = 1) -> AgentStepResult:
+    """An AgentStepResult whose resolved_result carries a commit count."""
+    from silisocs.runtime.types import ResolveReport
+
+    raw = ActionOutput.from_tool_calls([ToolCall(f"act_{i}", {}) for i in range(calls)])
+    resolved = (
+        ResolveReport(text, committed=committed, attempted=calls)
+        if committed is not None
+        else text  # plain str: resolver did not report per-call outcomes
+    )
+    return AgentStepResult(
+        agent_name="agent", rendered_action=text, raw_action=raw, resolved_result=resolved
+    )
+
+
+def test_fixed_count_committed_skips_failed_actions() -> None:
+    # count=2 committed: a failed emission (committed=0) must not consume budget,
+    # so it takes THREE emissions to land two committed actions.
+    engine = _FakeEngine(
+        [
+            _committed_step("fail", committed=0),
+            _committed_step("ok-1", committed=1),
+            _committed_step("ok-2", committed=1),
+        ]
+    )
+    policy = FixedCountTurnPolicy(count=2, count_committed=True)
+    result = policy.run(
+        engine=engine, game_master=object(), agent=object(), action_spec=object(), verbose=False
+    )
+    assert result == "ok-2"
+    assert len(engine.calls) == 3
+
+
+def test_fixed_count_committed_multi_tool_emission_counts_all_commits() -> None:
+    # One emission of a 2-tool batch that both commit satisfies count=2 in a
+    # SINGLE turn (remaining 2 -> 0), exercising `remaining_actions -= committed`
+    # for committed > 1.
+    engine = _FakeEngine([_committed_step("multi", committed=2, calls=2), "SHOULD_NOT_RUN"])
+    policy = FixedCountTurnPolicy(count=2, count_committed=True)
+    result = policy.run(
+        engine=engine, game_master=object(), agent=object(), action_spec=object(), verbose=False
+    )
+    assert result == "multi"
+    assert len(engine.calls) == 1
+
+
+def test_fixed_count_committed_partial_batch_consumes_only_committed() -> None:
+    # count=3: a 2-tool batch that partially commits (1 of 2) consumes 1, so a
+    # second batch is still needed to reach 3 committed.
+    engine = _FakeEngine(
+        [
+            _committed_step("partial", committed=1, calls=2),  # remaining 3 -> 2
+            _committed_step("rest", committed=2, calls=2),  # remaining 2 -> 0
+            "SHOULD_NOT_RUN",
+        ]
+    )
+    policy = FixedCountTurnPolicy(count=3, count_committed=True)
+    policy.run(
+        engine=engine, game_master=object(), agent=object(), action_spec=object(), verbose=False
+    )
+    assert len(engine.calls) == 2
+
+
+def test_fixed_count_committed_stops_at_max_attempts() -> None:
+    # Every emission fails to commit; max_attempts bounds the retry loop.
+    engine = _FakeEngine([_committed_step(f"fail-{i}", committed=0) for i in range(10)])
+    policy = FixedCountTurnPolicy(count=2, count_committed=True, max_attempts=3)
+    policy.run(
+        engine=engine, game_master=object(), agent=object(), action_spec=object(), verbose=False
+    )
+    assert len(engine.calls) == 3
+
+
+def test_fixed_count_committed_default_max_attempts_is_double_count() -> None:
+    engine = _FakeEngine([_committed_step(f"fail-{i}", committed=0) for i in range(10)])
+    policy = FixedCountTurnPolicy(count=2, count_committed=True)  # max_attempts -> 4
+    policy.run(
+        engine=engine, game_master=object(), agent=object(), action_spec=object(), verbose=False
+    )
+    assert len(engine.calls) == 4
+
+
+def test_fixed_count_committed_falls_back_to_emitted_when_unreported() -> None:
+    # A resolver that returns a plain str (committed=None) -> emitted counting.
+    engine = _FakeEngine(
+        [_committed_step("a1", committed=None), _committed_step("a2", committed=None)]
+    )
+    policy = FixedCountTurnPolicy(count=2, count_committed=True)
+    policy.run(
+        engine=engine, game_master=object(), agent=object(), action_spec=object(), verbose=False
+    )
+    assert len(engine.calls) == 2
+
+
+def test_fixed_count_emitted_mode_ignores_commit_counts() -> None:
+    # Default (count_committed=False): failed actions still consume the budget,
+    # so a committed=0 emission counts exactly like any other. Two emissions, done.
+    engine = _FakeEngine([_committed_step("a1", committed=0), _committed_step("a2", committed=0)])
+    policy = FixedCountTurnPolicy(count=2)
+    policy.run(
+        engine=engine, game_master=object(), agent=object(), action_spec=object(), verbose=False
+    )
+    assert len(engine.calls) == 2
+
+
+def test_build_turn_policy_supports_count_committed_params() -> None:
+    policy = build_turn_policy(
+        OmegaConf.create(
+            {"built_in": "fixed_count", "params": {"count": 3, "count_committed": True}}
+        )
+    )
+    assert isinstance(policy, FixedCountTurnPolicy)
+    assert policy.count == 3
+    assert policy.count_committed is True
+
+
 def test_open_ended_policy_stops_on_finished_action() -> None:
     """Test that open-ended policy stops when agent outputs 'Finished action episode'."""
     engine = _FakeEngine(

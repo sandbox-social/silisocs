@@ -48,6 +48,18 @@ class RuntimeObjects:
         return sorted(self.game_masters, key=lambda gm: (_gm_sequence(gm), gm.name))
 
 
+def _constructor_params(spec: RuntimeSpec) -> dict[str, Any]:
+    """Spec params minus the per-class ``model`` block.
+
+    The ``model`` entry in spec params is a framework directive — consumed by
+    ``build_deduped_models`` to select the built ``LanguageModel`` — never a
+    constructor kwarg. Splatting it through would clobber the built model with
+    the raw config mapping. It stays on the spec itself (checkpoint restore
+    re-reads it); it just never reaches a constructor.
+    """
+    return {key: value for key, value in spec.params.items() if key != "model"}
+
+
 def build_runtime_objects(
     *,
     specs: Sequence[RuntimeSpec],
@@ -114,7 +126,7 @@ def add_agent(
                 "Set `compat: concordia` so it is wrapped by ConcordiaAgentAdapter."
             )
         cls = _load_object(spec.class_path)
-        agent_kwargs: dict[str, Any] = {"model": model, **spec.params}
+        agent_kwargs: dict[str, Any] = {"model": model, **_constructor_params(spec)}
         # Inject the memory-policy factory only into agents that accept it (a
         # framework kwarg, so it is filtered rather than raising for agents —
         # e.g. FixedAgent — that don't take it; user params still raise on typo).
@@ -162,7 +174,7 @@ def add_game_master(
         cls = _load_object(spec.class_path)
         built = _instantiate_with_supported_kwargs(
             cls,
-            {"model": model, "agents": runtime.agents, **spec.params},
+            {"model": model, "agents": runtime.agents, **_constructor_params(spec)},
         )
         missing = [method for method in _GM_METHODS if not callable(getattr(built, method, None))]
         if missing:
@@ -238,7 +250,7 @@ def _instantiate_with_supported_kwargs(cls: Any, kwargs: dict[str, Any]) -> Any:
 def _build_concordia_agent(*, spec: RuntimeSpec, model: LanguageModel) -> Agent:
     adapter = importlib.import_module("silisocs.adapters.concordia")
     builder_cls = _load_object(spec.class_path)
-    builder = _instantiate_with_supported_kwargs(builder_cls, {"params": spec.params})
+    builder = _instantiate_with_supported_kwargs(builder_cls, {"params": _constructor_params(spec)})
     memory_bank = adapter.make_concordia_memory_bank(
         str(spec.params.get("memory_backend", "list") or "list")
     )
@@ -254,7 +266,7 @@ def _build_concordia_game_master(
 ) -> Any:
     adapter = importlib.import_module("silisocs.adapters.concordia")
     builder_cls = _load_object(spec.class_path)
-    builder = _instantiate_with_supported_kwargs(builder_cls, {"params": spec.params})
+    builder = _instantiate_with_supported_kwargs(builder_cls, {"params": _constructor_params(spec)})
     if hasattr(builder, "agents"):
         builder.agents = agents
     memory_bank = adapter.make_concordia_memory_bank(

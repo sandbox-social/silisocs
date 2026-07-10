@@ -1207,12 +1207,17 @@ class SocialNetworkApp(SocialBackendApp):
         # )
         try:
             like_message = f"{agent_name} (@{current_username}) liked post {toot_id}"
+            committed = True
             if self.perform_operations:
                 mastodon_ops = self._require_mastodon_ops()
                 check = mastodon_ops.like_check(current_username, toot_id)
                 if not check:
                     mastodon_ops.like_toot(current_username, toot_id)
                 else:
+                    # Already liked: no state change, so no committed action row
+                    # (get_state replays logged rows on restore — a redundant like
+                    # must not be re-issued).
+                    committed = False
                     like_message = f"{agent_name} (@{current_username}) has previously liked post {toot_id}. Please conduct a different action!!"
             else:
                 self._print(
@@ -1220,13 +1225,14 @@ class SocialNetworkApp(SocialBackendApp):
                     color="light_grey",
                 )
             self._print(like_message, emoji="✅")
-            self._log_action_event(
-                {
-                    "source_user": actor_display_name,
-                    "label": "like_toot",
-                    "data": {"toot_id": str(toot_id)},
-                }
-            )
+            if committed:
+                self._log_action_event(
+                    {
+                        "source_user": actor_display_name,
+                        "label": "like_toot",
+                        "data": {"toot_id": str(toot_id)},
+                    }
+                )
 
         except ValueError as e:
             self._print(f"Invalid input: {e!s}", emoji="❌")
@@ -1251,24 +1257,29 @@ class SocialNetworkApp(SocialBackendApp):
         )
         try:
             boost_message = f"{agent_name} (@{current_username}) boosted post {toot_id}"
+            committed = True
             if self.perform_operations:
                 mastodon_ops = self._require_mastodon_ops()
                 check = mastodon_ops.boost_check(current_username, toot_id)
                 if not check:
                     mastodon_ops.boost_toot(current_username, toot_id)
                 else:
+                    # Already boosted: no state change, so no committed action row
+                    # (get_state replays logged rows on restore).
+                    committed = False
                     boost_message = f"{agent_name} (@{current_username}) has previously boosted post {toot_id}. Please conduct a different action!!"
             self._print(
                 f"@{current_username} boosted post {toot_id}",
                 emoji="✅",
             )
-            self._log_action_event(
-                {
-                    "source_user": actor_display_name,
-                    "label": "boost_toot",
-                    "data": {"toot_id": str(toot_id)},
-                }
-            )
+            if committed:
+                self._log_action_event(
+                    {
+                        "source_user": actor_display_name,
+                        "label": "boost_toot",
+                        "data": {"toot_id": str(toot_id)},
+                    }
+                )
         except ValueError as e:
             self._print(f"Invalid input: {e!s}", emoji="❌")
             boost_message = '''There was an error in boosting due to invalid toot id"'''

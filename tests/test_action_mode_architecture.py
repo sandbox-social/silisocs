@@ -20,7 +20,7 @@ from silisocs.environments.gm.components.resolve import (
     ToolCallingResolveComponent,
 )
 from silisocs.runtime.prompts.action_prompts import build_complete_action_prompt_for_runner
-from silisocs.runtime.types import ActionOutput, ToolCall
+from silisocs.runtime.types import ActionOutput, ResolveReport, ToolCall
 
 # from silisocs.runtime.runner import _validate_action_tool_calling_contract
 
@@ -437,7 +437,8 @@ def test_finished_routes_through_backend_across_all_resolve_modes() -> None:
 
 def test_tool_calling_resolve_supports_multi_tool_payload() -> None:
     mock_app = MagicMock()
-    mock_app.invoke_action_with_kwargs.side_effect = ["posted", "liked"]
+    # Resolve dispatches through the committed-aware seam: (committed, result).
+    mock_app.invoke_action_detailed.side_effect = [(True, "posted"), (True, "liked")]
     tool = ToolCallingResolveComponent(backend=mock_app, model=MagicMock())
 
     tool_result = tool.resolve(
@@ -451,7 +452,9 @@ def test_tool_calling_resolve_supports_multi_tool_payload() -> None:
     )
 
     assert tool_result == "posted\nliked"
-    assert mock_app.invoke_action_with_kwargs.call_count == 2
+    assert mock_app.invoke_action_detailed.call_count == 2
+    assert isinstance(tool_result, ResolveReport)
+    assert tool_result.committed == 2
 
 
 if __name__ == "__main__":

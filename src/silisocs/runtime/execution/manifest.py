@@ -17,6 +17,7 @@ from typing import Any
 from silisocs.evaluations.action_events import (
     resolve_action_event_files,
     resolve_exposure_event_files,
+    resolve_harness_event_files,
     resolve_probe_event_files,
 )
 from silisocs.runtime.provenance import environment_provenance
@@ -72,6 +73,7 @@ def build_run_manifest(
         ("action_events", resolve_action_event_files),
         ("exposure_events", resolve_exposure_event_files),
         ("probe_events", resolve_probe_event_files),
+        ("harness_events", resolve_harness_event_files),
     ):
         artifacts[key] = [str(path.relative_to(out)) for path in resolver(out)]
     checkpoint_dir = out / "checkpoints"

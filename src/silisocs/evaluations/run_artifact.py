@@ -20,6 +20,7 @@ import yaml
 from silisocs.evaluations.action_events import (
     resolve_action_event_files,
     resolve_exposure_event_files,
+    resolve_harness_event_files,
     resolve_probe_event_files,
 )
 
@@ -153,6 +154,9 @@ class RunArtifact:
     def probe_event_files(self) -> list[Path]:
         return self._event_files("probe_events", resolve_probe_event_files)
 
+    def harness_event_files(self) -> list[Path]:
+        return self._event_files("harness_events", resolve_harness_event_files)
+
     def iter_actions(self) -> Iterator[dict[str, Any]]:
         return iter_jsonl(self.action_event_files())
 
@@ -161,6 +165,9 @@ class RunArtifact:
 
     def iter_probes(self) -> Iterator[dict[str, Any]]:
         return iter_jsonl(self.probe_event_files())
+
+    def iter_harness_events(self) -> Iterator[dict[str, Any]]:
+        return iter_jsonl(self.harness_event_files())
 
 
 def load_run(run_dir: str | Path) -> RunArtifact:

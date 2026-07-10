@@ -44,6 +44,7 @@ from silisocs.simulation_engines.policies.factory import (
 )
 from silisocs.simulation_engines.policies.participation import ParticipationPolicy
 from silisocs.simulation_engines.policies.routers import BranchSpec
+from silisocs.simulation_engines.runtime_base import set_gm_episode_index
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,27 @@ class InterventionContext:
     agents: Sequence[Any]
     sim_roles: Mapping[str, str]
     step: int
+
+    def stamp_episode(self, game_master: Any) -> None:
+        """Stamp this intervention's step on the GM backend's event loggers.
+
+        Interventions fire BEFORE ``run_step`` stamps the episode index, so a
+        handler that logs backend events (directly or via ``resolve_action``)
+        must stamp first — otherwise its rows land under the previous step's
+        index (or step 0 on resume). Covers action, exposure, and harness
+        loggers, same as the engine's per-step stamping.
+        """
+        set_gm_episode_index(game_master, self.step)
+
+    def resolve_action(self, game_master: Any, agent_name: str, output: Any) -> None:
+        """Resolve an injected action through the GM's resolve pipeline at this step.
+
+        The resolve component is the generic action seam agents themselves speak
+        (catalog validation + runtime actor injection), so injections reuse it
+        rather than calling backend methods; the episode index is stamped first.
+        """
+        self.stamp_episode(game_master)
+        game_master.resolve_action(agent_name, output)
 
 
 class InterventionHandler(ABC):
@@ -489,23 +511,6 @@ class _SwapComponent(InterventionHandler):
         rebuild(str(action["role"]).strip(), dict(action["slot"]))
 
 
-def _stamp_episode_and_resolve(gm: Any, agent_name: str, output: Any, step: int) -> None:
-    """Resolve an injected action through the GM's resolve pipeline at ``step``.
-
-    The resolve component is the generic action seam agents themselves speak
-    (catalog validation + runtime actor injection), so injections reuse it
-    rather than calling backend methods. Interventions fire BEFORE run_step
-    stamps the episode index, so stamp it here — otherwise the injected action
-    event is logged under the previous step (or step 0 on resume).
-    """
-    backend = getattr(gm, "backend", None)
-    for logger_attr in ("action_logger", "exposure_logger"):
-        event_logger = getattr(backend, logger_attr, None)
-        if event_logger is not None and hasattr(event_logger, "episode_idx"):
-            event_logger.episode_idx = step
-    gm.resolve_action(agent_name, output)
-
-
 class _InjectAction(InterventionHandler):
     """Generic one-shot injection: any backend catalog action, invoked by name.
 
@@ -538,7 +543,7 @@ class _InjectAction(InterventionHandler):
         output = ActionOutput.from_tool_calls(
             [ToolCall(str(action["action"]).strip(), dict(action.get("args") or {}))]
         )
-        _stamp_episode_and_resolve(gm, str(action["agent"]).strip(), output, ctx.step)
+        ctx.resolve_action(gm, str(action["agent"]).strip(), output)
 
 
 class _InjectPost(InterventionHandler):
@@ -588,7 +593,7 @@ class _InjectPost(InterventionHandler):
         )
         if output.output_type == OutputType.SKIP:
             return
-        _stamp_episode_and_resolve(gm, author, output, ctx.step)
+        ctx.resolve_action(gm, author, output)
 
 
 class _BroadcastObservation(InterventionHandler):

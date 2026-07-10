@@ -27,6 +27,11 @@ from dotenv import find_dotenv, load_dotenv
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
+from silisocs.agents.harness.runtime import (
+    PromptProxyLogger,
+    harness_usage_models,
+    setup_harness_proxy,
+)
 from silisocs.agents.memory import build_memory_policy
 from silisocs.evaluations.probes.deployment import DefaultProbeRunner
 from silisocs.initialization.agents import build_agent_initializer
@@ -396,6 +401,15 @@ def main(cfg: DictConfig):
             rebuild_index()
     _log_startup_phase("runtime_construction", time.time() - t0)
 
+    # Harness Model Proxy: one telemetry plane for harness + native model calls. Starts
+    # only when the run has harness agents; binds each to a per-agent routing token; its
+    # usage accumulators fold into the unified llm_usage summary. Stopped in `finally`.
+    harness_proxy = setup_harness_proxy(
+        runtime_objects.agents, prompt_logger=PromptProxyLogger(prompts_file)
+    )
+    for usage_model in harness_usage_models(harness_proxy):
+        models[f"harness::{getattr(usage_model, '_model_name', 'model')}"] = usage_model
+
     checkpoint_cfg = getattr(cfg.sim, "checkpoint", None)
     resume = plan_checkpoint_resume(
         checkpoint_cfg=checkpoint_cfg,
@@ -504,6 +518,10 @@ def main(cfg: DictConfig):
     finally:
         # Finalize and write metrics
         metrics.mark_sim_end()
+        # Stop the harness Model Proxy (if any) before summarizing so its usage
+        # accumulators — already in `models` — are final and its thread is joined.
+        if harness_proxy is not None:
+            harness_proxy.stop()
         _record_llm_usage_summary(cfg, models=locals().get("models"), metrics=metrics)
         metrics.write_json(output_dir)
 

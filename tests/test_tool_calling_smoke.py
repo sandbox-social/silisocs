@@ -192,6 +192,75 @@ def test_tool_calling_resolve_executes_multi_tool_calls_in_order() -> None:
     assert result == "toot:Alice:First\ntoot:Alice:Second"
 
 
+def test_tool_calling_resolve_reports_committed_and_attempted_counts() -> None:
+    # A mixed batch: one valid call (commits) + one unknown action (fails). The
+    # ResolveReport exposes committed=1, attempted=2 for a committed-counting policy.
+    resolve = ToolCallingResolveComponent(backend=_FakeApp())
+    action = entity_lib.ActionOutput.from_tool_calls(
+        [
+            entity_lib.ToolCall("toot", {"status": "hi"}),
+            entity_lib.ToolCall("no_such_action", {}),
+        ]
+    )
+    result = resolve.resolve(active_agent="Alice", action=action)
+    # Still a plain string to every existing consumer.
+    assert "toot:Alice:hi" in result
+    assert "Unknown action" in result
+    # ...but carries the commit accounting.
+    assert isinstance(result, entity_lib.ResolveReport)
+    assert result.committed == 1
+    assert result.attempted == 2
+
+
+def test_tool_calling_resolve_all_valid_calls_all_committed() -> None:
+    resolve = ToolCallingResolveComponent(backend=_FakeApp())
+    action = entity_lib.ActionOutput.from_tool_calls(
+        [
+            entity_lib.ToolCall("toot", {"status": "a"}),
+            entity_lib.ToolCall("toot", {"status": "b"}),
+        ]
+    )
+    result = resolve.resolve(active_agent="Alice", action=action)
+    assert isinstance(result, entity_lib.ResolveReport)
+    assert result.committed == 2
+    assert result.attempted == 2
+
+
+def test_tool_calling_resolve_falls_back_when_backend_lacks_detailed_seam() -> None:
+    # A duck-typed backend that implements only invoke_action_with_kwargs (not the
+    # committed-aware detailed seam) still resolves; committed is None so a
+    # count_committed policy falls back to emitted counting.
+    class _StringOnlyBackend:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def _all_actions(self) -> list[Any]:
+            return []
+
+        def action_aliases(self) -> list[Any]:
+            return []
+
+        def _action_has_parameter(self, name: str, param: str) -> bool:
+            return False
+
+        def invoke_action_with_kwargs(self, name: str, payload: dict[str, Any]) -> str:
+            self.calls.append(name)
+            return f"did:{name}"
+
+    backend = _StringOnlyBackend()
+    assert not hasattr(backend, "invoke_action_detailed")
+    resolve = ToolCallingResolveComponent(backend=backend)
+    result = resolve.resolve(
+        active_agent="Alice",
+        action=entity_lib.ActionOutput.from_tool_calls([entity_lib.ToolCall("toot", {"x": "y"})]),
+    )
+    assert result == "did:toot"
+    assert backend.calls == ["toot"]
+    assert isinstance(result, entity_lib.ResolveReport)
+    assert result.committed is None  # unknown -> policy falls back to emitted counting
+    assert result.attempted == 1
+
+
 def test_tool_calling_resolve_rejects_agent_authored_actor_identity() -> None:
     resolve = ToolCallingResolveComponent(backend=_FakeApp())
 

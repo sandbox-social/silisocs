@@ -274,6 +274,10 @@ class BackendApp(metaclass=abc.ABCMeta):
     # by _create_backend next to action_logger; None if the run isn't logging
     # exposures. See environments/gm/components/social_media/observe.py.
     exposure_logger: Any = None
+    # Optional EventLogger for harness_events.jsonl (per-call detail of harness-agent
+    # tool loops). Wired by _create_backend next to action_logger; read by the harness
+    # Tool Bridge and the harness resolve component. None for runs without harness agents.
+    harness_logger: Any = None
     _log_color: COLOR_TYPE = "blue"
 
     # Checkpoint capability contract (see docs/configuration.md#checkpointing).
@@ -659,10 +663,24 @@ class BackendApp(metaclass=abc.ABCMeta):
 
     def invoke_action_with_kwargs(self, action_name: str, args: dict[str, Any]) -> str:
         """Invoke action by name using structured kwargs payload."""
+        return self.invoke_action_detailed(action_name, args)[1]
+
+    def invoke_action_detailed(self, action_name: str, args: dict[str, Any]) -> tuple[bool, str]:
+        """Invoke an action, returning ``(committed, result_string)``.
+
+        ``committed`` is ``True`` when the call validated and dispatched WITHOUT a
+        validation or execution error — the signal a committed-counting turn policy
+        uses to tell an accepted action from a rejected/failed one. It is deliberately
+        coarse: an idempotent no-op that the action method handles internally (e.g.
+        already-liked) still counts as committed here, because the backend cannot see
+        past the action's returned string. Validation failures (unknown action,
+        missing/unexpected args) and raised exceptions return ``(False, message)``.
+        ``invoke_action_with_kwargs`` is the string-only view over this.
+        """
         action_map = self._action_lookup()
         if action_name not in action_map:
             available = ", ".join(sorted(action_map.keys()))
-            return f"Unknown action '{action_name}'. Available actions: {available}"
+            return False, f"Unknown action '{action_name}'. Available actions: {available}"
 
         action = action_map[action_name]
         expected = {param.name: param for param in action.parameters}
@@ -672,11 +690,11 @@ class BackendApp(metaclass=abc.ABCMeta):
             name for name, param in expected.items() if param.required and name not in payload
         ]
         if missing_required:
-            return f"Missing required argument(s): {', '.join(missing_required)}"
+            return False, f"Missing required argument(s): {', '.join(missing_required)}"
 
         unexpected = sorted(set(payload.keys()) - set(expected.keys()))
         if unexpected:
-            return f"Unexpected argument(s): {', '.join(unexpected)}"
+            return False, f"Unexpected argument(s): {', '.join(unexpected)}"
 
         processed: dict[str, Any] = {}
         for name, param in expected.items():
@@ -699,11 +717,27 @@ class BackendApp(metaclass=abc.ABCMeta):
                 processed[name] = value
 
         try:
-            return getattr(self, action.name)(**processed) or ""
+            return True, (getattr(self, action.name)(**processed) or "")
         except ActionError as exc:
-            return self._handle_action_invocation_error(action.name, exc, record_unexpected=False)
+            return False, self._handle_action_invocation_error(
+                action.name, exc, record_unexpected=False
+            )
         except Exception as exc:
-            return self._handle_action_invocation_error(action.name, exc, record_unexpected=True)
+            return False, self._handle_action_invocation_error(
+                action.name, exc, record_unexpected=True
+            )
+
+    def action_accepts_param(self, action_name: str, parameter_name: str) -> bool:
+        """Return whether an action accepts the named parameter.
+
+        Used to decide whether to inject the runtime-owned actor argument
+        (``agent_name``) into a call: the backend owns its action metadata, so both the
+        resolve components and the harness Tool Bridge ask it rather than re-deriving.
+        """
+        for action in self.actions():
+            if action_name in {action.name, action.selectable_name}:
+                return any(param.name == parameter_name for param in action.parameters)
+        return False
 
     def generate_generic_action_prompt(self) -> str:
         """Build a call-to-action prompt auto-generated from @app_action methods.

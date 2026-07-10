@@ -24,6 +24,12 @@ class OutputType(str, Enum):
 FREE_ACTION_TYPES = frozenset({OutputType.TEXT})
 CHOICE_ACTION_TYPES = frozenset({OutputType.CHOICE})
 
+# Structured-payload key a harness agent uses to hand its completed turn (executed tool
+# calls, usage, finished flag) to the ``harness`` resolve component. Lives here as a
+# neutral contract constant so neither the agent layer nor the GM component layer needs
+# to import the other. See ``silisocs.agents.harness`` and the harness resolve component.
+HARNESS_TURN_KEY = "harness_turn"
+
 
 @dataclass(frozen=True, init=False)
 class ActionSpec:
@@ -223,6 +229,31 @@ class ActionOutput:
             number=number,
             raw=payload.get("raw"),
         )
+
+
+class ResolveReport(str):
+    """A resolve result string that also carries per-turn commit accounting.
+
+    Resolve components return the joined human-readable result string (which every
+    caller ``str``-treats: fed to ``agent.observe``, logged, compared in tests). This
+    subclass additively attaches how many of the emitted actions actually COMMITTED a
+    backend state change vs how many were ATTEMPTED — the signal a committed-counting
+    turn policy needs. Being a ``str``, it is transparent everywhere else; consumers
+    that want the counts read ``.committed`` / ``.attempted`` (``None`` = unknown, e.g.
+    a resolver that can't report per-call outcomes, in which case the policy falls back
+    to counting emitted actions).
+    """
+
+    committed: int | None
+    attempted: int | None
+
+    def __new__(
+        cls, value: str = "", *, committed: int | None = None, attempted: int | None = None
+    ) -> ResolveReport:
+        report = super().__new__(cls, value)
+        report.committed = committed
+        report.attempted = attempted
+        return report
 
 
 def skip_this_step_action_spec() -> ActionSpec:

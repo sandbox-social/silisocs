@@ -19,6 +19,21 @@ from typing import Any, Protocol
 from silisocs.runtime.types import ActionOutput, ActionSpec
 
 
+def set_gm_episode_index(game_master: Any, step_index: int) -> None:
+    """Stamp ``step_index`` on all of a GM backend's event loggers.
+
+    The canonical episode-stamping seam: action, exposure, AND harness loggers,
+    so every event row a GM's backend writes carries the right episode index.
+    Used by the engine at each step boundary and by intervention handlers
+    (which fire BEFORE the step stamps it) via ``InterventionContext``.
+    """
+    backend = getattr(game_master, "backend", None)
+    for logger_attr in ("action_logger", "exposure_logger", "harness_logger"):
+        event_logger = getattr(backend, logger_attr, None)
+        if event_logger is not None and hasattr(event_logger, "episode_idx"):
+            event_logger.episode_idx = int(step_index)
+
+
 @dataclass(frozen=True)
 class AgentStepResult:
     """Result of one observe/act/resolve cycle for one agent."""

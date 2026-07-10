@@ -8,6 +8,7 @@ import pytest
 from omegaconf import OmegaConf
 
 from silisocs.environments.gm.components.base import BaseComponent
+from silisocs.runtime.types import ActionOutput, ToolCall
 from silisocs.simulation_engines.interventions import (
     BanFilterParticipation,
     InterventionContext,
@@ -47,6 +48,7 @@ class _Backend:
     def __init__(self) -> None:
         self.action_logger = _Logger()
         self.exposure_logger = _Logger()
+        self.harness_logger = _Logger()
 
 
 class _GM:
@@ -373,6 +375,25 @@ def test_set_component_params_validate_requires_params_mapping() -> None:
             ),
             gm_names=set(),
         )
+
+
+def test_set_component_params_retunes_timeline_mode_on_real_observe_component() -> None:
+    """`timeline_mode` is mid-run tunable on the shipped social-media observe component."""
+    from silisocs.environments.gm.components.social_media.observe import (
+        TimelineMakeObservation,
+    )
+
+    component = TimelineMakeObservation(
+        model=None,
+        agent_names=["Alice"],
+        backend=_Backend(),
+        timeline_mode="follower_chronological",
+    )
+    gm = _GM()
+    gm.observe_c = component
+    sched = _params_schedule({"timeline_mode": "recommendation"})
+    sched.apply_due(step=0, engine=_Engine(), game_masters=[gm], agents=[])
+    assert component._timeline_mode == "recommendation"
 
 
 def test_base_component_set_params_only_applies_declared() -> None:
@@ -708,6 +729,31 @@ def test_inject_action_resolves_arbitrary_tool_call() -> None:
     assert call.name == "follow_user"
     assert call.arguments == {"target_username": "bob"}
     assert episode == 4  # stamped like inject_post
+
+
+def test_ctx_stamp_episode_covers_all_loggers() -> None:
+    """Custom handlers stamp via the public ctx seam — all three loggers, right step.
+
+    Regression: the old private helper stamped only action/exposure loggers, and
+    custom handlers had no seam at all (they inherited the previous step's index).
+    """
+    gm = _GM()
+    ctx = _ctx(_Engine(), [gm], [], step=9)
+    ctx.stamp_episode(gm)
+    assert gm.backend.action_logger.episode_idx == 9
+    assert gm.backend.exposure_logger.episode_idx == 9
+    assert gm.backend.harness_logger.episode_idx == 9
+
+
+def test_ctx_resolve_action_stamps_then_resolves() -> None:
+    gm = _GM()
+    ctx = _ctx(_Engine(), [gm], [], step=3)
+    output = ActionOutput.from_tool_calls([ToolCall("do_nothing", {})])
+    ctx.resolve_action(gm, "Alice", output)
+    agent, action, episode = gm.resolved[0]
+    assert agent == "Alice"
+    assert action is output
+    assert episode == 3  # stamped BEFORE resolve so the logged row carries this step
 
 
 @pytest.mark.parametrize(
