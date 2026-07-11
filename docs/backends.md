@@ -351,6 +351,40 @@ When you need the commit outcome programmatically (e.g. a committed-counting tur
 policy), call `invoke_action_detailed(name, kwargs) -> (committed, result)`;
 `invoke_action_with_kwargs` is the string-only view over it.
 
+**Committed-events mirror (runtime read path).** Every `_log_action_event` call
+also appends one record — `{label, source_user, episode, data}` — to an in-memory
+mirror on `SocialBackendApp`, so scenario code (branch routers, intervention
+conditions, state-dependent policies) can query committed history at runtime
+instead of scraping `action_events.jsonl` and reaching into logger internals:
+
+```python
+# how many misinformation posts this agent committed before the current step?
+backend.count_committed_events(
+    labels=["post"], agent="Alice", before_episode=step, text_contains_any=["vaccine"]
+)
+for event in backend.iter_committed_events(labels=["like"], since_episode=3):
+    ...  # {label, source_user, episode, data}
+```
+
+Filters are conjunctive: `labels`, `agent` (`source_user`), `since_episode`
+(inclusive) / `before_episode` (exclusive) episode bounds (an unstamped
+`episode is None` event is excluded whenever a bound is set), and
+`text_contains_any` (case-insensitive substring match against the authored-text
+keys in `data` — `post_text`/`content`/`title`/`status`/`text`/`new_bio` — so it
+works across backends, e.g. Reddit's `content`/`title`). Yielded records are copies:
+mutating a result (including its `data`) never touches the mirror. The mirror
+reflects the log exactly, so system/bookkeeping labels (`init_*`, recsys) appear
+too — pass `labels` to scope to agent actions — and it is per-backend (per game
+master in multi-GM runs), matching the per-GM log isolation. Iteration is in commit
+order, which is scheduling-dependent under concurrent turns, so don't rely on it for
+ordering (use the filters/counts, which are order-independent).
+Memory/checkpoint cost is O(committed events). A backend that sets
+`provides_checkpoint_state = True` must round-trip the mirror through
+get_state/set_state via the base helpers (`state["committed_events"] =
+self._committed_events_state()` in get_state; `self._restore_committed_events(
+state.get("committed_events"))` in set_state); replay-restored backends rebuild it
+for free as restore re-fires the log path.
+
 ---
 
 ## Built-in Visualizers

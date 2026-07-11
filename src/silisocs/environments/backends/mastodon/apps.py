@@ -156,6 +156,11 @@ class SocialNetworkApp(SocialBackendApp):
         events = self._read_logged_action_events()
         if events:
             state["replay_events"] = events
+        # Round-trip the committed-events mirror EXACTLY. Replaying `replay_events`
+        # (below, in set_state) only re-fires replayable labels and re-stamps the
+        # current episode, so it would rebuild a lossy mirror; embedding the mirror
+        # preserves correct labels + episodes, matching the snapshot backends.
+        state["committed_events"] = self._committed_events_state()
         return state
 
     def set_state(self, state: dict[str, Any]) -> None:
@@ -166,13 +171,18 @@ class SocialNetworkApp(SocialBackendApp):
         its original user, in chronological order so reply/like/boost targets exist
         before they are referenced.
         """
-        events = state.get("replay_events") if isinstance(state, Mapping) else None
-        if not events:
-            return
-        self.begin_action_replay()
-        for event in events:
-            if isinstance(event, Mapping):
-                self._replay_logged_action(event)
+        if not isinstance(state, Mapping):
+            raise TypeError("Mastodon checkpoint state must be a mapping.")
+        events = state.get("replay_events")
+        if events:
+            self.begin_action_replay()
+            for event in events:
+                if isinstance(event, Mapping):
+                    self._replay_logged_action(event)
+        # Replay rebuilt the live server (and a lossy mirror as a side effect);
+        # overwrite that with the exact embedded mirror so committed-event queries
+        # return the same answers after resume as in the original run.
+        self._restore_committed_events(state.get("committed_events"))
 
     def _read_logged_action_events(self) -> list[dict[str, Any]]:
         """Read this backend's own action log into compact replay events.
@@ -360,19 +370,24 @@ class SocialNetworkApp(SocialBackendApp):
         return self.app_description
 
     def _log_action_event(self, *args: Any, **kwargs: Any) -> None:
-        """Write an action event when the runtime provided an action logger."""
+        """Normalize Mastodon's call forms and delegate to the shared logger.
+
+        Mastodon's action methods log a single event dict; the runtime also uses the
+        base ``(source_user, label, data)`` positional form. Both are normalized here
+        and forwarded to ``super()`` so the in-memory committed-events mirror and the
+        on-disk log stay a single implementation shared with every other backend.
+        """
         if len(args) == 1 and isinstance(args[0], dict) and not kwargs:
             event = args[0]
         elif len(args) >= 3:
-            event = {
-                "source_user": args[0],
-                "label": args[1],
-                "data": args[2],
-            }
+            event = {"source_user": args[0], "label": args[1], "data": args[2]}
         else:
             event = dict(kwargs)
-        if self.action_logger is not None and hasattr(self.action_logger, "log"):
-            self.action_logger.log(event)
+        super()._log_action_event(
+            str(event.get("source_user", "")),
+            str(event.get("label", "")),
+            dict(event.get("data") or {}),
+        )
 
     def _require_mastodon_ops(self) -> Any:
         """Return the live Mastodon operations module, importing it if needed."""
