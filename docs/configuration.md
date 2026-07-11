@@ -960,7 +960,38 @@ probes:
         question: "Return a single rating from {lo} to {hi}."
         lo: 1
         hi: 10
+      deployment:          # optional per-probe overrides (see below)
+        every_n_steps: 5   # this probe runs every 5th step...
+        at: run_end        # ...plus a final measurement after the run
 ```
+
+The `deployment:` block under `probes.deployment` is the **global** default. Any
+probe entry may carry its own `deployment:` block that **overrides the global
+per field** (unset fields fall back to the global value — the same overlay as a
+per-class model override falling back to `sim.llm`). This lets one study mix, for
+example, an expensive belief probe every 5 steps on a 10% sample with a cheap
+sentiment probe every step — impossible with a single shared schedule. Every
+block (global and per-probe) is validated for unknown keys, `every_n_steps >= 1`,
+mutually-exclusive `sample_k`/`sample_fraction`, and a valid `at`; a per-probe
+error names the probe. `hold_last_response` is read from the **global** block
+only. Probes that share a resolved target set on a given step are still batched
+into **one** questionnaire LLM call per agent, so per-probe schedules don't cost
+extra calls.
+
+**Loop anchors (`at`).** A deployment block's `at` chooses *when in the loop* its
+probes fire: `pre_step` (default — before a step runs, measuring the
+pre-intervention world), `post_step` (after a step, measuring what it produced),
+or `run_end` (once after the whole run — the terminal measurement of the final
+world, which `pre_step` never reaches). `run_end` is one-shot: it ignores
+`start_step`/`every_n_steps` **and** the engine-level `probes.schedule` cadence
+(`fixed_interval` etc.), which gate only the per-step anchors — so disable a
+`run_end` probe via its own `deployment.enabled: false`, not the schedule. Every
+probe row in `probe_events.jsonl` records its `anchor`, so `post_step` at step *N*
+and `pre_step` at step *N+1* (the same world state) stay distinguishable in
+analysis. `run_end` rows are logged with `anchor=run_end` at the last executed step
+but are not folded into the per-episode `sim_metrics` probe telemetry (there is no
+episode to attach to); it also does not re-fire on a resume of an already-complete
+run (the loop body never re-executes).
 
 Deployment filters select which agents receive probes and are applied as a
 sequential `AND`: `include_classes` → `exclude_classes` → `include_agents` →
@@ -978,7 +1009,9 @@ each due step (mutually exclusive; unset probes them all). Selection is a
 deterministic hash ranking per `(seed, step, agent)` — independent of roster
 order and stable across replay/resume — so each due step probes a fresh but
 reproducible subset. Use this to keep probe cost bounded as populations grow
-(e.g. `sample_k: 100` at 10k agents).
+(e.g. `sample_k: 100` at 10k agents). Two probes that each set their own
+`sample_k` draw **independent** subsets (the ranking is additionally keyed by the
+probe name); probes sharing the global cap draw the same subset.
 
 ---
 

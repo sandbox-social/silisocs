@@ -129,6 +129,21 @@ The batched questionnaire prompt presents all questions numbered, and the
 response parser extracts individual answers. If parsing fails for any question,
 the system falls back to individual LLM calls for those specific questions.
 
+Batching holds even with per-probe schedules: probes due for the same agent on
+the same step (and loop anchor) are still sent in one call.
+
+---
+
+## Per-Probe Deployment and Loop Anchors
+
+Each probe entry may carry its own `deployment:` block that overrides the global
+`probes.deployment` block per field (unset fields inherit the global value), so a
+single run can mix probes on different schedules, target cohorts, sampling caps,
+and loop positions. The `at` field chooses the loop anchor — `pre_step` (default),
+`post_step`, or `run_end` (a single terminal measurement after the run) — and each
+`probe_events.jsonl` row records its `anchor`. See
+[Configuration → Probes](configuration.md#probes) for the full schema and rules.
+
 ---
 
 ## Output

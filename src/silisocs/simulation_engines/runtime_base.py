@@ -188,7 +188,14 @@ class LoopStrategy(Protocol):
 
 
 class ProbeRunner(Protocol):
-    """Evaluation-owned in-run probe deployment service."""
+    """Evaluation-owned in-run probe deployment service.
+
+    ``anchor`` names the loop position probes are firing at ("pre_step",
+    "post_step", or "run_end"). A runner that also exposes ``anchors_in_use() ->
+    set[str]`` is called with ``anchor`` and driven at every anchor it reports;
+    one that omits it (legacy/custom) is only ever driven at ``pre_step`` with the
+    ``anchor``-less call, so the parameter stays optional for backward compat.
+    """
 
     def maybe_run(
         self,
@@ -197,6 +204,7 @@ class ProbeRunner(Protocol):
         agents: list[Any],
         worker_limit: int | None,
         agent_flows: Mapping[str, str] | None = None,
+        anchor: str = "pre_step",
     ) -> tuple[bool, int]: ...
 
 
