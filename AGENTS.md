@@ -638,7 +638,15 @@ logged-but-failed action is re-issued on restore) and eval metrics count every r
 Errors stay observable via the returned message and the `backend_action_errors`
 counter. `invoke_action_detailed(name, kwargs) -> (committed, result)` is the seam
 that reports the commit outcome (e.g. to a committed-counting turn policy);
-`invoke_action_with_kwargs` is the string-only view over it.
+`invoke_action_with_kwargs` is the string-only view over it. Every
+`_log_action_event` call also appends to an in-memory **committed-events mirror**
+on `SocialBackendApp` — the supported runtime read path so scenario code (routers,
+intervention conditions, state-dependent policies) can ask "how many X committed
+so far" without scraping the log file: `count_committed_events(labels=..., agent=...,
+since_episode=..., before_episode=..., text_contains_any=...)` and the
+`iter_committed_events(...)` generator behind it (per-backend / per-GM; snapshot
+backends round-trip it via the `_committed_events_state()`/`_restore_committed_events()`
+helpers, replay-restored ones rebuild it for free).
 
 **Backend restore contract** (backend authors): a backend supports either (or both)
 of two restore paths. (1) Authoritative snapshot — set the class flag

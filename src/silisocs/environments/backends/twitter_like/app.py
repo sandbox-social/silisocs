@@ -375,6 +375,7 @@ class TwitterLikeApp(SocialBackendApp):
             "db_snapshot_b64": snapshot_sqlite_database(self.db_path),
             "user_mapping": dict(self._user_mapping),
             "last_initialization_stats": dict(getattr(self, "_last_initialization_stats", {})),
+            "committed_events": self._committed_events_state(),
         }
 
     def set_state(self, state: dict[str, Any]) -> None:
@@ -394,6 +395,7 @@ class TwitterLikeApp(SocialBackendApp):
         stats = state.get("last_initialization_stats", {})
         if isinstance(stats, Mapping):
             self._last_initialization_stats = dict(stats)
+        self._restore_committed_events(state.get("committed_events"))
 
     def _close_platform_for_restore(self) -> None:
         try:

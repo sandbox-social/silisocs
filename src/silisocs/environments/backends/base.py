@@ -11,7 +11,7 @@ import logging
 import re
 import types
 import typing
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from typing import Any, Literal, get_type_hints
 
 import docstring_parser
@@ -26,6 +26,19 @@ _LOGGER = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 
 _DATE_FORMAT = "%Y-%m-%d %H:%M"
+
+# Data keys scanned by iter_committed_events(text_contains_any=...). Backends log the
+# text an agent authored under different keys (twitter/mastodon: post_text; reddit:
+# content/title; profiles: new_bio; quote/status: status/text), so the text filter
+# checks all of them to stay backend-agnostic.
+_COMMITTED_TEXT_KEYS: tuple[str, ...] = (
+    "post_text",
+    "content",
+    "title",
+    "status",
+    "text",
+    "new_bio",
+)
 
 _ARGUMENT_REGEX = re.compile(r"(?P<param>\w+):\s*(?P<value>[^\n]+)")
 
@@ -873,9 +886,112 @@ class SocialBackendApp(BackendApp):
     """
 
     def _log_action_event(self, source_user: str, label: str, data: dict[str, Any]) -> None:
-        """Log a structured social action event when an action logger is configured."""
+        """Record a committed action event: mirror it in memory and persist to disk.
+
+        This is the single commit point for the committed-only action log — call it
+        only on an action's success path (never after a swallowed error or an
+        idempotent no-op). Both the on-disk ``action_events.jsonl`` and the in-memory
+        mirror (:meth:`iter_committed_events`) get exactly one record per committed
+        action, so the mirror is a lock-free runtime read path over the same events
+        scenario code (routers, interventions, committed-counting policies) would
+        otherwise have to scrape from the log file.
+        """
+        self._committed_event_log().append(
+            {
+                "label": label,
+                "source_user": source_user,
+                "episode": getattr(self.action_logger, "episode_idx", None),
+                "data": dict(data),
+            }
+        )
         if self.action_logger:
             self.action_logger.log({"source_user": source_user, "label": label, "data": data})
+
+    def _committed_event_log(self) -> list[dict[str, Any]]:
+        """Return the in-memory committed-events mirror, created lazily on first use.
+
+        Lazy so no subclass constructor has to change. The fast path is a plain
+        attribute read; first use falls back to ``dict.setdefault``, which is atomic
+        under the GIL, so two concurrent first-ever turns share one list instead of
+        racing to install (and lose) separate ones. After init, ``list.append`` is
+        atomic and readers iterate a snapshot, so the mirror needs no lock.
+        """
+        log = self.__dict__.get("_committed_events")
+        if log is None:
+            log = self.__dict__.setdefault("_committed_events", [])
+        return log
+
+    def iter_committed_events(
+        self,
+        *,
+        labels: Collection[str] | None = None,
+        agent: str | None = None,
+        since_episode: int | None = None,
+        before_episode: int | None = None,
+        text_contains_any: Collection[str] | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Iterate committed action events (commit order) matching every given filter.
+
+        Each record is ``{label, source_user, episode, data}`` — one per committed
+        action. The mirror reflects the on-disk log exactly, so system/bookkeeping
+        labels (``init_*``, recsys events) appear too; pass ``labels`` to scope to
+        agent actions. In multi-GM runs the mirror is per-backend (per game master),
+        matching the per-GM ``action_events.jsonl`` isolation.
+
+        Filters are conjunctive: ``labels`` keeps listed labels; ``agent`` keeps one
+        ``source_user``; ``since_episode``/``before_episode`` bound the episode
+        (inclusive lower, exclusive upper — an unstamped ``episode is None`` event is
+        excluded whenever either bound is set); ``text_contains_any`` keeps events
+        whose authored text (any of ``_COMMITTED_TEXT_KEYS`` in ``data``) contains a
+        needle (case-insensitive). Yielded records are copies (mutating one — including
+        its ``data`` — does not touch the mirror). Iteration is commit order, which is
+        scheduling-dependent under concurrent turns, so don't rely on it for ordering.
+        """
+        label_set = None if labels is None else {str(x) for x in labels}
+        needles = None if not text_contains_any else [str(x).lower() for x in text_contains_any]
+        for event in tuple(self._committed_event_log()):
+            if label_set is not None and str(event.get("label", "")) not in label_set:
+                continue
+            if agent is not None and str(event.get("source_user", "")) != str(agent):
+                continue
+            episode = event.get("episode")
+            if since_episode is not None and (episode is None or episode < since_episode):
+                continue
+            if before_episode is not None and (episode is None or episode >= before_episode):
+                continue
+            data = event.get("data") or {}
+            if needles is not None:
+                text = " ".join(str(data.get(key, "")) for key in _COMMITTED_TEXT_KEYS).lower()
+                if not any(needle in text for needle in needles):
+                    continue
+            yield {**event, "data": dict(data)}
+
+    def count_committed_events(self, **filters: Any) -> int:
+        """Count committed events matching the filters of :meth:`iter_committed_events`."""
+        return sum(1 for _ in self.iter_committed_events(**filters))
+
+    def _committed_events_state(self) -> list[dict[str, Any]]:
+        """Snapshot the committed-events mirror for ``get_state`` (checkpoint).
+
+        Round-tripping this through get_state/set_state is the only way to restore an
+        EXACT mirror (correct labels + episodes): every shipped snapshot backend does
+        so, and Mastodon does too (it cannot snapshot its server but embeds the mirror
+        anyway). A backend restored purely by action-event replay instead rebuilds
+        mirror *content* as the log path re-fires, but only for replayable labels and
+        with episodes reflecting the replay — so prefer the round-trip when the mirror
+        must be exact.
+        """
+        return [
+            {**event, "data": dict(event.get("data") or {})}
+            for event in self._committed_event_log()
+        ]
+
+    def _restore_committed_events(self, events: Any) -> None:
+        """Replace the committed-events mirror from a ``set_state`` payload."""
+        log = self._committed_event_log()
+        log.clear()
+        if events:
+            log.extend(dict(event) for event in events if isinstance(event, Mapping))
 
     def recsys_active_types(self) -> set[str]:
         """Return recsys algorithm types currently live on the backend.
