@@ -156,7 +156,14 @@ def _run_single_probe_query(
     }
 
 
-def deploy_probes_to_agent(agent, probes, probe_event_logger):
+def _stamp_and_log(probe_event_logger, agent_results: list[dict], anchor: str) -> None:
+    """Tag each probe row with its loop anchor, then log the batch."""
+    for result in agent_results:
+        result["anchor"] = anchor
+    probe_event_logger.log(agent_results)
+
+
+def deploy_probes_to_agent(agent, probes, probe_event_logger, anchor: str = "pre_step"):
     """Run all probes against a single agent, trying structured mode first."""
     if not probes:
         return
@@ -170,7 +177,7 @@ def deploy_probes_to_agent(agent, probes, probe_event_logger):
             _agent_name(agent),
         )
         agent_results = _run_single_probes(agent, probes, structured_error=exc)
-        probe_event_logger.log(agent_results)
+        _stamp_and_log(probe_event_logger, agent_results, anchor)
         return
 
     for idx, probe in enumerate(probes):
@@ -215,7 +222,7 @@ def deploy_probes_to_agent(agent, probes, probe_event_logger):
             }
         )
 
-    probe_event_logger.log(agent_results)
+    _stamp_and_log(probe_event_logger, agent_results, anchor)
 
 
 def _resolve_probe_class(probe_type: str, probe_lib_module: str | None) -> type:
@@ -238,6 +245,7 @@ def deploy_probes(
     probe_event_logger,
     worker_limit: int | None = None,
     prebuilt_probes: list | None = None,
+    anchor: str = "pre_step",
 ):
     """Deploy probes to all agents in parallel with optional worker cap."""
     if prebuilt_probes is not None:
@@ -268,7 +276,9 @@ def deploy_probes(
     max_workers = None if worker_limit is None or worker_limit <= 0 else worker_limit
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(deploy_probes_to_agent, agent, probes, probe_event_logger): agent
+            executor.submit(
+                deploy_probes_to_agent, agent, probes, probe_event_logger, anchor
+            ): agent
             for agent in agents
         }
         for future in as_completed(futures):

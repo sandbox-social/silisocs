@@ -302,6 +302,16 @@ Built-in probe schedule policies:
 - `fixed_interval`: trigger on `start_step` + every `every_n_steps`.
 - `disabled`: never run probe phase.
 
+Probes are decoupled from step/turn policies: a `LoopStrategy` is the sole owner
+of probe *timing*. The default `FixedStepsLoopStrategy` calls the module helper
+`loops.run_probe_phase(engine, step=..., anchor=..., anchor_aware=...)` at three
+anchors — `pre_step`, `post_step`, and once `run_end` after the loop — deploying
+only the probes configured for each (via the runner's `anchors_in_use()`). A
+**custom loop strategy owns calling that helper**: reuse `run_probe_phase` (it
+brackets the probe retry-telemetry bucket for you) at whatever boundaries you want
+probes to fire, or a loop that never calls it simply runs without probes. Deciding
+*which steps* run a probe phase is the separate `ProbeSchedulePolicy` seam above.
+
 Policy `params` are strict constructor arguments, matching the GM component
 contract.
 

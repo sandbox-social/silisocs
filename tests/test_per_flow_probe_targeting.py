@@ -37,7 +37,12 @@ def _orchestrator(monkeypatch, deployment: dict) -> tuple[ProbeDeploymentOrchest
     calls: list[list[str]] = []
 
     def _fake_deploy_probes(
-        agents, probes, probe_event_logger, worker_limit=None, prebuilt_probes=None
+        agents,
+        probes,
+        probe_event_logger,
+        worker_limit=None,
+        prebuilt_probes=None,
+        anchor="pre_step",
     ):
         calls.append([agent._agent_name for agent in agents])
 
@@ -255,3 +260,62 @@ def test_collect_agent_flows_empty_is_safe(agent_flows) -> None:
     # Sanity: orchestrator handles both None and empty map without flow filters.
     policy = ProbeDeploymentPolicy.from_probes_config({})
     assert policy.include_flows == ()
+
+
+# --------------------------------------------------------------------------- #
+# Loop drives probe anchors in order
+# --------------------------------------------------------------------------- #
+
+
+class _AnchorRecordingRunner:
+    def __init__(self, anchors: set[str]) -> None:
+        self._anchors = set(anchors)
+        self.calls: list[tuple[int, str]] = []
+
+    def anchors_in_use(self) -> set[str]:
+        return set(self._anchors)
+
+    def maybe_run(self, *, step, agents, worker_limit, agent_flows=None, anchor="pre_step"):
+        del worker_limit, agent_flows
+        self.calls.append((step, anchor))
+        return True, len(agents)
+
+
+def test_loop_fires_probe_anchors_in_order() -> None:
+    from silisocs.simulation_engines.policies.loops import FixedStepsLoopStrategy
+
+    runner = _AnchorRecordingRunner({"pre_step", "post_step", "run_end"})
+    FixedStepsLoopStrategy().run(
+        engine=_StubEngine(runner),
+        game_masters=[_GM({})],
+        agents=[_DummyAgent("Alice")],
+        max_steps=2,
+        start_step=0,
+        verbose=False,
+        checkpoint_callback=None,
+    )
+    # pre/post around each step; run_end once, at the last executed step.
+    assert runner.calls == [
+        (0, "pre_step"),
+        (0, "post_step"),
+        (1, "pre_step"),
+        (1, "post_step"),
+        (1, "run_end"),
+    ]
+
+
+def test_loop_legacy_runner_fires_pre_step_only() -> None:
+    from silisocs.simulation_engines.policies.loops import FixedStepsLoopStrategy
+
+    # A runner without anchors_in_use is pre_step-only and called without anchor.
+    runner = _StubProbeRunner()
+    FixedStepsLoopStrategy().run(
+        engine=_StubEngine(runner),
+        game_masters=[_GM({})],
+        agents=[_DummyAgent("Alice")],
+        max_steps=2,
+        start_step=0,
+        verbose=False,
+        checkpoint_callback=None,
+    )
+    assert runner.received_flows == [{}, {}]  # one pre_step call per step, no extras
