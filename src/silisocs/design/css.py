@@ -9,7 +9,9 @@ spellings (``--accent-dark`` for ``accent_hover``, ``--muted`` for ``ink_muted``
 
 from __future__ import annotations
 
-from .tokens import FONT_DISPLAY, FONT_STACK, THEMES
+from pathlib import Path
+
+from silisocs.design.tokens import CATEGORICAL_COLORS, FONT_DISPLAY, FONT_STACK, THEMES
 
 # Role name (snake_case in THEMES) -> CSS custom-property name.
 _VAR_NAMES: dict[str, str] = {
@@ -25,6 +27,21 @@ _VAR_NAMES: dict[str, str] = {
     "success": "--success",
     "warning": "--warning",
     "danger": "--danger",
+    "on_strong": "--on-strong",
+    "terminal_canvas": "--terminal-canvas",
+    "terminal_ink": "--terminal-ink",
+    "terminal_muted": "--terminal-muted",
+    "terminal_success": "--terminal-success",
+    "terminal_warning": "--terminal-warning",
+    "terminal_danger": "--terminal-danger",
+    "terminal_accent": "--terminal-accent",
+    "rail_canvas": "--rail-canvas",
+    "rail_surface": "--rail-surface",
+    "rail_hover": "--rail-hover",
+    "rail_ink": "--rail-ink",
+    "rail_muted": "--rail-muted",
+    "rail_faint": "--rail-faint",
+    "rail_border": "--rail-border",
 }
 
 
@@ -33,6 +50,9 @@ def _block(selector: str, theme: dict[str, str], *, with_fonts: bool) -> str:
     if with_fonts:
         decls.append(f"--font:{FONT_STACK}")
         decls.append(f"--font-display:{FONT_DISPLAY}")
+        decls.extend(
+            f"--categorical-{index}:{color}" for index, color in enumerate(CATEGORICAL_COLORS)
+        )
     return selector + "{" + ";".join(decls) + "}"
 
 
@@ -41,3 +61,9 @@ def css_variables() -> str:
     light = _block(":root", THEMES["light"], with_fonts=True)
     dark = _block('[data-theme="dark"]', THEMES["dark"], with_fonts=False)
     return light + "\n" + dark
+
+
+def viewer_stylesheet() -> str:
+    """Return the shared zero-build stylesheet for backend platform viewers."""
+    shared = Path(__file__).parent / "components" / "viewer.css"
+    return css_variables() + "\n" + shared.read_text(encoding="utf-8")

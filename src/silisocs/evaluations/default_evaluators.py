@@ -26,6 +26,7 @@ from typing import Any
 
 import yaml
 
+from silisocs.design.matplotlib import apply_matplotlib_theme
 from silisocs.evaluations.action_events import resolve_action_event_files
 
 # matplotlib is an optional (`analysis` extra) dependency used only by the plot
@@ -41,6 +42,7 @@ def _ensure_plt() -> Any:
         import matplotlib
 
         matplotlib.use("Agg")
+        apply_matplotlib_theme(matplotlib)
         import matplotlib.pyplot as _plt
 
         plt = _plt

@@ -443,12 +443,11 @@ uv run silisocs --config-path scenarios/my_world/conf \
     num_agents=1000 num_steps=100
 ```
 
-**From Dashboard:**
-1. Open `uv run streamlit run src/silisocs/dashboard/launch_app.py`
-2. Select scenario from the dropdown
-3. Modify settings as needed
-4. Click "Save Scenario" to persist
-5. Click "Run Simulation"
+**From Studio:**
+1. Start `uv run silisocs-studio`
+2. Open **Scenarios** and select or create a scenario
+3. Modify its configuration and run preflight validation
+4. Save the scenario, then launch it and follow progress in **Watch**
 
 ---
 

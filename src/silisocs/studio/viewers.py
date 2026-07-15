@@ -104,7 +104,7 @@ def visualizer_plan(
         env[port_env] = str(port)
     missing = None
     if any(importlib.util.find_spec(name) is None for name in ("fastapi", "uvicorn")):
-        missing = "viz"
+        missing = "studio"
     return LaunchPlan(
         cmd=[sys.executable, "-m", module],
         env=env,

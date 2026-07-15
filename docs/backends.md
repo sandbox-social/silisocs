@@ -399,12 +399,7 @@ during Watch mode and for finished runs without backend-name branches in Studio.
 
 ### Twitter-like Visualizer
 
-```sh
-TWITTER_LIKE_DB=path/to/twitter_like.db \
-  python -m silisocs.environments.backends.twitter_like.visualizer.server
-```
-
-Opens at `http://localhost:8002`. Features:
+Open the run's **Platform** tab in Studio and select `twitter_like`. Features:
 
 - **Global timeline**: All posts in reverse-chronological order with infinite scroll
 - **Post detail + thread view**: Click any post to see the full reply thread with nested indentation
@@ -415,12 +410,7 @@ Opens at `http://localhost:8002`. Features:
 
 ### Reddit-like Visualizer
 
-```sh
-REDDIT_LIKE_DB=path/to/reddit_like.db \
-  python -m silisocs.environments.backends.reddit_like.visualizer.server
-```
-
-Opens at `http://localhost:8001`. Features:
+Open the run's **Platform** tab in Studio and select `reddit_like`. Features:
 
 - **New / Popular feeds**: Browse posts by recency or score
 - **Subreddit views**: Click any subreddit to see its posts and community info

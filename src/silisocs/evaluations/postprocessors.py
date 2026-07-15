@@ -17,8 +17,11 @@ from typing import Any
 
 import matplotlib
 
+from silisocs.design.matplotlib import apply_matplotlib_theme
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+apply_matplotlib_theme(matplotlib)
+import matplotlib.pyplot as plt  # noqa: E402
 
 
 def episode_probe_volume(

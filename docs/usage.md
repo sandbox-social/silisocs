@@ -549,20 +549,16 @@ Each line in `probe_events.jsonl`:
 
 ### Visualizing Output
 
-Point the built-in visualizer at the SQLite database to browse the simulation
-state interactively:
+Open a run's backend state in the unified Studio workspace:
 
 ```sh
-uv sync --extra viz
-
-# Twitter-like
-TWITTER_LIKE_DB=outputs/my_world/.../twitter_like.db \
-  python -m silisocs.environments.backends.twitter_like.visualizer.server
-
-# Reddit-like
-REDDIT_LIKE_DB=outputs/my_world/.../reddit_like.db \
-  python -m silisocs.environments.backends.reddit_like.visualizer.server
+uv sync --extra studio
+uv run silisocs-studio
 ```
+
+Select **Runs**, open a run, then select **Platform**. Studio discovers viewer
+capabilities declared by each backend and starts the matching read-only view;
+custom backends can participate without Studio-specific code.
 
 See [Environment Backends](backends.md#built-in-visualizers) for full details.
 

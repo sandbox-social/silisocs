@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from silisocs.analysis.views import View, build_view, load_view
+from silisocs.design.css import css_variables
 from silisocs.evaluations.run_artifact import load_run, load_study
 
 
@@ -82,7 +83,10 @@ def _controls_caption(panel: dict[str, Any]) -> str:
     return f'<small class="controls-caption">Default view; interactive controls: {html.escape(labels)}</small>'
 
 
-_REPORT_CSS = """*{box-sizing:border-box;letter-spacing:0}body{margin:0;background:#eef1f2;color:#17202a;font:14px Inter,Segoe UI,sans-serif}main{max-width:1280px;margin:auto;padding:32px}.brand{font-size:12px;font-weight:800}.brand span{display:inline-grid;place-items:center;width:30px;height:30px;background:#0f766e;color:white;margin-right:10px}.heading{margin:52px 0 28px}.heading p{font-size:11px;font-weight:800;color:#0f766e}.heading h1{font:600 36px Georgia,serif;margin:6px 0}.heading small,.controls-caption{color:#65717e}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.panel{background:white;border:1px solid #d9dfe2;border-radius:6px;min-width:0;overflow:hidden}.panel header{padding:16px 20px;border-bottom:1px solid #e7ebed}.panel h2{font-size:14px;margin:0}.controls-caption{display:block;font-size:10px;margin-top:4px}.panel>.plot{height:360px}.cy-network{height:520px}.feed{max-height:600px;overflow:auto}.feed-post{padding:14px 18px;border-bottom:1px solid #e7ebed}.feed-replies{border-left:2px solid #d9dfe2;margin:10px 0 0 12px;padding-left:14px}.feed-author{font-weight:700}.feed-meta{color:#65717e;font-size:10px;margin-left:8px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 16px;border-bottom:1px solid #edf0f1}th{font-size:10px;text-transform:uppercase;color:#65717e}.stat-grid{display:grid;grid-template-columns:repeat(5,1fr);padding:20px}.stat-grid p{margin:3px 0}.stat-grid p:first-child{font-size:22px;font-weight:700}@media(max-width:760px){main{padding:20px}.grid{grid-template-columns:1fr}.stat-grid{grid-template-columns:repeat(2,1fr)}}"""
+_REPORT_CSS = (
+    css_variables()
+    + """*{box-sizing:border-box;letter-spacing:0}body{margin:0;background:var(--canvas);color:var(--ink);font:14px var(--font)}main{max-width:1280px;margin:auto;padding:32px}.brand{font-size:12px;font-weight:800}.brand span{display:inline-grid;place-items:center;width:30px;height:30px;background:var(--accent);color:var(--on-strong);margin-right:10px}.heading{margin:52px 0 28px}.heading p{font-size:11px;font-weight:800;color:var(--accent-link)}.heading h1{font:600 36px var(--font-display);margin:6px 0}.heading small,.controls-caption{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.panel{background:var(--surface);border:1px solid var(--border);border-radius:6px;min-width:0;overflow:hidden}.panel header{padding:16px 20px;border-bottom:1px solid var(--border)}.panel h2{font-size:14px;margin:0}.controls-caption{display:block;font-size:10px;margin-top:4px}.panel>.plot{height:360px}.cy-network{height:520px}.feed{max-height:600px;overflow:auto}.feed-post{padding:14px 18px;border-bottom:1px solid var(--border)}.feed-replies{border-left:2px solid var(--border);margin:10px 0 0 12px;padding-left:14px}.feed-author{font-weight:700}.feed-meta{color:var(--muted);font-size:10px;margin-left:8px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--border)}th{font-size:10px;text-transform:uppercase;color:var(--muted)}.stat-grid{display:grid;grid-template-columns:repeat(5,1fr);padding:20px}.stat-grid p{margin:3px 0}.stat-grid p:first-child{font-size:22px;font-weight:700}@media(max-width:760px){main{padding:20px}.grid{grid-template-columns:1fr}.stat-grid{grid-template-columns:repeat(2,1fr)}}"""
+)
 
 
 def main() -> int:
