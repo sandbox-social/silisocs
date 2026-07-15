@@ -23,8 +23,8 @@ Install optional integrations only when needed:
 | Extra | Key packages | When to use |
 |---|---|---|
 | `concordia` | `gdm-concordia` | Legacy Concordia agent compatibility |
-| `dashboard` | `streamlit` | Streamlit scenario launcher UI |
-| `analysis` | matplotlib, plotly, dash, scipy, seaborn, scikit-network | Post-run dashboards and analysis utilities |
+| `studio` | FastAPI, Jinja, uvicorn | Unified visual workspace and control plane |
+| `analysis` | matplotlib, plotly, scipy, seaborn, powerlaw | Notebooks and extended analysis utilities |
 | `recsys` | scikit-learn, scipy, sentence-transformers | Recommendation system backends |
 | `viz` | FastAPI, uvicorn, jinja2 | Local web visualizer for simulation logs |
 | `hf` | `datasets` | Hugging Face persona datasets |
@@ -34,8 +34,8 @@ Install optional integrations only when needed:
 | `all` | all of the above except `aws` | Full runtime and documentation feature set |
 
 ```sh
-pip install "silisocs[dashboard]"           # Streamlit scenario launcher
-pip install "silisocs[analysis]"            # Dash analysis app and analysis utilities
+pip install "silisocs[studio]"              # unified visual workspace
+pip install "silisocs[analysis]"            # notebooks and analysis utilities
 pip install "silisocs[mastodon]"            # real Mastodon server integration
 pip install "silisocs[all]"                 # all non-AWS extras, including docs
 pip install "silisocs[all,aws]"             # all extras + AWS

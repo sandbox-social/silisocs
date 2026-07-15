@@ -21,7 +21,7 @@ def test_doctor_reports_missing_extras_with_install_hint(capsys, monkeypatch) ->
     monkeypatch.setattr(doctor, "_importable", lambda name: False)
     assert doctor.run_doctor() == 0  # missing extras warn, never fail
     out = capsys.readouterr().out
-    assert 'pip install "silisocs[dashboard]"' in out
+    assert 'pip install "silisocs[studio]"' in out
     assert 'pip install "silisocs[analysis]"' in out
 
 

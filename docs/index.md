@@ -144,6 +144,6 @@ graph LR
 
 [Quickstart](quickstart.md){ .md-button .md-button--primary }
 [Configuration reference](configuration.md){ .md-button }
-[Dashboard](dashboard.md){ .md-button }
+[Studio](studio.md){ .md-button }
 
 Looking for something specific? Everything is in the left sidebar and the tabs above.

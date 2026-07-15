@@ -1,7 +1,7 @@
 """Design system for silisocs UI surfaces — tokens, CSS, and Plotly templating.
 
 The single source of truth for colors, typography, and structural scales shared
-by the Streamlit launcher, the Dash analysis dashboard, and Studio.
+by Studio, exported reports, and backend-declared platform viewers.
 """
 
 from __future__ import annotations

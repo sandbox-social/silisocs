@@ -9,8 +9,8 @@ import re
 
 from silisocs.analysis.panel import Html, get_panel
 from silisocs.analysis.panels.network import InteractionNetworkPanel
+from silisocs.design.tokens import ACTION_COLORS
 from silisocs.evaluations.run_artifact import load_run
-from silisocs.visual_tokens import ACTION_COLORS
 
 # Rows copy the real twitter_like action-event shapes (verified against
 # src/.../twitter_like/app.py and a real action_events.jsonl):

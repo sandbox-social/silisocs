@@ -248,13 +248,13 @@ uv run silisocs --config-path scenarios/election/conf --cfg job
 
 ### Creating a New Scenario
 
-**Option 1: Via Dashboard**
+**Option 1: Via Studio**
 
-1. Start the dashboard: `streamlit run src/silisocs/dashboard/launch_app.py`
-2. Modify all settings (agents, network, probes, etc.)
-3. Enter a new scenario name in the "Scenario name" field
-4. Click "Save Scenario": creates files under `scenarios/{name}/conf/`
-5. Click "Run Simulation"
+1. Start Studio: `silisocs-studio --output-root outputs --port 8765`
+2. Open Scenarios and create or select a scenario
+3. Edit the declarative form or its bidirectional YAML mirror
+4. Run Preflight, then Save and Launch
+5. Studio writes the source files under `scenarios/{name}/conf/`
 
 **Option 2: Manual**
 
@@ -508,7 +508,7 @@ add classes with explicit counts, make sure they **sum to `num_agents`** (set
 unused classes to `count: 0`).
 
 If the built total diverges from `num_agents`, a `WARNING` is logged at build
-time (and the dashboard's Launch tab shows the same mismatch), since this usually
+time (and Studio preflight shows the same mismatch), since this usually
 indicates the class counts were not kept in sync with the declared total.
 
 ### Alternate Agents Variants
@@ -1290,7 +1290,7 @@ ignore their `restore` override because `set_state` already restored them.
 
 **Evaluation/analysis** read every per-GM `action_events.jsonl` (via
 `silisocs.evaluations.action_events.resolve_action_event_files`), so the default
-evaluators, activity summary, and dashboard cover all game masters, not just a
+evaluators, activity summary, and Studio cover all game masters, not just a
 flat root log.
 
 ---

@@ -108,24 +108,19 @@ uv run silisocs \
 uv run silisocs env.gm.components.next_acting.built_in=all_agents
 ```
 
-### Dashboard
+### Studio
 
 For a visual interface:
 
 ```sh
-uv run silisocs-dashboard          # scenario builder + launcher (Streamlit)
-uv run silisocs-analysis-dashboard # post-run analysis (Dash)
+uv run silisocs-studio --output-root outputs --port 8765
 ```
 
-Both need their optional extra (`silisocs[dashboard]` / `silisocs[analysis]`);
-when it is missing the command prints the exact install line instead of a
-traceback. Extra arguments are forwarded (e.g.
-`silisocs-dashboard --server.port 8600`).
+Install the `silisocs[studio]` extra when using a lean package install. Studio
+provides scenario and study composers, launch/watch controls, platform viewers,
+artifact analysis, and report export in one product.
 
-The launcher sidebar loads configs in two steps: choose a scenario first, then
-choose whether to start from the scenario definition or a prior run snapshot.
-
-See [Dashboard](dashboard.md) for details.
+See [Studio](studio.md) for details.
 
 ---
 
@@ -589,8 +584,8 @@ study = load_study("experiments/studies/my_study")
 study.plan, study.summary, study.provenance
 ```
 
-The dashboards load runs through this same interface, so a run that loads here
-renders there.
+Studio loads runs through this same interface, so a run that loads here renders
+in the visual analysis views.
 
 ---
 
@@ -709,14 +704,14 @@ class MyScenarioAgentBuilder(AgentBuilder):
         ...
 ```
 
-### 6. (Optional) Use the Dashboard
+### 6. (Optional) Use Studio
 
 ```sh
-uv run silisocs-dashboard
+uv run silisocs-studio --output-root outputs --port 8765
 ```
 
-Create the world visually, configure agents, and launch. Use the sidebar
-`Start from` selector to load previous run configuration snapshots when needed.
+Create the world visually, preflight it, launch, watch artifacts grow, and inspect
+the completed run without changing tools.
 
 To replay simulation state from a previous run, use `sim.checkpoint.source_run`
 in the launch overrides.
@@ -895,5 +890,5 @@ optional timeline semantics, and storage/query behavior.
 - [Memory Initialization](memory_initialization.md): Raw, formative, and custom modes
 - [Environment Backends](backends.md): Generic apps, Twitter-like, Reddit-like, Mastodon
 - [Evaluation Probes](probes.md): Probe types and deployment
-- [Dashboard](dashboard.md): Streamlit GUI guide
+- [Studio](studio.md): unified visual workflow and extension guide
 - [Election Walkthrough](tutorials/election.md): Complex real-world example

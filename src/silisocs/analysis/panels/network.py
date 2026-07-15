@@ -19,13 +19,13 @@ from silisocs.analysis.panels._shared import (
     backend_type_for_event,
     event_semantics_for_event,
 )
-from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
-from silisocs.visual_tokens import (
+from silisocs.design.tokens import (
     ACCENT,
     BORDER,
     INK_MUTED,
     action_color,
 )
+from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
 
 _CANVAS = 600.0
 _PAD = 40.0  # keep every node inside ~[_PAD, _CANVAS - _PAD]
