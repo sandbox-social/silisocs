@@ -151,6 +151,9 @@ Scenario content lives under:
 
 **For understanding config structure deeply:** See [docs/configuration.md](docs/configuration.md)
 
+**For extending Studio analysis panels and views:** See
+[docs/analysis_panels.md](docs/analysis_panels.md)
+
 ## 4) Defining New Agent Behaviors Cleanly
 
 Use class-level behavior flows instead of adding custom manager branches:

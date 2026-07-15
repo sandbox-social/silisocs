@@ -25,6 +25,27 @@ _BUILTIN_BACKENDS: dict[str, str] = {
 }
 
 
+def registered_backend_types() -> tuple[str, ...]:
+    """Return built-in selector names for discovery surfaces."""
+    return tuple(sorted(_BUILTIN_BACKENDS))
+
+
+def resolve_backend_class(
+    backend_type: str,
+    *,
+    class_path: str | None = None,
+) -> type[BackendApp]:
+    """Resolve a configured backend class without instantiating it."""
+    resolved = str(class_path or _BUILTIN_BACKENDS.get(backend_type, "")).strip()
+    if not resolved:
+        available = ", ".join(registered_backend_types())
+        raise ValueError(
+            f"Unknown environment backend type: {backend_type!r}. "
+            f"Available built-in types: {available}. Or provide class_path."
+        )
+    return _load_app_class(resolved)
+
+
 def default_backend_db_filename(backend_type: str) -> str:
     """Return the default db filename convention for a backend type."""
     return f"{backend_type}.db"
@@ -110,17 +131,7 @@ def create_backend_app(backend_type: str, **kwargs: Any) -> BackendApp:
     class_path = str(kwargs.get("class_path") or "").strip()
     backend_params = dict(kwargs.get("params") or {})
 
-    class_path = class_path or _BUILTIN_BACKENDS.get(backend_type, "")
-
-    if not class_path:
-        available = ", ".join(sorted(_BUILTIN_BACKENDS.keys()))
-        raise ValueError(
-            f"Unknown environment backend type: '{backend_type}'. "
-            f"Available built-in types: {available}. "
-            f"Or set env.gm.backend.class_path for a custom backend."
-        )
-
-    cls = _load_app_class(class_path)
+    cls = resolve_backend_class(backend_type, class_path=class_path)
 
     # Resolve the db path from a single source so an explicit ``params.db_path``
     # override and the default ``<backend_type>.db`` convention match exactly what

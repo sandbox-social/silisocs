@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Scenarios | Silisocs Studio{% endblock %}
+{% block crumb %}Scenarios{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">Library</p><h1>Scenarios</h1></div><button class="button" type="button" onclick="document.getElementById('new-scenario').showModal()">New scenario</button></section>
+{% if scenarios %}<div class="table-shell"><table><thead><tr><th>Name</th><th>Files</th><th></th></tr></thead><tbody>{% for scenario in scenarios %}<tr><td class="table-title">{{ scenario.name }}</td><td>{{ scenario.files|length }}</td><td><a class="row-link" href="/scenarios/{{ scenario.name }}">Design</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><b>No scenarios</b><p>Create the first scenario in this workspace.</p></div>{% endif %}
+<dialog id="new-scenario" class="command-palette"><form action="/scenarios/new" method="get" class="form-group"><h2>New scenario</h2><label class="form-field"><span>Name</span><input name="name" required pattern="[A-Za-z0-9_-]+" value="new_scenario"></label><div class="composer-actions"><button class="button" type="button" onclick="document.getElementById('new-scenario').close()">Cancel</button><button class="button primary" type="submit">Create</button></div></form></dialog>
+{% endblock %}

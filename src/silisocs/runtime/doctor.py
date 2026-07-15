@@ -16,7 +16,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from silisocs.runtime.language_models.factory import OPENAI_COMPATIBLE_PRESETS
+from silisocs.runtime.language_models.catalog import OPENAI_COMPATIBLE_PRESETS
 
 _MIN_PYTHON = (3, 11)
 

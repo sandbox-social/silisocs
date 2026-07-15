@@ -12,7 +12,7 @@ import os
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from silisocs.environments.backends.base import SocialBackendApp, app_action
+from silisocs.environments.backends.base import SocialBackendApp, VisualizerSpec, app_action
 from silisocs.environments.backends.reddit_like.engine import RedditLikePlatform
 from silisocs.environments.backends.sqlite_state import (
     restore_sqlite_database,
@@ -32,6 +32,11 @@ class RedditLikeApp(SocialBackendApp):
     action_logger: Any = None
     # Authoritative checkpoint state: full SQLite snapshot + user mapping.
     provides_checkpoint_state = True
+    visualizer = VisualizerSpec(
+        "REDDIT_LIKE_DB",
+        "silisocs.environments.backends.reddit_like.visualizer.server",
+        8001,
+    )
     app_description: str = "RedditLikeApp"
     db_path: str = "reddit_like.db"
     _platform: RedditLikePlatform = dataclasses.field(default=None, init=False, repr=False)  # type: ignore[assignment]

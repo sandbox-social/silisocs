@@ -1,0 +1,29 @@
+{% macro card(title='', class_name='') -%}
+<section class="panel {{ class_name }}">{% if title %}<header><h3>{{ title }}</h3></header>{% endif %}<div class="panel-body">{{ caller() }}</div></section>
+{%- endmacro %}
+
+{% macro stat_tile(value, label, tone='neutral') -%}
+<div class="stat-tile {{ tone }}"><strong>{{ value }}</strong><span>{{ label }}</span></div>
+{%- endmacro %}
+
+{% macro badge(text, tone='neutral') -%}<span class="badge {{ tone }}">{{ text }}</span>{%- endmacro %}
+
+{% macro data_table(columns, rows) -%}
+<div class="table-scroll"><table><thead><tr>{% for column in columns %}<th>{{ column.label or column.name or column }}</th>{% endfor %}</tr></thead><tbody>{% for row in rows %}<tr>{% for column in columns %}{% set key = column.name or column %}<td>{{ row[key] }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+{%- endmacro %}
+
+{% macro tabs(items, active) -%}<nav class="tabs">{% for item in items %}<a href="{{ item.href }}" class="{{ 'active' if item.name == active }}">{{ item.label }}</a>{% endfor %}</nav>{%- endmacro %}
+
+{% macro drawer(id, title) -%}<aside id="{{ id }}" class="drawer" hidden><header><h2>{{ title }}</h2><button type="button" data-close="{{ id }}" aria-label="Close">&times;</button></header>{{ caller() }}</aside>{%- endmacro %}
+
+{% macro modal(id, title) -%}<dialog id="{{ id }}" class="modal"><header><h2>{{ title }}</h2><button type="button" onclick="this.closest('dialog').close()" aria-label="Close">&times;</button></header>{{ caller() }}</dialog>{%- endmacro %}
+
+{% macro toast(message, tone='neutral') -%}<div class="toast {{ tone }}" role="status">{{ message }}</div>{%- endmacro %}
+
+{% macro empty_state(title, message, action_label='', action_href='') -%}<div class="empty"><b>{{ title }}</b><p>{{ message }}</p>{% if action_label %}<a class="button" href="{{ action_href }}">{{ action_label }}</a>{% endif %}</div>{%- endmacro %}
+
+{% macro skeleton(lines=3) -%}<div class="skeleton" aria-busy="true" aria-label="Loading">{% for _ in range(lines) %}<span></span>{% endfor %}</div>{%- endmacro %}
+
+{% macro keycap(keys) -%}<kbd>{{ keys }}</kbd>{%- endmacro %}
+
+{% macro diff_view(lines) -%}<pre class="diff-view">{% for line in lines %}<span class="{{ line.kind }}">{{ line.text }}</span>{% endfor %}</pre>{%- endmacro %}

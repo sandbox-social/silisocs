@@ -45,7 +45,16 @@ def test_build_run_manifest_indexes_artifacts_and_layout(tmp_path: Path) -> None
     assert manifest["schema_version"] == 1
     assert manifest["status"] == "success" and manifest["error"] is None
     assert manifest["scenario"] == "demo" and manifest["seed"] == 1
-    assert manifest["game_masters"] == [{"name": "social", "backend_type": "twitter_like"}]
+    assert manifest["game_masters"] == [
+        {
+            "name": "social",
+            "backend_type": "twitter_like",
+            "backend_class_path": None,
+            "database": None,
+            "visualizer": None,
+            "event_semantics": None,
+        }
+    ]
     assert manifest["llm_usage"] == {"totals": {"total_tokens": 7}}
     assert manifest["health"]["agent_turn_failures"] == 2
     assert manifest["health"]["backend_action_errors"] == 0
@@ -72,6 +81,31 @@ def test_write_run_manifest_writes_json_and_never_raises(tmp_path: Path) -> None
 
     # A broken target (missing directory) degrades to None instead of raising.
     assert write_run_manifest(output_dir=tmp_path / "missing" / "deep", status="x") is None
+
+
+def test_manifest_carries_portable_custom_backend_capabilities(tmp_path: Path) -> None:
+    class CustomBackend:
+        db_path = str(tmp_path / "run" / "state.sqlite")
+        visualizer = None
+        event_semantics = {
+            "roles": {"world.transition": {"move"}},
+            "fields": {"world.object": ("payload.object",)},
+        }
+
+    manifest = build_run_manifest(
+        output_dir=_run_dir(tmp_path),
+        status="success",
+        game_masters=[
+            SimpleNamespace(name="world", backend_type="custom_world", backend=CustomBackend())
+        ],
+    )
+
+    record = manifest["game_masters"][0]
+    assert record["backend_type"] == "custom_world"
+    assert record["event_semantics"] == {
+        "roles": {"world.transition": ["move"]},
+        "fields": {"world.object": ["payload.object"]},
+    }
 
 
 def test_environment_provenance_degrades_outside_a_checkout(tmp_path: Path) -> None:

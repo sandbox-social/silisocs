@@ -68,7 +68,9 @@ def create_interaction_display(interaction, posts):
     """Create HTML display for a single interaction."""
     action = interaction["action"]
 
-    if action in ["liked", "reposted"]:
+    # Reactions to an existing post — microblog (liked/reposted) and forum
+    # (upvoted/downvoted) — render the reacted-to post.
+    if action in ["liked", "reposted", "upvoted", "downvoted"]:
         post_id = interaction["post_id"]
         content = posts.get(post_id, {}).get("content", "No content available.")
         user = posts.get(post_id, {}).get("user", "No user available.")
@@ -84,7 +86,7 @@ def create_interaction_display(interaction, posts):
             },
         )
 
-    if action == "replied":
+    if action in ["replied", "commented"]:
         parent_post_id = interaction.get("parent_post_id")
         reply_post_id = interaction.get("post_id")
         parent_content = posts.get(parent_post_id, {}).get("content", "No content available.")

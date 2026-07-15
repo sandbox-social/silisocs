@@ -21,6 +21,17 @@ from silisocs.exceptions import ActionError, BackendError
 
 _LOGGER = logging.getLogger(__name__)
 
+
+@dataclasses.dataclass(frozen=True)
+class VisualizerSpec:
+    """Launch metadata for a backend's optional read-only visualizer."""
+
+    env_var: str
+    module: str
+    default_port: int
+    port_env: str = "SILISOCS_VIEWER_PORT"
+
+
 # --------------------------------------------------------------------------- #
 # Constants & Types
 # --------------------------------------------------------------------------- #
@@ -302,6 +313,12 @@ class BackendApp(metaclass=abc.ABCMeta):
     # registry (runtime/checkpointing/replay_mappers.py) keyed by backend_type, so
     # backends themselves carry no replay-specific method.
     provides_checkpoint_state: bool = False
+    visualizer: typing.ClassVar[VisualizerSpec | None] = None
+    # Optional portable metadata for domain-aware visual panels. Keys are open
+    # semantic role/field names; values are action labels/dotted payload paths.
+    # It is copied into the run manifest so artifact readers do not import the
+    # backend implementation. See evaluations.vocabulary.EventSemantics.
+    event_semantics: typing.ClassVar[Mapping[str, Mapping[str, Sequence[str]]] | None] = None
 
     def __init__(self) -> None:
         self._enabled_actions: set[str] | None = None
@@ -378,6 +395,38 @@ class BackendApp(metaclass=abc.ABCMeta):
                 if not self._action_matches_filter(action, self._excluded_actions)
             ]
         return actions
+
+    @classmethod
+    def declared_action_catalog(cls) -> list[dict[str, Any]]:
+        """Describe class-declared actions without constructing a backend.
+
+        This is the read-only introspection seam used by config editors and
+        documentation generators. Runtime filters and instance-specific aliases
+        are intentionally absent because no configured instance exists yet.
+        """
+        methods = inspect.getmembers(cls, predicate=inspect.isfunction)
+        descriptors = [
+            ActionDescriptor.from_method(method)
+            for _, method in methods
+            if hasattr(method, _ACTION_PROPERTY)
+        ]
+        return [
+            {
+                "name": action.name,
+                "selectable_name": action.selectable_name,
+                "description": action.description.strip(),
+                "parameters": [
+                    {
+                        "name": parameter.name,
+                        "required": parameter.required,
+                        "kind": str(parameter.kind),
+                        "description": parameter.description,
+                    }
+                    for parameter in action.agent_visible_parameters
+                ],
+            }
+            for action in descriptors
+        ]
 
     def _raw_actions(self) -> list[ActionDescriptor]:
         """Return all declared backend actions with their built-in names."""

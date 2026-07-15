@@ -14,6 +14,7 @@ from typing import Any
 
 from silisocs.environments.backends.base import (
     SocialBackendApp,
+    VisualizerSpec,
     app_action,
 )
 from silisocs.environments.backends.sqlite_state import (
@@ -34,6 +35,11 @@ class TwitterLikeApp(SocialBackendApp):
     action_logger: Any = None
     # Authoritative checkpoint state: full SQLite snapshot + user mapping.
     provides_checkpoint_state = True
+    visualizer = VisualizerSpec(
+        "TWITTER_LIKE_DB",
+        "silisocs.environments.backends.twitter_like.visualizer.server",
+        8002,
+    )
     app_description: str = "TwitterLikeApp"
     db_path: str = "twitter_like.db"
     _platform: TwitterLikePlatform = dataclasses.field(default=None, init=False, repr=False)  # type: ignore[assignment]

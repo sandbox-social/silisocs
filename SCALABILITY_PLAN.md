@@ -115,6 +115,22 @@ cost becomes O(active), never O(population).**
 
 ### Phase 0 — Defect removal (unlocks ~1k → 10k; no structural change)
 
+**STATUS: LANDED (2026-07-04).** All items below are implemented, with 7 new
+regression tests (`tests/test_scalability_phase0.py`) and a benchmark harness
+(`benchmarks/scaling_benchmark.py`: real runner, LLM disabled, reports startup /
+per-step wall / peak RSS). Measured on the dev host (shared cgroup cap of 512
+pids, so runs use `sim.max_concurrent_actions=48`):
+
+| N | before | after |
+|---|--------|-------|
+| 100 | 2.6s wall, 0.14s/step, 86 MB | 1.8s wall, 0.13s/step, 92 MB |
+| 1,000 | **crash at init** ("can't start new thread") | 5.8s wall, 1.24s/step, 130 MB |
+| 5,000 | — | 16.8s wall, 6.1s/step, 223 MB |
+
+Per-step cost is now ~linear in N; the remaining per-step slope is dominated by
+the full-roster recsys recompute and per-agent feed reads — exactly Phase 1's
+O(active) targets.
+
 Engine/scheduling:
 - `agent_flow_tag`: read `flow_map.get()` off the live mapping — no dict copy
   (`scheduling.py:193`). Kills the O(N²).
@@ -159,6 +175,40 @@ phase below.
 
 ### Phase 1 — O(active) everywhere (unlocks 10k population, ~1k active head)
 
+**STATUS: LANDED (2026-07-04).** All items below are implemented, with 15
+regression tests (`tests/test_scalability_phase1.py`) and an end-to-end
+sharded-checkpoint save→resume exercise through the real runner. Benchmark
+(same harness/host as Phase 0, `sim.max_concurrent_actions=48`), with a fixed
+~100-agent active head (`active_probability=0.001, min_active_agents=100`):
+
+| N (population) | step_mean before-P1 pattern | step_mean with fixed active head |
+|---|---|---|
+| 1,000 | 1.27s (active ≈ 50% of N) | **0.45s** |
+| 5,000 | 6.7s | **0.60s** |
+| 10,000 | — | **0.69s** |
+
+Per-step cost now tracks the ACTIVE set, not the population: a 10× population
+increase moves step time by ~0.25s (participation sampling itself is O(N) with
+a tiny constant — it must consider everyone — plus agent-construction startup,
+which grows as expected: 2.0s → 8.2s from 1k → 10k). Notes on deviations:
+
+- The recsys O(active) path (scoped delete + upsert) is verified by unit tests,
+  not the benchmark — the dev host has no sklearn/sentence-transformers, and the
+  benchmark scenario ships with recsys off.
+- The **batched `get_timelines` bulk read was deliberately NOT added**: the
+  serial-read bottleneck was the per-GM lock around `make_observation`, which the
+  `read_only` flag removes (reads now run concurrently on thread-local WAL
+  connections). A bulk-read API with no caller would be dead plumbing — exactly
+  what item 2 of this phase removed; true batched observation builds arrive with
+  the Phase 3 batch pipeline (and Postgres fan-out-on-write in Phase 2).
+- The DB sidecar in the `sharded` layout is extracted by the save strategy from
+  the base64 the backend hands over — `get_state`/`set_state` contracts are
+  unchanged, but the blob still exists in memory during save; the zero-copy
+  snapshot (backend writes the file directly) is Phase 2 work.
+- GM `update` now receives the ACTIVE roster (components opt back into the
+  population via `requires_full_roster = True`); the GM's own roster/context stay
+  bound to the full roster from `initialize()`, rebuilt only when it changes.
+
 - **Reorder `run_step`**: compute participation FIRST, then pass the *active*
   roster to GM `update` (`base_engines.py:229-237`). The `update(step, agents,
   context)` signature is unchanged — only who's in `agents` changes; a
@@ -193,6 +243,37 @@ phase below.
 
 ### Phase 2 — Throughput & storage (unlocks ~100k population, ~10k active)
 
+**STATUS: async slice LANDED (2026-07-07).** The first item below (async model
+path + async turn executor) is implemented, selected by `sim.engine.executor:
+threads|asyncio` (default `threads`, byte-identical behavior). Design points as
+landed: sync `act`/`sample_text` remain the required contracts; `act_async` /
+`sample_*_async` / turn-policy `run_async` are optional overrides whose base
+defaults hop to helper threads via `asyncio.to_thread`, so mixed sync/async
+rosters run in one step and a blocking sync agent can never stall the loop.
+The executor swap happens entirely at the innermost drain seam
+(`_drain_tasks_on_pool` → event-loop drain; the calling thread still blocks per
+group), so every traversal/barrier/ordering semantic, per-GM lock/cap, failure
+isolation, and the retry-telemetry envelope are shared code with the threaded
+path — `worker_limit` becomes an asyncio in-flight semaphore. Turn-policy logic
+exists once (a `_drive` generator; `run`/`run_async` are mechanical drivers);
+model runtime context moved from `threading.local` to a ContextVar-backed
+drop-in (task- AND thread-scoped). OpenAI providers get a lazy `AsyncOpenAI`
+client with the same bounded retry/backoff (async sleep). Verified: 28
+regression tests (`tests/test_scalability_phase2_async.py`), full suite green,
+runner e2e parity threads↔asyncio (identical per-agent action multisets), and
+an ad-hoc scale check — 500 async turns × 50 ms simulated latency drained in
+0.16 s on 31 threads (~475 concurrently in flight). Adversarially reviewed
+(3 agents); two real async-only bugs found and fixed with regression tests:
+(1) `_ensure_loop_runner` lacked the double-checked lock the rest of the engine
+uses, so concurrent multi-GM drivers could each build a separate event loop
+(shared semaphores then awaited on two loops) — now guarded + eagerly created
+single-threaded in `_run_action_phase`; (2) the lazy `AsyncOpenAI` client was
+cached for the model's lifetime but bound to the first loop, stranding a model
+reused across runs on a closed loop — now keyed by the running loop and rebuilt
+on change. Not yet done from this item: `sample_structured_async` stays
+thread-wrapped (no native async structured client path yet). The remaining
+Phase 2 items below are NOT started.
+
 - **Async model path (additive)**: `LanguageModel.sample_text_async(...)` etc.
   with a default implementation that wraps the sync method in a thread — every
   existing provider keeps working; `OpenAICompatibleLanguageModel` implements it
@@ -200,7 +281,7 @@ phase below.
   the same `execute_batches`/`execute_chain_groups`/`execute_staged_groups`
   public API (the `StepStrategy` contract is untouched — this is exactly the
   swap the SchedulingMixin split was designed for). Thousands of in-flight
-  calls, single-digit threads.
+  calls, single-digit threads. **[LANDED — see status above]**
 - **`sample_choice` in one call**: constrained decoding / logit-bias /
   structured-output instead of up to 20 sequential escalations
   (`openai.py:253`).

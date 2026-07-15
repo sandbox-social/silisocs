@@ -41,7 +41,9 @@ def test_dashboard_parser_accepts_current_social_action_logs_without_probes() ->
         }
     )
 
-    assert list(graph.nodes) == []
+    # Every actor is a node even without a follow edge, so a post-only run still
+    # renders the network instead of leaving the dashboard stuck on the upload screen.
+    assert sorted(graph.nodes) == ["Alice", "Bob"]
     assert interactions[1][0]["action"] == "liked"
     assert interactions[1][0]["target"] == "Alice"
     assert active[0] == {"Alice"}
@@ -89,12 +91,57 @@ def test_dashboard_parser_keeps_probe_responses_generic() -> None:
         }
     )
 
-    assert list(graph.nodes) == []
+    # The acting agent is a node even on a non-social backend with no follow edges.
+    assert list(graph.nodes) == ["Alice"]
     assert interactions == {}
     assert active == {}
     assert posts == {}
     assert probes == {0: {"Alice": "curious", "Bob": "focused"}}
     assert actions[0][0]["data"]["result"] == "market state"
+
+
+def test_dashboard_parser_handles_reddit_vocabulary() -> None:
+    """reddit_like labels (comment/upvote/downvote) render like their twitter peers."""
+    rows = [
+        {
+            "episode": 0,
+            "event_type": "action",
+            "source_user": "Alice",
+            "label": "post",
+            "data": {"post_id": "1", "post_text": "topic"},
+        },
+        {
+            "episode": 0,
+            "event_type": "action",
+            "source_user": "Bob",
+            "label": "comment",
+            "data": {"post_id": "2", "reply_to_id": "1", "content": "nice point"},
+        },
+        {
+            "episode": 0,
+            "event_type": "action",
+            "source_user": "Carol",
+            "label": "upvote",
+            "data": {"post_id": "1"},
+        },
+    ]
+
+    graph, interactions, active, posts, _probes, _actions = load_data_from_folder(
+        {"action_events.jsonl": _jsonl(rows)}
+    )
+
+    # All three actors are nodes even with no follow graph.
+    assert sorted(graph.nodes) == ["Alice", "Bob", "Carol"]
+    ep0 = {i["source"]: i for i in interactions[0]}
+    # Comment is a reply: past-tense mapped, targets the parent post's owner.
+    assert ep0["Bob"]["action"] == "commented"
+    assert ep0["Bob"]["target"] == "Alice"
+    # Upvote is a reaction: targets the reacted-to post's owner.
+    assert ep0["Carol"]["action"] == "upvoted"
+    assert ep0["Carol"]["target"] == "Alice"
+    # The comment body is captured as a post (text label).
+    assert posts["2"]["content"] == "nice point"
+    assert active[0] == {"Alice", "Bob", "Carol"}
 
 
 def test_analysis_dashboard_loads_directory_without_probe_log(tmp_path) -> None:

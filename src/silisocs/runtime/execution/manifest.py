@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Collection, Mapping
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +36,51 @@ _HEALTH_COUNTERS = (
     "action_invalid_targets",
     "backend_action_errors",
 )
+
+
+def _portable_event_semantics(value: Any) -> dict[str, Any] | None:
+    """Normalize optional backend visual metadata without risking the manifest."""
+    if not isinstance(value, Mapping):
+        return None
+    result: dict[str, Any] = {}
+    for section, entries in value.items():
+        if not isinstance(entries, Mapping):
+            continue
+        normalized: dict[str, list[str]] = {}
+        for name, values in entries.items():
+            if not isinstance(values, Collection) or isinstance(values, (str, bytes)):
+                continue
+            items = [str(item) for item in values]
+            normalized[str(name)] = sorted(items) if section == "roles" else items
+        result[str(section)] = normalized
+    return result or None
+
+
+def _game_master_record(gm: Any, output_dir: Path) -> dict[str, Any]:
+    backend = getattr(gm, "backend", None)
+    visualizer = getattr(type(backend), "visualizer", None) if backend is not None else None
+    db_path = getattr(backend, "db_path", None)
+    event_semantics = getattr(type(backend), "event_semantics", None) if backend else None
+    try:
+        relative_db = (
+            str(Path(db_path).resolve().relative_to(output_dir.resolve())) if db_path else None
+        )
+    except (OSError, ValueError):
+        relative_db = str(db_path) if db_path else None
+    return {
+        "name": str(getattr(gm, "name", "")),
+        "backend_type": getattr(gm, "backend_type", None),
+        "backend_class_path": (
+            f"{type(backend).__module__}.{type(backend).__qualname__}"
+            if backend is not None
+            else None
+        ),
+        "database": relative_db,
+        "visualizer": asdict(visualizer)
+        if visualizer is not None and is_dataclass(visualizer)
+        else None,
+        "event_semantics": _portable_event_semantics(event_semantics),
+    }
 
 
 def _relative_if_present(output_dir: Path, name: str) -> str | None:
@@ -88,13 +135,7 @@ def build_run_manifest(
         "num_agents": meta.get("num_agents"),
         "num_steps": meta.get("num_steps"),
         "llm_name": meta.get("llm_name"),
-        "game_masters": [
-            {
-                "name": str(getattr(gm, "name", "")),
-                "backend_type": getattr(gm, "backend_type", None),
-            }
-            for gm in (game_masters or [])
-        ],
+        "game_masters": [_game_master_record(gm, out) for gm in (game_masters or [])],
         "llm_usage": meta.get("llm_usage"),
         "health": {name: int(counters.get(name, 0)) for name in _HEALTH_COUNTERS},
         "artifacts": artifacts,

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Live | Silisocs Studio{% endblock %}
+{% block crumb %}Live{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">Control plane</p><h1>Live jobs</h1></div></section>
+{% if job %}
+<div class="live-ribbon"><span class="status-dot"></span><strong id="job-status">{{ job.status }}</strong><span>{{ job.kind }}</span><span>{{ job.scenario or job.id }}</span><a id="run-link" class="row-link {{ 'hidden' if not run_id }}" href="{{ '/runs/' + run_id if run_id else '#' }}">Watch run</a><button class="button" type="button" onclick="stopJob()">Stop</button></div>
+<section class="panel wide"><header><h3>Live log</h3></header><pre id="live-log" class="live-log"></pre></section>
+<script>
+const jobId={{ job.id|tojson }};const log=document.getElementById('live-log');const events=new EventSource(`/api/jobs/${jobId}/stream`);events.addEventListener('log_line',event=>{const data=JSON.parse(event.data);log.textContent+=data.line+'\n';log.scrollTop=log.scrollHeight});events.addEventListener('status_changed',event=>{document.getElementById('job-status').textContent=JSON.parse(event.data).status});async function attachRun(){const response=await fetch(`/api/jobs/${jobId}`),data=await response.json();if(data.output_dir){const runs=await (await fetch('/api/runs')).json(),run=runs.items.find(item=>item.path===data.output_dir);if(run){const link=document.getElementById('run-link');link.href='/runs/'+run.id;link.classList.remove('hidden')}}}events.addEventListener('output_discovered',attachRun);events.addEventListener('artifact_grown',attachRun);events.addEventListener('done',event=>{events.close();setTimeout(()=>location.reload(),700)});async function stopJob(){await fetch(`/api/jobs/${jobId}/stop`,{method:'POST'})}
+</script>
+{% elif jobs %}<div class="table-shell"><table><thead><tr><th>Status</th><th>Kind</th><th>Scenario</th><th>Created</th><th></th></tr></thead><tbody>{% for item in jobs %}<tr><td><span class="badge {{ 'success' if item.status == 'finished' else 'neutral' }}">{{ item.status }}</span></td><td>{{ item.kind }}</td><td>{{ item.scenario or '—' }}</td><td>{{ item.created_at }}</td><td><a class="row-link" href="/live?job={{ item.id }}">Open</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><b>No jobs</b><p>Launch a scenario to start a run.</p></div>{% endif %}
+{% endblock %}
