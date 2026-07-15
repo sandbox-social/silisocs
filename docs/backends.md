@@ -393,10 +393,9 @@ Both local backends include a web-based visualizer (read-only frontend) for
 inspecting simulation state during or after a run. The home feed and sidebar
 stats auto-refresh every few seconds (skipped while you are scrolled into the
 feed), so pointing a visualizer at a *running* simulation's database shows new
-posts appearing live. The Streamlit dashboard can launch these for you: the
-Launch tab's "Open live platform view during run" checkbox starts one against
-the new run's database automatically, and the Results tab has an "Open platform
-view" button for any finished run.
+posts appearing live. Studio discovers each backend's optional `VisualizerSpec`
+and launches it on a dynamic port from a run's Platform tab. The same path works
+during Watch mode and for finished runs without backend-name branches in Studio.
 
 ### Twitter-like Visualizer
 

@@ -8,8 +8,8 @@ from typing import Any
 
 from silisocs.analysis.panel import Figure, Grid, Markdown, Panel, Table, register_panel
 from silisocs.analysis.panels._shared import episode_of
+from silisocs.design.tokens import action_color
 from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
-from silisocs.visual_tokens import action_color
 
 
 @register_panel

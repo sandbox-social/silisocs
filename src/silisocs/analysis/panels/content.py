@@ -9,8 +9,8 @@ from typing import Any
 
 from silisocs.analysis.panel import Control, Figure, Html, Panel, register_panel
 from silisocs.analysis.panels._shared import episode_of, event_semantics_for_event
+from silisocs.design.tokens import action_color
 from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
-from silisocs.visual_tokens import action_color
 
 _EM_DASH = "—"
 

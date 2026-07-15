@@ -12,7 +12,7 @@ compatibility bridge for legacy scenarios. It has:
 - Multiple platform backends (Twitter-like, Reddit-like, Mastodon)
 - Declarative persona pipeline plus custom builder extension path
 - Probe-based evaluation and rich runtime telemetry
-- Streamlit dashboard for scenario creation and launch
+- Studio visual workspace for scenario creation, launch, inspection, and analysis
 
 The runtime entrypoint is:
 
@@ -263,7 +263,7 @@ Use class-level behavior flows instead of adding custom manager branches:
     flow waits for slow flows); use `multi_gm` when you don't need stage alignment.
 
 Default UX rule:
-- Keep users on the default `ComponentGameMaster`, with advanced dashboard toggles off.
+- Keep users on the default `ComponentGameMaster`, with advanced Studio controls off.
 - Only expose flow tags and multi-GM controls behind advanced mode.
 
 All per-flow keys above are additive and backward compatible: each falls back to
@@ -786,7 +786,7 @@ agent-facing guides and guided workflows
 - `docs/environment_layer.md` — Engine/GM/component extensibility patterns
 - `docs/backends.md` — Backend plugin patterns
 - `docs/building_agents.md` — Agent builder patterns
-- `docs/dashboard.md` — GUI usage
+- `docs/studio.md` — Studio usage
 - `docs/contributing.md` — Code standards
 
 When adding features, update docs in:
@@ -794,14 +794,14 @@ When adding features, update docs in:
 - Config schema and fields (docs/configuration.md)
 - Runtime behavior and extension guidance (this file + docs/environment_layer.md)
 - User-facing usage examples (docs/usage.md)
-- Dashboard behavior (docs/dashboard.md if applicable)
+- Studio behavior (`docs/studio.md` if applicable)
 
 ## 10) Common Pitfalls
 
 - Adding GM/engine bloat instead of using flow routing + component hooks
 - Breaking the action text format consumed by resolve
 - Forgetting to keep docs aligned with runtime defaults
-- Assuming dashboard run snapshot loading equals checkpoint state replay
+- Assuming Studio run-artifact loading equals checkpoint state replay
 - Relying on non-uv environment when reproducing tests
 - Not understanding config composition (Hydra merges scenario-local overrides with base defaults)
 
@@ -831,7 +831,7 @@ Start from these files to understand the flow:
 6. **Component slots**: `src/silisocs/environments/gm/components/` — Pluggable behavior
 7. **Backend actions**: `src/silisocs/environments/backends/twitter_like/app.py` — Example backend
 8. **Run loading**: `src/silisocs/evaluations/run_artifact.py` — `load_run`/`load_study`
-   typed artifact loaders (manifest-first with legacy fallback); dashboards and
+   typed artifact loaders (manifest-first with legacy fallback); Studio and
    analysis tools load runs through this, never by rediscovering the file layout
 
 ## 13) Session State

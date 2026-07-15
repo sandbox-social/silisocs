@@ -1,16 +1,11 @@
 """Design tokens — the single source of truth for silisocs UI surfaces.
 
-Every color, font, and structural scale used across the Streamlit launcher, the
-Dash analysis dashboard, Studio (FastAPI/Jinja + Plotly), and any future UI is
-defined here, so the same role and the same action type render consistently
-everywhere.
+Every color, font, and structural scale used across Studio, exported reports,
+backend visualizers, and future UI surfaces is defined here, so the same role
+and action type render consistently everywhere.
 
 ``THEMES`` holds the full light and dark role palettes. The module-level
-``ACCENT``/``INK``/... constants mirror the *light* theme verbatim for backward
-compatibility (they were previously defined in ``silisocs.visual_tokens``). The
-Streamlit theme (``.streamlit/config.toml``) cannot import Python, so its
-``primaryColor`` mirrors ``ACCENT`` and its dark surfaces mirror
-``THEMES["dark"]`` — keep the two in sync when changing them.
+``ACCENT``/``INK``/... constants expose the light theme for direct consumers.
 """
 
 from __future__ import annotations
@@ -21,9 +16,8 @@ import hashlib
 # Themes: the canonical role palettes.
 #
 # Role names are snake_case. Light values are the historical Slate & Teal brand
-# (mirrored by .streamlit/config.toml primaryColor + the docs site). Dark values
-# are a coherent slate set anchored on the Streamlit dark theme (canvas
-# #0f1117, surface #161922, ink #e8eaf2); the accent stays #0d9488 while
+# (also used by the docs site). Dark values are a coherent slate set anchored on
+# canvas #0f1117, surface #161922, and ink #e8eaf2; the accent stays #0d9488 while
 # text-on-dark accent/link roles brighten to teal-300/-200 where contrast
 # requires. All pairs used for text are validated for WCAG contrast in
 # tests/test_design.py.
@@ -85,9 +79,8 @@ FONT_STACK = "'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif"
 FONT_DISPLAY = "Georgia, 'Times New Roman', serif"
 
 # ---------------------------------------------------------------------------
-# Per-action colors, keyed by the past-tense labels the analysis dashboard
-# plots (see evaluations/analysis/dashboard/config.py PAST_TENSE_MAP). Covers
-# both the microblog and forum vocabularies.
+# Optional house-color overrides for familiar action labels. ``action_color``
+# deterministically assigns every other label, including custom-backend actions.
 # ---------------------------------------------------------------------------
 ACTION_COLORS: dict[str, str] = {
     "post": "#277da1",
@@ -106,8 +99,7 @@ ACTION_COLORS: dict[str, str] = {
     "downvoted": "#d62728",
 }
 
-# Compatibility fallback for legacy consumers. New surfaces call
-# ``action_color`` so arbitrary backend labels remain visually distinct.
+# Neutral fallback for clients that cannot call ``action_color`` directly.
 ACTION_COLOR_FALLBACK = "#7f7f7f"
 
 CATEGORICAL_COLORS: tuple[str, ...] = (

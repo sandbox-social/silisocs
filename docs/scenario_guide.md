@@ -172,9 +172,9 @@ With overrides:
 uv run silisocs --config-path scenarios/my_world/conf num_steps=20 seed=99
 ```
 
-Or from the dashboard:
+Or from Studio:
 ```bash
-uv run streamlit run src/silisocs/dashboard/launch_app.py
+uv run silisocs-studio --output-root outputs --port 8765
 ```
 
 ---

@@ -153,8 +153,8 @@ def _print_artifact_tour(output_dir: Path) -> None:
 
 def _print_next_steps(output_dir: Path) -> None:
     print("\nNext steps:")
-    print(f"  - browse the results app:   silisocs-analysis-dashboard --output_dir {output_dir}")
-    print("  - build your own scenario:  silisocs-dashboard")
+    print(f"  - browse the results app:   silisocs-studio --output-root {output_dir.parent}")
+    print("  - build your own scenario:  silisocs-studio")
     print("  - run with a real model:    silisocs sim.llm.provider=openai sim.llm.name=gpt-4o-mini")
     print("  - check your environment:   silisocs doctor")
     print("  - load runs in Python:      from silisocs.evaluations.run_artifact import load_run")

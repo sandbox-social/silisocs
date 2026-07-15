@@ -46,8 +46,6 @@ concordia = [
   "gdm-concordia>=2.1.0,<2.2.0",
 ]
 analysis = [
-  "dash>=2.18.2,<3.0.0",
-  "dash-cytoscape>=1.0.2,<2.0.0",
   "ipympl>=0.9.4,<0.10.0",
   "matplotlib>=3.9.1,<4.0.0",
   "nbformat>=5.10.4,<6.0.0",
@@ -57,9 +55,6 @@ analysis = [
   "scipy>=1.14.1,<2.0.0",
   "seaborn>=0.13.2,<0.14.0",
   "tiktoken>=0.7.0,<0.8.0",
-]
-dashboard = [
-  "streamlit>=1.45.1,<2.0.0",
 ]
 studio = [
   "fastapi>=0.110.1,<1.0.0",
@@ -103,7 +98,7 @@ aws = [
   "boto3>=1.34.139,<2.0.0",
 ]
 all = [
-  "silisocs[analysis,concordia,dashboard,docs,hf,hpc,mastodon,recsys,studio,viz]",
+  "silisocs[analysis,concordia,docs,hf,hpc,mastodon,recsys,studio,viz]",
 ]
 
 [project.urls]
@@ -114,8 +109,6 @@ Repository = "https://github.com/sandbox-social/silisocs"
 silisocs = "silisocs.runtime.runner:cli_main"
 silisocs-study = "silisocs.studies.run_study:main"
 silisocs-config-dry-run = "silisocs.runtime.config_dry_run:main"
-silisocs-dashboard = "silisocs.dashboard.cli:main"
-silisocs-analysis-dashboard = "silisocs.evaluations.analysis.dashboard.cli:main"
 silisocs-studio = "silisocs.studio.cli:main"
 silisocs-report = "silisocs.analysis.report:main"
 
@@ -163,7 +156,6 @@ include = ["silisocs*"]
 [tool.setuptools.package-data]
 silisocs = [
   "conf/**/*.yaml",
-  "dashboard/assets/*.svg",
   "studio/templates/*.html",
   "studio/static/*.css",
   "studio/static/*.js",

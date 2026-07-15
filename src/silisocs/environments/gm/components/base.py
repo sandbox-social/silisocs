@@ -15,7 +15,7 @@ class BaseComponent:
     """Small native component base with optional checkpoint + runtime-tuning hooks."""
 
     # Parameter names that may be retuned mid-run (the ``set_component_params``
-    # intervention, dashboards, custom orchestration). For each declared name,
+    # intervention, Studio controls, custom orchestration). For each declared name,
     # ``set_params`` calls ``set_<name>(value)`` when the component defines it,
     # otherwise assigns the same-named attribute. Undeclared names are ignored
     # (not applied), so one params mapping can address several components.

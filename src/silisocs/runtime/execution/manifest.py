@@ -1,7 +1,7 @@
 """Self-describing run manifest.
 
 Every run writes a single ``run_manifest.json`` at its output root so tools
-(dashboards, evaluators, notebooks) can load a run from one file instead of
+(Studio, evaluators, notebooks) can load a run from one file instead of
 re-discovering the artifact layout. The manifest points at artifacts rather
 than duplicating them — ``effective_config.yaml`` stays the config record and
 ``sim_metrics.json`` the telemetry record.

@@ -22,8 +22,8 @@ _MIN_PYTHON = (3, 11)
 
 # extra name -> (import names to probe, what the extra unlocks)
 _EXTRAS = {
-    "dashboard": (("streamlit",), "Streamlit scenario builder (silisocs-dashboard)"),
-    "analysis": (("dash", "plotly"), "Dash analytics app (silisocs-analysis-dashboard)"),
+    "studio": (("fastapi", "jinja2", "uvicorn"), "Studio visual workspace"),
+    "analysis": (("plotly",), "notebooks and extended statistical analysis"),
     "viz": (("fastapi", "uvicorn"), "backend state visualizers"),
     "mastodon": (("mastodon",), "live Mastodon backend"),
     "concordia": (("concordia",), "Concordia compatibility bridge"),
@@ -122,7 +122,7 @@ def run_doctor(output_dir: str | Path | None = None) -> int:
 
     print("\nNext steps:")
     print("  - validate a config without running: silisocs-config-dry-run")
-    print("  - launch the workbench: silisocs-dashboard")
+    print("  - launch the workbench: silisocs-studio")
 
     if failures:
         print(f"\n{failures} required check(s) failed.")

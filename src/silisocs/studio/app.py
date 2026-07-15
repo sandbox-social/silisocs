@@ -9,7 +9,10 @@
 
 import json
 import os
+import shlex
 import sys
+from contextlib import asynccontextmanager
+from difflib import unified_diff
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +27,6 @@ from silisocs.analysis.views import (
     missing_requirements,
     scenario_view_files,
 )
-from silisocs.dashboard.viewers import find_backend_dbs, visualizer_plan
 from silisocs.design.css import css_variables
 from silisocs.evaluations.run_artifact import load_study
 from silisocs.studio.catalog import discover_runs, find_run
@@ -45,6 +47,7 @@ from silisocs.studio.jobs import JobManager, allocate_port
 from silisocs.studio.launch import ScenarioNotFoundError, prepare_launch
 from silisocs.studio.plugins import load_studio_pages
 from silisocs.studio.studies import StudyRepository, compose_study, evaluation_presets
+from silisocs.studio.viewers import find_backend_dbs, visualizer_plan
 
 
 def _coerce_param(value: str) -> Any:
@@ -75,9 +78,11 @@ def _panel_param_overrides(query_params: Any) -> dict[str, dict[str, Any]]:
 def _run_facets(artifact: Any) -> dict[str, Any]:
     """Episode range and agent list a run's shell controls draw choices from."""
     max_episode = -1
+    action_count = 0
     agents: set[str] = set()
     probes: set[str] = set()
     for row in artifact.iter_actions():
+        action_count += 1
         episode = row.get("episode")
         if isinstance(episode, int):
             max_episode = max(max_episode, episode)
@@ -90,7 +95,53 @@ def _run_facets(artifact: Any) -> dict[str, Any]:
             max_episode = max(max_episode, episode)
         if row.get("label"):
             probes.add(str(row["label"]))
-    return {"max_episode": max_episode, "agents": sorted(agents), "probes": sorted(probes)}
+    return {
+        "max_episode": max_episode,
+        "action_count": action_count,
+        "agents": sorted(agents),
+        "probes": sorted(probes),
+    }
+
+
+def _watch_snapshot(artifact: Any, job: Any, facets: dict[str, Any]) -> dict[str, Any]:
+    """Build backend-neutral initial Watch counters from persisted run artifacts."""
+    status = str(artifact.status or job.status)
+    total_steps = artifact.num_steps
+    latest_episode = int(facets.get("max_episode", -1))
+    if status == "success" and total_steps is not None:
+        step = f"Episode {total_steps}/{total_steps} complete"
+    elif latest_episode >= 0:
+        current = latest_episode + 1
+        step = (
+            f"Episode {current}/{total_steps} running"
+            if total_steps
+            else f"Episode {current} running"
+        )
+    else:
+        step = "Waiting for events"
+
+    started = job.started_at or job.created_at
+    ended = job.ended_at or started
+    elapsed = max(0, int(ended - started))
+    usage = artifact.llm_usage or {}
+    totals = usage.get("totals", {}) if isinstance(usage, dict) else {}
+    tokens = totals.get("total_tokens") if isinstance(totals, dict) else None
+    cost = usage.get("estimated_cost_usd") if isinstance(usage, dict) else None
+    usage_label = (
+        f"${float(cost):.4f} estimated"
+        if cost is not None
+        else f"{int(tokens):,} tokens"
+        if tokens is not None
+        else "Usage pending"
+    )
+    action_count = int(facets.get("action_count", 0))
+    return {
+        "status": status,
+        "step": step,
+        "elapsed": f"{elapsed // 60}:{elapsed % 60:02d} elapsed",
+        "actions": f"{action_count:,} {'action' if action_count == 1 else 'actions'}",
+        "usage": usage_label,
+    }
 
 
 def _effective_config_text(run_dir: Path) -> str:
@@ -100,6 +151,76 @@ def _effective_config_text(run_dir: Path) -> str:
     ]
     candidate = next((path for path in candidates if path.is_file()), None)
     return candidate.read_text(encoding="utf-8") if candidate else ""
+
+
+def _merge_mapping(target: dict[str, Any], source: dict[str, Any]) -> None:
+    """Recursively merge YAML mappings while preserving their source order."""
+    for key, value in source.items():
+        if isinstance(value, dict) and isinstance(target.get(key), dict):
+            _merge_mapping(target[key], value)
+        else:
+            target[key] = value
+
+
+def _scenario_baseline_text(scenarios: ScenarioRepository, scenario_name: str | None) -> str:
+    """Project a scenario's authored config groups into one comparable document."""
+    if not scenario_name:
+        return ""
+    try:
+        scenario = scenarios.load(scenario_name)
+    except (KeyError, ValueError):
+        return ""
+
+    baseline: dict[str, Any] = {}
+    packages = {
+        "world/default.yaml": None,
+        "agents/default.yaml": "agents",
+        "sim.yaml": "sim",
+        "env.yaml": "env",
+        "eval.yaml": "eval",
+    }
+    for relative, package_name in packages.items():
+        document = scenario["files"].get(relative)
+        if not document:
+            continue
+        parsed = yaml.safe_load(document["text"]) or {}
+        if not isinstance(parsed, dict):
+            continue
+        if package_name is None:
+            _merge_mapping(baseline, parsed)
+        else:
+            package = baseline.setdefault(package_name, {})
+            if isinstance(package, dict):
+                _merge_mapping(package, parsed)
+    return yaml.safe_dump(baseline, sort_keys=False, allow_unicode=True)
+
+
+def _config_diff_lines(baseline: str, effective: str) -> list[dict[str, str]]:
+    """Return escaped-by-Jinja diff rows with stable semantic classes."""
+    if not effective:
+        return []
+    if not baseline:
+        return []
+    rows = []
+    for line in unified_diff(
+        baseline.splitlines(),
+        effective.splitlines(),
+        fromfile="scenario baseline",
+        tofile="effective run config",
+        lineterm="",
+    ):
+        if line.startswith(("+++", "---")):
+            kind = "header"
+        elif line.startswith("+"):
+            kind = "addition"
+        elif line.startswith("-"):
+            kind = "removal"
+        elif line.startswith("@@"):
+            kind = "hunk"
+        else:
+            kind = "context"
+        rows.append({"kind": kind, "text": line})
+    return rows
 
 
 def create_app(
@@ -133,12 +254,20 @@ def create_app(
     package = Path(__file__).resolve().parent
     templates = Jinja2Templates(directory=str(package / "templates"))
     templates.env.globals["plugin_pages"] = plugin_pages
-    app = FastAPI(title="Silisocs Studio", version="1.0", docs_url="/api/docs", redoc_url=None)
-    app.state.jobs = jobs
 
-    @app.on_event("shutdown")
-    def close_job_manager() -> None:
+    @asynccontextmanager
+    async def lifespan(_app):
+        yield
         jobs.close()
+
+    app = FastAPI(
+        title="Silisocs Studio",
+        version="1.0",
+        docs_url="/api/docs",
+        redoc_url=None,
+        lifespan=lifespan,
+    )
+    app.state.jobs = jobs
 
     for page in plugin_pages:
         app.include_router(page.router)
@@ -458,7 +587,12 @@ def create_app(
         )
 
     @app.get("/runs/{run_id:path}", response_class=HTMLResponse)
-    def run_page(request: Request, run_id: str, view: str = "overview", tab: str = "analyze"):
+    def run_page(
+        request: Request,
+        run_id: str,
+        view: str = "overview",
+        tab: str | None = None,
+    ):
         record = record_or_404(run_id)
         overrides = _panel_param_overrides(request.query_params)
         try:
@@ -475,6 +609,20 @@ def create_app(
             ),
             None,
         )
+        active_tab = tab or (
+            "watch" if related_job and related_job.status in {"queued", "running"} else "overview"
+        )
+        if active_tab not in {"overview", "watch", "platform", "analyze", "config", "logs"}:
+            raise HTTPException(status_code=404, detail=f"Unknown run tab {active_tab!r}")
+        effective_config = _effective_config_text(record.path)
+        baseline_config = _scenario_baseline_text(scenarios, record.artifact.scenario)
+        scenario_path = repository / "scenarios" / str(record.artifact.scenario) / "conf"
+        reproduce_command = (
+            f"uv run silisocs --config-path {shlex.quote(str(scenario_path))}"
+            if record.artifact.scenario and scenario_path.is_dir()
+            else f"uv run silisocs-report {shlex.quote(str(record.path))}"
+        )
+        facets = _run_facets(record.artifact)
         return templates.TemplateResponse(
             request,
             "run.html",
@@ -483,13 +631,20 @@ def create_app(
                 "view": built,
                 "view_name": view,
                 "views": run_view_names(record.artifact.scenario),
-                "facets": _run_facets(record.artifact),
-                "tab": tab,
+                "facets": facets,
+                "watch": (
+                    _watch_snapshot(record.artifact, related_job, facets) if related_job else None
+                ),
+                "tab": active_tab,
                 "job": related_job,
                 "viewer_backends": sorted(
                     {backend for backend, _ in find_backend_dbs(record.path)}
                 ),
-                "effective_config": _effective_config_text(record.path),
+                "effective_config": effective_config,
+                "baseline_config": baseline_config,
+                "baseline_available": bool(baseline_config),
+                "config_diff": _config_diff_lines(baseline_config, effective_config),
+                "reproduce_command": reproduce_command,
                 "manifest_text": yaml.safe_dump(record.artifact.manifest or {}, sort_keys=False),
                 "log_text": (
                     Path(related_job.log_path).read_text(encoding="utf-8", errors="replace")

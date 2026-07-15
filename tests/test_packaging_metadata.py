@@ -22,12 +22,14 @@ def test_package_data_includes_runtime_templates() -> None:
     assert "environments/backends/**/templates/*.html" in package_data
 
 
-def test_package_data_includes_dashboard_assets() -> None:
-    """Streamlit dashboard brand assets are loaded from package-relative paths."""
+def test_package_data_includes_studio_assets() -> None:
+    """Studio templates and zero-build static assets ship package-relative."""
     data = _pyproject()
     package_data = data["tool"]["setuptools"]["package-data"]["silisocs"]
 
-    assert "dashboard/assets/*.svg" in package_data
+    assert "studio/templates/*.html" in package_data
+    assert "studio/static/*.css" in package_data
+    assert "studio/static/*.js" in package_data
 
 
 def test_public_package_excludes_live_mastodon_probe_module() -> None:

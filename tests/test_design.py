@@ -1,5 +1,5 @@
 """Tests for the silisocs.design system: token contrast, CSS emission, Plotly
-templating, and the visual_tokens backward-compat shim.
+templating, and custom-action color stability.
 """
 
 from __future__ import annotations
@@ -137,20 +137,6 @@ def test_apply_template_panel_gridcolor_wins() -> None:
     figure = {"layout": {"xaxis": {"gridcolor": "#ff0000"}}}
     out = plotly.apply_template(figure)
     assert out["layout"]["xaxis"]["gridcolor"] == "#ff0000"
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat shim.
-# ---------------------------------------------------------------------------
-def test_visual_tokens_shim_reexports() -> None:
-    from silisocs import visual_tokens
-
-    assert visual_tokens.ACCENT == tokens.ACCENT
-    assert visual_tokens.INK == tokens.INK
-    assert visual_tokens.FONT_STACK == tokens.FONT_STACK
-    # Same object identity for the action-color map (single source of truth).
-    assert visual_tokens.ACTION_COLORS is tokens.ACTION_COLORS
-    assert visual_tokens.ACTION_COLOR_FALLBACK == tokens.ACTION_COLOR_FALLBACK
 
 
 def test_custom_action_colors_are_stable_without_registration() -> None:

@@ -319,7 +319,7 @@ class JobManager:
     def _discover_run_output(self, job: Job) -> None:
         if job.kind != "run" or job.output_dir or not job.scenario:
             return
-        from silisocs.dashboard.viewers import discover_run_dir
+        from silisocs.studio.viewers import discover_run_dir
 
         payload = json.loads(job.command_json)
         discovered = discover_run_dir(

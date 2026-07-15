@@ -28,7 +28,7 @@ Papers on a previous version centered on a served Mastodon social media network:
 ## Install
 
 The default package is intentionally lean and supports local simulations without
-dashboard, Mastodon, HuggingFace, or analysis dependencies:
+Studio, Mastodon, HuggingFace, or analysis dependencies:
 
 ```sh
 pip install silisocs
@@ -39,8 +39,8 @@ Optional integrations are exposed as extras:
 ```sh
 pip install "silisocs[hf]"        # Hugging Face persona sources
 pip install "silisocs[mastodon]"  # real Mastodon backend
-pip install "silisocs[dashboard]" # Streamlit launcher
-pip install "silisocs[analysis]"  # plotting and analysis dashboards
+pip install "silisocs[studio]"    # unified visual workspace
+pip install "silisocs[analysis]"  # notebooks and extended analysis
 pip install "silisocs[viz]"       # local backend web visualizers
 pip install "silisocs[concordia]" # optional Concordia bridge
 pip install "silisocs[hpc]"       # optional Submitit/Slurm study helpers
@@ -136,7 +136,7 @@ silisocs/
 ├── src/silisocs/
 │   ├── agents/              # Native and bridge-compatible runtime agents
 │   ├── conf/                # Packaged Hydra defaults
-│   ├── dashboard/           # Optional Streamlit scenario launcher
+│   ├── studio/              # Unified visual workspace and control plane
 │   ├── environments/        # Game masters and environment backends
 │   ├── evaluations/         # Probes, telemetry, and optional analysis tools
 │   ├── runtime/             # Runner, config projection, and orchestration

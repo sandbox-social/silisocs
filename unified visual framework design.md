@@ -1,16 +1,15 @@
 # Silisocs Studio — Unified Visual Framework & Extensible Analysis Design
 
-Status: living design and implementation ledger. Phases 1-4 and the Phase 5 maturity
-surface are implemented. The repository is at the documented one-release legacy
-deprecation boundary: Studio is primary and both legacy commands point to it, while
-physical deletion remains the next release action.
+Status: implemented. Phases 1-5 are complete and the repository has crossed the
+Studio-only retirement boundary. The legacy Streamlit and Dash applications,
+commands, dependencies, package data, and compatibility shim have been removed.
 
 **End state, stated up front:** one product — **Silisocs Studio** — a SaaS-grade,
 API-first web application in which a user operates **purely visually end to end**:
 design a scenario, preflight it, launch it, watch it live, inspect the platform,
 analyze the run, compose a study, compare conditions, and publish a report — without
 touching a terminal (while every screen shows the exact CLI/YAML it stands for).
-Streamlit and the Dash app are **fully retired** at the end of the migration. The
+Streamlit and the Dash app are **fully retired**. The
 product must be visually distinguished: not "a framework with a UI," but a designed
 instrument (art direction in Part 4.5).
 
@@ -24,14 +23,14 @@ Implementation ledger (kept current):
 | `silisocs-report` self-contained HTML exporter | ✅ shipped |
 | Action vocabulary registry (`evaluations/vocabulary.py`) | ✅ shipped |
 | Backend `visualizer` classvar + derived discovery | ✅ shipped |
-| Studio shell: run browser, run page (Analyze tab), `/api/runs`, `/api/.../views/{view}`, `/api/panels`, `/api/views`, tokens.css from `visual_tokens` | ✅ shipped |
+| Studio shell: run browser, run page (Analyze tab), `/api/runs`, `/api/.../views/{view}`, `/api/panels`, `/api/views`, tokens.css from `silisocs.design` | ✅ shipped |
 | Design package, light/dark tokens, Plotly theme, component macros | ✅ shipped |
 | Complete panel catalog, controls, scenario views, self-contained reports | ✅ shipped |
 | SQLite job queue, snapshots, stop/reconcile, SSE, Watch, logs/config, viewers | ✅ shipped |
 | Declarative FormSchema composer, two-way YAML, previews, preflight, view editor | ✅ shipped |
 | Study definition/board/compare/hypothesis surface and notebook affordance | ✅ shipped |
-| Lab auth, command palette, plugin inventory/pages, legacy deprecation pointers | ✅ shipped |
-| Delete Streamlit and Dash after their documented deprecation release | ⏳ release boundary |
+| Lab auth, command palette, plugin inventory/pages | ✅ shipped |
+| Retire Streamlit, Dash, their commands/dependencies, and the token shim | ✅ shipped |
 
 ---
 
@@ -126,13 +125,12 @@ the control, re-requests the panel with the new param (`GET
 Panels stay pure; interactivity is a shell concern. Static reports render the default
 params and list the controls in a caption.
 
-### 2.4 Dash retirement plan (updated)
+### 2.4 Dash retirement (complete)
 
-With `interaction_network` + `content_feed` shipped, the Dash app has no unique
-capability left (its heatmap returns as `behavior_breakdown`). Retirement:
-`silisocs-analysis-dashboard` prints a pointer and opens Studio for one release, then
-the `evaluations/analysis/` package is deleted — which also resolves the
-`silisocs.analysis` naming collision.
+With `interaction_network` + `content_feed` shipped, the Dash app had no unique
+capability left (its heatmap returned as `behavior_breakdown`). Its application,
+command, dependencies, and tests are deleted. Analysis now has one extension surface:
+the backend-neutral panel/view contracts under `silisocs.analysis`.
 
 ### 2.5 Platform-visualizer parity (shipped)
 
@@ -276,13 +274,12 @@ Semantics with the rigor points spelled out:
 - **Config snapshots**: every launch writes the exact YAML payload to
   `~/.silisocs/snapshots/<job_id>.yaml` before spawn — the job is reproducible even if
   the scenario file changes later.
-- The Streamlit launcher's `viewers.py`/`_spawn_viewer` logic is absorbed here; the
-  Streamlit app becomes a thin client of these endpoints during the transition.
+- Viewer discovery and launch planning live in `silisocs.studio.viewers` and derive
+  entirely from each backend's optional `VisualizerSpec` capability declaration.
 
 ### 4.5 Design system & art direction (the "visually stunning" spec)
 
-**Promotion: `silisocs/design/` package** (supersedes the loose `visual_tokens.py`,
-which becomes a re-exporting shim for one release):
+**Design package: `silisocs/design/`** (the sole token and component source):
 
 ```
 silisocs/design/
@@ -316,9 +313,8 @@ it; this codifies it so every future page matches:
 - **Dark theme**: full token set (`[data-theme=dark]`, slate surfaces matching the
   existing docs-site/Streamlit slate, same teal accent), user toggle persisted;
   light remains the default (data-reading surface), dark is first-class for demos
-  and ambient dashboards. This resolves the current brand split — the *tokens* are
-  the brand; both themes derive from them, and `.streamlit/config.toml` mirrors the
-  dark set until Streamlit retires.
+  and ambient dashboards. This resolves the former brand split — the *tokens* are
+  the brand and both themes derive from them.
 - **Motion**: 120–180ms ease-out on reveals, skeleton shimmer while panels build,
   live-updating numbers tick (no full-panel flash on SSE refresh — patch in place).
   `prefers-reduced-motion` honored.
@@ -361,15 +357,13 @@ All runtime-discoverable: `/api/panels`, `/api/views`, Settings → plugin inven
 
 ## Part 5 — Migration status
 
-- **A. Analyze/Compare** — ✅ shipped (Studio browser + view renderer); Dash retires
-  after the network/content panels land (Part 2.4).
+- **A. Analyze/Compare** — ✅ shipped (Studio browser + view renderer); Dash retired
+  after the network/content panels landed (Part 2.4).
 - **B. Watch + Inspect** — ✅ Part 4.3/4.4 SSE + viewer management + embedded
   platform view.
-- **C. Launch + control plane** — ✅ Part 4.4; Streamlit is a thin client of it
-  immediately (its Run button posts to `/api/launch`), which de-risks D.
+- **C. Launch + control plane** — ✅ Part 4.4; Studio owns the sole launch surface.
 - **D. Design** — ✅ FormSchema/YAML composer, preflight, probes, views, history.
-- **E. Retirement** — ⏳ Streamlit and Dash print deprecation pointers for this release, then
-  both codepaths are deleted. One product remains.
+- **E. Retirement** — ✅ Streamlit and Dash codepaths are deleted. One product remains.
 
 ---
 
@@ -395,8 +389,8 @@ Field(key=..., widget="class_path:mypkg.widgets.MyWidget")   # extension seam
 
 - Widgets: `text, number, select, chips, toggle, slider, yaml, list[...]`, plus the
   `class_path` escape hatch. `choices_from` binds to live registry data (backend
-  action catalogs, discovered agent classes, provider presets) — the same
-  introspection the Streamlit dashboard already does.
+  action catalogs, discovered agent classes, provider presets) through registries
+  and choice providers rather than backend-specific template branches.
 - `advanced=True` fields render behind the Advanced reveal (flows, multi-GM
   orchestration, custom class paths) — preserving the "simple-first" UX rule.
 - `visible_when` predicates handle conditional fields (e.g. social-backend controls).
@@ -407,7 +401,7 @@ Field(key=..., widget="class_path:mypkg.widgets.MyWidget")   # extension seam
 
 Right-hand pane always shows the generated files (tabs per file:
 `world/default.yaml`, `agents/default.yaml`, `sim.yaml`, `env.yaml`, `eval.yaml`).
-Mechanics: form state → `config_builder` emission (exists today) → YAML pane; YAML
+Mechanics: form state → FormSchema repository emission → YAML pane; YAML
 edits parse → validate → re-hydrate form fields; unparseable YAML locks the form side
 with an inline error rather than dropping edits; fields the schema doesn't know
 survive round-trips untouched (they render in a "hand-authored" YAML-only section).
@@ -416,8 +410,8 @@ This is the "behind the curtain" principle as a *bidirectional* feature.
 ### 6.3 Validation & preflight
 
 One pipeline, shared with the CLI: schema validation (existing config validators) →
-semantic checks (unknown actions, missing data files, provider env vars — the
-Streamlit warning logic, extracted) → **cost model**: `agents × steps ×
+semantic checks (unknown actions, missing data files, provider env vars) →
+**cost model**: `agents × steps ×
 participation-rate × turn-policy actions × (prompt+completion estimate per action
 mode)` → calls/tokens/$ per configured model, reusing the study runner's agent-steps
 math. Served by `POST /api/preflight`; rendered on the Preflight tab and inline above
@@ -481,18 +475,18 @@ scenario — "design how this scenario will be analyzed" next to how it behaves.
 registry + tests + docs).
 
 **Phase 2 — Analyze completion + design package. ✅ SHIPPED** Deliverables: `silisocs/design/`
-(tokens incl. dark set, css.py, plotly template, component macros; visual_tokens
-shim), `interaction_network`, `content_feed`, `behavior_breakdown`, `token_usage`,
+(tokens incl. dark set, css.py, plotly template, component macros),
+`interaction_network`, `content_feed`, `behavior_breakdown`, `token_usage`,
 `agent_timeline` panels; panel `controls` contract + `/api/runs/{id}/panels/{name}`;
-scenario `conf/views/` loading; Dash deprecation release.
+scenario `conf/views/` loading; Dash capability replacement.
 *Gate:* Dash app deletable with zero capability loss; every chart on every surface
 uses the `silisocs` Plotly template; network panel scrubs episodes on the showcase
 run; contrast unit test green.
 
 **Phase 3 — control plane + Watch + Inspect. ✅ SHIPPED** Deliverables: job store + queue +
 `/api/launch|jobs|stop|viewers` + snapshots + orphan healing; SSE stream; Watch mode
-(ribbon, live views, log drawer, embedded platform view); Streamlit Run button posts
-to `/api/launch`; study progress board (read side).
+(ribbon, live views, log drawer, embedded platform view); study progress board
+(read side).
 *Gate:* launch → watch → inspect → analyze completed entirely in Studio on a real
 4o-mini run; kill Studio mid-run and restart — job heals correctly; two backends
 viewable concurrently without port collisions.
@@ -504,9 +498,9 @@ editors; study composer + board (write side) + hypotheses/compare tabs.
 has never used the CLI, recorded as the demo; every screen's "show YAML/CLI" toggle
 present.
 
-**Phase 5 — maturity + retirement. 🚧 RELEASE BOUNDARY** Command palette, Settings/plugin inventory,
+**Phase 5 — maturity + retirement. ✅ SHIPPED** Command palette, Settings/plugin inventory,
 dark-theme polish pass, lab mode (token auth on POST), `silisocs.studio_pages`
-entry-point, deprecation release, then **delete Streamlit + Dash codepaths**.
+entry-point, and deletion of the Streamlit + Dash codepaths.
 *Gate:* one product; docs rewritten around Studio; `pip install "silisocs[studio]"`
 + `silisocs-studio` is the quickstart.
 
@@ -521,7 +515,7 @@ Each phase is independently demoable; gates are testable statements, not vibes.
 3. No Node/React; htmx + vendored plotly/cytoscape; JS islands behind the API are the pressure valve. ✅ in force.
 4. API-first; POST routes token-gated in lab mode. Default: yes.
 5. Panels read-only; mutation only via the control plane. ✅ in force.
-6. `silisocs/design/` package supersedes `visual_tokens.py` (shim for one release). **Confirmed by user.**
-7. Light theme default, dark theme first-class via the same tokens; Streamlit mirrors dark until retired. Default: yes.
+6. `silisocs/design/` package supersedes the deleted `visual_tokens.py` shim. **In force.**
+7. Light theme default, dark theme first-class via the same tokens. Default: yes.
 8. SSE (not websockets) for the live plane. Default: yes.
 9. Pause-mid-run deferred (needs engine support); stop only. Default: yes.

@@ -1,6 +1,6 @@
 """Typed run/study artifact loading — the Run Artifact Module.
 
-One interface for loading a finished run: dashboards, evaluators, notebooks,
+One interface for loading a finished run: Studio, evaluators, notebooks,
 and CLI tools call :func:`load_run` instead of each rediscovering the on-disk
 layout. Loading is manifest-first (``run_manifest.json``, written by every run)
 with a legacy fallback to file discovery for runs that predate the manifest —
