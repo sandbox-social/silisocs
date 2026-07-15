@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Runs | Silisocs Studio{% endblock %}
+{% block crumb %}Runs{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">Artifact browser</p><h1>Runs</h1><p>Every completed and in-progress simulation in this workspace.</p></div><span class="count">{{ runs|length }} indexed</span></section>
+{% if runs %}<div class="table-shell"><table><thead><tr><th>Run</th><th>Status</th><th>Scale</th><th>Model</th><th>Seed</th><th></th></tr></thead><tbody>
+{% for record in runs %}<tr><td><a class="table-title" href="/runs/{{ record.id }}">{{ record.artifact.scenario or record.path.name }}</a><small>{{ record.id }}</small></td><td><span class="badge {{ 'success' if record.artifact.status == 'success' else 'neutral' }}">{{ record.artifact.status or 'legacy' }}</span></td><td>{{ record.artifact.num_agents or '—' }} agents · {{ record.artifact.num_steps or '—' }} steps</td><td>{{ record.artifact.llm_name or '—' }}</td><td>{{ record.artifact.seed if record.artifact.seed is not none else '—' }}</td><td><a class="row-link" href="/runs/{{ record.id }}">Open →</a></td></tr>{% endfor %}
+</tbody></table></div>{% else %}<div class="empty"><b>No runs found</b><p>Launch a scenario and Studio will index its artifacts.</p></div>{% endif %}
+{% endblock %}

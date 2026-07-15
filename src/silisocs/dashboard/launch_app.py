@@ -6,9 +6,14 @@ Run with:
 
 from __future__ import annotations
 
-import inspect
+import json
+import os
 import subprocess
 import sys
+import tempfile
+import time
+import urllib.request
+import webbrowser
 from pathlib import Path
 from typing import Any
 
@@ -17,10 +22,13 @@ import yaml
 
 from silisocs.dashboard.config_builder import (
     _SOCIAL_BACKENDS,
+    PROBE_ANCHORS,
+    TOOL_CALLING_MODES,
     _as_int,
     build_hydra_overrides,
     build_world_config,
     participation_sim_data,
+    resolve_built_in_for,
     world_config_warnings,
 )
 from silisocs.dashboard.config_writer import (
@@ -36,7 +44,16 @@ from silisocs.dashboard.results import (
     run_history_rows,
     total_health_issues,
 )
-from silisocs.environments.backends.base import ActionDescriptor
+from silisocs.dashboard.viewers import (
+    LaunchPlan,
+    analysis_plan,
+    discover_run_dir,
+    find_backend_dbs,
+    has_visualizer,
+    tail_action_events,
+    visualizer_plan,
+)
+from silisocs.environments.backends.factory import registered_backend_types, resolve_backend_class
 
 # ---------------------------------------------------------------------------
 # Constants & paths
@@ -47,9 +64,13 @@ _SCENARIOS_DIR = _PACKAGE_ROOT.parents[2] / "scenarios"
 _PROJECT_ROOT = _PACKAGE_ROOT.parents[2]
 _ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
-_BACKEND_OPTIONS = ["twitter_like", "reddit_like", "mastodon", "resource_market", "virtual_space"]
+_BACKEND_OPTIONS = list(registered_backend_types())
 _MEMORY_BACKENDS = ["list", "associative"]
-_ACTION_MODES = ["custom", "generic", "tool_calling"]
+# Prompt style only (custom/generic). Tool-calling is a SEPARATE axis
+# (sim.tool_calling.mode) — see _TOOL_CALLING_MODE_OPTIONS — not an action mode; the
+# runner rejects sim.action_mode='tool_calling'.
+_ACTION_MODES = ["custom", "generic"]
+_TOOL_CALLING_MODE_OPTIONS = list(TOOL_CALLING_MODES)
 _NETWORK_TYPES = ["barabasi_albert", "random", "lfr_benchmark"]
 _RUNTIME_INITIALIZERS = ["raw_memory", "formative_memory", "none"]
 _PERSONA_SOURCES = ["inline", "local_json", "config_path", "hf_dataset"]
@@ -60,11 +81,120 @@ _GM_NEXT_ACTING_OPTIONS = [
     "fixed_order",
 ]
 _GM_OBSERVE_OPTIONS = ["timeline_every_turn", "app_observation", "episode_only"]
-_GM_RESOLVE_OPTIONS = ["parsed_action", "generic_action", "tool_calling"]
+# Resolve component is derived from the tool-calling mode (resolve_built_in_for), not
+# chosen directly, so there is no _GM_RESOLVE_OPTIONS selectbox any more.
 _BACKEND_INITIALIZER_OPTIONS = ["social_media", "app_initialize", "none", "disabled"]
 _ENGINE_TURN_POLICY_OPTIONS = ["single_action", "fixed_count", "open_ended"]
 _ENGINE_PROBE_SCHEDULE_OPTIONS = ["step_schedule", "fixed_interval", "disabled"]
 _PROBE_TYPE_OPTIONS = ["NumericRatingProbe", "BinaryProbe", "ChoiceProbe", "FreeTextProbe"]
+
+
+# ---------------------------------------------------------------------------
+# Companion viewers (platform visualizer / analysis dashboard)
+# ---------------------------------------------------------------------------
+def _browser_url(url: str) -> str:
+    """Rewrite a viewer's localhost URL for the host the browser is actually on.
+
+    When the dashboard is accessed remotely (e.g. Streamlit on a server, browser
+    on a laptop), ``localhost`` would point at the laptop; substitute the host
+    the browser used to reach the dashboard.
+    """
+    try:
+        host = str(st.context.headers.get("Host", "")).split(":")[0]
+    except Exception:
+        host = ""
+    if host and host not in ("localhost", "127.0.0.1"):
+        return url.replace("localhost", host)
+    return url
+
+
+def _spawn_viewer(kind: str, plan: LaunchPlan) -> None:
+    """Start (or restart) a companion viewer process and remember it in-session.
+
+    One process per ``kind`` ("platform" / "analysis"): relaunching replaces the
+    previous server so the fixed port is free for the new run's data. Output is
+    captured to a log file so a startup failure can be shown, not swallowed.
+    """
+    procs = st.session_state.setdefault("_viewer_procs", {})
+    previous = procs.get(kind)
+    if previous is not None and previous[0].poll() is None:
+        previous[0].terminate()
+        try:
+            previous[0].wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            previous[0].kill()
+    log_path = Path(tempfile.gettempdir()) / f"silisocs_viewer_{kind}.log"
+    with log_path.open("w", encoding="utf-8") as log_file:
+        proc = subprocess.Popen(
+            plan.cmd,
+            env={**os.environ, **plan.env},
+            cwd=str(_PROJECT_ROOT),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,  # survive the dashboard terminal's Ctrl+C
+        )
+    procs[kind] = (proc, plan.url, log_path)
+
+
+def _open_viewer(kind: str, plan: LaunchPlan) -> None:
+    """Spawn a viewer, wait until it serves, then open it in a browser tab.
+
+    The servers take a few seconds to import and bind; waiting here means the
+    link/browser tab never lands on a connection-refused page. On failure the
+    captured log is shown instead of silently doing nothing.
+    """
+    _spawn_viewer(kind, plan)
+    proc, url, log_path = st.session_state["_viewer_procs"][kind]
+    with st.spinner(f"Starting {kind} viewer at {url} (a few seconds)..."):
+        ready = _wait_viewer_ready(proc, url)
+    shown_url = _browser_url(url)
+    if ready:
+        webbrowser.open(shown_url)  # best-effort; remote sessions use the link
+        st.success(
+            f"{kind} viewer ready: [{shown_url}]({shown_url}) — "
+            "if a tab did not open automatically, click the link."
+        )
+    elif proc.poll() is not None:
+        st.error(f"{kind} viewer exited at startup (code {proc.returncode}):")
+        try:
+            st.code(log_path.read_text(encoding="utf-8")[-2000:], language="text")
+        except OSError:
+            pass
+    else:
+        st.warning(
+            f"{kind} viewer at [{shown_url}]({shown_url}) has not responded yet — "
+            "it may still be starting; try the link in a few seconds."
+        )
+
+
+def _wait_viewer_ready(proc: subprocess.Popen, url: str, timeout: float = 30.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            return False
+        try:
+            urllib.request.urlopen(url, timeout=1)
+            return True
+        except Exception:
+            time.sleep(0.5)
+    return False
+
+
+def _running_viewers() -> dict[str, str]:
+    """Map of live viewer kind -> browser-reachable URL, dropping exited processes."""
+    return {
+        kind: _browser_url(url)
+        for kind, (proc, url, _log) in st.session_state.get("_viewer_procs", {}).items()
+        if proc.poll() is None
+    }
+
+
+def _stop_viewers() -> None:
+    for proc, _url, _log in st.session_state.get("_viewer_procs", {}).values():
+        if proc.poll() is None:
+            proc.terminate()
+    st.session_state["_viewer_procs"] = {}
+
 
 # ---------------------------------------------------------------------------
 # Theme & page config
@@ -157,11 +287,16 @@ def _normalize_probe_items(probes_cfg: dict) -> list[dict]:
             probe_data = {}
         probe_name = str(probe_cfg.get("probe_name") or probe_data.get("name") or idx)
         probe_type = str(probe_cfg.get("probe_type", "FreeTextProbe"))
+        deployment_override = probe_cfg.get("deployment")
+        override = deployment_override if isinstance(deployment_override, dict) else {}
         rows.append(
             {
                 "probe_name": probe_name,
                 "probe_type": probe_type,
                 "probe_data": dict(probe_data),
+                # Surface a per-probe deployment override so it round-trips through edits.
+                "probe_at": str(override.get("at") or ""),
+                "probe_sample_k": _as_int(override.get("sample_k", 0), 0),
             }
         )
 
@@ -308,45 +443,43 @@ def _split_loaded_config(
 
 def _backend_class(backend_type: str):
     """Return the backend app class for the given backend type."""
-    if backend_type == "twitter_like":
-        from silisocs.environments.backends.twitter_like.app import TwitterLikeApp
-
-        return TwitterLikeApp
-    if backend_type == "reddit_like":
-        from silisocs.environments.backends.reddit_like.app import RedditLikeApp
-
-        return RedditLikeApp
-    if backend_type == "mastodon":
-        from silisocs.environments.backends.mastodon.apps import SocialNetworkApp
-
-        return SocialNetworkApp
-    if backend_type == "resource_market":
-        from silisocs.environments.backends.resource_market.app import ResourceMarketApp
-
-        return ResourceMarketApp
-    if backend_type == "virtual_space":
-        from silisocs.environments.backends.virtual_space.app import VirtualSpaceApp
-
-        return VirtualSpaceApp
-    raise ValueError(f"Unknown backend_type: {backend_type}")
+    return resolve_backend_class(backend_type)
 
 
 def _backend_action_catalog(backend_type: str) -> list[dict]:
     """Build backend action catalog without creating live backend instances."""
-    cls = _backend_class(backend_type)
-    actions = []
-    for _, fn in inspect.getmembers(cls, predicate=inspect.isfunction):
-        if getattr(fn, "__app_action__", False):
-            descriptor = ActionDescriptor.from_method(fn)
-            actions.append(
-                {
-                    "name": descriptor.name,
-                    "selectable_name": descriptor.selectable_name,
-                    "description": descriptor.description.strip(),
-                }
-            )
+    actions = _backend_class(backend_type).declared_action_catalog()
     actions.sort(key=lambda item: item["selectable_name"])
     return actions
+
+
+def _submit_run_to_studio(scenario: str, overrides: list[str]) -> dict[str, Any] | None:
+    """Use Studio's generic control plane when it is available.
+
+    The legacy Streamlit process remains a transition client; connection
+    failure deliberately falls back to its one-release direct launch path.
+    """
+    base_url = os.environ.get("SILISOCS_STUDIO_URL", "http://127.0.0.1:8765").rstrip("/")
+    body = json.dumps({"scenario": scenario, "overrides": overrides}).encode()
+    headers = {"content-type": "application/json"}
+    token = os.environ.get("STUDIO_AUTH_TOKEN")
+    if token:
+        headers["authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(
+        f"{base_url}/api/launch",
+        data=body,
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=1.5) as response:
+            result = json.loads(response.read())
+    except Exception:
+        return None
+    if not isinstance(result, dict) or not result.get("id"):
+        return None
+    result["studio_url"] = base_url
+    return result
 
 
 def _discover_agent_modules() -> list[str]:
@@ -381,14 +514,24 @@ def _get_config_path_for_scenario(scenarios_root: Path, scenario_key: str) -> st
     return None
 
 
+def _session_snapshot() -> dict[str, Any]:
+    """A plain ``{str: value}`` snapshot of Streamlit session state.
+
+    Streamlit's ``SessionStateProxy`` keys are ``str | int``; the pure config
+    builders take ``Mapping[str, Any]``, so coerce keys to ``str`` here — one place
+    instead of a ``dict(st.session_state)`` cast at each call site.
+    """
+    return {str(k): v for k, v in st.session_state.items()}
+
+
 def _participation_sim_data(backend_type: str) -> dict[str, object]:
     """UI wrapper: snapshot session state and build the participation config."""
-    return participation_sim_data(dict(st.session_state), backend_type)
+    return participation_sim_data(_session_snapshot(), backend_type)
 
 
 def _build_world_config() -> dict:
     """UI wrapper: snapshot session state and build the world config dict."""
-    return build_world_config(dict(st.session_state))
+    return build_world_config(_session_snapshot())
 
 
 def _validate_config(sim_params: dict, classes: list[dict]) -> None:
@@ -684,11 +827,29 @@ with tab_sim:
     with st.expander("Advanced settings", expanded=False):
         ac1, ac2 = st.columns(2)
         with ac1:
+            _action_mode_default = str(_sim_defaults.get("action_mode", "custom"))
             st.selectbox(
                 "Action mode",
                 _ACTION_MODES,
-                index=_ACTION_MODES.index(_sim_defaults.get("action_mode", "custom")),
+                index=_ACTION_MODES.index(_action_mode_default)
+                if _action_mode_default in _ACTION_MODES
+                else 0,
                 key="action_mode",
+                help="Prompt phrasing only. Tool-calling is the separate control below.",
+            )
+            _tc_default = str((_sim_defaults.get("tool_calling") or {}).get("mode", "single"))
+            st.selectbox(
+                "Tool-calling mode",
+                _TOOL_CALLING_MODE_OPTIONS,
+                index=_TOOL_CALLING_MODE_OPTIONS.index(_tc_default)
+                if _tc_default in _TOOL_CALLING_MODE_OPTIONS
+                else _TOOL_CALLING_MODE_OPTIONS.index("single"),
+                key="tool_calling_mode",
+                help=(
+                    "Whether agents select backend actions as structured tool calls: "
+                    "`single`/`multi` drive the tool_calling resolve component; `none` "
+                    "parses the agent's text. The resolve component is derived from this."
+                ),
             )
         with ac2:
             st.number_input(
@@ -1277,11 +1438,6 @@ with tab_env:
                 if isinstance(observe_defaults, dict)
                 else "timeline_every_turn"
             )
-            resolve_default = (
-                resolve_defaults.get("built_in", "tool_calling")
-                if isinstance(resolve_defaults, dict)
-                else "tool_calling"
-            )
             gm_initializer_default = (
                 initialize_defaults.get("built_in", "social_media")
                 if isinstance(initialize_defaults, dict)
@@ -1290,7 +1446,6 @@ with tab_env:
         else:
             next_acting_default = "fixed_order"
             observe_default = "app_observation"
-            resolve_default = "tool_calling"
             gm_initializer_default = "app_initialize"
 
         with gc1:
@@ -1310,13 +1465,17 @@ with tab_env:
                 else 0,
                 key="gm_observe_built_in",
             )
-            st.selectbox(
-                "Resolve component",
-                _GM_RESOLVE_OPTIONS,
-                index=_GM_RESOLVE_OPTIONS.index(resolve_default)
-                if resolve_default in _GM_RESOLVE_OPTIONS
-                else 0,
-                key="gm_resolve_built_in",
+            _derived_resolve = resolve_built_in_for(
+                st.session_state.get("tool_calling_mode", "single"),
+                st.session_state.get("action_mode", "custom"),
+            )
+            st.text_input(
+                "Resolve component (derived)",
+                value=_derived_resolve,
+                disabled=True,
+                key="gm_resolve_built_in_display",
+                help="Derived from Tool-calling mode + Action mode to stay valid. "
+                "Override with a custom resolve class path below if needed.",
             )
             st.selectbox(
                 "Game Master initializer",
@@ -1711,6 +1870,35 @@ with tab_probes:
             value=max(1, _as_int(deploy_cfg.get("every_n_steps", 1), 1)),
             key="probe_interval",
         )
+        _anchor_default = str(deploy_cfg.get("at", "pre_step") or "pre_step")
+        st.selectbox(
+            "Fire at (loop anchor)",
+            list(PROBE_ANCHORS),
+            index=list(PROBE_ANCHORS).index(_anchor_default)
+            if _anchor_default in PROBE_ANCHORS
+            else 0,
+            key="probe_at",
+            help="pre_step (before a step) · post_step (after a step) · run_end "
+            "(once after the run — the terminal measurement; ignores start/every-N).",
+        )
+        st.number_input(
+            "Sample at most K agents (0 = all)",
+            min_value=0,
+            value=max(0, _as_int(deploy_cfg.get("sample_k", 0), 0)),
+            key="probe_sample_k",
+            help="Cap probe targets per due step AFTER include/exclude filters "
+            "(seed-derived, replay-stable). 0 probes every filtered agent.",
+        )
+        st.number_input(
+            "Or sample fraction (0 = unset)",
+            min_value=0.0,
+            max_value=1.0,
+            step=0.05,
+            value=float(deploy_cfg.get("sample_fraction") or 0.0),
+            key="probe_sample_fraction",
+            help="Alternative to sample_k: probe ceil(fraction × filtered) agents. "
+            "Ignored when sample_k > 0.",
+        )
         probe_role_options = sorted(
             {
                 (cls.get("sim_role_name") or cls.get("name", ""))
@@ -1774,6 +1962,18 @@ with tab_probes:
                     index=type_options.index(current_type),
                     key=f"probe_type_{i}",
                 )
+                _anchor_opts = ["(inherit)", *PROBE_ANCHORS]
+                _anchor_cur = str(item.get("probe_at") or "(inherit)")
+                if _anchor_cur not in _anchor_opts:
+                    _anchor_cur = "(inherit)"
+                _anchor_pick = st.selectbox(
+                    "Fire at (override)",
+                    _anchor_opts,
+                    index=_anchor_opts.index(_anchor_cur),
+                    key=f"probe_at_{i}",
+                    help="Per-probe loop anchor; (inherit) uses the global deployment setting.",
+                )
+                item["probe_at"] = "" if _anchor_pick == "(inherit)" else _anchor_pick
             with c2:
                 qd = item.get("probe_data", {})
                 if not isinstance(qd, dict):
@@ -1861,6 +2061,7 @@ with tab_launch:
         "llm.api_key": st.session_state.get("llm_api_key") or None,
         "max_concurrent_actions": st.session_state.get("max_concurrent_actions", 1000),
         "action_mode": st.session_state.get("action_mode", "custom"),
+        "tool_calling.mode": st.session_state.get("tool_calling_mode", "single"),
         "initialization.agents.built_in": st.session_state.get(
             "runtime_initializer_built_in", "raw_memory"
         ),
@@ -1923,6 +2124,12 @@ with tab_launch:
         ),
     }
     selected_backend = st.session_state.get("backend_type", "twitter_like")
+    # Resolve component is derived from the tool-calling mode (+ prompt style) so it
+    # is always valid and identical across the launch/save paths (no drift).
+    _resolve_built_in = resolve_built_in_for(
+        st.session_state.get("tool_calling_mode", "single"),
+        st.session_state.get("action_mode", "custom"),
+    )
     env_params = {
         "gm.backend.enabled_actions": (
             st.session_state.get("enabled_actions")
@@ -1954,9 +2161,7 @@ with tab_launch:
             "timeline_every_turn" if selected_backend in _SOCIAL_BACKENDS else "app_observation",
         ),
         "gm.components.observe.class_path": (st.session_state.get("gm_observe_class_path") or None),
-        "gm.components.resolve.built_in": st.session_state.get(
-            "gm_resolve_built_in", "tool_calling"
-        ),
+        "gm.components.resolve.built_in": _resolve_built_in,
         "gm.components.resolve.class_path": (st.session_state.get("gm_resolve_class_path") or None),
     }
     if selected_backend in _SOCIAL_BACKENDS:
@@ -1997,7 +2202,7 @@ with tab_launch:
                 "gm.components.initialize.built_in": "app_initialize",
                 "gm.components.next_acting.built_in": "fixed_order",
                 "gm.components.observe.built_in": "app_observation",
-                "gm.components.resolve.built_in": "tool_calling",
+                "gm.components.resolve.built_in": _resolve_built_in,
                 "gm.components.update.built_in": "disabled",
             }
         )
@@ -2068,6 +2273,29 @@ with tab_launch:
         parts.extend(overrides)
         st.code(" \\\n  ".join(parts), language="bash")
 
+    with st.expander("Raw generated config (YAML)", expanded=False):
+        st.caption(
+            "The exact config this UI composes — the same YAML you could write by "
+            "hand under `scenarios/<name>/conf/`. World config first, then the "
+            "sim/env/eval overrides applied on top of the packaged defaults."
+        )
+        st.markdown("**World config** (`world/default.yaml`)")
+        st.code(
+            yaml.dump(scenario_data, default_flow_style=False, sort_keys=False),
+            language="yaml",
+        )
+        _raw_overrides: dict[str, Any] = {
+            "sim": dict(sim_params),
+            "env": {"backend": selected_backend, **env_params},
+        }
+        if eval_params:
+            _raw_overrides["eval"] = dict(eval_params)
+        st.markdown("**Sim / env / eval overrides**")
+        st.code(
+            yaml.dump(_raw_overrides, default_flow_style=False, sort_keys=False),
+            language="yaml",
+        )
+
     st.divider()
 
     # Save / Launch buttons.
@@ -2091,6 +2319,7 @@ with tab_launch:
                 "run_name",
                 "seed",
                 "action_mode",
+                "tool_calling.mode",
                 "llm.disabled",
                 # Multi-flow/orchestration flags
                 "engine.step.built_in",
@@ -2148,9 +2377,7 @@ with tab_launch:
                     "gm.components.observe.built_in": st.session_state.get(
                         "gm_observe_built_in", "timeline_every_turn"
                     ),
-                    "gm.components.resolve.built_in": st.session_state.get(
-                        "gm_resolve_built_in", "parsed_action"
-                    ),
+                    "gm.components.resolve.built_in": _resolve_built_in,
                     "gm.components.update.built_in": (
                         "social_recommendation"
                         if st.session_state.get("engine_recsys_enabled", False)
@@ -2206,6 +2433,16 @@ with tab_launch:
             "\U0001f680  Run Simulation", key="run_sim", type="primary", use_container_width=True
         )
 
+    if has_visualizer(selected_backend):
+        st.checkbox(
+            "Open live platform view during run",
+            value=True,
+            key="live_platform_view",
+            help="Starts the read-only platform visualizer on the run's database as soon "
+            "as it exists — watch agents' posts appear in a real-looking feed while the "
+            'simulation runs (needs `pip install "silisocs[viz]"`).',
+        )
+
     # Validation warnings.
     _validate_config(sim_params, classes)
 
@@ -2226,6 +2463,7 @@ with tab_launch:
             "run_name",
             "seed",
             "action_mode",
+            "tool_calling.mode",
             "llm.disabled",
             # Multi-flow/orchestration flags
             "engine.step.built_in",
@@ -2283,9 +2521,7 @@ with tab_launch:
                 "gm.components.observe.built_in": st.session_state.get(
                     "gm_observe_built_in", "timeline_every_turn"
                 ),
-                "gm.components.resolve.built_in": st.session_state.get(
-                    "gm_resolve_built_in", "parsed_action"
-                ),
+                "gm.components.resolve.built_in": _resolve_built_in,
                 "gm.components.update.built_in": (
                     "social_recommendation"
                     if st.session_state.get("engine_recsys_enabled", False)
@@ -2335,7 +2571,20 @@ with tab_launch:
             full_cmd.extend(["--config-path", config_path])
         full_cmd.extend(overrides)
 
+        studio_job = _submit_run_to_studio(name, overrides)
+        if studio_job is not None:
+            studio_url = str(studio_job["studio_url"])
+            job_url = f"{studio_url}/live?job={studio_job['id']}"
+            with status_placeholder.container():
+                st.success(f"Queued in Silisocs Studio: [{studio_job['id']}]({job_url})")
+            st.info(
+                "Studio now owns logs, stopping, live views, and platform viewers for this run."
+            )
+            st.stop()
+
         st.markdown("---")
+        _live_status = st.empty()
+        _live_summary = st.empty()
         st.markdown("**Live output**")
         output_area = st.empty()
         log_lines: list[str] = []
@@ -2352,10 +2601,78 @@ with tab_launch:
             with status_placeholder.container():
                 st.warning("Running...")
 
+            # Live panel state: the run's output dir is named by Hydra, so it is
+            # discovered (not known) once the run starts writing artifacts.
+            _live_enabled = bool(st.session_state.get("live_platform_view", False))
+            _run_started = time.time()
+            _live_run_dir: Path | None = None
+            _viz_launched = False
+            _viz_opened = False
+            _viz_plan: LaunchPlan | None = None
+            _last_live_check = 0.0
+
             if process.stdout:
                 for line in iter(process.stdout.readline, ""):
                     log_lines.append(line)
                     output_area.code("".join(log_lines[-100:]), language="text")
+
+                    now = time.time()
+                    if now - _last_live_check < 2.0:
+                        continue
+                    _last_live_check = now
+                    if _live_run_dir is None:
+                        _live_run_dir = discover_run_dir(name, _run_started, root=_PROJECT_ROOT)
+                    if _live_run_dir is None:
+                        continue
+                    if _live_enabled and not _viz_launched:
+                        _dbs = find_backend_dbs(_live_run_dir)
+                        if _dbs:
+                            _viz_launched = True
+                            _plan = visualizer_plan(*_dbs[0])
+                            if _plan.missing_extra:
+                                _live_status.info(
+                                    "Platform viewer needs "
+                                    f'`pip install "silisocs[{_plan.missing_extra}]"`.'
+                                )
+                            else:
+                                _spawn_viewer("platform", _plan)
+                                _viz_plan = _plan
+                                _viz_url = _browser_url(_plan.url)
+                                _live_status.info(
+                                    f"Starting live platform view at [{_viz_url}]({_viz_url}) ..."
+                                )
+                    elif _viz_plan is not None and not _viz_opened:
+                        # Open a tab only once the server responds, so the tab
+                        # never lands on connection-refused.
+                        try:
+                            urllib.request.urlopen(_viz_plan.url, timeout=1)
+                        except Exception:
+                            pass
+                        else:
+                            _viz_opened = True
+                            _viz_url = _browser_url(_viz_plan.url)
+                            webbrowser.open(_viz_url)
+                            _live_status.success(
+                                f"Live platform view: [{_viz_url}]({_viz_url}) — the feed "
+                                "auto-refreshes as agents act (tab opened; if not, click "
+                                "the link)."
+                            )
+                    _events = tail_action_events(_live_run_dir)
+                    if _events["total"]:
+                        _labels = " · ".join(
+                            f"{label} {count}"
+                            for label, count in list(_events["label_counts"].items())[:6]
+                        )
+                        _recent = "".join(
+                            f"\n- ep {row.get('episode', '?')} — "
+                            f"**{row.get('source_user', '?')}**: {row.get('label', '?')}"
+                            for row in _events["recent"][-3:]
+                        )
+                        _live_summary.markdown(
+                            f"**Live actions** — {_events['total']} committed · "
+                            f"{_events['agents']} agents · episode {_events['episodes']}"
+                            f"\n\n{_labels}{_recent}"
+                        )
 
             process.wait()
             if process.returncode == 0:
@@ -2427,6 +2744,57 @@ with tab_results:
     if _run_dir is None or not _run_dir.is_dir():
         st.info("Select a discovered run above, or paste a path to a run output directory.")
     else:
+        # ---- Companion viewers ---------------------------------------------
+        _viewer_dbs = find_backend_dbs(_run_dir)
+        _db_choice: tuple[str, Path] | None = None
+        vc1, vc2, vc3 = st.columns(3)
+        with vc1:
+            if len(_viewer_dbs) > 1:
+                _db_labels = [f"{backend} — {_rel(db)}" for backend, db in _viewer_dbs]
+                _picked = st.selectbox("Platform database", _db_labels, key="viewer_db_choice")
+                _db_choice = _viewer_dbs[_db_labels.index(_picked)]
+            elif _viewer_dbs:
+                _db_choice = _viewer_dbs[0]
+            if st.button(
+                "\U0001f310 Open platform view",
+                key="open_platform_view",
+                disabled=_db_choice is None,
+                use_container_width=True,
+                help="Read-only replica of the platform UI (feeds, threads, profiles), "
+                "rendered from this run's database.",
+            ):
+                if _db_choice is not None:
+                    _plan = visualizer_plan(*_db_choice)
+                    if _plan.missing_extra:
+                        st.warning(
+                            f'Install first: `pip install "silisocs[{_plan.missing_extra}]"`'
+                        )
+                    else:
+                        _open_viewer("platform", _plan)
+        with vc2:
+            if st.button(
+                "\U0001f4ca Open analysis dashboard",
+                key="open_analysis_dash",
+                use_container_width=True,
+                help="Dash analytics app on this run — interaction network with episode "
+                "slider, probe/action trends, per-agent action details.",
+            ):
+                _plan = analysis_plan(_run_dir)
+                if _plan.missing_extra:
+                    st.warning(f'Install first: `pip install "silisocs[{_plan.missing_extra}]"`')
+                else:
+                    _open_viewer("analysis", _plan)
+        with vc3:
+            if st.button("Stop viewer servers", key="stop_viewers", use_container_width=True):
+                _stop_viewers()
+        _live_viewers = _running_viewers()
+        if _live_viewers:
+            st.success(
+                " · ".join(
+                    f"{kind} viewer: [{url}]({url})" for kind, url in sorted(_live_viewers.items())
+                )
+            )
+
         _data = _load_run_results(str(_run_dir))
         _actions = _data["actions"]
         _probes = _data["probes"]

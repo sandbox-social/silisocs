@@ -478,6 +478,7 @@ def organize_study_outputs(
                         "status": record.get("status"),
                         "run_dir": str(run_dir) if run_dir is not None else None,
                         "eval_paths": record.get("eval_paths", {}),
+                        "agents": combined.get("agents", {}),
                         "aggregated": combined.get("aggregated", {}),
                         "aggregated_stats": combined.get("aggregated_stats", {}),
                         "summary": combined.get("summary", {}),

@@ -24,6 +24,28 @@ from silisocs.dashboard.defaults import (
 # Backends that default to activity-gated participation (vs. deterministic "all").
 _SOCIAL_BACKENDS = {"twitter_like", "reddit_like", "mastodon"}
 
+# Tool-calling modes (sim.tool_calling.mode) and the loop anchors a probe may fire
+# at (eval.probes.deployment.at). Kept here so the pure config layer — and its
+# tests — own the vocabulary independently of the Streamlit shell.
+TOOL_CALLING_MODES = ("none", "single", "multi")
+PROBE_ANCHORS = ("pre_step", "post_step", "run_end")
+
+
+def resolve_built_in_for(tool_calling_mode: str, action_mode: str) -> str:
+    """The GM resolve component implied by the tool-calling mode + prompt style.
+
+    Tool-calling is a distinct axis from ``sim.action_mode`` (which only selects the
+    prompt phrasing, ``custom``/``generic``). This keeps the resolve component
+    consistent with ``sim.tool_calling.mode``: an effective ``single``/``multi`` GM
+    must use the ``tool_calling`` resolve, and a ``none`` GM must not (it parses text
+    — ``parsed_action`` for custom prompts, ``generic_action`` for generic). Deriving
+    resolve from the mode is what removes both the old ``action_mode='tool_calling'``
+    crash and the save-vs-launch resolve drift.
+    """
+    if str(tool_calling_mode) in ("single", "multi"):
+        return "tool_calling"
+    return "generic_action" if str(action_mode) == "generic" else "parsed_action"
+
 
 def _as_int(value: object, default: int) -> int:
     """Best-effort int coercion that tolerates Hydra interpolations like ${...}."""
@@ -76,6 +98,65 @@ def participation_sim_data(state: Mapping[str, Any], backend_type: str) -> dict[
     if rates:
         data["engine.participation.params.activity_transition_rates"] = rates
     return data
+
+
+def _sampling_fields(sample_k: object, sample_fraction: object) -> dict[str, Any]:
+    """Normalize the mutually-exclusive sample_k / sample_fraction pair.
+
+    ``sample_k`` wins if both are set (the validator rejects setting both); a
+    fraction is emitted only when it is a real value in (0, 1]. Empty otherwise, so
+    an unset cap leaves the deployment block untouched.
+    """
+    k = _as_int(sample_k, 0)
+    if k > 0:
+        return {"sample_k": k}
+    frac = 0.0
+    if isinstance(sample_fraction, (int, float, str)):
+        try:
+            frac = float(sample_fraction)
+        except ValueError:
+            frac = 0.0
+    if 0.0 < frac <= 1.0:
+        return {"sample_fraction": frac}
+    return {}
+
+
+def _global_deployment_block(state: Mapping[str, Any]) -> dict[str, Any]:
+    """The global ``eval.probes.deployment`` block from session state.
+
+    ``at`` is emitted only when it leaves the ``pre_step`` default and sampling caps
+    only when set, so a default probe config is byte-identical to the pre-feature
+    output.
+    """
+    deployment: dict[str, Any] = {
+        "enabled": bool(state.get("probes_enabled", True)),
+        "start_step": _as_int(state.get("probe_start", 1), 1),
+        "every_n_steps": max(1, _as_int(state.get("probe_interval", 1), 1)),
+        "include_agents": state.get("probes_include_agents", []),
+        "exclude_agents": state.get("probes_exclude_agents", []),
+    }
+    anchor = str(state.get("probe_at", "pre_step") or "pre_step")
+    if anchor in PROBE_ANCHORS and anchor != "pre_step":
+        deployment["at"] = anchor
+    deployment.update(
+        _sampling_fields(state.get("probe_sample_k"), state.get("probe_sample_fraction"))
+    )
+    return deployment
+
+
+def _probe_deployment_override(item: Mapping[str, Any]) -> dict[str, Any]:
+    """The per-probe ``deployment`` override for one probe item, or ``{}``.
+
+    A per-probe ``at`` of ``"(inherit)"`` (or unset) falls back to the global block,
+    so nothing is emitted; a concrete anchor or sample cap produces a minimal
+    override dict overlaid on the global policy at load time.
+    """
+    override: dict[str, Any] = {}
+    anchor = str(item.get("probe_at") or "").strip()
+    if anchor in PROBE_ANCHORS:
+        override["at"] = anchor
+    override.update(_sampling_fields(item.get("probe_sample_k"), item.get("probe_sample_fraction")))
+    return override
 
 
 def build_world_config(state: Mapping[str, Any]) -> dict:
@@ -167,20 +248,21 @@ def build_world_config(state: Mapping[str, Any]) -> dict:
             probe_data = {}
         if "name" not in probe_data or not probe_data.get("name"):
             probe_data["name"] = probe_name
-        configured_probes[probe_name] = {
+        entry: dict[str, Any] = {
             "probe_name": probe_name,
             "probe_type": probe_type,
             "probe_data": probe_data,
         }
+        # Per-probe deployment override (eval.probes.probes.<name>.deployment).
+        # Only emitted when a field departs from the global block, so probes with
+        # no override still inherit the global policy verbatim.
+        override = _probe_deployment_override(item)
+        if override:
+            entry["deployment"] = override
+        configured_probes[probe_name] = entry
 
     config["probes"] = {
-        "deployment": {
-            "enabled": bool(state.get("probes_enabled", True)),
-            "start_step": _as_int(state.get("probe_start", 1), 1),
-            "every_n_steps": max(1, _as_int(state.get("probe_interval", 1), 1)),
-            "include_agents": state.get("probes_include_agents", []),
-            "exclude_agents": state.get("probes_exclude_agents", []),
-        },
+        "deployment": _global_deployment_block(state),
         "probes": configured_probes,
     }
 

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Home | Silisocs Studio{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div><p class="eyebrow">Workspace pulse</p><h1>Simulation workbench</h1><p>Design, run, inspect, and compare simulations from one workspace.</p></div>
+  <div class="composer-actions"><a class="button" href="/scenarios">New scenario</a><a class="button primary" href="/studies">New study</a></div>
+</section>
+<section class="stats-band">
+  <div><small>Indexed runs</small><strong>{{ all_runs|length }}</strong><span>across this workspace</span></div>
+  <div><small>Successful</small><strong>{{ all_runs|selectattr('artifact.status', 'equalto', 'success')|list|length }}</strong><span>manifest-confirmed</span></div>
+  <div><small>Scenarios</small><strong>{{ scenario_count }}</strong><span>available to launch</span></div>
+  <div><small>Studies</small><strong>{{ study_count }}</strong><span>experiment definitions</span></div>
+  <div><small>Live</small><strong>{{ live_count }}</strong><span>queued or running jobs</span></div>
+</section>
+<div class="section-head"><div><p class="eyebrow">Activity</p><h2>Recent runs</h2></div><a href="/runs">View archive</a></div>
+{% if runs %}
+<div class="run-list">
+{% for record in runs %}
+  <a class="run-row" href="/runs/{{ record.id }}">
+    <span class="run-mark {{ 'ok' if record.artifact.status == 'success' else '' }}">{{ (record.artifact.scenario or 'R')[:2]|upper }}</span>
+    <span class="run-name"><strong>{{ record.artifact.scenario or record.path.name }}</strong><small>{{ record.id }}</small></span>
+    <span class="run-meta"><b>{{ record.artifact.num_agents or '—' }}</b><small>agents</small></span>
+    <span class="run-meta"><b>{{ record.artifact.num_steps or '—' }}</b><small>steps</small></span>
+    <span class="badge {{ 'success' if record.artifact.status == 'success' else 'neutral' }}">{{ record.artifact.status or 'legacy' }}</span><span class="arrow">→</span>
+  </a>
+{% endfor %}
+</div>
+{% else %}<div class="empty"><b>No simulation artifacts yet</b><p>Runs written under <code>outputs/</code> appear here automatically.</p></div>{% endif %}
+{% endblock %}

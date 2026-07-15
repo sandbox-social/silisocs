@@ -1,15 +1,83 @@
-# Dashboard
+# Silisocs Studio
 
-The project ships two dashboard experiences, each behind an installed command:
+Studio is the supported visual product for scenario design, launch, live
+monitoring, platform inspection, analysis, study comparison, and report export:
+
+```sh
+pip install "silisocs[studio]"
+silisocs-studio --output-root outputs --port 8765
+```
+
+The API is documented at `http://127.0.0.1:8765/api/docs`. Localhost mutation
+is zero-configuration. Binding beyond localhost requires
+`STUDIO_AUTH_TOKEN`; clients send it as a Bearer token.
+
+Studio is backend-neutral. Generic surfaces operate on run/study artifacts,
+backend action catalogs, job records, and declarative form schemas. A backend
+may optionally declare a `VisualizerSpec` and register event semantics for
+specialized platform/feed/network views. Custom backends and pages are loaded
+through the existing `class_path`, registry, and entry-point mechanisms.
+
+## Extending Studio without core edits
+
+A custom backend is immediately launchable from the scenario composer when its
+fully qualified `BackendApp` class path is selected. Studio obtains the action
+picker from `BackendApp.declared_action_catalog()`, which introspects
+`@app_action` declarations without constructing the backend. It does not contain
+a backend-name-to-action switch.
+
+The following metadata is optional and adds richer visual capabilities:
+
+```python
+class MyWorld(BackendApp):
+    visualizer = VisualizerSpec(
+        env_var="MY_WORLD_DB",
+        module="my_world.viewer",
+        default_port=8100,
+        port_env="MY_WORLD_PORT",
+    )
+    event_semantics = {
+        "roles": {"content.root": ("publish",)},
+        "fields": {
+            "content.id": ("object.id",),
+            "content.text": ("object.body",),
+        },
+    }
+```
+
+The runtime copies this portable metadata into `run_manifest.json`. Studio can
+therefore discover the viewer and render compatible specialized panels later
+without importing the backend implementation. Backends that model markets,
+physical spaces, organizations, or another domain can omit social semantic
+roles and ship their own artifact-backed panel/view instead.
+
+Composer extensions use the same declarative language. Register a dynamic
+choice source with `register_choice_provider(name, callable, deferred=True)` when
+resolution may import a backend or contact another capability, and reference it
+from `Field(..., choices_from=name, choices_depend_on=(...))`. Deferred choices
+load after the form shell and rerun only when a declared dependency changes. For a genuinely custom control, use
+`widget="class_path:mypkg.MyWidget"`; the widget implements
+`render(field, value, files)`. The resulting YAML remains the source of truth,
+including keys unknown to the form schema.
+
+Installed packages can add a complete navigation page through a
+`silisocs.studio_pages` entry point returning `StudioPage(name, label, href,
+router)`. Analysis panels use the separate `silisocs.panels` entry-point group.
+Settings lists all discovered pages, panels, views, form schemas, and dynamic
+choice providers.
+
+## Legacy transition
+
+Two legacy commands remain for one deprecation release:
 
 - `silisocs-dashboard` — Streamlit launcher for scenario editing and simulation
   execution (needs the `dashboard` extra)
 - `silisocs-analysis-dashboard` — Dash analytics app for post-run
   interaction/probe analysis (needs the `analysis` extra)
 
-Together they cover end-to-end usage, but they are separate applications. When
-an extra is missing, the command prints the exact `pip install "silisocs[...]"`
-line instead of a traceback.
+Both print a Studio migration pointer. The Streamlit Run button submits to
+Studio's `/api/launch` control plane when Studio is available and falls back to
+its old direct subprocess path only during this transition.
 
 ## Streamlit Launcher
 
@@ -100,7 +168,7 @@ Environment levers in expanders:
 - **GM Components**
 - Next-acting choice: `all_agents`, `fixed_order` (activity models are sim-level: `sim.engine.participation`)
 - Observe choice: `timeline_every_turn`, `app_observation`, `episode_only`
-- Resolve choice: `parsed_action`, `generic_action`, `tool_calling`
+- Resolve component: **derived** from the Tool-calling mode + Action mode (shown read-only), so it is always valid — `tool_calling` when tool-calling is `single`/`multi`, else `parsed_action` (custom prompts) or `generic_action` (generic prompts). Set a custom resolve class path to override.
 - Optional custom class path override field for each GM slot
 
 - **Initialization**
@@ -139,15 +207,30 @@ Action filtering behavior:
 
 Evaluation probe configuration:
 
-- **Deployment schedule**: Start step, frequency
-- **Query definitions**: Add probe questions with types
+- **Deployment schedule**: Start step, frequency, include/exclude roles
+- **Fire-at anchor**: `pre_step`, `post_step`, or `run_end` (the terminal
+  measurement, taken once after the run) — maps to `eval.probes.deployment.at`
+- **Sampling cap**: probe at most K agents, or a fraction, per due step
+  (`sample_k` / `sample_fraction`, applied after include/exclude filters)
+- **Query definitions**: Add probe questions with types, each with an optional
+  per-probe anchor/sample override (`eval.probes.probes.<name>.deployment`) that
+  overlays the global block
 
 ### 6. Launch
 
 - **Validation warnings**: Missing modules, data sources, or misconfigured settings
 - **Auto-save**: Config is saved before launch
 - **CLI preview**: Shows the exact command that will be run
+- **Raw generated config (YAML)**: Expander showing the exact world config and
+  sim/env/eval overrides the UI composes — the same YAML you could write by
+  hand under `scenarios/<name>/conf/`
 - **Run Simulation button**: Launches the simulation as a subprocess
+- **Open live platform view during run** (social backends): as soon as the run
+  creates its backend database, the read-only platform visualizer is started
+  against it (needs the `viz` extra) — its feed auto-refreshes as agents act
+- **Live actions panel**: while the run streams output, a compact summary of
+  committed actions (totals, per-label counts, most recent events) updates from
+  the run's `action_events.jsonl`
 
 ### 7. Results
 
@@ -155,6 +238,11 @@ Evaluation probe configuration:
   issues, token totals, and estimated cost — read from each run's
   `run_manifest.json`; runs that predate the manifest show what
   `sim_metrics.json` can recover
+- **Companion viewers**: one-click buttons per selected run — **Open platform
+  view** (the backend's read-only web UI on the run's database; multi-GM runs
+  get a database picker) and **Open analysis dashboard** (the Dash analytics
+  app on the run's output directory), plus **Stop viewer servers**. Missing
+  extras surface as the exact `pip install "silisocs[...]"` hint
 - **Run inspector**: Pick a run (discovered or pasted path) to see overview
   metrics, degraded-run health counters, action activity charts, and probe
   responses. Multi-GM runs load merged per-GM event logs via the Run Artifact
@@ -223,9 +311,12 @@ When launched with `--output_dir`, discovery goes through the Run Artifact
 Module (`silisocs.evaluations.run_artifact.load_run`): manifest-first, with
 per-GM event logs from multi-GM runs merged automatically.
 
-The app renders generic action trends and probe trends. When social follow or
-post/reply/like/repost events are present, it also renders a follow/interactions
-graph and post-level action details.
+The app renders action trends and probe trends across both microblog
+(`post`/`like`/`repost`/`reply`) and forum (`post`/`comment`/`upvote`/`downvote`)
+vocabularies. Every actor becomes a node in the interaction graph even without
+follow edges, so post-only and Reddit-like runs render the network and
+post-level action details rather than staying on the upload screen; follow edges
+are added on top when present.
 
 ### What It Answers Well
 
@@ -238,15 +329,29 @@ graph and post-level action details.
 ### Current Limits
 
 - It does not replace deep custom analysis scripts
-- Social graph panels require social action labels; other backend runs still
-  show action/probe/prompt summaries
-- Launcher and analytics are not yet a single integrated UI
+- Non-social backends (e.g. resource market) have no interaction graph, but their
+  actors still appear as nodes and their action/probe/prompt summaries render
+- Launcher and analytics are separate apps, but the launcher's Results tab
+  starts the analytics app (and the platform visualizer) with one click
+
+---
+
+## Shared Visual Tokens
+
+`silisocs.visual_tokens` is the single source of truth for the brand accent and
+the per-action-type plot colors, shared by the Dash analytics app and any future
+UI. The Streamlit theme lives in `.streamlit/config.toml` (Slate & Teal, matching
+the docs site); its `primaryColor` mirrors `visual_tokens.ACCENT` — keep the two
+in sync when changing the brand.
 
 ---
 
 ## Recommended End-To-End User Journey
 
-1. Use Streamlit launcher to create or edit a scenario and run simulation.
+1. Use Streamlit launcher to create or edit a scenario and run simulation —
+   with **Open live platform view during run** enabled, the platform UI opens
+   automatically and updates while agents act.
 2. Inspect generated output folder (`action_events.jsonl`, optional `probe_events.jsonl`, prompt logs, DB).
-3. Open Dash analytics app on that output folder for exploratory analysis.
-4. Use backend visualizer (Twitter-like or Reddit-like) for detailed platform state inspection.
+3. From the Results tab, open the Dash analytics app on that run with one click.
+4. From the Results tab, open the backend visualizer (Twitter-like or
+   Reddit-like) for detailed platform state inspection.

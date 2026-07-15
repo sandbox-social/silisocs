@@ -4,11 +4,15 @@ import networkx as nx
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 
+from silisocs.design.plotly import register_template
 from silisocs.evaluations.analysis.dashboard.config import (
     INTERACTION_TYPES,
     LINE_COLORS,
     PAST_TENSE_MAP,
 )
+from silisocs.visual_tokens import action_color
+
+register_template()
 
 
 def compute_positions(graph):
@@ -87,8 +91,9 @@ def create_probe_data_figure(probe_data):
             )
         )
 
-    max_episode = max(int(key) for key in probe_data.keys()) if probe_data else 0
+    max_episode = max(int(key) for key in probe_data) if probe_data else 0
     fig.update_layout(
+        template="silisocs",
         xaxis={
             "title": {"text": "Episode"},
             "range": [1, max_episode + 1],
@@ -145,18 +150,17 @@ def create_interactions_figure(interactions_by_episode, active_users_by_episode,
     # Create subplot with secondary y-axis
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # Add interaction traces
-    colors = {
-        "liked": "#2ca02c",
-        "reposted": "#ff7f0e",
-        "replied": "#9467bd",
-        "posted": "#1f77b4",
-    }
+    # Add interaction traces. Covers microblog (posted/liked/reposted/replied) and
+    # forum (commented/upvoted/downvoted) labels; unknown labels fall back so a new
+    # backend's vocabulary can never crash the figure.
     markers = {
         "liked": "circle",
         "reposted": "square",
         "replied": "diamond",
         "posted": "triangle-up",
+        "commented": "diamond-open",
+        "upvoted": "triangle-up-open",
+        "downvoted": "triangle-down",
     }
 
     for interaction_type in int_types:
@@ -166,8 +170,8 @@ def create_interactions_figure(interactions_by_episode, active_users_by_episode,
                 y=interactions_over_time[interaction_type],
                 mode="lines+markers",
                 name=interaction_type.replace("_", " ").title(),
-                line=dict(color=colors[interaction_type]),
-                marker=dict(symbol=markers[interaction_type], size=6),
+                line=dict(color=action_color(interaction_type)),
+                marker=dict(symbol=markers.get(interaction_type, "circle"), size=6),
                 cliponaxis=False,
             ),
             secondary_y=False,
@@ -203,6 +207,7 @@ def create_interactions_figure(interactions_by_episode, active_users_by_episode,
 
     max_ep = max(int_episodes) if int_episodes else 0
     fig.update_layout(
+        template="silisocs",
         xaxis={
             "title": {"text": "Episode"},
             "range": [-1, max_ep],

@@ -183,6 +183,20 @@ class StudyArtifact:
         self.study_dir = study_dir
 
     @cached_property
+    def definition(self) -> dict[str, Any] | None:
+        """The authored ``study.yaml`` document."""
+        for name in ("study.yaml", "study.yml"):
+            path = self.study_dir / name
+            try:
+                data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            except OSError:
+                continue
+            except yaml.YAMLError:
+                return None
+            return data if isinstance(data, dict) else None
+        return None
+
+    @cached_property
     def plan(self) -> dict[str, Any] | None:
         return _load_json(self.study_dir / "generated" / "plan.json")
 
@@ -194,6 +208,63 @@ class StudyArtifact:
         except (OSError, yaml.YAMLError):
             return None
         return data if isinstance(data, dict) else None
+
+    @cached_property
+    def run_records(self) -> list[dict[str, Any]]:
+        """Organized per-run evaluation records across all hypotheses."""
+        records: list[dict[str, Any]] = []
+        root = self.study_dir / "generated" / "organized"
+        for path in sorted(root.glob("*/runs.json")):
+            try:
+                rows = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(rows, list):
+                continue
+            hypothesis = path.parent.name
+            records.extend(
+                {"hypothesis": hypothesis, **row} for row in rows if isinstance(row, dict)
+            )
+        return records
+
+    @cached_property
+    def progress(self) -> list[dict[str, Any]]:
+        """Project the declared condition matrix onto run completion markers."""
+        definition = self.definition or {}
+        meta = definition.get("study") or {}
+        defaults = meta.get("run_defaults") or {}
+        scenarios = meta.get("scenarios") or ["default"]
+        seed_start = int(defaults.get("seed_start", 1) or 1)
+        repeats = int(defaults.get("seed_repeats", 1) or 1)
+        rows: list[dict[str, Any]] = []
+        for hypothesis_id, hypothesis in (definition.get("hypotheses") or {}).items():
+            for condition_id in hypothesis.get("conditions") or {}:
+                for scenario in scenarios:
+                    for seed in range(seed_start, seed_start + repeats):
+                        run_dir = (
+                            self.study_dir
+                            / "runs"
+                            / hypothesis_id
+                            / condition_id
+                            / scenario
+                            / f"seed_{seed}"
+                            / "run"
+                        )
+                        rows.append(
+                            {
+                                "hypothesis": hypothesis_id,
+                                "condition": condition_id,
+                                "scenario": scenario,
+                                "seed": seed,
+                                "status": (
+                                    "complete"
+                                    if (run_dir / "RUN_COMPLETE.json").is_file()
+                                    else "pending"
+                                ),
+                                "run_dir": str(run_dir),
+                            }
+                        )
+        return rows
 
     @cached_property
     def repro_lock(self) -> dict[str, Any] | None:

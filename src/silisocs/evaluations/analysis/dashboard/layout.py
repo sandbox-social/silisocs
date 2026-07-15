@@ -4,6 +4,7 @@ import dash_cytoscape as cyto
 from dash import dcc, html
 
 from silisocs.evaluations.analysis.dashboard.styles import get_base_stylesheet
+from silisocs.visual_tokens import ACCENT
 
 
 def get_index_string():
@@ -144,7 +145,7 @@ def create_upload_section(show=False):
                         "Drag and Drop or ",
                         html.A(
                             "Select Multiple Files",
-                            style={"color": "#1a73e8", "fontWeight": "bold"},
+                            style={"color": ACCENT, "fontWeight": "bold"},
                         ),
                     ]
                 ),
@@ -167,7 +168,7 @@ def create_upload_section(show=False):
                 style={
                     "width": "200px",
                     "height": "50px",
-                    "backgroundColor": "#4CAF50",
+                    "backgroundColor": ACCENT,
                     "color": "white",
                     "border": "none",
                     "borderRadius": "8px",
@@ -190,7 +191,6 @@ def create_dashboard_section(show=False):
                 children=[
                     create_plot_container("probe-data-line", "Probe Responses Over Time"),
                     create_plot_container("interactions-line-graph", "Interactions Over Time"),
-                    create_plot_container("heatmap-graph", "Action Alignment Histogram"),
                 ],
             ),
             html.Br(),

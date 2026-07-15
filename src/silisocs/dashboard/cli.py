@@ -12,6 +12,11 @@ from pathlib import Path
 
 def main() -> int:
     """Launch the Streamlit dashboard, or explain how to install it."""
+    print(
+        "Deprecated: silisocs-dashboard is in its transition release. "
+        "Use `silisocs-studio` for scenario design, launch, Watch, and analysis.",
+        file=sys.stderr,
+    )
     try:
         from streamlit.web import cli as stcli
     except ImportError:

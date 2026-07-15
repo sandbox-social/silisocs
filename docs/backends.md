@@ -390,7 +390,13 @@ for free as restore re-fires the log path.
 ## Built-in Visualizers
 
 Both local backends include a web-based visualizer (read-only frontend) for
-inspecting simulation state during or after a run.
+inspecting simulation state during or after a run. The home feed and sidebar
+stats auto-refresh every few seconds (skipped while you are scrolled into the
+feed), so pointing a visualizer at a *running* simulation's database shows new
+posts appearing live. The Streamlit dashboard can launch these for you: the
+Launch tab's "Open live platform view during run" checkbox starts one against
+the new run's database automatically, and the Results tab has an "Open platform
+view" button for any finished run.
 
 ### Twitter-like Visualizer
 

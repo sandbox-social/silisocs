@@ -12,7 +12,11 @@ import pandas as pd
 
 from silisocs.evaluations.analysis.dashboard.config import (
     INTERACTION_TYPES,
-    PAST_TENSE_MAP,
+    REACTION_LABELS,
+    REPLY_LABELS,
+    ROOT_TEXT_LABELS,
+    TEXT_LABELS,
+    past_tense,
 )
 
 
@@ -55,8 +59,10 @@ def post_process_output(df):
     edge_df = df.loc[
         df.label.isin(["follow", "unfollow"]), ["episode", "source_user", "data", "label"]
     ].reset_index(drop=True)
-    edge_df["target_user"] = edge_df.data.apply(lambda d: d["target_user"])
-    edge_df = edge_df.drop("data", axis=1)
+    edge_df["target_user"] = edge_df.data.apply(
+        lambda d: d.get("target_user") if isinstance(d, dict) else None
+    )
+    edge_df = edge_df.dropna(subset=["target_user"]).drop("data", axis=1)
 
     int_df = df.loc[df.label.isin(INTERACTION_TYPES), :].reset_index(drop=True)
 
@@ -66,26 +72,24 @@ def post_process_output(df):
 
 
 def get_target_user(row, post_owner_dict):
-    """Get target user from row, using post_owner_dict to look up users by post_id."""
-    if row.label == "post":
-        target_user = row.source_user
-    elif row.label in ["like", "repost"]:
-        target_post_id = _post_id(row.data)
-        target_user = post_owner_dict.get(target_post_id)
+    """Get target user from row, using post_owner_dict to look up users by post_id.
 
-    elif row.label == "reply":
-        target_post_id = _reply_target_id(row.data)
-        target_user = post_owner_dict.get(target_post_id)
-    else:
-        target_user = None
-    return target_user
+    Backend-agnostic: a root post targets its own author; reactions (like/repost/
+    upvote/downvote) target the reacted-to post's owner; replies/comments target
+    the parent post's owner.
+    """
+    if row.label in ROOT_TEXT_LABELS:
+        return row.source_user
+    if row.label in REACTION_LABELS:
+        return post_owner_dict.get(_post_id(row.data))
+    if row.label in REPLY_LABELS:
+        return post_owner_dict.get(_reply_target_id(row.data))
+    return None
 
 
 def get_post_dict(int_df):
     """Create post dictionary and owner lookup from interactions."""
-    text_df = int_df.loc[(int_df.label == "post") | (int_df.label == "reply"), :].reset_index(
-        drop=True
-    )
+    text_df = int_df.loc[int_df.label.isin(TEXT_LABELS), :].reset_index(drop=True)
     if text_df.empty:
         return {}, {}
 
@@ -101,7 +105,7 @@ def get_post_dict(int_df):
     text_df["text_data"] = text_df.apply(
         lambda x: {
             "user": x.source_user,
-            "action": PAST_TENSE_MAP[x.label],
+            "action": past_tense(x.label),
             "content": x.data.get("post_text") or x.data.get("content") or x.data.get("text", ""),
         },
         axis=1,
@@ -109,7 +113,7 @@ def get_post_dict(int_df):
     text_df.text_data = text_df.apply(
         lambda x: (
             x.text_data | {"parent_post_id": _reply_target_id(x.data)}
-            if x.label == "reply"
+            if x.label in REPLY_LABELS
             else x.text_data
         ),
         axis=1,
@@ -126,7 +130,7 @@ def get_int_dict(int_df, post_owner_dict):
         return {}
     int_df["int_data"] = int_df.apply(
         lambda x: {
-            "action": PAST_TENSE_MAP[x.label],
+            "action": past_tense(x.label),
             "episode": x.episode,
             "source": x.source_user,
             "target": get_target_user(x, post_owner_dict),
@@ -137,7 +141,7 @@ def get_int_dict(int_df, post_owner_dict):
     int_df.int_data = int_df.apply(
         lambda x: (
             x.int_data | {"parent_post_id": str(_reply_target_id(x.data))}
-            if x.label == "reply"
+            if x.label in REPLY_LABELS
             else x.int_data
         ),
         axis=1,
@@ -213,6 +217,11 @@ def load_data_from_folder(folder_contents):
     follow_graph = nx.from_pandas_edgelist(
         edge_df, "source_user", "target_user", create_using=nx.DiGraph()
     )
+    # Every actor becomes a node even without a follow edge, so post-only and forum
+    # (reddit_like) runs — which have no follow graph — still render the network and
+    # the node-linked panels instead of leaving the dashboard stuck on upload.
+    actors = set(act_df["source_user"].dropna()) if not act_df.empty else set()
+    follow_graph.add_nodes_from(sorted(actors))
 
     # Get active users by episode
     active_users_by_episode = int_df.groupby("episode")["source_user"].apply(set).to_dict()
@@ -270,7 +279,7 @@ def load_data_from_directory(directory_path: str | Path) -> dict[str, Any] | Non
         act_data,
     ) = load_data_from_folder(folder_contents)
 
-    serialized_data = serialize_data(
+    return serialize_data(
         follow_graph,
         interactions_by_episode,
         active_users_by_episode,
@@ -278,13 +287,6 @@ def load_data_from_directory(directory_path: str | Path) -> dict[str, Any] | Non
         probe_data,
         act_data,
     )
-
-    raw_data = []
-    for filename, content in folder_contents.items():
-        if filename.endswith(("action_events.jsonl", "probe_events.jsonl")):
-            raw_data.extend(pd.read_json(StringIO(content), lines=True).to_dict(orient="records"))
-    serialized_data["raw_data"] = raw_data
-    return serialized_data
 
 
 def serialize_data(

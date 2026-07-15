@@ -490,6 +490,26 @@ window.addEventListener('scroll', ()=>{
 });
 
 // ---------------------------------------------------------------------------
+// Live refresh — re-render the home feed + sidebar in place so an ongoing
+// simulation's new posts appear as they are written to the database. Skipped
+// while the user is scrolled into the feed or a fetch is in flight, so
+// reading and paging are never interrupted.
+// ---------------------------------------------------------------------------
+async function refreshNewFeed() {
+    if(!document.getElementById('view-home').classList.contains('active')) return;
+    if(homeLoading || window.scrollY>50) return;
+    try {
+        const data=await(await fetch('/api/feed/new?limit=25')).json();
+        if(data.posts) {
+            document.getElementById('home-content').innerHTML=data.posts.map(p=>renderPostCard(p)).join('');
+            homeCursor=data.next_cursor||null;
+        }
+    } catch(e) { console.error(e); }
+    loadSidebar();
+}
+setInterval(refreshNewFeed, 5000);
+
+// ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
 loadNewFeed(true);

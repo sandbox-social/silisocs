@@ -1,6 +1,6 @@
 # Quick Start
 
-Run your first social media simulation in 5 minutes.
+Run and inspect your first simulation in 5 minutes.
 
 ## Prerequisites
 
@@ -76,30 +76,29 @@ Override the LLM model from the command line:
 uv run silisocs sim.llm.name=gpt-4o num_agents=10 num_steps=5
 ```
 
-## 4. Use the Dashboard
+## 4. Use Silisocs Studio
 
-Launch the Streamlit dashboard for a visual interface:
+Install and launch the unified visual interface:
 
 ```sh
-uv sync --extra dashboard
-uv run streamlit run src/silisocs/dashboard/launch_app.py
+uv sync --extra studio
+uv run silisocs-studio --output-root outputs
 ```
 
-The dashboard lets you configure scenarios, agent classes, network topology,
-and probes, then launch simulations with one click.
+Open `http://127.0.0.1:8765`. Studio authors the same scenario YAML used by the
+CLI, validates and launches it through a persistent job queue, streams progress,
+starts any backend-declared platform viewer, and analyzes run artifacts.
 
 ## 5. Analyze a Completed Run
 
-Launch the analysis dashboard against a run output directory:
+Use the Runs station in Studio, or export a self-contained report from the CLI:
 
 ```sh
-uv sync --extra analysis
-uv run python -m silisocs.evaluations.analysis.dashboard.main \
-	--output-dir outputs/default/<jobname>/<timestamp>
+uv run silisocs-report outputs/default/<jobname>/<timestamp> \
+  --view overview -o report.html
 ```
 
-The analytics dashboard expects `action_events.jsonl` and `probe_events.jsonl`
-in that folder.
+The report embeds its chart libraries and works without a Studio server.
 
 ## 6. Run an Example Scenario
 

@@ -36,6 +36,7 @@ import yaml
 from silisocs.runtime.checkpointing import resolve_checkpoint_source
 from silisocs.runtime.provenance import environment_provenance as _environment_provenance
 from silisocs.runtime.provenance import hash_file as _hash_file
+from silisocs.studies.evaluation_presets import BUILTIN_EVAL_PRESETS
 from silisocs.studies.study_artifacts import (
     load_study_definition,
     organize_study_outputs,
@@ -61,137 +62,6 @@ PROCESS_TIMEOUT_RC = 124
 PLAN_PREVIEW_ROWS = 10
 PREFLIGHT_CONFIRM_RUN_COUNT = 50
 RUN_COMPLETE_MARKER = "RUN_COMPLETE.json"
-
-BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
-    "builtin.activity_summary": {
-        "command": [
-            "uv",
-            "run",
-            "python",
-            "-m",
-            "silisocs.evaluations.activity_summary",
-        ],
-        "input_mode": "run_dir",
-        "run_dir_arg": "--run-dir",
-        "output_arg": "--output",
-        "output_subpath": "activity_summary.json",
-    },
-    "builtin.probe_summary": {
-        "command": [
-            "uv",
-            "run",
-            "python",
-            "-m",
-            "silisocs.evaluations.activity_summary",
-            "--mode",
-            "probes",
-        ],
-        "input_mode": "run_dir",
-        "run_dir_arg": "--run-dir",
-        "output_arg": "--output",
-        "output_subpath": "probe_summary.json",
-    },
-    "builtin.action_metrics_detailed": {
-        "command": [
-            "uv",
-            "run",
-            "python",
-            "-m",
-            "silisocs.evaluations.default_evaluators",
-            "--mode",
-            "action_metrics",
-        ],
-        "input_mode": "run_dir",
-        "run_dir_arg": "--run-dir",
-        "output_arg": "--output",
-        "output_subpath": "action_metrics_detailed.json",
-    },
-    "builtin.probe_metrics_detailed": {
-        "command": [
-            "uv",
-            "run",
-            "python",
-            "-m",
-            "silisocs.evaluations.default_evaluators",
-            "--mode",
-            "probe_metrics",
-        ],
-        "input_mode": "run_dir",
-        "run_dir_arg": "--run-dir",
-        "output_arg": "--output",
-        "output_subpath": "probe_metrics_detailed.json",
-    },
-    "builtin.probe_binary_detailed": {
-        "command": [
-            "uv",
-            "run",
-            "python",
-            "-m",
-            "silisocs.evaluations.default_evaluators",
-            "--mode",
-            "probe_binary",
-        ],
-        "input_mode": "run_dir",
-        "run_dir_arg": "--run-dir",
-        "output_arg": "--output",
-        "output_subpath": "probe_binary_detailed.json",
-    },
-    "builtin.probe_numeric_detailed": {
-        "command": [
-            "uv",
-            "run",
-            "python",
-            "-m",
-            "silisocs.evaluations.default_evaluators",
-            "--mode",
-            "probe_numeric",
-        ],
-        "input_mode": "run_dir",
-        "run_dir_arg": "--run-dir",
-        "output_arg": "--output",
-        "output_subpath": "probe_numeric_detailed.json",
-    },
-    "builtin.probe_choice_detailed": {
-        "command": [
-            "uv",
-            "run",
-            "python",
-            "-m",
-            "silisocs.evaluations.default_evaluators",
-            "--mode",
-            "probe_choice",
-        ],
-        "input_mode": "run_dir",
-        "run_dir_arg": "--run-dir",
-        "output_arg": "--output",
-        "output_subpath": "probe_choice_detailed.json",
-    },
-    "builtin.probe_freetext_detailed": {
-        "command": [
-            "uv",
-            "run",
-            "python",
-            "-m",
-            "silisocs.evaluations.default_evaluators",
-            "--mode",
-            "probe_freetext",
-        ],
-        "input_mode": "run_dir",
-        "run_dir_arg": "--run-dir",
-        "output_arg": "--output",
-        "output_subpath": "probe_freetext_detailed.json",
-    },
-    # Study-specific eval.py — command uses ./eval.py resolved relative to the
-    # study directory by _resolve_eval_spec. Requires experiments/studies/{name}/eval.py
-    # to exist and accept --run-dir / --output args.
-    "builtin.study_eval": {
-        "command": ["uv", "run", "python", "./eval.py"],
-        "input_mode": "run_dir",
-        "run_dir_arg": "--run-dir",
-        "output_arg": "--output",
-        "output_subpath": "eval.json",
-    },
-}
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:

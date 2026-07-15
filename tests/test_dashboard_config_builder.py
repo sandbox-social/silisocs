@@ -18,6 +18,7 @@ from silisocs.dashboard.config_builder import (
     build_world_config,
     collect_activity_rates,
     participation_sim_data,
+    resolve_built_in_for,
     world_config_warnings,
 )
 from silisocs.dashboard.defaults import (
@@ -25,6 +26,7 @@ from silisocs.dashboard.defaults import (
     default_jobname_format,
     default_persona_defaults,
 )
+from silisocs.evaluations.probes.deployment import ProbeDeploymentPolicy
 
 
 def test_as_int_tolerates_hydra_interpolation_and_junk():
@@ -131,6 +133,86 @@ def test_build_world_config_assembles_classes_probes_and_fixed_actions():
     assert cfg["probes"]["deployment"]["every_n_steps"] == 3
     assert cfg["probes"]["probes"]["p1"]["probe_data"]["name"] == "p1"  # name backfilled
     assert cfg["fixed_action_sets"]["inline"] == {"seedset": [{"post": "hi"}]}
+
+
+def test_resolve_built_in_for_derives_from_tool_calling_mode():
+    # Tool-calling on -> tool_calling resolve, regardless of prompt style.
+    assert resolve_built_in_for("single", "custom") == "tool_calling"
+    assert resolve_built_in_for("multi", "generic") == "tool_calling"
+    # Tool-calling off -> parse the agent's text, keyed on the prompt style.
+    assert resolve_built_in_for("none", "custom") == "parsed_action"
+    assert resolve_built_in_for("none", "generic") == "generic_action"
+    # "tool_calling" is NOT an action mode; it never leaks into the resolve choice.
+    assert resolve_built_in_for("none", "tool_calling") == "parsed_action"
+
+
+def test_build_world_config_probe_deployment_defaults_are_minimal():
+    """With no anchor/sampling set, the deployment block omits at/sample fields."""
+    cfg = build_world_config({"_probe_items": []})
+    deployment = cfg["probes"]["deployment"]
+    assert "at" not in deployment  # pre_step default stays implicit
+    assert "sample_k" not in deployment
+    assert "sample_fraction" not in deployment
+    # Still a valid block for the real parser.
+    ProbeDeploymentPolicy.from_deployment_cfg(deployment)
+
+
+def test_build_world_config_emits_global_anchor_and_sampling():
+    cfg = build_world_config({"_probe_items": [], "probe_at": "run_end", "probe_sample_k": 25})
+    deployment = cfg["probes"]["deployment"]
+    assert deployment["at"] == "run_end"
+    assert deployment["sample_k"] == 25
+    assert "sample_fraction" not in deployment  # sample_k wins over an unset fraction
+    policy = ProbeDeploymentPolicy.from_deployment_cfg(deployment)
+    assert policy.at == "run_end" and policy.sample_k == 25
+
+
+def test_build_world_config_sample_k_beats_fraction_and_fraction_alone_emitted():
+    both = build_world_config(
+        {"_probe_items": [], "probe_sample_k": 3, "probe_sample_fraction": 0.5}
+    )
+    assert both["probes"]["deployment"]["sample_k"] == 3
+    assert "sample_fraction" not in both["probes"]["deployment"]  # mutually exclusive
+
+    frac = build_world_config({"_probe_items": [], "probe_sample_fraction": 0.25})
+    assert frac["probes"]["deployment"]["sample_fraction"] == 0.25
+    assert "sample_k" not in frac["probes"]["deployment"]
+
+
+def test_build_world_config_per_probe_deployment_override():
+    state = {
+        "_probe_items": [
+            {
+                "probe_name": "mood",
+                "probe_type": "FreeTextProbe",
+                "probe_data": {},
+                "probe_at": "run_end",
+            },
+            {
+                "probe_name": "plain",
+                "probe_type": "FreeTextProbe",
+                "probe_data": {},
+                "probe_at": "",
+            },
+            {
+                "probe_name": "sampled",
+                "probe_type": "FreeTextProbe",
+                "probe_data": {},
+                "probe_sample_k": 5,
+            },
+        ],
+    }
+    probes = build_world_config(state)["probes"]["probes"]
+    # Explicit anchor -> per-probe deployment override.
+    assert probes["mood"]["deployment"] == {"at": "run_end"}
+    # "(inherit)"/empty -> no override, inherits the global block.
+    assert "deployment" not in probes["plain"]
+    # Per-probe sample cap.
+    assert probes["sampled"]["deployment"] == {"sample_k": 5}
+    # The override validates as a real per-probe block overlaid on the global one.
+    ProbeDeploymentPolicy.from_deployment_cfg(
+        {**build_world_config(state)["probes"]["deployment"], **probes["mood"]["deployment"]}
+    )
 
 
 def test_dashboard_defaults_match_packaged_conf():

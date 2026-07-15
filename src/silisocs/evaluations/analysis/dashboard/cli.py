@@ -11,6 +11,11 @@ import sys
 
 def main() -> int:
     """Launch the analysis dashboard, or explain how to install it."""
+    print(
+        "Deprecated: silisocs-analysis-dashboard will be removed in the next release. "
+        "Use `silisocs-studio` and open the run's Analyze views.",
+        file=sys.stderr,
+    )
     try:
         import dash  # noqa: F401
         import dash_cytoscape  # noqa: F401

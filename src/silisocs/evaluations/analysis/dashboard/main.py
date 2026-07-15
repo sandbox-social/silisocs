@@ -2,13 +2,9 @@
 
 import argparse
 import base64
-import json
-from io import StringIO
 
 import dash
 import dash_cytoscape as cyto
-import pandas as pd
-import plotly.graph_objs as go
 from dash import Input, Output, State, html
 
 from silisocs.evaluations.analysis.dashboard.data_processing import (
@@ -145,66 +141,10 @@ def register_callbacks(app):
                 act_data,
             )
 
-            # Add raw data for heatmap
-            raw_data_combined = []
-            for name, content in decoded_contents.items():
-                if "action_events" in name or "probe_events" in name:
-                    df = pd.read_json(StringIO(content), lines=True)
-                    raw_data_combined.extend(df.to_dict(orient="records"))
-
-            serialized_data["raw_data"] = raw_data_combined
-
             return "Data Loaded Successfully", serialized_data, "", ""
 
         except Exception as e:
             return dash.no_update, dash.no_update, f"Error: {e!s}", ""
-
-    @app.callback(Output("heatmap-graph", "figure"), Input("data-store", "data"))
-    def update_heatmap(data_store):
-        """Update the action alignment heatmap."""
-        if not data_store or "raw_data" not in data_store:
-            return go.Figure(data=[], layout=go.Layout(title="No data uploaded"))
-
-        raw_data = data_store["raw_data"]
-        df = pd.DataFrame(raw_data)
-
-        # Filter for action events with suggested_action
-        dft = df[(df["event_type"] == "action")]
-
-        if not df.empty and isinstance(df.iloc[0]["data"], str):
-            dft["data"] = dft["data"].apply(lambda x: json.loads(x) if isinstance(x, str) else x)
-
-        dft = dft[dft["data"].apply(lambda x: x.get("suggested_action") is not None)].copy()
-
-        if dft.empty:
-            return go.Figure(
-                data=[], layout=go.Layout(title="No action records with suggested_action found")
-            )
-
-        dft["suggested_action"] = dft["data"].apply(lambda x: x.get("suggested_action"))
-
-        # Create contingency table
-        contingency = pd.crosstab(dft["label"], dft["suggested_action"])
-
-        # Create heatmap
-        heatmap_fig = go.Figure(
-            data=go.Heatmap(
-                z=contingency.values,
-                x=list(contingency.columns),
-                y=list(contingency.index),
-                colorscale="YlOrRd",
-                colorbar=dict(title="Count"),
-            )
-        )
-
-        heatmap_fig.update_layout(
-            xaxis_title="Suggested Action",
-            yaxis_title="Chosen Action",
-            margin=dict(l=30, r=100, t=10, b=30),
-            font=dict(family="Segoe UI"),
-        )
-
-        return heatmap_fig
 
     @app.callback(
         [
