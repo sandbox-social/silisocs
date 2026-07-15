@@ -3,40 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SimReddit</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>tailwind.config={theme:{extend:{colors:{brand:'#ff4500',upvote:'#ff4500',downvote:'#7193ff',border:'#343536',bg:'#1a1a1b',canvas:'#030303',surface:'#272729',hover:'#2a2a2b',dim:'#818384',link:'#4fbcff'}}}}</script>
+    <title>Forum | Silisocs Studio</title>
+    <script>
+        const initialTheme = new URLSearchParams(location.search).get('theme')
+            || localStorage.getItem('silisocs-theme') || 'light';
+        document.documentElement.dataset.theme = initialTheme;
+        addEventListener('message', event => {
+            if (event.data?.type === 'silisocs-theme' && ['light', 'dark'].includes(event.data.theme)) {
+                document.documentElement.dataset.theme = event.data.theme;
+            }
+        });
+    </script>
+    <link rel="stylesheet" href="/assets/design.css">
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #030303; color: #d7dadc; }
-        ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #343536; border-radius: 4px; }
-        .post-card { background: #1a1a1b; border: 1px solid #343536; border-radius: 4px; transition: border-color 0.15s; cursor: pointer; }
-        .post-card:hover { border-color: #818384; }
-        .vote-col { width: 40px; background: #161617; border-radius: 4px 0 0 4px; display: flex; flex-direction: column; align-items: center; padding: 8px 4px; gap: 2px; }
-        .vote-btn { font-size: 20px; color: #818384; cursor: pointer; line-height: 1; user-select: none; }
-        .vote-btn.up:hover { color: #ff4500; } .vote-btn.down:hover { color: #7193ff; }
-        .comment-thread { border-left: 2px solid #343536; margin-left: 4px; padding-left: 12px; }
-        .avatar-sm { width: 24px; height: 24px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; color: #fff; flex-shrink: 0; }
+        .post-card { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; transition: border-color 0.15s; cursor: pointer; }
+        .post-card:hover { border-color: var(--muted); }
+        .vote-col { width: 40px; background: var(--surface-2); border-radius: 4px 0 0 4px; display: flex; flex-direction: column; align-items: center; padding: 8px 4px; gap: 2px; }
+        .vote-btn { font-size: 20px; color: var(--ink-muted); cursor: pointer; line-height: 1; user-select: none; }
+        .vote-btn.up:hover { color: var(--success); } .vote-btn.down:hover { color: var(--danger); }
+        .comment-thread { border-left: 2px solid var(--border); margin-left: 4px; padding-left: 12px; }
         .pill { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 9999px; font-size: 12px; font-weight: 600; cursor: pointer; }
-        .pill:hover { background: #343536; }
-        .nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; }
-        .nav-item:hover { background: #272729; }
-        .nav-item.active { background: #272729; font-weight: 700; }
+        .pill:hover { background: var(--surface-2); }
+        .nav-item.active { background: var(--surface-2); font-weight: 700; }
         #view-stack > div { display: none; } #view-stack > div.active { display: block; }
     </style>
 </head>
-<body>
-<div class="flex max-w-[1200px] mx-auto min-h-screen gap-4 p-4">
+<body class="forum">
+<div class="viewer-mobile-brand"><span class="viewer-brand-mark">SI</span><b>Silisocs</b><small>Forum</small></div>
+<div class="viewer-layout flex max-w-[1200px] mx-auto min-h-screen gap-4 p-4">
 
     <!-- Left sidebar -->
     <nav class="w-[240px] flex-shrink-0 hidden lg:block sticky top-4 h-[calc(100vh-2rem)]">
         <div class="bg-bg border border-border rounded-lg p-3 mb-3">
-            <div class="text-xl font-bold text-brand mb-4 cursor-pointer" onclick="showView('home');loadNewFeed(true)">sim/Reddit</div>
+            <div class="viewer-brand" onclick="showView('home');loadNewFeed(true)"><span class="viewer-brand-mark">SI</span><span><b>Silisocs</b><small>Forum</small></span></div>
             <div class="space-y-1">
-                <div class="nav-item active" id="nav-home" onclick="activateNav(this);showView('home');loadNewFeed(true)">&#127968; Home</div>
-                <div class="nav-item" id="nav-popular" onclick="activateNav(this);showView('popular');loadPopularFeed(true)">&#128293; Popular</div>
-                <div class="nav-item" id="nav-users" onclick="activateNav(this);loadAllUsers()">&#128101; Users</div>
-                <div class="nav-item" id="nav-admin" onclick="activateNav(this);loadAdmin()">&#128202; Admin</div>
+                <div class="nav-item active" id="nav-home" onclick="activateNav(this);showView('home');loadNewFeed(true)">⌂ Home</div>
+                <div class="nav-item" id="nav-popular" onclick="activateNav(this);showView('popular');loadPopularFeed(true)">◇ Popular</div>
+                <div class="nav-item" id="nav-users" onclick="activateNav(this);loadAllUsers()">◎ Users</div>
+                <div class="nav-item" id="nav-admin" onclick="activateNav(this);loadAdmin()">▦ Admin</div>
             </div>
         </div>
         <div class="bg-bg border border-border rounded-lg p-3">
@@ -67,7 +71,7 @@
             <!-- POPULAR -->
             <div id="view-popular">
                 <div class="bg-bg border border-border rounded-lg p-3 mb-3">
-                    <span class="text-lg font-bold">&#128293; Popular</span>
+                    <span class="text-lg font-bold">Popular</span>
                 </div>
                 <div id="popular-content" class="space-y-3"></div>
                 <div id="popular-loading" class="p-6 text-center text-dim hidden">Loading...</div>
@@ -164,7 +168,7 @@
 let homeCursor = null, homeLoading = false;
 let popularCursor = null, popularLoading = false;
 const viewHistory = [];
-const colors = ['#ff4500','#0079d3','#00a6a5','#ff585b','#7856ff','#ff7a00','#00d4aa','#794bc4','#46d160','#ff66ac'];
+const colors = Array.from({length: 8}, (_, i) => `var(--categorical-${i})`);
 function getColor(s) { let h=0; for(let i=0;i<s.length;i++) h=s.charCodeAt(i)+((h<<5)-h); return colors[Math.abs(h)%colors.length]; }
 function esc(s) { if(!s) return ''; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 function timeSince(ts) {
@@ -202,14 +206,14 @@ function renderPostCard(post) {
         </div>
         <div class="flex-1 p-2 min-w-0">
             <div class="flex items-center gap-1 text-xs text-dim flex-wrap">
-                <span class="font-bold text-[#d7dadc] hover:underline" onclick="event.stopPropagation();openSubreddit('${esc(post.subreddit_name)}')">r/${esc(post.subreddit_name)}</span>
+                <span class="font-bold hover:underline" onclick="event.stopPropagation();openSubreddit('${esc(post.subreddit_name)}')">r/${esc(post.subreddit_name)}</span>
                 <span>&middot;</span>
                 <span>Posted by</span>
                 <span class="hover:underline" onclick="event.stopPropagation();openProfile('${esc(post.username)}')">u/${esc(post.username)}</span>
                 <span>&middot; ${timeSince(post.created_at)}</span>
             </div>
             <h3 class="text-base font-semibold mt-1 mb-1 break-words">${esc(post.title)}</h3>
-            ${post.content ? `<div class="text-sm text-[#b5b5b5] mb-2 break-words line-clamp-4">${esc(post.content)}</div>` : ''}
+            ${post.content ? `<div class="text-sm mb-2 break-words line-clamp-4">${esc(post.content)}</div>` : ''}
             <div class="flex items-center gap-3 text-xs text-dim">
                 <span class="pill" onclick="event.stopPropagation();openPost(${post.id})">&#128172; ${post.comment_count} Comments</span>
                 <span class="pill">&#8593; Share</span>
@@ -304,7 +308,7 @@ async function openPost(postId) {
                 </div>
                 <div class="flex-1 p-4">
                     <div class="flex items-center gap-1 text-xs text-dim flex-wrap mb-2">
-                        <span class="font-bold text-[#d7dadc] hover:underline cursor-pointer" onclick="openSubreddit('${esc(post.subreddit_name)}')">r/${esc(post.subreddit_name)}</span>
+                        <span class="font-bold hover:underline cursor-pointer" onclick="openSubreddit('${esc(post.subreddit_name)}')">r/${esc(post.subreddit_name)}</span>
                         <span>&middot; Posted by</span>
                         <span class="hover:underline cursor-pointer" onclick="openProfile('${esc(post.username)}')">u/${esc(post.username)}</span>
                         <span>&middot; ${timeSince(post.created_at)}</span>
@@ -336,7 +340,7 @@ function renderCommentTree(comments, depth=0) {
         html+=`<div class="${depth>0?'comment-thread':''} mt-2 mb-1">
             <div class="flex items-center gap-2 text-xs text-dim mb-1">
                 <div class="avatar-sm" style="background:${getColor(c.username)}">${c.username[0].toUpperCase()}</div>
-                <span class="font-bold text-[#d7dadc] hover:underline cursor-pointer" onclick="openProfile('${esc(c.username)}')">u/${esc(c.username)}</span>
+                <span class="font-bold hover:underline cursor-pointer" onclick="openProfile('${esc(c.username)}')">u/${esc(c.username)}</span>
                 <span>&middot; ${score} points</span>
                 <span>&middot; ${c.formatted_date||timeSince(c.created_at)}</span>
             </div>
@@ -459,10 +463,10 @@ async function loadSidebar() {
         ]);
         document.getElementById('sidebar-stats').innerHTML=`
             <div class="space-y-1">
-                <div class="flex justify-between"><span>Users</span><span class="font-bold text-[#d7dadc]">${stats.user_count}</span></div>
-                <div class="flex justify-between"><span>Posts</span><span class="font-bold text-[#d7dadc]">${stats.post_count}</span></div>
-                <div class="flex justify-between"><span>Comments</span><span class="font-bold text-[#d7dadc]">${stats.comment_count}</span></div>
-                <div class="flex justify-between"><span>Communities</span><span class="font-bold text-[#d7dadc]">${stats.subreddit_count}</span></div>
+                <div class="flex justify-between"><span>Users</span><span class="font-bold">${stats.user_count}</span></div>
+                <div class="flex justify-between"><span>Posts</span><span class="font-bold">${stats.post_count}</span></div>
+                <div class="flex justify-between"><span>Comments</span><span class="font-bold">${stats.comment_count}</span></div>
+                <div class="flex justify-between"><span>Communities</span><span class="font-bold">${stats.subreddit_count}</span></div>
             </div>`;
         document.getElementById('sidebar-users').innerHTML=(stats.top_users||[]).slice(0,5).map(u=>`
             <div class="flex items-center gap-2 cursor-pointer hover:bg-hover rounded p-1 -mx-1" onclick="openProfile('${esc(u.username)}')">

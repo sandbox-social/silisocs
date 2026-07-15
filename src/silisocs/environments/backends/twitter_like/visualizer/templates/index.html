@@ -3,39 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SimTwitter</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>tailwind.config={theme:{extend:{colors:{brand:'#1d9bf0',dim:'#71767b',border:'#2f3336',bg:'#000000',surface:'#16181c',elevated:'#1d1f23',hover:'#080808'}}}}</script>
+    <title>Microblog | Silisocs Studio</title>
+    <script>
+        const initialTheme = new URLSearchParams(location.search).get('theme')
+            || localStorage.getItem('silisocs-theme') || 'light';
+        document.documentElement.dataset.theme = initialTheme;
+        addEventListener('message', event => {
+            if (event.data?.type === 'silisocs-theme' && ['light', 'dark'].includes(event.data.theme)) {
+                document.documentElement.dataset.theme = event.data.theme;
+            }
+        });
+    </script>
+    <link rel="stylesheet" href="/assets/design.css">
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #000; color: #e7e9ea; }
-        ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #333639; border-radius: 4px; }
-        .post-card { border-bottom: 1px solid #2f3336; padding: 12px 16px; cursor: pointer; transition: background 0.15s; }
-        .post-card:hover { background: #080808; }
-        .stat-btn { display: flex; align-items: center; gap: 4px; font-size: 13px; color: #71767b; transition: color 0.15s; cursor: pointer; padding: 2px 8px; border-radius: 999px; }
-        .stat-btn:hover { background: rgba(29,155,240,0.1); }
-        .reply-btn:hover { color: #1d9bf0; } .repost-btn:hover { color: #00ba7c; } .like-btn:hover { color: #f91880; }
-        .avatar { width: 40px; height: 40px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; flex-shrink: 0; }
-        .back-btn { padding: 8px; border-radius: 9999px; cursor: pointer; } .back-btn:hover { background: rgba(239,243,244,0.1); }
-        .tab { padding: 16px 0; text-align: center; font-weight: 700; font-size: 15px; cursor: pointer; border-bottom: 2px solid transparent; color: #71767b; transition: all 0.2s; flex: 1; }
-        .tab:hover { background: rgba(239,243,244,0.05); } .tab.active { color: #e7e9ea; border-bottom-color: #1d9bf0; }
-        .nav-item { display: flex; align-items: center; gap: 16px; padding: 12px; border-radius: 9999px; font-size: 20px; cursor: pointer; transition: background 0.15s; }
-        .nav-item:hover { background: rgba(239,243,244,0.1); }
-        .badge { background: #1d9bf0; color: #fff; font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 4px; margin-left: 4px; }
+        .post-card { border-bottom: 1px solid var(--border); padding: 12px 16px; cursor: pointer; transition: background 0.15s; }
+        .post-card:hover, .post-card.highlight { background: var(--surface-2); }
+        .post-card.highlight { border-left: 2px solid var(--accent); }
+        .stat-btn { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); transition: color 0.15s; cursor: pointer; padding: 2px 8px; border-radius: 999px; }
+        .stat-btn:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+        .reply-btn:hover { color: var(--accent-link); } .repost-btn:hover { color: var(--success); } .like-btn:hover { color: var(--danger); }
+        .back-btn { padding: 8px; border-radius: 9999px; cursor: pointer; } .back-btn:hover { background: var(--surface-2); }
+        .tab { padding: 16px 0; text-align: center; font-weight: 700; font-size: 15px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--ink-muted); transition: all 0.2s; flex: 1; }
+        .tab:hover { background: var(--surface-2); } .tab.active { color: var(--ink); border-bottom-color: var(--accent); }
+        .badge { background: var(--accent); color: var(--on-strong); font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 4px; margin-left: 4px; }
         #view-stack > div { display: none; } #view-stack > div.active { display: block; }
     </style>
 </head>
-<body>
-<div class="flex max-w-[1280px] mx-auto min-h-screen">
+<body class="microblog">
+<div class="viewer-mobile-brand"><span class="viewer-brand-mark">SI</span><b>Silisocs</b><small>Microblog</small></div>
+<div class="viewer-layout flex max-w-[1280px] mx-auto min-h-screen">
 
     <!-- Left sidebar -->
     <nav class="w-[275px] flex-shrink-0 hidden lg:flex flex-col justify-between border-r border-border p-3 sticky top-0 h-screen">
         <div>
-            <div class="text-2xl font-bold text-brand p-3 mb-2 cursor-pointer" onclick="showView('home');loadGlobalFeed(true)">SimTwitter</div>
-            <div class="nav-item" onclick="showView('home');loadGlobalFeed(true)"><span>&#127968;</span><span class="font-bold">Home</span></div>
-            <div class="nav-item" onclick="showView('explore')"><span>&#128269;</span><span>Explore</span></div>
-            <div class="nav-item" onclick="loadAllUsers()"><span>&#128101;</span><span>Users</span></div>
-            <div class="nav-item" onclick="loadAdmin()"><span>&#128202;</span><span>Admin</span></div>
+            <div class="viewer-brand" onclick="showView('home');loadGlobalFeed(true)"><span class="viewer-brand-mark">SI</span><span><b>Silisocs</b><small>Microblog</small></span></div>
+            <div class="nav-item" onclick="showView('home');loadGlobalFeed(true)"><span>⌂</span><span class="font-bold">Home</span></div>
+            <div class="nav-item" onclick="showView('explore')"><span>◇</span><span>Explore</span></div>
+            <div class="nav-item" onclick="loadAllUsers()"><span>◎</span><span>Users</span></div>
+            <div class="nav-item" onclick="loadAdmin()"><span>▦</span><span>Admin</span></div>
         </div>
         <div class="p-3 border-t border-border">
             <input id="searchInput" type="text" placeholder="Search users..."
@@ -70,7 +75,7 @@
                 </header>
                 <div class="px-4 pt-12 pb-4 border-b border-border">
                     <div class="flex items-end gap-4 -mt-8">
-                        <div class="avatar text-3xl" id="profile-avatar" style="width:80px;height:80px;font-size:32px;border:3px solid #000;"></div>
+                        <div class="avatar text-3xl" id="profile-avatar" style="width:80px;height:80px;font-size:32px;border:3px solid var(--surface);"></div>
                     </div>
                     <div class="mt-3">
                         <div class="font-bold text-xl" id="profile-name2"></div>
@@ -147,7 +152,7 @@
 let feedCursor = null;
 let feedLoading = false;
 const viewHistory = [];
-const avatarColors = ['#1d9bf0','#00ba7c','#f91880','#ffd400','#7856ff','#ff7a00','#00d4aa','#794bc4','#f4212e','#17bf63'];
+const avatarColors = Array.from({length: 8}, (_, i) => `var(--categorical-${i})`);
 function getColor(s) { let h=0; for(let i=0;i<s.length;i++) h=s.charCodeAt(i)+((h<<5)-h); return avatarColors[Math.abs(h)%avatarColors.length]; }
 function esc(s) { if(!s) return ''; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 function timeSince(ts) {
@@ -178,7 +183,7 @@ function goBack() {
 function renderPostCard(post, opts={}) {
     const isRepost = post.type==='repost';
     const isQuote = post.type==='quote';
-    const highlight = opts.highlight ? 'bg-[#080808] border-l-2 border-l-brand' : '';
+    const highlight = opts.highlight ? 'highlight' : '';
     return `
     <div class="post-card ${highlight}" onclick="openThread(${post.id})">
         ${isRepost ? '<div class="text-dim text-xs ml-12 mb-1">&#128257; Reposted</div>' : ''}
@@ -315,7 +320,7 @@ async function openThread(postId) {
             const isFocus = node.id===data.focus_id;
             html += renderPostCard(node, {highlight: isFocus});
             if(node.children.length > 0) {
-                html += '<div style="margin-left:'+(Math.min(depth+1,4)*16)+'px; border-left: 2px solid #2f3336;">';
+                html += '<div style="margin-left:'+(Math.min(depth+1,4)*16)+'px; border-left: 2px solid var(--border);">';
                 node.children.forEach(c => renderThread(c, depth+1));
                 html += '</div>';
             }
@@ -395,7 +400,7 @@ async function loadAdmin() {
                 ${(s.top_posts||[]).map(p=>`
                     <div class="p-3 cursor-pointer hover:bg-hover" onclick="openThread(${p.id})">
                         <div class="flex items-center gap-2 text-sm text-dim mb-1">
-                            <span class="font-bold text-[#e7e9ea]">${esc(p.username)}</span>
+                            <span class="font-bold">${esc(p.username)}</span>
                             <span>&middot; ${p.likes_count} likes &middot; ${p.reposts_count} reposts &middot; ${p.reply_count} replies</span>
                         </div>
                         <div class="text-sm">${esc(p.content)}</div>
@@ -413,11 +418,11 @@ async function loadSidebarStats() {
         const s=await res.json();
         document.getElementById('sidebar-stats').innerHTML=`
             <div class="space-y-1">
-                <div class="flex justify-between"><span>Users</span><span class="font-bold text-[#e7e9ea]">${s.user_count}</span></div>
-                <div class="flex justify-between"><span>Posts</span><span class="font-bold text-[#e7e9ea]">${s.post_count}</span></div>
-                <div class="flex justify-between"><span>Replies</span><span class="font-bold text-[#e7e9ea]">${s.reply_count}</span></div>
-                <div class="flex justify-between"><span>Likes</span><span class="font-bold text-[#e7e9ea]">${s.like_count}</span></div>
-                <div class="flex justify-between"><span>Follows</span><span class="font-bold text-[#e7e9ea]">${s.follow_count}</span></div>
+                <div class="flex justify-between"><span>Users</span><span class="font-bold">${s.user_count}</span></div>
+                <div class="flex justify-between"><span>Posts</span><span class="font-bold">${s.post_count}</span></div>
+                <div class="flex justify-between"><span>Replies</span><span class="font-bold">${s.reply_count}</span></div>
+                <div class="flex justify-between"><span>Likes</span><span class="font-bold">${s.like_count}</span></div>
+                <div class="flex justify-between"><span>Follows</span><span class="font-bold">${s.follow_count}</span></div>
             </div>`;
         document.getElementById('sidebar-top-users').innerHTML=(s.top_users||[]).slice(0,5).map(u=>`
             <div class="flex items-center gap-2 cursor-pointer hover:bg-hover rounded-lg p-1 -mx-1" onclick="openProfile('${esc(u.username)}')">

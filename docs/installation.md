@@ -23,10 +23,9 @@ Install optional integrations only when needed:
 | Extra | Key packages | When to use |
 |---|---|---|
 | `concordia` | `gdm-concordia` | Legacy Concordia agent compatibility |
-| `studio` | FastAPI, Jinja, uvicorn | Unified visual workspace and control plane |
+| `studio` | FastAPI, Jinja, uvicorn | Unified workspace, analysis, and platform viewers |
 | `analysis` | matplotlib, plotly, scipy, seaborn, powerlaw | Notebooks and extended analysis utilities |
 | `recsys` | scikit-learn, scipy, sentence-transformers | Recommendation system backends |
-| `viz` | FastAPI, uvicorn, jinja2 | Local web visualizer for simulation logs |
 | `hf` | `datasets` | Hugging Face persona datasets |
 | `mastodon` | `mastodon.py`, loguru, pyvis | Real Mastodon server integration |
 | `aws` | `boto3` | AWS storage and services |

@@ -43,6 +43,9 @@ def test_theme_text_contrast(theme_name: str) -> None:
     # Small bold eyebrows / links use accent_hover — the relaxed 3.0 bar.
     assert _contrast(theme["accent_hover"], theme["surface"]) >= 3.0
     assert _contrast(theme["accent_link"], theme["surface"]) >= 4.5
+    assert _contrast(theme["rail_ink"], theme["rail_canvas"]) >= 4.5
+    assert _contrast(theme["rail_muted"], theme["rail_canvas"]) >= 4.5
+    assert _contrast(theme["terminal_ink"], theme["terminal_canvas"]) >= 4.5
     # (border on surface is intentionally exempt — it is decorative, not text.)
 
 

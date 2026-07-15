@@ -41,7 +41,6 @@ pip install "silisocs[hf]"        # Hugging Face persona sources
 pip install "silisocs[mastodon]"  # real Mastodon backend
 pip install "silisocs[studio]"    # unified visual workspace
 pip install "silisocs[analysis]"  # notebooks and extended analysis
-pip install "silisocs[viz]"       # local backend web visualizers
 pip install "silisocs[concordia]" # optional Concordia bridge
 pip install "silisocs[hpc]"       # optional Submitit/Slurm study helpers
 ```

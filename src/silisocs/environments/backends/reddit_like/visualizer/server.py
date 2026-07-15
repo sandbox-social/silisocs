@@ -7,26 +7,32 @@ Run standalone:
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from silisocs.design.css import viewer_stylesheet
 from silisocs.environments.backends.reddit_like.engine import RedditLikePlatform
 
-app = FastAPI(title="Reddit-like Simulation Visualizer")
 DB_PATH = os.getenv("REDDIT_LIKE_DB", "reddit_like.db")
 platform = RedditLikePlatform(DB_PATH, use_queue=False)
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Release the read-only platform connection when the viewer stops."""
+    yield
+    platform.shutdown()
+
+
+app = FastAPI(title="Reddit-like Simulation Visualizer", lifespan=lifespan)
+
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
-
-
-@app.on_event("shutdown")
-def shutdown_event():
-    platform.shutdown()
 
 
 # ---------------------------------------------------------------------------
@@ -35,6 +41,12 @@ def shutdown_event():
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     return templates.TemplateResponse(request, "index.html")
+
+
+@app.get("/assets/design.css", response_class=Response)
+def design_css() -> Response:
+    """Serve the canonical Silisocs identity without a frontend build step."""
+    return Response(viewer_stylesheet(), media_type="text/css")
 
 
 # ---------------------------------------------------------------------------

@@ -24,7 +24,6 @@ _MIN_PYTHON = (3, 11)
 _EXTRAS = {
     "studio": (("fastapi", "jinja2", "uvicorn"), "Studio visual workspace"),
     "analysis": (("plotly",), "notebooks and extended statistical analysis"),
-    "viz": (("fastapi", "uvicorn"), "backend state visualizers"),
     "mastodon": (("mastodon",), "live Mastodon backend"),
     "concordia": (("concordia",), "Concordia compatibility bridge"),
 }

@@ -121,7 +121,7 @@ nav:
     - Memory Initialization: memory_initialization.md
     - Environment Backends: backends.md
     - Evaluation Probes: probes.md
-    - Dashboard: dashboard.md
+    - Studio: studio.md
   - Tutorials:
     - Election Scenario Walkthrough: tutorials/election.md
   - Development:
