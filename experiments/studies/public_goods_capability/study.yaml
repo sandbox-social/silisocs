@@ -1,0 +1,67 @@
+schema_version: 1
+
+study:
+  name: public_goods_capability
+  study_id: public_goods_capability
+  study_version: v1
+  question: >-
+    In a repeated public-goods game, does higher model capability raise or lower
+    cooperation? Reproduces the late-2025/2026 "more capable, less cooperative"
+    finding as a config-driven, seeded, N-replicate study with confidence intervals.
+  scenarios:
+    - public_goods_game            # ONE scenario -> the cross-seed CI is pure (pools seeds only)
+  study_summary_path: experiments/studies/public_goods_capability/SUMMARY.md
+  summary_log_path: experiments/studies/public_goods_capability/generated/summary_log.jsonl
+
+  run_defaults:
+    config_path: scenarios/public_goods_game/conf
+    runner_module: silisocs.runtime.runner
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
+    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+
+    # Seeds ARE the replicates: fans each condition out to seeds 101..105.
+    seed_start: 101
+    seed_repeats: 5
+
+    # A checkpoint every step (the default) keeps runs resume-stable.
+    checkpoint_every_n_steps: 1
+
+    overrides:                     # shared by every run (lowest precedence)
+      world: public_goods_game     # Hydra group selection (config_path holds these groups)
+      agents: public_goods_game
+      env: public_goods_game
+      num_agents: 4
+      num_steps: 10
+      sim.llm.temperature: 1.0
+
+evaluations:
+  - id: payoff
+    preset: builtin.study_eval          # runs ./eval.py --run-dir <dir> --output <eval.json>
+  - id: action_metrics
+    preset: builtin.action_metrics_detailed
+
+hypotheses:
+  h1_capability_ladder:
+    statement: >-
+      Cooperation (average contribution rate) changes monotonically with model
+      capability in the repeated public-goods game.
+    independent_variable: model
+    prediction: >-
+      Per the 2026 findings, more capable / reasoning models contribute LESS
+      (lower average contribution rate) than smaller models.
+    status: testing
+    overrides: {}
+
+    # THE MODEL LADDER — each rung x 5 seeds. Edit the models to whatever ladder
+    # you have API access to; a rung is just a `sim.llm.name` (or a full
+    # `sim.llm.*` block for a non-default provider).
+    conditions:
+      model=gpt-4o-mini:
+        overrides:
+          sim.llm.name: gpt-4o-mini
+      model=gpt-4o:
+        overrides:
+          sim.llm.name: gpt-4o
+      model=o3-mini:
+        overrides:
+          sim.llm.name: o3-mini

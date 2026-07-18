@@ -1,0 +1,56 @@
+gm:
+  backend:
+    type: public_goods
+    class_path: null
+    params:
+      endowment: 20
+      multiplier: 1.6
+      num_rounds: ${num_steps}
+      history_window: 0
+      app_description: |
+        You are playing a repeated public-goods game. Each round you privately choose
+        how many of your tokens to contribute to a shared pool. The pool is multiplied
+        and split equally among all players, so your payoff each round is the tokens you
+        keep plus your equal share of the multiplied pool.
+    enabled_actions: null
+  components:
+    initialize:
+      built_in: app_initialize
+      class_path: null
+      params: {}
+    next_acting:
+      built_in: all_agents
+      class_path: null
+      params: {}
+    update:
+      built_in: app_update
+      class_path: null
+      params: {}
+    observe:
+      built_in: app_observation
+      class_path: null
+      params: {}
+    resolve:
+      built_in: tool_calling
+      class_path: null
+      params: {}
+    action_prompt:
+      built_in: default
+      class_path: null
+      params:
+        action_prompt: |
+          You are playing a repeated public-goods game with the other players.
+
+          ## YOUR DECISION
+          Each round you privately decide how many of your tokens to contribute to the
+          shared pool. Contributions are revealed simultaneously after everyone decides;
+          the pool is then multiplied and split equally among all players. Review the
+          game state and the history of previous rounds, then choose your contribution.
+
+          [OUTPUT STYLE]
+        output_style: |
+          ## OUTPUT FORMAT
+          ACTION: CONTRIBUTE
+          amount: <integer from 0 to your endowment>
+  name: public_goods_gm
+  class_path: silisocs.environments.gm.game_master.ComponentGameMaster
