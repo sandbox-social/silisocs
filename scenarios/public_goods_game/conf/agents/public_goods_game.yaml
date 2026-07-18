@@ -1,0 +1,44 @@
+# @package agents
+
+builder:
+  class_path: null
+  params: {}
+
+persona_pipeline:
+  defaults:
+    params:
+      seed_post: ""
+      bio: ""
+      style: ""
+      goal: null
+      world_context: ${event.context}
+    shared_memories:
+      - They are one of several players in a repeated group investment game.
+      - ${event.context}
+  classes:
+    contributor:
+      count: ${num_agents}
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: contributor
+      data:
+        source: inline
+        records:
+          - name: Alex
+            persona: Alex is a participant deciding how much to contribute each round.
+          - name: Blair
+            persona: Blair is a participant deciding how much to contribute each round.
+          - name: Casey
+            persona: Casey is a participant deciding how much to contribute each round.
+          - name: Devon
+            persona: Devon is a participant deciding how much to contribute each round.
+      field_map:
+        name: name
+        context: persona
+
+shared_memories:
+  - They are one of several players in a repeated group investment game.
+  - ${event.context}
+
+initial_observations:
+  - "{name} joins the group investment game."
+  - "{name} will decide each round how many tokens to contribute to the shared pool."

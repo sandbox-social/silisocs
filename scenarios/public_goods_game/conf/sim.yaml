@@ -1,0 +1,20 @@
+action_mode: generic
+tool_calling:
+  mode: single
+engine:
+  step:
+    built_in: base
+    class_path: null
+    params:
+      flow_order:
+      - fixed_pre
+      - default
+      agent_to_flow: {}
+  turn_policy:
+    built_in: single_action
+    class_path: null
+    params: {}
+  participation:
+    built_in: all
+    class_path: null
+    params: {}
