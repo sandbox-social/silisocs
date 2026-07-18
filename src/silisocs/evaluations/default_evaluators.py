@@ -19,7 +19,7 @@ import json
 import re
 import statistics
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -28,6 +28,7 @@ import yaml
 
 from silisocs.design.matplotlib import apply_matplotlib_theme
 from silisocs.evaluations.action_events import resolve_action_event_files
+from silisocs.evaluations.run_artifact import iter_jsonl
 
 # matplotlib is an optional (`analysis` extra) dependency used only by the plot
 # writers below. Import it lazily so this module — and its JSONL/stat helpers —
@@ -66,18 +67,6 @@ def _slug(text: str) -> str:
     """Convert text to a lowercase, underscore-separated slug identifier."""
     slug = re.sub(r"[^a-zA-Z0-9]+", "_", text.strip().lower()).strip("_")
     return slug or "unknown"
-
-
-def _read_jsonl(path: Path) -> Iterator[dict[str, Any]]:
-    """Stream a JSONL file's non-empty lines as parsed dicts (event logs grow
-    with the whole run's action history; don't materialize them per file).
-    """
-    with path.open("r", encoding="utf-8") as f:
-        for raw in f:
-            line = raw.strip()
-            if not line:
-                continue
-            yield json.loads(line)
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -963,9 +952,8 @@ def main() -> None:
     if not event_files:
         raise FileNotFoundError(f"Missing events file(s) for mode {args.mode!r} in {run_dir}")
 
-    events: list[dict[str, Any]] = []
-    for path in event_files:
-        events.extend(_read_jsonl(path))
+    # Tolerant shared reader (skips blank/malformed lines), per the run-artifact contract.
+    events: list[dict[str, Any]] = list(iter_jsonl(event_files))
     payload = _build_payload(args.mode, events, run_dir)
     payload["mode"] = args.mode
     payload["run_dir"] = str(run_dir)

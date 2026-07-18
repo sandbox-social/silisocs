@@ -64,7 +64,7 @@ Core runtime layers:
 - `src/silisocs/environments/backends/twitter_like/` — TwitterLikeApp with SQL backend
 - `src/silisocs/environments/backends/reddit_like/` — RedditLikeApp
 - `src/silisocs/environments/backends/mastodon/` — Real Mastodon server integration
-- Actions discovered via `@app_action(name=..., description=...)` decorator
+- Actions discovered via `@app_action(selectable_name=..., description=...)`
 - To add custom backend: subclass `SocialBackendApp`, implement action methods, register in app factory
 
 ### 6. Runtime Orchestration
@@ -104,7 +104,8 @@ Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 | `sim.engine.step.built_in` | base | `base`, `sequential`, `flow`, `multi_gm`, `multi_gm_serial`, or `multi_gm_staged` (the three `multi_gm*` strategies select the flow-chain traversal mode; see below) |
 | `sim.engine.turn_policy.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended`. `fixed_count` params: `count`; optional `count_committed: true` counts only actions that COMMITTED a backend change (a failed-resolve tool call no longer burns the budget), bounded by `max_attempts` (default `2*count`) |
 | `sim.engine.executor` | threads | Turn executor: `threads` (one pool worker per in-flight turn) \| `asyncio` (turns are coroutines on one background event loop — thousands of LLM calls in flight on a handful of threads). Sync `act`/`sample_text` stay the REQUIRED contracts; `act_async` / `sample_*_async` / turn-policy `run_async` are OPTIONAL loop-native overrides (shipped: NativeAgent, FixedAgent, OpenAI-compatible providers, all built-in turn policies), and sync-only agents/models/policies automatically run on helper threads via `asyncio.to_thread` — both kinds mix freely in one step. `max_concurrent_actions` keeps its meaning (max in-flight turns, enforced as an asyncio semaphore); all scheduling semantics (flow chains, barriers, per-GM caps/locks, failure isolation, retry telemetry) are identical across executors |
-| `sim.engine.participation.built_in` | activity_probability | Sim-level per-step roster filter: `all` \| `activity_probability` \| `activity_markov` (or `class_path` to a custom `ParticipationPolicy`). Filters who is in the step's roster BEFORE scheduling, every GM's next_acting (effective acting = participation ∩ next_acting), AND per-step GM `update`s — so per-step backend work (e.g. recsys refresh) is O(active); an update component that needs the population declares `requires_full_roster = True`. Stateless/seed-derived, so replay- and resume-stable. The GM `next_acting` slot keeps only env-derived built-ins (`all_agents`, `fixed_order`); a config naming the moved built-ins there gets a migration error. Set `all` for deterministic/turn-based runs |
+| `sim.engine.control.built_in` | none | Interactive run control (play / pause / step one episode): `none` (default — no gate attached, loop runs uninterrupted, zero cost) \| `stdin` (terminal REPL: `n`/next `[k]`, `c`/continue, `p`/pause, `s`/stop between episodes) \| `control_file` (obeys a JSON file another process writes: `{"target": <int\|null>, "stopped": <bool>}` — `target` = first episode index to hold before, `null` = run freely). Implemented as a thread-safe `StepGate` (`simulation_engines/control.py`) the loop consults at each episode boundary, exactly like `probe_runner`/`interventions`; controllers only call the gate's primitives so it is input-agnostic. A custom `LoopStrategy` owns interactive control the same way it owns probe timing: call `loops.await_step_permission(engine, step)` at its episode boundary and `break` when it returns `False` — it returns `True` immediately when no gate is attached, so a replacement loop inherits play/pause/step/stop for free and costs nothing when control is off. `start_paused` holds before episode 0; `control_file` defaults to `<output>/run.control`; `poll_interval` (0.3s) is the file poll cadence. Control acts at episode boundaries and every paused loop still checkpoints per step, so a paused/stopped run is resume-stable. Studio exposes it as Step/Play/Pause/End-run on the live view (interactive launch → `control_file` overrides + `POST /api/jobs/{id}/control`) |
+| `sim.engine.participation.built_in` | activity_probability | Sim-level per-step roster filter: `all` \| `activity_probability` \| `activity_markov` (or `class_path` to a custom `ParticipationPolicy`). Filters who is in the step's roster BEFORE scheduling, every GM's next_acting (effective acting = participation ∩ next_acting), AND per-step GM `update`s — so per-step backend work (e.g. recsys refresh) is O(active); an update component that needs the population declares `requires_full_roster = True`. Stateless/seed-derived, so replay- and resume-stable. The GM `next_acting` slot keeps only env-derived built-ins (`all_agents`, `fixed_order`); a config naming the moved built-ins there gets a migration error. Set `all` for deterministic/turn-based runs — rates are keyed by agent name or sim role, and an agent matching neither falls back to p=0.3 (a one-time warning names the roles it saw) |
 | `sim.engine.step.params.gm_turn_policies` | {} | Per-GM turn policy map (`gm_name -> {built_in\|class_path, params}`); applies under any step mode |
 | `sim.engine.step.params.gm_concurrency_caps` | {} | Per-GM concurrency caps (`gm_name -> int`); effective per-GM = `min(cap, sim.max_concurrent_actions)` via a per-GM semaphore; empty = global cap everywhere; applies under any step mode |
 | `sim.checkpoint.every_n_steps` | null | Checkpoint frequency (run_study.py sets 1 by default) |
@@ -634,18 +635,37 @@ For **tool-calling mode** specifically: The entity layer is responsible for call
 - `sim.checkpoint.restore`
 - Resume restores game-master and entity component state plus raw log.
 
+**Custom backend contract** (the enforced parts; full checklist in
+`docs/backends.md`): implement `name()`/`description()` (abstract); expose actions
+with `@app_action` and name the actor param `agent_name` for injection; return
+`ActionResult(committed=False)` for rejected or idempotent calls (committed
+calls are logged automatically); accept the factory's ctor kwargs or not
+— `action_logger` is wired post-construction either way, so it can no longer be
+silently swallowed. Validations that now fail at build rather than mid-run: an
+action filter leaving no callable action (`enabled_actions: []` is an empty
+ALLOW-LIST, not "no filter"; FINISHED doesn't count); `provides_checkpoint_state=True`
+with an inherited no-op `get_state`/`set_state`; and a social-only component
+(`social_media`/`timeline_every_turn`/`social_recommendation`, or any component
+declaring `requires_social_backend = True`) on a non-`SocialBackendApp` backend.
+An omitted `observe` slot picks `timeline_every_turn` for a social backend and
+`app_observation` otherwise. Backends need NO database (`db_path` belongs to the
+SQLite backends; `resource_market`/`virtual_space` are in-memory references).
+Open `tags` and semantic `fields` declared on `@app_action` are derived for
+custom backend types and persisted in the run manifest. A class-level
+`event_semantics` declaration remains available for aggregate definitions.
+
 **Committed-only action log** (backend authors): `action_events.jsonl` is the
-canonical log of actions that COMMITTED a state change (or a successful deliberate
-read). Call `_log_action_event` only on an action's success path — never after a
-swallowed exception or an idempotent no-op (already-liked, duplicate mute). This is
-a correctness contract: the replay strategy below re-executes every logged row (a
-logged-but-failed action is re-issued on restore) and eval metrics count every row.
-Errors stay observable via the returned message and the `backend_action_errors`
-counter. `invoke_action_detailed(name, kwargs) -> (committed, result)` is the seam
-that reports the commit outcome (e.g. to a committed-counting turn policy);
-`invoke_action_with_kwargs` is the string-only view over it. Every
-`_log_action_event` call also appends to an in-memory **committed-events mirror**
-on `SocialBackendApp` — the supported runtime read path so scenario code (routers,
+canonical log of actions that committed a state change or performed a deliberate
+logged read. The invocation layer logs plain returns and
+`ActionResult(committed=True)` automatically; return
+`ActionResult(committed=False)` for rejected or idempotent calls. `log=False`
+disables logging for a deliberate read, `log_as` selects a stable label, and
+`data` supplies derived logged fields. `_log_action_event` remains for
+non-action commit points and direct dispatchers; calling it during an invoked
+action suppresses the automatic row. `invoke_action_detailed(name, kwargs) ->
+(committed, result)` reports the outcome to committed-counting policies.
+Every committed row also appends to an in-memory **committed-events mirror**
+on `BackendApp` — the supported runtime read path so scenario code (routers,
 intervention conditions, state-dependent policies) can ask "how many X committed
 so far" without scraping the log file: `count_committed_events(labels=..., agent=...,
 since_episode=..., before_episode=..., text_contains_any=...)` and the

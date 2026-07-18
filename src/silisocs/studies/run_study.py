@@ -360,6 +360,9 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
         raise StudyConfigError("study.run_defaults.config_path must be a string")
 
     runner_module = str(run_defaults.get("runner_module", DEFAULT_RUNNER_MODULE))
+    default_working_directory = run_defaults.get("working_directory")
+    if default_working_directory is not None and not isinstance(default_working_directory, str):
+        raise StudyConfigError("study.run_defaults.working_directory must be a string")
 
     run_specs: list[RunSpec] = []
     study_name = str(study["name"]).strip()
@@ -422,6 +425,11 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                 raise StudyConfigError(
                     f"hypotheses.{hyp_id}.conditions.{cond_id}.config_path must be a string"
                 )
+            working_directory = cond_node.get("working_directory", default_working_directory)
+            if working_directory is not None and not isinstance(working_directory, str):
+                raise StudyConfigError(
+                    f"hypotheses.{hyp_id}.conditions.{cond_id}.working_directory must be a string"
+                )
             output_root_override = cond_node.get(
                 "output_root_override",
                 execution.get("output_root_override", default_output_root_override),
@@ -473,6 +481,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                             config_path=cond_config_path,
                             runner_module=runner_module,
                             re_evaluate=re_evaluate,
+                            working_directory=working_directory,
                             command_override=None,
                             eval_specs=merged_eval_specs,
                             reused_source=source,
@@ -519,6 +528,11 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                         if cond_config_path
                         else None
                     )
+                    resolved_working_directory = (
+                        format_template_token(working_directory, template_context)
+                        if working_directory
+                        else None
+                    )
 
                     run_specs.append(
                         RunSpec(
@@ -536,6 +550,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                             config_path=resolved_config_path,
                             runner_module=runner_module,
                             re_evaluate=re_evaluate,
+                            working_directory=resolved_working_directory,
                             output_rootname=output_rootname,
                             command_override=command_override,
                             eval_specs=merged_eval_specs,
@@ -694,6 +709,7 @@ def _plan_rows(run_specs: list[RunSpec]) -> list[dict[str, Any]]:
             "seed": spec.seed,
             "run_name": spec.run_name,
             "planned_output_rootname": spec.output_rootname,
+            "working_directory": spec.working_directory,
             "mode": spec.execution_mode,
             "reused_source": spec.reused_source,
             "re_evaluate": spec.re_evaluate,
@@ -719,7 +735,13 @@ def _render_bash_script(run_specs: list[RunSpec], repo_root: Path) -> str:
             lines.append(f"# reuse_existing: {spec.run_id} source={spec.reused_source}")
             continue
         cmd = _build_run_command(spec)
-        lines.append(" ".join(shlex.quote(token) for token in cmd))
+        rendered = " ".join(shlex.quote(token) for token in cmd)
+        if spec.working_directory:
+            working_directory = Path(spec.working_directory).expanduser()
+            if not working_directory.is_absolute():
+                working_directory = repo_root / working_directory
+            rendered = f"(cd {shlex.quote(str(working_directory.resolve()))} && {rendered})"
+        lines.append(rendered)
     lines.append("")
     return "\n".join(lines)
 
@@ -931,9 +953,12 @@ def _run_new_spec(
     record["command"] = cmd
     record["log_path"] = str(run_log)
 
+    run_cwd = Path(spec.working_directory).expanduser() if spec.working_directory else repo_root
+    if not run_cwd.is_absolute():
+        run_cwd = repo_root / run_cwd
     rc, tail, run_dir = _run_subprocess(
         cmd,
-        repo_root,
+        run_cwd.resolve(),
         run_log,
         timeout_seconds,
         extra_env=exec_env,

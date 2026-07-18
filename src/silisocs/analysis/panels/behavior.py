@@ -1,4 +1,4 @@
-"""Behavioral run panels: per-episode action mix by vocabulary group."""
+"""Behavioral run panels: per-episode action mix by open action tag."""
 # ruff: noqa: D101, D102
 
 from __future__ import annotations
@@ -6,36 +6,14 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from typing import Any
 
+from silisocs.analysis.charts import bar_figure
+from silisocs.analysis.inputs import event_frame
 from silisocs.analysis.panel import Figure, Panel, register_panel
-from silisocs.analysis.panels._shared import backend_types, episode_of, vocabulary_for_event
+from silisocs.analysis.panels._shared import backend_types, semantics_for_backend
+from silisocs.design.tokens import GROUP_COLORS, tag_color
 from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
-from silisocs.evaluations.vocabulary import ActionVocabulary, vocabulary_for
 
-# Fixed group order and colors; labels outside every group land in "other".
-_GROUP_COLORS: dict[str, str] = {
-    "creates_content": "#277da1",
-    "endorses": "#43aa8b",
-    "negative": "#d1495b",
-    "social_graph": "#7b61a8",
-    "reads": "#8a979d",
-    "other": "#b9c2c6",
-}
-_GROUP_ORDER = tuple(_GROUP_COLORS)
-
-
-def _group_for(label: str, vocabulary: ActionVocabulary) -> str:
-    """Assign a logged action label to its vocabulary group (else ``other``)."""
-    if label in vocabulary.creates_content:
-        return "creates_content"
-    if label in vocabulary.endorses:
-        return "endorses"
-    if label in vocabulary.negative:
-        return "negative"
-    if label in vocabulary.social_graph:
-        return "social_graph"
-    if label in vocabulary.reads:
-        return "reads"
-    return "other"
+_CONVENTIONAL_ORDER = tuple(tag for tag in GROUP_COLORS if tag != "other")
 
 
 @register_panel
@@ -44,47 +22,37 @@ class BehaviorBreakdownPanel(Panel):
     title = "Behavior breakdown"
     scope = "run"
     requires = frozenset({"action_events"})
+    needs_tags = True
 
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Figure:
         assert isinstance(artifact, RunArtifact)
         types = backend_types(artifact)
         backend_type = str(params.get("backend_type") or (types[0] if types else ""))
-        fallback_vocabulary = vocabulary_for(backend_type)
+        fallback = semantics_for_backend(artifact, backend_type)
 
         counts: dict[str, Counter[int]] = defaultdict(Counter)
         episodes: set[int] = set()
-        for row in artifact.iter_actions():
-            episode = episode_of(row)
-            episodes.add(episode)
-            vocabulary = vocabulary_for_event(row, artifact)
-            if not vocabulary.interactions and backend_type:
-                vocabulary = fallback_vocabulary
-            counts[_group_for(str(row.get("label", "unknown")), vocabulary)][episode] += 1
+        for event in event_frame(artifact):
+            episodes.add(event.episode)
+            tags = event.tags or fallback.tags_of(event.label)
+            counts[tags[0] if tags else "other"][event.episode] += 1
 
         x = sorted(episodes)
-        traces = []
-        for group in _GROUP_ORDER:
-            if group not in counts:
-                continue
-            per_episode = counts[group]
-            traces.append(
-                {
-                    "type": "bar",
-                    "name": group.replace("_", " ").title(),
-                    "x": x,
-                    "y": [per_episode.get(episode, 0) for episode in x],
-                    "marker": {"color": _GROUP_COLORS[group]},
-                }
-            )
-        return Figure(
-            {
-                "data": traces,
-                "layout": {
-                    "barmode": "stack",
-                    "xaxis": {"title": "Episode", "dtick": 1},
-                    "yaxis": {"title": "Actions", "rangemode": "tozero"},
-                },
-            }
+        custom = sorted(set(counts) - set(_CONVENTIONAL_ORDER) - {"other"})
+        order = [
+            *(tag for tag in _CONVENTIONAL_ORDER if tag in counts),
+            *custom,
+            *(("other",) if "other" in counts else ()),
+        ]
+        return bar_figure(
+            {tag: counts[tag] for tag in order},
+            mode="stack",
+            x_values=x,
+            colors={tag: tag_color(tag) for tag in order},
+            layout={
+                "xaxis": {"title": "Episode", "dtick": 1},
+                "yaxis": {"title": "Actions", "rangemode": "tozero"},
+            },
         )
 
 
@@ -97,17 +65,31 @@ class ActionAlignmentPanel(Panel):
     scope = "run"
     requires = frozenset({"action_events"})
 
+    @classmethod
+    def applicable(cls, artifact: RunArtifact | StudyArtifact) -> bool:
+        """Only runs whose actions carry a suggestion have an alignment to show.
+
+        No semantic role expresses this: suggestions are optional telemetry a
+        backend attaches per action, not a property of the backend type — so the
+        gate reads the data. Without it this panel is an empty heatmap on every
+        run that has no recommender.
+        """
+        if not isinstance(artifact, RunArtifact):
+            return True
+        return any(
+            event.data.get("suggested_action") not in (None, "") for event in event_frame(artifact)
+        )
+
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Figure:
         assert isinstance(artifact, RunArtifact)
         pairs: Counter[tuple[str, str]] = Counter()
         actual: set[str] = set()
         suggested: set[str] = set()
-        for row in artifact.iter_actions():
-            data = row.get("data")
-            recommendation = data.get("suggested_action") if isinstance(data, dict) else None
+        for event in event_frame(artifact):
+            recommendation = event.data.get("suggested_action")
             if recommendation in (None, ""):
                 continue
-            chosen = str(row.get("label") or "unknown")
+            chosen = event.label
             expected = str(recommendation)
             actual.add(chosen)
             suggested.add(expected)

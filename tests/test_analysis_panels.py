@@ -12,19 +12,28 @@ from silisocs.analysis.report import render_report
 from silisocs.analysis.views import build_view, load_view, parse_view
 from silisocs.evaluations.run_artifact import load_run
 from silisocs.evaluations.vocabulary import (
-    ActionVocabulary,
     EventSemantics,
     event_semantics_for,
-    register_action_vocabulary,
     register_event_semantics,
-    vocabulary_for,
 )
 
 
 def _run(tmp_path):
     rows = [
-        {"source_user": "Alice", "label": "post", "episode": 0, "data": {}},
-        {"source_user": "Bob", "label": "like", "episode": 1, "data": {}},
+        {
+            "source_user": "Alice",
+            "label": "post",
+            "episode": 0,
+            "backend_type": "twitter_like",
+            "data": {},
+        },
+        {
+            "source_user": "Bob",
+            "label": "like",
+            "episode": 1,
+            "backend_type": "twitter_like",
+            "data": {},
+        },
     ]
     (tmp_path / "action_events.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
     (tmp_path / "run_manifest.json").write_text(
@@ -34,6 +43,7 @@ def _run(tmp_path):
                 "scenario": "demo",
                 "num_agents": 2,
                 "num_steps": 2,
+                "game_masters": [{"name": "gm", "backend_type": "twitter_like"}],
                 "artifacts": {"action_events": ["action_events.jsonl"]},
             }
         )
@@ -79,17 +89,17 @@ def test_builtin_view_and_report_smoke(tmp_path):
     assert "Alice" in document
 
 
-def test_requires_gate_replaces_panel_with_placeholder(tmp_path):
-    """A panel whose event stream is absent renders a note, not an empty chart."""
+def test_requires_gate_omits_the_panel_and_says_why(tmp_path):
+    """A panel whose event stream is absent is left out, not rendered empty."""
     run = _run(tmp_path)  # has action_events, no probe_events
     view = parse_view(
         {"name": "p", "scope": "run", "layout": "rows", "panels": [{"built_in": "probe_trends"}]}
     )
     result = build_view(view, run)
-    (panel,) = result["panels"]
-    assert panel["missing"] == ["probe_events"]
-    assert panel["output"]["type"] == "markdown"
-    assert "probe_events" in panel["output"]["text"]
+    assert result["panels"] == []
+    (skipped,) = result["skipped"]
+    assert skipped["name"] == "probe_trends"
+    assert "probe_events" in skipped["reason"]
 
 
 def test_condition_comparison_reads_hypothesis_nested_schema(tmp_path):
@@ -123,21 +133,54 @@ def test_condition_comparison_reads_hypothesis_nested_schema(tmp_path):
     assert trace["error_y"]["arrayminus"][0] == pytest.approx(0.1)
 
 
-def test_vocabulary_registry_supports_custom_backends():
-    vocab = ActionVocabulary(creates_content=frozenset({"publish"}))
-    register_action_vocabulary("custom", vocab)
-    assert vocabulary_for("custom") is vocab
-    assert vocabulary_for("unknown").interactions == frozenset()
-
-
 def test_event_semantics_registry_is_open_and_namespaced():
     semantics = EventSemantics(
         roles={"content.root": frozenset({"publish"}), "world.transition": {"move"}},
         fields={"content.id": ("object.id",), "world.location": ("destination",)},
+        label_tags={"publish": ("content.created", "content.root")},
     )
     register_event_semantics("custom_world", semantics)
 
     registered = event_semantics_for("custom_world")
     assert registered.labels("world.transition") == frozenset({"move"})
+    assert registered.tags_of("publish") == ("content.created", "content.root")
     assert registered.value({"object": {"id": 7}}, "content.id") == 7
     assert event_semantics_for("unknown").labels("content.root") == frozenset()
+
+
+def test_build_view_isolates_a_failing_panel(tmp_path):
+    @register_panel
+    class BoomPanel(Panel):
+        name = "test_boom"
+        title = "Boom"
+        scope = "run"
+
+        def build(self, artifact, params):
+            raise RuntimeError("kaboom")
+
+    view = parse_view(
+        {
+            "name": "boomview",
+            "scope": "run",
+            "layout": "rows",
+            "panels": [{"built_in": "test_boom"}, {"built_in": "health_summary"}],
+        }
+    )
+    built = build_view(view, _run(tmp_path))
+    # The failing panel renders an error note; the healthy panel still builds.
+    assert built["panels"][0]["output"]["type"] == "markdown"
+    assert "failed to render" in built["panels"][0]["output"]["text"]
+    assert built["panels"][1]["output"]["type"] in {"grid", "figure", "table", "markdown"}
+
+
+def test_build_view_still_raises_on_unknown_panel(tmp_path):
+    view = parse_view(
+        {
+            "name": "badview",
+            "scope": "run",
+            "layout": "rows",
+            "panels": [{"built_in": "no_such_panel"}],
+        }
+    )
+    with pytest.raises(KeyError):
+        build_view(view, _run(tmp_path))

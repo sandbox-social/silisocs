@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Explore {{ study.name }} | Silisocs Studio{% endblock %}
+{% block crumb %}<a href="/studies">Studies</a><span>/</span><a href="/studies/{{ study.id }}">{{ study.name }}</a><span>/</span>Explore{% endblock %}
+{% block content %}
+<div class="explore-page" data-study-explore>
+  <header class="explore-heading"><div><p class="eyebrow">Unified exploration</p><h1>{{ study.name }}</h1><p>{{ study.question }}</p></div><div class="explore-status"><span class="badge neutral">study</span><span>{{ capabilities.artifact.hypotheses }} hypotheses</span><span>{{ capabilities.artifact.runs }} planned runs</span></div></header>
+  <section class="explore-scope" aria-label="Study comparison scope">
+    <div class="scope-identity"><span class="object-glyph study"><svg><use href="#icon-studies"/></svg></span><span><small>Scope</small><b>Study</b></span></div>
+    <label><span>Compare</span><select data-study-query="compare"><option value="condition">Conditions</option><option value="seed">Seeds</option><option value="cohort">Cohorts</option><option value="time_window">Time windows</option></select></label>
+    <label><span>Baseline</span><input type="search" data-study-query="baseline" value="{{ state.comparison.baseline or '' }}" placeholder="Automatic"></label>
+  </section>
+  <nav class="explore-lenses" aria-label="Study exploration lenses">{% for scene in capabilities.scenes %}<button class="active" type="button" data-scene="{{ scene.id }}"><span>{{ '%02d'|format(loop.index) }}</span>{{ scene.title }}</button>{% endfor %}</nav>
+  <div class="explore-layout">
+    <main class="explore-scene"><header><div><p class="eyebrow">Aligned evidence</p><h2>Condition comparison</h2></div><span class="explore-count" data-study-count></span></header><div class="explore-stage loading" data-study-scene aria-live="polite" aria-busy="true"></div></main>
+    <aside class="explore-inspector"><header><p class="eyebrow">Inspector</p><h2>Comparison</h2></header><div data-study-inspector><div class="empty compact"><b>Shared selection</b><p>Chart and table selections will remain aligned across conditions and seeds.</p></div></div></aside>
+    <aside class="explore-evidence"><header><p class="eyebrow">Evidence</p><h2>Study context</h2></header><div class="evidence-list">{% for status, count in capabilities.evidence.progress.items() %}<div class="evidence-item"><span class="signal-mark {{ 'alt' if status == 'complete' }}"></span><span><b>{{ status }}</b><small>{{ count }} runs</small></span></div>{% endfor %}<div class="evidence-item"><span class="signal-mark alt"></span><span><b>{{ capabilities.panels|length }} compatible analyses</b><small>Study-scope contracts</small></span></div></div><details><summary>Artifact fingerprint</summary><code>{{ capabilities.artifact.fingerprint }}</code></details></aside>
+  </div>
+</div>
+<script>
+const exploreStudy={{ study.id|tojson }},studyScene=document.querySelector('[data-study-scene]'),studyCount=document.querySelector('[data-study-count]');
+function studyUrlState(){const url=new URL(location);document.querySelectorAll('[data-study-query]').forEach(input=>{url.searchParams.delete(input.dataset.studyQuery);if(input.value)url.searchParams.set(input.dataset.studyQuery,input.value)});history.replaceState(null,'',url)}
+async function renderStudyExplore(){studyScene.classList.add('loading');studyScene.setAttribute('aria-busy','true');try{const response=await fetch(`/api/studies/${encodeURIComponent(exploreStudy)}/compare`);if(!response.ok)throw new Error(await response.text());const view=await response.json(),grid=document.createElement('div');grid.className='study-scene-panels';for(const panel of view.panels||[]){const section=document.createElement('section'),header=document.createElement('header'),title=document.createElement('h3'),body=document.createElement('div');section.className='panel';title.textContent=panel.title;body.className='panel-body';header.append(title);section.append(header,body);grid.append(section);await renderPanel(body,panel.output)}studyScene.replaceChildren(grid);studyCount.textContent=`${(view.panels||[]).length} analyses`;if(!(view.panels||[]).length)studyScene.innerHTML='<div class="empty"><b>No comparison output yet</b><p>Run or attach study conditions to populate this scene.</p></div>'}catch(error){studyScene.innerHTML='<div class="empty"><b>Comparison unavailable</b><p></p></div>';studyScene.querySelector('p').textContent=error.message;notify(error.message,'danger')}finally{studyScene.classList.remove('loading');studyScene.removeAttribute('aria-busy')}}
+document.querySelectorAll('[data-study-query]').forEach(input=>input.addEventListener('change',()=>{studyUrlState();renderStudyExplore()}));renderStudyExplore();registerPaletteCommand({label:'Explore study comparison',href:'?lens=compare&scene=compare',keywords:'conditions seeds cohorts'});
+</script>
+{% endblock %}

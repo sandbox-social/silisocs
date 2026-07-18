@@ -22,6 +22,12 @@ from silisocs.evaluations.action_events import (
     resolve_harness_event_files,
     resolve_probe_event_files,
 )
+from silisocs.evaluations.vocabulary import (
+    EventSemantics,
+    derive_event_semantics,
+    event_semantics_for,
+    parse_event_semantics,
+)
 from silisocs.runtime.provenance import environment_provenance
 
 logger = logging.getLogger(__name__)
@@ -40,6 +46,12 @@ _HEALTH_COUNTERS = (
 
 def _portable_event_semantics(value: Any) -> dict[str, Any] | None:
     """Normalize optional backend visual metadata without risking the manifest."""
+    if isinstance(value, EventSemantics):
+        value = {
+            "roles": value.roles,
+            "fields": value.fields,
+            "labels": value.label_tags,
+        }
     if not isinstance(value, Mapping):
         return None
     result: dict[str, Any] = {}
@@ -52,7 +64,8 @@ def _portable_event_semantics(value: Any) -> dict[str, Any] | None:
                 continue
             items = [str(item) for item in values]
             normalized[str(name)] = sorted(items) if section == "roles" else items
-        result[str(section)] = normalized
+        if normalized:
+            result[str(section)] = normalized
     return result or None
 
 
@@ -60,7 +73,16 @@ def _game_master_record(gm: Any, output_dir: Path) -> dict[str, Any]:
     backend = getattr(gm, "backend", None)
     visualizer = getattr(type(backend), "visualizer", None) if backend is not None else None
     db_path = getattr(backend, "db_path", None)
-    event_semantics = getattr(type(backend), "event_semantics", None) if backend else None
+    backend_type = str(getattr(gm, "backend_type", "") or "")
+    event_semantics = event_semantics_for(backend_type) if backend else None
+    if (
+        backend is not None
+        and event_semantics is not None
+        and not (event_semantics.roles or event_semantics.fields or event_semantics.label_tags)
+    ):
+        event_semantics = parse_event_semantics(getattr(type(backend), "event_semantics", None))
+        if not (event_semantics.roles or event_semantics.fields or event_semantics.label_tags):
+            event_semantics = derive_event_semantics(type(backend))
     try:
         relative_db = (
             str(Path(db_path).resolve().relative_to(output_dir.resolve())) if db_path else None
@@ -69,7 +91,7 @@ def _game_master_record(gm: Any, output_dir: Path) -> dict[str, Any]:
         relative_db = str(db_path) if db_path else None
     return {
         "name": str(getattr(gm, "name", "")),
-        "backend_type": getattr(gm, "backend_type", None),
+        "backend_type": backend_type or None,
         "backend_class_path": (
             f"{type(backend).__module__}.{type(backend).__qualname__}"
             if backend is not None
@@ -81,6 +103,40 @@ def _game_master_record(gm: Any, output_dir: Path) -> dict[str, Any]:
         else None,
         "event_semantics": _portable_event_semantics(event_semantics),
     }
+
+
+def backend_committed_nothing(game_master: Any) -> bool:
+    """Whether a game master's backend logged no committed action events.
+
+    The committed-events mirror is the authoritative "did anything happen" signal;
+    a backend whose actions bypass invoke-layer auto-logging and never call
+    ``_log_action_event`` runs to completion and leaves every analysis panel blank.
+    Shared by the run-end warning
+    (``session._warn_silent_backends``) and the persisted health block below so both
+    judge silence identically.
+    """
+    backend = getattr(game_master, "backend", None)
+    counter = getattr(backend, "count_committed_events", None)
+    if backend is None or not callable(counter):
+        return False
+    try:
+        return not counter()
+    except Exception:
+        return False
+
+
+def _silent_backend_names(game_masters: Collection[Any]) -> list[str]:
+    """Names of game masters whose backend committed no structured action events.
+
+    Persisting this into the health block means Studio's Run-health panel surfaces
+    a run whose panels are blank because its backend produced no structured
+    committed events — otherwise the panel reads all-green.
+    """
+    return [
+        str(getattr(gm, "name", "") or getattr(gm, "backend_type", "") or "?")
+        for gm in game_masters or []
+        if backend_committed_nothing(gm)
+    ]
 
 
 def _relative_if_present(output_dir: Path, name: str) -> str | None:
@@ -137,7 +193,10 @@ def build_run_manifest(
         "llm_name": meta.get("llm_name"),
         "game_masters": [_game_master_record(gm, out) for gm in (game_masters or [])],
         "llm_usage": meta.get("llm_usage"),
-        "health": {name: int(counters.get(name, 0)) for name in _HEALTH_COUNTERS},
+        "health": {
+            **{name: int(counters.get(name, 0)) for name in _HEALTH_COUNTERS},
+            "silent_backends": _silent_backend_names(game_masters or []),
+        },
         "artifacts": artifacts,
         "provenance": environment_provenance(Path(project_root) if project_root else out),
     }

@@ -159,3 +159,22 @@ def test_resource_market_checkpoint_state_restores_world() -> None:
     assert "Listing 1" in restored.observe("Bob")
     assert "Cash: 20" in restored.observe("Alice")
     assert "food: 1" in restored.observe("Alice")
+
+
+def test_resource_market_checkpoint_round_trips_committed_events_mirror() -> None:
+    # C13: the snapshot backend must round-trip the committed-events mirror, or after
+    # resume count_committed_events returns 0 while action_events.jsonl kept its rows.
+    app = ResourceMarketApp(initial_cash=20, initial_inventory={"food": 2})
+    app.initialize(agent_names=["Alice", "Bob"])
+    app.invoke_action_with_kwargs(
+        "LIST_RESOURCE",
+        {"agent_name": "Alice", "resource": "food", "quantity": 1, "price": 7},
+    )
+    app.invoke_action_with_kwargs("INSPECT_MARKET", {"agent_name": "Bob"})
+    expected = app.count_committed_events()
+    assert expected > 0
+
+    restored = ResourceMarketApp(initial_cash=0, initial_inventory={})
+    restored.set_state(app.get_state())
+    assert restored.count_committed_events() == expected
+    assert list(restored.iter_committed_events()) == list(app.iter_committed_events())

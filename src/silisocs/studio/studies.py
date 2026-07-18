@@ -29,6 +29,43 @@ class StudyRepository:
             raise ValueError("Study id must be a safe directory name")
         return value
 
+    @staticmethod
+    def new_definition(
+        study_id: str,
+        *,
+        scenario: dict[str, Any] | None = None,
+        working_directory: str,
+    ) -> dict[str, Any]:
+        """Return the starter definition for a brand-new study draft."""
+        return {
+            "schema_version": 1,
+            "study": {
+                "name": study_id,
+                "study_id": study_id,
+                "study_version": "v1",
+                "question": "",
+                "scenarios": [scenario["name"]] if scenario else [],
+                "run_defaults": {
+                    "config_path": scenario["config_pattern"] if scenario else "",
+                    "working_directory": scenario["source_path"] if scenario else working_directory,
+                    "runner_module": "silisocs.runtime.runner",
+                    "seed_start": 1,
+                    "seed_repeats": 1,
+                    "overrides": {},
+                },
+            },
+            "evaluations": [],
+            "hypotheses": {
+                "h1": {
+                    "statement": "",
+                    "independent_variable": "",
+                    "prediction": "",
+                    "status": "planning",
+                    "conditions": {"baseline": {"overrides": {}}},
+                }
+            },
+        }
+
     def list(self) -> list[dict[str, Any]]:
         if not self.root.is_dir():
             return []

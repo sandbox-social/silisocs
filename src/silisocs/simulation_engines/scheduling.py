@@ -133,13 +133,21 @@ class SchedulingMixin:
             self._gm_sems.clear()
             self._gm_async_sems.clear()
 
-    def _gm_semaphore(
-        self, game_master: Any, worker_limit: int
-    ) -> threading.BoundedSemaphore | None:
-        """Return this GM's concurrency semaphore, or None when uncapped.
+    def _gm_semaphore_cached(
+        self,
+        game_master: Any,
+        worker_limit: int,
+        cache: dict[int, Any],
+        factory: Callable[[int], Any],
+    ) -> Any | None:
+        """Shared per-GM semaphore lookup for both the sync and asyncio twins.
 
-        The permit count is the effective per-GM cap: min(configured cap, the phase
+        Returns ``None`` when the GM is uncapped; otherwise the cached semaphore,
+        creating it once (double-checked under ``_gm_sems_guard``) with ``factory``
+        sized to the effective per-GM cap: min(configured cap, the phase
         worker_limit), so a GM never gets more concurrency than the global ceiling.
+        Only the cache dict and the semaphore constructor differ between the twins;
+        the cap lookup, locking, and permit formula are identical here.
         """
         name = str(getattr(game_master, "name", "") or "")
         cap = self.gm_concurrency_caps.get(name)
@@ -148,15 +156,23 @@ class SchedulingMixin:
         key = id(game_master)
         # Lock-free hot path (mirrors _gm_lock): dict reads are GIL-atomic; the
         # guard only covers first creation for a given phase sizing.
-        sem = self._gm_sems.get(key)
+        sem = cache.get(key)
         if sem is None:
             with self._gm_sems_guard:
-                sem = self._gm_sems.get(key)
+                sem = cache.get(key)
                 if sem is None:
                     permits = max(1, min(int(cap), max(1, worker_limit)))
-                    sem = threading.BoundedSemaphore(permits)
-                    self._gm_sems[key] = sem
+                    sem = factory(permits)
+                    cache[key] = sem
         return sem
+
+    def _gm_semaphore(
+        self, game_master: Any, worker_limit: int
+    ) -> threading.BoundedSemaphore | None:
+        """Return this GM's concurrency semaphore, or None when uncapped."""
+        return self._gm_semaphore_cached(
+            game_master, worker_limit, self._gm_sems, threading.BoundedSemaphore
+        )
 
     def _gm_async_semaphore(self, game_master: Any, worker_limit: int) -> asyncio.Semaphore | None:
         """Asyncio twin of :meth:`_gm_semaphore` for the asyncio turn executor.
@@ -166,20 +182,9 @@ class SchedulingMixin:
         from the drain threads (safe on Python >= 3.10: asyncio primitives bind
         to the running loop on first await, not at construction).
         """
-        name = str(getattr(game_master, "name", "") or "")
-        cap = self.gm_concurrency_caps.get(name)
-        if cap is None:
-            return None
-        key = id(game_master)
-        sem = self._gm_async_sems.get(key)
-        if sem is None:
-            with self._gm_sems_guard:
-                sem = self._gm_async_sems.get(key)
-                if sem is None:
-                    permits = max(1, min(int(cap), max(1, worker_limit)))
-                    sem = asyncio.Semaphore(permits)
-                    self._gm_async_sems[key] = sem
-        return sem
+        return self._gm_semaphore_cached(
+            game_master, worker_limit, self._gm_async_sems, asyncio.Semaphore
+        )
 
     def _wrap_turn(
         self, game_master: Any, worker_limit: int, thunk: Callable[[], Any]
@@ -333,31 +338,6 @@ class SchedulingMixin:
         return stage
 
     @staticmethod
-    def _run_tasks_with_limit(
-        tasks: Mapping[str, Callable[[], str]],
-        worker_limit: int,
-        failed_tasks: list[str] | None = None,
-    ) -> dict[str, str]:
-        # Production callers drive turns via side effects (resolve_action) and ignore
-        # the returned map, but returning it keeps the per-turn failure-isolation
-        # behavior directly unit-testable (see test_engine_batch_failure).
-        if not tasks:
-            return {}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, worker_limit)) as executor:
-            future_to_name = {
-                executor.submit(task_fn): task_name for task_name, task_fn in tasks.items()
-            }
-            results: dict[str, str] = {}
-            for future in concurrent.futures.as_completed(future_to_name):
-                task_name = future_to_name[future]
-                try:
-                    results[task_name] = str(future.result() or "")
-                except Exception:
-                    _record_isolated_failure(task_name, failed_tasks)
-                    results[task_name] = ""
-            return results
-
-    @staticmethod
     def _empty_step_result() -> StepResult:
         return StepResult(
             skipped=True,
@@ -503,9 +483,7 @@ class SchedulingMixin:
     def execute_batches(
         self,
         *,
-        step_index: int,
         batches: Sequence[Hop],
-        verbose: bool,
     ) -> StepResult:
         """Public step-strategy API: run hops strictly serially, one batch at a time.
 
@@ -516,7 +494,6 @@ class SchedulingMixin:
         execution path used by the base/sequential/flow step strategies and by the
         ``multi_gm_serial`` traversal.
         """
-        del verbose, step_index
         work: list[_Group | _BranchStage] = []
         model_pool: dict[int, Any] = {}
         active_names: set[str] = set()
@@ -589,11 +566,11 @@ class SchedulingMixin:
     ) -> None:
         """Submit one group of turn thunks to a shared pool and wait for completion.
 
-        Mirrors ``_run_tasks_with_limit``'s per-turn failure isolation (a raising
-        turn is logged, counted, and recorded in ``failed_tasks``; it never aborts
-        siblings) but reuses an externally owned executor so independent chains share
-        a single worker budget. CPython's GIL makes the ``failed_tasks.append`` and
-        the metrics counter increment safe across concurrent driver threads.
+        Per-turn failure isolation (a raising turn is logged, counted, and recorded
+        in ``failed_tasks``; it never aborts siblings) over an externally owned
+        executor, so independent chains share a single worker budget. CPython's GIL
+        makes the ``failed_tasks.append`` and the metrics counter increment safe
+        across concurrent driver threads.
 
         This is the single drain primitive under every traversal path; the asyncio
         executor swaps it for the event-loop drain here — the pool is then unused

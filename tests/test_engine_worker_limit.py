@@ -103,25 +103,34 @@ def test_update_adaptive_worker_cap_massive_scale_throttles_to_absolute_floor() 
 
 
 def test_failed_turn_is_isolated_counted_and_reported() -> None:
+    import concurrent.futures
+    from types import SimpleNamespace
+
     from silisocs.runtime.telemetry import SimMetricsCollector
     from silisocs.simulation_engines.base_engines import RuntimeEngine
 
     SimMetricsCollector.reset()
+    ran: list[str] = []
     failed: list[str] = []
 
-    def _ok() -> str:
-        return "fine"
+    def _ok() -> None:
+        ran.append("Alice")
 
     def _boom() -> str:
         raise RuntimeError("model exploded")
 
-    results = RuntimeEngine._run_tasks_with_limit(
-        {"gm::Alice": _ok, "gm::Bob": _boom},
-        worker_limit=2,
-        failed_tasks=failed,
-    )
-    assert results["gm::Alice"] == "fine"
-    assert results["gm::Bob"] == ""
+    # Drive the production drain primitive on a worker-limited pool: a failing turn
+    # is isolated (siblings still run), counted, and reported in failed_tasks.
+    engine = SimpleNamespace(_async_turns=False)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        RuntimeEngine._drain_tasks_on_pool(
+            engine,  # type: ignore[arg-type]
+            pool,
+            {"gm::Alice": _ok, "gm::Bob": _boom},
+            failed,
+        )
+
+    assert ran == ["Alice"]
     assert failed == ["gm::Bob"]
     assert SimMetricsCollector.get().counter("agent_turn_failures") == 1
 

@@ -174,7 +174,22 @@ def test_scripted_social_checkpoint_restore_uses_backend_state(tmp_path: Path) -
                 },
                 "tool_calling": {"mode": "multi"},
                 "checkpoint": {"every_n_steps": 1},
-                "engine": {"turn_policy": {"built_in": "single_action", "params": {}}},
+                "engine": {
+                    "turn_policy": {"built_in": "single_action", "params": {}},
+                    # Opt into activity gating: this scenario's post-then-like
+                    # cadence across the checkpoint boundary depends on sparse
+                    # per-step activation, not the `all` default.
+                    "participation": {
+                        "built_in": "activity_probability",
+                        "params": {
+                            "active_probability": None,
+                            "min_active_agents": 1,
+                            "activity_transition_rates": {
+                                "user": {"inactive_to_active": 0.3, "active_to_inactive": 0.3},
+                            },
+                        },
+                    },
+                },
             },
             sort_keys=False,
         ),

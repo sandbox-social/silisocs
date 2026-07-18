@@ -114,6 +114,36 @@ def test_restart_reconciliation_accepts_success_manifest(tmp_path):
     assert manager.store.get("manifest-complete").status == "finished"
 
 
+def test_control_writes_interactive_control_file(tmp_path):
+    manager = JobManager(tmp_path / "state", output_root=tmp_path / "outputs")
+    control_path = tmp_path / "outputs" / "run" / "run.control"
+    job = manager.submit(
+        kind="run",
+        command=[sys.executable, "-c", "pass"],
+        cwd=tmp_path,
+        output_dir=tmp_path / "outputs" / "run",
+        control_path=control_path,
+    )
+    assert manager.store.get(job.id).to_dict()["interactive"] is True
+
+    manager.control(job.id, {"target": 2})
+    assert json.loads(control_path.read_text(encoding="utf-8")) == {"target": 2}
+    manager.control(job.id, {"stopped": True})
+    assert json.loads(control_path.read_text(encoding="utf-8")) == {"stopped": True}
+    assert not list(control_path.parent.glob(f".{control_path.name}.*.tmp"))
+
+
+def test_control_rejects_non_interactive_job(tmp_path):
+    manager = JobManager(tmp_path / "state", output_root=tmp_path / "outputs")
+    job = manager.submit(kind="run", command=[sys.executable, "-c", "pass"], cwd=tmp_path)
+    try:
+        manager.control(job.id, {"target": 1})
+    except ValueError as exc:
+        assert "not interactive" in str(exc)
+    else:
+        raise AssertionError("control accepted a non-interactive job")
+
+
 def test_terminal_event_stream_reports_growth_and_step(tmp_path):
     manager = JobManager(tmp_path / "state", output_root=tmp_path / "outputs")
     run = tmp_path / "outputs" / "run"

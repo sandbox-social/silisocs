@@ -14,17 +14,9 @@ import json
 import math
 from typing import Any
 
+from silisocs.analysis.inputs import Event, event_frame
 from silisocs.analysis.panel import Control, Html, Panel, register_panel
-from silisocs.analysis.panels._shared import (
-    backend_type_for_event,
-    event_semantics_for_event,
-)
-from silisocs.design.tokens import (
-    ACCENT,
-    BORDER,
-    INK_MUTED,
-    action_color,
-)
+from silisocs.design.tokens import HIGHLIGHT, action_color
 from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
 
 _CANVAS = 600.0
@@ -33,6 +25,52 @@ _PAD = 40.0  # keep every node inside ~[_PAD, _CANVAS - _PAD]
 
 def _str_or_none(value: Any) -> str | None:
     return None if value is None else str(value)
+
+
+# Content owners are stored in separate root/reply namespaces. Backends with one
+# shared ID space resolve across both; typed targets resolve only within the
+# namespace their target kind names, avoiding collisions between independent ID
+# spaces.
+_OwnerMap = dict[tuple[str, str, str], str]
+
+
+def _owner_any(owner: _OwnerMap, backend_type: str, key: Any) -> str | None:
+    """Look an id up in either content namespace (single-id-space backends)."""
+    if key is None:
+        return None
+    ident = str(key)
+    return owner.get((backend_type, "root", ident)) or owner.get((backend_type, "reply", ident))
+
+
+def _reaction_target(event: Event, owner: _OwnerMap) -> str | None:
+    """Resolve the author a reaction (like/upvote/...) is directed at.
+
+    When the backend names a typed target (``interaction.target_type`` +
+    ``interaction.target_id``, e.g. reddit's ``post``/``comment`` votes), resolve
+    against exactly that namespace. Otherwise the reaction addresses a shared ID
+    space through ``content.id``.
+    """
+    target_type = event.field("interaction.target_type")
+    if target_type is not None:
+        target_id = event.field("interaction.target_id")
+        if target_id is None:
+            return None
+        reply_kind = str(target_type) in event.labels_for("content.reply")
+        namespace = "reply" if reply_kind else "root"
+        return owner.get((event.backend_type, namespace, str(target_id)))
+    return _owner_any(owner, event.backend_type, event.field("content.id"))
+
+
+def _interaction_target(
+    event: Event,
+    owner: _OwnerMap,
+    *,
+    is_reaction: bool,
+) -> str | None:
+    """Resolve the author a reply or reaction is directed at."""
+    if is_reaction:
+        return _reaction_target(event, owner)
+    return _owner_any(owner, event.backend_type, event.field("content.parent_id"))
 
 
 def _coerce_episode(value: Any) -> int | None:
@@ -105,6 +143,11 @@ def _layout(
 @register_panel
 class InteractionNetworkPanel(Panel):
     name = "interaction_network"
+    # Any edge-forming role is enough to draw a graph: follows, reactions,
+    # replies, or a direct agent-to-agent interaction on a non-social backend.
+    semantics = frozenset(
+        {"network.follow", "interaction.reaction", "content.reply", "interaction.directed"}
+    )
     title = "Interaction network"
     scope = "run"
     requires = frozenset({"action_events"})
@@ -121,44 +164,50 @@ class InteractionNetworkPanel(Panel):
         highlight = str(params.get("highlight") or "")
 
         nodes: set[str] = set()
-        post_owner: dict[tuple[str, str], str] = {}
+        owner: _OwnerMap = {}
         follow_edges: list[tuple[str, str]] = []
         interaction_edges: list[tuple[str, str, str]] = []  # (source, target, color)
 
-        for row in artifact.iter_actions():
-            label = str(row.get("label", ""))
-            backend_type = backend_type_for_event(row, artifact)
-            semantics = event_semantics_for_event(row, artifact)
-            source = _str_or_none(row.get("source_user"))
-            raw_data = row.get("data")
-            data = raw_data if isinstance(raw_data, dict) else {}
+        for event in event_frame(artifact):
+            label = event.label
+            source = _str_or_none(event.actor)
             if source is not None:
                 nodes.add(source)
 
-            if label in semantics.labels("content.root") and source is not None:
-                created = semantics.value(data, "content.id")
+            if "content.root" in event.tags and source is not None:
+                created = event.field("content.id")
                 if created is not None:
-                    post_owner[(backend_type, str(created))] = source
-            elif label in semantics.labels("content.reply") and source is not None:
-                created = semantics.value(data, "content.response_id")
+                    owner[(event.backend_type, "root", str(created))] = source
+            elif "content.reply" in event.tags and source is not None:
+                created = event.field("content.response_id")
                 if created is not None:
-                    post_owner[(backend_type, str(created))] = source
+                    owner[(event.backend_type, "reply", str(created))] = source
 
-            if label in semantics.labels("network.follow"):
-                target = _str_or_none(semantics.value(data, "network.target_actor"))
+            if "network.follow" in event.tags:
+                target = _str_or_none(event.field("network.target_actor"))
                 if source is not None and target is not None:
                     nodes.add(target)
                     follow_edges.append((source, target))
                 continue
 
-            reply_labels = semantics.labels("content.reply")
-            reaction_labels = semantics.labels("interaction.reaction")
-            if label in reply_labels | reaction_labels and source is not None:
-                if episode is not None and _coerce_episode(row.get("episode")) != episode:
+            # A directed interaction names its target actor outright, so it needs
+            # no content to resolve through — the seam a non-social backend uses
+            # to put its agent-to-agent interactions on this graph.
+            if "interaction.directed" in event.tags and source is not None:
+                if episode is not None and event.episode != episode:
                     continue
-                field_name = "content.parent_id" if label in reply_labels else "content.id"
-                key = semantics.value(data, field_name)
-                target = post_owner.get((backend_type, str(key))) if key is not None else None
+                target = _str_or_none(event.field("network.target_actor"))
+                if target is not None:
+                    nodes.add(target)
+                    interaction_edges.append((source, target, action_color(label)))
+                continue
+
+            is_reply = "content.reply" in event.tags
+            is_reaction = "interaction.reaction" in event.tags
+            if (is_reply or is_reaction) and source is not None:
+                if episode is not None and event.episode != episode:
+                    continue
+                target = _interaction_target(event, owner, is_reaction=is_reaction)
                 if target is None:  # unresolved target -> skip (self-loops otherwise allowed)
                     continue
                 color = action_color(label)
@@ -219,16 +268,22 @@ class InteractionNetworkPanel(Panel):
 
 
 def _stylesheet() -> list[dict[str, Any]]:
-    """Cytoscape stylesheet, built in Python so the design tokens stay in Python."""
+    """Cytoscape stylesheet with theme-dependent colors expressed as CSS variables.
+
+    Cytoscape cannot resolve ``var(--x)`` itself, so shells substitute those
+    values from the active theme before init (and again on theme toggle) —
+    the same shell-owned theming contract Plotly figures use. Categorical
+    action colors are theme-independent and stay literal.
+    """
     return [
         {
             "selector": "node",
             "style": {
-                "background-color": ACCENT,
+                "background-color": "var(--accent)",
                 "label": "data(label)",
                 "font-size": 9,
                 "text-valign": "bottom",
-                "color": INK_MUTED,
+                "color": "var(--muted)",
                 "width": "data(size)",
                 "height": "data(size)",
             },
@@ -236,7 +291,7 @@ def _stylesheet() -> list[dict[str, Any]]:
         {
             "selector": "edge.follow",
             "style": {
-                "line-color": BORDER,
+                "line-color": "var(--border)",
                 "width": 1,
                 "curve-style": "bezier",
                 "target-arrow-shape": "none",
@@ -244,7 +299,7 @@ def _stylesheet() -> list[dict[str, Any]]:
         },
         {
             "selector": "node.highlighted",
-            "style": {"border-width": 4, "border-color": "#f8961e"},
+            "style": {"border-width": 4, "border-color": HIGHLIGHT},
         },
         {
             "selector": "edge.interaction",

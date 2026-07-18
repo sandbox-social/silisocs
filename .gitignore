@@ -17,6 +17,7 @@ reports/
 *.zip*
 data/
 outputs/
+/.silisocs/
 
 # direnv
 .envrc
@@ -238,6 +239,8 @@ SESSION_STATE.md
 
 refactor_notes.md
 CODEBASE_AUDIT_PLAN.md
+current_plan_improvement.md
+simplify-plan.md
 
 #LLM-Coding files
 .claude

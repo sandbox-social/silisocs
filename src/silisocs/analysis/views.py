@@ -9,7 +9,13 @@ from typing import Any, Literal
 
 import yaml
 
-from silisocs.analysis.panel import Markdown, Panel, get_panel, output_to_dict
+from silisocs.analysis.panel import (
+    Markdown,
+    Panel,
+    get_panel,
+    output_to_dict,
+    serialize_controls,
+)
 from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
 
 # Requirement names build_view can check against a run (Panel.requires may also
@@ -31,6 +37,59 @@ def missing_requirements(panel: type[Panel], artifact: RunArtifact | StudyArtifa
         for name in panel.requires
         if name in _FEATURE_PROBES and not _FEATURE_PROBES[name](artifact)
     )
+
+
+def skip_reason(panel: type[Panel], artifact: RunArtifact | StudyArtifact) -> str:
+    """Why this panel says nothing about this artifact, or "" when it applies.
+
+    The reason names the gate that actually failed — the panel's declarations say
+    which — so the footnote tells you what a run would need rather than a vague
+    "unsupported".
+    """
+    from silisocs.analysis.panels._shared import run_has_tags, run_semantic_roles
+
+    missing = missing_requirements(panel, artifact)
+    if missing:
+        return f"requires {', '.join(missing)} — not recorded by this run"
+    if panel.applicable(artifact):
+        return ""
+    if not isinstance(artifact, RunArtifact):
+        return "not applicable to this artifact"
+    if panel.needs_tags and not run_has_tags(artifact):
+        return "this run's backend declares no action tags"
+    if panel.semantics and not (panel.semantics & run_semantic_roles(artifact)):
+        needs = ", ".join(sorted(panel.semantics))
+        return f"needs {needs} — not declared by this run's backend"
+    # A panel gating on its own reading of the run's data (see Panel.applicable).
+    return "nothing in this run to show"
+
+
+def applicable_panels(view: View, artifact: RunArtifact | StudyArtifact) -> list[type[Panel]]:
+    """The view's panels that this artifact can actually populate."""
+    return [
+        panel
+        for panel in (slot.panel_class() for slot in view.panels)
+        if not skip_reason(panel, artifact)
+    ]
+
+
+def view_applies(view: View, artifact: RunArtifact | StudyArtifact) -> bool:
+    """Whether a view is worth offering for an artifact — the nav's gate.
+
+    A view is defined by the panels that declare semantics: they are its subject,
+    and generic panels alongside them are supporting context. So a view with a
+    subject stands or falls with it (no "Network" entry for a market run, no
+    "Market" entry for a social one), while a view that is generic throughout
+    just needs something to show.
+    """
+    try:
+        panels = [slot.panel_class() for slot in view.panels]
+    except (KeyError, TypeError, ValueError):
+        # A view referencing an unknown panel is a config error; surface it when
+        # the view is opened, not by silently dropping it from the nav.
+        return True
+    subject = [panel for panel in panels if panel.semantics]
+    return any(not skip_reason(panel, artifact) for panel in subject or panels)
 
 
 @dataclass(frozen=True)
@@ -93,6 +152,17 @@ BUILTIN_VIEWS: dict[str, dict[str, Any]] = {
             {"built_in": "recent_events"},
             {"built_in": "behavior_breakdown"},
             {"built_in": "action_alignment"},
+        ],
+    },
+    "market": {
+        "title": "Market",
+        "scope": "run",
+        "layout": "rows",
+        "panels": [
+            {"built_in": "market_activity"},
+            {"built_in": "market_ledger"},
+            {"built_in": "behavior_breakdown"},
+            {"built_in": "agent_timeline"},
         ],
     },
     "probes": {
@@ -196,32 +266,43 @@ def build_view(
         raise ValueError(f"View {view.name!r} expects {view.scope}, got {artifact_scope}")
     overrides = param_overrides or {}
     built = []
+    skipped = []
     for slot in view.panels:
         panel = slot.panel_class()
         if panel.scope != view.scope:
             raise ValueError(f"Panel {panel.name!r} has scope {panel.scope}, not {view.scope}")
+        # A panel that cannot say anything about this run is not built here. It
+        # still carries its requirements: a skipped panel whose only gap is an
+        # event stream the run has not yet recorded (``missing``) can be revived
+        # live — the Watch shell renders a placeholder for it and refreshes it
+        # once that stream grows — while one gated on the backend itself (empty
+        # ``missing``) is a permanent skip the shell reports as a footnote.
+        reason = skip_reason(panel, artifact)
+        if reason:
+            skipped.append(
+                {
+                    "name": panel.name,
+                    "title": panel.title,
+                    "reason": reason,
+                    "requires": sorted(panel.requires),
+                    "missing": missing_requirements(panel, artifact),
+                }
+            )
+            continue
         params = {**slot.params, **overrides.get(panel.name, {})}
-        missing = missing_requirements(panel, artifact)
-        if missing:
-            output: Any = Markdown(f"Requires {', '.join(missing)} — not recorded by this run.")
-        else:
-            output = panel().build(artifact, params)
+        # Isolate a failing panel so one bad slot renders an error card rather
+        # than 500-ing the whole view/report. Unknown-panel and scope errors
+        # above still propagate (they are view-config errors).
+        try:
+            output: Any = panel().build(artifact, params)
+        except Exception as exc:
+            output = Markdown(f"Panel {panel.name!r} failed to render: {exc}")
         built.append(
             {
                 "name": panel.name,
                 "title": panel.title,
                 "requires": sorted(panel.requires),
-                "missing": missing,
-                "controls": [
-                    {
-                        "kind": control.kind,
-                        "param": control.param,
-                        "label": control.label or control.param.title(),
-                        "choices": list(control.choices),
-                        "value": params.get(control.param),
-                    }
-                    for control in panel.controls
-                ],
+                "controls": serialize_controls(panel, params),
                 "output": output_to_dict(output),
             }
         )
@@ -231,4 +312,5 @@ def build_view(
         "scope": view.scope,
         "layout": view.layout,
         "panels": built,
+        "skipped": skipped,
     }

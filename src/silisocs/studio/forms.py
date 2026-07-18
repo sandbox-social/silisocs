@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from dataclasses import field as dataclass_field
+from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:  # Type-only: the backend layer stays a lazy import at runtime.
+    from silisocs.environments.backends.base import BackendApp
 
 SCENARIO_FILES = (
     "world/default.yaml",
@@ -20,21 +25,59 @@ SCENARIO_FILES = (
     "eval.yaml",
 )
 
+# Config-group directories a scenario may ship. A scenario can name its group
+# files after itself (world/resource_market.yaml, selected with world=...) rather
+# than using the default variant above, so listing/editing globs these too — a
+# scenario is not only the shape SCENARIO_FILES describes.
+_GROUP_DIRS = ("world", "agents", "env", "sim", "eval", "views")
+
+# Hydra package directives each config-group document must open with. Scenario
+# world/agents files shadow their base group, so without the directive their
+# keys land under the group name instead of the intended package and the run
+# silently loses num_agents/num_steps/seed (world) or the whole persona
+# pipeline (agents). The flat sim/env/eval files are merged directly and carry
+# no directive.
+_PACKAGE_DIRECTIVES = {
+    "world": "# @package _global_",
+    "agents": "# @package agents",
+}
+
+
+def _leading_comment_block(text: str) -> str:
+    """Return the comment/blank prefix of a YAML document (directives live here)."""
+    kept: list[str] = []
+    for line in text.splitlines(keepends=True):
+        if line.strip() and not line.lstrip().startswith("#"):
+            break
+        kept.append(line)
+    return "".join(kept)
+
+
+def ensure_package_directive(relative: str, text: str) -> str:
+    """Prepend the required ``# @package`` directive when a document lacks one."""
+    parts = Path(relative).parts
+    directive = _PACKAGE_DIRECTIVES.get(parts[0]) if len(parts) == 2 else None
+    if directive is None or "# @package" in _leading_comment_block(text):
+        return text
+    return f"{directive}\n{text}"
+
 
 def _scenario_relative_files(conf_dir: Path) -> list[str]:
     files = [relative for relative in SCENARIO_FILES if (conf_dir / relative).is_file()]
-    files.extend(
-        path.relative_to(conf_dir).as_posix()
-        for path in sorted((conf_dir / "views").glob("*.yaml"))
-        if path.is_file()
-    )
+    seen = set(files)
+    for group in _GROUP_DIRS:
+        files.extend(
+            relative
+            for path in sorted((conf_dir / group).glob("*.yaml"))
+            if path.is_file() and (relative := path.relative_to(conf_dir).as_posix()) not in seen
+        )
     return files
 
 
 def _supported_scenario_file(relative: str) -> bool:
     path = Path(relative)
     return relative in SCENARIO_FILES or (
-        len(path.parts) == 2 and path.parts[0] == "views" and path.suffix == ".yaml"
+        len(path.parts) == 2 and path.parts[0] in _GROUP_DIRS and path.suffix == ".yaml"
     )
 
 
@@ -49,6 +92,10 @@ class Field:
     choices: tuple[str, ...] = ()
     choices_from: str | None = None
     choices_depend_on: tuple[str, ...] = ()
+    # Show this field only while other fields hold given values, e.g.
+    # ``{"env.gm.backend.type": "custom"}``. A list accepts any of several
+    # values (``{"env.gm.backend.type": ["backend_a", "backend_b"]}``),
+    # which is how a field scopes itself to a family of backends.
     visible_when: dict[str, Any] | None = None
     widget_params: dict[str, Any] = dataclass_field(default_factory=dict)
     preview_from: str | None = None
@@ -78,8 +125,27 @@ class PreviewContext:
     repository_root: Path
 
 
+@dataclass(frozen=True)
+class ChoiceContext:
+    """Workspace capabilities supplied to dynamic choice providers."""
+
+    repository_root: Path
+    extension_options: Callable[[str], Sequence[Mapping[str, str]]] | None = None
+
+    def extensions(self, catalog: str) -> tuple[str, ...]:
+        return tuple(item["value"] for item in self.options(catalog))
+
+    def options(self, catalog: str) -> tuple[dict[str, str], ...]:
+        if self.extension_options is None:
+            return ()
+        return tuple(
+            {"value": str(item["value"]), "label": str(item["label"])}
+            for item in self.extension_options(catalog)
+        )
+
+
 _SCHEMAS: dict[str, FormSchema] = {}
-ChoiceProvider = Callable[[Mapping[str, str]], Sequence[str]]
+ChoiceProvider = Callable[..., Sequence[str]]
 _CHOICE_PROVIDERS: dict[str, ChoiceProvider] = {}
 _DEFERRED_CHOICE_PROVIDERS: set[str] = set()
 PreviewProvider = Callable[[Mapping[str, str], str, PreviewContext], Any]
@@ -128,13 +194,40 @@ def register_choice_provider(
         _DEFERRED_CHOICE_PROVIDERS.discard(key)
 
 
-def run_choice_provider(name: str, files: Mapping[str, str]) -> list[str]:
+def run_choice_provider(
+    name: str,
+    files: Mapping[str, str],
+    context: ChoiceContext | None = None,
+) -> list[str]:
     """Resolve one registered choice capability from the current documents."""
     try:
         provider = _CHOICE_PROVIDERS[name]
     except KeyError as exc:
-        raise KeyError(f"Unknown choice provider {name!r}") from exc
-    return [str(choice) for choice in provider(files)]
+        classes = name.endswith(".classes")
+        catalog = name.removesuffix(".classes")
+        if catalog.startswith(("component.", "policy.")) and catalog in _runtime_built_in_catalog():
+            provider = _runtime_catalog_provider(catalog, classes=classes)
+            register_choice_provider(name, provider, deferred=True)
+        else:
+            raise KeyError(f"Unknown choice provider {name!r}") from exc
+    parameters = inspect.signature(provider).parameters
+    choices = provider(files, context) if len(parameters) >= 2 else provider(files)
+    return [str(choice) for choice in choices]
+
+
+def choice_items(
+    name: str,
+    choices: Sequence[str],
+    context: ChoiceContext | None = None,
+) -> list[dict[str, str]]:
+    """Project raw choices into labels without changing submitted runtime values."""
+    if not choices:
+        return []
+    options = context.options(name) if context else ()
+    if not options and name.endswith(".classes") and context:
+        options = context.options(name.removesuffix(".classes"))
+    labels = {item["value"]: item["label"] for item in options}
+    return [{"value": choice, "label": labels.get(choice, choice)} for choice in choices]
 
 
 def register_preview_provider(name: str, provider: PreviewProvider) -> None:
@@ -164,6 +257,7 @@ def materialize_form_schema(
     name: str = "scenario",
     *,
     defer_expensive: bool = False,
+    choice_context: ChoiceContext | None = None,
 ) -> dict[str, Any]:
     """Resolve dynamic field choices for one YAML document set."""
     schema = form_schema(name)
@@ -174,7 +268,17 @@ def materialize_form_schema(
         if field.choices_from:
             deferred = defer_expensive and field.choices_from in _DEFERRED_CHOICE_PROVIDERS
             item["choices_deferred"] = deferred
-            item["choices"] = [] if deferred else run_choice_provider(field.choices_from, files)
+            choices = (
+                [] if deferred else run_choice_provider(field.choices_from, files, choice_context)
+            )
+            item["choices"] = choices
+            item["choice_items"] = choice_items(
+                field.choices_from,
+                choices,
+                choice_context,
+            )
+        else:
+            item["choice_items"] = [{"value": choice, "label": choice} for choice in field.choices]
         if field.widget.startswith("class_path:"):
             widget = load_widget(field.widget.removeprefix("class_path:"))()
             render = getattr(widget, "render", None)
@@ -212,11 +316,21 @@ register_form_schema(
             Field("world.event.context", "yaml", "Event context", "World"),
             Field(
                 "agents.persona_pipeline.classes",
-                "mapping",
+                "agent_classes",
                 "Agent classes",
                 "Agents",
                 help="Each key is a class id; each value is its declarative class configuration",
+                choices_from="agent.classes",
                 preview_from="persona.records",
+            ),
+            Field(
+                "agents.builder.class_path",
+                "combobox",
+                "Agent builder",
+                "Advanced",
+                advanced=True,
+                choices_from="agent.builders",
+                help="Leave empty for the persona-pipeline builder or enter a custom class path",
             ),
             Field(
                 "env.gm.backend.type",
@@ -227,9 +341,10 @@ register_form_schema(
             ),
             Field(
                 "env.gm.backend.class_path",
-                "text",
+                "combobox",
                 "Custom backend class",
                 "Platform",
+                choices_from="backend.classes",
                 help="Fully qualified BackendApp subclass",
                 visible_when={"env.gm.backend.type": "custom"},
             ),
@@ -261,13 +376,113 @@ register_form_schema(
                 advanced=True,
                 choices=("threads", "asyncio"),
             ),
-            Field("sim.engine.step.built_in", "select", "Step strategy", "Advanced", advanced=True),
+            Field(
+                "sim.engine.loop.built_in",
+                "select",
+                "Loop strategy",
+                "Advanced",
+                advanced=True,
+                choices_from="policy.loop",
+            ),
+            Field(
+                "sim.engine.loop.class_path",
+                "combobox",
+                "Custom loop strategy",
+                "Advanced",
+                advanced=True,
+                choices_from="policy.loop.classes",
+            ),
+            Field(
+                "sim.engine.step.built_in",
+                "select",
+                "Step strategy",
+                "Advanced",
+                advanced=True,
+                choices_from="policy.step",
+            ),
+            Field(
+                "sim.engine.step.class_path",
+                "combobox",
+                "Custom step strategy",
+                "Advanced",
+                advanced=True,
+                choices_from="policy.step.classes",
+            ),
             Field(
                 "sim.engine.turn_policy.built_in",
                 "select",
                 "Turn policy",
                 "Advanced",
                 advanced=True,
+                choices_from="policy.turn",
+            ),
+            Field(
+                "sim.engine.turn_policy.class_path",
+                "combobox",
+                "Custom turn policy",
+                "Advanced",
+                advanced=True,
+                choices_from="policy.turn.classes",
+            ),
+            Field(
+                "sim.engine.participation.built_in",
+                "select",
+                "Participation",
+                "Advanced",
+                advanced=True,
+                choices_from="policy.participation",
+            ),
+            Field(
+                "sim.engine.participation.class_path",
+                "combobox",
+                "Custom participation policy",
+                "Advanced",
+                advanced=True,
+                choices_from="policy.participation.classes",
+            ),
+            Field(
+                "env.gm.class_path",
+                "combobox",
+                "Game master",
+                "Advanced",
+                advanced=True,
+                choices_from="game_master.classes",
+            ),
+            *(
+                Field(
+                    f"env.gm.components.{role}.built_in",
+                    "select",
+                    f"{role.replace('_', ' ').title()} component",
+                    "Advanced",
+                    advanced=True,
+                    choices_from=f"component.{role}",
+                )
+                for role in (
+                    "initialize",
+                    "next_acting",
+                    "update",
+                    "observe",
+                    "resolve",
+                    "action_prompt",
+                )
+            ),
+            *(
+                Field(
+                    f"env.gm.components.{role}.class_path",
+                    "combobox",
+                    f"Custom {role.replace('_', ' ')} component",
+                    "Advanced",
+                    advanced=True,
+                    choices_from=f"component.{role}.classes",
+                )
+                for role in (
+                    "initialize",
+                    "next_acting",
+                    "update",
+                    "observe",
+                    "resolve",
+                    "action_prompt",
+                )
             ),
             Field(
                 "env.gm_orchestration",
@@ -277,6 +492,21 @@ register_form_schema(
                 advanced=True,
             ),
             Field("eval.probes.enabled", "toggle", "Enable probes", "Evaluation"),
+            Field(
+                "eval.probes.schedule.built_in",
+                "select",
+                "Probe schedule",
+                "Evaluation",
+                choices_from="policy.probe",
+            ),
+            Field(
+                "eval.probes.schedule.class_path",
+                "combobox",
+                "Custom probe schedule",
+                "Advanced",
+                advanced=True,
+                choices_from="policy.probe.classes",
+            ),
             Field(
                 "eval.probes.deployment",
                 "yaml",
@@ -313,19 +543,77 @@ def _llm_providers(_: Mapping[str, str]) -> Sequence[str]:
     )
 
 
-def _backend_actions(files: Mapping[str, str]) -> Sequence[str]:
+def _extension_choices(
+    context: ChoiceContext | None,
+    catalog: str,
+    *,
+    classes: bool,
+) -> tuple[str, ...]:
+    values = context.extensions(catalog) if context else ()
+    return tuple(value for value in values if ("." in value) is classes)
+
+
+def _catalog_provider(
+    catalog: str,
+    built_ins: Sequence[str] = (),
+    *,
+    classes: bool = False,
+) -> ChoiceProvider:
+    def provider(_: Mapping[str, str], context: ChoiceContext | None = None) -> Sequence[str]:
+        return tuple(
+            dict.fromkeys(
+                (
+                    *built_ins,
+                    *_extension_choices(context, catalog, classes=classes),
+                )
+            )
+        )
+
+    return provider
+
+
+def _configured_backend(files: Mapping[str, str]) -> tuple[str, type[BackendApp] | None]:
+    """The backend a draft scenario selects: its type, and its class if importable."""
     from silisocs.environments.backends.factory import resolve_backend_class
 
     env = yaml.safe_load(files.get("env.yaml", "{}")) or {}
     backend = ((env.get("gm") or {}).get("backend") or {}) if isinstance(env, dict) else {}
+    backend_type = str(backend.get("type") or "")
     try:
         cls = resolve_backend_class(
-            str(backend.get("type") or ""),
+            backend_type,
             class_path=str(backend.get("class_path") or "") or None,
         )
     except (ImportError, AttributeError, TypeError, ValueError):
+        return backend_type, None
+    return backend_type, cls
+
+
+def _backend_actions(files: Mapping[str, str]) -> Sequence[str]:
+    _, cls = _configured_backend(files)
+    if cls is None:
         return ()
     return tuple(item["selectable_name"] for item in cls.declared_action_catalog())
+
+
+def _panel_catalog(files: Mapping[str, str]) -> Sequence[str]:
+    """Run panels the drafted backend can actually feed.
+
+    The same capability declarations that gate a finished run's views gate the
+    composer, so you cannot build a view out of panels your scenario's backend
+    will never populate.
+    """
+    from silisocs.analysis.panel import list_panels
+    from silisocs.studio.capabilities import backend_panel_names
+
+    backend_type, cls = _configured_backend(files)
+    panels = [panel for panel in list_panels() if panel.scope == "run"]
+    if cls is None:
+        # No backend chosen yet, or one this Studio cannot import: we know
+        # nothing about its capabilities, so offer everything rather than hide
+        # panels it may well support. The run's own gate has the last word.
+        return tuple(panel.name for panel in panels)
+    return backend_panel_names(backend_type, cls, panels)
 
 
 def _persona_records(files: Mapping[str, str], item_key: str, context: PreviewContext) -> Any:
@@ -347,7 +635,73 @@ def _persona_records(files: Mapping[str, str], item_key: str, context: PreviewCo
 
 register_choice_provider("backend.types", _backend_types)
 register_choice_provider("backend.actions", _backend_actions, deferred=True)
+register_choice_provider("panel.catalog", _panel_catalog, deferred=True)
 register_choice_provider("llm.providers", _llm_providers)
+register_choice_provider(
+    "agent.classes", _catalog_provider("agent.classes", classes=True), deferred=True
+)
+register_choice_provider(
+    "agent.builders", _catalog_provider("agent.builders", classes=True), deferred=True
+)
+register_choice_provider(
+    "game_master.classes", _catalog_provider("game_master.classes", classes=True), deferred=True
+)
+register_choice_provider(
+    "backend.classes",
+    _catalog_provider("backend.classes", classes=True),
+    deferred=True,
+)
+
+
+@cache
+def _runtime_built_in_catalog() -> dict[str, tuple[str, ...]]:
+    """Read implementation names from the runtime factories on first use."""
+    from silisocs.environments.gm.components.factory import component_built_ins
+    from silisocs.runtime.construction.engines import engine_strategy_built_ins
+    from silisocs.simulation_engines.policies.factory import policy_built_ins
+
+    return {
+        **{f"component.{role}": values for role, values in component_built_ins().items()},
+        **{
+            f"policy.{role}": values
+            for role, values in {
+                **engine_strategy_built_ins(),
+                **policy_built_ins(),
+            }.items()
+        },
+    }
+
+
+def _runtime_catalog_provider(catalog: str, *, classes: bool) -> ChoiceProvider:
+    def provider(_: Mapping[str, str], context: ChoiceContext | None = None) -> Sequence[str]:
+        built_ins = () if classes else _runtime_built_in_catalog().get(catalog, ())
+        return tuple(
+            dict.fromkeys((*built_ins, *_extension_choices(context, catalog, classes=classes)))
+        )
+
+    return provider
+
+
+def _register_runtime_choice_providers() -> None:
+    catalogs = {
+        field.choices_from
+        for field in form_schema("scenario").fields
+        if field.choices_from
+        and (
+            field.choices_from.startswith("component.") or field.choices_from.startswith("policy.")
+        )
+    }
+    for provider_name in sorted(catalogs):
+        classes = provider_name.endswith(".classes")
+        catalog = provider_name.removesuffix(".classes")
+        register_choice_provider(
+            provider_name,
+            _runtime_catalog_provider(catalog, classes=classes),
+            deferred=True,
+        )
+
+
+_register_runtime_choice_providers()
 register_preview_provider("persona.records", _persona_records)
 
 
@@ -363,6 +717,36 @@ class ScenarioRepository:
         if not clean or any(part in clean for part in ("/", "\\", "..")):
             raise ValueError("Scenario name must be a safe directory name")
         return clean
+
+    @staticmethod
+    def default_files(name: str) -> dict[str, str]:
+        """Return the starter YAML file set for a brand-new scenario draft."""
+        from silisocs.environments.backends.factory import registered_backend_types
+
+        backend_types = registered_backend_types()
+        default_backend = backend_types[0] if backend_types else "custom"
+        return {
+            "world/default.yaml": "# @package _global_\n"
+            + yaml.safe_dump(
+                {
+                    "scenario_name": name,
+                    "num_agents": 4,
+                    "num_steps": 5,
+                    "seed": 1,
+                    "setting": {"name": "", "background": []},
+                    "event": {"name": "", "context": ""},
+                },
+                sort_keys=False,
+            ),
+            "agents/default.yaml": (
+                "# @package agents\nshared_memories: []\npersona_pipeline:\n  classes: {}\n"
+            ),
+            "sim.yaml": "{}\n",
+            "env.yaml": yaml.safe_dump(
+                {"gm": {"backend": {"type": default_backend}}}, sort_keys=False
+            ),
+            "eval.yaml": "probes:\n  enabled: false\n",
+        }
 
     def list(self) -> list[dict[str, Any]]:
         if not self.root.is_dir():
@@ -405,18 +789,18 @@ class ScenarioRepository:
         unknown = sorted(relative for relative in files if not _supported_scenario_file(relative))
         if unknown:
             raise ValueError(f"Unsupported scenario files: {unknown}")
-        parsed: dict[str, Any] = {}
+        validated: dict[str, str] = {}
         for relative, text in files.items():
             data = yaml.safe_load(text) if text.strip() else {}
             if not isinstance(data, dict):
                 raise ValueError(f"{relative} must contain a YAML mapping")
-            parsed[relative] = data
-        for relative, data in parsed.items():
+            # Write the author's text verbatim: re-dumping parsed YAML would
+            # strip comments — including the # @package directives Hydra needs.
+            validated[relative] = ensure_package_directive(relative, text)
+        for relative, text in validated.items():
             path = self.root / name / "conf" / relative
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(
-                yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8"
-            )
+            path.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
         return self.load(name)
 
 
@@ -437,9 +821,14 @@ def preflight_payload(files: dict[str, str]) -> dict[str, Any]:
             continue
         parsed[relative] = value
 
-    world = parsed.get("world/default.yaml", {})
-    sim = parsed.get("sim.yaml", {})
-    env = parsed.get("env.yaml", {})
+    # Scenarios may ship world/<name>.yaml (resource_market, virtual_space) instead
+    # of the default variant, so resolve the actual group files rather than assume
+    # the default names — otherwise num_agents/num_steps read 0 and backend checks
+    # are skipped for those scenarios.
+    names = list(files)
+    world = parsed.get(_group_file("world", names) or "world/default.yaml", {})
+    sim = parsed.get(_group_file("sim", names) or "sim.yaml", {})
+    env = parsed.get(_group_file("env", names) or "env.yaml", {})
 
     def integer(value: Any, path: str, default: int = 0) -> int:
         try:
@@ -587,13 +976,34 @@ _GROUP_FILES = {
 }
 
 
+def _group_file(group: str, available: Sequence[str]) -> str | None:
+    """The document a composer field's group reads from and writes to.
+
+    A scenario may name its group files after itself (``world/resource_market.yaml``,
+    selected with ``world=resource_market``) instead of shipping the default
+    variant. Writing to the fixed default name would add a SECOND option to the
+    same Hydra group and silently change which one a run composes, so a lone
+    variant is the target when the default is absent.
+    """
+    default = _GROUP_FILES.get(group)
+    if default is None or "/" not in default or default in set(available):
+        return default
+    variants = sorted(
+        name
+        for name in available
+        if name.startswith(f"{group}/") and name.endswith(".yaml") and name.count("/") == 1
+    )
+    return variants[0] if len(variants) == 1 else default
+
+
 def field_values(files: dict[str, str], schema: FormSchema | None = None) -> dict[str, Any]:
     """Project known schema fields from YAML documents without altering unknown keys."""
     documents = {name: yaml.safe_load(text) or {} for name, text in files.items()}
     values: dict[str, Any] = {}
+    names = list(files)
     for item in (schema or form_schema()).fields:
         group, *parts = item.key.split(".")
-        value: Any = documents.get(_GROUP_FILES.get(group, ""), {})
+        value: Any = documents.get(_group_file(group, names) or "", {})
         for part in parts:
             if not isinstance(value, dict) or part not in value:
                 value = None
@@ -603,15 +1013,126 @@ def field_values(files: dict[str, str], schema: FormSchema | None = None) -> dic
     return values
 
 
+# The generic component pipeline a non-social backend needs, written into a
+# scenario's env.yaml whenever the composer points it at one. ``params: null``
+# rather than ``{}`` is load-bearing: a scenario env.yaml is MERGED over the
+# default (social) env group, and OmegaConf.merge cannot clear sibling keys — an
+# empty mapping leaves the social params (graph, recsys, timeline) in place, and
+# the generic component then rejects them as unsupported. Null replaces the node.
+_GENERIC_COMPONENTS: dict[str, str] = {
+    "initialize": "app_initialize",
+    "observe": "app_observation",
+    "update": "none",
+    "action_prompt": "default",
+}
+
+
+def _generic_components_block(resolve_built_in: str) -> dict[str, Any]:
+    slots = {**_GENERIC_COMPONENTS, "resolve": resolve_built_in}
+    return {
+        role: {"built_in": built_in, "class_path": None, "params": None}
+        for role, built_in in slots.items()
+    }
+
+
+def _is_generated_component_slot(slot: Any) -> bool:
+    """True only for a slot this composer wrote itself (the bare generic block).
+
+    ``_generic_components_block`` emits exactly ``{built_in, class_path: None,
+    params: None}``. Matching that precise shape distinguishes the composer's own
+    output from a user-authored slot carrying params or a class_path, so
+    re-deriving components on a backend-type change never clobbers hand config.
+    """
+    return (
+        isinstance(slot, dict)
+        and set(slot) == {"built_in", "class_path", "params"}
+        and slot.get("class_path") is None
+        and slot.get("params") is None
+    )
+
+
+def _apply_backend_component_defaults(documents: dict[str, Any], touched: set[str]) -> None:
+    """Keep a draft's GM components compatible with the backend it selects.
+
+    The composer's scenario runs against the default (social) env group, whose
+    components call SocialBackendApp-only methods. Selecting a non-social backend
+    without replacing them produces a scenario that composes cleanly and then
+    fails at run time, so the components a backend needs follow the backend.
+
+    Only ever run when the backend *type/class* changes (the caller gates this),
+    and even then only touch slots this composer itself wrote — a user's authored
+    observe/action_prompt/init config must survive a backend edit untouched.
+    """
+    from silisocs.environments.backends.base import SocialBackendApp
+
+    names = list(documents)
+    env_file = _group_file("env", names) or "env.yaml"
+    env = documents.get(env_file)
+    if not isinstance(env, dict):
+        return
+    files = {name: yaml.safe_dump(document) for name, document in documents.items()}
+    _, cls = _configured_backend(files)
+    if cls is None:  # Unimportable: say nothing rather than guess (preflight reports it).
+        return
+    # Coerce ``gm``/``components`` that a draft may carry as null or a non-mapping
+    # (e.g. ``gm: {components: null}``) before mutating, so a hand-written scalar
+    # never surfaces as an unhandled AttributeError.
+    gm = env.get("gm")
+    if not isinstance(gm, dict):
+        gm = {}
+        env["gm"] = gm
+    components = gm.get("components")
+    if not isinstance(components, dict):
+        components = {}
+        gm["components"] = components
+    if issubclass(cls, SocialBackendApp):
+        # The social env group already supplies these; reclaim only the generic
+        # block this composer previously wrote, never a user-authored slot.
+        for role in (*_GENERIC_COMPONENTS, "resolve"):
+            if _is_generated_component_slot(components.get(role)):
+                components.pop(role, None)
+        if not components:
+            gm.pop("components", None)
+    else:
+        sim_file = _group_file("sim", names) or "sim.yaml"
+        sim = documents.get(sim_file)
+        tool_calling = ((sim or {}).get("tool_calling") or {}).get("mode") if sim else None
+        # action_mode is set to ``generic`` below; the canonical resolve for generic
+        # output is ``generic_action`` (parsed_action needs an ACTION TYPE block and
+        # a SocialBackendApp-only method, so it fails on generic output).
+        resolve = (
+            "tool_calling" if str(tool_calling or "") in {"single", "multi"} else "generic_action"
+        )
+        # Fill only slots that are absent or hold our own prior generic block;
+        # never overwrite a slot the user customized with params or a class_path.
+        for role, slot in _generic_components_block(resolve).items():
+            if role not in components or _is_generated_component_slot(components.get(role)):
+                components[role] = slot
+        # The social group's prompt text is written for a timeline; a generic
+        # backend describes itself through its own action catalog instead.
+        if isinstance(sim, dict):
+            sim["action_mode"] = "generic"
+            touched.add(sim_file)
+    touched.add(env_file)
+
+
 def compose_files(files: dict[str, str], updates: dict[str, Any]) -> dict[str, str]:
-    """Apply dotted schema updates to YAML documents while preserving every other key."""
+    """Apply dotted schema updates to YAML documents while preserving every other key.
+
+    Documents an update does not touch pass through byte-for-byte; touched
+    documents are re-serialized but keep their leading comment block (which is
+    where the ``# @package`` directives live).
+    """
     documents = {name: yaml.safe_load(text) or {} for name, text in files.items()}
+    touched: set[str] = set()
+    names = list(files)
     for key, value in updates.items():
         group, *parts = str(key).split(".")
-        relative = _GROUP_FILES.get(group)
+        relative = _group_file(group, names)
         if relative is None or not parts:
             raise ValueError(f"Unknown composer field path {key!r}")
         document = documents.setdefault(relative, {})
+        touched.add(relative)
         cursor = document
         for part in parts[:-1]:
             child = cursor.setdefault(part, {})
@@ -619,7 +1140,18 @@ def compose_files(files: dict[str, str], updates: dict[str, Any]) -> dict[str, s
                 raise ValueError(f"Cannot write {key!r}; {part!r} is not a mapping")
             cursor = child
         cursor[parts[-1]] = value
-    return {
-        relative: yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
-        for relative, document in documents.items()
-    }
+    # Re-derive GM components only when the backend TYPE/class actually changes,
+    # never on other backend.* edits (enabled_actions, params) — those must not
+    # disturb authored component config.
+    if any(str(key) in ("env.gm.backend.type", "env.gm.backend.class_path") for key in updates):
+        _apply_backend_component_defaults(documents, touched)
+    composed = {}
+    for relative, document in documents.items():
+        if relative in touched:
+            text = _leading_comment_block(files.get(relative, "")) + yaml.safe_dump(
+                document, sort_keys=False, allow_unicode=True
+            )
+        else:
+            text = files[relative]
+        composed[relative] = ensure_package_directive(relative, text)
+    return composed

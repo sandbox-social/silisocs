@@ -58,6 +58,7 @@ def test_build_run_manifest_indexes_artifacts_and_layout(tmp_path: Path) -> None
     assert manifest["llm_usage"] == {"totals": {"total_tokens": 7}}
     assert manifest["health"]["agent_turn_failures"] == 2
     assert manifest["health"]["backend_action_errors"] == 0
+    assert manifest["health"]["silent_backends"] == []  # gm carries no committed-events mirror
 
     artifacts = manifest["artifacts"]
     assert artifacts["effective_config"] == "effective_config.yaml"
@@ -90,6 +91,7 @@ def test_manifest_carries_portable_custom_backend_capabilities(tmp_path: Path) -
         event_semantics = {
             "roles": {"world.transition": {"move"}},
             "fields": {"world.object": ("payload.object",)},
+            "labels": {"move": ("world.transition",)},
         }
 
     manifest = build_run_manifest(
@@ -105,7 +107,78 @@ def test_manifest_carries_portable_custom_backend_capabilities(tmp_path: Path) -
     assert record["event_semantics"] == {
         "roles": {"world.transition": ["move"]},
         "fields": {"world.object": ["payload.object"]},
+        "labels": {"move": ["world.transition"]},
     }
+
+
+def test_manifest_derived_tags_survive_to_a_fresh_analysis_process(tmp_path: Path) -> None:
+    from silisocs.analysis.panels._shared import semantics_for_backend
+    from silisocs.environments.backends.base import BackendApp, app_action
+
+    class CustomBackend(BackendApp):
+        db_path = None
+        visualizer = None
+
+        def name(self) -> str:
+            return "custom"
+
+        def description(self) -> str:
+            return "custom"
+
+        @app_action(
+            tags=("world.broadcast", "content.created"),
+            fields={"content.text": "message"},
+        )
+        def broadcast(self, agent_name: str, message: str) -> str:
+            return message
+
+    manifest = build_run_manifest(
+        output_dir=_run_dir(tmp_path),
+        status="success",
+        game_masters=[
+            SimpleNamespace(name="w", backend_type="custom_social", backend=CustomBackend())
+        ],
+    )
+    record = manifest["game_masters"][0]
+    assert record["event_semantics"] == {
+        "roles": {
+            "content.created": ["broadcast"],
+            "control": ["finish_action_episode"],
+            "world.broadcast": ["broadcast"],
+        },
+        "fields": {"content.text": ["message"]},
+        "labels": {
+            "broadcast": ["world.broadcast", "content.created"],
+            "finish_action_episode": ["control"],
+        },
+    }
+
+    artifact = SimpleNamespace(game_masters=[record])
+    semantics = semantics_for_backend(artifact, "custom_social")
+    assert semantics.tags_of("broadcast") == ("world.broadcast", "content.created")
+    assert semantics.value({"message": "hello"}, "content.text") == "hello"
+
+
+def test_manifest_health_records_silent_backend(tmp_path: Path) -> None:
+    # A backend that committed nothing must leave a trace in the health block so
+    # Studio's Run-health panel does not read all-green over blank analysis panels.
+    class SilentBackend:
+        def count_committed_events(self) -> int:
+            return 0
+
+    class ActiveBackend:
+        def count_committed_events(self) -> int:
+            return 4
+
+    manifest = build_run_manifest(
+        output_dir=_run_dir(tmp_path),
+        status="success",
+        game_masters=[
+            SimpleNamespace(name="quiet", backend_type="custom", backend=SilentBackend()),
+            SimpleNamespace(name="loud", backend_type="twitter_like", backend=ActiveBackend()),
+        ],
+    )
+    assert manifest["health"]["silent_backends"] == ["quiet"]
 
 
 def test_environment_provenance_degrades_outside_a_checkout(tmp_path: Path) -> None:

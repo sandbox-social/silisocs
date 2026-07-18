@@ -293,6 +293,7 @@ def _load_restore_strategy(class_path: str, params: Any) -> CheckpointRestoreStr
 
 
 _IGNORED_ACTION_LABELS = {
+    "finish_action_episode",
     "initialize",
     "init_create_user",
     "init_follow",

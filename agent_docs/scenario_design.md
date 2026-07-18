@@ -331,6 +331,53 @@ gm:
       - report_post
 ```
 
+`enabled_actions: []` is an **empty allow-list**, not "no filter" — it exposes
+nothing, and a filter leaving no callable action now fails when the backend is
+built. Use `null` to expose everything.
+
+### Non-social scenarios (resource markets, worlds, games)
+
+Nothing about the framework is social; only the defaults are. `scenarios/resource_market`
+is the reference non-social scenario — copy it rather than a social one. Three
+differences matter:
+
+1. **Pick the generic GM components.** The default env group is `twitter_like`,
+   whose `initialize`/`observe`/`update` components call social-only backend
+   methods (naming one on a generic backend now fails at GM build). Ship a full
+   `conf/env/<name>.yaml` **group file** and select it with `env=<name>`:
+
+   ```yaml
+   gm:
+     backend:
+       type: resource_market
+     components:
+       initialize: {built_in: app_initialize, params: {}}
+       observe:    {built_in: app_observation, params: {limit: 8}}
+       update:     {built_in: app_update, params: {}}
+       resolve:    {built_in: tool_calling, params: {}}
+   ```
+
+   A flat `env.yaml` is *merged* over the social group instead of replacing it,
+   so social params survive; if you must use one, set `params: null` (not `{}`)
+   on each slot to clear them.
+
+2. **Describe the world in its own words.** Set `sim.action_mode: generic` so the
+   action prompt is generated from your backend's `@app_action` catalog rather
+   than the twitter prompt text.
+
+3. **Turn-based runs opt out of the activity model.** `sim/base.yaml` ships
+   `participation.built_in: activity_probability`, whose rates are keyed by sim
+   role; agents matching no rate act only ~30% of steps. Set
+   `sim.engine.participation.built_in: all` in the scenario's `sim.yaml` for a
+   deterministic roster.
+
+See [docs/backends.md](../docs/backends.md) for the backend-authoring contract,
+including database-free backends (`resource_market` holds all state in memory).
+Decorated actions are logged automatically; use open `tags` and semantic
+`fields` on `@app_action` to light up applicable analysis panels. Custom panels
+consume normalized rows through `silisocs.analysis.event_frame()` rather than
+depending on a particular backend implementation.
+
 ---
 
 ## 3) Common Scenario Patterns

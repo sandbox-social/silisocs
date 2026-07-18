@@ -42,6 +42,20 @@ def _probe_anchors_in_use(runner: Any) -> set[str]:
     return set(getter()) if callable(getter) else {"pre_step"}
 
 
+def await_step_permission(engine: Any, step: int) -> bool:
+    """Block until episode ``step`` is permitted to run; ``False`` means stop.
+
+    A custom ``LoopStrategy`` owns interactive run control the same way it owns
+    probe timing: call this at its episode boundary and ``break`` when it returns
+    ``False``, and the strategy inherits play/pause/step/stop
+    (``sim.engine.control``) for free. Returns ``True`` immediately when no gate
+    is attached — the default for a non-interactive run — so a strategy that
+    calls it costs nothing when control is off.
+    """
+    gate = getattr(engine, "step_gate", None)
+    return True if gate is None else bool(gate.await_turn(step))
+
+
 def run_probe_phase(
     engine: Any,
     *,
@@ -146,6 +160,9 @@ class FixedStepsLoopStrategy(LoopStrategy):
             )
         executed_last_step: int | None = None
         while step < int(max_steps):
+            # Interactive run control (no-op unless sim.engine.control attached a gate).
+            if not await_step_permission(engine, step):
+                break  # stop requested at the episode boundary
             t0 = time.time()
             # pre_step: measure the pre-intervention world before the step runs.
             probe_phase = run_probe_phase(

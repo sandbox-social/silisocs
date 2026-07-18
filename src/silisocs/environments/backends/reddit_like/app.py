@@ -36,6 +36,9 @@ class RedditLikeApp(SocialBackendApp):
         "REDDIT_LIKE_DB",
         "silisocs.environments.backends.reddit_like.visualizer.server",
         8001,
+        app_factory=(
+            "silisocs.environments.backends.reddit_like.visualizer.server:create_viewer_app"
+        ),
     )
     app_description: str = "RedditLikeApp"
     db_path: str = "reddit_like.db"
@@ -932,16 +935,16 @@ class RedditLikeApp(SocialBackendApp):
         try:
             sub_id = self._platform.create_subreddit(subreddit_name, description)
             msg = f"{actor_display_name} created subreddit r/{subreddit_name} (ID: {sub_id})."
+            committed = True
         except Exception as e:
             msg = f"Error creating subreddit: {e}"
+            committed = False
         self._print(msg, emoji="🏠")
-        if self.action_logger:
-            self.action_logger.log(
-                {
-                    "source_user": actor_display_name,
-                    "label": "create_subreddit",
-                    "data": {"subreddit_name": subreddit_name, "description": description},
-                }
+        if committed:
+            self._log_action_event(
+                source_user=actor_display_name,
+                label="create_subreddit",
+                data={"subreddit_name": subreddit_name, "description": description},
             )
         return msg
 
@@ -958,16 +961,16 @@ class RedditLikeApp(SocialBackendApp):
         try:
             self._platform.join_subreddit(username, subreddit_name)
             msg = f"{actor_display_name} joined r/{subreddit_name}."
+            committed = True
         except Exception as e:
             msg = f"Error joining subreddit: {e}"
+            committed = False
         self._print(msg, emoji="📌")
-        if self.action_logger:
-            self.action_logger.log(
-                {
-                    "source_user": actor_display_name,
-                    "label": "join_subreddit",
-                    "data": {"subreddit_name": subreddit_name},
-                }
+        if committed:
+            self._log_action_event(
+                source_user=actor_display_name,
+                label="join_subreddit",
+                data={"subreddit_name": subreddit_name},
             )
         return msg
 
@@ -984,16 +987,16 @@ class RedditLikeApp(SocialBackendApp):
         try:
             self._platform.leave_subreddit(username, subreddit_name)
             msg = f"{actor_display_name} left r/{subreddit_name}."
+            committed = True
         except Exception as e:
             msg = f"Error leaving subreddit: {e}"
+            committed = False
         self._print(msg, emoji="🚪")
-        if self.action_logger:
-            self.action_logger.log(
-                {
-                    "source_user": actor_display_name,
-                    "label": "leave_subreddit",
-                    "data": {"subreddit_name": subreddit_name},
-                }
+        if committed:
+            self._log_action_event(
+                source_user=actor_display_name,
+                label="leave_subreddit",
+                data={"subreddit_name": subreddit_name},
             )
         return msg
 
@@ -1012,15 +1015,15 @@ class RedditLikeApp(SocialBackendApp):
             posts = feed.get("posts", [])
             str_feed = self.format_timeline_for_observation(posts)
             msg = f"r/{subreddit_name} Feed for {actor_display_name}:\n{str_feed}"
+            committed = True
         except Exception as e:
             msg = f"Error fetching subreddit feed: {e}"
+            committed = False
         self._print(msg, emoji="📰")
-        if self.action_logger:
-            self.action_logger.log(
-                {
-                    "source_user": actor_display_name,
-                    "label": "get_subreddit_feed",
-                    "data": {"subreddit_name": subreddit_name},
-                }
+        if committed:
+            self._log_action_event(
+                source_user=actor_display_name,
+                label="get_subreddit_feed",
+                data={"subreddit_name": subreddit_name},
             )
         return msg

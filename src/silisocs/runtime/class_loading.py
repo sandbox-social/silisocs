@@ -19,6 +19,38 @@ import inspect
 from collections.abc import Mapping
 from typing import Any, cast
 
+# Engine presets retired in the strategy-based refactor. The three RuntimeEngine
+# subclasses (once in ``simulation_engines.base_engines``) and the whole
+# ``simulation_engines.multi_gm`` module were reachable via ``sim.engine.class_path``
+# on older configs; a stale path now dies with a bare ImportError/AttributeError.
+# This narrow, named allowlist turns exactly those paths into a migration hint and
+# leaves every other ImportError untouched.
+_RETIRED_ENGINE_PATHS = frozenset(
+    {
+        "silisocs.simulation_engines.base_engines.BaseRuntimeEngine",
+        "silisocs.simulation_engines.base_engines.FlowRuntimeEngine",
+        "silisocs.simulation_engines.base_engines.MultiGMRuntimeEngine",
+    }
+)
+_RETIRED_ENGINE_MODULE = "silisocs.simulation_engines.multi_gm"
+_RETIRED_ENGINE_HINT = (
+    "Retired engine class_path {path!r}. The BaseRuntimeEngine/FlowRuntimeEngine/"
+    "MultiGMRuntimeEngine presets and the silisocs.simulation_engines.multi_gm module "
+    "were removed: traversal is now selected by sim.engine.step.built_in "
+    "(base | flow | multi_gm | multi_gm_serial | multi_gm_staged) with no engine "
+    "class_path. Drop sim.engine.class_path and set sim.engine.step.built_in instead."
+)
+
+
+def _check_retired_engine_path(attr_path: str) -> None:
+    """Raise a curated migration error for a known retired engine ``class_path``."""
+    if (
+        attr_path in _RETIRED_ENGINE_PATHS
+        or attr_path == _RETIRED_ENGINE_MODULE
+        or attr_path.startswith(_RETIRED_ENGINE_MODULE + ".")
+    ):
+        raise ValueError(_RETIRED_ENGINE_HINT.format(path=attr_path))
+
 
 def load_attr(attr_path: str) -> Any:
     """Import and return the attribute named by a fully-qualified dotted path.
@@ -27,7 +59,12 @@ def load_attr(attr_path: str) -> Any:
     ``class_path`` that points at a plain function (e.g. a branch router written as a
     function rather than a class) resolves too. The caller decides how to treat a
     class vs a function.
+
+    A stale ``sim.engine.class_path`` pointing at a retired engine preset raises a
+    curated migration error (see :data:`_RETIRED_ENGINE_PATHS`) instead of a bare
+    ImportError.
     """
+    _check_retired_engine_path(attr_path)
     module_path, attr_name = attr_path.rsplit(".", 1)
     module = importlib.import_module(module_path)
     return getattr(module, attr_name)

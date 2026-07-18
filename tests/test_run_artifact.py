@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from silisocs.evaluations.run_artifact import load_run, load_study
 
 
@@ -46,8 +48,8 @@ def _manifest_run(tmp_path: Path) -> Path:
     return run
 
 
-def _legacy_run(tmp_path: Path) -> Path:
-    run = tmp_path / "legacy_run"
+def _manifestless_run(tmp_path: Path) -> Path:
+    run = tmp_path / "manifestless_run"
     _write_jsonl(run / "action_events.jsonl", [{"source_user": "Bob"}, {"source_user": "Cara"}])
     (run / "sim_metrics.json").write_text(
         json.dumps(
@@ -75,35 +77,27 @@ def test_load_run_manifest_backed(tmp_path: Path) -> None:
     assert list(artifact.iter_exposures()) == []
 
 
-def test_load_run_legacy_falls_back_to_discovery(tmp_path: Path) -> None:
-    artifact = load_run(_legacy_run(tmp_path))
-    assert artifact.manifest is None and artifact.status is None
-    assert artifact.scenario == "old"  # recovered from sim_metrics meta
-    assert artifact.num_agents == 4
-    assert artifact.health == {
-        "agent_turn_failures": 0,
-        "action_parse_failures": 0,
-        "action_invalid_targets": 0,
-        "backend_action_errors": 3,
-    }
-    assert len(list(artifact.iter_actions())) == 2
+def test_load_run_requires_manifest(tmp_path: Path) -> None:
+    run = _manifestless_run(tmp_path)
+    with pytest.raises(FileNotFoundError, match="Run manifest not found"):
+        load_run(run)
 
 
-def test_load_run_stale_manifest_paths_fall_back_to_resolvers(tmp_path: Path) -> None:
+def test_load_run_rejects_stale_manifest_paths(tmp_path: Path) -> None:
     run = _manifest_run(tmp_path)
     # The manifest points at social/action_events.jsonl; move the log to the
     # flat layout to simulate a relocated/stale index.
     (run / "social" / "action_events.jsonl").rename(run / "action_events.jsonl")
     artifact = load_run(run)
-    assert [row["source_user"] for row in artifact.iter_actions()] == ["Alice"]
+    with pytest.raises(FileNotFoundError, match="missing action_events artifact"):
+        list(artifact.iter_actions())
 
 
-def test_load_run_malformed_manifest_treated_as_legacy(tmp_path: Path) -> None:
-    run = _legacy_run(tmp_path)
+def test_load_run_rejects_malformed_manifest(tmp_path: Path) -> None:
+    run = _manifestless_run(tmp_path)
     (run / "run_manifest.json").write_text("{not-json", encoding="utf-8")
-    artifact = load_run(run)
-    assert artifact.manifest is None
-    assert len(list(artifact.iter_actions())) == 2
+    with pytest.raises(ValueError, match="valid JSON object"):
+        load_run(run)
 
 
 def test_load_study_reads_plan_summary_and_provenance(tmp_path: Path) -> None:
@@ -127,3 +121,107 @@ def test_load_study_reads_plan_summary_and_provenance(tmp_path: Path) -> None:
 
     empty = load_study(tmp_path / "nope")
     assert empty.plan is None and empty.summary is None and empty.provenance == {}
+
+
+def test_health_surfaces_silent_backends_as_count(tmp_path: Path) -> None:
+    run = tmp_path / "silent_run"
+    run.mkdir()
+    (run / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "status": "success",
+                "health": {"agent_turn_failures": 0, "silent_backends": ["quiet", "hushed"]},
+                "artifacts": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    health = load_run(run).health
+    assert health["silent_backends"] == 2  # count, so zero=green rendering stays honest
+    assert health["agent_turn_failures"] == 0
+
+
+def _write_study(study: Path, definition: dict) -> None:
+    study.mkdir(parents=True, exist_ok=True)
+    import yaml
+
+    (study / "study.yaml").write_text(yaml.safe_dump(definition), encoding="utf-8")
+
+
+def _mark_complete(study: Path, hyp: str, cond: str, scenario: str, seed: int) -> None:
+    run = study / "runs" / hyp / cond / scenario / f"seed_{seed}" / "run"
+    run.mkdir(parents=True, exist_ok=True)
+    (run / "RUN_COMPLETE.json").write_text("{}", encoding="utf-8")
+
+
+def test_progress_honors_explicit_run_default_seeds(tmp_path: Path) -> None:
+    # run_defaults.seeds (not seed_start/seed_repeats) is the seed source the
+    # runner enumerates; progress must project the same seed_3/seed_7 matrix.
+    study = tmp_path / "study"
+    _write_study(
+        study,
+        {
+            "study": {
+                "name": "demo",
+                "scenarios": ["default"],
+                "run_defaults": {"seeds": [3, 7]},
+            },
+            "hypotheses": {"h1": {"conditions": {"baseline": {"overrides": {}}}}},
+        },
+    )
+    _mark_complete(study, "h1", "baseline", "default", 3)
+    _mark_complete(study, "h1", "baseline", "default", 7)
+
+    rows = load_study(study).progress
+    by_seed = {row["seed"]: row["status"] for row in rows}
+    assert by_seed == {3: "complete", 7: "complete"}  # not falsely "pending"
+
+
+def test_progress_honors_condition_seed_and_base_scenarios(tmp_path: Path) -> None:
+    study = tmp_path / "study"
+    _write_study(
+        study,
+        {
+            "study": {"name": "demo", "base_scenarios": ["alpha"], "run_defaults": {}},
+            "hypotheses": {"h1": {"conditions": {"c1": {"seed": 5}, "c2": {"seeds": [1, 2]}}}},
+        },
+    )
+    _mark_complete(study, "h1", "c1", "alpha", 5)
+
+    rows = load_study(study).progress
+    keyed = {(r["condition"], r["scenario"], r["seed"]): r["status"] for r in rows}
+    assert keyed[("c1", "alpha", 5)] == "complete"
+    assert keyed[("c2", "alpha", 1)] == "pending"
+    assert keyed[("c2", "alpha", 2)] == "pending"
+
+
+def test_progress_marks_reuse_and_output_override_not_pending(tmp_path: Path) -> None:
+    study = tmp_path / "study"
+    _write_study(
+        study,
+        {
+            "study": {
+                "name": "demo",
+                "scenarios": ["default"],
+                "run_defaults": {"seed": 1, "output_root_override": "custom/{seed}"},
+            },
+            "hypotheses": {
+                "h1": {
+                    "conditions": {
+                        "reuse_c": {
+                            "execution": {"mode": "reuse_existing"},
+                            "reuse": {
+                                "runs": [{"source": "/prior/run", "scenario": "s", "seed": 9}]
+                            },
+                        },
+                        "run_c": {"overrides": {}},
+                    }
+                }
+            },
+        },
+    )
+    rows = load_study(study).progress
+    statuses = {r["condition"]: r["status"] for r in rows}
+    assert statuses["reuse_c"] == "reused"
+    assert statuses["run_c"] == "skipped"  # output_root_override path not modeled
+    assert "pending" not in set(statuses.values())

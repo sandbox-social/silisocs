@@ -59,6 +59,8 @@ class AppInitializeGameMasterInitializer(GameMasterInitializer):
 class SocialMediaGameMasterInitializer(GameMasterInitializer):
     """Initialize social-media users, graph/subreddit state, and action metadata."""
 
+    requires_social_backend = True
+
     def __init__(self, *, graph: Mapping[str, Any] | None = None) -> None:
         self.graph = dict(graph or {})
 

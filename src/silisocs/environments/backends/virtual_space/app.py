@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from silisocs.environments.backends.base import BackendApp, app_action
+from silisocs.environments.backends.base import ActionResult, BackendApp, app_action
 
 
 @dataclass
@@ -72,6 +72,7 @@ class VirtualSpaceApp(BackendApp):
             "notes": {room: list(notes) for room, notes in self._notes.items()},
             "tasks": {task_id: dataclasses.asdict(task) for task_id, task in self._tasks.items()},
             "events": list(self._events),
+            "committed_events": self._committed_events_state(),
         }
 
     def set_state(self, state: dict[str, Any]) -> None:
@@ -107,6 +108,7 @@ class VirtualSpaceApp(BackendApp):
             )
             self._tasks[task.task_id] = task
         self._events = [str(event) for event in state.get("events", [])]
+        self._restore_committed_events(state.get("committed_events"))
 
     def observe(self, actor_name: str, **kwargs: Any) -> str:
         limit = int(kwargs.get("limit", self.recent_event_limit) or self.recent_event_limit)
@@ -139,8 +141,8 @@ class VirtualSpaceApp(BackendApp):
         )
 
     def _record(self, event: str) -> None:
+        """Add an event to the room feed."""
         self._events.append(event)
-        self._emit_event_log(event, event_type="virtual_space")
 
     def _ensure_agent(self, agent_name: str) -> str | None:
         if agent_name not in self._locations:
@@ -184,68 +186,94 @@ class VirtualSpaceApp(BackendApp):
         status = "complete" if task.complete else f"{task.progress}/{task.required_effort}"
         return f"{task.task_id}: {task.description} [{status}]"
 
-    @app_action(selectable_name="LOOK", description="Inspect the current room")
-    def look(self, agent_name: str) -> str:
+    @app_action(selectable_name="LOOK", description="Inspect the current room", log=False)
+    def look(self, agent_name: str) -> ActionResult:
         """Inspect the current room, nearby agents, exits, and recent events."""
         error = self._ensure_agent(agent_name)
         if error:
-            return error
-        return self.observe(agent_name)
+            return ActionResult(error, committed=False)
+        return ActionResult(self.observe(agent_name))
 
-    @app_action(selectable_name="MOVE", description="Move to another room")
-    def move(self, agent_name: str, destination: str) -> str:
+    @app_action(
+        selectable_name="MOVE",
+        description="Move to another room",
+        tags=("space.movement",),
+        fields={"space.room": "room"},
+    )
+    def move(self, agent_name: str, destination: str) -> ActionResult:
         """Move the current user to an adjacent destination room."""
         error = self._ensure_agent(agent_name)
         if error:
-            return error
+            return ActionResult(error, committed=False)
         destination = str(destination)
         current_room = self._locations[agent_name]
         if destination == current_room:
-            return f"{agent_name} is already in {destination}."
+            return ActionResult(f"{agent_name} is already in {destination}.", committed=False)
         if destination not in self.rooms:
-            return f"Unknown destination: {destination}. Available rooms: {', '.join(self.rooms)}"
+            return ActionResult(
+                f"Unknown destination: {destination}. Available rooms: {', '.join(self.rooms)}",
+                committed=False,
+            )
         if destination not in self._exits(current_room):
-            return f"{destination} is not reachable from {current_room}."
+            return ActionResult(
+                f"{destination} is not reachable from {current_room}.", committed=False
+            )
 
         self._locations[agent_name] = destination
         event = f"{agent_name} moved from {current_room} to {destination}."
         self._record(event)
-        return event
+        return ActionResult(
+            event,
+            data={"room": destination, "from_room": current_room},
+        )
 
-    @app_action(selectable_name="LEAVE_NOTE", description="Leave a note in the current room")
-    def leave_note(self, agent_name: str, message: str) -> str:
+    @app_action(
+        selectable_name="LEAVE_NOTE",
+        description="Leave a note in the current room",
+        tags=("space.note",),
+        fields={"content.text": "text", "space.room": "room"},
+    )
+    def leave_note(self, agent_name: str, message: str) -> ActionResult:
         """Leave a persistent note visible to later room occupants."""
         error = self._ensure_agent(agent_name)
         if error:
-            return error
+            return ActionResult(error, committed=False)
         message = str(message).strip()
         if not message:
-            return "Message must not be empty."
+            return ActionResult("Message must not be empty.", committed=False)
         room = self._locations[agent_name]
         note = f"{agent_name}: {message}"
         self._notes.setdefault(room, []).append(note)
         event = f"{agent_name} left a note in {room}: {message}"
         self._record(event)
-        return event
+        return ActionResult(
+            event,
+            data={"room": room, "text": message, "message": event},
+        )
 
-    @app_action(selectable_name="WORK_ON_TASK", description="Work on a room task")
-    def work_on_task(self, agent_name: str, task_id: str, effort: int = 1) -> str:
+    @app_action(
+        selectable_name="WORK_ON_TASK",
+        description="Work on a room task",
+        tags=("space.task",),
+        fields={"space.room": "room"},
+    )
+    def work_on_task(self, agent_name: str, task_id: str, effort: int = 1) -> ActionResult:
         """Contribute effort to an incomplete task in the current room."""
         error = self._ensure_agent(agent_name)
         if error:
-            return error
+            return ActionResult(error, committed=False)
         task_id = str(task_id).strip()
         task = self._tasks.get(task_id)
         if task is None:
-            return f"Unknown task: {task_id}."
+            return ActionResult(f"Unknown task: {task_id}.", committed=False)
         room = self._locations[agent_name]
         if task.room != room:
-            return f"Task {task_id} is in {task.room}, not {room}."
+            return ActionResult(f"Task {task_id} is in {task.room}, not {room}.", committed=False)
         if task.complete:
-            return f"Task {task_id} is already complete."
+            return ActionResult(f"Task {task_id} is already complete.", committed=False)
         effort = int(effort)
         if effort <= 0:
-            return "Effort must be positive."
+            return ActionResult("Effort must be positive.", committed=False)
         task.progress = min(task.required_effort, task.progress + effort)
         if task.progress >= task.required_effort:
             task.complete = True
@@ -257,27 +285,57 @@ class VirtualSpaceApp(BackendApp):
                 f"({task.progress}/{task.required_effort})."
             )
         self._record(event)
-        return event
+        return ActionResult(
+            event,
+            data={
+                "room": room,
+                "task_id": task.task_id,
+                "effort": effort,
+                "progress": task.progress,
+                "required_effort": task.required_effort,
+                "complete": task.complete,
+            },
+        )
 
-    @app_action(selectable_name="TALK", description="Talk to another agent in the same room")
-    def talk(self, agent_name: str, target_user: str, message: str) -> str:
+    @app_action(
+        selectable_name="TALK",
+        description="Talk to another agent in the same room",
+        tags=("interaction.directed", "space.communication"),
+        fields={
+            "content.text": "text",
+            "network.target_actor": "target_user",
+            "space.room": "room",
+        },
+    )
+    def talk(self, agent_name: str, target_user: str, message: str) -> ActionResult:
         """Send a message to another agent who is present in the same room."""
         error = self._ensure_agent(agent_name)
         if error:
-            return error
+            return ActionResult(error, committed=False)
         target_error = self._ensure_agent(target_user)
         if target_error:
-            return target_error
+            return ActionResult(target_error, committed=False)
         if agent_name == target_user:
-            return "Agents cannot talk to themselves."
+            return ActionResult("Agents cannot talk to themselves.", committed=False)
         current_room = self._locations[agent_name]
         target_room = self._locations[target_user]
         if current_room != target_room:
-            return f"{target_user} is not in the same room as {agent_name}."
+            return ActionResult(
+                f"{target_user} is not in the same room as {agent_name}.",
+                committed=False,
+            )
         message = str(message).strip()
         if not message:
-            return "Message must not be empty."
+            return ActionResult("Message must not be empty.", committed=False)
 
         event = f"{agent_name} told {target_user}: {message}"
         self._record(event)
-        return event
+        return ActionResult(
+            event,
+            data={
+                "room": current_room,
+                "target_user": target_user,
+                "text": message,
+                "message": event,
+            },
+        )

@@ -15,6 +15,11 @@ from silisocs.runtime.construction.specs import RuntimeSpec
 def _normalize_memories(memories: Any) -> list[str]:
     if memories is None:
         return []
+    # A config list is a ListConfig, not a list: without this it would fail the
+    # isinstance check below and be str()-ed whole, turning the memories into one
+    # entry holding the list's repr with interpolations left unresolved.
+    if OmegaConf.is_config(memories):
+        memories = OmegaConf.to_container(memories, resolve=True)
     if isinstance(memories, str):
         lines = [line.strip() for line in memories.splitlines() if line.strip()]
         if lines:

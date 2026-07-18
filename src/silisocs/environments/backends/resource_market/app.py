@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from silisocs.environments.backends.base import BackendApp, app_action
+from silisocs.environments.backends.base import ActionResult, BackendApp, app_action
 
 
 @dataclass
@@ -95,7 +95,15 @@ class ResourceMarketApp(BackendApp):
                     f"{quantity} {resource}" for resource, quantity in sorted(missing.items())
                 )
                 self._record(
-                    f"{agent_name} could not meet upkeep needs at step {step}: {missing_text}."
+                    f"{agent_name} could not meet upkeep needs at step {step}: {missing_text}.",
+                )
+                self._log_action_event(
+                    agent_name,
+                    "upkeep_shortfall",
+                    {
+                        "message": self._events[-1],
+                        "needs": dict(sorted(missing.items())),
+                    },
                 )
                 continue
 
@@ -109,7 +117,14 @@ class ResourceMarketApp(BackendApp):
             needs_text = ", ".join(
                 f"{quantity} {resource}" for resource, quantity in sorted(needs.items())
             )
-            self._record(f"{agent_name} met upkeep needs at step {step}: {needs_text}.")
+            self._record(
+                f"{agent_name} met upkeep needs at step {step}: {needs_text}.",
+            )
+            self._log_action_event(
+                agent_name,
+                "upkeep_met",
+                {"message": self._events[-1], "needs": dict(sorted(needs.items()))},
+            )
 
     def get_state(self) -> dict[str, Any]:
         """Return serializable backend state for checkpoints."""
@@ -124,6 +139,7 @@ class ResourceMarketApp(BackendApp):
             },
             "events": list(self._events),
             "next_listing_id": self._next_listing_id,
+            "committed_events": self._committed_events_state(),
         }
 
     def set_state(self, state: dict[str, Any]) -> None:
@@ -158,6 +174,7 @@ class ResourceMarketApp(BackendApp):
             self._listings[listing.listing_id] = listing
         self._events = [str(event) for event in state.get("events", [])]
         self._next_listing_id = int(state.get("next_listing_id", 1))
+        self._restore_committed_events(state.get("committed_events"))
 
     def observe(self, actor_name: str, **kwargs: Any) -> str:
         limit = int(kwargs.get("limit", self.recent_event_limit) or self.recent_event_limit)
@@ -206,8 +223,8 @@ class ResourceMarketApp(BackendApp):
         )
 
     def _record(self, event: str) -> None:
+        """Add an event to the market feed."""
         self._events.append(event)
-        self._emit_event_log(event, event_type="resource_market")
 
     def _ensure_agent(self, agent_name: str) -> str | None:
         if agent_name not in self._cash:
@@ -253,52 +270,84 @@ class ResourceMarketApp(BackendApp):
             return self.production_capabilities["default"]
         return None
 
-    @app_action(selectable_name="INSPECT_MARKET", description="Inspect current market state")
-    def inspect_market(self, agent_name: str) -> str:
+    @app_action(
+        selectable_name="INSPECT_MARKET",
+        description="Inspect current market state",
+        tags=("market.inspect",),
+    )
+    def inspect_market(self, agent_name: str) -> ActionResult:
         """Inspect current cash, inventory, listings, and recent events."""
         error = self._ensure_agent(agent_name)
         if error:
-            return error
-        return self.observe(agent_name)
+            return ActionResult(error, committed=False)
+        return ActionResult(self.observe(agent_name), data={})
 
-    @app_action(selectable_name="PRODUCE_RESOURCE", description="Produce a resource")
-    def produce_resource(self, agent_name: str, resource: str, quantity: int = 1) -> str:
+    @app_action(
+        selectable_name="PRODUCE_RESOURCE",
+        description="Produce a resource",
+        tags=("market.stock",),
+        fields={"market.resource": "resource", "market.quantity": "quantity"},
+    )
+    def produce_resource(self, agent_name: str, resource: str, quantity: int = 1) -> ActionResult:
         """Add newly produced resource units to the current user's inventory."""
         error = self._ensure_agent(agent_name)
         if error:
-            return error
+            return ActionResult(error, committed=False)
         quantity = int(quantity)
         if quantity <= 0:
-            return "Quantity must be positive."
+            return ActionResult("Quantity must be positive.", committed=False)
         capabilities = self._production_capabilities_for_agent(agent_name)
         if capabilities is not None:
             max_quantity = capabilities.get(resource)
             if max_quantity is None:
                 allowed = ", ".join(sorted(capabilities)) or "none"
-                return f"{agent_name} cannot produce {resource}. Allowed resources: {allowed}."
+                return ActionResult(
+                    f"{agent_name} cannot produce {resource}. Allowed resources: {allowed}.",
+                    committed=False,
+                )
             if quantity > max_quantity:
-                return f"{agent_name} can produce at most {max_quantity} {resource} per action."
+                return ActionResult(
+                    f"{agent_name} can produce at most {max_quantity} {resource} per action.",
+                    committed=False,
+                )
         inventory = self._inventory.setdefault(agent_name, {})
         inventory[resource] = int(inventory.get(resource, 0)) + quantity
         event = f"{agent_name} produced {quantity} {resource}."
         self._record(event)
-        return event
+        return ActionResult(
+            event,
+            data={"resource": resource, "quantity": quantity},
+        )
 
-    @app_action(selectable_name="LIST_RESOURCE", description="List a resource for sale")
-    def list_resource(self, agent_name: str, resource: str, quantity: int, price: int) -> str:
+    @app_action(
+        selectable_name="LIST_RESOURCE",
+        description="List a resource for sale",
+        tags=("market.listing",),
+        fields={
+            "market.resource": "resource",
+            "market.quantity": "quantity",
+            "market.price": "price",
+        },
+    )
+    def list_resource(
+        self, agent_name: str, resource: str, quantity: int, price: int
+    ) -> ActionResult:
         """Move a resource quantity into an open listing for sale."""
         error = self._ensure_agent(agent_name)
         if error:
-            return error
+            return ActionResult(error, committed=False)
         quantity = int(quantity)
         price = int(price)
         if quantity <= 0:
-            return "Quantity must be positive."
+            return ActionResult("Quantity must be positive.", committed=False)
         if price <= 0:
-            return "Price must be positive."
+            return ActionResult("Price must be positive.", committed=False)
         available = self._inventory_count(agent_name, resource)
         if available < quantity:
-            return f"{agent_name} does not have {quantity} {resource} to list."
+            return ActionResult(
+                f"{agent_name} does not have {quantity} {resource} to list.",
+                committed=False,
+            )
 
         self._inventory[agent_name][resource] = available - quantity
         listing = Listing(
@@ -315,40 +364,75 @@ class ResourceMarketApp(BackendApp):
             f"{quantity} {resource} for {price}."
         )
         self._record(event)
-        return event
+        return ActionResult(
+            event,
+            data={
+                "listing_id": listing.listing_id,
+                "resource": resource,
+                "quantity": quantity,
+                "price": price,
+            },
+        )
 
-    @app_action(selectable_name="CANCEL_LISTING", description="Cancel one of the user's listings")
-    def cancel_listing(self, agent_name: str, listing_id: int) -> str:
+    @app_action(
+        selectable_name="CANCEL_LISTING",
+        description="Cancel one of the user's listings",
+        tags=("market.listing",),
+        fields={"market.resource": "resource", "market.quantity": "quantity"},
+    )
+    def cancel_listing(self, agent_name: str, listing_id: int) -> ActionResult:
         """Cancel an open listing and return the resource to the seller."""
         error = self._ensure_agent(agent_name)
         if error:
-            return error
+            return ActionResult(error, committed=False)
         listing = self._listings.get(int(listing_id))
         if listing is None or not listing.open:
-            return f"Listing {listing_id} is not open."
+            return ActionResult(f"Listing {listing_id} is not open.", committed=False)
         if listing.seller != agent_name:
-            return f"{agent_name} cannot cancel listing {listing_id}."
+            return ActionResult(
+                f"{agent_name} cannot cancel listing {listing_id}.", committed=False
+            )
         inventory = self._inventory.setdefault(agent_name, {})
         inventory[listing.resource] = int(inventory.get(listing.resource, 0)) + listing.quantity
         listing.open = False
         event = f"{agent_name} cancelled listing {listing.listing_id}."
         self._record(event)
-        return event
+        return ActionResult(
+            event,
+            data={
+                "listing_id": listing.listing_id,
+                "resource": listing.resource,
+                "quantity": listing.quantity,
+            },
+        )
 
-    @app_action(selectable_name="BUY_LISTING", description="Buy an open market listing")
-    def buy_listing(self, agent_name: str, listing_id: int) -> str:
+    @app_action(
+        selectable_name="BUY_LISTING",
+        description="Buy an open market listing",
+        tags=("market.trade",),
+        fields={
+            "market.resource": "resource",
+            "market.quantity": "quantity",
+            "market.price": "price",
+            "market.counterparty": "target_user",
+        },
+    )
+    def buy_listing(self, agent_name: str, listing_id: int) -> ActionResult:
         """Buy an open listing by ID."""
         error = self._ensure_agent(agent_name)
         if error:
-            return error
+            return ActionResult(error, committed=False)
         listing_id = int(listing_id)
         listing = self._listings.get(listing_id)
         if listing is None or not listing.open:
-            return f"Listing {listing_id} is not open."
+            return ActionResult(f"Listing {listing_id} is not open.", committed=False)
         if listing.seller == agent_name:
-            return "Agents cannot buy their own listing."
+            return ActionResult("Agents cannot buy their own listing.", committed=False)
         if self._cash[agent_name] < listing.price:
-            return f"{agent_name} does not have enough cash to buy listing {listing_id}."
+            return ActionResult(
+                f"{agent_name} does not have enough cash to buy listing {listing_id}.",
+                committed=False,
+            )
 
         self._cash[agent_name] -= listing.price
         self._cash[listing.seller] += listing.price
@@ -362,51 +446,86 @@ class ResourceMarketApp(BackendApp):
             f"from {listing.seller} for {listing.price}."
         )
         self._record(event)
-        return event
+        return ActionResult(
+            event,
+            data={
+                "listing_id": listing_id,
+                "resource": listing.resource,
+                "quantity": listing.quantity,
+                "price": listing.price,
+                "target_user": listing.seller,
+            },
+        )
 
-    @app_action(selectable_name="TRANSFER_RESOURCE", description="Give inventory to another agent")
+    @app_action(
+        selectable_name="TRANSFER_RESOURCE",
+        description="Give inventory to another agent",
+        tags=("market.trade",),
+        fields={
+            "market.resource": "resource",
+            "market.quantity": "quantity",
+            "market.counterparty": "target_user",
+        },
+    )
     def transfer_resource(
         self,
         agent_name: str,
         target_user: str,
         resource: str,
         quantity: int,
-    ) -> str:
+    ) -> ActionResult:
         """Transfer a resource quantity directly to another market participant."""
         error = self._ensure_agent(agent_name)
         if error:
-            return error
+            return ActionResult(error, committed=False)
         target_error = self._ensure_agent(target_user)
         if target_error:
-            return target_error
+            return ActionResult(target_error, committed=False)
         if agent_name == target_user:
-            return "Agents cannot transfer resources to themselves."
+            return ActionResult("Agents cannot transfer resources to themselves.", committed=False)
         quantity = int(quantity)
         if quantity <= 0:
-            return "Quantity must be positive."
+            return ActionResult("Quantity must be positive.", committed=False)
         available = self._inventory_count(agent_name, resource)
         if available < quantity:
-            return f"{agent_name} does not have {quantity} {resource} to transfer."
+            return ActionResult(
+                f"{agent_name} does not have {quantity} {resource} to transfer.",
+                committed=False,
+            )
         self._inventory[agent_name][resource] = available - quantity
         target_inventory = self._inventory.setdefault(target_user, {})
         target_inventory[resource] = int(target_inventory.get(resource, 0)) + quantity
         event = f"{agent_name} transferred {quantity} {resource} to {target_user}."
         self._record(event)
-        return event
+        return ActionResult(
+            event,
+            data={"resource": resource, "quantity": quantity, "target_user": target_user},
+        )
 
-    @app_action(selectable_name="CONSUME_RESOURCE", description="Consume inventory")
-    def consume_resource(self, agent_name: str, resource: str, quantity: int = 1) -> str:
+    @app_action(
+        selectable_name="CONSUME_RESOURCE",
+        description="Consume inventory",
+        tags=("market.stock",),
+        fields={"market.resource": "resource", "market.quantity": "quantity"},
+    )
+    def consume_resource(self, agent_name: str, resource: str, quantity: int = 1) -> ActionResult:
         """Consume a resource from the current user's inventory."""
         error = self._ensure_agent(agent_name)
         if error:
-            return error
+            return ActionResult(error, committed=False)
         quantity = int(quantity)
         if quantity <= 0:
-            return "Quantity must be positive."
+            return ActionResult("Quantity must be positive.", committed=False)
         available = self._inventory_count(agent_name, resource)
         if available < quantity:
-            return f"{agent_name} does not have {quantity} {resource} to consume."
+            return ActionResult(
+                f"{agent_name} does not have {quantity} {resource} to consume.",
+                committed=False,
+            )
         self._inventory[agent_name][resource] = available - quantity
         event = f"{agent_name} consumed {quantity} {resource}."
         self._record(event)
-        return event
+        return ActionResult(
+            event,
+            data={"resource": resource, "quantity": quantity},
+        )

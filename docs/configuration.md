@@ -141,9 +141,68 @@ custom provider (see [Building Agents](building_agents.md)).
 | `sim.engine.step.params.gm_concurrency_caps` | `{}` | Per-GM concurrency caps (`{gm_name: int}`); caps how many of that GM's agent turns run at once via a per-GM semaphore. Effective per-GM limit = `min(cap, sim.max_concurrent_actions)`; empty map = the global cap governs every GM. Applies under any step mode |
 | `sim.engine.turn_policy.built_in` | `single_action` | Global turn policy — how many actions an agent takes per step: `single_action`, `fixed_count`, or `open_ended` |
 | `sim.engine.executor` | `threads` | Turn executor: `threads` (one pool worker per in-flight turn) or `asyncio` (turns run as coroutines on one background event loop — thousands of LLM calls in flight on a handful of threads). Agents/models that provide `act_async` / `sample_*_async` (the shipped `NativeAgent`, `FixedAgent`, and OpenAI-compatible providers do) run loop-native; sync-only custom agents, models, and turn policies automatically run on helper threads, and both kinds mix freely in one step. `sim.max_concurrent_actions` keeps its meaning — max in-flight turns — under either executor; scheduling semantics (flow chains, barriers, per-GM caps and locks) are identical |
-| `sim.engine.participation.built_in` | `activity_probability` (base.yaml) | Sim-level roster filter applied before scheduling, every GM `next_acting`, **and per-step GM `update`s** (so per-step backend work like the recsys refresh is O(active), not O(population); update components that need the full population declare `requires_full_roster = True`): `all` (pass-through), `activity_probability`, `activity_markov`, or a `class_path`. Effective acting = participation ∩ `next_acting`. Set `all` for deterministic/turn-based runs. A missing slot defaults to `all` in code; `sim/base.yaml` ships `activity_probability` |
+| `sim.engine.participation.built_in` | `all` (base.yaml) | Sim-level roster filter applied before scheduling, every GM `next_acting`, **and per-step GM `update`s** (so per-step backend work like the recsys refresh is O(active), not O(population); update components that need the full population declare `requires_full_roster = True`): `all` (pass-through), `activity_probability`, `activity_markov`, or a `class_path`. Effective acting = participation ∩ `next_acting`. **Default is `all`** (everyone acts every step — deterministic, matches the pre-participation behavior, and keeps bare `env=` preset runs whose roles aren't `user` from silently dropping to random participation). Activity gating is **opt-in**: a social scenario sets `built_in: activity_probability` (plus per-role `activity_transition_rates`) in its own sim config. Both `sim/base.yaml` and the in-code `build_engine` fallback default to `all` |
 | `sim.engine.class_path` | `null` | Whole-engine swap seam: a fully-qualified path to a custom `RuntimeEngine` subclass. When set, the engine is that class, built with the standard kwargs (`config`, `loop_strategy`, `step_strategy`, `turn_policy`, `gm_turn_policies`, `gm_concurrency_caps`, `participation`, `seed`, `executor`); unset uses the built-in `RuntimeEngine`. Prefer the policy seams (loop/step/turn_policy/participation `class_path`) unless you must replace the engine lifecycle itself |
+| `sim.engine.control.built_in` | `none` | Interactive run control — pause / step one episode / resume a running simulation. `none` (default) attaches no gate and the loop runs every episode uninterrupted (zero cost). `stdin` reads `n`/next `[k]`, `c`/continue, `p`/pause, `s`/stop from the terminal between episodes. `control_file` obeys a JSON file another process (Studio) writes: `{"target": <int\|null>, "stopped": <bool>}` — `target` is the first episode index to hold before (`null` = run freely). Control acts at episode boundaries; a paused loop still checkpoints per step, so it stays resume-stable if the process exits. See §"Interactive Stepping" below |
+| `sim.engine.control.start_paused` | `false` | Hold before episode 0 until the controller advances the run. Studio's interactive launch defaults this to `true` |
+| `sim.engine.control.control_file` | `null` | Path the `control_file` controller polls (default `<output>/run.control`). Studio passes an explicit path both it and the runner agree on |
+| `sim.engine.control.poll_interval` | `0.3` | `control_file` poll cadence in seconds |
 | `sim.roleplaying_instructions` | *(template)* | System prompt injected into every agent. Use `{name}` placeholder. |
+
+> **Migration — `multi_gm` is now concurrent by default.** `sim.engine.step.built_in:
+> multi_gm` runs flows as independent pipelines that advance concurrently (serializing
+> only on shared-GM overlap). A `main`-era config that expected the old serial
+> row-major traversal (each flow runs its full GM chain to completion before the next
+> starts) must set `sim.engine.step.built_in: multi_gm_serial`. The removed
+> `sim.engine.step.params.chain_execution` knob now raises a `ValueError` with this hint.
+
+### Interactive Stepping
+
+`sim.engine.control` lets you drive a running simulation one episode at a time —
+pause it, advance a single episode, resume free-running, or stop it — from the
+command line or from Studio. It adds one thread-safe gate the episode loop
+consults at each boundary; the default (`none`) attaches no gate, so ordinary
+runs are unaffected.
+
+**Command line** (`stdin` controller):
+
+```bash
+silisocs scenario=my_world num_steps=50 \
+  sim.engine.control.built_in=stdin \
+  sim.engine.control.start_paused=true
+```
+
+Between episodes, type: `n` / `next [k]` (advance one or `k` episodes), `c` /
+`continue` (run freely to `num_steps`), `p` / `pause` (hold at the next
+boundary), `s` / `stop` (end the run cleanly). Closing stdin (e.g. piping) runs
+freely, so a non-interactive invocation never hangs.
+
+**Studio.** An interactive launch shows Step / Play / Pause / End-run controls on
+the live view; they write the run's `control_file` and the runner obeys it at
+each boundary. See [studio.md](studio.md).
+
+Control acts at **episode boundaries** (an in-flight episode always finishes),
+and every paused loop still checkpoints per step, so a paused or stopped run is
+resume-stable if the process exits — resume it later with the normal checkpoint
+flow (`sim.checkpoint.auto_resume`).
+
+**Custom loop strategies.** The episode loop (`FixedStepsLoopStrategy`) is
+replaceable via `sim.engine.loop.class_path`, so interactive control is exposed
+as a helper rather than welded into the built-in loop — the same arrangement as
+probe timing (`loops.run_probe_phase`). A custom `LoopStrategy` inherits
+play/pause/step/stop by calling it at its own episode boundary:
+
+```python
+from silisocs.simulation_engines.policies.loops import await_step_permission
+
+while step < max_steps:
+    if not await_step_permission(engine, step):
+        break  # a stop was requested
+    ...
+```
+
+It returns `True` immediately when no gate is attached, so a strategy that calls
+it costs nothing on a non-interactive run.
 
 ### Per-GM action_mode and tool_calling overrides
 
@@ -223,6 +282,18 @@ partial-override flat files that don't replace their group wholesale:
 
 CLI overrides are re-applied after the merge so they always win over
 scenario defaults.
+
+**A scenario's config-group files REPLACE their group; its flat files are
+MERGED.** A scenario `world/default.yaml` shadows the base `world` group entirely
+rather than layering onto it, so it must re-declare every universal run param the
+base provided — `jobname_format`, `scenario_name`, `run_name`, `output_rootname`,
+`num_agents`, `num_steps`, `seed` — under a `# @package _global_` directive. The
+same applies to `agents/default.yaml` (`# @package agents`) and to any `env/`,
+`sim/`, or `eval/` group file. Flat `env.yaml`/`sim.yaml`/`eval.yaml` merge into
+their groups and need no re-declaration.
+
+Missing a param that `hydra.run.dir` interpolates (typically `jobname_format`)
+fails before the run starts; the error names the key and this rule.
 
 ### Running a Scenario
 
@@ -650,6 +721,18 @@ aliases such as `FINISHED`. Unknown names fail during backend construction. If
 an action is matched by both `enabled_actions` and `excluded_actions`, the run
 fails loudly instead of guessing which list wins.
 
+`enabled_actions` distinguishes "no filter" from "an empty allow-list":
+
+| Value | Meaning |
+|---|---|
+| `null` (or absent) | no filter — every `@app_action` is exposed |
+| `[]` | an allow-list matching nothing — **no** actions are exposed |
+| `[a, b]` | only `a` and `b` are exposed |
+
+A filter that leaves no callable action fails during backend construction rather
+than at the agent's first turn. `FINISHED` does not count: it only ends a turn,
+so a catalog holding only it still leaves agents with nothing to do.
+
 ### Action Aliases (agent-facing renaming)
 
 Give backend actions simpler/different agent-facing names without editing backend
@@ -836,7 +919,18 @@ env:
 Component `params` are strict constructor arguments. Unknown keys fail before
 the simulation starts unless the target component accepts `**kwargs`. Observe
 components that explicitly accept `observation_params` can use `params` as
-forwarded observation settings.
+forwarded observation settings. Set `params: null` (not `{}`) to clear a params
+block a merged config group supplied — merging cannot remove sibling keys, so an
+empty mapping leaves the group's params in place.
+
+`initialize: social_media`, `observe: timeline_every_turn`, and
+`update: social_recommendation` call `SocialBackendApp`-only methods; naming one
+on a generic backend raises a `TypeError` at game-master build. Their generic
+counterparts are `app_initialize`, `app_observation`, and `app_update`/`none`.
+An omitted `observe` slot follows the backend automatically
+(`timeline_every_turn` for a social backend, `app_observation` otherwise), so a
+generic scenario need not spell it out. A custom component with the same
+requirement declares `requires_social_backend = True`.
 
 ### Social Setup and Participation
 
@@ -882,13 +976,21 @@ the agent→role mapping. Set `built_in: all` (pass-through) for deterministic o
 turn-based runs (e.g. `fixed_order` environments), where every agent should stay
 in the roster.
 
-Two defaults to keep straight: `sim/base.yaml` ships `built_in:
-activity_probability`, so any scenario inheriting base without overriding the
-slot gets probability filtering (a new turn-based scenario must set `built_in:
-all` explicitly). When the `participation` slot is *absent entirely* — e.g. a
-programmatic `build_engine` call — the code fallback is `all` (pass-through),
-not `activity_probability`; the active default is opted into by base.yaml, not
-by the engine.
+The default is `all` (pass-through: every agent stays in the roster every step),
+in **both** `sim/base.yaml` and the in-code `build_engine` fallback used when the
+`participation` slot is absent entirely (e.g. a programmatic call). This is
+deterministic, matches the pre-participation behavior, and keeps a bare `env=`
+preset run (e.g. `env=resource_market`, whose roles are `farmer`/`miner`/… rather
+than `user`) from silently dropping ~70% of agents to a role-mismatched 0.3
+activation probability. Activity gating is therefore **opt-in**: a scenario that
+wants probability filtering sets `built_in: activity_probability` (with per-role
+`activity_transition_rates` matching its own roles) in its `sim.yaml`, exactly as
+the bundled social scenarios do.
+
+`activity_transition_rates` are keyed by agent name or sim role, and an agent
+matching neither falls back to a 0.3 activation probability — so rates written
+for roles a scenario does not have silently leave ~70% of agents idle each step.
+The run logs a one-time warning naming the roles it did see when that happens.
 
 ### Timeline Observation
 
@@ -1160,6 +1262,8 @@ selected agent in its own batch so turns are strictly ordered.
 
 ---
 
+<a id="checkpointing"></a>
+
 ## Checkpoint Restore
 
 ```bash
@@ -1188,7 +1292,10 @@ A backend supports either (or both) of two restore paths (see
 
 - `provides_checkpoint_state` (class flag): the backend round-trips authoritative
   state via `get_state`/`set_state`, so restore is a direct snapshot apply through
-  the default checkpoint loader. **True for every shipped backend.**
+  the default checkpoint loader. **True for every shipped backend.** Setting it
+  while inheriting either of `BackendApp`'s no-op state methods is rejected when
+  the backend is built — the flag would otherwise assert an authority the methods
+  do not deliver, and restore would quietly apply nothing.
 - Action-event replay — a restore *mechanism* owned by the `sim.checkpoint.restore`
   strategy, **not** a backend method. The built-in `social_action_event_replay`
   strategy keeps its per-backend event→action mappings in a registry keyed by

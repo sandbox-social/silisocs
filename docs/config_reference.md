@@ -114,12 +114,13 @@ files override these defaults via Hydra composition (see `AGENTS.md`).
 | `sim.engine.turn_policy.built_in` | `"single_action"` | str |
 | `sim.engine.turn_policy.class_path` | `null` | null |
 | `sim.engine.turn_policy.params` | `{}` | dict |
-| `sim.engine.participation.built_in` | `"activity_probability"` | str |
+| `sim.engine.control.built_in` | `"none"` | str |
+| `sim.engine.control.start_paused` | `false` | bool |
+| `sim.engine.control.control_file` | `null` | null |
+| `sim.engine.control.poll_interval` | `0.3` | float |
+| `sim.engine.participation.built_in` | `"all"` | str |
 | `sim.engine.participation.class_path` | `null` | null |
-| `sim.engine.participation.params.active_probability` | `null` | null |
-| `sim.engine.participation.params.min_active_agents` | `1` | int |
-| `sim.engine.participation.params.activity_transition_rates.user.inactive_to_active` | `0.3` | float |
-| `sim.engine.participation.params.activity_transition_rates.user.active_to_inactive` | `0.3` | float |
+| `sim.engine.participation.params` | `{}` | dict |
 | `sim.roleplaying_instructions` | `"<general_instructions> You are simulating {name}, a character in a social sc...` | str |
 
 ## env (twitter_like) (`env/twitter_like.yaml`)

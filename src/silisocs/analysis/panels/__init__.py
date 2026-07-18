@@ -5,6 +5,24 @@ Importing this package registers every built-in panel (the registry's
 panels; new built-ins get their own module here.
 """
 
-from silisocs.analysis.panels import behavior, content, core, events, metrics, network, study
+from silisocs.analysis.panels import (
+    behavior,
+    content,
+    core,
+    events,
+    market,
+    metrics,
+    network,
+    study,
+)
 
-__all__ = ["behavior", "content", "core", "events", "metrics", "network", "study"]
+__all__ = [
+    "behavior",
+    "content",
+    "core",
+    "events",
+    "market",
+    "metrics",
+    "network",
+    "study",
+]

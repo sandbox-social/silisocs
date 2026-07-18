@@ -68,9 +68,7 @@ class BaseStepStrategy(StepStrategy):
         gm = game_masters[0]
         turns = engine.selected_turns(game_master=gm, candidate_agents=cast(list[Agent], agents))
         return engine.execute_batches(
-            step_index=0,
             batches=[StepBatch(flow_name="default", game_master=gm, turns=turns)],
-            verbose=False,
         )
 
 
@@ -98,7 +96,7 @@ class SequentialStepStrategy(StepStrategy):
             for turn in turns
             for agent, _spec in [turn]
         ]
-        return engine.execute_batches(step_index=0, batches=batches, verbose=False)
+        return engine.execute_batches(batches=batches)
 
 
 @dataclass
@@ -140,7 +138,7 @@ class FlowStepStrategy(StepStrategy):
             )
             for flow_name in _order_flows(self.flow_order, groups)
         ]
-        return engine.execute_batches(step_index=0, batches=batches, verbose=False)
+        return engine.execute_batches(batches=batches)
 
 
 @dataclass(frozen=True)
@@ -357,7 +355,7 @@ class MultiGMSerialStepStrategy(MultiGMStepStrategy):
         hops: list[Hop] = []
         for flow_name in plan.ordered_flow_names:
             hops.extend(hop for hop in plan.hops_by_flow[flow_name] if hop is not None)
-        return engine.execute_batches(step_index=0, batches=hops, verbose=False)
+        return engine.execute_batches(batches=hops)
 
 
 @dataclass

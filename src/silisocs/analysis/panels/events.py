@@ -7,6 +7,7 @@ from collections import Counter, defaultdict
 from collections.abc import Mapping
 from typing import Any
 
+from silisocs.analysis.inputs import event_frame, probe_frame
 from silisocs.analysis.panel import Control, Figure, Panel, register_panel
 from silisocs.analysis.panels._shared import episode_of
 from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
@@ -33,18 +34,6 @@ def _exposure_size(row: Mapping[str, Any]) -> int:
     return sum(len(value) for value in collections) if collections else 1
 
 
-def _probe_value(row: Mapping[str, Any]) -> Any:
-    data = row.get("data")
-    if isinstance(data, Mapping):
-        for key in ("probe_return", "response", "value"):
-            if key in data and data[key] is not None:
-                return data[key]
-    for key in ("response", "value"):
-        if key in row and row[key] is not None:
-            return row[key]
-    return None
-
-
 @register_panel
 class ExposureFunnelPanel(Panel):
     name = "exposure_funnel"
@@ -56,10 +45,10 @@ class ExposureFunnelPanel(Panel):
         assert isinstance(artifact, RunArtifact)
         exposures: Counter[int] = Counter()
         actions: Counter[int] = Counter()
-        for row in artifact.iter_exposures():
+        for row in artifact.exposures:
             exposures[episode_of(row)] += _exposure_size(row)
-        for row in artifact.iter_actions():
-            actions[episode_of(row)] += 1
+        for event in event_frame(artifact):
+            actions[event.episode] += 1
         episodes = sorted(set(exposures) | set(actions))
         return Figure(
             {
@@ -100,14 +89,8 @@ class ProbeDistributionPanel(Panel):
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Figure:
         assert isinstance(artifact, RunArtifact)
         grouped: dict[str, list[tuple[int, str, Any]]] = defaultdict(list)
-        for row in artifact.iter_probes():
-            grouped[str(row.get("label") or "probe")].append(
-                (
-                    episode_of(row),
-                    str(row.get("source_user") or row.get("agent") or ""),
-                    _probe_value(row),
-                )
-            )
+        for event in probe_frame(artifact):
+            grouped[event.probe].append((event.episode, event.agent, event.value))
         selected = str(params.get("probe") or next(iter(sorted(grouped)), ""))
         requested_step = params.get("step")
         records = [

@@ -155,6 +155,9 @@ silisocs = [
   "studio/static/*.js",
   "design/components/*.html",
   "design/components/*.css",
+  "design/components/*.js",
+  "design/fonts/*.woff2",
+  "design/fonts/*.txt",
   "environments/backends/**/templates/*.html",
 ]
 

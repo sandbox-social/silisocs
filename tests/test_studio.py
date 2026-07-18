@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from silisocs.design.tokens import ACCENT
 from silisocs.studio.app import create_app
+from silisocs.studio.forms import ScenarioRepository
 from silisocs.studio.jobs import Job
 
 
@@ -38,7 +39,12 @@ def _make_run(root, name="demo/run-1"):
 def test_studio_run_browser_and_api(tmp_path):
     _make_run(tmp_path)
     client = TestClient(create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path))
-    assert "Simulation workbench" in client.get("/").text
+    home = client.get("/").text
+    assert "Simulation workbench" in home
+    assert "data-observatory" in home
+    assert "mobile-dock" in home
+    assert 'src="/assets/studio.js"' in home
+    assert 'href="/runs/demo/run-1"' in home
     assert client.get("/api/runs").json()["items"][0]["id"] == "demo/run-1"
     assert any(
         panel["name"] == "action_trends" for panel in client.get("/api/panels").json()["items"]
@@ -48,6 +54,35 @@ def test_studio_run_browser_and_api(tmp_path):
     assert "Run health" in page
     assert ">Overview</a>" in page
     assert "Run: Analyze" in page
+
+
+def test_scenario_create_save_and_interactive_launch_surface(tmp_path):
+    workspace = tmp_path / "workspace"
+    client = TestClient(
+        create_app(
+            tmp_path / "outputs",
+            state_dir=tmp_path / "state",
+            repo_root=workspace,
+        ),
+        raise_server_exceptions=False,
+    )
+
+    draft = client.get("/scenarios/new?name=audit_case")
+    assert draft.status_code == 200
+    assert 'id="launch-mode"' in draft.text
+    assert '<option value="interactive">Interactive</option>' in draft.text
+    assert "interactive,start_paused:interactive" in draft.text
+
+    saved = client.post(
+        "/api/scenarios",
+        json={
+            "name": "audit_case",
+            "source": "workspace",
+            "files": ScenarioRepository.default_files("audit_case"),
+        },
+    )
+    assert saved.status_code == 200
+    assert client.get("/scenarios/audit_case").status_code == 200
 
 
 def test_completed_watch_ribbon_uses_persisted_artifact_counters(tmp_path):
@@ -126,6 +161,76 @@ def test_studio_unknown_view_and_run_are_404(tmp_path):
     assert client.get("/runs/demo/missing").status_code == 404
 
 
+def test_study_page_rejects_path_like_view(tmp_path):
+    """An unmapped tab must route ?view= through the allowlist, never read a path.
+
+    Without the guard, a path-like ``?view=`` reaches ``build_view`` ->
+    ``Path(view).read_text`` + panel ``class_path`` import: arbitrary file read
+    and import-time code execution.
+    """
+    import yaml
+
+    from silisocs.studio.studies import StudyRepository
+
+    workspace = tmp_path / "workspace"
+    StudyRepository(workspace / "experiments" / "studies").save(
+        "expt",
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "study": {
+                    "name": "Expt",
+                    "id": "expt",
+                    "scenarios": ["demo"],
+                    "run_defaults": {"seed_start": 1, "seed_repeats": 1},
+                },
+                "hypotheses": {
+                    "h1": {"statement": "x", "conditions": {"control": {"overrides": {}}}}
+                },
+            }
+        ),
+    )
+    client = TestClient(
+        create_app(tmp_path, state_dir=tmp_path / "state", repo_root=workspace),
+        raise_server_exceptions=False,
+    )
+
+    # A legit built-in study view (via its tab) still renders.
+    assert client.get("/studies/expt?tab=board").status_code == 200
+    # An unmapped tab falls through to the raw ?view=; a path is rejected, not read.
+    assert client.get("/studies/expt?tab=analyze&view=/etc/hostname").status_code == 404
+    assert client.get("/studies/expt?tab=analyze&view=../../../etc/passwd").status_code == 404
+    assert client.get("/studies/expt?tab=analyze&view=nope").status_code == 404
+
+
+def test_malformed_scenario_view_does_not_500_the_run_page(tmp_path):
+    """A broken scenario views/*.yaml is skipped, not fatal to the whole run page."""
+    outputs = tmp_path / "artifacts"
+    _make_run(outputs)
+    view_dir = tmp_path / "workspace" / "scenarios" / "demo" / "conf" / "views"
+    view_dir.mkdir(parents=True)
+    (view_dir / "broken.yaml").write_text("view: [unterminated\n", encoding="utf-8")
+    (view_dir / "lab.yaml").write_text(
+        "view:\n"
+        "  name: lab\n"
+        "  title: Lab View\n"
+        "  scope: run\n"
+        "  layout: rows\n"
+        "  panels:\n"
+        "    - built_in: health_summary\n",
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(outputs, state_dir=tmp_path / "state", repo_root=tmp_path / "workspace"),
+        raise_server_exceptions=False,
+    )
+
+    # The malformed view raises YAMLError inside run_view_names; it must be
+    # dropped, leaving the page (and the valid sibling view) working.
+    assert client.get("/runs/demo/run-1").status_code == 200
+    assert client.get("/api/runs/demo/run-1/views/lab").status_code == 200
+
+
 def test_studio_hides_per_gm_event_shards(tmp_path):
     """A multi-GM run's per-GM log subdirectory is not listed as its own run."""
     run = _make_run(tmp_path)
@@ -140,6 +245,9 @@ def test_studio_tokens_css_comes_from_design_package(tmp_path):
     client = TestClient(create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path))
     body = client.get("/assets/tokens.css").text
     assert f"--accent:{ACCENT}" in body
+    assert body.startswith("@font-face{")
+    assert "NaNs" not in body
+    assert client.get("/assets/manrope.woff2").headers["content-type"].startswith("font/woff2")
 
 
 def test_scenario_shipped_view_uses_configured_repository_root(tmp_path):
@@ -186,3 +294,20 @@ def test_lab_token_protects_control_plane(tmp_path, monkeypatch):
         ).status_code
         == 200
     )
+
+
+def test_cross_site_origin_is_rejected(tmp_path):
+    client = TestClient(create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path))
+    payload = {"files": {"world/default.yaml": "num_agents: 1\nnum_steps: 1\n"}}
+
+    # A forged cross-site browser POST carries a foreign Origin -> 403.
+    hostile = client.post("/api/preflight", json=payload, headers={"origin": "http://evil.example"})
+    assert hostile.status_code == 403
+
+    # A same-origin Studio fetch (Origin matches Host) is allowed.
+    same = client.post(
+        "/api/preflight",
+        json=payload,
+        headers={"origin": "http://testserver", "host": "testserver"},
+    )
+    assert same.status_code == 200

@@ -37,15 +37,14 @@ asks each agent to pick a GM via a CHOICE action spec).
 
 from __future__ import annotations
 
-import hashlib
 import logging
-import random
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from silisocs.agents.base_agent import Agent
 from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType
+from silisocs.simulation_engines.policies._rng import stable_rng
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -113,9 +112,8 @@ def _deterministic_choice(
     *, seed: int, flow: str, step: int, agent: str, choices: Sequence[str]
 ) -> str:
     """A replay-stable pick from ``choices`` (local RNG, never the global one)."""
-    key = f"{seed}|{flow}|{step}|{agent}|routing-fallback"
-    seed_int = int.from_bytes(hashlib.sha256(key.encode("utf-8")).digest()[:8], "big")
-    return random.Random(seed_int).choice(list(choices))
+    # Distinct routing-fallback key salt; shares only the digest→Random mechanic.
+    return stable_rng(f"{seed}|{flow}|{step}|{agent}|routing-fallback").choice(list(choices))
 
 
 @dataclass
@@ -140,9 +138,9 @@ class RandomChoiceRouter:
             weights = [1.0] * len(choices)
         route: dict[str, str] = {}
         for agent in agents:
-            key = f"{ctx.seed}|{ctx.flow}|{ctx.step}|{agent.name}"
-            seed_int = int.from_bytes(hashlib.sha256(key.encode("utf-8")).digest()[:8], "big")
-            route[agent.name] = random.Random(seed_int).choices(choices, weights=weights, k=1)[0]
+            # RandomChoiceRouter's own (seed, flow, step, agent) key — no shared salt.
+            rng = stable_rng(f"{ctx.seed}|{ctx.flow}|{ctx.step}|{agent.name}")
+            route[agent.name] = rng.choices(choices, weights=weights, k=1)[0]
         return route
 
 

@@ -130,8 +130,8 @@ def test_virtual_space_factory_and_finished_action() -> None:
 def test_virtual_space_checkpoint_state_restores_world() -> None:
     app = VirtualSpaceApp(rooms=["atrium", "garden"], starting_room="atrium")
     app.initialize(agent_names=["Alice", "Bob"])
-    app.move(agent_name="Alice", destination="garden")
-    app.leave_note(agent_name="Alice", message="Meet here.")
+    app.invoke_action_with_kwargs("MOVE", {"agent_name": "Alice", "destination": "garden"})
+    app.invoke_action_with_kwargs("LEAVE_NOTE", {"agent_name": "Alice", "message": "Meet here."})
 
     restored = VirtualSpaceApp(rooms=["atrium", "garden"], starting_room="atrium")
     restored.set_state(app.get_state())
@@ -141,3 +141,19 @@ def test_virtual_space_checkpoint_state_restores_world() -> None:
     assert "Location: garden" in alice_observation
     assert "Alice: Meet here." in alice_observation
     assert "Present here: none" in bob_observation
+
+
+def test_virtual_space_checkpoint_round_trips_committed_events_mirror() -> None:
+    # C13: a snapshot backend must round-trip the committed-events mirror, or after
+    # resume count_committed_events returns 0 while action_events.jsonl kept its rows.
+    app = VirtualSpaceApp(rooms=["atrium", "garden"], starting_room="atrium")
+    app.initialize(agent_names=["Alice", "Bob"])
+    app.invoke_action_with_kwargs("MOVE", {"agent_name": "Alice", "destination": "garden"})
+    app.invoke_action_with_kwargs("LEAVE_NOTE", {"agent_name": "Alice", "message": "Meet here."})
+    expected = app.count_committed_events()
+    assert expected > 0
+
+    restored = VirtualSpaceApp(rooms=["atrium", "garden"], starting_room="atrium")
+    restored.set_state(app.get_state())
+    assert restored.count_committed_events() == expected
+    assert list(restored.iter_committed_events()) == list(app.iter_committed_events())

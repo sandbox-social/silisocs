@@ -6,9 +6,9 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from typing import Any
 
+from silisocs.analysis.charts import line_figure, table
+from silisocs.analysis.inputs import event_frame, probe_frame
 from silisocs.analysis.panel import Figure, Grid, Markdown, Panel, Table, register_panel
-from silisocs.analysis.panels._shared import episode_of
-from silisocs.design.tokens import action_color
 from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
 
 
@@ -20,7 +20,7 @@ class HealthSummaryPanel(Panel):
 
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Grid:
         assert isinstance(artifact, RunArtifact)
-        actions = sum(1 for _ in artifact.iter_actions())
+        actions = len(event_frame(artifact))
         failures = sum(artifact.health.values())
         usage = artifact.llm_usage or {}
         totals = usage.get("totals", {}) if isinstance(usage, dict) else {}
@@ -45,36 +45,28 @@ class ActionTrendsPanel(Panel):
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Figure:
         assert isinstance(artifact, RunArtifact)
         counts: dict[str, Counter[int]] = defaultdict(Counter)
-        for row in artifact.iter_actions():
-            counts[str(row.get("label", "unknown"))][episode_of(row)] += 1
-        traces = []
+        for event in event_frame(artifact):
+            counts[event.label][event.episode] += 1
         cumulative = bool(params.get("cumulative", False))
-        for label, episode_counts in sorted(counts.items()):
-            x = sorted(episode_counts)
-            y = [episode_counts[value] for value in x]
-            if cumulative:
-                running = 0
-                y = [(running := running + value) for value in y]
-            traces.append(
-                {
-                    "type": "scatter",
-                    "mode": "lines+markers",
-                    "name": label.replace("_", " ").title(),
-                    "x": x,
-                    "y": y,
-                    "line": {"color": action_color(label), "width": 2},
-                }
-            )
-        return Figure(
-            {
-                "data": traces,
-                "layout": {
-                    "xaxis": {"title": "Episode", "dtick": 1},
-                    "yaxis": {"title": "Actions", "rangemode": "tozero"},
-                    "legend": {"orientation": "h", "y": 1.12},
-                    "hovermode": "x unified",
-                },
-            }
+        series: dict[str, dict[int, int]] = {}
+        for label, episode_counts in counts.items():
+            values: dict[int, int] = {}
+            running = 0
+            for episode in sorted(episode_counts):
+                value = episode_counts[episode]
+                if cumulative:
+                    running += value
+                    value = running
+                values[episode] = value
+            series[label] = values
+        return line_figure(
+            series,
+            layout={
+                "xaxis": {"title": "Episode", "dtick": 1},
+                "yaxis": {"title": "Actions", "rangemode": "tozero"},
+                "legend": {"orientation": "h", "y": 1.12},
+                "hovermode": "x unified",
+            },
         )
 
 
@@ -88,38 +80,25 @@ class ProbeTrendsPanel(Panel):
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Figure:
         assert isinstance(artifact, RunArtifact)
         by_probe: dict[str, dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
-        for row in artifact.iter_probes():
-            response = row.get("response", (row.get("data") or {}).get("probe_return"))
+        for event in probe_frame(artifact):
+            response = event.value
             if not isinstance(response, (int, float, str)):
                 continue
             try:
                 numeric = float(response)
             except ValueError:
                 continue
-            by_probe[str(row.get("probe", row.get("label", "Probe")))][episode_of(row)].append(
-                numeric
-            )
-        traces = []
-        for probe, episodes in sorted(by_probe.items()):
-            x = sorted(episodes)
-            traces.append(
-                {
-                    "type": "scatter",
-                    "mode": "lines+markers",
-                    "name": probe,
-                    "x": x,
-                    "y": [sum(episodes[e]) / len(episodes[e]) for e in x],
-                }
-            )
-        return Figure(
+            by_probe[event.probe][event.episode].append(numeric)
+        return line_figure(
             {
-                "data": traces,
-                "layout": {
-                    "xaxis": {"title": "Episode", "dtick": 1},
-                    "yaxis": {"title": "Mean response"},
-                    "hovermode": "x unified",
-                },
-            }
+                probe: {episode: sum(values) / len(values) for episode, values in episodes.items()}
+                for probe, episodes in by_probe.items()
+            },
+            layout={
+                "xaxis": {"title": "Episode", "dtick": 1},
+                "yaxis": {"title": "Mean response"},
+                "hovermode": "x unified",
+            },
         )
 
 
@@ -133,8 +112,8 @@ class AgentInspectorPanel(Panel):
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Table:
         assert isinstance(artifact, RunArtifact)
         counts: dict[str, Counter[str]] = defaultdict(Counter)
-        for row in artifact.iter_actions():
-            counts[str(row.get("source_user", "Unknown"))][str(row.get("label", "unknown"))] += 1
+        for event in event_frame(artifact):
+            counts[event.actor][event.label] += 1
         rows = []
         for agent, labels in sorted(
             counts.items(), key=lambda item: (-sum(item[1].values()), item[0])
@@ -146,7 +125,7 @@ class AgentInspectorPanel(Panel):
                     "top_action": labels.most_common(1)[0][0],
                 }
             )
-        return Table(columns=["agent", "actions", "top_action"], rows=rows)
+        return table(["agent", "actions", "top_action"], rows)
 
 
 @register_panel
@@ -159,13 +138,13 @@ class RecentEventsPanel(Panel):
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Table:
         assert isinstance(artifact, RunArtifact)
         limit = max(1, min(int(params.get("limit", 12)), 100))
-        events = list(artifact.iter_actions())[-limit:]
+        events = event_frame(artifact)[-limit:]
         rows = [
             {
-                "episode": episode_of(row),
-                "agent": row.get("source_user", "Unknown"),
-                "action": row.get("label", "unknown"),
+                "episode": event.episode,
+                "agent": event.actor,
+                "action": event.label,
             }
-            for row in reversed(events)
+            for event in reversed(tuple(events))
         ]
-        return Table(columns=["episode", "agent", "action"], rows=rows)
+        return table(["episode", "agent", "action"], rows)

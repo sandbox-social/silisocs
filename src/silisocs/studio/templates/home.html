@@ -1,29 +1,63 @@
 {% extends "base.html" %}
 {% block title %}Home | Silisocs Studio{% endblock %}
 {% block content %}
-<section class="page-heading">
-  <div><p class="eyebrow">Workspace pulse</p><h1>Simulation workbench</h1><p>Design, run, inspect, and compare simulations from one workspace.</p></div>
-  <div class="composer-actions"><a class="button" href="/scenarios">New scenario</a><a class="button primary" href="/studies">New study</a></div>
+<section class="observatory" data-observatory>
+  <div class="observatory-copy">
+    <p class="eyebrow"><span class="eyebrow-signal"></span>Simulation observatory</p>
+    <h1>Simulation workbench</h1>
+    <p class="lede">Shape possible worlds, set them in motion, and follow what emerges.</p>
+    <div class="composer-actions">
+      <a class="button primary" href="/scenarios"><svg><use href="#icon-plus"/></svg>New scenario</a>
+      <a class="button quiet" href="/studies"><svg><use href="#icon-studies"/></svg>Build a study</a>
+    </div>
+    <div class="observatory-readout" aria-live="polite">
+      <span class="readout-kicker">Field focus</span>
+      <strong data-readout-title>{{ runs[0].artifact.scenario if runs else 'Ready for a first run' }}</strong>
+      <span data-readout-meta>{% if runs %}{{ runs[0].artifact.num_agents or 0 }} agents · {{ runs[0].artifact.num_steps or 0 }} episodes{% else %}Create a scenario to activate the field{% endif %}</span>
+    </div>
+  </div>
+  <div class="observatory-stage" aria-label="Recent simulation runs">
+    <svg class="field-lines" aria-hidden="true"></svg>
+    <div class="field-core" aria-hidden="true">
+      <span class="core-ring ring-one"></span><span class="core-ring ring-two"></span>
+      <span class="brand-mark field-mark"><svg><use href="#icon-mark"/></svg></span>
+      <small>{{ all_runs|length }} runs</small>
+    </div>
+    {% for record in runs %}
+    <a class="field-node node-{{ loop.index }} {{ 'is-live' if record.artifact.status in ('running','queued') else '' }}"
+       href="/runs/{{ record.id }}" data-field-node
+       data-title="{{ record.artifact.scenario or record.path.name }}"
+       data-meta="{{ record.artifact.num_agents or 0 }} agents · {{ record.artifact.num_steps or 0 }} episodes · {{ record.artifact.status or 'legacy' }}">
+      <span class="node-orbit"></span>
+      <span class="node-core">{{ (record.artifact.scenario or 'R')[:2]|upper }}</span>
+      <span class="node-label"><b>{{ record.artifact.scenario or record.path.name }}</b><small>{{ record.artifact.status or 'legacy' }}</small></span>
+    </a>
+    {% endfor %}
+    {% if not runs %}<a class="field-node node-empty" href="/scenarios"><span class="node-orbit"></span><span class="node-core">+</span><span class="node-label"><b>Start here</b><small>new scenario</small></span></a>{% endif %}
+  </div>
 </section>
-<section class="stats-band">
-  <div><small>Indexed runs</small><strong>{{ all_runs|length }}</strong><span>across this workspace</span></div>
-  <div><small>Successful</small><strong>{{ all_runs|selectattr('artifact.status', 'equalto', 'success')|list|length }}</strong><span>manifest-confirmed</span></div>
-  <div><small>Scenarios</small><strong>{{ scenario_count }}</strong><span>available to launch</span></div>
-  <div><small>Studies</small><strong>{{ study_count }}</strong><span>experiment definitions</span></div>
-  <div><small>Live</small><strong>{{ live_count }}</strong><span>queued or running jobs</span></div>
+
+<section class="pulse-strip" aria-label="Workspace activity">
+  <div><span class="pulse-icon teal"><svg><use href="#icon-runs"/></svg></span><small>Indexed runs</small><strong>{{ all_runs|length }}</strong></div>
+  <div><span class="pulse-icon coral"><svg><use href="#icon-spark"/></svg></span><small>Successful</small><strong>{{ all_runs|selectattr('artifact.status', 'equalto', 'success')|list|length }}</strong></div>
+  <div><span class="pulse-icon violet"><svg><use href="#icon-scenarios"/></svg></span><small>Scenarios</small><strong>{{ scenario_count }}</strong></div>
+  <div><span class="pulse-icon sky"><svg><use href="#icon-studies"/></svg></span><small>Studies</small><strong>{{ study_count }}</strong></div>
+  <div><span class="pulse-icon amber"><svg><use href="#icon-live"/></svg></span><small>Live now</small><strong>{{ live_count }}</strong></div>
 </section>
-<div class="section-head"><div><p class="eyebrow">Activity</p><h2>Recent runs</h2></div><a href="/runs">View archive</a></div>
+
+<div class="section-head"><div><p class="eyebrow">Latest trajectories</p><h2>Recent runs</h2></div><a class="text-action" href="/runs">Explore the archive <svg><use href="#icon-arrow"/></svg></a></div>
 {% if runs %}
-<div class="run-list">
+<div class="run-list trajectory-list">
 {% for record in runs %}
   <a class="run-row" href="/runs/{{ record.id }}">
+    <span class="run-index">{{ '%02d'|format(loop.index) }}</span>
     <span class="run-mark {{ 'ok' if record.artifact.status == 'success' else '' }}">{{ (record.artifact.scenario or 'R')[:2]|upper }}</span>
-    <span class="run-name"><strong>{{ record.artifact.scenario or record.path.name }}</strong><small>{{ record.id }}</small></span>
+    <span class="run-name"><strong>{{ record.artifact.scenario or record.path.name }}</strong><small>{{ record.id }}</small><span class="run-track"><i style="width:{{ ([record.artifact.num_steps or 1, 10]|min * 10) }}%"></i></span></span>
     <span class="run-meta"><b>{{ record.artifact.num_agents or '—' }}</b><small>agents</small></span>
-    <span class="run-meta"><b>{{ record.artifact.num_steps or '—' }}</b><small>steps</small></span>
-    <span class="badge {{ 'success' if record.artifact.status == 'success' else 'neutral' }}">{{ record.artifact.status or 'legacy' }}</span><span class="arrow">→</span>
+    <span class="run-meta"><b>{{ record.artifact.num_steps or '—' }}</b><small>episodes</small></span>
+    <span class="badge {{ 'success' if record.artifact.status == 'success' else 'neutral' }}"><i></i>{{ record.artifact.status or 'legacy' }}</span><span class="arrow"><svg><use href="#icon-arrow"/></svg></span>
   </a>
 {% endfor %}
 </div>
-{% else %}<div class="empty"><b>No simulation artifacts yet</b><p>Runs written under <code>outputs/</code> appear here automatically.</p></div>{% endif %}
+{% else %}<div class="empty"><span class="empty-mark"><svg><use href="#icon-spark"/></svg></span><b>Your observatory is quiet</b><p>Create a scenario and launch it. Its artifacts will appear here automatically.</p><a class="button primary" href="/scenarios/new"><svg><use href="#icon-plus"/></svg>Create a scenario</a></div>{% endif %}
 {% endblock %}

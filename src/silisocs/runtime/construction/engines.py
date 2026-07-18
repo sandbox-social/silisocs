@@ -9,8 +9,6 @@ from typing import Any, cast
 
 from omegaconf import DictConfig, OmegaConf
 
-_LOGGER = logging.getLogger(__name__)
-
 from silisocs.simulation_engines.base_engines import RuntimeEngine
 from silisocs.simulation_engines.interventions import InterventionSchedule
 from silisocs.simulation_engines.policies.factory import (
@@ -26,12 +24,15 @@ from silisocs.simulation_engines.policies.factory import (
 from silisocs.simulation_engines.policies.loops import FixedStepsLoopStrategy
 from silisocs.simulation_engines.policies.routers import BranchSpec
 from silisocs.simulation_engines.policies.steps import (
+    BaseStepStrategy,
     FlowStepStrategy,
     MultiGMSerialStepStrategy,
     MultiGMStagedStepStrategy,
     MultiGMStepStrategy,
     SequentialStepStrategy,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _slot_to_mapping(slot: Any, *, default: Mapping[str, Any]) -> dict[str, Any]:
@@ -53,20 +54,49 @@ def _build_loop_strategy(loop_cfg: Mapping[str, Any]) -> Any:
     if class_path:
         return _instantiate_with_supported_kwargs(_load_class(class_path), params)
     built_in = str(loop_cfg.get("built_in") or "fixed_steps").strip()
-    if built_in == "fixed_steps":
-        return FixedStepsLoopStrategy()
-    raise ValueError(f"Unknown sim.engine.loop.built_in='{built_in}'.")
+    strategy_cls = _LOOP_STRATEGIES.get(built_in)
+    if strategy_cls is None:
+        raise ValueError(f"Unknown sim.engine.loop.built_in='{built_in}'.")
+    return _instantiate_with_supported_kwargs(strategy_cls, params)
+
+
+_LOOP_STRATEGIES: dict[str, type[Any]] = {
+    str(FixedStepsLoopStrategy.name): FixedStepsLoopStrategy,
+}
 
 
 # Multi-GM step built-ins mapped to their flow-chain traversal strategy. The
 # default ``multi_gm`` is the concurrent (independent-pipeline) traversal;
 # ``multi_gm_serial`` is the legacy row-major one and ``multi_gm_staged`` runs a
 # global per-stage barrier (column-major, supports empty/idle slots).
+_MULTI_GM_STRATEGY_TYPES: tuple[type[Any], ...] = (
+    MultiGMStepStrategy,
+    MultiGMSerialStepStrategy,
+    MultiGMStagedStepStrategy,
+)
 _MULTI_GM_STRATEGIES: dict[str, type[Any]] = {
-    "multi_gm": MultiGMStepStrategy,
-    "multi_gm_serial": MultiGMSerialStepStrategy,
-    "multi_gm_staged": MultiGMStagedStepStrategy,
+    str(strategy.name): strategy for strategy in _MULTI_GM_STRATEGY_TYPES
 }
+_STEP_STRATEGY_TYPES: tuple[type[Any], ...] = (
+    BaseStepStrategy,
+    SequentialStepStrategy,
+    FlowStepStrategy,
+    *_MULTI_GM_STRATEGY_TYPES,
+)
+_STEP_STRATEGIES: dict[str, type[Any]] = {
+    str(strategy.name): strategy for strategy in _STEP_STRATEGY_TYPES
+}
+_ENGINE_STEP_PARAMS = frozenset(
+    {"flow_order", "flow_turn_policies", "gm_turn_policies", "gm_concurrency_caps"}
+)
+
+
+def engine_strategy_built_ins() -> dict[str, tuple[str, ...]]:
+    """Return canonical loop and step strategy names for visual composers."""
+    return {
+        "loop": tuple(_LOOP_STRATEGIES),
+        "step": tuple(_STEP_STRATEGIES),
+    }
 
 
 def _chains_have_branch(chains: Mapping[str, Any]) -> bool:
@@ -137,23 +167,22 @@ def _build_step_strategy(
     built_in = str(step_cfg.get("built_in") or "base").strip()
     flow_order = tuple(str(item) for item in (params.get("flow_order") or ["fixed_pre", "default"]))
     flow_turn_policies = build_flow_turn_policies(params.get("flow_turn_policies"))
-    strategy_cls = _MULTI_GM_STRATEGIES.get(built_in)
-    if strategy_cls is None and _chains_have_branch(chains):
+    strategy_cls = _STEP_STRATEGIES.get(built_in)
+    if strategy_cls not in _MULTI_GM_STRATEGIES.values() and _chains_have_branch(chains):
         raise ValueError(
             "A branch node in env.gm_orchestration.flow_bindings.flow_to_gms requires a "
             f"multi_gm* step strategy; sim.engine.step.built_in='{built_in}' does not route "
             "by flow chain."
         )
-    if built_in == "base":
+    if strategy_cls is BaseStepStrategy:
         return None
-    if built_in == "sequential":
-        return SequentialStepStrategy()
-    if built_in == "flow":
+    if strategy_cls is FlowStepStrategy:
         return FlowStepStrategy(
             flow_order=flow_order,
             flow_turn_policies=flow_turn_policies,
         )
-    if strategy_cls is not None:
+    if strategy_cls in _MULTI_GM_STRATEGIES.values():
+        multi_gm_strategy_cls = cast(type[Any], strategy_cls)
         if not chains:
             _LOGGER.warning(
                 "sim.engine.step.built_in=%r is a multi-GM routing strategy but no flow "
@@ -161,12 +190,17 @@ def _build_step_strategy(
                 "empty/unset); every flow will route to the default game master only.",
                 built_in,
             )
-        return strategy_cls(
+        return multi_gm_strategy_cls(
             flow_order=flow_order,
             flow_turn_policies=flow_turn_policies,
             flow_chains=_prepare_branch_chains(chains, flow_order=flow_order, allow_branches=True),
             seed=seed,
         )
+    if strategy_cls is not None:
+        strategy_params = {
+            key: value for key, value in params.items() if key not in _ENGINE_STEP_PARAMS
+        }
+        return _instantiate_with_supported_kwargs(strategy_cls, strategy_params)
     raise ValueError(f"Unknown sim.engine.step.built_in='{built_in}'.")
 
 

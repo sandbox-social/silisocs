@@ -12,6 +12,7 @@ import re
 import types
 import typing
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
+from contextvars import ContextVar
 from typing import Any, Literal, get_type_hints
 
 import docstring_parser
@@ -20,16 +21,41 @@ import termcolor
 from silisocs.exceptions import ActionError, BackendError
 
 _LOGGER = logging.getLogger(__name__)
+_ACTION_LOG_SCOPES: ContextVar[tuple[list[bool], ...]] = ContextVar(
+    "silisocs_action_log_scopes", default=()
+)
 
 
 @dataclasses.dataclass(frozen=True)
 class VisualizerSpec:
-    """Launch metadata for a backend's optional read-only visualizer."""
+    """How a backend's optional read-only visualizer is served.
+
+    Two delivery paths, in preference order:
+
+    ``app_factory`` (``"module:function"``) names a callable taking a database
+    path and returning an ASGI app. A host that already speaks ASGI — Studio —
+    mounts it in-process: same origin, no subprocess, no port, no readiness
+    race. This is the path every shipped visualizer takes.
+
+    ``module``/``env_var``/``default_port``/``port_env`` describe the standalone
+    ``python -m`` server. It backs ``python -m ...visualizer.server`` and remains
+    the fallback for visualizers that are not ASGI apps.
+    """
 
     env_var: str
     module: str
     default_port: int
     port_env: str = "SILISOCS_VIEWER_PORT"
+    app_factory: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class ActionResult:
+    """Result of an action that needs to describe its commit or logged payload."""
+
+    message: str
+    committed: bool = True
+    data: Mapping[str, Any] | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -58,10 +84,6 @@ ParserFunc = Callable[[str], Any]
 _ACTION_PROPERTY = "__app_action__"
 RUNTIME_AGENT_PARAM = "agent_name"
 LEGACY_RUNTIME_AGENT_PARAMS = frozenset({"current_user"})
-# Reused when rebuilding an ActionDescriptor for an aliased selectable name; the
-# descriptor's docstring InitVar is discarded in __post_init__, so an empty parse
-# is sufficient (description/parameters are carried over directly).
-_EMPTY_DOCSTRING = docstring_parser.parse("")
 RUNTIME_OWNED_ACTION_PARAMS = frozenset({RUNTIME_AGENT_PARAM})
 
 COLOR_TYPE = (
@@ -122,6 +144,10 @@ def app_action(
     *,
     selectable_name: str | None = None,
     description: str | None = None,
+    log: bool = True,
+    log_as: str | None = None,
+    tags: Sequence[str] = (),
+    fields: Mapping[str, str | Sequence[str]] | None = None,
 ):
     """Mark BackendApp methods as callable actions.
 
@@ -141,6 +167,18 @@ def app_action(
         fn_any.__required_params__ = required_params
         fn_any.__action_selectable_name__ = selectable_name
         fn_any.__action_description_override__ = description
+        fn_any.__action_log__ = bool(log)
+        fn_any.__action_log_as__ = log_as
+        fn_any.__action_tags__ = tuple(dict.fromkeys(str(tag) for tag in tags if str(tag)))
+        fn_any.__action_fields__ = {
+            str(name): (
+                (paths,)
+                if isinstance(paths, str)
+                else tuple(dict.fromkeys(str(path) for path in paths if str(path)))
+            )
+            for name, paths in dict(fields or {}).items()
+            if str(name)
+        }
         return fn
 
     if method is not None:
@@ -235,10 +273,10 @@ class ActionDescriptor:
     selectable_name: str
     description: str
     parameters: Sequence[Parameter]
-    docstring: dataclasses.InitVar[docstring_parser.Docstring]
-
-    def __post_init__(self, docstring: docstring_parser.Docstring):  # noqa: D105
-        pass
+    log: bool
+    log_as: str
+    tags: tuple[str, ...]
+    fields: Mapping[str, tuple[str, ...]]
 
     @property
     def agent_visible_parameters(self) -> Sequence[Parameter]:
@@ -274,7 +312,10 @@ class ActionDescriptor:
             ),
             description=description,
             parameters=method_parameters,
-            docstring=doc,
+            log=bool(getattr(method, "__action_log__", True)),
+            log_as=str(getattr(method, "__action_log_as__", None) or method.__name__),
+            tags=tuple(getattr(method, "__action_tags__", ())),
+            fields=dict(getattr(method, "__action_fields__", {})),
         )
 
 
@@ -314,10 +355,8 @@ class BackendApp(metaclass=abc.ABCMeta):
     # backends themselves carry no replay-specific method.
     provides_checkpoint_state: bool = False
     visualizer: typing.ClassVar[VisualizerSpec | None] = None
-    # Optional portable metadata for domain-aware visual panels. Keys are open
-    # semantic role/field names; values are action labels/dotted payload paths.
-    # It is copied into the run manifest so artifact readers do not import the
-    # backend implementation. See evaluations.vocabulary.EventSemantics.
+    # Optional aggregate semantics for shared or externally declared event
+    # shapes. Most backends declare tags and fields directly on each @app_action.
     event_semantics: typing.ClassVar[Mapping[str, Mapping[str, Sequence[str]]] | None] = None
 
     def __init__(self) -> None:
@@ -375,10 +414,177 @@ class BackendApp(metaclass=abc.ABCMeta):
         print(termcolor.colored(formatted_entry, color or self._log_color))
 
     def _emit_event_log(self, message: str, *, event_type: str) -> None:
-        """Emit a typed backend event to the action logger, when one is configured."""
+        """Emit a typed backend event to the action logger, when one is configured.
+
+        Message-shaped and unstructured: use it for narration a human reads. An
+        action an agent took is a committed event — log it with
+        :meth:`_log_action_event` so analysis can attribute and group it.
+        """
         log_fn = getattr(self.action_logger, "log", None)
         if callable(log_fn):
             log_fn({"event_type": event_type, "message": message})
+
+    def _log_action_event(self, source_user: str, label: str, data: dict[str, Any]) -> None:
+        """Record a committed action event: mirror it in memory and persist to disk.
+
+        This is the single commit point for the committed-only action log — call it
+        only on an action's success path (never after a swallowed error or an
+        idempotent no-op). Both the on-disk ``action_events.jsonl`` and the in-memory
+        mirror (:meth:`iter_committed_events`) get exactly one record per committed
+        action, so the mirror is a lock-free runtime read path over the same events
+        scenario code (routers, interventions, committed-counting policies) would
+        otherwise have to scrape from the log file.
+
+        ``label`` names the action (match the ``@app_action`` name) and
+        ``source_user`` the actor: the structure every generic panel groups and
+        attributes by, which is why this lives on the domain-neutral base rather
+        than on the social subclass.
+        """
+        for scope in _ACTION_LOG_SCOPES.get():
+            scope[0] = True
+        self._committed_event_log().append(
+            {
+                "label": label,
+                "source_user": source_user,
+                "episode": getattr(self.action_logger, "episode_idx", None),
+                "data": dict(data),
+            }
+        )
+        if self.action_logger:
+            self.action_logger.log({"source_user": source_user, "label": label, "data": data})
+
+    def _committed_event_log(self) -> list[dict[str, Any]]:
+        """Return the in-memory committed-events mirror, created lazily on first use.
+
+        Lazy so no subclass constructor has to change. The fast path is a plain
+        attribute read; first use falls back to ``dict.setdefault``, which is atomic
+        under the GIL, so two concurrent first-ever turns share one list instead of
+        racing to install (and lose) separate ones. After init, ``list.append`` is
+        atomic and readers iterate a snapshot, so the mirror needs no lock.
+        """
+        log = self.__dict__.get("_committed_events")
+        if log is None:
+            log = self.__dict__.setdefault("_committed_events", [])
+        return log
+
+    def iter_committed_events(
+        self,
+        *,
+        labels: Collection[str] | None = None,
+        agent: str | None = None,
+        since_episode: int | None = None,
+        before_episode: int | None = None,
+        text_contains_any: Collection[str] | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Iterate committed action events (commit order) matching every given filter.
+
+        Each record is ``{label, source_user, episode, data}`` — one per committed
+        action. The mirror reflects the on-disk log exactly, so system/bookkeeping
+        labels (``init_*``, recsys events) appear too; pass ``labels`` to scope to
+        agent actions. In multi-GM runs the mirror is per-backend (per game master),
+        matching the per-GM ``action_events.jsonl`` isolation.
+
+        Filters are conjunctive: ``labels`` keeps listed labels; ``agent`` keeps one
+        ``source_user``; ``since_episode``/``before_episode`` bound the episode
+        (inclusive lower, exclusive upper — an unstamped ``episode is None`` event is
+        excluded whenever either bound is set); ``text_contains_any`` keeps events
+        whose authored text (any of ``_COMMITTED_TEXT_KEYS`` in ``data``) contains a
+        needle (case-insensitive). Yielded records are copies (mutating one — including
+        its ``data`` — does not touch the mirror). Iteration is commit order, which is
+        scheduling-dependent under concurrent turns, so don't rely on it for ordering.
+        """
+        for event in self._iter_matching_committed_events(
+            labels=labels,
+            agent=agent,
+            since_episode=since_episode,
+            before_episode=before_episode,
+            text_contains_any=text_contains_any,
+        ):
+            yield {**event, "data": dict(event.get("data") or {})}
+
+    def _iter_matching_committed_events(
+        self,
+        *,
+        labels: Collection[str] | None,
+        agent: str | None,
+        since_episode: int | None,
+        before_episode: int | None,
+        text_contains_any: Collection[str] | None,
+    ) -> Iterator[dict[str, Any]]:
+        """Yield mirror events (no per-row copy) matching every given filter.
+
+        Shared filter core for :meth:`iter_committed_events` (which copies each
+        yielded record) and :meth:`count_committed_events` (which only counts, so it
+        skips the copy). Iterates the same lock-free snapshot (``tuple(...)``).
+        """
+        label_set = None if labels is None else {str(x) for x in labels}
+        needles = None if not text_contains_any else [str(x).lower() for x in text_contains_any]
+        for event in tuple(self._committed_event_log()):
+            if label_set is not None and str(event.get("label", "")) not in label_set:
+                continue
+            if agent is not None and str(event.get("source_user", "")) != str(agent):
+                continue
+            episode = event.get("episode")
+            if since_episode is not None and (episode is None or episode < since_episode):
+                continue
+            if before_episode is not None and (episode is None or episode >= before_episode):
+                continue
+            if needles is not None:
+                data = event.get("data") or {}
+                text = " ".join(str(data.get(key, "")) for key in _COMMITTED_TEXT_KEYS).lower()
+                if not any(needle in text for needle in needles):
+                    continue
+            yield event
+
+    def count_committed_events(
+        self,
+        *,
+        labels: Collection[str] | None = None,
+        agent: str | None = None,
+        since_episode: int | None = None,
+        before_episode: int | None = None,
+        text_contains_any: Collection[str] | None = None,
+    ) -> int:
+        """Count committed events matching the filters of :meth:`iter_committed_events`.
+
+        With no ``labels`` filter this includes every committed row, including
+        control-tagged actions such as ``finish_action_episode``.
+        Fast path: shares the filter core but skips the per-row copy
+        ``iter_committed_events`` makes, since a count never exposes the records.
+        """
+        return sum(
+            1
+            for _ in self._iter_matching_committed_events(
+                labels=labels,
+                agent=agent,
+                since_episode=since_episode,
+                before_episode=before_episode,
+                text_contains_any=text_contains_any,
+            )
+        )
+
+    def _committed_events_state(self) -> list[dict[str, Any]]:
+        """Snapshot the committed-events mirror for ``get_state`` (checkpoint).
+
+        Round-tripping this through get_state/set_state is the only way to restore an
+        EXACT mirror (correct labels + episodes): every shipped snapshot backend does
+        so, and Mastodon does too (it cannot snapshot its server but embeds the mirror
+        anyway). A backend restored purely by action-event replay instead rebuilds
+        mirror *content* as the log path re-fires, but only for replayable labels and
+        with episodes reflecting the replay — so prefer the round-trip when the mirror
+        must be exact.
+        """
+        return [
+            {**event, "data": dict(event.get("data") or {})}
+            for event in self._committed_event_log()
+        ]
+
+    def _restore_committed_events(self, events: Any) -> None:
+        """Replace the committed-events mirror from a ``set_state`` payload."""
+        log = self._committed_event_log()
+        log.clear()
+        if events:
+            log.extend(dict(event) for event in events if isinstance(event, Mapping))
 
     def actions(self) -> Sequence[ActionDescriptor]:
         """Return this app's callable actions."""
@@ -424,6 +630,10 @@ class BackendApp(metaclass=abc.ABCMeta):
                     }
                     for parameter in action.agent_visible_parameters
                 ],
+                "log": action.log,
+                "log_as": action.log_as,
+                "tags": list(action.tags),
+                "fields": {name: list(paths) for name, paths in action.fields.items()},
             }
             for action in descriptors
         ]
@@ -448,15 +658,11 @@ class BackendApp(metaclass=abc.ABCMeta):
         applied: list[ActionDescriptor] = []
         for action in actions:
             names = self._action_aliases.get(action.name)
-            if names and names[0] != action.selectable_name:
-                action = ActionDescriptor(
-                    name=action.name,
-                    selectable_name=names[0],
-                    description=action.description,
-                    parameters=action.parameters,
-                    docstring=_EMPTY_DOCSTRING,
-                )
-            applied.append(action)
+            applied.append(
+                dataclasses.replace(action, selectable_name=names[0])
+                if names and names[0] != action.selectable_name
+                else action
+            )
         return applied
 
     def set_action_aliases(self, aliases: Mapping[str, Any] | None) -> None:
@@ -678,7 +884,7 @@ class BackendApp(metaclass=abc.ABCMeta):
                 processed_args[name] = None
 
         try:
-            return getattr(self, action.name)(**processed_args)
+            return self._dispatch_action(action, processed_args)[1]
         except ActionError as e:
             return self._handle_action_invocation_error(action.name, e, record_unexpected=False)
         except Exception as e:
@@ -730,14 +936,10 @@ class BackendApp(metaclass=abc.ABCMeta):
     def invoke_action_detailed(self, action_name: str, args: dict[str, Any]) -> tuple[bool, str]:
         """Invoke an action, returning ``(committed, result_string)``.
 
-        ``committed`` is ``True`` when the call validated and dispatched WITHOUT a
-        validation or execution error — the signal a committed-counting turn policy
-        uses to tell an accepted action from a rejected/failed one. It is deliberately
-        coarse: an idempotent no-op that the action method handles internally (e.g.
-        already-liked) still counts as committed here, because the backend cannot see
-        past the action's returned string. Validation failures (unknown action,
-        missing/unexpected args) and raised exceptions return ``(False, message)``.
-        ``invoke_action_with_kwargs`` is the string-only view over this.
+        ``ActionResult(committed=False)`` lets a backend report a rejected or
+        idempotent call without raising. Plain return values are committed
+        successes. Validation failures and raised exceptions return
+        ``(False, message)``. ``invoke_action_with_kwargs`` is the string-only view.
         """
         action_map = self._action_lookup()
         if action_name not in action_map:
@@ -779,7 +981,8 @@ class BackendApp(metaclass=abc.ABCMeta):
                 processed[name] = value
 
         try:
-            return True, (getattr(self, action.name)(**processed) or "")
+            committed, message = self._dispatch_action(action, processed)
+            return committed, message or ""
         except ActionError as exc:
             return False, self._handle_action_invocation_error(
                 action.name, exc, record_unexpected=False
@@ -788,6 +991,40 @@ class BackendApp(metaclass=abc.ABCMeta):
             return False, self._handle_action_invocation_error(
                 action.name, exc, record_unexpected=True
             )
+
+    def _dispatch_action(
+        self,
+        descriptor: ActionDescriptor,
+        processed: Mapping[str, Any],
+    ) -> tuple[bool, str | None]:
+        """Call one validated action and auto-log a committed result exactly once."""
+        scope = [False]
+        token = _ACTION_LOG_SCOPES.set((*_ACTION_LOG_SCOPES.get(), scope))
+        try:
+            raw = getattr(self, descriptor.name)(**processed)
+        finally:
+            _ACTION_LOG_SCOPES.reset(token)
+
+        committed: bool
+        message: str | None
+        extra: Mapping[str, Any] | None
+        if isinstance(raw, ActionResult):
+            committed, message, extra = raw.committed, raw.message, raw.data
+        else:
+            committed, message, extra = True, None if raw is None else str(raw), None
+
+        if committed and descriptor.log and not scope[0]:
+            data = {
+                key: value
+                for key, value in processed.items()
+                if key != RUNTIME_AGENT_PARAM and value is not None
+            }
+            data.update(dict(extra or {}))
+            if "message" not in data:
+                data["message"] = message
+            source_user = str(processed.get(RUNTIME_AGENT_PARAM) or "system")
+            self._log_action_event(source_user, descriptor.log_as, data)
+        return committed, message
 
     def action_accepts_param(self, action_name: str, parameter_name: str) -> bool:
         """Return whether an action accepts the named parameter.
@@ -867,9 +1104,11 @@ class BackendApp(metaclass=abc.ABCMeta):
     @app_action(
         selectable_name="FINISHED",
         description="To be used when desirable actions for current timestep have been conducted.",
+        tags=("control",),
     )
-    def finish_action_episode(self) -> str:
+    def finish_action_episode(self, agent_name: str = "") -> str:
         """No-op terminal action for open-ended loops and constrained action sets."""
+        del agent_name
         return "Finished action episode"
 
 
@@ -933,114 +1172,6 @@ class SocialBackendApp(BackendApp):
     actions, or recommendation update components implement this interface on
     top of the domain-neutral :class:`BackendApp`.
     """
-
-    def _log_action_event(self, source_user: str, label: str, data: dict[str, Any]) -> None:
-        """Record a committed action event: mirror it in memory and persist to disk.
-
-        This is the single commit point for the committed-only action log — call it
-        only on an action's success path (never after a swallowed error or an
-        idempotent no-op). Both the on-disk ``action_events.jsonl`` and the in-memory
-        mirror (:meth:`iter_committed_events`) get exactly one record per committed
-        action, so the mirror is a lock-free runtime read path over the same events
-        scenario code (routers, interventions, committed-counting policies) would
-        otherwise have to scrape from the log file.
-        """
-        self._committed_event_log().append(
-            {
-                "label": label,
-                "source_user": source_user,
-                "episode": getattr(self.action_logger, "episode_idx", None),
-                "data": dict(data),
-            }
-        )
-        if self.action_logger:
-            self.action_logger.log({"source_user": source_user, "label": label, "data": data})
-
-    def _committed_event_log(self) -> list[dict[str, Any]]:
-        """Return the in-memory committed-events mirror, created lazily on first use.
-
-        Lazy so no subclass constructor has to change. The fast path is a plain
-        attribute read; first use falls back to ``dict.setdefault``, which is atomic
-        under the GIL, so two concurrent first-ever turns share one list instead of
-        racing to install (and lose) separate ones. After init, ``list.append`` is
-        atomic and readers iterate a snapshot, so the mirror needs no lock.
-        """
-        log = self.__dict__.get("_committed_events")
-        if log is None:
-            log = self.__dict__.setdefault("_committed_events", [])
-        return log
-
-    def iter_committed_events(
-        self,
-        *,
-        labels: Collection[str] | None = None,
-        agent: str | None = None,
-        since_episode: int | None = None,
-        before_episode: int | None = None,
-        text_contains_any: Collection[str] | None = None,
-    ) -> Iterator[dict[str, Any]]:
-        """Iterate committed action events (commit order) matching every given filter.
-
-        Each record is ``{label, source_user, episode, data}`` — one per committed
-        action. The mirror reflects the on-disk log exactly, so system/bookkeeping
-        labels (``init_*``, recsys events) appear too; pass ``labels`` to scope to
-        agent actions. In multi-GM runs the mirror is per-backend (per game master),
-        matching the per-GM ``action_events.jsonl`` isolation.
-
-        Filters are conjunctive: ``labels`` keeps listed labels; ``agent`` keeps one
-        ``source_user``; ``since_episode``/``before_episode`` bound the episode
-        (inclusive lower, exclusive upper — an unstamped ``episode is None`` event is
-        excluded whenever either bound is set); ``text_contains_any`` keeps events
-        whose authored text (any of ``_COMMITTED_TEXT_KEYS`` in ``data``) contains a
-        needle (case-insensitive). Yielded records are copies (mutating one — including
-        its ``data`` — does not touch the mirror). Iteration is commit order, which is
-        scheduling-dependent under concurrent turns, so don't rely on it for ordering.
-        """
-        label_set = None if labels is None else {str(x) for x in labels}
-        needles = None if not text_contains_any else [str(x).lower() for x in text_contains_any]
-        for event in tuple(self._committed_event_log()):
-            if label_set is not None and str(event.get("label", "")) not in label_set:
-                continue
-            if agent is not None and str(event.get("source_user", "")) != str(agent):
-                continue
-            episode = event.get("episode")
-            if since_episode is not None and (episode is None or episode < since_episode):
-                continue
-            if before_episode is not None and (episode is None or episode >= before_episode):
-                continue
-            data = event.get("data") or {}
-            if needles is not None:
-                text = " ".join(str(data.get(key, "")) for key in _COMMITTED_TEXT_KEYS).lower()
-                if not any(needle in text for needle in needles):
-                    continue
-            yield {**event, "data": dict(data)}
-
-    def count_committed_events(self, **filters: Any) -> int:
-        """Count committed events matching the filters of :meth:`iter_committed_events`."""
-        return sum(1 for _ in self.iter_committed_events(**filters))
-
-    def _committed_events_state(self) -> list[dict[str, Any]]:
-        """Snapshot the committed-events mirror for ``get_state`` (checkpoint).
-
-        Round-tripping this through get_state/set_state is the only way to restore an
-        EXACT mirror (correct labels + episodes): every shipped snapshot backend does
-        so, and Mastodon does too (it cannot snapshot its server but embeds the mirror
-        anyway). A backend restored purely by action-event replay instead rebuilds
-        mirror *content* as the log path re-fires, but only for replayable labels and
-        with episodes reflecting the replay — so prefer the round-trip when the mirror
-        must be exact.
-        """
-        return [
-            {**event, "data": dict(event.get("data") or {})}
-            for event in self._committed_event_log()
-        ]
-
-    def _restore_committed_events(self, events: Any) -> None:
-        """Replace the committed-events mirror from a ``set_state`` payload."""
-        log = self._committed_event_log()
-        log.clear()
-        if events:
-            log.extend(dict(event) for event in events if isinstance(event, Mapping))
 
     def recsys_active_types(self) -> set[str]:
         """Return recsys algorithm types currently live on the backend.

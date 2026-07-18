@@ -219,8 +219,11 @@ def test_rebuild_component_targets_default_flow_key_on_multiflow(tmp_path, monke
     assert routed_key == "observe__special"
     assert type(gm.observe_component).__name__ == "EpisodeObservation"
 
-    gm.rebuild_component("observe", {"built_in": "timeline_every_turn"})
+    # Swap to another generic observe built-in (the backend is non-social, so a
+    # social component like timeline_every_turn is correctly refused by the
+    # compatibility guard — this test is about flow-key re-pointing, not that).
+    gm.rebuild_component("observe", {"built_in": "app_observation"})
     # The swap re-points the flow-routed key AND the typed slot; a bare 'observe'
     # key (unread by the default flow) would have been a silent no-op.
-    assert type(gm.components[routed_key]).__name__ == "TimelineMakeObservation"
-    assert type(gm.observe_component).__name__ == "TimelineMakeObservation"
+    assert type(gm.components[routed_key]).__name__ == "AppObservationComponent"
+    assert type(gm.observe_component).__name__ == "AppObservationComponent"

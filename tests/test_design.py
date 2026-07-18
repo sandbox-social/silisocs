@@ -43,6 +43,7 @@ def test_theme_text_contrast(theme_name: str) -> None:
     # Small bold eyebrows / links use accent_hover — the relaxed 3.0 bar.
     assert _contrast(theme["accent_hover"], theme["surface"]) >= 3.0
     assert _contrast(theme["accent_link"], theme["surface"]) >= 4.5
+    assert _contrast(theme["on_accent"], theme["accent"]) >= 4.5
     assert _contrast(theme["rail_ink"], theme["rail_canvas"]) >= 4.5
     assert _contrast(theme["rail_muted"], theme["rail_canvas"]) >= 4.5
     assert _contrast(theme["terminal_ink"], theme["terminal_canvas"]) >= 4.5
@@ -70,21 +71,34 @@ def test_light_constants_mirror_light_theme() -> None:
 # ---------------------------------------------------------------------------
 def test_css_variables_light_and_dark_blocks() -> None:
     out = css.css_variables()
+    assert out.startswith("@font-face{")
     assert ":root{" in out
     assert '[data-theme="dark"]{' in out
-    assert "--accent:#0d9488" in out
+    assert "--accent:#087f75" in out
     # Renamed roles carry their historical CSS spellings.
     assert "--accent-dark:" in out
     assert "--muted:" in out
     assert "--surface-2:" in out
     assert "--font:" in out
     assert "--font-display:" in out
+    assert "--radius:18px" in out
+    assert "--radius-sm:13px" in out
+    assert "--shadow-md:" in out
+    assert "--type-display:42px" in out
+    # At-rules must never be emitted inside a custom-property declaration block.
+    assert "@font-face" not in out.split(":root{", 1)[1]
+
+
+def test_css_variables_support_embedded_and_consumer_owned_fonts() -> None:
+    embedded = css.css_variables(font_url="data:font/woff2;base64,abc")
+    assert 'src:url("data:font/woff2;base64,abc")' in embedded
+    assert not css.css_variables(font_url=None).startswith("@font-face")
 
 
 def test_css_dark_block_overrides_canvas() -> None:
     out = css.css_variables()
     dark_block = out.split('[data-theme="dark"]{', 1)[1]
-    assert "--canvas:#0f1117" in dark_block
+    assert "--canvas:#101412" in dark_block
 
 
 # ---------------------------------------------------------------------------
@@ -106,11 +120,16 @@ def test_apply_template_panel_keys_win() -> None:
     assert layout["font"]["color"] == "#123456"
     # Defaults fill the gaps one level deep.
     assert layout["xaxis"]["gridcolor"] == tokens.BORDER
+    assert layout["xaxis"]["automargin"] is True
+    assert layout["yaxis"]["automargin"] is True
     assert layout["font"]["size"] == 12
+    assert layout["font"]["family"].startswith("Manrope")
     assert layout["paper_bgcolor"] == "rgba(0,0,0,0)"
     assert layout["plot_bgcolor"] == "rgba(0,0,0,0)"
     assert layout["margin"] == {"l": 52, "r": 24, "t": 42, "b": 52}
     assert len(layout["colorway"]) == 8
+    assert layout["legend"]["orientation"] == "h"
+    assert layout["hovermode"] == "closest"
 
 
 def test_apply_template_does_not_mutate_input() -> None:
@@ -145,4 +164,10 @@ def test_apply_template_panel_gridcolor_wins() -> None:
 def test_custom_action_colors_are_stable_without_registration() -> None:
     assert tokens.action_color("trade_asset") == tokens.action_color("trade_asset")
     assert tokens.action_color("trade_asset") in tokens.CATEGORICAL_COLORS
-    assert tokens.action_color("reply") == tokens.ACTION_COLORS["reply"]
+    assert tokens.action_color("reply") in tokens.CATEGORICAL_COLORS
+
+
+def test_open_tag_colors_are_stable_and_conventions_win() -> None:
+    assert tokens.tag_color("market.trade") == tokens.tag_color("market.trade")
+    assert tokens.tag_color("market.trade") in tokens.CATEGORICAL_COLORS
+    assert tokens.tag_color("negative") == tokens.GROUP_COLORS["negative"]

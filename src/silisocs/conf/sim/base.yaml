@@ -101,22 +101,41 @@ engine:
     built_in: single_action         # single_action | fixed_count | open_ended
     class_path: null
     params: {}
+  # Interactive run control (play / pause / step one episode). Default `none`
+  # attaches no gate, so the loop runs every episode uninterrupted (zero cost).
+  # `stdin` reads n/next, c/continue, p/pause, s/stop from the terminal between
+  # episodes. `control_file` obeys a JSON file another process (Studio) writes:
+  # {"target": <int|null>, "stopped": <bool>} — target = first episode to hold
+  # before, null = run freely. Control acts at episode boundaries; a paused loop
+  # still checkpoints per step, so it is resume-stable if the process exits.
+  control:
+    built_in: none               # none | stdin | control_file
+    start_paused: false          # hold before episode 0 until told to advance
+    control_file: null           # path for control_file mode (default <output>/run.control)
+    poll_interval: 0.3           # control_file poll cadence (seconds)
   # Sim-level participation filter: which agents are in a step's roster at all,
   # applied before scheduling and before every GM's next_acting component.
   # all (pass-through) | activity_probability | activity_markov, or class_path
   # to a custom ParticipationPolicy. Policies are pure functions of
-  # (agent_names, step_index, seed) — replay- and resume-stable. Set
-  # built_in: all for deterministic/turn-based runs (e.g. fixed_order envs).
+  # (agent_names, step_index, seed) — replay- and resume-stable.
+  #
+  # Default is `all` (everyone acts every step): deterministic, turn-based, and
+  # matches the pre-participation behavior — so bare `env=` preset runs
+  # (resource_market, virtual_space, …) whose roles aren't `user` don't silently
+  # drop to random participation. Activity gating is OPT-IN: a social scenario
+  # that wants it sets `participation.built_in: activity_probability` (plus
+  # per-role `activity_transition_rates`) in its own sim config. An example
+  # activity block is left commented below as a copy-paste starting point.
   participation:
-    built_in: activity_probability
+    built_in: all
     class_path: null
-    params:
-      active_probability: null
-      min_active_agents: 1
-      activity_transition_rates:
-        user:
-          inactive_to_active: 0.3
-          active_to_inactive: 0.3
+    params: {}
+      # active_probability: null
+      # min_active_agents: 1
+      # activity_transition_rates:
+      #   user:
+      #     inactive_to_active: 0.3
+      #     active_to_inactive: 0.3
 
 roleplaying_instructions: |
   <general_instructions>

@@ -457,6 +457,11 @@ class _SetRouter(InterventionHandler):
         chain[branch_index] = replace(chain[branch_index], router=router)
 
 
+# Roles this intervention may hot-swap. The GM's ``rebuild_component`` seam is the
+# single source of truth (``_HOT_SWAP_ROLES`` in environments/gm/game_master.py) and
+# re-validates the role at apply time; this list is only for the pre-fire config check
+# here. Not imported from game_master to keep this module free of a GM import cycle —
+# keep the two in sync if the swappable set changes.
 _SWAPPABLE_COMPONENT_ROLES = ("observe", "next_acting", "update")
 
 

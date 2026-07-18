@@ -16,7 +16,7 @@ import random
 import sys
 import time
 import warnings
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
@@ -68,13 +68,14 @@ from silisocs.runtime.construction.initialization_context import (
     populate_agent_data,
 )
 from silisocs.runtime.construction.models import build_deduped_models, build_global_llm_config
-from silisocs.runtime.execution.manifest import write_run_manifest
+from silisocs.runtime.execution.manifest import backend_committed_nothing, write_run_manifest
 from silisocs.runtime.execution.resume import plan_checkpoint_resume
 from silisocs.runtime.io import configure_logging
 from silisocs.runtime.telemetry import (
     SimMetricsCollector,
     collect_usage_summary,
 )
+from silisocs.simulation_engines.control import build_run_control
 
 # Package root (src/silisocs)
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
@@ -266,6 +267,27 @@ def _warn_degraded_health(metrics: SimMetricsCollector, logger: logging.Logger) 
             print(health_line)
 
 
+def _warn_silent_backends(game_masters: Sequence[Any], logger: logging.Logger) -> None:
+    """Surface backends that committed no structured action events.
+
+    Invoke-layer auto-logging covers ordinary ``@app_action`` calls. This warning
+    catches runs where no action committed, or where a custom dispatch path
+    bypassed invoke without calling ``_log_action_event`` itself.
+    """
+    for gm in game_masters:
+        if not backend_committed_nothing(gm):
+            continue
+        line = (
+            f"⚠ NO ACTION EVENTS: backend {getattr(gm, 'backend_type', '?')!r} "
+            f"(game master {getattr(gm, 'name', '?')!r}) committed no structured action events, "
+            "so analysis of this run will show nothing it did. Either no agent action succeeded, "
+            "its actions opted out of auto-logging, or a custom dispatch path bypassed the invoke "
+            "layer without calling _log_action_event(...) (see docs/backends.md)."
+        )
+        logger.warning(line)
+        print(line)
+
+
 @hydra.main(version_base=None, config_path=str(CONF_DIR), config_name="experiment")
 def main(cfg: DictConfig):
     """Hydra entrypoint for running an experiment.
@@ -437,6 +459,21 @@ def main(cfg: DictConfig):
     )
     sim_engine.probe_runner = probe_runner
 
+    # Optional interactive run control (play/pause/step). `none` returns
+    # (None, None) and the loop runs uninterrupted; stdin/control_file attach a
+    # gate the loop consults at each episode boundary.
+    control_node = OmegaConf.select(cfg, "sim.engine.control")
+    control_cfg = (
+        OmegaConf.to_container(control_node, resolve=True)
+        if isinstance(control_node, DictConfig)
+        else control_node
+    )
+    step_gate, run_controller = build_run_control(cast(Any, control_cfg), output_dir=output_dir)
+    if step_gate is not None:
+        sim_engine.step_gate = step_gate
+    if run_controller is not None:
+        run_controller.start()
+
     checkpoint_output_dir = os.path.join(output_dir, "checkpoints")
     completion_status = "success"
     completion_error = ""
@@ -516,6 +553,9 @@ def main(cfg: DictConfig):
         logger.exception("Simulation execution failed before completion marker.")
         raise
     finally:
+        # Stop the interactive control thread (if any) before finalizing.
+        if run_controller is not None:
+            run_controller.close()
         # Finalize and write metrics
         metrics.mark_sim_end()
         # Stop the harness Model Proxy (if any) before summarizing so its usage
@@ -537,6 +577,7 @@ def main(cfg: DictConfig):
         print(completion_line)
 
         _warn_degraded_health(metrics, logger)
+        _warn_silent_backends(runtime_objects.game_masters_by_sequence(), logger)
         with open(run_stats_path, "a", encoding="utf-8") as f:
             f.write(completion_line + "\n")
 

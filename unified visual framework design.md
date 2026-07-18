@@ -40,7 +40,7 @@ Silisocs has a house style for extensibility, used everywhere in the runtime:
 
 - **A slot grammar**: every pluggable thing is `{built_in: name | class_path: pkg.Cls, params: {...}}`.
 - **A registry idiom**: `register_llm_provider`, `register_replay_mapper`,
-  `register_panel`, `register_action_vocabulary` — decorator/function registration,
+  `register_panel`, `register_event_semantics` — decorator/function registration,
   import-before-run, no core edits.
 - **A typed artifact layer**: `load_run(dir) -> RunArtifact`, `load_study(dir) ->
   StudyArtifact` — manifest-first, streaming event iterators, the ONE way to read a
@@ -64,7 +64,7 @@ never visual-only.
 | **Run** | ✅ | `RunArtifact` — identity, health, usage, GM layout, streaming event access. |
 | **Study** | ✅ | `StudyArtifact` — plan, organized summary (means + replicate CIs), repro lock. Tree: hypotheses → conditions → (scenario × seed) → Runs. |
 | **Metric** | ✅ | The `eval.json` shape (`agents` / `aggregated` / `summary`). |
-| **Vocabulary** | ✅ | `ActionVocabulary` per `backend_type`: semantic groups over the exact logged `label` strings. |
+| **Event semantics** | ✅ | Open action tags and semantic payload fields, derived from backend action declarations. |
 | **Panel** | ✅ | Pure function: artifact (+ params) → `PanelOutput`. The unit of analysis extension. |
 | **View** | ✅ | Named YAML composition of panels — a page. |
 | **Job** | ✅ | A control-plane record of one launched process (run, study, or viewer server): pid, status, config snapshot, output dir, log path. Part 4.4. |
@@ -101,7 +101,7 @@ analysis" parity with (and beyond) the Dash app and the study notebook:
 
 | Panel | Scope | Output | Notes |
 |---|---|---|---|
-| `interaction_network` | run | Html (cytoscape.js block) | The marquee view. Nodes = actors (present even without follow edges), edges = follows + per-episode interactions colored by `ACTION_COLORS`. Params: `episode`, `layout` (force/preset), `highlight` (agent). Ships with a deterministic layout seed so screenshots are stable. |
+| `interaction_network` | run | Html (cytoscape.js block) | The marquee view. Nodes = actors (present even without follow edges), edges = follows + per-episode interactions colored deterministically from their action labels. Params: `episode`, `layout` (force/preset), `highlight` (agent). Ships with a deterministic layout seed so screenshots are stable. |
 | `content_feed` | run | Html | Read-only feed/thread browser rendered from action events (post/reply trees, per-episode filter). The "what did they actually say" panel; links into the platform visualizer when its server is live. |
 | `agent_timeline` | run | Figure | One agent's actions over episodes (dot strip), params: `agent`. Drill-down target from `agent_inspector` rows. |
 | `exposure_funnel` | run | Figure | Exposure→action conversion per episode from `exposure_events` (`requires={"exposure_events"}`). |
@@ -284,7 +284,7 @@ Semantics with the rigor points spelled out:
 ```
 silisocs/design/
 ├── tokens.py      # color roles (light+dark), type scale, spacing, radii,
-│                  # elevation, motion durations, ACTION_COLORS, semantic ramps
+│                  # elevation, motion durations, categorical colors, semantic ramps
 ├── css.py         # tokens → CSS custom properties (:root + [data-theme=dark])
 ├── plotly.py      # tokens → a registered Plotly template ("silisocs")
 └── components/    # Jinja macros: card, stat tile, badge, table, tabs, drawer,
@@ -295,19 +295,21 @@ Every chart everywhere applies the Plotly template (fonts, grid hairlines, ACTIO
 colors, hover style) — this single move does more for "looks like one product" than
 any page redesign.
 
-**Art direction — "the editorial instrument."** The shipped Studio pages establish
-it; this codifies it so every future page matches:
+**Art direction — "the modern instrument."** The shipped Studio pages establish
+it; this codifies it so every future page matches. Generated direction studies
+live in `docs/design/`; they are references rather than runtime assets:
 
-- **Typography as identity**: Georgia (serif) for display headings — an editorial,
-  journal-like voice unusual in dev tools — over Inter for UI and data. Uppercase
-  10px letter-spaced eyebrows label every section. Numbers get tabular lining
+- **Typography as identity**: a contemporary system sans stack for display, UI,
+  and data. Weight and scale establish hierarchy without oversized dashboard
+  headings. Uppercase 10px eyebrows label sections. Numbers use tabular lining
   figures.
-- **Color discipline**: near-white paper canvas (`#eef1f2`), white cards, one accent
-  (teal `#0d9488`) used *sparingly* — active states, links, the brand mark — never as
-  decoration. Data gets the color; chrome stays quiet. Semantic green/amber/red only
-  for status.
-- **Hairline construction**: 1px borders and background shifts instead of drop
-  shadows; elevation reserved for overlays (drawer, modal, palette).
+- **Color discipline**: cool near-white canvas (`#f2f6f6`), white surfaces, and one
+  interface accent (teal `#0d9488`) for actions and selection. Categorical data
+  deliberately uses the full multi-color ramp; semantic green/amber/red remains
+  reserved for status.
+- **Rounded construction**: 16px primary surfaces, 12px controls, 8px compact
+  controls, and pill status labels. Hairline borders preserve information density;
+  restrained elevation separates floating chrome and primary surfaces.
 - **Density with air**: generous page margins and section spacing, but dense,
   bordered tables/grids inside cards — instrument, not brochure.
 - **Dark theme**: full token set (`[data-theme=dark]`, slate surfaces matching the
@@ -344,7 +346,7 @@ deployment problem, not a redesign.
 | Platform visualizer | `visualizer` classvar → auto-detected | ✅ |
 | Analysis panel | `@register_panel` / entry-point / `class_path` | ✅ |
 | Analysis view | YAML; per-scenario `conf/views/` | ✅ |
-| Action vocabulary | `register_action_vocabulary` | ✅ |
+| Event semantics | `@app_action(tags=..., fields=...)` / `register_event_semantics` | ✅ |
 | Evaluator/metric | presets / study `eval.py` | ✅ |
 | Chart theming | `design.plotly` template override | ✅ |
 | Panel controls | `Panel.controls` declarations | ✅ |

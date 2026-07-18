@@ -19,12 +19,13 @@ uv run silisocs world=resource_market agents=resource_market env=resource_market
 uv run silisocs world=virtual_space agents=virtual_space env=virtual_space
 ```
 
-Curated external examples live under `scenarios/resource_market/` and
-`scenarios/virtual_space/`:
+Curated external examples live under `scenarios/resource_market/`,
+`scenarios/virtual_space/`, and `scenarios/public_goods_game/`:
 
 ```sh
 uv run silisocs --config-path scenarios/resource_market/conf world=resource_market agents=resource_market env=resource_market
 uv run silisocs --config-path scenarios/virtual_space/conf world=virtual_space agents=virtual_space env=virtual_space
+uv run silisocs --config-path scenarios/public_goods_game/conf world=public_goods_game agents=public_goods_game env=public_goods_game
 ```
 
 Or in the top-level Hydra defaults:
@@ -84,6 +85,11 @@ Features:
 - Generic observations through `BackendApp.observe(...)`
 - Tool-calling and generic-action resolution through `@app_action`
 
+This is the reference **non-social** backend: it declares `market.*` event
+semantics on its class, so a market run shows the Market view
+(`market_activity`, `market_ledger`) and never the social feed or follow graph —
+see [Analysis panels](analysis_panels.md#scoping-panels-to-backend-capabilities).
+
 ---
 
 ## Virtual Space (Local)
@@ -122,6 +128,45 @@ Features:
 - Persistent room notes
 - Durable room tasks with progress and completion events
 - Talk actions that require both agents to be in the same room
+
+---
+
+## Public Goods Game (Local)
+
+A repeated linear public-goods game (Fehr & Gächter): each round every player
+privately receives an endowment and chooses how many tokens to contribute to a
+shared pool, which is multiplied and split equally. Free-riding is individually
+dominant while full contribution is the collective optimum, so the average
+contribution rate is a clean, standard measure of multi-agent cooperation. It is
+the reference **game-theoretic** backend and the vehicle for reproducing the
+"more capable, less cooperative" findings (see
+`experiments/studies/public_goods_capability`).
+
+**Actions**: `CONTRIBUTE`, `FINISHED`
+
+**Config**: `env/public_goods_game.yaml`
+
+```yaml
+gm:
+  backend:
+    type: public_goods
+    class_path: null
+    params:
+      endowment: 20         # tokens per player per round
+      multiplier: 1.6       # pool multiplier (keep 1 < multiplier < N)
+      num_rounds: ${num_steps}
+      history_window: 0     # resolved rounds shown in the observation (0 = all)
+```
+
+Features:
+
+- Simultaneous contributions: `CONTRIBUTE` only buffers the round's choice, and
+  the per-round reveal + payoff runs in the backend's `update()` — so no player
+  sees another's current-round contribution.
+- Every committed `contribute` row carries `contribution`/`endowment`/
+  `multiplier`/`group_size`, so the cooperation metric is derived from the action
+  log alone (see the `public_goods_capability` study's `eval.py`).
+- Authoritative checkpoint state (contributions, results, cumulative payoffs).
 
 ---
 
@@ -289,6 +334,129 @@ Subclass `SocialBackendApp` only when your backend needs to satisfy the
 timeline, feed, parsed-social-action, or recommendation hooks used by the
 social-media-oriented GM components.
 
+#### Minimal viable custom backend
+
+The checklist below is the whole contract. Only the first two items are enforced
+by Python itself; the rest are enforced by the runtime (each raises or warns
+where the mistake is, rather than showing up as missing output later).
+
+1. **Implement `name()` and `description()`** — the only abstract methods.
+2. **Expose actions with `@app_action`.** Tool schemas and generic prompts are
+   derived from them; you never write either by hand.
+3. **Name the actor parameter `agent_name`** if you want the runtime to inject
+   the acting agent. Any other name is treated as an ordinary argument the agent
+   must supply itself.
+4. **Return the commit outcome accurately.** Plain return values are committed
+   successes and are logged automatically. Return
+   `ActionResult(message, committed=False)` for rejected or idempotent calls.
+   Add `data={...}` when the logged payload needs derived or renamed values.
+5. **Accept the runtime's constructor kwargs, or `**kwargs`.** The factory passes
+   `action_logger`, `app_description`, `db_path`, and `perform_operations` to
+   constructors that name them (a dataclass field is the shipped pattern). You do
+   not have to accept any of them — `action_logger` is wired after construction
+   either way — but a constructor that *does* name `action_logger` receives it in
+   time for `__post_init__`.
+6. **For checkpointing**, pick one: override both `get_state()` and `set_state()`
+   and set `provides_checkpoint_state = True`; or register a replay mapper; or
+   configure a custom `sim.checkpoint.restore` strategy. Setting the flag while
+   inheriting either base no-op is rejected at build time — it would restore
+   nothing silently.
+7. **Select generic GM components** (see below). This is the one place a
+   non-social backend needs config, and getting it wrong now fails at GM build
+   rather than mid-run.
+
+A backend needs **no database**. `db_path` belongs to the SQLite backends, not to
+`BackendApp`: keep state in memory, snapshot it through `get_state`/`set_state`,
+and every other layer follows — the manifest records no database, and Studio's
+Platform tab shows an empty state instead of a viewer. `resource_market` and
+`virtual_space` are both in-memory backends and are the reference to copy. If you
+*do* hold a database, expose its path as `self.db_path` so the manifest can record
+it (viewer discovery reads it from there).
+
+#### GM components for a non-social backend
+
+Three built-in components call `SocialBackendApp`-only methods, so a generic
+backend must pick the generic ones. Omitting the `observe` slot is safe — the
+default follows the backend (`app_observation` for a generic one,
+`timeline_every_turn` for a social one) — but naming a social component
+explicitly raises a `TypeError` at GM build:
+
+| Slot | Social built-in | Generic built-in |
+|---|---|---|
+| `initialize` | `social_media` | `app_initialize` (or `none`) |
+| `observe` | `timeline_every_turn` | `app_observation` (or `episode_only`) |
+| `update` | `social_recommendation` | `app_update` (or `none`) |
+
+A custom component that needs a social backend declares
+`requires_social_backend = True` and is checked the same way.
+
+Because a scenario's flat `env.yaml` is *merged* over the default (social) env
+group, clearing an inherited params block needs `params: null` — `params: {}`
+leaves the group's social params in place. Studio's composer writes this block
+for you when you select a non-social backend; `env/resource_market.yaml` is the
+handwritten equivalent.
+
+### Declaring what a backend can show
+
+Action metadata lives beside the action. `@app_action` accepts four
+analysis-related options:
+
+| Option | Meaning |
+|---|---|
+| `log` | whether a committed call is recorded; defaults to `True` |
+| `log_as` | stable logged label; defaults to the Python method name |
+| `tags` | ordered, open classification strings; the first is the primary category |
+| `fields` | semantic field name to logged-data path or fallback paths |
+
+```python
+from silisocs import ActionResult
+from silisocs.environments.backends.base import BackendApp, app_action
+
+class LedgerWorld(BackendApp):
+    provides_checkpoint_state = True
+
+    @app_action(
+        tags=("market.trade", "market.activity"),
+        fields={
+            "market.resource": "asset",
+            "market.quantity": "units",
+            "network.target_actor": "counterparty",
+        },
+    )
+    def settle(
+        self,
+        agent_name: str,
+        asset: str,
+        units: int,
+        counterparty: str,
+    ) -> ActionResult:
+        if units <= 0:
+            return ActionResult("Units must be positive.", committed=False)
+        self._settle(agent_name, counterparty, asset, units)
+        return ActionResult("Trade settled.")
+```
+
+The successful call above logs the actor, `settle` label, arguments, message,
+and tags without a manual logging call. Tags and field names are arbitrary
+namespaced strings. Built-in panels simply declare which strings they consume.
+The runtime derives `EventSemantics` from the action catalog and writes its
+`roles`, `fields`, and ordered `labels` mapping to `run_manifest.json`.
+
+Three optional class-level declarations cover capabilities that do not belong
+to a single action:
+
+| Declaration | Type | Effect |
+|---|---|---|
+| `provides_checkpoint_state` | `bool` | `get_state`/`set_state` are authoritative for restore |
+| `visualizer` | `VisualizerSpec` | publishes a read-only platform viewer (Studio's Platform tab) |
+| `event_semantics` | `{"roles": ..., "fields": ..., "labels": ...}` | explicit aggregate semantics when decorator-local declarations are not suitable |
+
+Use `register_event_semantics` when several backend implementations share one
+shape or when declaring capabilities for a class you do not own. Registration
+takes precedence over class and decorator declarations. See
+[Analysis panels](analysis_panels.md) for `EventFrame` and panel capability
+gates, and `resource_market` for a worked non-social example.
+
 ### Checkpoint & restore contract
 
 A backend supports checkpoint restore in either (or both) of two ways.
@@ -340,16 +508,20 @@ is no `event_to_replay_action` method to override and no `supports_action_replay
 flag — restore support is expressed through the two paths above.)
 
 **Committed-only action log.** `action_events.jsonl` is the canonical log of
-actions that COMMITTED a state change (or a successful deliberate read). An action
-method must call `_log_action_event` only on its success path — never after a
-swallowed exception or an idempotent no-op (an already-liked like, a duplicate
-mute). This is a correctness contract, not a style rule: the replay strategy above
-re-executes every logged row, so a logged-but-failed action would be re-issued on
-restore, and eval metrics count every row. Errors stay observable via the action's
-returned message and the `backend_action_errors` telemetry counter — not the log.
-When you need the commit outcome programmatically (e.g. a committed-counting turn
-policy), call `invoke_action_detailed(name, kwargs) -> (committed, result)`;
-`invoke_action_with_kwargs` is the string-only view over it.
+actions that committed a state change or performed a deliberate logged read.
+The invocation layer records a plain return or
+`ActionResult(committed=True)` exactly once. Return
+`ActionResult(committed=False)` after a rejected, failed, or idempotent call.
+This is a correctness contract: replay re-executes every logged row and
+evaluation metrics count every row. Raised errors remain observable through the
+returned message and `backend_action_errors` telemetry. Use
+`invoke_action_detailed(name, kwargs) -> (committed, result)` when a caller needs
+the outcome; `invoke_action_with_kwargs` is the string-only view.
+
+Use `_log_action_event(source_user, label, data)` only for a commit outside the
+normal invocation path, such as a scheduled update, initialization event, or
+custom direct dispatcher. Calling it inside an invoked action suppresses the
+automatic row, so an existing manual action still records exactly once.
 
 **Committed-events mirror (runtime read path).** Every `_log_action_event` call
 also appends one record — `{label, source_user, episode, data}` — to an in-memory
@@ -394,8 +566,16 @@ inspecting simulation state during or after a run. The home feed and sidebar
 stats auto-refresh every few seconds (skipped while you are scrolled into the
 feed), so pointing a visualizer at a *running* simulation's database shows new
 posts appearing live. Studio discovers each backend's optional `VisualizerSpec`
-and launches it on a dynamic port from a run's Platform tab. The same path works
-during Watch mode and for finished runs without backend-name branches in Studio.
+and serves it from a run's Platform tab. Both shipped viewers declare an
+`app_factory`, so Studio mounts them in-process (same origin, no subprocess) and
+they open immediately; a viewer that is not an ASGI app is launched as a
+subprocess on a dynamic port instead. The same path works during Watch mode and
+for finished runs without backend-name branches in Studio.
+
+A viewer is an ordinary FastAPI app built by a factory — `create_viewer_app(db_path)`
+— which the standalone `python -m ...visualizer.server` entry point uses too, so
+one implementation serves both. Its pages address assets relatively so they work
+at `/` and under Studio's mount prefix.
 
 ### Twitter-like Visualizer
 
