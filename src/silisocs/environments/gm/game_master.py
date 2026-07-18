@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 import os
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
+from silisocs.environments.backends.base import SocialBackendApp
 from silisocs.environments.backends.factory import create_backend_app
 from silisocs.environments.gm.base_game_master import BaseGameMaster
 from silisocs.environments.gm.components.base import (
@@ -258,6 +259,13 @@ class ComponentGameMaster(BaseGameMaster):
                 f"Refusing to hot-swap in a stateful '{role}' component "
                 f"{type(replacement).__name__} (non-empty get_state() at construction)."
             )
+        # The backend-compatibility guard runs only in _build_components; re-run it
+        # here so a mid-run swap of a social-only component (requires_social_backend)
+        # onto a non-social backend fails at swap time with the actionable TypeError,
+        # not with a deep AttributeError on the next scheduled turn/update.
+        _validate_backend_compatibility(
+            {target_key: replacement}, backend=self.backend, backend_type=self.backend_type
+        )
         self._component_registry[target_key] = replacement
         setattr(self, slot_attr, replacement)
         return replacement
@@ -505,6 +513,9 @@ class ComponentGameMaster(BaseGameMaster):
             "update": update,
         }
         _validate_update_component(update)
+        _validate_backend_compatibility(
+            registry, backend=self.backend, backend_type=self.backend_type
+        )
         return (
             GameMasterComponentSlots(
                 initialize, next_acting, action_prompt, observe, resolve, update
@@ -661,6 +672,9 @@ class MultiFlowGameMaster(ComponentGameMaster):
             registry.update(role_components)
         for component in built["update"].values():
             _validate_update_component(component)
+        _validate_backend_compatibility(
+            registry, backend=self.backend, backend_type=self.backend_type
+        )
         flow_map = _build_flow_to_component_map(self.agent_flow_tags, built, components)
         default = flow_map["default"]
         slots = GameMasterComponentSlots(
@@ -701,6 +715,14 @@ def _create_backend(backend_config: Mapping[str, Any], *, gm_name: str) -> Any:
         class_path=cfg.get("class_path"),
         params=dict(cfg.get("params") or {}),
     )
+    # The factory can only pass action_logger to a constructor that names it (the
+    # shipped dataclass backends declare the field). A hand-written __init__ that
+    # omits it — or swallows it in **kwargs — would otherwise leave the class
+    # default None and silently write no action_events.jsonl, so guarantee it here
+    # the same way exposure/harness loggers are wired. The guard keeps a logger a
+    # custom constructor installed itself.
+    if getattr(backend, "action_logger", None) is None:
+        backend.action_logger = action_logger
     # Exposure logger (what each agent SAW): a sibling of action_events.jsonl in
     # the same per-GM directory. Written only when an observe component logs to
     # it, so the file/writer-thread never materialize for runs that don't.
@@ -755,7 +777,69 @@ def _create_backend(backend_config: Mapping[str, Any], *, gm_name: str) -> Any:
         backend.set_action_filters(enabled_actions=actions, excluded_actions=excluded)
     elif excluded is not None:
         backend.set_action_filters(enabled_actions=None, excluded_actions=excluded)
+    _validate_action_surface(
+        backend,
+        gm_name=gm_name,
+        backend_type=backend_type,
+        filtered=enabled_actions is not None or excluded is not None,
+        enabled_actions=enabled_actions,
+        excluded_actions=excluded_actions,
+    )
     return backend
+
+
+def _callable_actions(actions: Iterable[Any]) -> list[str]:
+    """Action names an agent can actually act with (FINISHED only ends a turn)."""
+    return sorted(
+        action.selectable_name
+        for action in actions
+        if str(action.selectable_name).upper() != "FINISHED"
+    )
+
+
+def _validate_action_surface(
+    backend: Any,
+    *,
+    gm_name: str,
+    backend_type: str,
+    filtered: bool,
+    enabled_actions: Any,
+    excluded_actions: Any,
+) -> None:
+    """Fail fast when a game master's agents would have nothing to call.
+
+    FINISHED is a control token rather than a capability, so a catalog holding
+    only it leaves agents unable to do anything. Reaching that through filters is
+    always a config bug — most often ``enabled_actions: []``, which reads like "no
+    filter" but is an empty allow-list. A backend that simply declares no actions
+    is only a warning: an update-only world backend is a legitimate (if unusual)
+    shape.
+    """
+    # Every configured backend is a BackendApp (the factory enforces it), so the
+    # catalog reader is always there; a duck-typed stub injected past the factory
+    # has no catalog to judge.
+    catalog = getattr(backend, "actions", None)
+    if not callable(catalog):
+        return
+    if _callable_actions(catalog()):
+        return
+    declared = sorted(_callable_actions(backend._all_actions()))
+    if not filtered:
+        _LOGGER.warning(
+            "Game master %r: backend %r declares no @app_action methods, so agents on this "
+            "game master cannot act. Ignore this if the backend is update-only.",
+            gm_name,
+            backend_type,
+        )
+        return
+    raise ValueError(
+        f"Game master {gm_name!r}: backend {backend_type!r} exposes no callable actions after "
+        f"applying action filters (enabled_actions={enabled_actions!r}, "
+        f"excluded_actions={excluded_actions!r}), so agents on this game master would have nothing "
+        "to do. Note that 'enabled_actions: []' is an empty allow-list meaning 'expose no "
+        "actions'; use 'enabled_actions: null' to expose every action. Declared actions: "
+        f"{declared}."
+    )
 
 
 def _resolve_action_prompt_template(
@@ -796,6 +880,42 @@ def _validate_update_component(component: Any) -> None:
     validator = getattr(component, "validate_recsys_types", None)
     if callable(validator):
         validator()
+
+
+# Generic stand-ins for each social component slot, named in the error below so a
+# non-social run is told what to pick rather than what it did wrong.
+_GENERIC_SLOT_ALTERNATIVES = {
+    "initialize": "app_initialize",
+    "observe": "app_observation",
+    "update": "app_update (or none)",
+}
+
+
+def _validate_backend_compatibility(
+    registry: Mapping[str, Any],
+    *,
+    backend: Any,
+    backend_type: str,
+) -> None:
+    """Refuse social-only components on a backend that is not social.
+
+    Components declare ``requires_social_backend``; without this check they fail
+    on a SocialBackendApp-only method call at run time (an AttributeError deep in
+    a step, or worse, at the first scheduled update), long after the config that
+    caused it. Custom components opt in with the same class attribute.
+    """
+    if isinstance(backend, SocialBackendApp):
+        return
+    for key, component in registry.items():
+        if not getattr(component, "requires_social_backend", False):
+            continue
+        role = key.split("__", 1)[0]
+        alternative = _GENERIC_SLOT_ALTERNATIVES.get(role)
+        hint = f" Use a generic built-in for this slot ({alternative})." if alternative else ""
+        raise TypeError(
+            f"Component {key!r} ({type(component).__name__}) requires a SocialBackendApp, but "
+            f"backend {backend_type!r} is {type(backend).__name__}.{hint}"
+        )
 
 
 def _single_and_instances(role: str, default: Any, instances: Mapping[str, Any]) -> dict[str, Any]:

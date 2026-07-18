@@ -79,15 +79,18 @@ def test_shared_flow_gm_uses_base_initialization_contracts(tmp_path, monkeypatch
             "class_path": "tests.fake.CustomApp",
             "params": {"answer": 42},
         },
+        # Backend construction/filter wiring is what's asserted below; the slots
+        # are the generic built-ins because _DummyApp is a stub rather than a real
+        # SocialBackendApp, and the GM refuses social components without one.
         components={
-            "initialize": {"built_in": "social_media", "class_path": None, "params": {}},
+            "initialize": {"built_in": "none", "class_path": None, "params": {}},
             "next_acting": {
                 "built_in": "all_agents",
                 "params": {},
             },
-            "observe": {"built_in": "timeline_every_turn"},
+            "observe": {"built_in": "app_observation"},
             "resolve": {"built_in": "parsed_action"},
-            "update": {"built_in": "social_recommendation"},
+            "update": {"built_in": "none"},
         },
         action_prompt_template="Act",
         action_mode="custom",

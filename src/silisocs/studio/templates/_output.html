@@ -1,0 +1,28 @@
+{# Single source of truth for rendering a PanelOutput dict (figure/table/
+   markdown/html/grid, incl. nested grid items). Shared by run.html, study.html,
+   and kept in lockstep with analysis/report.py's _render_output and the watch
+   JS renderPanel(). Any output type must render on all surfaces or none. #}
+{% macro render_output(output, grid_class='stat-grid') -%}
+{%- if output.type == 'figure' -%}
+<div class="plot" data-figure='{{ output.figure|tojson }}'></div>
+{%- elif output.type == 'table' -%}
+<div class="table-scroll"><table><thead><tr>{% for column in output.columns %}<th>{{ column if column is string else column.name }}</th>{% endfor %}</tr></thead><tbody>{% for row in output.rows %}<tr>{% for column in output.columns %}{% set key = column if column is string else column.name %}<td>{{ row[key] }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+{%- elif output.type == 'markdown' -%}
+<p class="panel-note">{{ output.text }}</p>
+{%- elif output.type == 'html' -%}
+{{ output.html|safe }}
+{%- elif output.type == 'grid' -%}
+{% set rich = output['items']|rejectattr('type', 'equalto', 'markdown')|list %}
+<div class="{{ grid_class }}{{ ' rich' if rich }}">{% for item in output['items'] %}{{ render_grid_item(item) }}{% endfor %}</div>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro render_grid_item(item) -%}
+{%- if item.type == 'markdown' -%}
+<div class="stat-tile">{% for line in item.text.split('\n') %}{% if loop.first %}<strong>{{ line|replace('**','') }}</strong>{% else %}<span>{{ line }}</span>{% endif %}{% endfor %}</div>
+{%- elif item.type == 'html' -%}
+{{ item.html|safe }}
+{%- else -%}
+{{ render_output(item) }}
+{%- endif -%}
+{%- endmacro %}

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Explore {{ record.artifact.scenario or record.path.name }} | Silisocs Studio{% endblock %}
+{% block crumb %}<a href="/runs">Runs</a><span>/</span><a href="/runs/{{ record.id }}">{{ record.artifact.scenario or record.path.name }}</a><span>/</span>Explore{% endblock %}
+{% block content %}
+<div class="explore-page" data-explore-root>
+  <header class="explore-heading">
+    <div><p class="eyebrow">Unified exploration</p><h1>{{ record.artifact.scenario or record.path.name }}</h1><p>{{ record.id }}</p></div>
+    <div class="explore-status"><span class="badge live" data-live hidden><i></i>Live</span><span class="badge {{ 'success' if record.artifact.status == 'success' else 'neutral' }}"><i></i>{{ record.artifact.status }}</span><span>{{ capabilities.artifact.episodes or '—' }} episodes</span><span>{{ capabilities.artifact.entities or '—' }} entities</span></div>
+  </header>
+
+  <section class="explore-scope" aria-label="Exploration scope">
+    <div class="scope-identity"><span class="object-glyph run"><svg><use href="#icon-runs"/></svg></span><span><small>Scope</small><b>One run</b></span></div>
+    <label><span>From</span><input type="number" min="0" inputmode="numeric" data-query="start" value="{{ state.time.start if state.time.start is not none }}"></label>
+    <label><span>To</span><input type="number" min="0" inputmode="numeric" data-query="end" value="{{ state.time.end if state.time.end is not none }}"></label>
+    <label><span>Actor</span><input type="search" data-query="actor" value="{{ state.filters.actors|join(', ') }}" placeholder="All actors"></label>
+    <label><span>Label</span><input type="search" data-query="label" value="{{ state.filters.labels|join(', ') }}" placeholder="All events"></label>
+    <label><span>Tag</span><input type="search" data-query="tag" value="{{ state.filters.tags|join(', ') }}" placeholder="All tags"></label>
+    {% if capabilities.backend_types|length > 1 %}<label><span>Environment</span><select data-query="backend_type"><option value="">All</option>{% for backend in capabilities.backend_types %}<option value="{{ backend }}" {{ 'selected' if backend in state.filters.backend_types }}>{{ backend }}</option>{% endfor %}</select></label>{% endif %}
+    <button class="icon-button" type="button" data-clear-scope title="Clear filters" aria-label="Clear filters"><svg><use href="#icon-undo"/></svg></button>
+  </section>
+
+  <nav class="explore-lenses" aria-label="Exploration lenses">
+    {% for scene in capabilities.scenes %}<button type="button" data-scene="{{ scene.id }}" data-renderer="{{ scene.renderer }}" aria-pressed="false" class="{{ 'active' if state.lens.name == scene.lens or (not state.lens.name and loop.first) }}"><span>{{ '%02d'|format(loop.index) }}</span>{{ scene.title }}</button>{% endfor %}
+  </nav>
+
+  {% if (capabilities.artifact.episodes or 0) > 1 %}
+  <section class="explore-transport" data-transport aria-label="Episode playback">
+    <button class="icon-button" type="button" data-transport-prev title="Previous episode" aria-label="Previous episode"><svg><use href="#icon-undo"/></svg></button>
+    <button class="icon-button" type="button" data-transport-play title="Play" aria-label="Play episodes">▶</button>
+    <button class="icon-button" type="button" data-transport-next title="Next episode" aria-label="Next episode"><svg><use href="#icon-redo"/></svg></button>
+    <input type="range" data-transport-scrub min="0" max="{{ (capabilities.artifact.episodes or 1) - 1 }}" value="0" step="1" aria-label="Scrub episodes">
+    <span class="transport-label" data-transport-label>All episodes</span>
+  </section>
+  {% endif %}
+
+  <div class="explore-layout">
+    <main class="explore-scene">
+      <header><div><p class="eyebrow" data-scene-kicker>Run signal</p><h2 data-scene-title>Loading exploration</h2></div><span class="explore-count" data-scene-count></span></header>
+      <div class="explore-stage loading" data-scene-host aria-live="polite" aria-busy="true"></div>
+    </main>
+    <aside class="explore-inspector">
+      <header><p class="eyebrow">Inspector</p><h2>Selection</h2></header>
+      <div data-inspector><div class="empty compact"><p>Select an event, entity, or point in the scene.</p></div></div>
+    </aside>
+    <aside class="explore-evidence">
+      <header><p class="eyebrow">Evidence</p><h2>Selection context</h2></header>
+      <div class="evidence-list" data-evidence></div>
+      {% if capabilities.evidence.has_story %}
+      <details class="story-block" open><summary>Run story</summary><div class="story-list" data-story></div></details>
+      {% endif %}
+      <div class="evidence-foot">
+        <div class="evidence-item"><span class="signal-mark"></span><span><b>{{ capabilities.streams|length }} event streams</b><small>{{ capabilities.streams|join(', ') or 'No events recorded' }}</small></span></div>
+        <div class="evidence-item"><span class="signal-mark alt"></span><span><b>{{ capabilities.panels|selectattr('available')|list|length }} compatible analyses</b><small>Derived from declared capabilities</small></span></div>
+        <details><summary>Artifact fingerprint</summary><code>{{ capabilities.artifact.fingerprint }}</code></details>
+      </div>
+    </aside>
+  </div>
+</div>
+<script src="/assets/explore.js"></script>
+<script>initExplore({run: {{ record.id|tojson }}, capabilities: {{ capabilities|tojson }}});</script>
+{% endblock %}

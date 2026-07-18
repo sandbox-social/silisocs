@@ -7,8 +7,8 @@ import html
 from collections import Counter, defaultdict
 from typing import Any
 
+from silisocs.analysis.inputs import event_frame
 from silisocs.analysis.panel import Control, Figure, Html, Panel, register_panel
-from silisocs.analysis.panels._shared import episode_of, event_semantics_for_event
 from silisocs.design.tokens import action_color
 from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
 
@@ -48,6 +48,8 @@ def _render_thread(item: dict[str, Any], children: dict[str, list[dict[str, Any]
 @register_panel
 class ContentFeedPanel(Panel):
     name = "content_feed"
+    # Reads authored posts and replies: a backend with neither has no feed.
+    semantics = frozenset({"content.root", "content.reply"})
     title = "Content feed"
     scope = "run"
     requires = frozenset({"action_events"})
@@ -65,32 +67,27 @@ class ContentFeedPanel(Panel):
 
         roots: list[dict[str, Any]] = []
         children: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        for row in artifact.iter_actions():
-            label = str(row.get("label", ""))
-            raw_data = row.get("data")
-            data = raw_data if isinstance(raw_data, dict) else {}
-            semantics = event_semantics_for_event(row, artifact)
-            author = str(row.get("source_user", "Unknown"))
-            if label in semantics.labels("content.root"):
-                content_id = semantics.value(data, "content.id")
+        for event in event_frame(artifact):
+            if "content.root" in event.tags:
+                content_id = event.field("content.id")
                 record = {
                     "id": str(content_id or f"root-{len(roots)}"),
-                    "author": author,
-                    "episode": episode_of(row),
-                    "text": semantics.value(data, "content.text"),
+                    "author": event.actor,
+                    "episode": event.episode,
+                    "text": event.field("content.text"),
                     "css": "feed-post",
                 }
                 roots.append(record)
-            elif label in semantics.labels("content.reply"):
-                response_id = semantics.value(data, "content.response_id")
-                parent_id = semantics.value(data, "content.parent_id")
+            elif "content.reply" in event.tags:
+                response_id = event.field("content.response_id")
+                parent_id = event.field("content.parent_id")
                 if parent_id is not None:
                     children[str(parent_id)].append(
                         {
                             "id": str(response_id or f"reply-{sum(map(len, children.values()))}"),
-                            "author": author,
-                            "episode": episode_of(row),
-                            "text": semantics.value(data, "content.text"),
+                            "author": event.actor,
+                            "episode": event.episode,
+                            "text": event.field("content.text"),
                             "css": "feed-reply",
                         }
                     )
@@ -116,17 +113,17 @@ class AgentTimelinePanel(Panel):
 
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Figure:
         assert isinstance(artifact, RunArtifact)
-        rows = list(artifact.iter_actions())
+        rows = event_frame(artifact)
         agent = params.get("agent")
         if not agent:
-            tally = Counter(str(row.get("source_user", "Unknown")) for row in rows)
+            tally = Counter(event.actor for event in rows)
             agent = tally.most_common(1)[0][0] if tally else ""
         agent = str(agent)
 
         by_label: dict[str, list[int]] = defaultdict(list)
-        for row in rows:
-            if str(row.get("source_user", "Unknown")) == agent:
-                by_label[str(row.get("label", "unknown"))].append(episode_of(row))
+        for event in rows:
+            if event.actor == agent:
+                by_label[event.label].append(event.episode)
 
         traces = []
         for label in sorted(by_label):
@@ -152,6 +149,10 @@ class AgentTimelinePanel(Panel):
                     "xaxis": {"title": "Episode", "dtick": 1},
                     "yaxis": {"title": "", "type": "category"},
                     "hovermode": "closest",
+                    # The y-axis already names every trace. Repeating those
+                    # labels in a legend only competes with the agent title,
+                    # especially on narrow screens.
+                    "showlegend": False,
                 },
             }
         )

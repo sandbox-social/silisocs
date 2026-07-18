@@ -60,6 +60,17 @@ _PROBE_BUILT_INS = {
 }
 
 
+def policy_built_ins() -> dict[str, tuple[str, ...]]:
+    """Return canonical built-in names for policy authoring surfaces."""
+    catalogs: dict[str, Mapping[str, type[Any]]] = {
+        "turn": _TURN_BUILT_INS,
+        "router": _ROUTER_BUILT_INS,
+        "participation": _PARTICIPATION_BUILT_INS,
+        "probe": _PROBE_BUILT_INS,
+    }
+    return {role: tuple(sorted(values)) for role, values in catalogs.items()}
+
+
 def _build_policy(
     slot_cfg: Mapping[str, Any] | None,
     *,

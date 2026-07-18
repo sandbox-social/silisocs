@@ -39,6 +39,9 @@ class TwitterLikeApp(SocialBackendApp):
         "TWITTER_LIKE_DB",
         "silisocs.environments.backends.twitter_like.visualizer.server",
         8002,
+        app_factory=(
+            "silisocs.environments.backends.twitter_like.visualizer.server:create_viewer_app"
+        ),
     )
     app_description: str = "TwitterLikeApp"
     db_path: str = "twitter_like.db"

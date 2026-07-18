@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 class SocialRecommendationUpdateComponent(UpdateComponent):
     """Schedules recommendation updates via the backend.
 
+    Requires a SocialBackendApp (recsys reconciliation); the GM refuses to build
+    it on a backend without one.
+
     Calls backend.update_recommendations() on a schedule. The backend handles
     all computation, caching, and management of the recommendation system.
 
@@ -39,6 +42,8 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
     For flow-specific recommendation behavior, configure multiple update
     component instances and route them from the game master.
     """
+
+    requires_social_backend = True
 
     # Mid-run tunable via the generic set_component_params intervention:
     # recsys_type goes through set_recsys_type below; the rest are plain

@@ -39,7 +39,7 @@ def test_visualizer_plan_wires_env_module_and_url(tmp_path):
     spec = resolve_backend_class("twitter_like").visualizer
     assert plan.cmd == [sys.executable, "-m", spec.module]
     assert plan.env == {spec.env_var: str(db)}
-    assert plan.url == f"http://localhost:{spec.default_port}"
+    assert plan.url == f"http://127.0.0.1:{spec.default_port}"
 
 
 def test_custom_visualizer_is_discovered_from_run_manifest(tmp_path):
@@ -70,7 +70,7 @@ def test_custom_visualizer_is_discovered_from_run_manifest(tmp_path):
     plan = visualizer_plan("custom_world", db, port=9123)
     assert plan.cmd[-1] == "custom.backend.viewer"
     assert plan.env == {"CUSTOM_WORLD_DB": str(db), "CUSTOM_WORLD_PORT": "9123"}
-    assert plan.url == "http://localhost:9123"
+    assert plan.url == "http://127.0.0.1:9123"
 
 
 def test_discover_run_dir_descends_to_timestamped_leaf(tmp_path):

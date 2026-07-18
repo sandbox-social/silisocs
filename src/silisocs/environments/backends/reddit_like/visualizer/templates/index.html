@@ -4,43 +4,36 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Forum | Silisocs Studio</title>
-    <script>
-        const initialTheme = new URLSearchParams(location.search).get('theme')
-            || localStorage.getItem('silisocs-theme') || 'light';
-        document.documentElement.dataset.theme = initialTheme;
-        addEventListener('message', event => {
-            if (event.data?.type === 'silisocs-theme' && ['light', 'dark'].includes(event.data.theme)) {
-                document.documentElement.dataset.theme = event.data.theme;
-            }
-        });
-    </script>
-    <link rel="stylesheet" href="/assets/design.css">
+    <script src="assets/viewer.js"></script>
+    <link rel="stylesheet" href="assets/design.css">
     <style>
-        .post-card { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; transition: border-color 0.15s; cursor: pointer; }
+        .post-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); transition: border-color 0.15s; cursor: pointer; overflow: hidden; }
         .post-card:hover { border-color: var(--muted); }
-        .vote-col { width: 40px; background: var(--surface-2); border-radius: 4px 0 0 4px; display: flex; flex-direction: column; align-items: center; padding: 8px 4px; gap: 2px; }
-        .vote-btn { font-size: 20px; color: var(--ink-muted); cursor: pointer; line-height: 1; user-select: none; }
+        .vote-col { width: 40px; background: var(--surface-2); border-radius: var(--radius) 0 0 var(--radius); display: flex; flex-direction: column; align-items: center; padding: 8px 4px; gap: 2px; }
+        .vote-btn { display:grid; width:28px; height:28px; place-items:center; border-radius:9px; color: var(--muted); cursor: pointer; line-height: 1; user-select: none; }
+        .vote-btn .viewer-icon { width:19px; height:19px; }
         .vote-btn.up:hover { color: var(--success); } .vote-btn.down:hover { color: var(--danger); }
         .comment-thread { border-left: 2px solid var(--border); margin-left: 4px; padding-left: 12px; }
-        .pill { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 9999px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .pill { display: inline-flex; align-items: center; gap: 5px; min-height:30px; padding: 4px 8px; border:0; border-radius: var(--radius-pill); background:transparent; font-size: 12px; font-weight: 650; cursor: pointer; }
+        .pill .viewer-icon { width:15px; height:15px; }
         .pill:hover { background: var(--surface-2); }
         .nav-item.active { background: var(--surface-2); font-weight: 700; }
         #view-stack > div { display: none; } #view-stack > div.active { display: block; }
     </style>
 </head>
 <body class="forum">
-<div class="viewer-mobile-brand"><span class="viewer-brand-mark">SI</span><b>Silisocs</b><small>Forum</small></div>
+<div class="viewer-mobile-brand"><span class="viewer-brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span><b>Silisocs</b><small>Forum world</small></span></div>
 <div class="viewer-layout flex max-w-[1200px] mx-auto min-h-screen gap-4 p-4">
 
     <!-- Left sidebar -->
     <nav class="w-[240px] flex-shrink-0 hidden lg:block sticky top-4 h-[calc(100vh-2rem)]">
         <div class="bg-bg border border-border rounded-lg p-3 mb-3">
-            <div class="viewer-brand" onclick="showView('home');loadNewFeed(true)"><span class="viewer-brand-mark">SI</span><span><b>Silisocs</b><small>Forum</small></span></div>
+            <div class="viewer-brand" onclick="showView('home');loadNewFeed(true)"><span class="viewer-brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span><b>Silisocs</b><small>Forum world</small></span></div>
             <div class="space-y-1">
-                <div class="nav-item active" id="nav-home" onclick="activateNav(this);showView('home');loadNewFeed(true)">⌂ Home</div>
-                <div class="nav-item" id="nav-popular" onclick="activateNav(this);showView('popular');loadPopularFeed(true)">◇ Popular</div>
-                <div class="nav-item" id="nav-users" onclick="activateNav(this);loadAllUsers()">◎ Users</div>
-                <div class="nav-item" id="nav-admin" onclick="activateNav(this);loadAdmin()">▦ Admin</div>
+                <div class="nav-item active" id="nav-home" onclick="activateNav(this);showView('home');loadNewFeed(true)"><span data-viewer-icon="home"></span><span>Home</span></div>
+                <div class="nav-item" id="nav-popular" onclick="activateNav(this);showView('popular');loadPopularFeed(true)"><span data-viewer-icon="trending"></span><span>Popular</span></div>
+                <div class="nav-item" id="nav-users" onclick="activateNav(this);loadAllUsers()"><span data-viewer-icon="users"></span><span>Users</span></div>
+                <div class="nav-item" id="nav-admin" onclick="activateNav(this);loadAdmin()"><span data-viewer-icon="admin"></span><span>Admin</span></div>
             </div>
         </div>
         <div class="bg-bg border border-border rounded-lg p-3">
@@ -95,7 +88,7 @@
             <!-- POST DETAIL -->
             <div id="view-post">
                 <div class="mb-3">
-                    <button onclick="goBack()" class="pill text-dim mb-2">&#8592; Back</button>
+                    <button type="button" onclick="goBack()" class="pill text-dim mb-2"><span data-viewer-icon="arrowLeft"></span>Back</button>
                 </div>
                 <div id="post-detail" class="bg-bg border border-border rounded-lg mb-3"></div>
                 <div class="bg-bg border border-border rounded-lg p-4">
@@ -106,7 +99,7 @@
 
             <!-- USER PROFILE -->
             <div id="view-profile">
-                <div class="mb-3"><button onclick="goBack()" class="pill text-dim">&#8592; Back</button></div>
+                <div class="mb-3"><button type="button" onclick="goBack()" class="pill text-dim"><span data-viewer-icon="arrowLeft"></span>Back</button></div>
                 <div class="bg-bg border border-border rounded-lg p-4 mb-3">
                     <div class="flex items-center gap-3">
                         <div class="w-16 h-16 rounded-full flex items-center justify-center font-bold text-2xl text-white" id="profile-avatar">u</div>
@@ -161,6 +154,13 @@
     </aside>
 </div>
 
+<nav class="viewer-mobile-dock" aria-label="Viewer navigation">
+    <button type="button" onclick="showView('home');loadNewFeed(true)"><span data-viewer-icon="home"></span><span>Home</span></button>
+    <button type="button" onclick="showView('popular');loadPopularFeed(true)"><span data-viewer-icon="trending"></span><span>Popular</span></button>
+    <button type="button" onclick="loadAllUsers()"><span data-viewer-icon="users"></span><span>Users</span></button>
+    <button type="button" onclick="loadAdmin()"><span data-viewer-icon="admin"></span><span>Admin</span></button>
+</nav>
+
 <script>
 // ---------------------------------------------------------------------------
 // State
@@ -168,15 +168,7 @@
 let homeCursor = null, homeLoading = false;
 let popularCursor = null, popularLoading = false;
 const viewHistory = [];
-const colors = Array.from({length: 8}, (_, i) => `var(--categorical-${i})`);
-function getColor(s) { let h=0; for(let i=0;i<s.length;i++) h=s.charCodeAt(i)+((h<<5)-h); return colors[Math.abs(h)%colors.length]; }
-function esc(s) { if(!s) return ''; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
-function timeSince(ts) {
-    const s=Math.floor((Date.now()/1000)-ts);
-    if(s<0) return 'now'; if(s<60) return s+'s'; if(s<3600) return Math.floor(s/60)+'m';
-    if(s<86400) return Math.floor(s/3600)+'h'; if(s<2592000) return Math.floor(s/86400)+'d';
-    return Math.floor(s/2592000)+'mo';
-}
+// esc, escAttr, getColor, timeSince and wireActions come from assets/viewer.js.
 
 // ---------------------------------------------------------------------------
 // View management
@@ -198,33 +190,33 @@ function activateNav(el) { document.querySelectorAll('.nav-item').forEach(n=>n.c
 // ---------------------------------------------------------------------------
 function renderPostCard(post) {
     return `
-    <div class="post-card flex" onclick="openPost(${post.id})">
+    <div class="post-card flex" data-action="post" data-id="${post.id}">
         <div class="vote-col">
-            <span class="vote-btn up">&#9650;</span>
+            <span class="vote-btn up">${viewerIcon('voteUp')}</span>
             <span class="text-xs font-bold">${post.score ?? (post.upvotes-post.downvotes)}</span>
-            <span class="vote-btn down">&#9660;</span>
+            <span class="vote-btn down">${viewerIcon('voteDown')}</span>
         </div>
         <div class="flex-1 p-2 min-w-0">
             <div class="flex items-center gap-1 text-xs text-dim flex-wrap">
-                <span class="font-bold hover:underline" onclick="event.stopPropagation();openSubreddit('${esc(post.subreddit_name)}')">r/${esc(post.subreddit_name)}</span>
+                <span class="font-bold hover:underline" data-action="subreddit" data-name="${escAttr(post.subreddit_name)}">r/${esc(post.subreddit_name)}</span>
                 <span>&middot;</span>
                 <span>Posted by</span>
-                <span class="hover:underline" onclick="event.stopPropagation();openProfile('${esc(post.username)}')">u/${esc(post.username)}</span>
+                <span class="hover:underline" data-action="profile" data-username="${escAttr(post.username)}">u/${esc(post.username)}</span>
                 <span>&middot; ${timeSince(post.created_at)}</span>
             </div>
             <h3 class="text-base font-semibold mt-1 mb-1 break-words">${esc(post.title)}</h3>
             ${post.content ? `<div class="text-sm mb-2 break-words line-clamp-4">${esc(post.content)}</div>` : ''}
             <div class="flex items-center gap-3 text-xs text-dim">
-                <span class="pill" onclick="event.stopPropagation();openPost(${post.id})">&#128172; ${post.comment_count} Comments</span>
-                <span class="pill">&#8593; Share</span>
+                <span class="pill" data-action="post" data-id="${post.id}">${viewerIcon('comment')} ${post.comment_count} Comments</span>
+                <span class="pill">${viewerIcon('share')} Share</span>
             </div>
         </div>
     </div>`;
 }
 
 function renderUserRow(u) {
-    return `<div class="flex items-center gap-3 p-3 cursor-pointer hover:bg-hover" onclick="openProfile('${esc(u.username)}')">
-        <div class="avatar-sm" style="background:${getColor(u.username)}">${u.username[0].toUpperCase()}</div>
+    return `<div class="flex items-center gap-3 p-3 cursor-pointer hover:bg-hover" data-action="profile" data-username="${escAttr(u.username)}">
+        <div class="avatar-sm" style="background:${getColor(u.username)}">${esc(u.username[0].toUpperCase())}</div>
         <div class="flex-1 min-w-0"><span class="font-bold text-sm">u/${esc(u.username)}</span></div>
         <div class="text-xs text-dim">${u.karma??0} karma</div>
     </div>`;
@@ -239,7 +231,7 @@ async function loadNewFeed(reset=false) {
     homeLoading=true;
     document.getElementById('home-loading').style.display='block';
     try {
-        let url='/api/feed/new?limit=25'; if(homeCursor) url+=`&cursor=${homeCursor}`;
+        let url='api/feed/new?limit=25'; if(homeCursor) url+=`&cursor=${homeCursor}`;
         const data=await(await fetch(url)).json();
         const c=document.getElementById('home-content');
         (data.posts||[]).forEach(p=>c.insertAdjacentHTML('beforeend', renderPostCard(p)));
@@ -258,7 +250,7 @@ async function loadPopularFeed(reset=false) {
     popularLoading=true;
     document.getElementById('popular-loading').style.display='block';
     try {
-        let url='/api/feed/popular?limit=25'; if(popularCursor) url+=`&cursor=${popularCursor}`;
+        let url='api/feed/popular?limit=25'; if(popularCursor) url+=`&cursor=${popularCursor}`;
         const data=await(await fetch(url)).json();
         const c=document.getElementById('popular-content');
         (data.posts||[]).forEach(p=>c.insertAdjacentHTML('beforeend', renderPostCard(p)));
@@ -280,10 +272,10 @@ async function openSubreddit(name) {
     document.getElementById('sub-members').textContent='';
     document.getElementById('subreddit-content').innerHTML='<div class="p-6 text-center text-dim">Loading...</div>';
     try {
-        const info=await(await fetch(`/api/subreddit/${name}`)).json();
+        const info=await(await fetch(`api/subreddit/${name}`)).json();
         document.getElementById('sub-desc').textContent=info.description||'';
         document.getElementById('sub-members').textContent=(info.members_count||0)+' members';
-        const data=await(await fetch(`/api/feed/subreddit/${name}?limit=50`)).json();
+        const data=await(await fetch(`api/feed/subreddit/${name}?limit=50`)).json();
         const c=document.getElementById('subreddit-content');
         if(data.posts&&data.posts.length) { c.innerHTML=''; data.posts.forEach(p=>c.insertAdjacentHTML('beforeend', renderPostCard(p))); }
         else c.innerHTML='<div class="p-8 text-center text-dim">No posts in this community yet.</div>';
@@ -298,32 +290,32 @@ async function openPost(postId) {
     document.getElementById('post-detail').innerHTML='<div class="p-6 text-center text-dim">Loading...</div>';
     document.getElementById('comments-content').innerHTML='';
     try {
-        const post=await(await fetch(`/api/post/${postId}`)).json();
+        const post=await(await fetch(`api/post/${postId}`)).json();
         document.getElementById('post-detail').innerHTML=`
             <div class="flex">
                 <div class="vote-col rounded-l-lg">
-                    <span class="vote-btn up">&#9650;</span>
+                    <span class="vote-btn up">${viewerIcon('voteUp')}</span>
                     <span class="text-xs font-bold">${post.score}</span>
-                    <span class="vote-btn down">&#9660;</span>
+                    <span class="vote-btn down">${viewerIcon('voteDown')}</span>
                 </div>
                 <div class="flex-1 p-4">
                     <div class="flex items-center gap-1 text-xs text-dim flex-wrap mb-2">
-                        <span class="font-bold hover:underline cursor-pointer" onclick="openSubreddit('${esc(post.subreddit_name)}')">r/${esc(post.subreddit_name)}</span>
+                        <span class="font-bold hover:underline cursor-pointer" data-action="subreddit" data-name="${escAttr(post.subreddit_name)}">r/${esc(post.subreddit_name)}</span>
                         <span>&middot; Posted by</span>
-                        <span class="hover:underline cursor-pointer" onclick="openProfile('${esc(post.username)}')">u/${esc(post.username)}</span>
+                        <span class="hover:underline cursor-pointer" data-action="profile" data-username="${escAttr(post.username)}">u/${esc(post.username)}</span>
                         <span>&middot; ${timeSince(post.created_at)}</span>
                     </div>
                     <h2 class="text-xl font-bold mb-3">${esc(post.title)}</h2>
                     ${post.content ? `<div class="text-sm leading-relaxed mb-3 whitespace-pre-wrap">${esc(post.content)}</div>` : ''}
                     <div class="flex items-center gap-3 text-xs font-bold text-dim">
-                        <span class="pill">&#128172; ${post.comment_count} Comments</span>
-                        <span class="pill">&#9650; ${post.upvotes} upvotes</span>
-                        <span class="pill">&#9660; ${post.downvotes} downvotes</span>
+                        <span class="pill">${viewerIcon('comment')} ${post.comment_count} Comments</span>
+                        <span class="pill">${viewerIcon('voteUp')} ${post.upvotes} upvotes</span>
+                        <span class="pill">${viewerIcon('voteDown')} ${post.downvotes} downvotes</span>
                     </div>
                 </div>
             </div>`;
         // Load comments
-        const cdata=await(await fetch(`/api/post/${postId}/comments`)).json();
+        const cdata=await(await fetch(`api/post/${postId}/comments`)).json();
         document.getElementById('comments-header').textContent=(cdata.comments||[]).length+' Comments';
         if(!cdata.comments||!cdata.comments.length) {
             document.getElementById('comments-content').innerHTML='<div class="text-sm text-dim">No comments yet.</div>';
@@ -339,16 +331,16 @@ function renderCommentTree(comments, depth=0) {
         const score = (c.upvotes||0)-(c.downvotes||0);
         html+=`<div class="${depth>0?'comment-thread':''} mt-2 mb-1">
             <div class="flex items-center gap-2 text-xs text-dim mb-1">
-                <div class="avatar-sm" style="background:${getColor(c.username)}">${c.username[0].toUpperCase()}</div>
-                <span class="font-bold hover:underline cursor-pointer" onclick="openProfile('${esc(c.username)}')">u/${esc(c.username)}</span>
+                <div class="avatar-sm" style="background:${getColor(c.username)}">${esc(c.username[0].toUpperCase())}</div>
+                <span class="font-bold hover:underline cursor-pointer" data-action="profile" data-username="${escAttr(c.username)}">u/${esc(c.username)}</span>
                 <span>&middot; ${score} points</span>
                 <span>&middot; ${c.formatted_date||timeSince(c.created_at)}</span>
             </div>
             <div class="text-sm ml-8 mb-1">${esc(c.content)}</div>
             <div class="flex gap-2 ml-8 text-xs text-dim">
-                <span class="pill"><span class="vote-btn up text-xs">&#9650;</span> Upvote</span>
-                <span class="pill"><span class="vote-btn down text-xs">&#9660;</span> Downvote</span>
-                <span class="pill">Reply</span>
+                <span class="pill">${viewerIcon('voteUp')} Upvote</span>
+                <span class="pill">${viewerIcon('voteDown')} Downvote</span>
+                <span class="pill">${viewerIcon('reply')} Reply</span>
             </div>`;
         if(c.replies&&c.replies.length>0) html+=renderCommentTree(c.replies, depth+1);
         html+='</div>';
@@ -368,10 +360,10 @@ async function openProfile(username) {
     document.getElementById('profile-bio').textContent='';
     document.getElementById('profile-posts').innerHTML='<div class="p-6 text-center text-dim">Loading...</div>';
     try {
-        const p=await(await fetch(`/api/user/${username}`)).json();
+        const p=await(await fetch(`api/user/${username}`)).json();
         document.getElementById('profile-karma').textContent=(p.karma||0)+' karma';
         document.getElementById('profile-bio').textContent=p.bio||'No bio.';
-        const feed=await(await fetch(`/api/feed/user/${username}?limit=50`)).json();
+        const feed=await(await fetch(`api/feed/user/${username}?limit=50`)).json();
         const c=document.getElementById('profile-posts');
         if(feed.posts&&feed.posts.length) { c.innerHTML=''; feed.posts.forEach(p=>c.insertAdjacentHTML('beforeend', renderPostCard(p))); }
         else c.innerHTML='<div class="p-8 text-center text-dim">No posts yet.</div>';
@@ -387,7 +379,7 @@ async function searchUsers(query) {
     document.getElementById('search-query').textContent='"'+query+'"';
     document.getElementById('search-content').innerHTML='<div class="p-6 text-center text-dim">Searching...</div>';
     try {
-        const data=await(await fetch(`/api/users/search?q=${encodeURIComponent(query)}&limit=30`)).json();
+        const data=await(await fetch(`api/users/search?q=${encodeURIComponent(query)}&limit=30`)).json();
         document.getElementById('search-content').innerHTML=(data.users||[]).map(u=>renderUserRow(u)).join('')
             ||'<div class="p-6 text-center text-dim">No users found.</div>';
     } catch(e) { document.getElementById('search-content').innerHTML='<div class="p-6 text-center text-red-400">Error.</div>'; }
@@ -400,7 +392,7 @@ async function loadAllUsers() {
     showView('users');
     document.getElementById('users-content').innerHTML='<div class="p-6 text-center text-dim">Loading...</div>';
     try {
-        const data=await(await fetch('/api/users?limit=200')).json();
+        const data=await(await fetch('api/users?limit=200')).json();
         document.getElementById('users-content').innerHTML=(data.users||[]).map(u=>renderUserRow(u)).join('')
             ||'<div class="p-8 text-center text-dim">No users yet.</div>';
     } catch(e) { document.getElementById('users-content').innerHTML='<div class="p-6 text-center text-red-400">Error.</div>'; }
@@ -413,7 +405,7 @@ async function loadAdmin() {
     showView('admin');
     document.getElementById('admin-content').innerHTML='<div class="p-6 text-center text-dim">Loading...</div>';
     try {
-        const s=await(await fetch('/api/stats')).json();
+        const s=await(await fetch('api/stats')).json();
         document.getElementById('admin-content').innerHTML=`
             <div class="grid grid-cols-3 gap-3 mb-4">
                 <div class="bg-bg border border-border rounded-lg p-4 text-center"><div class="text-2xl font-bold">${s.user_count}</div><div class="text-dim text-xs">Users</div></div>
@@ -425,18 +417,18 @@ async function loadAdmin() {
             <div class="grid grid-cols-2 gap-3">
                 <div class="bg-bg border border-border rounded-lg p-4">
                     <h3 class="font-bold mb-2">Top Users</h3>
-                    ${(s.top_users||[]).map((u,i)=>`<div class="flex items-center gap-2 py-1 cursor-pointer hover:bg-hover rounded px-1" onclick="openProfile('${esc(u.username)}')">
+                    ${(s.top_users||[]).map((u,i)=>`<div class="flex items-center gap-2 py-1 cursor-pointer hover:bg-hover rounded px-1" data-action="profile" data-username="${escAttr(u.username)}">
                         <span class="text-dim text-xs w-4">${i+1}.</span>
-                        <div class="avatar-sm" style="background:${getColor(u.username)}">${u.username[0].toUpperCase()}</div>
+                        <div class="avatar-sm" style="background:${getColor(u.username)}">${esc(u.username[0].toUpperCase())}</div>
                         <span class="text-sm font-bold flex-1">u/${esc(u.username)}</span>
                         <span class="text-xs text-dim">${u.karma} karma</span>
                     </div>`).join('')}
                 </div>
                 <div class="bg-bg border border-border rounded-lg p-4">
                     <h3 class="font-bold mb-2">Top Subreddits</h3>
-                    ${(s.top_subreddits||[]).map((sub,i)=>`<div class="flex items-center gap-2 py-1 cursor-pointer hover:bg-hover rounded px-1" onclick="openSubreddit('${esc(sub.name)}')">
+                    ${(s.top_subreddits||[]).map((sub,i)=>`<div class="flex items-center gap-2 py-1 cursor-pointer hover:bg-hover rounded px-1" data-action="subreddit" data-name="${escAttr(sub.name)}">
                         <span class="text-dim text-xs w-4">${i+1}.</span>
-                        <div class="avatar-sm" style="background:${getColor(sub.name)}">${sub.name[0].toUpperCase()}</div>
+                        <div class="avatar-sm" style="background:${getColor(sub.name)}">${esc(sub.name[0].toUpperCase())}</div>
                         <span class="text-sm font-bold flex-1">r/${esc(sub.name)}</span>
                         <span class="text-xs text-dim">${sub.members_count} members</span>
                     </div>`).join('')}
@@ -444,7 +436,7 @@ async function loadAdmin() {
             </div>
             <div class="bg-bg border border-border rounded-lg p-4 mt-3">
                 <h3 class="font-bold mb-2">Top Posts</h3>
-                ${(s.top_posts||[]).map(p=>`<div class="flex items-center gap-2 py-2 border-b border-border last:border-0 cursor-pointer hover:bg-hover rounded px-1" onclick="openPost(${p.id})">
+                ${(s.top_posts||[]).map(p=>`<div class="flex items-center gap-2 py-2 border-b border-border last:border-0 cursor-pointer hover:bg-hover rounded px-1" data-action="post" data-id="${p.id}">
                     <span class="text-brand font-bold text-sm w-8 text-right">${p.score}</span>
                     <div class="flex-1 min-w-0"><div class="text-sm font-bold truncate">${esc(p.title)}</div><div class="text-xs text-dim">r/${esc(p.subreddit)} &middot; u/${esc(p.username)} &middot; ${p.comment_count} comments</div></div>
                 </div>`).join('')}
@@ -458,8 +450,8 @@ async function loadAdmin() {
 async function loadSidebar() {
     try {
         const [stats, subs] = await Promise.all([
-            fetch('/api/stats').then(r=>r.json()),
-            fetch('/api/subreddits').then(r=>r.json()),
+            fetch('api/stats').then(r=>r.json()),
+            fetch('api/subreddits').then(r=>r.json()),
         ]);
         document.getElementById('sidebar-stats').innerHTML=`
             <div class="space-y-1">
@@ -469,14 +461,14 @@ async function loadSidebar() {
                 <div class="flex justify-between"><span>Communities</span><span class="font-bold">${stats.subreddit_count}</span></div>
             </div>`;
         document.getElementById('sidebar-users').innerHTML=(stats.top_users||[]).slice(0,5).map(u=>`
-            <div class="flex items-center gap-2 cursor-pointer hover:bg-hover rounded p-1 -mx-1" onclick="openProfile('${esc(u.username)}')">
-                <div class="avatar-sm" style="background:${getColor(u.username)}">${u.username[0].toUpperCase()}</div>
+            <div class="flex items-center gap-2 cursor-pointer hover:bg-hover rounded p-1 -mx-1" data-action="profile" data-username="${escAttr(u.username)}">
+                <div class="avatar-sm" style="background:${getColor(u.username)}">${esc(u.username[0].toUpperCase())}</div>
                 <span class="text-sm font-bold flex-1 truncate">u/${esc(u.username)}</span>
                 <span class="text-xs text-dim">${u.karma}</span>
             </div>`).join('');
         document.getElementById('sidebar-subs').innerHTML=(subs.subreddits||[]).map(s=>`
-            <div class="nav-item text-sm" onclick="openSubreddit('${esc(s.name)}')">
-                <div class="avatar-sm" style="background:${getColor(s.name)}">${s.name[0].toUpperCase()}</div>
+            <div class="nav-item text-sm" data-action="subreddit" data-name="${escAttr(s.name)}">
+                <div class="avatar-sm" style="background:${getColor(s.name)}">${esc(s.name[0].toUpperCase())}</div>
                 <span class="flex-1">r/${esc(s.name)}</span>
                 <span class="text-xs text-dim">${s.members_count}</span>
             </div>`).join('');
@@ -503,7 +495,7 @@ async function refreshNewFeed() {
     if(!document.getElementById('view-home').classList.contains('active')) return;
     if(homeLoading || window.scrollY>50) return;
     try {
-        const data=await(await fetch('/api/feed/new?limit=25')).json();
+        const data=await(await fetch('api/feed/new?limit=25')).json();
         if(data.posts) {
             document.getElementById('home-content').innerHTML=data.posts.map(p=>renderPostCard(p)).join('');
             homeCursor=data.next_cursor||null;
@@ -512,6 +504,15 @@ async function refreshNewFeed() {
     loadSidebar();
 }
 setInterval(refreshNewFeed, 5000);
+
+// ---------------------------------------------------------------------------
+// Action wiring — data-action elements dispatch here instead of inline onclick.
+// ---------------------------------------------------------------------------
+wireActions({
+    post: d => openPost(Number(d.id)),
+    profile: d => openProfile(d.username),
+    subreddit: d => openSubreddit(d.name),
+});
 
 // ---------------------------------------------------------------------------
 // Init

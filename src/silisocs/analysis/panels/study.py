@@ -6,7 +6,15 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from silisocs.analysis.panel import Figure, Grid, Html, Panel, Table, register_panel
+from silisocs.analysis.panel import (
+    Figure,
+    Grid,
+    Html,
+    Panel,
+    PanelOutput,
+    Table,
+    register_panel,
+)
 from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
 
 
@@ -112,7 +120,7 @@ class HypothesisBoardPanel(Panel):
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Grid:
         assert isinstance(artifact, StudyArtifact)
         definition = artifact.definition or {}
-        cards = []
+        cards: list[PanelOutput] = []
         for hypothesis_id, hypothesis in (definition.get("hypotheses") or {}).items():
             follows = hypothesis.get("follows_from")
             relation = (

@@ -15,71 +15,84 @@ import hashlib
 # ---------------------------------------------------------------------------
 # Themes: the canonical role palettes.
 #
-# Role names are snake_case. Light values are the historical Slate & Teal brand
-# (also used by the docs site). Dark values are a coherent slate set anchored on
-# canvas #0f1117, surface #161922, and ink #e8eaf2; the accent stays #0d9488 while
-# text-on-dark accent/link roles brighten to teal-300/-200 where contrast
-# requires. All pairs used for text are validated for WCAG contrast in
-# tests/test_design.py.
+# Role names are snake_case. The palette is intentionally broader than a normal
+# dashboard palette: teal identifies interaction, while coral, violet, sky, and
+# amber give simulations enough visual energy to express distinct states. Both
+# themes use the same roles, and every foreground/background pair is validated
+# for WCAG contrast in tests/test_design.py.
 # ---------------------------------------------------------------------------
 THEMES: dict[str, dict[str, str]] = {
     "light": {
-        "accent": "#0d9488",
-        "accent_hover": "#0f766e",
-        "accent_link": "#0f766e",
-        "ink": "#17202a",
-        "ink_muted": "#65717e",
-        "canvas": "#eef1f2",
+        "accent": "#087f75",
+        "accent_hover": "#07675f",
+        "accent_link": "#076d65",
+        "accent_soft": "#d9f2ee",
+        "ink": "#15211f",
+        "ink_muted": "#5f6f6b",
+        "canvas": "#f2f5f2",
         "surface": "#ffffff",
-        "surface_subtle": "#f4f6f7",
-        "border": "#d9dfe2",
-        "success": "#16865c",
-        "warning": "#b7791f",
-        "danger": "#c2414b",
+        "surface_subtle": "#eaf0ed",
+        "surface_elevated": "#ffffff",
+        "border": "#d5e0db",
+        "success": "#137a52",
+        "warning": "#a9650f",
+        "danger": "#bd3b4b",
         "on_strong": "#ffffff",
-        "terminal_canvas": "#111820",
-        "terminal_ink": "#dce7e9",
-        "terminal_muted": "#8fa2aa",
+        "on_accent": "#ffffff",
+        "signal_coral": "#ec6a5c",
+        "signal_violet": "#8066c2",
+        "signal_sky": "#3188c9",
+        "signal_amber": "#db9518",
+        "terminal_canvas": "#101817",
+        "terminal_ink": "#dce9e5",
+        "terminal_muted": "#8da39d",
         "terminal_success": "#a9e8c1",
         "terminal_warning": "#ffd58a",
         "terminal_danger": "#ff9d9d",
         "terminal_accent": "#75d4ca",
-        "rail_canvas": "#172127",
-        "rail_surface": "#24343b",
-        "rail_hover": "#202f35",
-        "rail_ink": "#dbe4e6",
-        "rail_muted": "#9eb0b6",
-        "rail_faint": "#789098",
-        "rail_border": "#304047",
+        "rail_canvas": "#ffffff",
+        "rail_surface": "#dff2ee",
+        "rail_hover": "#edf5f2",
+        "rail_ink": "#15211f",
+        "rail_muted": "#52635f",
+        "rail_faint": "#70817d",
+        "rail_border": "#d5e0db",
     },
     "dark": {
-        "accent": "#0d9488",
-        "accent_hover": "#2dd4bf",
-        "accent_link": "#5eead4",
-        "ink": "#e8eaf2",
-        "ink_muted": "#9aa7bd",
-        "canvas": "#0f1117",
-        "surface": "#161922",
-        "surface_subtle": "#1e2230",
-        "border": "#2b3140",
-        "success": "#34d399",
-        "warning": "#fbbf24",
-        "danger": "#f87171",
+        "accent": "#4dd4c4",
+        "accent_hover": "#72e2d5",
+        "accent_link": "#72e2d5",
+        "accent_soft": "#173b37",
+        "ink": "#eef5f2",
+        "ink_muted": "#a3b3ae",
+        "canvas": "#101412",
+        "surface": "#171d1b",
+        "surface_subtle": "#212a27",
+        "surface_elevated": "#1b2320",
+        "border": "#303c38",
+        "success": "#52d79b",
+        "warning": "#f2ba55",
+        "danger": "#ff8290",
         "on_strong": "#ffffff",
-        "terminal_canvas": "#111820",
+        "on_accent": "#082b27",
+        "signal_coral": "#ff8174",
+        "signal_violet": "#ae91ef",
+        "signal_sky": "#65b9ef",
+        "signal_amber": "#f5b84e",
+        "terminal_canvas": "#0c1211",
         "terminal_ink": "#dce7e9",
         "terminal_muted": "#8fa2aa",
         "terminal_success": "#a9e8c1",
         "terminal_warning": "#ffd58a",
         "terminal_danger": "#ff9d9d",
         "terminal_accent": "#75d4ca",
-        "rail_canvas": "#11151d",
-        "rail_surface": "#24343b",
-        "rail_hover": "#202f35",
-        "rail_ink": "#dbe4e6",
-        "rail_muted": "#9eb0b6",
-        "rail_faint": "#789098",
-        "rail_border": "#304047",
+        "rail_canvas": "#151b19",
+        "rail_surface": "#203a35",
+        "rail_hover": "#202c28",
+        "rail_ink": "#e6f0ed",
+        "rail_muted": "#a2b4af",
+        "rail_faint": "#7f938e",
+        "rail_border": "#303c38",
     },
 }
 
@@ -105,32 +118,8 @@ DANGER = _LIGHT["danger"]
 # ---------------------------------------------------------------------------
 # Typography.
 # ---------------------------------------------------------------------------
-FONT_STACK = "'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif"
-FONT_DISPLAY = "Georgia, 'Times New Roman', serif"
-
-# ---------------------------------------------------------------------------
-# Optional house-color overrides for familiar action labels. ``action_color``
-# deterministically assigns every other label, including custom-backend actions.
-# ---------------------------------------------------------------------------
-ACTION_COLORS: dict[str, str] = {
-    "post": "#277da1",
-    "like": "#43aa8b",
-    "repost": "#f8961e",
-    "reply": "#7b61a8",
-    "comment": "#8f6b55",
-    "upvote": "#168aad",
-    "downvote": "#d1495b",
-    "posted": "#1f77b4",
-    "liked": "#2ca02c",
-    "reposted": "#ff7f0e",
-    "replied": "#9467bd",
-    "commented": "#8c564b",
-    "upvoted": "#17becf",
-    "downvoted": "#d62728",
-}
-
-# Neutral fallback for clients that cannot call ``action_color`` directly.
-ACTION_COLOR_FALLBACK = "#7f7f7f"
+FONT_STACK = "'Manrope', 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif"
+FONT_DISPLAY = FONT_STACK
 
 CATEGORICAL_COLORS: tuple[str, ...] = (
     "#277da1",
@@ -143,12 +132,33 @@ CATEGORICAL_COLORS: tuple[str, ...] = (
     "#0d9488",
 )
 
+# Conventional tag colors. These names get familiar ordering and colors, but
+# tags are an open language and :func:`tag_color` handles every other name.
+GROUP_COLORS: dict[str, str] = {
+    "creates_content": CATEGORICAL_COLORS[0],
+    "endorses": CATEGORICAL_COLORS[1],
+    "negative": CATEGORICAL_COLORS[6],
+    "social_graph": CATEGORICAL_COLORS[3],
+    "reads": "#8a979d",
+    "other": "#b9c2c6",
+}
+
+# Highlight ring for selected/focused graph nodes (theme-independent).
+HIGHLIGHT = CATEGORICAL_COLORS[2]
+
 
 def action_color(label: str) -> str:
-    """Return an override or replay-stable categorical color for any action label."""
+    """Return a replay-stable categorical color for any action label."""
     key = str(label)
-    if key in ACTION_COLORS:
-        return ACTION_COLORS[key]
+    digest = hashlib.sha256(key.encode("utf-8")).digest()
+    return CATEGORICAL_COLORS[int.from_bytes(digest[:2], "big") % len(CATEGORICAL_COLORS)]
+
+
+def tag_color(tag: str) -> str:
+    """Return a conventional or replay-stable categorical color for any tag."""
+    key = str(tag)
+    if key in GROUP_COLORS:
+        return GROUP_COLORS[key]
     digest = hashlib.sha256(key.encode("utf-8")).digest()
     return CATEGORICAL_COLORS[int.from_bytes(digest[:2], "big") % len(CATEGORICAL_COLORS)]
 
@@ -159,9 +169,10 @@ def action_color(label: str) -> str:
 # Type sizes in px, matching studio.css usage (display h1 / object h1 / h2 /
 # body / small / eyebrow).
 TYPE_SCALE: dict[str, int] = {
-    "display": 34,
-    "h1": 31,
-    "h2": 22,
+    "display": 42,
+    "h1": 34,
+    "h2": 23,
+    "h3": 15,
     "body": 14,
     "small": 11,
     "eyebrow": 10,
@@ -178,6 +189,20 @@ SPACING: dict[str, str] = {
     "3xl": "48px",
 }
 
-RADII: dict[str, str] = {"base": "6px"}
+RADII: dict[str, str] = {
+    "xs": "9px",
+    "sm": "13px",
+    "base": "18px",
+    "lg": "24px",
+    "pill": "999px",
+}
 
-MOTION: dict[str, str] = {"fast": "120ms", "base": "180ms"}
+# Elevation is intentionally restrained: borders still define structure while
+# these shadows separate only floating chrome and primary surfaces.
+ELEVATION: dict[str, str] = {
+    "sm": "0 1px 2px rgba(15, 32, 27, 0.06), 0 4px 14px rgba(15, 32, 27, 0.04)",
+    "md": "0 14px 36px rgba(15, 32, 27, 0.10)",
+    "lg": "0 28px 72px rgba(15, 32, 27, 0.16)",
+}
+
+MOTION: dict[str, str] = {"fast": "140ms", "base": "240ms", "slow": "520ms"}

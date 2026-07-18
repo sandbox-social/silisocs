@@ -2,8 +2,24 @@
 {% block title %}Runs | Silisocs Studio{% endblock %}
 {% block crumb %}Runs{% endblock %}
 {% block content %}
-<section class="page-heading"><div><p class="eyebrow">Artifact browser</p><h1>Runs</h1><p>Every completed and in-progress simulation in this workspace.</p></div><span class="count">{{ runs|length }} indexed</span></section>
-{% if runs %}<div class="table-shell"><table><thead><tr><th>Run</th><th>Status</th><th>Scale</th><th>Model</th><th>Seed</th><th></th></tr></thead><tbody>
-{% for record in runs %}<tr><td><a class="table-title" href="/runs/{{ record.id }}">{{ record.artifact.scenario or record.path.name }}</a><small>{{ record.id }}</small></td><td><span class="badge {{ 'success' if record.artifact.status == 'success' else 'neutral' }}">{{ record.artifact.status or 'legacy' }}</span></td><td>{{ record.artifact.num_agents or '—' }} agents · {{ record.artifact.num_steps or '—' }} steps</td><td>{{ record.artifact.llm_name or '—' }}</td><td>{{ record.artifact.seed if record.artifact.seed is not none else '—' }}</td><td><a class="row-link" href="/runs/{{ record.id }}">Open →</a></td></tr>{% endfor %}
-</tbody></table></div>{% else %}<div class="empty"><b>No runs found</b><p>Launch a scenario and Studio will index its artifacts.</p></div>{% endif %}
+<section class="page-heading"><div><p class="eyebrow"><span class="eyebrow-signal"></span>Artifact trajectories</p><h1>Runs</h1><p>Open any recorded world and move from overview to event-level analysis.</p></div><span class="count">{{ runs|length }} indexed</span></section>
+<form class="archive-filters" method="get" role="search" aria-label="Filter runs">
+  <input type="search" name="q" value="{{ filters.q }}" placeholder="Search scenario, id, status" aria-label="Search runs">
+  <label><span class="visually-hidden">Status</span><select name="status" onchange="this.form.submit()"><option value="">All statuses</option>{% for state in statuses %}<option value="{{ state }}" {{ 'selected' if filters.status == state }}>{{ state }}</option>{% endfor %}</select></label>
+  <label><span class="visually-hidden">Sort</span><select name="sort" onchange="this.form.submit()">{% for value, label in [('recent','Most recent'),('scenario','Scenario'),('status','Status'),('episodes','Episodes')] %}<option value="{{ value }}" {{ 'selected' if filters.sort == value }}>{{ label }}</option>{% endfor %}</select></label>
+  <button class="button quiet" type="submit">Apply</button>
+  <button class="button primary" type="button" data-compare-open hidden>Compare (<span data-compare-n>0</span>)</button>
+</form>
+{% if runs %}<div class="run-list archive-list" data-archive>
+{% for record in runs %}<div class="run-archive-item"><input type="checkbox" class="run-check" value="{{ record.id }}" aria-label="Select {{ record.artifact.scenario or record.path.name }} for comparison"><a class="run-row" href="/runs/{{ record.id }}"><span class="run-index">{{ '%02d'|format(loop.index) }}</span><span class="run-mark {{ 'ok' if record.artifact.status == 'success' else '' }}">{{ (record.artifact.scenario or 'R')[:2]|upper }}</span><span class="run-name"><strong>{{ record.artifact.scenario or record.path.name }}</strong><small>{{ record.id }}</small><span class="run-track"><i style="width:{{ ([record.artifact.num_steps or 1, 10]|min * 10) }}%"></i></span></span><span class="run-meta"><b>{{ record.artifact.num_agents or '—' }}</b><small>agents</small></span><span class="run-meta"><b>{{ record.artifact.num_steps or '—' }}</b><small>episodes</small></span><span class="badge {{ 'success' if record.artifact.status == 'success' else 'neutral' }}"><i></i>{{ record.artifact.status or 'unknown' }}</span><span class="arrow"><svg><use href="#icon-arrow"/></svg></span></a></div>{% endfor %}
+</div>{% else %}<div class="empty"><span class="empty-mark"><svg><use href="#icon-runs"/></svg></span><b>No matching trajectories</b><p>Adjust the filters, or launch a scenario and Studio will index every artifact it produces.</p><a class="button primary" href="/scenarios"><svg><use href="#icon-plus"/></svg>Choose a scenario</a></div>{% endif %}
+<script>
+(function(){
+  const archive=document.querySelector('[data-archive]');if(!archive)return;
+  const open=document.querySelector('[data-compare-open]'),count=document.querySelector('[data-compare-n]');
+  const selected=()=>[...archive.querySelectorAll('.run-check:checked')].map(box=>box.value);
+  archive.addEventListener('change',()=>{const ids=selected();count.textContent=ids.length;open.hidden=ids.length<2});
+  open.addEventListener('click',()=>{const ids=selected();if(ids.length>=2)location.href='/explore/compare?'+ids.map(id=>'runs='+encodeURIComponent(id)).join('&')});
+})();
+</script>
 {% endblock %}

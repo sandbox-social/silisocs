@@ -8,6 +8,7 @@ import pytest
 
 from silisocs.environments.backends.base import BackendApp, app_action
 from silisocs.environments.gm import game_master as gm_module
+from silisocs.environments.gm.components.observe import AppObservationComponent
 from silisocs.environments.gm.game_master import ComponentGameMaster
 from silisocs.runtime.io import flush_jsonl_writers
 from silisocs.runtime.types import ActionOutput, OutputType
@@ -34,6 +35,12 @@ class _GenericApp(BackendApp):
     @app_action(selectable_name="ACT", description="Act")
     def act(self, agent_name: str) -> str:
         return f"{agent_name} acted"
+
+
+class _NeedsSocialObserve(AppObservationComponent):
+    """A third-party component declaring the same requirement as the built-ins."""
+
+    requires_social_backend = True
 
 
 @dataclass
@@ -206,3 +213,137 @@ def test_base_environment_gm_rejects_action_filter_conflicts(tmp_path, monkeypat
             action_mode="generic",
             tool_calling_mode="none",
         )
+
+
+@pytest.mark.parametrize(
+    ("slot", "built_in"),
+    [
+        ("initialize", "social_media"),
+        ("observe", "timeline_every_turn"),
+        ("update", "social_recommendation"),
+    ],
+)
+def test_social_components_are_refused_at_build_on_a_generic_backend(
+    tmp_path, monkeypatch, slot, built_in
+) -> None:
+    """These call SocialBackendApp-only methods; without this they fail mid-run."""
+    monkeypatch.setattr(gm_module, "create_backend_app", lambda **kwargs: _GenericApp())
+    components = {
+        "initialize": {"built_in": "app_initialize", "class_path": None, "params": {}},
+        "next_acting": {"built_in": "fixed_order"},
+        "observe": {"built_in": "app_observation"},
+        "resolve": {"built_in": "generic_action"},
+        "update": {"built_in": "disabled"},
+    }
+    components[slot] = {"built_in": built_in, "class_path": None, "params": None}
+
+    with pytest.raises(TypeError) as excinfo:
+        ComponentGameMaster(
+            model=object(),
+            agents=[_Entity("Alice")],
+            name="generic_gm",
+            sim_roles={"Alice": "worker"},
+            agent_flow_tags={"Alice": "default"},
+            backend_config={
+                "backend_type": "resource_market",
+                "output_rootname": str(tmp_path),
+                "turn_policy_built_in": "single_action",
+                "app_description": "Generic app",
+            },
+            components=components,
+            action_mode="generic",
+            tool_calling_mode="none",
+        )
+    message = str(excinfo.value)
+    assert "requires a SocialBackendApp" in message
+    assert slot in message  # names the slot to change...
+    assert "_GenericApp" in message  # ...and the backend that cannot serve it
+
+
+def test_a_custom_component_can_declare_the_same_requirement(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(gm_module, "create_backend_app", lambda **kwargs: _GenericApp())
+    with pytest.raises(TypeError, match="requires a SocialBackendApp"):
+        ComponentGameMaster(
+            model=object(),
+            agents=[_Entity("Alice")],
+            name="generic_gm",
+            sim_roles={"Alice": "worker"},
+            agent_flow_tags={"Alice": "default"},
+            backend_config={
+                "backend_type": "resource_market",
+                "output_rootname": str(tmp_path),
+                "turn_policy_built_in": "single_action",
+                "app_description": "Generic app",
+            },
+            components={
+                "initialize": {"built_in": "app_initialize", "class_path": None, "params": {}},
+                "next_acting": {"built_in": "fixed_order"},
+                "observe": {
+                    "class_path": (
+                        f"{_NeedsSocialObserve.__module__}.{_NeedsSocialObserve.__qualname__}"
+                    ),
+                    "params": None,
+                },
+                "resolve": {"built_in": "generic_action"},
+                "update": {"built_in": "disabled"},
+            },
+            action_mode="generic",
+            tool_calling_mode="none",
+        )
+
+
+def _build_generic_gm(tmp_path: Any) -> ComponentGameMaster:
+    """A valid generic-backend GM (all-generic components) used as a swap subject."""
+    return ComponentGameMaster(
+        model=object(),
+        agents=[_Entity("Alice")],
+        name="generic_gm",
+        sim_roles={"Alice": "worker"},
+        agent_flow_tags={"Alice": "default"},
+        backend_config={
+            "backend_type": "resource_market",
+            "output_rootname": str(tmp_path),
+            "turn_policy_built_in": "single_action",
+            "app_description": "Generic app",
+        },
+        components={
+            "initialize": {"built_in": "app_initialize", "class_path": None, "params": {}},
+            "next_acting": {"built_in": "fixed_order"},
+            "observe": {"built_in": "app_observation"},
+            "resolve": {"built_in": "generic_action"},
+            "update": {"built_in": "disabled"},
+        },
+        action_mode="generic",
+        tool_calling_mode="none",
+    )
+
+
+def test_hot_swap_refuses_social_only_component_on_generic_backend(tmp_path, monkeypatch) -> None:
+    """Refuse a social-only component swap onto a non-social backend at swap time.
+
+    rebuild_component (the swap_component intervention seam) must re-run the
+    backend-compatibility guard: swapping a requires_social_backend component onto a
+    non-social backend fails AT SWAP TIME, not with a deep AttributeError mid-step.
+    """
+    monkeypatch.setattr(gm_module, "create_backend_app", lambda **kwargs: _GenericApp())
+    gm = _build_generic_gm(tmp_path)
+
+    # Sanity: the generic observe currently in place is fine.
+    assert isinstance(gm.observe_component, AppObservationComponent)
+
+    with pytest.raises(TypeError) as excinfo:
+        gm.rebuild_component(
+            "observe",
+            {
+                "class_path": (
+                    f"{_NeedsSocialObserve.__module__}.{_NeedsSocialObserve.__qualname__}"
+                ),
+                "params": None,
+            },
+        )
+    message = str(excinfo.value)
+    assert "requires a SocialBackendApp" in message
+    assert "_GenericApp" in message
+    # The registry/slot must be UNCHANGED after the refused swap.
+    assert isinstance(gm.observe_component, AppObservationComponent)
+    assert isinstance(gm.components["observe"], AppObservationComponent)

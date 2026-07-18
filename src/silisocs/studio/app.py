@@ -10,29 +10,49 @@
 import json
 import os
 import shlex
+import socket
 import sys
+import threading
 from contextlib import asynccontextmanager
 from difflib import unified_diff
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 
-from silisocs.analysis.panel import get_panel, list_panels, output_to_dict
+from silisocs.analysis.exploration import (
+    ExplorationQuery,
+    ExplorationState,
+    compare_runs,
+    query_entities,
+    query_events,
+    query_evidence,
+    query_relationships,
+    query_series,
+    run_capability_document,
+    run_story,
+    study_capability_document,
+)
+from silisocs.analysis.panel import get_panel, list_panels, output_to_dict, serialize_controls
 from silisocs.analysis.report import render_report
 from silisocs.analysis.views import (
     BUILTIN_VIEWS,
     build_view,
     load_view,
-    missing_requirements,
     scenario_view_files,
+    skip_reason,
+    view_applies,
 )
+from silisocs.design.assets import CachedAsset
 from silisocs.design.css import css_variables
 from silisocs.evaluations.run_artifact import load_study
-from silisocs.studio.catalog import discover_runs, find_run
+from silisocs.studio.catalog import arrange_runs, discover_runs, find_run
 from silisocs.studio.forms import (
+    ChoiceContext,
     PreviewContext,
     ScenarioRepository,
+    choice_items,
     compose_files,
     field_values,
     list_choice_providers,
@@ -47,7 +67,21 @@ from silisocs.studio.jobs import JobManager, allocate_port
 from silisocs.studio.launch import ScenarioNotFoundError, prepare_launch
 from silisocs.studio.plugins import load_studio_pages
 from silisocs.studio.studies import StudyRepository, compose_study, evaluation_presets
-from silisocs.studio.viewers import find_backend_dbs, visualizer_plan
+from silisocs.studio.viewers import (
+    ViewerDispatch,
+    find_backend_dbs,
+    viewer_app_factory,
+    viewer_mount_path,
+    visualizer_plan,
+)
+from silisocs.studio.workspace import WorkspaceCatalog
+
+
+def _port_is_serving(port: int, host: str = "127.0.0.1") -> bool:
+    """Whether something is accepting connections on a loopback port."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.25)
+        return probe.connect_ex((host, int(port))) == 0
 
 
 def _coerce_param(value: str) -> Any:
@@ -81,7 +115,7 @@ def _run_facets(artifact: Any) -> dict[str, Any]:
     action_count = 0
     agents: set[str] = set()
     probes: set[str] = set()
-    for row in artifact.iter_actions():
+    for row in artifact.actions:
         action_count += 1
         episode = row.get("episode")
         if isinstance(episode, int):
@@ -89,7 +123,7 @@ def _run_facets(artifact: Any) -> dict[str, Any]:
         source = row.get("source_user")
         if source:
             agents.add(str(source))
-    for row in artifact.iter_probes():
+    for row in artifact.probes:
         episode = row.get("episode")
         if isinstance(episode, int):
             max_episode = max(max_episode, episode)
@@ -229,6 +263,7 @@ def create_app(
     state_dir: str | Path | None = None,
     repo_root: str | Path = ".",
     max_concurrent_runs: int = 1,
+    scenario_repositories: tuple[str | Path, ...] = (),
 ):
     """Create Studio, keeping FastAPI/Jinja imports inside the optional extra."""
     try:
@@ -240,24 +275,38 @@ def create_app(
 
     root = Path(output_root).resolve()
     repository = Path(repo_root).resolve()
-    studio_state = Path(
-        state_dir or os.environ.get("SILISOCS_STUDIO_STATE", "~/.silisocs")
-    ).expanduser()
+    configured_state = state_dir or os.environ.get("SILISOCS_STUDIO_STATE")
+    studio_state = Path(configured_state or repository / ".silisocs").expanduser()
     jobs = JobManager(
         studio_state,
         output_root=root,
         max_concurrent_runs=max_concurrent_runs,
     )
-    scenarios = ScenarioRepository(repository / "scenarios")
+    workspace = WorkspaceCatalog(
+        repository,
+        repository / ".silisocs",
+        additional=scenario_repositories,
+    )
+    scenarios = workspace.scenario_repository()
     studies = StudyRepository(repository / "experiments" / "studies")
     plugin_pages = load_studio_pages()
     package = Path(__file__).resolve().parent
     templates = Jinja2Templates(directory=str(package / "templates"))
     templates.env.globals["plugin_pages"] = plugin_pages
 
+    viewers = ViewerDispatch(root)
+
     @asynccontextmanager
     async def lifespan(_app):
+        threading.Thread(
+            target=workspace.extension_catalog,
+            daemon=True,
+            name="studio-extension-discovery",
+        ).start()
         yield
+        # Mounted sub-apps never see lifespan events, so their database
+        # connections are closed through the dispatcher.
+        viewers.close()
         jobs.close()
 
     app = FastAPI(
@@ -268,6 +317,28 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.jobs = jobs
+    app.state.workspace = workspace
+
+    def choice_context(source_id: str | None = None) -> ChoiceContext:
+        source = workspace.source(source_id)
+        return ChoiceContext(
+            repository_root=source.path,
+            extension_options=lambda kind: workspace.extension_options(
+                kind,
+                preferred_source=source.id,
+            ),
+        )
+
+    def project_environment(source_id: str | None = None) -> dict[str, str]:
+        selected = workspace.source(source_id)
+        ordered = (selected, *(item for item in workspace.sources if item.id != selected.id))
+        paths: list[str] = []
+        for source in ordered:
+            paths.extend(str(path) for path in (source.path / "src", source.path) if path.is_dir())
+        inherited = os.environ.get("PYTHONPATH")
+        if inherited:
+            paths.append(inherited)
+        return {"PYTHONPATH": os.pathsep.join(dict.fromkeys(paths))}
 
     for page in plugin_pages:
         app.include_router(page.router)
@@ -276,6 +347,12 @@ def create_app(
     async def protect_mutations(request: Request, call_next):
         if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
             return await call_next(request)
+        # CSRF: a browser attaches Origin to every cross-origin POST, so a
+        # cross-site page cannot forge a control-plane call at localhost. Same-
+        # origin Studio fetches and header-less clients (curl, the CLI) pass.
+        origin = request.headers.get("origin")
+        if origin and urlsplit(origin).netloc != request.headers.get("host", ""):
+            return Response("Cross-site control-plane request rejected", status_code=403)
         token = os.environ.get("STUDIO_AUTH_TOKEN", "")
         client_host = request.client.host if request.client else ""
         local = client_host in {"127.0.0.1", "::1", "localhost", "testclient"}
@@ -290,20 +367,60 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Run not found") from exc
 
+    def study_or_404(study_id: str, **kwargs: Any) -> dict[str, Any]:
+        try:
+            return studies.load(study_id, **kwargs)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail="Study not found") from exc
+
+    def scenario_or_404(scenario_name: str, source: str = "workspace") -> dict[str, Any]:
+        try:
+            return workspace.scenario_repository(source).load(scenario_name)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail="Scenario not found") from exc
+
+    def require_file_mapping(files: Any) -> dict[str, str]:
+        if not isinstance(files, dict) or not all(
+            isinstance(key, str) and isinstance(value, str) for key, value in files.items()
+        ):
+            raise HTTPException(
+                status_code=422, detail="files must map relative names to YAML text"
+            )
+        return files
+
     def view_or_404(view_name: str, scenario: str | None = None):
         # The HTTP surface serves built-in views plus the run's scenario-shipped
         # views (an enumerated, repo-owned file set) — never a free-form path,
         # which would let a request read (and class_path-import) arbitrary files.
         if view_name in BUILTIN_VIEWS:
             return load_view(view_name)
-        shipped = scenario_view_files(scenario, scenarios.root) if scenario else {}
+        shipped: dict[str, Path] = {}
+        if scenario:
+            for source in workspace.sources:
+                shipped.update(scenario_view_files(scenario, source.scenario_root))
         if view_name in shipped:
             return load_view(shipped[view_name])
         raise HTTPException(status_code=404, detail=f"Unknown view {view_name!r}")
 
-    def run_view_names(scenario: str | None) -> list[str]:
-        names = [name for name, spec in BUILTIN_VIEWS.items() if spec["scope"] == "run"]
-        names.extend(scenario_view_files(scenario, scenarios.root) if scenario else ())
+    def run_view_names(artifact) -> list[str]:
+        """The analysis views worth offering for a run.
+
+        Views whose subject the run's backend cannot feed are dropped, so a
+        market run has no Network tab and a social run has no Market tab.
+        """
+        scenario = artifact.scenario
+        candidates = [name for name, spec in BUILTIN_VIEWS.items() if spec["scope"] == "run"]
+        candidates.extend(scenario_view_files(scenario, scenarios.root) if scenario else ())
+        names = []
+        for name in candidates:
+            try:
+                view = view_or_404(name, scenario)
+            except (HTTPException, ValueError, OSError, yaml.YAMLError):
+                # A scenario-shipped views/*.yaml can be malformed; skip that one
+                # candidate rather than 500 every tab of the run page.
+                continue
+            if view_applies(view, artifact):
+                names.append(name)
         return names
 
     def run_json(record) -> dict[str, Any]:
@@ -326,28 +443,49 @@ def create_app(
         return {
             "evaluation_presets": evaluation_presets(),
             "run_choices": [run_json(record) for record in discover_runs(root)],
+            "scenario_choices": workspace.scenarios(),
+            "repositories": [source.to_dict() for source in workspace.sources],
         }
 
-    @app.get("/assets/tokens.css")
-    def tokens_css():
-        # Brand custom properties (light + dark) come from silisocs.design —
-        # Python stays the single source of truth; studio.css holds layout only.
-        stylesheet = (package / "static" / "studio.css").read_text(encoding="utf-8")
-        return Response(css_variables() + stylesheet, media_type="text/css")
-
-    @app.get("/assets/plotly.js")
-    def plotly_js():
-        return Response(
+    # Read once at startup: these bodies only change when the package does.
+    # Brand custom properties (light + dark) come from silisocs.design — Python
+    # stays the single source of truth; studio.css holds layout only.
+    assets = {
+        "tokens.css": CachedAsset.build(
+            css_variables() + (package / "static" / "studio.css").read_text(encoding="utf-8"),
+            "text/css",
+        ),
+        "plotly.js": CachedAsset.build(
             (package / "static" / "plotly.min.js").read_text(encoding="utf-8"),
-            media_type="text/javascript",
-        )
-
-    @app.get("/assets/cytoscape.js")
-    def cytoscape_js():
-        return Response(
+            "text/javascript",
+        ),
+        "cytoscape.js": CachedAsset.build(
             (package / "static" / "cytoscape.min.js").read_text(encoding="utf-8"),
-            media_type="text/javascript",
-        )
+            "text/javascript",
+        ),
+        "studio.js": CachedAsset.build(
+            (package / "static" / "studio.js").read_text(encoding="utf-8"),
+            "text/javascript",
+        ),
+        "explore.js": CachedAsset.build(
+            (package / "static" / "explore.js").read_text(encoding="utf-8"),
+            "text/javascript",
+        ),
+        "manrope.woff2": CachedAsset.build_bytes(
+            (package.parent / "design" / "fonts" / "manrope-latin-variable.woff2").read_bytes(),
+            "font/woff2",
+        ),
+    }
+
+    @app.get("/assets/{name}")
+    def asset(request: Request, name: str):
+        cached = assets.get(name)
+        if cached is None:
+            raise HTTPException(status_code=404, detail=f"Unknown asset {name!r}")
+        status, body, headers = cached.response(request.headers.get("if-none-match"))
+        if status == 304:
+            return Response(status_code=304, headers=headers)
+        return Response(body, media_type=cached.media_type, headers=headers)
 
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request):
@@ -360,7 +498,7 @@ def create_app(
                 "all_runs": runs,
                 "active": "home",
                 "plugin_pages": plugin_pages,
-                "scenario_count": scenarios.count(),
+                "scenario_count": len(workspace.scenarios()),
                 "study_count": studies.count(),
                 "live_count": len(
                     [job for job in jobs.store.list() if job.status in {"queued", "running"}]
@@ -380,14 +518,26 @@ def create_app(
                 "form_schemas": list_form_schemas(),
                 "choice_providers": list_choice_providers(),
                 "preview_providers": list_preview_providers(),
+                "repositories": [source.to_dict() for source in workspace.sources],
+                "extension_catalog": workspace.extension_catalog(),
+                "discovery_errors": workspace.discovery_errors,
                 "active": "settings",
             },
         )
 
     @app.get("/runs", response_class=HTMLResponse)
-    def runs_page(request: Request):
+    def runs_page(request: Request, q: str = "", status: str = "", sort: str = "recent"):
+        records = discover_runs(root)
+        statuses = sorted({record.artifact.status or "unknown" for record in records})
         return templates.TemplateResponse(
-            request, "runs.html", {"runs": discover_runs(root), "active": "runs"}
+            request,
+            "runs.html",
+            {
+                "runs": arrange_runs(records, query=q, status=status, sort=sort),
+                "statuses": statuses,
+                "filters": {"q": q, "status": status, "sort": sort},
+                "active": "runs",
+            },
         )
 
     @app.get("/live", response_class=HTMLResponse)
@@ -410,10 +560,17 @@ def create_app(
                 None,
             )
             run_id = match.id if match else None
+        interactive = bool(selected and selected.to_dict().get("interactive"))
         return templates.TemplateResponse(
             request,
             "live.html",
-            {"jobs": all_jobs, "job": selected, "run_id": run_id, "active": "live"},
+            {
+                "jobs": all_jobs,
+                "job": selected,
+                "run_id": run_id,
+                "interactive": interactive,
+                "active": "live",
+            },
         )
 
     @app.get("/studies", response_class=HTMLResponse)
@@ -430,33 +587,12 @@ def create_app(
             study_id = studies.validate_id(name)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        definition = {
-            "schema_version": 1,
-            "study": {
-                "name": study_id,
-                "study_id": study_id,
-                "study_version": "v1",
-                "question": "",
-                "scenarios": ["default"],
-                "run_defaults": {
-                    "config_path": "scenarios/default/conf",
-                    "runner_module": "silisocs.runtime.runner",
-                    "seed_start": 1,
-                    "seed_repeats": 1,
-                    "overrides": {},
-                },
-            },
-            "evaluations": [],
-            "hypotheses": {
-                "h1": {
-                    "statement": "",
-                    "independent_variable": "",
-                    "prediction": "",
-                    "status": "planning",
-                    "conditions": {"baseline": {"overrides": {}}},
-                }
-            },
-        }
+        scenario_choices = workspace.scenarios()
+        definition = studies.new_definition(
+            study_id,
+            scenario=scenario_choices[0] if scenario_choices else None,
+            working_directory=str(repository),
+        )
         study = {
             "id": study_id,
             "name": study_id,
@@ -482,17 +618,19 @@ def create_app(
 
     @app.get("/studies/{study_id}", response_class=HTMLResponse)
     def study_page(request: Request, study_id: str, view: str = "progress", tab: str = "board"):
-        try:
-            study = studies.load(study_id)
-        except (KeyError, ValueError) as exc:
-            raise HTTPException(status_code=404, detail="Study not found") from exc
+        study = study_or_404(study_id)
         selected_view = {
             "board": "progress",
             "compare": "comparison",
             "hypotheses": "hypotheses",
         }.get(tab, view)
+        # Validate through the same allowlist the run routes use: an unmapped tab
+        # falls through to the raw ?view= param, which build_view would otherwise
+        # turn into a Path.read_text + class_path import (arbitrary file read +
+        # import-time code execution). Studies are not scenario-scoped, so only
+        # the built-in study views resolve.
         built = (
-            build_view(load_view(selected_view), load_study(study["path"]))
+            build_view(view_or_404(selected_view), load_study(study["path"]))
             if tab != "definition"
             else None
         )
@@ -511,12 +649,31 @@ def create_app(
             },
         )
 
+    @app.get("/explore/study/{study_id}", response_class=HTMLResponse)
+    def explore_study_page(request: Request, study_id: str):
+        study = study_or_404(study_id)
+        try:
+            state = ExplorationState.from_query("study", (study_id,), request.query_params)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        artifact = load_study(study["path"])
+        return templates.TemplateResponse(
+            request,
+            "explore_study.html",
+            {
+                "study": study,
+                "state": state.to_dict(),
+                "capabilities": study_capability_document(artifact, study_id),
+                "active": "studies",
+            },
+        )
+
     @app.get("/scenarios", response_class=HTMLResponse)
     def scenarios_page(request: Request):
         return templates.TemplateResponse(
             request,
             "scenarios.html",
-            {"scenarios": scenarios.list(), "active": "scenarios"},
+            {"scenarios": workspace.scenarios(), "active": "scenarios"},
         )
 
     @app.get("/scenarios/new", response_class=HTMLResponse)
@@ -525,26 +682,12 @@ def create_app(
             safe_name = scenarios.validate_name(name)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        files = {
-            "world/default.yaml": yaml.safe_dump(
-                {
-                    "scenario_name": safe_name,
-                    "num_agents": 4,
-                    "num_steps": 5,
-                    "seed": 1,
-                    "setting": {"name": "", "background": []},
-                    "event": {"name": "", "context": ""},
-                },
-                sort_keys=False,
-            ),
-            "agents/default.yaml": "shared_memories: []\npersona_pipeline:\n  classes: {}\n",
-            "sim.yaml": "{}\n",
-            "env.yaml": "gm:\n  backend:\n    type: twitter_like\n",
-            "eval.yaml": "probes:\n  enabled: false\n",
-        }
+        files = scenarios.default_files(safe_name)
         scenario = {
             "name": safe_name,
             "path": str(scenarios.root / safe_name),
+            "source": "workspace",
+            "source_label": "Workspace",
             "files": {
                 key: {"text": value, "data": yaml.safe_load(value)} for key, value in files.items()
             },
@@ -554,34 +697,36 @@ def create_app(
             "scenario.html",
             {
                 "scenario": scenario,
-                "schema": materialize_form_schema(files, defer_expensive=True),
+                "schema": materialize_form_schema(
+                    files,
+                    defer_expensive=True,
+                    choice_context=choice_context(),
+                ),
                 "values": field_values(files),
-                "panel_catalog": [panel.name for panel in list_panels() if panel.scope == "run"],
+                "panel_catalog": [],
                 "history": [],
                 "active": "scenarios",
             },
         )
 
     @app.get("/scenarios/{scenario_name}", response_class=HTMLResponse)
-    def scenario_page(request: Request, scenario_name: str):
-        try:
-            scenario = scenarios.load(scenario_name)
-        except (KeyError, ValueError) as exc:
-            raise HTTPException(status_code=404, detail="Scenario not found") from exc
+    def scenario_page(request: Request, scenario_name: str, source: str = "workspace"):
+        scenario = scenario_or_404(scenario_name, source)
+        scenario["source"] = source
+        scenario["source_label"] = workspace.source(source).label
         text_files = {name: item["text"] for name, item in scenario["files"].items()}
         return templates.TemplateResponse(
             request,
             "scenario.html",
             {
                 "scenario": scenario,
-                "schema": materialize_form_schema(text_files, defer_expensive=True),
+                "schema": materialize_form_schema(
+                    text_files,
+                    defer_expensive=True,
+                    choice_context=choice_context(source),
+                ),
                 "values": field_values(text_files),
-                "panel_catalog": [panel.name for panel in list_panels() if panel.scope == "run"],
-                "history": [
-                    record
-                    for record in discover_runs(root)
-                    if record.artifact.scenario == scenario_name
-                ],
+                "panel_catalog": [],
                 "active": "scenarios",
             },
         )
@@ -594,13 +739,6 @@ def create_app(
         tab: str | None = None,
     ):
         record = record_or_404(run_id)
-        overrides = _panel_param_overrides(request.query_params)
-        try:
-            built = build_view(
-                view_or_404(view, record.artifact.scenario), record.artifact, overrides
-            )
-        except (KeyError, ValueError) as exc:  # unknown panel in a shipped view
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
         related_job = next(
             (
                 job
@@ -614,15 +752,40 @@ def create_app(
         )
         if active_tab not in {"overview", "watch", "platform", "analyze", "config", "logs"}:
             raise HTTPException(status_code=404, detail=f"Unknown run tab {active_tab!r}")
-        effective_config = _effective_config_text(record.path)
-        baseline_config = _scenario_baseline_text(scenarios, record.artifact.scenario)
+
+        # The view name is always validated — ?view=nope is a bad request on any
+        # tab — but each tab pays only for its own data: building every panel
+        # parses the run's event logs, which the Config and Logs tabs never show.
+        selected_view = view_or_404(view, record.artifact.scenario)
+        built = facets = None
+        if active_tab in {"analyze", "watch"}:
+            try:
+                built = build_view(
+                    selected_view,
+                    record.artifact,
+                    _panel_param_overrides(request.query_params),
+                )
+            except (KeyError, ValueError) as exc:  # unknown panel in a shipped view
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            facets = _run_facets(record.artifact)
+
+        effective_config = baseline_config = ""
+        manifest_text = ""
+        if active_tab == "config":
+            effective_config = _effective_config_text(record.path)
+            baseline_config = _scenario_baseline_text(scenarios, record.artifact.scenario)
+            manifest_text = yaml.safe_dump(record.artifact.manifest or {}, sort_keys=False)
+
+        log_text = ""
+        if active_tab in {"logs", "watch"} and related_job and Path(related_job.log_path).is_file():
+            log_text = Path(related_job.log_path).read_text(encoding="utf-8", errors="replace")
+
         scenario_path = repository / "scenarios" / str(record.artifact.scenario) / "conf"
         reproduce_command = (
             f"uv run silisocs --config-path {shlex.quote(str(scenario_path))}"
             if record.artifact.scenario and scenario_path.is_dir()
             else f"uv run silisocs-report {shlex.quote(str(record.path))}"
         )
-        facets = _run_facets(record.artifact)
         return templates.TemplateResponse(
             request,
             "run.html",
@@ -630,38 +793,121 @@ def create_app(
                 "record": record,
                 "view": built,
                 "view_name": view,
-                "views": run_view_names(record.artifact.scenario),
+                "views": run_view_names(record.artifact),
                 "facets": facets,
                 "watch": (
-                    _watch_snapshot(record.artifact, related_job, facets) if related_job else None
+                    _watch_snapshot(record.artifact, related_job, facets)
+                    if related_job and facets is not None
+                    else None
                 ),
                 "tab": active_tab,
                 "job": related_job,
-                "viewer_backends": sorted(
-                    {backend for backend, _ in find_backend_dbs(record.path)}
+                "viewer_backends": (
+                    sorted({backend for backend, _ in find_backend_dbs(record.path)})
+                    if active_tab == "platform"
+                    else []
                 ),
                 "effective_config": effective_config,
                 "baseline_config": baseline_config,
                 "baseline_available": bool(baseline_config),
                 "config_diff": _config_diff_lines(baseline_config, effective_config),
                 "reproduce_command": reproduce_command,
-                "manifest_text": yaml.safe_dump(record.artifact.manifest or {}, sort_keys=False),
-                "log_text": (
-                    Path(related_job.log_path).read_text(encoding="utf-8", errors="replace")
-                    if related_job and Path(related_job.log_path).is_file()
-                    else ""
-                ),
+                "manifest_text": manifest_text,
+                "log_text": log_text,
                 "active": "runs",
             },
         )
 
+    @app.get("/explore/run/{run_id:path}", response_class=HTMLResponse)
+    def explore_run_page(request: Request, run_id: str):
+        record = record_or_404(run_id)
+        try:
+            state = ExplorationState.from_query("run", (run_id,), request.query_params)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        capabilities = run_capability_document(record.artifact, run_id)
+        return templates.TemplateResponse(
+            request,
+            "explore.html",
+            {
+                "record": record,
+                "state": state.to_dict(),
+                "capabilities": capabilities,
+                "active": "runs",
+            },
+        )
+
+    @app.get("/explore/compare", response_class=HTMLResponse)
+    def explore_compare_page(request: Request):
+        # The template guards on <2 records; parsing is shared with the API route.
+        records = [record_or_404(run_id) for run_id in compare_run_ids(request)]
+        return templates.TemplateResponse(
+            request,
+            "explore_compare.html",
+            {"records": records, "run_ids": [record.id for record in records], "active": "runs"},
+        )
+
     @app.get("/api/runs")
-    def api_runs():
-        return {"items": [run_json(record) for record in discover_runs(root)]}
+    def api_runs(q: str = "", status: str = "", sort: str = "recent"):
+        records = arrange_runs(discover_runs(root), query=q, status=status, sort=sort)
+        return {"items": [run_json(record) for record in records]}
 
     @app.get("/api/scenarios")
     def api_scenarios():
-        return {"items": scenarios.list()}
+        return {"items": workspace.scenarios()}
+
+    @app.get("/api/repositories")
+    def api_repositories():
+        return {
+            "items": [source.to_dict() for source in workspace.sources],
+            "extensions": workspace.extension_catalog(),
+            "discovery_errors": workspace.discovery_errors,
+        }
+
+    @app.post("/api/repositories")
+    async def api_add_repository(request: Request):
+        payload = await request.json()
+        try:
+            source = workspace.add(
+                str(payload.get("path") or ""),
+                nickname=str(payload.get("nickname") or ""),
+            )
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "source": source.to_dict(),
+            "scenarios": workspace.scenario_repository(source.id).list(),
+            "extensions": workspace.extension_catalog(),
+        }
+
+    @app.patch("/api/repositories/{source_id}")
+    async def api_rename_repository(source_id: str, request: Request):
+        payload = await request.json()
+        try:
+            source = workspace.rename(source_id, str(payload.get("nickname") or ""))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"source": source.to_dict()}
+
+    @app.post("/api/repositories/refresh")
+    def api_refresh_repositories():
+        workspace.refresh_extensions()
+        return {
+            "extensions": workspace.extension_catalog(),
+            "discovery_errors": workspace.discovery_errors,
+        }
+
+    @app.delete("/api/repositories/{source_id}")
+    def api_remove_repository(source_id: str):
+        try:
+            workspace.remove(source_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"removed": source_id}
 
     @app.get("/api/studies")
     def api_studies():
@@ -669,32 +915,25 @@ def create_app(
 
     @app.get("/api/studies/{study_id}")
     def api_study(study_id: str):
-        try:
-            return studies.load(study_id)
-        except (KeyError, ValueError) as exc:
-            raise HTTPException(status_code=404, detail="Study not found") from exc
+        return study_or_404(study_id)
 
     @app.get("/api/studies/{study_id}/board")
     def api_study_board(study_id: str):
-        try:
-            return {"items": studies.load(study_id)["board"]}
-        except (KeyError, ValueError) as exc:
-            raise HTTPException(status_code=404, detail="Study not found") from exc
+        return {"items": study_or_404(study_id)["board"]}
 
     @app.get("/api/studies/{study_id}/compare")
     def api_study_compare(study_id: str):
-        try:
-            study = studies.load(study_id)
-        except (KeyError, ValueError) as exc:
-            raise HTTPException(status_code=404, detail="Study not found") from exc
+        study = study_or_404(study_id)
         return build_view(load_view("comparison"), load_study(study["path"]))
+
+    @app.get("/api/explore/studies/{study_id}/capabilities")
+    def api_explore_study_capabilities(study_id: str):
+        study = study_or_404(study_id, include_definition=False, include_board=False)
+        return study_capability_document(load_study(study["path"]), study_id)
 
     @app.get("/api/studies/{study_id}/notebook")
     def api_study_notebook(study_id: str):
-        try:
-            study = studies.load(study_id, include_definition=False, include_board=False)
-        except (KeyError, ValueError) as exc:
-            raise HTTPException(status_code=404, detail="Study not found") from exc
+        study = study_or_404(study_id, include_definition=False, include_board=False)
         path = Path(study["path"]) / "notebook.ipynb"
         if not path.is_file():
             raise HTTPException(status_code=404, detail="Study notebook not found")
@@ -705,7 +944,7 @@ def create_app(
         payload = await request.json()
         try:
             return studies.save(study_id, str(payload.get("yaml") or ""))
-        except (ValueError, yaml.YAMLError) as exc:
+        except (KeyError, ValueError, yaml.YAMLError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/api/studies/{study_id}/compose")
@@ -717,15 +956,12 @@ def create_app(
                 str(payload.get("yaml") or ""),
                 dict(payload.get("updates") or {}),
             )
-        except (ValueError, yaml.YAMLError) as exc:
+        except (KeyError, ValueError, yaml.YAMLError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/api/studies/{study_id}/launch")
     async def api_launch_study(request: Request, study_id: str):
-        try:
-            study = studies.load(study_id)
-        except (KeyError, ValueError) as exc:
-            raise HTTPException(status_code=404, detail="Study not found") from exc
+        study = study_or_404(study_id)
         payload = await request.json()
         concurrency = max(1, int(payload.get("max_concurrent", 1) or 1))
         command = [
@@ -749,36 +985,45 @@ def create_app(
             snapshot={"study": study["definition"], "command": command},
             output_dir=study["path"],
             parent_study=study_id,
+            env=project_environment(),
         )
         return job.to_dict()
 
     @app.get("/api/scenarios/{scenario_name}")
-    def api_scenario(scenario_name: str):
-        try:
-            scenario = scenarios.load(scenario_name)
-        except (KeyError, ValueError) as exc:
-            raise HTTPException(status_code=404, detail="Scenario not found") from exc
+    def api_scenario(scenario_name: str, source: str = "workspace"):
+        scenario = scenario_or_404(scenario_name, source)
         files = {name: item["text"] for name, item in scenario["files"].items()}
         return {
             **scenario,
-            "schema": materialize_form_schema(files, defer_expensive=True),
+            "source": source,
+            "schema": materialize_form_schema(
+                files,
+                defer_expensive=True,
+                choice_context=choice_context(source),
+            ),
             "values": field_values(files),
+        }
+
+    @app.get("/api/scenarios/{scenario_name}/runs")
+    def api_scenario_runs(scenario_name: str, source: str = "workspace"):
+        scenario_or_404(scenario_name, source)
+        return {
+            "items": [
+                run_json(record)
+                for record in discover_runs(root, subtree=scenario_name)
+                if record.artifact.scenario == scenario_name
+            ]
         }
 
     @app.post("/api/scenarios")
     async def api_save_scenario(request: Request):
         payload = await request.json()
         name = str(payload.get("name") or "")
-        files = payload.get("files") or {}
-        if not isinstance(files, dict) or not all(
-            isinstance(key, str) and isinstance(value, str) for key, value in files.items()
-        ):
-            raise HTTPException(
-                status_code=422, detail="files must map relative names to YAML text"
-            )
+        source = str(payload.get("source") or "workspace")
+        files = require_file_mapping(payload.get("files") or {})
         try:
-            return scenarios.save(name, files)
-        except (ValueError, yaml.YAMLError) as exc:
+            return workspace.scenario_repository(source).save(name, files)
+        except (KeyError, ValueError, yaml.YAMLError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/api/compose")
@@ -791,7 +1036,11 @@ def create_app(
             return {
                 "files": files,
                 "values": field_values(files),
-                "schema": materialize_form_schema(files, defer_expensive=True),
+                "schema": materialize_form_schema(
+                    files,
+                    defer_expensive=True,
+                    choice_context=choice_context(str(payload.get("source") or "workspace")),
+                ),
             }
         except (ValueError, yaml.YAMLError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -801,10 +1050,9 @@ def create_app(
         payload = await request.json()
         files = payload.get("files")
         if files is None and payload.get("scenario"):
-            try:
-                loaded = scenarios.load(str(payload["scenario"]))
-            except (KeyError, ValueError) as exc:
-                raise HTTPException(status_code=404, detail="Scenario not found") from exc
+            loaded = scenario_or_404(
+                str(payload["scenario"]), str(payload.get("source") or "workspace")
+            )
             files = {name: item["text"] for name, item in loaded["files"].items()}
         if not isinstance(files, dict):
             raise HTTPException(status_code=422, detail="files or scenario is required")
@@ -816,16 +1064,15 @@ def create_app(
         files = payload.get("files") or {}
         provider = str(payload.get("provider") or "")
         item_key = str(payload.get("item_key") or "")
-        if not isinstance(files, dict) or not all(
-            isinstance(name, str) and isinstance(text, str) for name, text in files.items()
-        ):
-            raise HTTPException(status_code=422, detail="files must map names to YAML text")
+        require_file_mapping(files)
         try:
             return run_preview_provider(
                 provider,
                 files,
                 item_key,
-                PreviewContext(repository_root=repository),
+                PreviewContext(
+                    repository_root=workspace.source(str(payload.get("source") or "workspace")).path
+                ),
             )
         except (ImportError, KeyError, OSError, TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -835,17 +1082,14 @@ def create_app(
         import asyncio
 
         payload = await request.json()
-        files = payload.get("files") or {}
+        files = require_file_mapping(payload.get("files") or {})
         provider = str(payload.get("provider") or "")
-        if not isinstance(files, dict) or not all(
-            isinstance(name, str) and isinstance(text, str) for name, text in files.items()
-        ):
-            raise HTTPException(status_code=422, detail="files must map names to YAML text")
         try:
-            choices = await asyncio.to_thread(run_choice_provider, provider, files)
+            context = choice_context(str(payload.get("source") or "workspace"))
+            choices = await asyncio.to_thread(run_choice_provider, provider, files, context)
         except (ImportError, KeyError, OSError, TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        return {"choices": choices}
+        return {"choices": choices, "items": choice_items(provider, choices, context)}
 
     @app.get("/api/runs/{run_id:path}/events/{stream}")
     def api_run_events(run_id: str, stream: str, since_index: int = 0, limit: int = 500):
@@ -860,7 +1104,7 @@ def create_app(
             raise HTTPException(status_code=404, detail=f"Unknown event stream {stream!r}")
         start = max(0, since_index)
         page_size = max(1, min(limit, 5000))
-        rows = []
+        rows: list[dict[str, Any]] = []
         for index, row in enumerate(readers[stream]()):
             if index < start:
                 continue
@@ -868,6 +1112,70 @@ def create_app(
                 break
             rows.append(row)
         return {"items": rows, "since_index": start, "next_index": start + len(rows)}
+
+    @app.get("/api/explore/runs/{run_id:path}/capabilities")
+    def api_explore_run_capabilities(run_id: str):
+        record = record_or_404(run_id)
+        return run_capability_document(record.artifact, run_id)
+
+    def exploration_query(request: Request) -> ExplorationQuery:
+        try:
+            return ExplorationQuery.from_mapping(request.query_params)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/explore/runs/{run_id:path}/events")
+    def api_explore_run_events(request: Request, run_id: str):
+        record = record_or_404(run_id)
+        return query_events(record.artifact, exploration_query(request))
+
+    @app.get("/api/explore/runs/{run_id:path}/entities")
+    def api_explore_run_entities(request: Request, run_id: str):
+        record = record_or_404(run_id)
+        return query_entities(record.artifact, exploration_query(request))
+
+    @app.get("/api/explore/runs/{run_id:path}/series")
+    def api_explore_run_series(request: Request, run_id: str):
+        record = record_or_404(run_id)
+        return query_series(record.artifact, exploration_query(request))
+
+    @app.get("/api/explore/runs/{run_id:path}/relationships")
+    def api_explore_run_relationships(request: Request, run_id: str):
+        record = record_or_404(run_id)
+        return query_relationships(record.artifact, exploration_query(request))
+
+    @app.get("/api/explore/runs/{run_id:path}/evidence")
+    def api_explore_run_evidence(request: Request, run_id: str):
+        record = record_or_404(run_id)
+        params = request.query_params
+        entity = (params.get("entity") or "").strip() or None
+        episode_raw = (params.get("episode") or "").strip()
+        try:
+            episode = int(episode_raw) if episode_raw else None
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="episode must be an integer") from exc
+        return query_evidence(
+            record.artifact, exploration_query(request), entity=entity, episode=episode
+        )
+
+    @app.get("/api/explore/runs/{run_id:path}/story")
+    def api_explore_run_story(run_id: str):
+        record = record_or_404(run_id)
+        return run_story(record.artifact)
+
+    def compare_run_ids(request: Request) -> list[str]:
+        ids = list(request.query_params.getlist("runs"))
+        if len(ids) == 1 and "," in ids[0]:
+            ids = ids[0].split(",")
+        return [run_id.strip() for run_id in ids if run_id.strip()]
+
+    @app.get("/api/explore/compare")
+    def api_explore_compare(request: Request):
+        run_ids = compare_run_ids(request)
+        if len(run_ids) < 2:
+            raise HTTPException(status_code=422, detail="Provide at least two runs to compare")
+        artifacts = [(run_id, record_or_404(run_id).artifact) for run_id in run_ids]
+        return compare_runs(artifacts, exploration_query(request))
 
     @app.get("/api/runs/{run_id:path}/views/{view_name}")
     def api_run_view(request: Request, run_id: str, view_name: str):
@@ -890,9 +1198,9 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         if panel.scope != "run":
             raise HTTPException(status_code=404, detail=f"{panel_name!r} is not a run panel")
-        missing = missing_requirements(panel, record.artifact)
-        if missing:
-            raise HTTPException(status_code=409, detail=f"Run lacks: {', '.join(missing)}")
+        reason = skip_reason(panel, record.artifact)
+        if reason:
+            raise HTTPException(status_code=409, detail=f"Panel {panel_name!r} {reason}")
         params = {
             key: _coerce_param(value)
             for key, value in request.query_params.items()
@@ -902,16 +1210,7 @@ def create_app(
             "name": panel.name,
             "title": panel.title,
             "params": params,
-            "controls": [
-                {
-                    "kind": control.kind,
-                    "param": control.param,
-                    "label": control.label or control.param.title(),
-                    "choices": list(control.choices),
-                    "value": params.get(control.param),
-                }
-                for control in panel.controls
-            ],
+            "controls": serialize_controls(panel, params),
             "output": output_to_dict(panel().build(record.artifact, params)),
         }
 
@@ -967,30 +1266,51 @@ def create_app(
     @app.post("/api/launch")
     async def api_launch(request: Request):
         payload = await request.json()
+        source_id = str(payload.pop("source", None) or "workspace")
         try:
+            source = workspace.source(source_id)
             spec = prepare_launch(
                 payload,
                 repository_root=repository,
                 output_root=root,
                 draft_root=studio_state / "launch_configs",
             )
-        except ScenarioNotFoundError as exc:
+        except (KeyError, ScenarioNotFoundError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except (ValueError, yaml.YAMLError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         job = jobs.submit(
             kind="run",
             command=spec.command,
-            cwd=repository,
+            cwd=source.path,
             scenario=spec.scenario,
             snapshot=spec.snapshot,
             output_dir=spec.output_dir,
+            env=project_environment(source_id),
+            control_path=spec.control_path,
         )
         return job.to_dict()
+
+    @app.post("/api/jobs/{job_id}/control")
+    async def api_job_control(request: Request, job_id: str):
+        try:
+            body = await request.json()
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=422, detail="Invalid JSON body") from exc
+        try:
+            return jobs.control(job_id, body if isinstance(body, dict) else {})
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Job not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/api/viewers/{run_id:path}/{backend_type}")
     def api_start_viewer(run_id: str, backend_type: str):
         record = record_or_404(run_id)
+        # A viewer declaring an ASGI factory is mounted in-process and needs no
+        # process, port, or readiness wait: it is ready the moment we answer.
+        if viewer_app_factory(backend_type) is not None:
+            return {"mode": "embedded", "url": viewer_mount_path(run_id, backend_type)}
         identity = f"{run_id}:{backend_type}"
         existing = next(
             (
@@ -1001,7 +1321,12 @@ def create_app(
             None,
         )
         if existing:
-            return {**existing.to_dict(), "url": f"http://127.0.0.1:{existing.port}"}
+            return {
+                **existing.to_dict(),
+                "mode": "subprocess",
+                "url": f"http://127.0.0.1:{existing.port}",
+                "status_url": f"/api/viewers/{run_id}/{backend_type}/status",
+            }
         match = next(
             (item for item in find_backend_dbs(record.path) if item[0] == backend_type), None
         )
@@ -1024,7 +1349,44 @@ def create_app(
             port=port,
             env=plan.env,
         )
-        return {**job.to_dict(), "url": plan.url}
+        return {
+            **job.to_dict(),
+            "mode": "subprocess",
+            "url": plan.url,
+            "status_url": f"/api/viewers/{run_id}/{backend_type}/status",
+        }
+
+    @app.get("/api/viewers/{run_id:path}/{backend_type}/status")
+    def api_viewer_status(run_id: str, backend_type: str):
+        """Whether a subprocess viewer is actually serving yet.
+
+        A launched process is not a bound port: the job goes 'running' at spawn,
+        while the server only listens once its imports finish. Clients must wait
+        on this, not on the job status.
+        """
+        record_or_404(run_id)
+        identity = f"{run_id}:{backend_type}"
+        job = next(
+            (
+                item
+                for item in jobs.store.list()
+                if item.kind == "viewer" and item.scenario == identity
+            ),
+            None,
+        )
+        if job is None:
+            return {"state": "absent", "detail": "No viewer has been started for this run."}
+        if job.status in {"finished", "failed", "killed", "orphaned"}:
+            code = job.exit_code
+            detail = (
+                f"Viewer process exited (code {code})."
+                if code is not None
+                else f"Viewer process {job.status}."
+            )
+            return {"state": "failed", "detail": detail, "status": job.status}
+        if job.port and _port_is_serving(job.port):
+            return {"state": "ready", "url": f"http://127.0.0.1:{job.port}"}
+        return {"state": "starting", "status": job.status}
 
     @app.get("/api/panels")
     def api_panels():
@@ -1051,5 +1413,11 @@ def create_app(
             "choice_providers": list(list_choice_providers()),
             "preview_providers": list(list_preview_providers()),
         }
+
+    # Mounted last: a mount matches by prefix, so it must not shadow the routes
+    # above. Viewer apps are built on first request, not here — runs are
+    # discovered per request.
+    app.mount("/viewers", viewers)
+    app.state.viewers = viewers
 
     return app

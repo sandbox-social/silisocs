@@ -56,6 +56,7 @@ class RunSpec:
     config_path: str | None
     runner_module: str
     re_evaluate: bool
+    working_directory: str | None = None
     output_rootname: str | None = None
     command_override: tuple[str, ...] | None = None
     eval_specs: tuple[EvalSpec, ...] = ()

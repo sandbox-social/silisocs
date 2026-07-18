@@ -127,6 +127,63 @@ def test_mastodon_override_mirrors_and_tolerates_missing_logger() -> None:
     assert app.count_committed_events(agent="Bob") == 1
 
 
+def test_reddit_subreddit_actions_mirror_only_on_commit(tmp_path: Any) -> None:
+    # C12: create/join/leave/get_subreddit_feed previously logged unconditionally,
+    # bypassing the mirror and recording a row even on a failed platform call.
+    logger = _RecordingLogger()
+    app = RedditLikeApp(db_path=str(tmp_path / "rd.db"), action_logger=logger)
+    app.setup_social_state(agent_names=["Alice", "Bob"])
+
+    labels = ["create_subreddit", "join_subreddit", "leave_subreddit"]
+    before = app.count_committed_events(labels=labels)
+    before_rows = len(logger.rows)
+
+    # A failing create_subreddit writes NO action event and is absent from the mirror.
+    def _boom(*_a: Any, **_k: Any) -> None:
+        raise RuntimeError("subreddit already exists")
+
+    original = app._platform.create_subreddit
+    app._platform.create_subreddit = _boom  # type: ignore[method-assign]
+    fail_msg = app.create_subreddit("Alice", "general", "dupe")
+    app._platform.create_subreddit = original  # type: ignore[method-assign]
+    assert "Error creating subreddit" in fail_msg
+    assert app.count_committed_events(labels=["create_subreddit"]) == 0
+    assert len(logger.rows) == before_rows  # no action_events.jsonl row for the failure
+
+    # A successful create + join appear in the mirror.
+    app.create_subreddit("Alice", "books", "book lovers")
+    join_msg = app.join_subreddit("Bob", "books")
+    assert "joined r/books" in join_msg
+    assert app.count_committed_events(labels=["create_subreddit"], agent="Alice") == 1
+    assert app.count_committed_events(labels=["join_subreddit"], agent="Bob") == 1
+    assert app.count_committed_events(labels=labels) - before == 2
+    app.shutdown()
+
+
+def test_count_fast_path_matches_iter(twitter: Any) -> None:
+    # PF7: count_committed_events shares the filter core with iter_committed_events
+    # but skips the per-row copy; the two must agree for the same filters.
+    app, logger = twitter
+    logger.episode_idx = 1
+    app.create_tweet("Alice", "alpha")
+    app.like_tweet("Bob", 1)
+    logger.episode_idx = 2
+    app.create_tweet("Bob", "beta gamma")
+
+    for filters in (
+        {},
+        {"labels": ["post"]},
+        {"agent": "Alice"},
+        {"labels": ["post"], "since_episode": 2},
+        {"labels": ["post"], "before_episode": 2},
+        {"text_contains_any": ["beta"]},
+        {"labels": ["like"]},
+    ):
+        assert app.count_committed_events(**filters) == len(
+            list(app.iter_committed_events(**filters))
+        )
+
+
 def test_mastodon_resume_round_trips_mirror_including_non_replayable_labels() -> None:
     from silisocs.environments.backends.mastodon.apps import SocialNetworkApp
 

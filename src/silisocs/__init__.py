@@ -32,6 +32,7 @@ def __getattr__(name: str):
         "OutputType": ("silisocs.runtime.types", "OutputType"),
         "ToolCall": ("silisocs.runtime.types", "ToolCall"),
         # Backends
+        "ActionResult": ("silisocs.environments.backends.base", "ActionResult"),
         "BackendApp": ("silisocs.environments.backends.base", "BackendApp"),
         "SocialBackendApp": ("silisocs.environments.backends.base", "SocialBackendApp"),
         "app_action": ("silisocs.environments.backends.base", "app_action"),
@@ -80,6 +81,7 @@ __all__ = [
     "OutputType",
     "ToolCall",
     # Backends
+    "ActionResult",
     "BackendApp",
     "SocialBackendApp",
     "app_action",

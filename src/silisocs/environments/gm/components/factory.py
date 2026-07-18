@@ -7,68 +7,46 @@ import re
 from collections.abc import Mapping
 from typing import Any, cast
 
-from silisocs.environments.gm.components.action_prompt import DefaultActionPromptComponent
-from silisocs.environments.gm.components.app_update import AppUpdateComponent
+from silisocs.environments.backends.base import SocialBackendApp
 from silisocs.environments.gm.components.base import (
     ActionPromptComponent,
     InitializeComponent,
     NextActingComponent,
-    NoOpUpdateComponent,
     ObservationComponent,
     ResolveComponent,
     UpdateComponent,
 )
-from silisocs.environments.gm.components.next_acting import (
-    AllAgentsNextActing,
-    FixedOrderNextActing,
-)
-from silisocs.environments.gm.components.observe import (
-    AppObservationComponent,
-    EpisodeObservation,
-)
-from silisocs.environments.gm.components.resolve import (
-    GenericActionResolveComponent,
-    ParsedActionResolveComponent,
-    ToolCallingResolveComponent,
-)
-from silisocs.environments.gm.components.social_media.observe import TimelineMakeObservation
-from silisocs.environments.gm.components.social_media.update import (
-    SocialRecommendationUpdateComponent,
-)
 from silisocs.environments.gm.context import GameMasterContext
-from silisocs.initialization.game_masters.runtime import (
-    AppInitializeGameMasterInitializer,
-    NoOpGameMasterInitializer,
-    SocialMediaGameMasterInitializer,
-)
 from silisocs.runtime.class_loading import load_class as _load_class
 
 _INITIALIZE_BUILT_INS = {
-    "none": NoOpGameMasterInitializer,
-    "disabled": NoOpGameMasterInitializer,
-    "social_media": SocialMediaGameMasterInitializer,
-    "app_initialize": AppInitializeGameMasterInitializer,
+    "none": "silisocs.initialization.game_masters.runtime.NoOpGameMasterInitializer",
+    "disabled": "silisocs.initialization.game_masters.runtime.NoOpGameMasterInitializer",
+    "social_media": "silisocs.initialization.game_masters.runtime.SocialMediaGameMasterInitializer",
+    "app_initialize": "silisocs.initialization.game_masters.runtime.AppInitializeGameMasterInitializer",
 }
 
 _ACTION_PROMPT_BUILT_INS = {
-    "default": DefaultActionPromptComponent,
+    "default": ("silisocs.environments.gm.components.action_prompt.DefaultActionPromptComponent"),
 }
 
 _OBSERVE_BUILT_INS = {
-    "app_observation": AppObservationComponent,
-    "timeline_every_turn": TimelineMakeObservation,
-    "episode_only": EpisodeObservation,
+    "app_observation": "silisocs.environments.gm.components.observe.AppObservationComponent",
+    "timeline_every_turn": (
+        "silisocs.environments.gm.components.social_media.observe.TimelineMakeObservation"
+    ),
+    "episode_only": "silisocs.environments.gm.components.observe.EpisodeObservation",
 }
 
 _RESOLVE_BUILT_INS = {
-    "parsed_action": ParsedActionResolveComponent,
-    "generic_action": GenericActionResolveComponent,
-    "tool_calling": ToolCallingResolveComponent,
+    "parsed_action": ("silisocs.environments.gm.components.resolve.ParsedActionResolveComponent"),
+    "generic_action": ("silisocs.environments.gm.components.resolve.GenericActionResolveComponent"),
+    "tool_calling": ("silisocs.environments.gm.components.resolve.ToolCallingResolveComponent"),
 }
 
 _NEXT_ACTING_BUILT_INS = {
-    "all_agents": AllAgentsNextActing,
-    "fixed_order": FixedOrderNextActing,
+    "all_agents": "silisocs.environments.gm.components.next_acting.AllAgentsNextActing",
+    "fixed_order": "silisocs.environments.gm.components.next_acting.FixedOrderNextActing",
 }
 
 # Config-derived activity models moved from this (environment) slot to the sim
@@ -89,11 +67,29 @@ def _reject_moved_next_acting(slot_cfg: Mapping[str, Any] | None) -> None:
 
 
 _UPDATE_BUILT_INS = {
-    "app_update": AppUpdateComponent,
-    "disabled": NoOpUpdateComponent,
-    "none": NoOpUpdateComponent,
-    "social_recommendation": SocialRecommendationUpdateComponent,
+    "app_update": "silisocs.environments.gm.components.app_update.AppUpdateComponent",
+    "disabled": "silisocs.environments.gm.components.base.NoOpUpdateComponent",
+    "none": "silisocs.environments.gm.components.base.NoOpUpdateComponent",
+    "social_recommendation": (
+        "silisocs.environments.gm.components.social_media.update."
+        "SocialRecommendationUpdateComponent"
+    ),
 }
+
+
+def component_built_ins() -> dict[str, tuple[str, ...]]:
+    """Return the canonical selectable names for every GM component slot."""
+    return {
+        role: tuple(sorted(values))
+        for role, values in {
+            "initialize": _INITIALIZE_BUILT_INS,
+            "action_prompt": _ACTION_PROMPT_BUILT_INS,
+            "observe": _OBSERVE_BUILT_INS,
+            "resolve": _RESOLVE_BUILT_INS,
+            "next_acting": _NEXT_ACTING_BUILT_INS,
+            "update": _UPDATE_BUILT_INS,
+        }.items()
+    }
 
 
 _MULTI_INSTANCE_RESERVED_KEYS = {
@@ -108,7 +104,7 @@ _MULTI_INSTANCE_RESERVED_KEYS = {
 def _build_from_slot(
     slot_cfg: Mapping[str, Any] | None,
     *,
-    built_ins: Mapping[str, type[Any]],
+    built_ins: Mapping[str, type[Any] | str],
     default_built_in: str,
     runtime_kwargs: Mapping[str, Any] | None = None,
     expected_base: type[Any] | None = None,
@@ -139,7 +135,8 @@ def _build_from_slot(
     if built_in not in built_ins:
         options = ", ".join(sorted(built_ins))
         raise ValueError(f"Unknown built_in '{built_in}'. Available: {options}")
-    cls = built_ins[built_in]
+    target = built_ins[built_in]
+    cls = _load_class(target) if isinstance(target, str) else target
     all_kwargs = dict(runtime_kwargs or {})
     all_kwargs.update(params)
     return _instantiate_with_supported_kwargs(cls, all_kwargs, config_param_keys=params.keys())
@@ -335,7 +332,15 @@ def build_observe_component(
             slot_cfg,
             built_ins=_OBSERVE_BUILT_INS,
             expected_base=ObservationComponent,
-            default_built_in="timeline_every_turn",
+            # The timeline default only makes sense for a backend that has one:
+            # it calls SocialBackendApp-only methods, so a config that omits this
+            # slot on a generic backend would otherwise crash mid-run. Social
+            # backends keep the long-standing default.
+            default_built_in=(
+                "timeline_every_turn"
+                if isinstance(context.backend, SocialBackendApp)
+                else "app_observation"
+            ),
             runtime_kwargs={
                 "context": context,
                 "model": context.model,
@@ -344,8 +349,11 @@ def build_observe_component(
                 "agent_flow_tags": dict(context.agent_flow_tags),
                 "episode_observation_flow": episode_observation_flow,
                 "episode_observation_flows": episode_observation_flows,
+                # ``or {}`` (not a get default): a slot may set ``params: null`` to
+                # clear params a merged config group supplied, and null is a
+                # present key.
                 "observation_params": dict(
-                    (slot_cfg or {}).get("params", {}) if isinstance(slot_cfg, Mapping) else {}
+                    (slot_cfg or {}).get("params") or {} if isinstance(slot_cfg, Mapping) else {}
                 ),
             },
         ),

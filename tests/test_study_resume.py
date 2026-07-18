@@ -203,6 +203,16 @@ def test_checkpoint_cadence_defaults_to_one(tmp_path: Path) -> None:
     assert overrides["sim.checkpoint.every_n_steps"] == 1
 
 
+def test_working_directory_is_projected_into_run_spec(tmp_path: Path) -> None:
+    project = tmp_path / "external_project"
+    run_specs, _, _ = _expand_runs(
+        tmp_path / "study.yaml",
+        _study_data({"working_directory": str(project)}),
+    )
+
+    assert run_specs[0].working_directory == str(project)
+
+
 def test_checkpoint_cadence_custom_integer(tmp_path: Path) -> None:
     overrides = _expanded_overrides(tmp_path, _study_data({"checkpoint_every_n_steps": 5}))
     assert overrides["sim.checkpoint.every_n_steps"] == 5

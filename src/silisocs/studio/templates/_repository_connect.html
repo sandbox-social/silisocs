@@ -1,0 +1,13 @@
+<dialog id="connect-project" class="command-palette compact-dialog">
+  <form class="form-group" onsubmit="connectRepository(event)">
+    <p class="eyebrow">Project source</p>
+    <h2>Connect a project</h2>
+    <p>Studio will discover its scenarios and implementations from their existing runtime contracts.</p>
+    <label class="form-field"><span>Nickname</span><input name="nickname" required maxlength="64" placeholder="Policy lab"></label>
+    <label class="form-field"><span>Project directory</span><input name="path" type="text" required placeholder="/path/to/project"></label>
+    <div class="composer-actions">
+      <button class="button quiet" type="button" onclick="document.getElementById('connect-project').close()">Cancel</button>
+      <button class="button primary" type="submit"><svg><use href="#icon-plus"/></svg>Connect</button>
+    </div>
+  </form>
+</dialog>

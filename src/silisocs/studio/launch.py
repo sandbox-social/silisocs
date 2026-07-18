@@ -26,6 +26,7 @@ class LaunchSpec:
     command: list[str]
     output_dir: Path
     snapshot: dict[str, Any]
+    control_path: Path | None = None
 
 
 def _config_directory(
@@ -111,6 +112,7 @@ def prepare_launch(
     output_dir, overrides = _output_directory(
         payload, repository, Path(output_root).resolve(), scenario
     )
+    control_path, overrides = _apply_interactive(payload, output_dir, overrides)
     command = [
         sys.executable,
         "-m",
@@ -123,6 +125,7 @@ def prepare_launch(
         scenario=scenario,
         command=command,
         output_dir=output_dir,
+        control_path=control_path,
         snapshot={
             "scenario": scenario,
             "config_yaml": config_payload,
@@ -130,3 +133,26 @@ def prepare_launch(
             "command": command,
         },
     )
+
+
+def _apply_interactive(
+    payload: Mapping[str, Any], output_dir: Path, overrides: list[str]
+) -> tuple[Path | None, list[str]]:
+    """Return the run-control overrides for an interactive launch.
+
+    Yields the control-file path both Studio (writer) and the runner (reader)
+    agree on plus the extended override list, or ``(None, overrides)`` for a
+    normal fire-and-forget launch.
+    """
+    if not payload.get("interactive"):
+        return None, overrides
+    start_paused = payload.get("start_paused", True)
+    if not isinstance(start_paused, bool):
+        raise ValueError("start_paused must be a boolean")
+    control_path = (output_dir / "run.control").resolve()
+    control_overrides = [
+        "sim.engine.control.built_in=control_file",
+        f"sim.engine.control.control_file={control_path}",
+        f"sim.engine.control.start_paused={'true' if start_paused else 'false'}",
+    ]
+    return control_path, [*overrides, *control_overrides]

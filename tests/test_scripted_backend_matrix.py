@@ -281,7 +281,13 @@ def test_resource_market_scripted_list_and_buy(tmp_path: Path) -> None:
     )
 
     rows = _read_jsonl(output_dir / "action_events.jsonl")
-    messages = "\n".join(str(row.get("message", "")) for row in rows)
+    # Market events are structured: who acted and which action are fields, and
+    # the human-readable narration rides along inside the payload.
+    assert {"list_resource", "transfer_resource", "buy_listing", "upkeep_met"} <= {
+        str(row.get("label", "")) for row in rows
+    }
+    assert {"Alex Farmer", "Blair Woodworker"} <= {str(row.get("source_user", "")) for row in rows}
+    messages = "\n".join(str((row.get("data") or {}).get("message", "")) for row in rows)
     assert "Listing 1 created" in messages
     assert "transferred 1 wood to Alex Farmer" in messages
     assert "bought 1 food" in messages
@@ -307,7 +313,8 @@ def test_virtual_space_scripted_talks_from_observation(tmp_path: Path) -> None:
     )
 
     rows = _read_jsonl(output_dir / "action_events.jsonl")
-    messages = "\n".join(str(row.get("message", "")) for row in rows)
+    assert {"leave_note", "work_on_task", "talk"} <= {str(row.get("label", "")) for row in rows}
+    messages = "\n".join(str((row.get("data") or {}).get("message", "")) for row in rows)
     assert "left a note" in messages
     assert "completed task welcome_board" in messages
     assert "told" in messages

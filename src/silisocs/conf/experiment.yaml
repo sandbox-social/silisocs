@@ -17,5 +17,10 @@ hydra:
   run:
     dir: outputs/${scenario_name}/${jobname_format}
   output_subdir: configs/${jobname_format}
+  # Turns an unresolvable run-dir interpolation (the classic symptom of a scenario
+  # world group replacing the base one) into an actionable message.
+  callbacks:
+    run_dir_interpolation_check:
+      _target_: silisocs.runtime.configuration.validation.RunDirInterpolationCheck
 
 experiment_name: independent

@@ -15,8 +15,13 @@ pytest.importorskip("matplotlib", reason="default evaluator plotting tests requi
 from silisocs.evaluations.default_evaluators import (
     _build_payload,
     _build_probe_plots,
-    _read_jsonl,
 )
+from silisocs.evaluations.run_artifact import iter_jsonl
+
+
+def _read_jsonl(path: Path) -> list[dict]:
+    """Read one JSONL file via the consolidated tolerant reader."""
+    return list(iter_jsonl([path]))
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:

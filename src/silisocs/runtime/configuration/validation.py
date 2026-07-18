@@ -16,7 +16,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from hydra.experimental.callback import Callback
 from omegaconf import DictConfig, ListConfig, OmegaConf
+from omegaconf.errors import InterpolationResolutionError
 
 from silisocs.runtime.model_fields import MODEL_FIELDS
 
@@ -421,17 +423,54 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
     _assert_allowed_keys(
         cfg,
         "sim.engine",
-        {"class_path", "params", "loop", "step", "turn_policy", "participation", "executor"},
+        {
+            "class_path",
+            "params",
+            "loop",
+            "step",
+            "turn_policy",
+            "participation",
+            "executor",
+            "control",
+        },
     )
     executor = OmegaConf.select(cfg, "sim.engine.executor")
     if executor is not None and str(executor).strip().lower() not in {"threads", "asyncio"}:
         raise ValueError(
             f"Unsupported sim.engine.executor: {executor!r}. Use 'threads' (default) or 'asyncio'."
         )
+    _validate_control_config(cfg)
     _validate_engine_slots(cfg)
     _assert_allowed_keys(cfg, "eval", {"probes"})
     _validate_interventions_config(cfg)
     print("✓ Runtime section validation passed")
+
+
+def _validate_control_config(cfg: DictConfig) -> None:
+    """Validate the optional ``sim.engine.control`` interactive-run slot."""
+    control = OmegaConf.select(cfg, "sim.engine.control")
+    if control is None:
+        return
+    _assert_allowed_keys(
+        cfg,
+        "sim.engine.control",
+        {"built_in", "start_paused", "control_file", "poll_interval"},
+    )
+    built_in = str(OmegaConf.select(cfg, "sim.engine.control.built_in") or "none").strip()
+    if built_in not in {"none", "stdin", "control_file"}:
+        raise ValueError(
+            f"Unsupported sim.engine.control.built_in: {built_in!r}. "
+            "Use 'none' (default), 'stdin', or 'control_file'."
+        )
+    start_paused = OmegaConf.select(cfg, "sim.engine.control.start_paused")
+    if start_paused is not None and not isinstance(start_paused, bool):
+        raise ValueError("sim.engine.control.start_paused must be a boolean")
+    poll_interval = OmegaConf.select(cfg, "sim.engine.control.poll_interval")
+    if poll_interval is not None:
+        if isinstance(poll_interval, bool) or not isinstance(poll_interval, (int, float)):
+            raise ValueError("sim.engine.control.poll_interval must be a positive number")
+        if float(poll_interval) <= 0:
+            raise ValueError("sim.engine.control.poll_interval must be greater than zero")
 
 
 def _validate_interventions_config(cfg: DictConfig) -> None:
@@ -666,3 +705,67 @@ def validate_scenario_config(cfg: DictConfig, scenario_path: Path | None = None)
     print("=" * 60)
     print("✅ ALL VALIDATION CHECKS PASSED")
     print("=" * 60 + "\n")
+
+
+# Universal run params a scenario's world group must provide, in the order a
+# fresh world/default.yaml should declare them.
+_UNIVERSAL_WORLD_PARAMS = (
+    'jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"',
+    "scenario_name: my_scenario",
+    "run_name: baseline",
+    "output_rootname: outputs",
+    "num_agents: 10",
+    "num_steps: 5",
+    "seed: 1",
+)
+
+
+class RunDirInterpolationCheck(Callback):
+    """Explain an unresolvable ``hydra.run.dir`` before Hydra dies on it.
+
+    Hydra resolves the run dir itself, before the task function runs, so the
+    failure surfaces as a bare ``InterpolationKeyError: 'jobname_format'`` with no
+    hint that the cause is a scenario ``world/default.yaml`` shadowing the base
+    world group (Hydra searchpath replacement) and dropping the universal run
+    params with it. This callback runs at ``on_run_start`` (single run) and
+    ``on_multirun_start`` (``-m``/sweep) — early enough to replace that message
+    with an actionable one in both launch modes.
+    """
+
+    # Keys Hydra resolves before the task function. A single run resolves the run
+    # dir + output subdir; a multirun additionally resolves the sweep dir and job
+    # name, any of which references the dropped universal run params.
+    _RUN_KEYS = ("hydra.run.dir", "hydra.output_subdir")
+    _MULTIRUN_KEYS = ("hydra.sweep.dir", "hydra.output_subdir", "hydra.job.name")
+
+    def on_run_start(self, config: DictConfig, **kwargs: Any) -> None:
+        """Resolve the run dir eagerly, translating a missing key into guidance."""
+        self._check_keys(config, self._RUN_KEYS)
+
+    def on_multirun_start(self, config: DictConfig, **kwargs: Any) -> None:
+        """Run the same check for ``-m``/multirun, which resolves sweep keys too."""
+        self._check_keys(config, self._MULTIRUN_KEYS)
+
+    def _check_keys(self, config: DictConfig, keys: tuple[str, ...]) -> None:
+        for key in keys:
+            try:
+                OmegaConf.select(config, key, throw_on_resolution_failure=True)
+            except InterpolationResolutionError as exc:
+                raise ValueError(self._message(key, exc)) from exc
+
+    @staticmethod
+    def _message(key: str, exc: InterpolationResolutionError) -> str:
+        missing = str(getattr(exc, "key", "") or "").strip() or "a referenced key"
+        declarations = "\n".join(f"  {line}" for line in _UNIVERSAL_WORLD_PARAMS)
+        return (
+            f"Config error: {key} references '{missing}', which is not defined.\n\n"
+            "This usually means your scenario's world/default.yaml REPLACES the base world "
+            "config group (Hydra shadows a group file of the same name rather than merging "
+            "it), so every universal run param the base provided must be re-declared there.\n\n"
+            "Add the missing keys to <scenario>/conf/world/default.yaml, which must start "
+            "with the '# @package _global_' directive:\n"
+            f"{declarations}\n\n"
+            "Flat scenario sim.yaml/env.yaml files are MERGED and need no such re-declaration; "
+            "only config-group files (world/, agents/, env/) replace their group. "
+            "See docs/configuration.md."
+        )

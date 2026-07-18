@@ -15,6 +15,12 @@ def main() -> int:
     parser.add_argument("--output-root", default="outputs")
     parser.add_argument("--state-dir", default=None)
     parser.add_argument("--repo-root", default=".")
+    parser.add_argument(
+        "--scenario-repo",
+        action="append",
+        default=[],
+        help="Trusted repository containing scenarios/ and optional silisocs-studio.yaml",
+    )
     parser.add_argument("--max-concurrent-runs", type=int, default=1)
     args = parser.parse_args()
     if args.host not in {"127.0.0.1", "localhost", "::1"} and not os.environ.get(
@@ -35,6 +41,7 @@ def main() -> int:
             state_dir=args.state_dir,
             repo_root=args.repo_root,
             max_concurrent_runs=args.max_concurrent_runs,
+            scenario_repositories=tuple(args.scenario_repo),
         ),
         host=args.host,
         port=args.port,

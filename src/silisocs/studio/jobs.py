@@ -11,7 +11,7 @@ import subprocess
 import threading
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -23,14 +23,13 @@ EVENT_STREAMS = ("action", "exposure", "probe", "harness")
 
 
 def _read_event_growth(
-    root: Path,
-    stream: str,
+    paths: list[Path],
     positions: dict[Path, int],
 ) -> tuple[int, int]:
-    """Read only complete JSONL records appended since the previous call."""
+    """Read only complete JSONL records appended to ``paths`` since the previous call."""
     new_count = 0
     latest_step = -1
-    for path in root.glob(f"**/{stream}_events.jsonl"):
+    for path in paths:
         try:
             position = positions.get(path, 0)
             if path.stat().st_size < position:
@@ -56,6 +55,36 @@ def _read_event_growth(
     return new_count, latest_step
 
 
+# How often the SSE loop re-discovers event-log files. The recursive glob for all
+# four streams is far more expensive than the incremental byte reads, so it runs
+# on this cadence (and whenever a stream has not appeared yet) instead of every
+# 0.4s poll tick.
+_EVENT_GLOB_INTERVAL_SECONDS = 3.0
+
+
+def _event_stream_files(root: Path, stream: str) -> list[Path]:
+    """Discover every ``<stream>_events.jsonl`` under a run dir (flat or per-GM)."""
+    return list(root.glob(f"**/{stream}_events.jsonl"))
+
+
+def _refresh_event_files(
+    root: Path,
+    stream_files: dict[str, list[Path]],
+    last_glob: float,
+    now: float,
+) -> tuple[dict[str, list[Path]], float]:
+    """Re-discover the per-stream event logs on a cadence, else keep the memo.
+
+    Globbing is far pricier than the per-tick byte reads, so it runs only every
+    few seconds — or while a stream's log has not appeared yet.
+    """
+    if now - last_glob >= _EVENT_GLOB_INTERVAL_SECONDS or any(
+        not stream_files.get(stream) for stream in EVENT_STREAMS
+    ):
+        return {stream: _event_stream_files(root, stream) for stream in EVENT_STREAMS}, now
+    return stream_files, last_glob
+
+
 @dataclass(frozen=True)
 class Job:
     id: str
@@ -76,7 +105,11 @@ class Job:
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
-        data["command"] = json.loads(self.command_json or "[]")
+        payload = json.loads(self.command_json or "{}")
+        data["command"] = payload
+        control_path = payload.get("control_path") if isinstance(payload, dict) else None
+        data["control_path"] = control_path
+        data["interactive"] = bool(control_path)
         del data["command_json"]
         return data
 
@@ -187,6 +220,7 @@ class JobManager:
         parent_study: str | None = None,
         port: int | None = None,
         env: dict[str, str] | None = None,
+        control_path: str | Path | None = None,
     ) -> Job:
         job_id = uuid.uuid4().hex[:16]
         snapshot_path = self.snapshots / f"{job_id}.yaml"
@@ -210,7 +244,12 @@ class JobManager:
             parent_study=parent_study,
             port=port,
             command_json=json.dumps(
-                {"argv": command, "cwd": str(Path(cwd).resolve()), "env": dict(env or {})}
+                {
+                    "argv": command,
+                    "cwd": str(Path(cwd).resolve()),
+                    "env": dict(env or {}),
+                    "control_path": str(Path(control_path).resolve()) if control_path else None,
+                }
             ),
         )
         self.store.insert(job)
@@ -359,6 +398,36 @@ class JobManager:
         self.store.update(job_id, status="killed", ended_at=time.time())
         return self.store.get(job_id)
 
+    def control(self, job_id: str, command: Mapping[str, Any]) -> dict[str, Any]:
+        """Write an interactive run's control file (play/pause/step/stop).
+
+        ``command`` carries ``{"stopped": true}`` to end the run at its next
+        episode boundary, or ``{"target": <int|null>}`` to permit episodes below
+        ``target`` (``null`` = run freely). The runner's ``control_file``
+        controller polls this file; the write fully replaces it, so only the
+        acted-on key is present each time.
+        """
+        job = self.store.get(job_id)  # raises KeyError -> 404 at the route
+        payload = json.loads(job.command_json or "{}")
+        control_path = payload.get("control_path") if isinstance(payload, dict) else None
+        if not control_path:
+            raise ValueError("Job is not interactive")
+        if command.get("stopped"):
+            state: dict[str, Any] = {"stopped": True}
+        elif "target" in command:
+            target = command["target"]
+            if target is not None and (isinstance(target, bool) or not isinstance(target, int)):
+                raise ValueError("target must be an integer or null")
+            state = {"target": target}
+        else:
+            raise ValueError("control requires 'target' or 'stopped'")
+        path = Path(control_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        staged = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+        staged.write_text(json.dumps(state), encoding="utf-8")
+        staged.replace(path)
+        return {"job": job_id, **state}
+
     def reconcile(self) -> None:
         """Heal persisted running jobs after a Studio restart."""
         for job in self.store.list(status="running"):
@@ -415,6 +484,8 @@ class JobManager:
         previous_output: str | None = None
         artifact_counts: dict[str, int] = {}
         stream_positions: dict[Path, int] = {}
+        stream_files: dict[str, list[Path]] = {}
+        last_glob = 0.0
         started_step = -1
         finished_step = -1
         while True:
@@ -434,9 +505,14 @@ class JobManager:
                     offset = handle.tell()
             if job.output_dir:
                 root = Path(job.output_dir)
+                stream_files, last_glob = _refresh_event_files(
+                    root, stream_files, last_glob, time.monotonic()
+                )
                 latest_step = -1
                 for stream in EVENT_STREAMS:
-                    growth, stream_step = _read_event_growth(root, stream, stream_positions)
+                    growth, stream_step = _read_event_growth(
+                        stream_files.get(stream, []), stream_positions
+                    )
                     if growth:
                         artifact_counts[stream] = artifact_counts.get(stream, 0) + growth
                         yield {

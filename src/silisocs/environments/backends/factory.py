@@ -10,11 +10,14 @@ to fully-qualified class path. Custom backends can set
 
 import importlib
 import inspect
+import logging
 import os
 from collections.abc import Mapping
 from typing import Any
 
 from silisocs.environments.backends.base import BackendApp
+
+_LOGGER = logging.getLogger(__name__)
 
 _BUILTIN_BACKENDS: dict[str, str] = {
     "twitter_like": "silisocs.environments.backends.twitter_like.app.TwitterLikeApp",
@@ -22,12 +25,25 @@ _BUILTIN_BACKENDS: dict[str, str] = {
     "mastodon": "silisocs.environments.backends.mastodon.apps.SocialNetworkApp",
     "resource_market": "silisocs.environments.backends.resource_market.app.ResourceMarketApp",
     "virtual_space": "silisocs.environments.backends.virtual_space.app.VirtualSpaceApp",
+    "public_goods": "silisocs.environments.backends.public_goods.app.PublicGoodsApp",
 }
+
+
+# Backend classes actually instantiated in this process, keyed by the backend type
+# that selected them. A custom backend's type is a free-form config string naming no
+# importable class, so decorator-derived event semantics reach the class through
+# this map.
+_RUNTIME_BACKEND_CLASSES: dict[str, type[BackendApp]] = {}
 
 
 def registered_backend_types() -> tuple[str, ...]:
     """Return built-in selector names for discovery surfaces."""
     return tuple(sorted(_BUILTIN_BACKENDS))
+
+
+def runtime_backend_class(backend_type: str) -> type[BackendApp] | None:
+    """Return the class instantiated for ``backend_type`` in this process, if any."""
+    return _RUNTIME_BACKEND_CLASSES.get(str(backend_type or "").strip())
 
 
 def resolve_backend_class(
@@ -82,6 +98,50 @@ def _load_app_class(class_path: str) -> type[BackendApp]:
     return cls
 
 
+def _record_runtime_backend_class(backend_type: str, cls: type[BackendApp]) -> None:
+    from silisocs.evaluations import vocabulary
+
+    key = str(backend_type or "").strip()
+    previous = _RUNTIME_BACKEND_CLASSES.get(key)
+    if previous is not None and previous is not cls:
+        _LOGGER.debug(
+            "Backend type %r now resolves to %s.%s (was %s.%s); class-declared "
+            "capabilities will read from the newer class.",
+            key,
+            cls.__module__,
+            cls.__name__,
+            previous.__module__,
+            previous.__name__,
+        )
+    _RUNTIME_BACKEND_CLASSES[key] = cls
+    vocabulary._DERIVED_EVENT_SEMANTICS.pop(key, None)
+
+
+def _validate_checkpoint_contract(cls: type[BackendApp]) -> None:
+    """Reject a backend that claims checkpoint authority it cannot deliver.
+
+    ``provides_checkpoint_state`` is what makes restore skip the configured restore
+    strategy and trust this backend's snapshot, so inheriting the base no-ops would
+    silently restore nothing.
+    """
+    if not getattr(cls, "provides_checkpoint_state", False):
+        return
+    inherited = [
+        name
+        for name in ("get_state", "set_state")
+        if getattr(cls, name) is getattr(BackendApp, name)
+    ]
+    if not inherited:
+        return
+    raise ValueError(
+        f"{cls.__module__}.{cls.__name__} sets provides_checkpoint_state=True but inherits "
+        f"BackendApp's no-op {' and '.join(f'{name}()' for name in inherited)}, so a checkpoint "
+        "of this backend would restore nothing. Override both get_state() and set_state(), or "
+        "set provides_checkpoint_state=False and configure a sim.checkpoint.restore strategy "
+        "(see docs/configuration.md#checkpointing)."
+    )
+
+
 def _instantiate_app_with_supported_kwargs(
     cls: type[BackendApp],
     kwargs: Mapping[str, Any],
@@ -132,6 +192,8 @@ def create_backend_app(backend_type: str, **kwargs: Any) -> BackendApp:
     backend_params = dict(kwargs.get("params") or {})
 
     cls = resolve_backend_class(backend_type, class_path=class_path)
+    _validate_checkpoint_contract(cls)
+    _record_runtime_backend_class(backend_type, cls)
 
     # Resolve the db path from a single source so an explicit ``params.db_path``
     # override and the default ``<backend_type>.db`` convention match exactly what

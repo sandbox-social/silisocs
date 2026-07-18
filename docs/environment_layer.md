@@ -95,6 +95,14 @@ GM's next_acting runs (effective acting = participation ∩ next_acting). See
 `silisocs.environments.gm.components.social_media`. `app_observation` and
 `episode_only` are generic baselines for backends that do not use timeline components.
 
+**Omitted-slot default is backend-dependent.** When the `observe` slot is left
+unset, the GM picks the default that matches the backend: `timeline_every_turn`
+for a `SocialBackendApp`, and `app_observation` for any other (generic) backend.
+Set the slot explicitly to override this — but note that naming a social-only
+component on a non-social backend is rejected at build time (see
+`requires_social_backend` below), so on a generic backend leave `observe` unset
+or set it to `app_observation` / `episode_only`.
+
 ### Built-in Resolve Components
 
 - `parsed_action`: parse `ACTION TYPE / TARGET ID / CONTENT / REASONING` output.
@@ -200,6 +208,23 @@ when the constructor accepts them.
 Stateful components may override `get_state()` and `set_state(state)` for
 checkpoint resume. Keep backend domain state in the backend; component state is
 for component-local cursors, caches, or policy state.
+
+**Social-only components must declare `requires_social_backend`.** A component
+that calls `SocialBackendApp`-only methods (timelines, followers, recsys, …) must
+set the class attribute `requires_social_backend = True`. At GM build time the
+compatibility guard refuses such a component on any backend that is not a
+`SocialBackendApp`, raising an actionable `TypeError` with a generic alternative
+to pick — instead of letting it crash mid-run with a deep `AttributeError` on the
+first social method call. The check also re-runs on a mid-run `swap_component`
+hot-swap, so it cannot be bypassed by swapping a social-only component onto a
+generic backend. Leave the attribute unset (default `False`) for
+backend-agnostic components.
+
+```python
+class MyTimelineObserve(ObservationComponent):
+    requires_social_backend = True  # rejected on a non-social backend at build
+    ...
+```
 
 Use built-ins under `src/silisocs/environments/gm/components/` as templates.
 

@@ -23,6 +23,36 @@ def test_named_scenario_launch_uses_unique_managed_output(tmp_path: Path) -> Non
     assert spec.command[-1] == f"++output_rootname={spec.output_dir}"
 
 
+def test_interactive_launch_injects_control_overrides(tmp_path: Path) -> None:
+    (tmp_path / "scenarios" / "world" / "conf").mkdir(parents=True)
+
+    spec = prepare_launch(
+        {"scenario": "world", "interactive": True, "start_paused": True},
+        repository_root=tmp_path,
+        output_root=tmp_path / "outputs",
+        draft_root=tmp_path / "drafts",
+    )
+
+    assert spec.control_path == (spec.output_dir / "run.control").resolve()
+    assert "sim.engine.control.built_in=control_file" in spec.command
+    assert f"sim.engine.control.control_file={spec.control_path}" in spec.command
+    assert "sim.engine.control.start_paused=true" in spec.command
+
+
+def test_non_interactive_launch_has_no_control_overrides(tmp_path: Path) -> None:
+    (tmp_path / "scenarios" / "world" / "conf").mkdir(parents=True)
+
+    spec = prepare_launch(
+        {"scenario": "world"},
+        repository_root=tmp_path,
+        output_root=tmp_path / "outputs",
+        draft_root=tmp_path / "drafts",
+    )
+
+    assert spec.control_path is None
+    assert not any("engine.control" in arg for arg in spec.command)
+
+
 def test_custom_backend_config_is_staged_without_backend_branches(tmp_path: Path) -> None:
     files = {
         "world/default.yaml": "scenario_name: custom_world\nnum_agents: 2\nnum_steps: 1\n",

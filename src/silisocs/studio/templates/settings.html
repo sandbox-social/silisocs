@@ -1,1 +1,40 @@
-{% extends "base.html" %}{% block title %}Settings | Silisocs Studio{% endblock %}{% block crumb %}Settings{% endblock %}{% block content %}<section class="page-heading"><div><p class="eyebrow">Workspace</p><h1>Settings</h1></div></section><section class="panel"><header><h3>Lab authorization</h3></header><div class="panel-body form-group"><label class="form-field"><span>Control-plane token</span><input id="auth-token" type="password"><button class="button" type="button" onclick="localStorage.setItem('silisocs-auth-token',document.getElementById('auth-token').value);notify('Token stored for this browser.','success')">Store</button></label></div></section><section class="panel"><header><h3>Analysis plugins</h3></header><div class="table-scroll"><table><thead><tr><th>Panel</th><th>Scope</th><th>Requirements</th></tr></thead><tbody>{% for panel in panels %}<tr><td>{{ panel.name }}</td><td>{{ panel.scope }}</td><td>{{ panel.requires|join(', ') }}</td></tr>{% endfor %}</tbody></table></div></section><section class="panel"><header><h3>Declarative extensions</h3></header><div class="table-scroll"><table><thead><tr><th>Kind</th><th>Name</th></tr></thead><tbody>{% for name, view in views.items() %}<tr><td>View</td><td>{{ name }} · {{ view.scope }}</td></tr>{% endfor %}{% for schema in form_schemas %}<tr><td>Form schema</td><td>{{ schema.name }} v{{ schema.version }}</td></tr>{% endfor %}{% for provider in choice_providers %}<tr><td>Choice provider</td><td>{{ provider }}</td></tr>{% endfor %}{% for provider in preview_providers %}<tr><td>Preview provider</td><td>{{ provider }}</td></tr>{% endfor %}{% for page in plugin_pages %}<tr><td>Studio page</td><td><a href="{{ page.href }}">{{ page.label }}</a></td></tr>{% endfor %}</tbody></table></div></section><script>document.getElementById('auth-token').value=localStorage.getItem('silisocs-auth-token')||''</script>{% endblock %}
+{% extends "base.html" %}
+{% block title %}Settings | Silisocs Studio{% endblock %}
+{% block crumb %}Settings{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow"><span class="eyebrow-signal"></span>Workspace system</p><h1>Settings</h1><p>Authorization and the extension surfaces currently visible to Studio.</p></div></section>
+<div class="settings-layout">
+  <section class="settings-primary">
+    <div class="settings-section">
+      <div class="settings-heading"><span class="entity-glyph"><svg><use href="#icon-settings"/></svg></span><div><h2>Lab authorization</h2><p>Stored only in this browser and attached to control-plane mutations.</p></div></div>
+      <label class="form-field settings-token"><span>Control-plane token</span><span class="inline-control"><input id="auth-token" type="password"><button class="button primary" type="button" onclick="localStorage.setItem('silisocs-auth-token',document.getElementById('auth-token').value);notify('Token stored for this browser.','success')"><svg><use href="#icon-save"/></svg>Store</button></span></label>
+    </div>
+    <div class="settings-section">
+      <div class="settings-heading"><span class="entity-glyph"><svg><use href="#icon-scenarios"/></svg></span><div><h2>Project repositories</h2><p>Explicitly trusted projects contribute scenarios and implementations discovered from their runtime class contracts.</p></div><div class="page-actions"><button class="button quiet" type="button" onclick="refreshRepositories()">Refresh</button><button class="button primary" type="button" onclick="openRepositoryDialog()"><svg><use href="#icon-plus"/></svg>Connect</button></div></div>
+      <div class="repository-list">{% for repository in repositories %}<div class="repository-row"><span>{% if repository.primary %}<b>{{ repository.label }}</b>{% else %}<label><span class="sr-only">Nickname for {{ repository.path }}</span><input id="repository-nickname-{{ repository.id }}" value="{{ repository.nickname }}" maxlength="64"></label>{% endif %}<small>{{ repository.path }}</small></span>{% if not repository.primary %}<span class="repository-actions"><button class="icon-button" type="button" title="Save nickname" aria-label="Save repository nickname" onclick='renameRepository({{ repository.id|tojson }})'><svg><use href="#icon-save"/></svg></button><button class="icon-button" type="button" title="Disconnect repository" aria-label="Disconnect repository" onclick='removeRepository({{ repository.id|tojson }})'>×</button></span>{% else %}<span class="badge neutral">primary</span>{% endif %}</div>{% endfor %}</div>
+      {% if discovery_errors %}<details class="discovery-errors"><summary>Discovery notices</summary>{% for source, errors in discovery_errors.items() %}{% for error in errors %}<code>{{ source }} · {{ error }}</code>{% endfor %}{% endfor %}</details>{% endif %}
+    </div>
+    <div class="settings-section">
+      <div class="settings-heading"><span class="entity-glyph"><svg><use href="#icon-spark"/></svg></span><div><h2>Detected implementations</h2><p>Class paths and configured slot values grouped by the generic runtime contract they satisfy.</p></div></div>
+      {% if extension_catalog %}<div class="extension-catalog">{% for kind, entries in extension_catalog|dictsort %}<section><h3>{{ kind }}</h3>{% for entry in entries %}<span><code>{{ entry.value }}</code><small>{{ entry.origin }}</small></span>{% endfor %}</section>{% endfor %}</div>{% else %}<div class="empty compact"><b>No project extensions detected</b><p>Built-ins remain available directly from their runtime registries.</p></div>{% endif %}
+    </div>
+    <div class="settings-section">
+      <div class="settings-heading"><span class="entity-glyph study-glyph"><svg><use href="#icon-studies"/></svg></span><div><h2>Analysis instruments</h2><p>Panels discovered through the generic analysis extension contract.</p></div></div>
+      <div class="table-scroll"><table><thead><tr><th>Panel</th><th>Scope</th><th>Requirements</th></tr></thead><tbody>{% for panel in panels %}<tr><td>{{ panel.name }}</td><td>{{ panel.scope }}</td><td>{{ panel.requires|join(', ') or 'artifact' }}</td></tr>{% endfor %}</tbody></table></div>
+    </div>
+  </section>
+  <aside class="extension-rail">
+    <p class="eyebrow">Extension signal</p>
+    <h2>Connected surfaces</h2>
+    <div class="extension-counts"><div><strong>{{ views|length }}</strong><small>views</small></div><div><strong>{{ form_schemas|length }}</strong><small>schemas</small></div><div><strong>{{ plugin_pages|length }}</strong><small>pages</small></div></div>
+    <div class="extension-stream">{% for name, view in views.items() %}<span><i></i><b>{{ name }}</b><small>view · {{ view.scope }}</small></span>{% endfor %}{% for schema in form_schemas %}<span><i></i><b>{{ schema.name }}</b><small>form schema · v{{ schema.version }}</small></span>{% endfor %}{% for provider in choice_providers %}<span><i></i><b>{{ provider }}</b><small>choice provider</small></span>{% endfor %}{% for provider in preview_providers %}<span><i></i><b>{{ provider }}</b><small>preview provider</small></span>{% endfor %}{% for page in plugin_pages %}<a href="{{ page.href }}"><i></i><b>{{ page.label }}</b><small>Studio page</small></a>{% endfor %}</div>
+  </aside>
+</div>
+{% include "_repository_connect.html" %}
+<script>
+document.getElementById('auth-token').value=localStorage.getItem('silisocs-auth-token')||'';
+async function removeRepository(source){const response=await fetch(`/api/repositories/${encodeURIComponent(source)}`,{method:'DELETE'});if(!response.ok){notify(await response.text(),'danger');return}location.reload()}
+async function renameRepository(source){const nickname=document.getElementById(`repository-nickname-${source}`).value.trim();const response=await fetch(`/api/repositories/${encodeURIComponent(source)}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({nickname})});if(!response.ok){notify(await response.text(),'danger');return}notify('Project nickname saved.','success')}
+async function refreshRepositories(){const response=await fetch('/api/repositories/refresh',{method:'POST'});if(!response.ok){notify(await response.text(),'danger');return}location.reload()}
+</script>
+{% endblock %}

@@ -8,9 +8,11 @@ unknown GM name in the per-GM maps must raise rather than silently no-op.
 from __future__ import annotations
 
 import pytest
-from omegaconf import OmegaConf
+from omegaconf import DictConfig, OmegaConf
 
 from silisocs.runtime.configuration.validation import (
+    RunDirInterpolationCheck,
+    _validate_control_config,
     _validate_engine_slots,
     validate_runtime_structure,
 )
@@ -108,3 +110,66 @@ def test_backend_action_aliases_valid_on_single_gm() -> None:
             }
         )
     )
+
+
+@pytest.mark.parametrize(
+    ("control", "message"),
+    [
+        ({"start_paused": "false"}, "start_paused"),
+        ({"poll_interval": 0}, "poll_interval"),
+        ({"poll_interval": "fast"}, "poll_interval"),
+    ],
+)
+def test_interactive_control_types_fail_during_preflight(control, message) -> None:
+    cfg = OmegaConf.create({"sim": {"engine": {"control": control}}})
+    with pytest.raises(ValueError, match=message):
+        _validate_control_config(cfg)
+
+
+# --- RunDirInterpolationCheck: translate the missing-run-param error in BOTH modes
+
+
+def _cfg_with_unresolvable_run_dir() -> DictConfig:
+    # hydra.run.dir / sweep.dir reference ${jobname_format}, which a scenario that
+    # dropped the universal run params never defines -> InterpolationResolutionError.
+    return OmegaConf.create(
+        {
+            "hydra": {
+                "run": {"dir": "out/${jobname_format}"},
+                "sweep": {"dir": "multirun/${jobname_format}"},
+                "output_subdir": ".hydra",
+                "job": {"name": "job_${jobname_format}"},
+            }
+        }
+    )
+
+
+def test_run_dir_check_translates_missing_param_on_single_run() -> None:
+    cb = RunDirInterpolationCheck()
+    with pytest.raises(ValueError, match="jobname_format"):
+        cb.on_run_start(_cfg_with_unresolvable_run_dir())
+
+
+def test_run_dir_check_translates_missing_param_on_multirun() -> None:
+    # -m/multirun resolves the sweep dir + job name before the task fn; the callback
+    # must translate the same error there instead of dying with the raw one.
+    cb = RunDirInterpolationCheck()
+    with pytest.raises(ValueError, match="scenario's world/default.yaml"):
+        cb.on_multirun_start(_cfg_with_unresolvable_run_dir())
+
+
+def test_run_dir_check_passes_when_params_present() -> None:
+    cb = RunDirInterpolationCheck()
+    good = OmegaConf.create(
+        {
+            "jobname_format": "myrun",
+            "hydra": {
+                "run": {"dir": "out/${jobname_format}"},
+                "sweep": {"dir": "multirun/${jobname_format}"},
+                "output_subdir": ".hydra",
+                "job": {"name": "job_${jobname_format}"},
+            },
+        }
+    )
+    cb.on_run_start(good)
+    cb.on_multirun_start(good)

@@ -421,15 +421,18 @@ def test_multiflow_gm_resolve_action_enforces_per_flow_filter(tmp_path, monkeypa
         name="gm",
         agent_flow_tags={"Bob": "lurker"},
         backend_config={"backend_type": "twitter_like", "output_rootname": str(tmp_path)},
+        # Only the resolve slot is under test; the rest are the generic built-ins
+        # because _GmApp is a stub rather than a real SocialBackendApp, and the GM
+        # refuses social components on a backend that cannot serve them.
         components={
-            "initialize": {"built_in": "social_media"},
+            "initialize": {"built_in": "none"},
             "next_acting": {"built_in": "all_agents"},
-            "observe": {"built_in": "timeline_every_turn"},
+            "observe": {"built_in": "app_observation"},
             "resolve": {
                 "built_in": "parsed_action",
                 "params": {"flow_action_filters": {"lurker": {"enabled_actions": ["like"]}}},
             },
-            "update": {"built_in": "social_recommendation"},
+            "update": {"built_in": "none"},
         },
         action_prompt_template="Act",
         action_mode="custom",

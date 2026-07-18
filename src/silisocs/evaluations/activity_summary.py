@@ -14,20 +14,9 @@ from pathlib import Path
 from typing import Any
 
 from silisocs.evaluations.action_events import resolve_action_event_files
+from silisocs.evaluations.run_artifact import iter_jsonl
 
 VALID_MODES = {"activity", "probes"}
-
-
-def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    """Read a JSONL file into a list of dicts."""
-    rows: list[dict[str, Any]] = []
-    with path.open("r", encoding="utf-8") as f:
-        for raw_line in f:
-            line = raw_line.strip()
-            if not line:
-                continue
-            rows.append(json.loads(line))
-    return rows
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -40,25 +29,23 @@ def _safe_int(value: Any, default: int = 0) -> int:
 def _summarize_activity(events: list[dict[str, Any]]) -> dict[str, Any]:
     """Build a summary of action labels, users, and episodes from action events."""
     labels = Counter(str(e.get("label", "")) for e in events if e.get("label") is not None)
-    action_like = {
-        "post",
-        "reply",
-        "like",
-        "repost",
-        "follow",
-        "unfollow",
-        "inner_actions",
-    }
-    action_counts = {k: int(v) for k, v in labels.items() if k in action_like}
 
-    users = sorted(
-        {
-            str(e.get("source_user", "")).strip()
+    def _agent_event(event: dict[str, Any]) -> bool:
+        source = str(event.get("source_user", "")).strip()
+        return bool(source) and source.lower() != "system"
+
+    # Count every label an agent committed. Matching against a fixed vocabulary
+    # would report an empty breakdown for any backend that isn't social.
+    action_counts = {
+        label: int(count)
+        for label, count in Counter(
+            str(e.get("label", ""))
             for e in events
-            if str(e.get("source_user", "")).strip()
-            and str(e.get("source_user", "")).strip().lower() != "system"
-        }
-    )
+            if e.get("label") is not None and _agent_event(e)
+        ).most_common()
+    }
+
+    users = sorted({str(e.get("source_user", "")).strip() for e in events if _agent_event(e)})
 
     episodes = sorted(
         {_safe_int(e.get("episode"), 0) for e in events if _safe_int(e.get("episode"), 0) > 0}
@@ -129,9 +116,8 @@ def main() -> None:
     if not event_files:
         raise FileNotFoundError(f"Missing events file(s) for mode {args.mode!r} in {run_dir}")
 
-    events: list[dict[str, Any]] = []
-    for path in event_files:
-        events.extend(_read_jsonl(path))
+    # Tolerant shared reader (skips blank/malformed lines), per the run-artifact contract.
+    events: list[dict[str, Any]] = list(iter_jsonl(event_files))
     payload = _summarize_activity(events) if args.mode == "activity" else _summarize_probes(events)
 
     payload["run_dir"] = str(run_dir)

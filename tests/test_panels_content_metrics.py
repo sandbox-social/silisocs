@@ -20,6 +20,7 @@ def _post(source: str, post_id: str, text: str, episode: int) -> dict[str, Any]:
     return {
         "source_user": source,
         "label": "post",
+        "backend_type": "twitter_like",
         "data": {"post_id": post_id, "post_text": text},
         "episode": episode,
     }
@@ -29,13 +30,20 @@ def _reply(source: str, post_id: str, reply_to_id: str, text: str, episode: int)
     return {
         "source_user": source,
         "label": "reply",
+        "backend_type": "twitter_like",
         "data": {"post_id": post_id, "reply_to_id": reply_to_id, "post_text": text},
         "episode": episode,
     }
 
 
 def _simple(source: str, label: str, episode: int) -> dict[str, Any]:
-    return {"source_user": source, "label": label, "data": {"post_id": "1"}, "episode": episode}
+    return {
+        "source_user": source,
+        "label": label,
+        "backend_type": "twitter_like",
+        "data": {"post_id": "1"},
+        "episode": episode,
+    }
 
 
 def _write_run(
@@ -49,9 +57,13 @@ def _write_run(
     with (run_dir / "action_events.jsonl").open("w", encoding="utf-8") as handle:
         for event in events:
             handle.write(json.dumps(event) + "\n")
-    manifest: dict[str, Any] = {"status": "success"}
-    if game_masters is not None:
-        manifest["game_masters"] = game_masters
+    manifest: dict[str, Any] = {
+        "status": "success",
+        "game_masters": game_masters
+        if game_masters is not None
+        else [{"name": "gm", "backend_type": "twitter_like"}],
+        "artifacts": {"action_events": ["action_events.jsonl"]},
+    }
     if llm_usage is not None:
         manifest["llm_usage"] = llm_usage
     (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -112,7 +124,10 @@ def test_content_feed_supports_registered_custom_backend_semantics(tmp_path: Pat
     register_event_semantics(
         "custom_world",
         EventSemantics(
-            roles={"content.root": {"announce"}, "content.reply": {"respond"}},
+            roles={
+                "content.root": frozenset({"announce"}),
+                "content.reply": frozenset({"respond"}),
+            },
             fields={
                 "content.id": ("entity.key",),
                 "content.response_id": ("response_key",),
@@ -200,16 +215,19 @@ def test_behavior_breakdown_groups_twitter_actions(tmp_path: Path) -> None:
     traces = {trace["name"]: trace for trace in output.figure["data"]}
     assert set(traces) == {"Creates Content", "Endorses", "Social Graph"}
     x = output.figure["data"][0]["x"]
-    creates = dict(zip(x, traces["Creates Content"]["y"]))
+    creates = dict(zip(x, traces["Creates Content"]["y"], strict=True))
     assert creates[0] == 2  # post + reply both in episode 0
-    endorses = dict(zip(x, traces["Endorses"]["y"]))
+    endorses = dict(zip(x, traces["Endorses"]["y"], strict=True))
     assert endorses[0] == 1
-    social = dict(zip(x, traces["Social Graph"]["y"]))
+    social = dict(zip(x, traces["Social Graph"]["y"], strict=True))
     assert social[1] == 1
 
 
 def test_behavior_breakdown_unknown_backend_is_other(tmp_path: Path) -> None:
-    events = [_post("Alex", "1", "a", 0), _simple("Alex", "like", 0)]
+    events = [
+        {**_post("Alex", "1", "a", 0), "backend_type": "mystery_backend"},
+        {**_simple("Alex", "like", 0), "backend_type": "mystery_backend"},
+    ]
     run = _write_run(
         tmp_path / "run",
         events,
@@ -222,6 +240,26 @@ def test_behavior_breakdown_unknown_backend_is_other(tmp_path: Path) -> None:
     other = output.figure["data"][0]
     assert other["y"] == [2]
     assert other["marker"]["color"] == "#b9c2c6"
+
+
+def test_behavior_breakdown_uses_arbitrary_backend_tags(tmp_path: Path) -> None:
+    events = [
+        {
+            "source_user": "Alex",
+            "label": "buy_listing",
+            "episode": 1,
+            "backend_type": "resource_market",
+            "data": {"resource": "wood", "quantity": 2},
+        }
+    ]
+    run = _write_run(
+        tmp_path / "run",
+        events,
+        game_masters=[{"name": "gm", "backend_type": "resource_market"}],
+    )
+
+    output = BehaviorBreakdownPanel().build(load_run(run), {})
+    assert output.figure["data"][0]["name"] == "Market Trade"
 
 
 def test_token_usage_per_model_figure(tmp_path: Path) -> None:

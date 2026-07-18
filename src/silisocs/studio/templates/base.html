@@ -6,57 +6,127 @@
   <title>{% block title %}Silisocs Studio{% endblock %}</title>
   <link rel="stylesheet" href="/assets/tokens.css">
   <script>document.documentElement.dataset.theme=localStorage.getItem('silisocs-theme')||'light';window.paletteCommands=[];window.registerPaletteCommand=command=>window.paletteCommands.push(command)</script>
-  <script src="/assets/plotly.js"></script>
-  <script src="/assets/cytoscape.js"></script>
+  <script defer src="/assets/studio.js"></script>
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <svg class="icon-sprite" aria-hidden="true">
+    <symbol id="icon-mark" viewBox="0 0 32 32"><path d="M6 10.5 16 5l10 5.5-10 5.6Z"/><path d="m6 15.8 10 5.6 10-5.6"/><path d="m6 21.1 10 5.6 10-5.6"/></symbol>
+    <symbol id="icon-home" viewBox="0 0 24 24"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></symbol>
+    <symbol id="icon-scenarios" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v4M10 12l-4 5M14 12l4 5"/></symbol>
+    <symbol id="icon-runs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4Z"/></symbol>
+    <symbol id="icon-studies" viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></symbol>
+    <symbol id="icon-live" viewBox="0 0 24 24"><path d="M3 12h4l2-7 4 14 2-7h6"/></symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="icon-theme" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-1-.2-2-.5-2.8A7 7 0 0 1 12 3Z"/></symbol>
+    <symbol id="icon-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.7 9a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1.2.9-1.2 1.7M12 17h.01"/></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"/></symbol>
+    <symbol id="icon-spark" viewBox="0 0 24 24"><path d="m12 2 1.6 5.4L19 9l-5.4 1.6L12 16l-1.6-5.4L5 9l5.4-1.6Z"/><path d="m19 15 .8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8Z"/></symbol>
+    <symbol id="icon-save" viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5Z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="icon-undo" viewBox="0 0 24 24"><path d="m9 8-5 4 5 4"/><path d="M5 12h8a6 6 0 0 1 6 6"/></symbol>
+    <symbol id="icon-redo" viewBox="0 0 24 24"><path d="m15 8 5 4-5 4"/><path d="M19 12h-8a6 6 0 0 0-6 6"/></symbol>
+    <symbol id="icon-export" viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v7h14v-7"/></symbol>
+    <symbol id="icon-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+  </svg>
   <aside class="rail">
-    <a class="wordmark" href="/"><span>SI</span><b>Silisocs</b><small>Studio</small></a>
+    <a class="wordmark" href="/" aria-label="Silisocs Studio home"><span class="brand-mark"><svg><use href="#icon-mark"/></svg></span><span class="wordmark-copy"><b>Silisocs</b><small>Simulation Studio</small></span></a>
     <nav aria-label="Primary">
-      <a class="{{ 'active' if active == 'home' }}" href="/"><i>⌂</i>Home</a>
-      <a class="{{ 'active' if active == 'scenarios' }}" href="/scenarios"><i>◇</i>Scenarios</a>
-      <a class="{{ 'active' if active == 'runs' }}" href="/runs"><i>▶</i>Runs</a>
-      <a class="{{ 'active' if active == 'studies' }}" href="/studies"><i>⌁</i>Studies</a>
-      <a class="{{ 'active' if active == 'live' }}" href="/live"><i>●</i>Live</a>
-      {% for page in plugin_pages|default([]) %}<a href="{{ page.href }}"><i>+</i>{{ page.label }}</a>{% endfor %}
+      <a class="{{ 'active' if active == 'home' }}" href="/"><i><svg><use href="#icon-home"/></svg></i>Home</a>
+      <a class="{{ 'active' if active == 'scenarios' }}" href="/scenarios"><i><svg><use href="#icon-scenarios"/></svg></i>Scenarios</a>
+      <a class="{{ 'active' if active == 'runs' }}" href="/runs"><i><svg><use href="#icon-runs"/></svg></i>Runs</a>
+      <a class="{{ 'active' if active == 'studies' }}" href="/studies"><i><svg><use href="#icon-studies"/></svg></i>Studies</a>
+      <a class="{{ 'active' if active == 'live' }}" href="/live"><i><svg><use href="#icon-live"/></svg></i>Live</a>
+      {% for page in plugin_pages|default([]) %}<a href="{{ page.href }}"><i><svg><use href="#icon-plus"/></svg></i>{{ page.label }}</a>{% endfor %}
     </nav>
-    <div class="rail-foot"><span class="status-dot"></span><span>Local workspace</span><a href="/settings" title="Settings">Settings</a></div>
+    <div class="rail-foot"><span class="status-dot"></span><span>Workspace online</span><a href="/settings" title="Settings" aria-label="Settings"><svg><use href="#icon-settings"/></svg></a></div>
   </aside>
   <main class="shell">
-    <header class="topbar"><div class="crumb">{% block crumb %}Workspace{% endblock %}</div><div class="top-actions"><button class="icon-button" type="button" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">◐</button><button class="icon-button" type="button" onclick="openPalette()" title="Command palette" aria-label="Command palette">⌘</button><a class="icon-button" href="/api/docs" title="API documentation">?</a></div></header>
-    <div class="content">{% block content %}{% endblock %}</div>
+    <header class="topbar"><div class="crumb"><span class="crumb-pulse"></span>{% block crumb %}Workspace{% endblock %}</div><div class="top-actions"><button class="palette-trigger" type="button" onclick="openPalette()" aria-label="Search workspace"><svg><use href="#icon-search"/></svg><span>Find anything</span><kbd>⌘ K</kbd></button><button class="icon-button" type="button" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme"><svg><use href="#icon-theme"/></svg></button><a class="icon-button" href="/api/docs" title="API documentation" aria-label="API documentation"><svg><use href="#icon-help"/></svg></a></div></header>
+    <div class="content" id="main-content" tabindex="-1">{% block content %}{% endblock %}</div>
   </main>
-  <dialog id="command-palette" class="command-palette"><input id="command-search" type="search" placeholder="Jump to…" aria-label="Search commands"><nav><a href="/">Home</a><a href="/scenarios">Scenarios</a><a href="/runs">Runs</a><a href="/studies">Studies</a><a href="/live">Live</a><a href="/settings">Settings</a><a href="/scenarios/new">Create scenario</a><a href="/studies/new">Create study</a></nav></dialog>
+  <nav class="mobile-dock" aria-label="Mobile primary">
+    <a class="{{ 'active' if active == 'home' }}" href="/" aria-label="Home"><svg><use href="#icon-home"/></svg><span>Home</span></a>
+    <a class="{{ 'active' if active == 'scenarios' }}" href="/scenarios" aria-label="Scenarios"><svg><use href="#icon-scenarios"/></svg><span>Scenarios</span></a>
+    <a class="{{ 'active' if active == 'runs' }}" href="/runs" aria-label="Runs"><svg><use href="#icon-runs"/></svg><span>Runs</span></a>
+    <a class="{{ 'active' if active == 'studies' }}" href="/studies" aria-label="Studies"><svg><use href="#icon-studies"/></svg><span>Studies</span></a>
+    <a class="{{ 'active' if active == 'live' }}" href="/live" aria-label="Live"><svg><use href="#icon-live"/></svg><span>Live</span></a>
+  </nav>
+  <dialog id="command-palette" class="command-palette"><header><span class="brand-mark small"><svg><use href="#icon-spark"/></svg></span><div><strong>Go anywhere</strong><small>Search runs, scenarios, studies, and actions</small></div></header><input id="command-search" type="search" placeholder="Start typing…" aria-label="Search commands"><nav><a href="/">Home</a><a href="/scenarios">Scenarios</a><a href="/runs">Runs</a><a href="/studies">Studies</a><a href="/live">Live</a><a href="/settings">Settings</a><a href="/scenarios/new">Create scenario</a><a href="/studies/new">Create study</a></nav><footer><span>Navigate with ↑ ↓</span><span>Open with ↵</span><span>Close with esc</span></footer></dialog>
   <script>
     const nativeFetch=window.fetch.bind(window);window.fetch=(input,options={})=>{const method=(options.method||'GET').toUpperCase();if(['POST','PUT','PATCH','DELETE'].includes(method)){const token=localStorage.getItem('silisocs-auth-token');if(token){options.headers=new Headers(options.headers||{});options.headers.set('authorization',`Bearer ${token}`)}}return nativeFetch(input,options)};
     function chartTheme(){const css=getComputedStyle(document.documentElement),muted=css.getPropertyValue('--muted').trim(),border=css.getPropertyValue('--border').trim();return{'font.color':muted,'xaxis.gridcolor':border,'xaxis.zerolinecolor':border,'yaxis.gridcolor':border,'yaxis.zerolinecolor':border}}
-    window.toggleTheme=()=>{const next=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=next;localStorage.setItem('silisocs-theme',next);document.querySelectorAll('[data-figure]').forEach(el=>window.Plotly?.relayout(el,chartTheme()));document.getElementById('platform-frame')?.contentWindow?.postMessage({type:'silisocs-theme',theme:next},'*')};
+    const studioAssetPromises=new Map();
+    function loadStudioAsset(name,globalName){if(window[globalName])return Promise.resolve(window[globalName]);if(studioAssetPromises.has(name))return studioAssetPromises.get(name);const promise=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src=`/assets/${name}`;script.async=true;script.onload=()=>window[globalName]?resolve(window[globalName]):reject(new Error(`${name} loaded without ${globalName}`));script.onerror=()=>reject(new Error(`Unable to load ${name}`));document.head.append(script)});studioAssetPromises.set(name,promise);promise.catch(()=>studioAssetPromises.delete(name));return promise}
+    const loadPlotly=()=>loadStudioAsset('plotly.js','Plotly');
+    const loadCytoscape=()=>loadStudioAsset('cytoscape.js','cytoscape');
+    // Cytoscape can't parse var(--x): resolve every var() value against the active theme.
+    const cyInstances=[];
+    function cssVar(name){return getComputedStyle(document.documentElement).getPropertyValue(name).trim()}
+    function resolveCyStyle(style){return (style||[]).map(rule=>({...rule,style:Object.fromEntries(Object.entries(rule.style||{}).map(([k,v])=>[k,typeof v==='string'&&v.startsWith('var(')?(cssVar(v.slice(4,-1))||v):v]))}))}
+    window.themeCyInstances=()=>cyInstances.forEach(({cy,rawStyle})=>cy.style(resolveCyStyle(rawStyle)));
+    window.toggleTheme=()=>{const next=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=next;localStorage.setItem('silisocs-theme',next);document.querySelectorAll('[data-figure]').forEach(el=>window.Plotly?.relayout(el,chartTheme()));themeCyInstances();document.getElementById('platform-frame')?.contentWindow?.postMessage({type:'silisocs-theme',theme:next},'*')};
     window.notify=(message,tone='neutral')=>{const el=document.createElement('div');el.className=`toast ${tone}`;el.textContent=message;document.body.append(el);setTimeout(()=>el.remove(),3000)};
     const pendingPaletteCommands=window.paletteCommands;window.registerPaletteCommand=({label,href,keywords='',action})=>{const nav=document.querySelector('#command-palette nav'),item=document.createElement(href?'a':'button');if(href)item.href=href;else item.type='button';item.textContent=label;item.dataset.keywords=keywords;if(action)item.addEventListener('click',()=>{document.getElementById('command-palette').close();action()});nav.append(item);return item};pendingPaletteCommands.forEach(registerPaletteCommand);
-    async function hydratePalette(){const nav=document.querySelector('#command-palette nav');if(nav.dataset.loaded)return;nav.dataset.loaded='true';const sources=[['/api/runs','Run',item=>'/runs/'+item.id.split('/').map(encodeURIComponent).join('/')],['/api/scenarios','Scenario',item=>'/scenarios/'+encodeURIComponent(item.name)],['/api/studies','Study',item=>'/studies/'+encodeURIComponent(item.id)]];for(const [url,kind,href] of sources){try{const data=await (await fetch(url)).json();for(const item of data.items||[])registerPaletteCommand({label:`${kind}: ${item.scenario||item.name||item.id}`,href:href(item),keywords:item.id||''})}catch{}}}
+    async function hydratePalette(){const nav=document.querySelector('#command-palette nav');if(nav.dataset.loaded)return;nav.dataset.loaded='true';const sources=[['/api/runs','Run',item=>'/runs/'+item.id.split('/').map(encodeURIComponent).join('/')],['/api/scenarios','Scenario',item=>'/scenarios/'+encodeURIComponent(item.name)+(item.source&&item.source!=='workspace'?`?source=${encodeURIComponent(item.source)}`:'')],['/api/studies','Study',item=>'/studies/'+encodeURIComponent(item.id)]];for(const [url,kind,href] of sources){try{const data=await (await fetch(url)).json();for(const item of data.items||[])registerPaletteCommand({label:`${kind}: ${item.scenario||item.name||item.id}`,href:href(item),keywords:`${item.id||''} ${item.source_label||''}`})}catch{}}}
     window.openPalette=()=>{const dialog=document.getElementById('command-palette');dialog.showModal();document.getElementById('command-search').focus();hydratePalette()};
     document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();openPalette()}if(event.key==='Escape')document.getElementById('command-palette').close()});
     document.getElementById('command-search').addEventListener('input',event=>{const value=event.target.value.toLowerCase();document.querySelectorAll('#command-palette nav>a,#command-palette nav>button').forEach(item=>item.hidden=!`${item.textContent} ${item.dataset.keywords||''}`.toLowerCase().includes(value))});
+    // Network panels emit a payload attribute; the shell owns initialization and theming.
+    window.initNetwork=async(root)=>{const elements=[...root.querySelectorAll('[data-cy-graph]:not([data-cy-ready])')];if(!elements.length)return;try{await loadCytoscape()}catch(error){elements.forEach(el=>{el.textContent='Network renderer could not be loaded.'});return}elements.forEach(el=>{const graph=JSON.parse(el.dataset.cyGraph);const cy=cytoscape({container:el,elements:graph.elements||[],style:resolveCyStyle(graph.style||[]),layout:{name:'preset'},wheelSensitivity:0.2});el.dataset.cyReady='true';cyInstances.push({cy,rawStyle:graph.style||[]})})};
     // Figure layouts arrive fully templated from the server (design.plotly).
-    document.querySelectorAll('[data-figure]').forEach((el) => {
+    window.initFigures=async(root)=>{const elements=[...root.querySelectorAll('[data-figure]:not([data-figure-ready])')];if(!elements.length)return;try{await loadPlotly()}catch(error){elements.forEach(el=>{el.textContent='Chart renderer could not be loaded.'});return}elements.forEach(el=>{
       const figure = JSON.parse(el.dataset.figure);
       const layout=figure.layout||{},theme=chartTheme();layout.font={...(layout.font||{}),color:theme['font.color']};layout.xaxis={...(layout.xaxis||{}),gridcolor:theme['xaxis.gridcolor'],zerolinecolor:theme['xaxis.zerolinecolor']};layout.yaxis={...(layout.yaxis||{}),gridcolor:theme['yaxis.gridcolor'],zerolinecolor:theme['yaxis.zerolinecolor']};
       Plotly.newPlot(el, figure.data || [], layout, {responsive:true,displaylogo:false,modeBarButtonsToRemove:['lasso2d','select2d']});
-    });
-    // Shell-owned panel controls: rewrite p.<panel>.<param> in the URL and reload.
+      el.dataset.figureReady='true';
+    })};
+    initFigures(document);initNetwork(document);
+    // Panel rendering, shared by every surface that refreshes a panel in place:
+    // control changes, the Watch stream, and any future live view.
+    // Mirrors _output.html's render_grid_item: markdown becomes a stat tile,
+    // html is injected, and everything else renders as its own output type.
+    function renderGridItem(item){
+      if(item.type==='html'){const wrap=document.createElement('div');wrap.innerHTML=item.html;return wrap.firstElementChild||wrap}
+      if(item.type==='markdown'){const tile=document.createElement('div');tile.className='stat-tile';(item.text||'').split('\n').forEach((line,i)=>{const el=document.createElement(i===0?'strong':'span');el.textContent=line.replace(/\*\*/g,'');tile.append(el)});return tile}
+      const holder=document.createElement('div');renderPanel(holder,item);return holder
+    }
+    window.renderPanel=async(body,output)=>{
+      if(output.type==='figure'){body.innerHTML='<div class="plot"></div>';try{await loadPlotly()}catch(error){body.textContent='Chart renderer could not be loaded.';return}const layout=output.figure.layout||{};await Plotly.newPlot(body.firstElementChild,output.figure.data||[],layout,{responsive:true,displaylogo:false,modeBarButtonsToRemove:['lasso2d','select2d']});await Plotly.relayout(body.firstElementChild,chartTheme());return}
+      if(output.type==='html'){body.innerHTML=output.html;await initNetwork(body);return}
+      if(output.type==='markdown'){const note=document.createElement('p');note.className='panel-note';note.textContent=output.text;body.replaceChildren(note);return}
+      if(output.type==='table'){const wrap=document.createElement('div'),table=document.createElement('table'),head=table.createTHead().insertRow(),tbody=table.createTBody();wrap.className='table-scroll';for(const column of output.columns){const th=document.createElement('th');th.textContent=typeof column==='string'?column:column.name;head.append(th)}for(const row of output.rows){const tr=tbody.insertRow();for(const column of output.columns)tr.insertCell().textContent=row[typeof column==='string'?column:column.name]??''}wrap.append(table);body.replaceChildren(wrap);return}
+      if(output.type==='grid'){const grid=document.createElement('div');grid.className='stat-grid';if(output.items.some(item=>item.type!=='markdown'))grid.classList.add('rich');for(const item of output.items)grid.append(renderGridItem(item));body.replaceChildren(grid)}
+    };
+    // The panel's params live in the URL, so a refreshed panel and a reloaded
+    // page always show the same thing.
+    function panelQuery(name){const query=new URLSearchParams();for(const [key,value] of new URL(location).searchParams)if(key.startsWith(`p.${name}.`))query.set(key.slice(name.length+3),value);return query}
+    window.refreshPanel=async(section)=>{
+      const grid=section.closest('[data-run-id]');if(!grid)return;
+      const name=section.dataset.panel,body=section.querySelector('.panel-body');
+      body.classList.add('loading');body.setAttribute('aria-busy','true');
+      try{
+        const response=await fetch(`/api/runs/${grid.dataset.runId}/panels/${name}?${panelQuery(name)}`);
+        if(!response.ok)return;
+        const data=await response.json();
+        await renderPanel(body,data.output);
+        for(const control of data.controls||[]){const output=section.querySelector(`[data-control-output="${control.param}"]`);if(output)output.textContent=control.value===null||control.value===undefined?'all':control.value}
+      }finally{body.classList.remove('loading');body.removeAttribute('aria-busy')}
+    };
+    // Shell-owned panel controls: keep p.<panel>.<param> in the URL (so the view
+    // stays linkable) but swap only the affected panel — a full navigation would
+    // re-fetch every panel and the ~4.5MB plot bundle to change one dropdown.
     window.setPanelParam = (panel, param, value) => {
       const url = new URL(window.location);
       if (value === '' || value === null) url.searchParams.delete(`p.${panel}.${param}`);
       else url.searchParams.set(`p.${panel}.${param}`, value);
-      window.location = url;
+      const section = document.querySelector(`[data-panel="${panel}"]`);
+      if (!section || !section.closest('[data-run-id]')) { window.location = url; return; }
+      history.replaceState(null, '', url);
+      refreshPanel(section);
     };
-    // Network panels emit a payload attribute; the shell owns initialization.
-    document.querySelectorAll('[data-cy-graph]').forEach((el) => {
-      if (!window.cytoscape) return;
-      const graph = JSON.parse(el.dataset.cyGraph);
-      cytoscape({container: el, elements: graph.elements || [], style: graph.style || [],
-                 layout: {name: 'preset'}, wheelSensitivity: 0.2});
-    });
   </script>
 </body>
 </html>
