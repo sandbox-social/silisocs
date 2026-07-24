@@ -922,9 +922,27 @@ def create_app(
         return {"items": study_or_404(study_id)["board"]}
 
     @app.get("/api/studies/{study_id}/compare")
-    def api_study_compare(study_id: str):
+    def api_study_compare(
+        study_id: str,
+        compare: str | None = None,
+        baseline: str | None = None,
+        hypothesis: str | None = None,
+    ):
         study = study_or_404(study_id)
-        return build_view(load_view("comparison"), load_study(study["path"]))
+        params = {
+            key: value
+            for key, value in (
+                ("compare", compare),
+                ("baseline", baseline),
+                ("hypothesis", hypothesis),
+            )
+            if value
+        }
+        return build_view(
+            load_view("comparison"),
+            load_study(study["path"]),
+            param_overrides={"condition_comparison": params} if params else None,
+        )
 
     @app.get("/api/explore/studies/{study_id}/capabilities")
     def api_explore_study_capabilities(study_id: str):

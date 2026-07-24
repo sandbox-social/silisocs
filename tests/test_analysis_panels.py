@@ -133,6 +133,61 @@ def test_condition_comparison_reads_hypothesis_nested_schema(tmp_path):
     assert trace["error_y"]["arrayminus"][0] == pytest.approx(0.1)
 
 
+def test_condition_comparison_baseline_leads_and_is_labeled(tmp_path):
+    """The baseline condition is pinned first and named on the axis."""
+    organized = tmp_path / "generated" / "organized"
+    organized.mkdir(parents=True)
+    (organized / "study_summary.yaml").write_text(
+        json.dumps(
+            {"metrics_by_condition": {"h1": {"gpt4o-mini": {"rate": 0.4}, "gpt4o": {"rate": 0.1}}}}
+        )
+    )
+    from silisocs.evaluations.run_artifact import load_study
+
+    panel = get_panel("condition_comparison")()
+    figure = panel.build(load_study(tmp_path), {"baseline": "gpt4o"}).figure
+    (trace,) = figure["data"]
+    assert trace["x"] == ["gpt4o (baseline)", "gpt4o-mini"]
+    assert trace["y"] == [0.1, 0.4]
+    assert figure["layout"]["xaxis"]["title"] == "Condition (baseline: gpt4o)"
+    # A typo'd baseline must say so, not silently render the default figure.
+    missed = panel.build(load_study(tmp_path), {"baseline": "gtp4o"}).figure
+    assert "matches no condition" in missed["layout"]["xaxis"]["title"]
+
+
+def test_condition_comparison_seed_mode_shows_replicates(tmp_path):
+    """compare=seed renders one column per (condition, seed) run record."""
+    organized = tmp_path / "generated" / "organized" / "h1"
+    organized.mkdir(parents=True)
+    (organized / "runs.json").write_text(
+        json.dumps(
+            [
+                {"condition": "gpt4o", "seed": 1, "aggregated": {"rate": 0.1}},
+                {"condition": "gpt4o", "seed": 2, "aggregated": {"rate": 0.2}},
+                {"condition": "gpt4o-mini", "seed": 1, "aggregated": {"rate": 0.5}},
+                {"condition": "broken", "seed": 1, "aggregated": {}},  # no metrics -> dropped
+            ]
+        )
+    )
+    from silisocs.evaluations.run_artifact import load_study
+
+    figure = (
+        get_panel("condition_comparison")()
+        .build(load_study(tmp_path), {"compare": "seed", "baseline": "gpt4o-mini"})
+        .figure
+    )
+    (trace,) = figure["data"]
+    assert trace["name"] == "rate"
+    # Baseline condition's replicates lead; every replicate is its own column.
+    assert trace["x"] == [
+        "gpt4o-mini (baseline) · seed 1",
+        "gpt4o · seed 1",
+        "gpt4o · seed 2",
+    ]
+    assert trace["y"] == [0.5, 0.1, 0.2]
+    assert figure["layout"]["xaxis"]["title"] == "Replicate (baseline: gpt4o-mini)"
+
+
 def test_event_semantics_registry_is_open_and_namespaced():
     semantics = EventSemantics(
         roles={"content.root": frozenset({"publish"}), "world.transition": {"move"}},

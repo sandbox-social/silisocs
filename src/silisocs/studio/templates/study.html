@@ -8,7 +8,7 @@
   <div class="composer-actions"><a class="button primary" href="/explore/study/{{ study.id }}" title="Interactive cross-condition comparison workspace. The Compare tab shows the same comparison inline."><svg><use href="#icon-spark"/></svg>Explore</a>{% if notebook_exists %}<a class="button quiet" href="/api/studies/{{ study.id }}/notebook" target="_blank"><svg><use href="#icon-export"/></svg>Notebook</a>{% endif %}<button class="button quiet" type="button" onclick="saveStudy()"><svg><use href="#icon-save"/></svg>Save</button><button class="button primary" type="button" onclick="launchStudy()"><svg><use href="#icon-runs"/></svg>Launch</button></div>
 </section>
 <details class="behind-curtain"><summary>Show CLI</summary><code>uv run python -m silisocs.studies.run_study --study {{ study.path }}/study.yaml run --yes</code></details>
-<nav class="tabs"><a class="{{ 'active' if tab == 'board' }}" href="?tab=board">Board</a><a class="{{ 'active' if tab == 'compare' }}" href="?tab=compare">Compare</a><a class="{{ 'active' if tab == 'hypotheses' }}" href="?tab=hypotheses">Hypotheses</a><a class="{{ 'active' if tab == 'definition' }}" href="?tab=definition">Definition</a></nav>
+<nav class="tabs"><a class="{{ 'active' if tab == 'board' }}" href="?tab=board">Board</a><a class="{{ 'active' if tab == 'compare' }}" href="?tab=compare" title="The comparison inline. Use Explore for the interactive workspace with compare-by and baseline controls.">Compare</a><a class="{{ 'active' if tab == 'hypotheses' }}" href="?tab=hypotheses">Hypotheses</a><a class="{{ 'active' if tab == 'definition' }}" href="?tab=definition">Definition</a></nav>
 {% if tab == 'definition' %}
 <div class="composer study-composer">
   <form id="study-form" class="composer-form">

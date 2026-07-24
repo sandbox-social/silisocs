@@ -27,6 +27,19 @@ def _condition_metrics(
     return values if isinstance(values, dict) else {}
 
 
+def _baseline_axis_title(base_title: str, baseline: str, known_conditions: set[str]) -> str:
+    """Name the baseline on the axis — including when it matched nothing.
+
+    A typo'd baseline must not silently render the same figure as no baseline
+    (a control that visibly does nothing erodes trust in the ones that work).
+    """
+    if not baseline:
+        return base_title
+    if baseline in known_conditions:
+        return f"{base_title} (baseline: {baseline})"
+    return f"{base_title} (baseline {baseline!r} matches no condition)"
+
+
 @register_panel
 class ConditionComparisonPanel(Panel):
     name = "condition_comparison"
@@ -35,24 +48,37 @@ class ConditionComparisonPanel(Panel):
 
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Figure:
         assert isinstance(artifact, StudyArtifact)
+        wanted = str(params.get("hypothesis") or "") or None
+        baseline = str(params.get("baseline") or "").strip()
+        if str(params.get("compare") or "condition") == "seed":
+            return self._seed_figure(artifact, wanted, baseline)
+        return self._condition_figure(artifact, wanted, baseline)
+
+    def _condition_figure(
+        self, artifact: StudyArtifact, wanted: str | None, baseline: str
+    ) -> Figure:
         summary = artifact.summary if isinstance(artifact.summary, dict) else {}
         # Both summary sections nest condition values under hypothesis ids
         # ({hypothesis: {condition: ...}}, docs/study_schema.md); the stats
         # section carries per-metric replicate CIs when seeds were replicated.
         means = summary.get("metrics_by_condition")
         means = means if isinstance(means, dict) else {}
-        wanted = params.get("hypothesis")
         columns = [
             (str(hypothesis), str(condition))
             for hypothesis, conditions in means.items()
             if isinstance(conditions, dict) and (not wanted or hypothesis == wanted)
             for condition in conditions
         ]
+        if baseline:
+            # Stable partition: the baseline condition leads, order otherwise kept.
+            columns.sort(key=lambda pair: pair[1] != baseline)
         multi = len({hypothesis for hypothesis, _ in columns}) > 1
         labels = [
-            f"{hypothesis} · {condition}" if multi else condition
+            (f"{hypothesis} · {condition}" if multi else condition)
+            + (" (baseline)" if baseline and condition == baseline else "")
             for hypothesis, condition in columns
         ]
+        known_conditions = {condition for _, condition in columns}
         metric_names = sorted(
             {
                 metric
@@ -104,7 +130,58 @@ class ConditionComparisonPanel(Panel):
                 "data": traces,
                 "layout": {
                     "barmode": "group",
-                    "xaxis": {"title": "Condition"},
+                    "xaxis": {
+                        "title": _baseline_axis_title("Condition", baseline, known_conditions)
+                    },
+                    "yaxis": {"title": "Metric"},
+                },
+            }
+        )
+
+    def _seed_figure(self, artifact: StudyArtifact, wanted: str | None, baseline: str) -> Figure:
+        """One column per replicate: the per-run values behind the condition means."""
+        records = [
+            record
+            for record in artifact.run_records
+            if isinstance(record.get("aggregated"), dict)
+            and record["aggregated"]
+            and (not wanted or str(record.get("hypothesis")) == wanted)
+        ]
+        if baseline:
+            records.sort(key=lambda record: str(record.get("condition")) != baseline)
+        multi = len({str(record.get("hypothesis")) for record in records}) > 1
+        labels = []
+        for record in records:
+            condition = str(record.get("condition") or "")
+            label = f"{record.get('hypothesis')} · {condition}" if multi else condition
+            if baseline and condition == baseline:
+                label += " (baseline)"
+            labels.append(f"{label} · seed {record.get('seed')}")
+        known_conditions = {str(record.get("condition") or "") for record in records}
+        metric_names = sorted(
+            {
+                metric
+                for record in records
+                for metric, value in record["aggregated"].items()
+                if isinstance(value, (int, float)) and not isinstance(value, bool)
+            }
+        )
+        traces = []
+        for metric in metric_names:
+            values: list[float | None] = []
+            for record in records:
+                value = record["aggregated"].get(metric)
+                usable = isinstance(value, (int, float)) and not isinstance(value, bool)
+                values.append(float(value) if usable else None)
+            traces.append({"type": "bar", "name": metric, "x": labels, "y": values})
+        return Figure(
+            {
+                "data": traces,
+                "layout": {
+                    "barmode": "group",
+                    "xaxis": {
+                        "title": _baseline_axis_title("Replicate", baseline, known_conditions)
+                    },
                     "yaxis": {"title": "Metric"},
                 },
             }
