@@ -212,6 +212,16 @@ cannot express — for example `action_alignment` inspects whether the run's
 actions actually carry a `suggested_action`, which is optional telemetry rather
 than a property of the backend type.
 
+The predicate has two tiers, both in `analysis/views.py`.
+`declared_skip_reason()` checks the declarations only (`requires`,
+`semantics`, `needs_tags`) — it reads manifests, never event logs, so lazy
+surfaces such as the exploration capability document can call it without
+parsing a run's data. `skip_reason()` is the render-time check: the declared
+tier plus `Panel.applicable(artifact)`, which may read event data. A panel
+gated only by an `applicable()` override is therefore listed as available in
+the capability document and resolves to "nothing in this run to show" when
+rendered — a deliberate trade so that listing panels stays cheap.
+
 Worked example, both directions: `resource_market` declares `market.*` roles and
 so shows `market_activity`/`market_ledger` and never a follow graph;
 `twitter_like` registers `content.*`/`network.follow` and so shows the feed and
