@@ -189,10 +189,10 @@ def test_views_are_offered_only_where_their_subject_applies(market_run, social_r
 def test_market_panels_read_declared_fields_not_backend_names(market_run):
     figure = get_panel("market_activity")().build(market_run, {})
     traded = {trace["name"]: trace["y"] for trace in figure.figure["data"]}
-    assert traded == {"wood": [3]}  # only the buy_listing trade, in episode 1
+    assert traded == {"Wood": [3]}  # only the buy_listing trade, in episode 1 (display-cased)
 
     value = get_panel("market_activity")().build(market_run, {"measure": "value"})
-    assert {trace["name"]: trace["y"] for trace in value.figure["data"]} == {"wood": [5]}
+    assert {trace["name"]: trace["y"] for trace in value.figure["data"]} == {"Wood": [5]}
 
 
 def test_market_ledger_attributes_flow_to_agents(market_run):
