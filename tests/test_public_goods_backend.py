@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from silisocs.environments.backends.public_goods.app import PublicGoodsApp
 
 
@@ -21,7 +23,7 @@ def _app(**kwargs) -> PublicGoodsApp:
     return app
 
 
-def _contribute(app: PublicGoodsApp, name: str, amount: int) -> str:
+def _contribute(app: PublicGoodsApp, name: str, amount: Any) -> str:
     return app.invoke_action_with_kwargs("CONTRIBUTE", {"agent_name": name, "amount": amount})
 
 
@@ -35,12 +37,30 @@ def test_public_goods_observe_explains_the_game() -> None:
     assert "no rounds have been resolved yet" in observation
 
 
-def test_public_goods_contribute_buffers_and_clamps() -> None:
+def test_public_goods_contribute_buffers_valid_amounts() -> None:
     app = _app(endowment=20)
     _contribute(app, "Alex", 15)
-    _contribute(app, "Blair", 999)  # clamps to endowment
-    _contribute(app, "Casey", -5)  # clamps to 0
-    assert app._contributions[0] == {"Alex": 15.0, "Blair": 20.0, "Casey": 0.0}
+    _contribute(app, "Blair", 0)
+    _contribute(app, "Casey", 20)
+    assert app._contributions[0] == {"Alex": 15.0, "Blair": 0.0, "Casey": 20.0}
+
+
+def test_public_goods_rejects_out_of_range_or_malformed_amounts() -> None:
+    """A formatting glitch must not be recorded as a deliberate choice.
+
+    Clamping (999 -> 20, -5 -> 0) would make a model's tool-call error look like
+    genuine cooperation or defection in the metric; rejection gives the agent an
+    error to retry on and keeps the committed log honest.
+    """
+    app = _app(endowment=20)
+    for bad in (999, -5, "lots", float("nan")):
+        message = _contribute(app, "Alex", bad)
+        assert "between 0 and 20" in message
+    assert app._contributions == {}  # nothing buffered, nothing committed
+    assert app.count_committed_events(labels=["contribute"]) == 0
+    # A valid retry still lands: rejection must not burn the round.
+    _contribute(app, "Alex", 10)
+    assert app._contributions[0] == {"Alex": 10.0}
 
 
 def test_public_goods_rejects_double_contribution_in_a_round() -> None:

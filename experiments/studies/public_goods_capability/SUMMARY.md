@@ -52,5 +52,11 @@ rung becomes more capable / reasoning-heavy.
   collective-goal framing from *More Capable, Less Cooperative* ("maximize the
   group's payoff and cooperate"), add a second hypothesis whose conditions override
   `env.gm.components.action_prompt.params.action_prompt`, holding the model fixed.
-- API access is required to reproduce the effect across a capability ladder; a
-  `sim.llm.disabled=true` run only validates the pipeline structurally.
+- API access is required to reproduce the effect across a capability ladder. A
+  `sim.llm.disabled=true` run validates config composition only — the no-op
+  model emits no tool calls, so agent turns degrade and nothing is committed.
+  The full structural gate (real engine, committed contributions, evaluator
+  output) is `uv run pytest tests/test_scripted_backend_matrix.py -k public_goods`.
+- The evaluator excludes an all-silent replicate (`None`) unless the run's
+  manifest shows a healthy run, in which case total silence scores as full
+  defection (0.0) — see `eval.py`'s docstring for the exact rule.

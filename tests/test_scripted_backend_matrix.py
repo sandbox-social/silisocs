@@ -136,6 +136,26 @@ class VirtualSpaceBehavior:
         return [ToolCall("LOOK", {})] if "LOOK" in tool_names else []
 
 
+class PublicGoodsBehavior:
+    """Contribute a fixed per-agent amount each round (one deliberate free-rider)."""
+
+    _AMOUNTS = {"Alex": 20, "Blair": 10, "Casey": 5, "Devon": 0}
+
+    def sample_tool_calls(
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        *,
+        model: Any,
+    ) -> list[ToolCall]:
+        del prompt
+        tool_names = {_tool_name(spec) for spec in tools}
+        if "CONTRIBUTE" not in tool_names:
+            return []
+        agent = str(model.meta_data.get("agent_name", "") or "")
+        return [ToolCall("CONTRIBUTE", {"amount": self._AMOUNTS.get(agent, 0)})]
+
+
 class SocialPostLikeBehavior:
     """Post on the first step, then like visible timeline posts."""
 
@@ -183,6 +203,7 @@ def _run_scripted(
     behavior: str,
     num_agents: int = 2,
     num_steps: int = 2,
+    config_path: str | None = None,
     extra_overrides: list[str] | None = None,
 ) -> Path:
     overlay = tmp_path / f"conf_{env}"
@@ -214,6 +235,9 @@ def _run_scripted(
         sys.executable,
         "-m",
         "silisocs.runtime.runner",
+        # A scenario shipped outside the packaged config groups (repo content
+        # under scenarios/) composes via --config-path, same as the CLI docs.
+        *(["--config-path", config_path] if config_path else []),
         "--overlay-config-path",
         str(overlay),
         f"world={world}",
@@ -297,6 +321,50 @@ def test_resource_market_scripted_list_and_buy(tmp_path: Path) -> None:
     assert any("RESOURCE MARKET STATE" in str(row.get("prompt", "")) for row in prompts)
     assert any("Production capabilities:" in str(row.get("prompt", "")) for row in prompts)
     assert any("Upkeep needs:" in str(row.get("prompt", "")) for row in prompts)
+
+
+def test_public_goods_scripted_full_pipeline_and_eval(tmp_path: Path) -> None:
+    """The public-goods scenario runs end-to-end and its evaluator scores it.
+
+    This is the structural smoke for the capability-ladder study: real engine,
+    real tool-calling resolve, committed CONTRIBUTE rows, a resolved round, a
+    run manifest — and the study's eval.py producing the exact expected metrics
+    from that output (a `sim.llm.disabled` run cannot do this: the no-op model
+    emits no tool calls, so every turn degrades).
+    """
+    output_dir = _run_scripted(
+        tmp_path,
+        env="public_goods_game",
+        agents="public_goods_game",
+        world="public_goods_game",
+        behavior="tests.test_scripted_backend_matrix.PublicGoodsBehavior",
+        num_agents=4,
+        num_steps=2,
+        config_path="scenarios/public_goods_game/conf",
+    )
+
+    rows = _read_jsonl(output_dir / "action_events.jsonl")
+    contribute = [row for row in rows if row.get("label") == "contribute"]
+    assert {
+        (row["source_user"], row["data"]["round"], row["data"]["contribution"])
+        for row in contribute
+    } == {
+        (agent, rnd, amount)
+        for rnd in range(2)
+        for agent, amount in PublicGoodsBehavior._AMOUNTS.items()
+    }
+    resolved = [row for row in rows if row.get("label") == "round_resolved"]
+    assert [row["data"]["round"] for row in resolved] == [0]  # final round has no update
+    assert resolved[0]["data"]["pool"] == 35.0  # 20 + 10 + 5 + 0
+
+    # The study's evaluator scores the real run output: rate = 35/80 per round,
+    # rounds from the manifest (so the update-less final round still counts).
+    from tests.test_public_goods_eval import _EVAL
+
+    result = _EVAL.evaluate_run_dir(output_dir)
+    assert result["summary"]["rounds"] == 2  # noqa: PLR2004
+    assert result["aggregated"]["avg_contribution_rate"] == pytest.approx(35.0 / 80.0)
+    assert result["aggregated"]["free_rider_share"] == pytest.approx(0.25)  # Devon
 
 
 def test_virtual_space_scripted_talks_from_observation(tmp_path: Path) -> None:
