@@ -255,11 +255,20 @@ class PublicGoodsApp(BackendApp):
         rnd = self._current_round()
         if agent_name in self._contributions.get(rnd, {}):
             return ActionResult(f"{agent_name} already contributed this round.", committed=False)
+        # Reject rather than clamp: a malformed amount is a formatting error the
+        # agent can retry, and silently coercing it to a valid contribution would
+        # be indistinguishable from a deliberate choice in the cooperation metric.
         try:
             requested = float(amount)
         except (TypeError, ValueError):
-            requested = 0.0
-        contribution = int(max(0.0, min(float(self.endowment), round(requested))))
+            requested = float("nan")
+        if not 0.0 <= requested <= float(self.endowment):
+            return ActionResult(
+                f"Contribution must be a number of tokens between 0 and "
+                f"{int(self.endowment)}; got {amount!r}.",
+                committed=False,
+            )
+        contribution = int(round(requested))
         self._contributions.setdefault(rnd, {})[agent_name] = float(contribution)
         return ActionResult(
             f"You contributed {contribution} of {int(self.endowment)} tokens to the pool "

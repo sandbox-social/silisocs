@@ -17,6 +17,19 @@ silently excluded. Contributions are deduplicated by ``(player, round)``
 (last-write-wins) so the metric is idempotent under a mid-step crash + resume
 (which re-appends the interrupted step's rows).
 
+The round count comes from the episodes the engine actually ran
+(``sim_metrics.json``'s per-episode records), because the final round has no
+following ``update`` — a fully silent last round must count as defection, not
+vanish. The manifest's ``num_steps`` is the *configured target*, used only as a
+fallback when the metrics file is absent: an interactively stopped or crashed
+run played fewer rounds than configured, and scoring the un-run remainder as
+silence would deflate cooperation in proportion to how early it stopped. A run
+with ZERO contributions scores 0.0 only when its manifest shows a healthy run
+(every health counter zero) and the game demonstrably ran (``round_resolved``
+rows exist); otherwise the silence is a broken pipeline, not a choice, and the
+run is excluded (``None``, dropped from the cross-seed stats) rather than scored
+as full defection.
+
 Metrics (all in ``aggregated``):
 
 * ``avg_contribution_rate`` — total contributed / (endowment x roster x rounds).
@@ -57,6 +70,33 @@ def _num(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _manifest(run_dir: Path) -> dict[str, Any]:
+    """The run's self-describing ``run_manifest.json``, or ``{}`` when absent."""
+    try:
+        data = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _episodes_run(run_dir: Path) -> int | None:
+    """Episodes the engine actually executed, from ``sim_metrics.json``.
+
+    Every executed episode appends one ``episode_metrics`` row, so this is the
+    ground truth for rounds played even when a run was stopped early or crashed
+    mid-study. ``None`` when the metrics file is absent (legacy/synthetic runs).
+    """
+    try:
+        data = json.loads((run_dir / "sim_metrics.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    episodes = data.get("episode_metrics") if isinstance(data, dict) else None
+    if not isinstance(episodes, list) or not episodes:
+        return None
+    indices = [int(_num(row.get("episode"), -1.0)) for row in episodes if isinstance(row, dict)]
+    return (max(indices) + 1) if indices and max(indices) >= 0 else None
+
+
 def _empty_payload(run_dir: Path) -> dict[str, Any]:
     """Payload for a run with no committed contributions (e.g. a disabled-LLM smoke run)."""
     return {
@@ -83,36 +123,51 @@ def evaluate_run_dir(run_dir: Path) -> dict[str, Any]:
     files = resolve_action_event_files(run_dir)
     rows = [row for row in iter_jsonl(files) if row.get("event_type") == "action"]
     contributions = [row for row in rows if row.get("label") == CONTRIBUTE_LABEL]
+    resolved = [row for row in rows if row.get("label") == RESOLVED_LABEL]
+    manifest = _manifest(run_dir)
+
     if not contributions:
-        return _empty_payload(run_dir)
+        # Total silence is deliberate defection (0.0) only for a demonstrably
+        # healthy run; a degraded/unknown pipeline is excluded, not scored.
+        health = manifest.get("health")
+        failures = (
+            sum(value for value in health.values() if isinstance(value, int))
+            if isinstance(health, dict)
+            else None
+        )
+        if not resolved or failures != 0:
+            return _empty_payload(run_dir)
 
     # Deduplicate by (player, round), last-write-wins: idempotent under resume.
+    # Both row kinds carry the game parameters, so an all-silent run still
+    # self-describes through its round_resolved rows. The max() harvest assumes
+    # the parameters are constant for the whole run (true for this study; a
+    # mid-run intervention changing them would need a per-round harvest).
     cell: dict[tuple[str, int], float] = {}
     endowment = 0.0
     multiplier = 0.0
     roster = 0
-    for row in contributions:
+    rounds_seen: set[int] = set()
+    for row in contributions + resolved:
         data = row.get("data") or {}
-        player = str(row.get("source_user"))
         rnd = int(_num(data.get("round"), 0))
-        cell[(player, rnd)] = _num(data.get("contribution"), 0.0)
+        rounds_seen.add(rnd)
         endowment = max(endowment, _num(data.get("endowment"), 0.0))
         multiplier = max(multiplier, _num(data.get("multiplier"), 0.0))
         roster = max(roster, int(_num(data.get("group_size"), 0.0)))
+        if row.get("label") == CONTRIBUTE_LABEL:
+            cell[(str(row.get("source_user")), rnd)] = _num(data.get("contribution"), 0.0)
 
     players = sorted({player for player, _ in cell})
     roster = max(roster, len(players), 1)
 
-    # Round count: the union of rounds with a contribution and rounds the backend
-    # resolved (`round_resolved` covers every round except the last), so a fully
-    # silent round is still counted.
-    rounds_seen = {rnd for _, rnd in cell}
-    rounds_seen |= {
-        int(_num((row.get("data") or {}).get("round"), 0))
-        for row in rows
-        if row.get("label") == RESOLVED_LABEL
-    }
-    n_rounds = (max(rounds_seen) + 1) if rounds_seen else 0
+    # Round count: episodes the engine actually ran (the final round has no
+    # following update, so a fully silent last round would otherwise vanish from
+    # the grid). The manifest's num_steps is the configured TARGET — only a
+    # fallback, or an early-stopped run's un-run rounds would score as silence.
+    observed = (max(rounds_seen) + 1) if rounds_seen else 0
+    ran = _episodes_run(run_dir)
+    n_rounds = max(ran if ran is not None else int(_num(manifest.get("num_steps"), 0.0)), observed)
 
     round_pool: dict[int, float] = defaultdict(float)
     per_player_total: dict[str, float] = defaultdict(float)

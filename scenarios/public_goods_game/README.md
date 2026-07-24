@@ -49,12 +49,23 @@ uv run silisocs --config-path scenarios/public_goods_game/conf \
   num_steps=10
 ```
 
-No-LLM structural smoke run:
+No-LLM smoke run — validates config composition and the engine loop only (the
+no-op model emits no tool calls, so every agent turn degrades and no
+contributions are committed; this is a framework-wide property of
+`sim.llm.disabled` under tool-calling, not specific to this scenario):
 
 ```bash
 uv run silisocs --config-path scenarios/public_goods_game/conf \
   world=public_goods_game agents=public_goods_game env=public_goods_game \
   num_steps=2 sim.llm.disabled=true
+```
+
+The full structural gate — real engine, committed `CONTRIBUTE` rows, round
+resolution, and the study evaluator scoring the run output — is the scripted
+end-to-end test:
+
+```bash
+uv run pytest tests/test_scripted_backend_matrix.py -k public_goods
 ```
 
 ## Framing variants
