@@ -241,6 +241,17 @@ refactor_notes.md
 CODEBASE_AUDIT_PLAN.md
 current_plan_improvement.md
 simplify-plan.md
+PLAN.md
+SCALABILITY_PLAN.md
+REVIEW_FIXES.md
+declarative worlds design.md
+harness agent import analysis.md
+harness integration plan.md
+moltbook replication analysis.md
+unified visual framework design.md
+v0 improvements.md
+v0 polish roadmap.md
+v1 v2 ambitious product roadmap.md
 
 #LLM-Coding files
 .claude
