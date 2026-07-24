@@ -151,8 +151,12 @@ class MessagingApp(BackendApp):
     # ---- observation ----------------------------------------------------
 
     def observe(self, actor_name: str, **kwargs: Any) -> str:
-        """Render the actor's mailbox: their private threads and all broadcasts."""
-        del kwargs
+        """Render the actor's mailbox: their private threads and all broadcasts.
+
+        The observe component's ``limit`` param (``observe: params: {limit: N}``,
+        as on the other generic backends) overrides ``history_window`` when set.
+        """
+        window = int(kwargs.get("limit") or self.history_window or 0)
         others = [name for name in self._participants if name != actor_name]
         header = (
             "MESSAGES\n"
@@ -164,8 +168,8 @@ class MessagingApp(BackendApp):
             for row in self._messages
             if row["recipient"] == _BROADCAST or actor_name in (row["sender"], row["recipient"])
         ]
-        if self.history_window and self.history_window > 0:
-            visible = visible[-int(self.history_window) :]
+        if window > 0:
+            visible = visible[-window:]
         if not visible:
             return f"{header}\n\nInbox: no messages yet."
         lines = ["Inbox (oldest first):"]
