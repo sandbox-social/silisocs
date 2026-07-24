@@ -42,7 +42,7 @@ def test_public_goods_contribute_buffers_valid_amounts() -> None:
     _contribute(app, "Alex", 15)
     _contribute(app, "Blair", 0)
     _contribute(app, "Casey", 20)
-    assert app._contributions[0] == {"Alex": 15.0, "Blair": 0.0, "Casey": 20.0}
+    assert app._choices[0] == {"Alex": 15.0, "Blair": 0.0, "Casey": 20.0}
 
 
 def test_public_goods_rejects_out_of_range_or_malformed_amounts() -> None:
@@ -56,11 +56,11 @@ def test_public_goods_rejects_out_of_range_or_malformed_amounts() -> None:
     for bad in (999, -5, "lots", float("nan")):
         message = _contribute(app, "Alex", bad)
         assert "between 0 and 20" in message
-    assert app._contributions == {}  # nothing buffered, nothing committed
+    assert app._choices == {}  # nothing buffered, nothing committed
     assert app.count_committed_events(labels=["contribute"]) == 0
     # A valid retry still lands: rejection must not burn the round.
     _contribute(app, "Alex", 10)
-    assert app._contributions[0] == {"Alex": 10.0}
+    assert app._choices[0] == {"Alex": 10.0}
 
 
 def test_public_goods_rejects_double_contribution_in_a_round() -> None:
@@ -68,14 +68,14 @@ def test_public_goods_rejects_double_contribution_in_a_round() -> None:
     _contribute(app, "Alex", 5)
     message = _contribute(app, "Alex", 10)
     assert "already contributed" in message
-    assert app._contributions[0]["Alex"] == 5.0  # unchanged
+    assert app._choices[0]["Alex"] == 5.0  # unchanged
 
 
 def test_public_goods_rejects_unknown_player() -> None:
     app = _app()
     message = _contribute(app, "Stranger", 5)
     assert "Unknown player" in message
-    assert app._contributions == {}
+    assert app._choices == {}
 
 
 def test_public_goods_update_resolves_round_and_pays_out() -> None:
@@ -155,7 +155,7 @@ def test_public_goods_checkpoint_restores_game_state() -> None:
 
     assert restored._cumulative == app._cumulative
     assert restored._results[0]["pool"] == 40.0
-    assert restored._contributions[1] == {"Alex": 5.0}  # in-flight choice survives
+    assert restored._choices[1] == {"Alex": 5.0}  # in-flight choice survives
 
 
 def test_public_goods_checkpoint_round_trips_committed_events_mirror() -> None:

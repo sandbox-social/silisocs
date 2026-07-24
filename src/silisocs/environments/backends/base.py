@@ -404,6 +404,15 @@ class BackendApp(metaclass=abc.ABCMeta):
         del actor_name, kwargs
         return ""
 
+    def current_episode(self) -> int:
+        """The engine's current episode index, as stamped on the action logger.
+
+        0 before the first step (or when no logger is wired). The seam
+        turn-structured backends use to key per-round state without holding
+        their own step counter.
+        """
+        return int(getattr(self.action_logger, "episode_idx", 0) or 0)
+
     def _print(
         self,
         entry: str,
