@@ -153,7 +153,6 @@ silisocs = [
   "studio/templates/*.html",
   "studio/static/*.css",
   "studio/static/*.js",
-  "design/components/*.html",
   "design/components/*.css",
   "design/components/*.js",
   "design/fonts/*.woff2",
