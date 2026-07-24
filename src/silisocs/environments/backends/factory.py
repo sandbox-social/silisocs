@@ -26,6 +26,7 @@ _BUILTIN_BACKENDS: dict[str, str] = {
     "resource_market": "silisocs.environments.backends.resource_market.app.ResourceMarketApp",
     "virtual_space": "silisocs.environments.backends.virtual_space.app.VirtualSpaceApp",
     "public_goods": "silisocs.environments.backends.public_goods.app.PublicGoodsApp",
+    "messaging": "silisocs.environments.backends.messaging.app.MessagingApp",
 }
 
 

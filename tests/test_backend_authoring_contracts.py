@@ -169,7 +169,15 @@ def test_overriding_both_state_methods_satisfies_the_flag():
 
 @pytest.mark.parametrize(
     "backend_type",
-    ["twitter_like", "reddit_like", "mastodon", "resource_market", "virtual_space", "public_goods"],
+    [
+        "twitter_like",
+        "reddit_like",
+        "mastodon",
+        "resource_market",
+        "virtual_space",
+        "public_goods",
+        "messaging",
+    ],
 )
 def test_shipped_backends_satisfy_the_checkpoint_contract(backend_type, tmp_path):
     from silisocs.environments.backends.factory import (
