@@ -3753,6 +3753,8 @@ tbody tr:hover {
 .chip{padding:3px 9px;border:1px solid var(--border);border-radius:999px;background:var(--surface-2);color:var(--ink);font-size:12px;cursor:pointer}
 .chip:hover{border-color:var(--accent);color:var(--accent)}
 .evidence-foot{margin-top:var(--space-md);padding-top:var(--space-sm);border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+.evidence-foot details{margin:0;border-top:0;padding-top:0}.evidence-foot summary{cursor:pointer;font-size:11px;color:var(--muted)}
+.skipped-panels{display:grid;gap:4px;margin:6px 0 0;padding:0;list-style:none;font-size:10px;color:var(--muted)}.skipped-panels b{font-weight:600;color:var(--ink)}
 .story-block{margin-top:var(--space-md)}
 .story-block>summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--muted)}
 .story-list{display:flex;flex-direction:column;gap:8px;margin-top:8px}

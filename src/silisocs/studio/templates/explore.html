@@ -51,6 +51,8 @@
       <div class="evidence-foot">
         <div class="evidence-item"><span class="signal-mark"></span><span><b>{{ capabilities.streams|length }} event streams</b><small>{{ capabilities.streams|join(', ') or 'No events recorded' }}</small></span></div>
         <div class="evidence-item"><span class="signal-mark alt"></span><span><b>{{ capabilities.panels|selectattr('available')|list|length }} compatible analyses</b><small>Derived from declared capabilities</small></span></div>
+        {% set unavailable = capabilities.panels|rejectattr('available')|list %}
+        {% if unavailable %}<details><summary>Not available for this run ({{ unavailable|length }})</summary><ul class="skipped-panels">{% for panel in unavailable %}<li><b>{{ panel.title }}</b> — {{ panel.reason }}</li>{% endfor %}</ul></details>{% endif %}
         <details><summary>Artifact fingerprint</summary><code>{{ capabilities.artifact.fingerprint }}</code></details>
       </div>
     </aside>
