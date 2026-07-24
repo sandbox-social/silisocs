@@ -122,6 +122,14 @@ class SimultaneousRoundGame(BackendApp):
     def _resolve_round(self, rnd: int) -> None:
         """Run the game's reveal for one round and record every trace of it."""
         result = self.resolve_round(rnd, dict(self._choices.get(rnd, {})))
+        unknown = sorted(set(result.payoffs) - set(self._players))
+        if unknown:
+            # A buggy subclass paying a non-player would silently corrupt the
+            # cumulative totals every observation and evaluator reads.
+            raise ValueError(
+                f"{type(self).__name__}.resolve_round returned payoffs for "
+                f"non-players: {', '.join(unknown)} (round {rnd})."
+            )
         for player, payoff in result.payoffs.items():
             self._cumulative[player] = self._cumulative.get(player, 0.0) + float(payoff)
         self._results[rnd] = dict(result.summary)

@@ -146,6 +146,28 @@ def test_checkpoint_round_trips_including_an_in_flight_round() -> None:
     )
 
 
+def test_payoffs_for_non_players_fail_loudly() -> None:
+    """A buggy resolve_round paying a non-player must not corrupt cumulative state."""
+
+    @dataclass
+    class _LeakyGame(MatchingGame):
+        def resolve_round(self, rnd: int, choices: Mapping[str, Any]) -> RoundResult:
+            result = super().resolve_round(rnd, choices)
+            result.payoffs["Intruder"] = 99.0
+            return result
+
+    game = _LeakyGame()
+    game.initialize(agent_names=["Alex", "Blair"])
+    game.action_logger = _Logger()
+    _pick(game, "Alex", "A")
+    try:
+        game.update(step=1, agent_names=[])
+        raise AssertionError("expected ValueError for a non-player payoff")
+    except ValueError as error:
+        assert "Intruder" in str(error)
+    assert "Intruder" not in game._cumulative  # nothing leaked into totals
+
+
 def test_initialize_resets_a_played_game() -> None:
     game = _game()
     _pick(game, "Alex", "A")
