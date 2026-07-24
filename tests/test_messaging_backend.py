@@ -79,6 +79,12 @@ def test_observation_windows_to_the_most_recent_messages() -> None:
     view = app.observe("Blair")
     assert "note 3" in view and "note 4" in view
     assert "note 0" not in view and "note 2" not in view
+    # The observe component's `limit` param overrides the backend default,
+    # matching how the other generic backends configure observation size.
+    wide = app.observe("Blair", limit=5)
+    assert "note 0" in wide and "note 4" in wide
+    narrow = app.observe("Blair", limit=1)
+    assert "note 4" in narrow and "note 3" not in narrow
 
 
 def test_checkpoint_round_trips_messages_and_committed_mirror() -> None:
