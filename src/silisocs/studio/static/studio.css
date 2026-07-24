@@ -3754,6 +3754,8 @@ tbody tr:hover {
 .chip:hover{border-color:var(--accent);color:var(--accent)}
 .evidence-foot{margin-top:var(--space-md);padding-top:var(--space-sm);border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
 .evidence-foot details{margin:0;border-top:0;padding-top:0}.evidence-foot summary{cursor:pointer;font-size:11px;color:var(--muted)}
+/* The study scope bar carries two fields, not the run page's six: size to fit. */
+[data-study-explore] .explore-scope{grid-template-columns:minmax(130px,1.2fr) repeat(2,minmax(160px,1fr))}
 .skipped-panels{display:grid;gap:4px;margin:6px 0 0;padding:0;list-style:none;font-size:10px;color:var(--muted)}.skipped-panels b{font-weight:600;color:var(--ink)}
 .story-block{margin-top:var(--space-md)}
 .story-block>summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--muted)}
