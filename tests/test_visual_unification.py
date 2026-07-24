@@ -100,6 +100,45 @@ def test_study_explore_lens_nav_is_wired_not_decorative() -> None:
     assert "initExplore" in run
 
 
+def test_every_registered_scene_has_a_studio_renderer() -> None:
+    """A scene registered in Python must resolve to a real client-side renderer.
+
+    explore.js dispatches run scenes through its RENDERERS map (or an API-path
+    extension); explore_study.html dispatches study scenes through the built-in
+    'comparison' renderer (or an API path). A renderer rename on either side
+    would otherwise break a scene silently in the browser with all tests green.
+    """
+    import re
+
+    from silisocs.analysis.exploration import list_scenes
+
+    explore_js = (ROOT / "src/silisocs/studio/static/explore.js").read_text(encoding="utf-8")
+    match = re.search(r"const RENDERERS = \{([^}]*)\}", explore_js)
+    assert match, "explore.js no longer declares its RENDERERS map"
+    run_renderers = set(re.findall(r"(\w+):", match.group(1)))
+    all_features = [
+        "metrics",
+        "events",
+        "entities",
+        "viewer",
+        "study.comparison",
+        "panels",
+        "event_stream.action",
+        "event_stream.probe",
+        "relationships",
+    ]
+    for scene in list_scenes("run", all_features):
+        assert scene.renderer in run_renderers or scene.renderer.startswith("/"), (
+            f"run scene {scene.id!r} names renderer {scene.renderer!r}, which explore.js "
+            f"cannot dispatch (known: {sorted(run_renderers)} or an /api path)"
+        )
+    for scene in list_scenes("study", all_features):
+        assert scene.renderer == "comparison" or scene.renderer.startswith("/"), (
+            f"study scene {scene.id!r} names renderer {scene.renderer!r}, which "
+            "explore_study.html cannot dispatch ('comparison' or an /api path)"
+        )
+
+
 def test_active_docs_do_not_reference_retired_dashboard_entrypoints() -> None:
     nav = (ROOT / "properdocs.yml").read_text(encoding="utf-8")
     scenario_docs = (ROOT / "agent_docs/scenario_design.md").read_text(encoding="utf-8")
