@@ -161,8 +161,18 @@ class ControlFileController:
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
-        """Apply any pre-existing control file, then start the poller thread."""
-        self._apply(self._read())  # obey a file already written before launch
+        """Discard any stale control file, then start the poller thread.
+
+        The file is a live command channel owned by this run: a leftover from a
+        previous process reusing the same path (e.g. a stopped interactive run
+        relaunched into the same output dir) must not leak into a fresh launch —
+        a stale ``{"stopped": true}`` would otherwise end the new run before
+        episode 0. Pre-seed a held start via ``start_paused`` config instead.
+        """
+        try:
+            self._path.unlink(missing_ok=True)
+        except OSError:
+            pass  # unwritable path: the poller below will simply read nothing
         self._thread = threading.Thread(target=self._run, daemon=True, name="run-control-file")
         self._thread.start()
 
@@ -179,13 +189,15 @@ class ControlFileController:
         return data if isinstance(data, Mapping) else None
 
     def _apply(self, data: Mapping[str, Any] | None) -> bool:
+        """Apply ``target`` and ``stopped`` independently: a malformed field is
+        skipped without blocking the other, so a stop request always lands.
+        """
         if data is None:
             return False
         if "target" in data:
             target = data["target"]
-            if target is not None and (isinstance(target, bool) or not isinstance(target, int)):
-                return False
-            self._gate.set_target(target)
+            if target is None or (isinstance(target, int) and not isinstance(target, bool)):
+                self._gate.set_target(target)
         if data.get("stopped"):
             self._gate.stop()
             return True

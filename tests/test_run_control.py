@@ -115,8 +115,7 @@ def test_stop_before_any_episode_runs_nothing() -> None:
 def test_control_file_drives_the_gate(tmp_path) -> None:
     """A JSON control file advances the loop and stops it via the poller."""
     control = tmp_path / "run.control"
-    control.write_text('{"target": 0}', encoding="utf-8")  # start held
-    gate = StepGate(target=0)
+    gate = StepGate(target=0)  # start held (the `start_paused` config path)
     controller = ControlFileController(gate, control, poll_interval=0.02)
     engine = _Engine(gate=gate)
     thread = _run_loop(engine, max_steps=5)
@@ -134,19 +133,48 @@ def test_control_file_drives_the_gate(tmp_path) -> None:
 def test_control_file_ignores_invalid_target_then_recovers(tmp_path) -> None:
     """A malformed command must not kill the poller before a valid update."""
     control = tmp_path / "run.control"
-    control.write_text('{"target": "bad"}', encoding="utf-8")
     gate = StepGate(target=0)
     controller = ControlFileController(gate, control, poll_interval=0.02)
     engine = _Engine(gate=gate)
     thread = _run_loop(engine, max_steps=2)
     controller.start()
 
+    control.write_text('{"target": "bad"}', encoding="utf-8")
     assert not _until(lambda: engine.ran, timeout=0.1)
     control.write_text('{"target": 1}', encoding="utf-8")
     assert _until(lambda: engine.ran == [0])
     gate.stop()
     thread.join(timeout=2)
     controller.close()
+
+
+def test_control_file_start_discards_stale_file(tmp_path) -> None:
+    """A leftover control file from a prior run must not command a fresh one."""
+    control = tmp_path / "run.control"
+    control.write_text('{"stopped": true}', encoding="utf-8")  # stale leftover
+    gate = StepGate()
+    controller = ControlFileController(gate, control, poll_interval=0.02)
+    controller.start()
+
+    assert _until(lambda: not control.exists())
+    assert gate.snapshot()["stopped"] is False
+    controller.close()
+
+
+def test_control_file_stop_lands_despite_malformed_target(tmp_path) -> None:
+    """`stopped` in the same payload as a bad `target` must still stop the run."""
+    control = tmp_path / "run.control"
+    gate = StepGate(target=0)
+    controller = ControlFileController(gate, control, poll_interval=0.02)
+    engine = _Engine(gate=gate)
+    thread = _run_loop(engine, max_steps=5)
+    controller.start()
+
+    control.write_text('{"target": "bad", "stopped": true}', encoding="utf-8")
+    thread.join(timeout=2)
+    controller.close()
+    assert not thread.is_alive()
+    assert engine.ran == []
 
 
 def test_stdin_commands_map_to_gate_transitions() -> None:
