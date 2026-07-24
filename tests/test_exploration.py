@@ -212,6 +212,55 @@ def test_capabilities_and_scenes_are_declaration_driven(tmp_path) -> None:
     assert "space" not in {scene["id"] for scene in document["scenes"]}
 
 
+def test_capability_document_gates_through_the_shared_declared_predicate(tmp_path) -> None:
+    """Panel availability is the SAME declared gate `build_view` renders with.
+
+    Two tiers, one source (`views.declared_skip_reason` / `views.skip_reason`):
+    the lazy capability document resolves declarations only (it must not parse
+    logs), while a panel's data-based ``applicable()`` override resolves at
+    render time — reported available here, then rendered as "nothing to show".
+    """
+    from silisocs.analysis.panel import _PANELS, Panel, register_panel
+    from silisocs.analysis.views import skip_reason
+
+    @register_panel
+    class _UndeclaredRolePanel(Panel):
+        name = "test_undeclared_role"
+        title = "Undeclared role"
+        scope = "run"
+        semantics = frozenset({"never.declared"})
+
+        def build(self, artifact, params):  # pragma: no cover — never applicable
+            raise AssertionError("unreachable")
+
+    @register_panel
+    class _DataGatedPanel(Panel):
+        name = "test_data_gated"
+        title = "Data gated"
+        scope = "run"
+
+        @classmethod
+        def applicable(cls, artifact):
+            return False  # a data-based veto the lazy document must not resolve
+
+        def build(self, artifact, params):  # pragma: no cover — never applicable
+            raise AssertionError("unreachable")
+
+    try:
+        artifact = _artifact(tmp_path)
+        document = run_capability_document(artifact, "custom/run")
+        availability = {panel["id"]: panel["available"] for panel in document["panels"]}
+        # Declarations resolve identically in both tiers.
+        assert availability["test_undeclared_role"] is False
+        assert "needs never.declared" in skip_reason(_UndeclaredRolePanel, artifact)
+        # The data-based override is render-time only: lazily available, skipped on render.
+        assert availability["test_data_gated"] is True
+        assert skip_reason(_DataGatedPanel, artifact) == "nothing in this run to show"
+    finally:
+        _PANELS.pop("test_undeclared_role", None)
+        _PANELS.pop("test_data_gated", None)
+
+
 def test_project_scene_registration_needs_no_studio_edit() -> None:
     """Runtime scene registration is the only extension step."""
     scene = register_scene(

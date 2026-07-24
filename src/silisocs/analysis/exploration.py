@@ -22,6 +22,7 @@ from silisocs.analysis.panels._shared import (
     event_semantics_for_event,
     run_semantic_roles,
 )
+from silisocs.analysis.views import declared_skip_reason
 from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
 
 ScopeKind = Literal["run", "study"]
@@ -370,13 +371,12 @@ def run_capability_document(artifact: RunArtifact, artifact_id: str) -> dict[str
     for panel in list_panels():
         if panel.scope != "run":
             continue
-        required_streams = {
-            _STREAM_REQUIREMENTS[name] for name in panel.requires if name in _STREAM_REQUIREMENTS
-        }
-        available = required_streams <= set(streams)
-        available = available and (not panel.needs_tags or bool(roles))
-        available = available and (not panel.semantics or bool(panel.semantics & roles))
-        panels.append(_panel_json(panel, available=available))
+        # Declaration-level availability from the SAME predicate `build_view`
+        # renders with (its lazy tier): no hand-rolled copy to drift. The
+        # capability request must not parse logs, so a panel's data-based
+        # `applicable()` override resolves at render time — such a panel may
+        # still render as "nothing in this run to show".
+        panels.append(_panel_json(panel, available=not declared_skip_reason(panel, artifact)))
     if any(panel["available"] for panel in panels):
         features.add("panels")
 
@@ -488,13 +488,6 @@ _QUERY_CACHE: dict[tuple[Any, ...], Any] = {}
 _QUERY_CACHE_ORDER: list[tuple[Any, ...]] = []
 _QUERY_CACHE_LOCK = threading.Lock()
 _QUERY_CACHE_MAX = 256
-
-
-def clear_query_cache() -> None:
-    """Forget memoized query results (tests, and anything that just wrote events)."""
-    with _QUERY_CACHE_LOCK:
-        _QUERY_CACHE.clear()
-        _QUERY_CACHE_ORDER.clear()
 
 
 def _cached_query(artifact: RunArtifact, kind: str, query: Any, compute: Any) -> Any:

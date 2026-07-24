@@ -11,9 +11,10 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from typing import Any
 
+from silisocs.analysis.charts import bar_figure
 from silisocs.analysis.inputs import Event, event_frame
 from silisocs.analysis.panel import Control, Figure, Grid, Markdown, Panel, Table, register_panel
-from silisocs.design.tokens import CATEGORICAL_COLORS, action_color
+from silisocs.design.tokens import action_color
 from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
 
 _TRADE = "market.trade"
@@ -28,11 +29,6 @@ def _quantity(event: Event) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 1
-
-
-def _resource_color(resource: str, order: list[str]) -> str:
-    """Stable per-resource color, independent of how many episodes are shown."""
-    return CATEGORICAL_COLORS[order.index(resource) % len(CATEGORICAL_COLORS)]
 
 
 @register_panel
@@ -68,32 +64,21 @@ class MarketActivityPanel(Panel):
                 amount = _quantity(event)
             per_resource[str(resource)][event.episode] += int(amount)
 
-        order = sorted(per_resource)
-        x = sorted(episodes)
-        traces = [
-            {
-                "type": "bar",
-                "name": resource,
-                "x": x,
-                "y": [per_resource[resource].get(episode, 0) for episode in x],
-                "marker": {"color": _resource_color(resource, order)},
-            }
-            for resource in order
-        ]
-        return Figure(
-            {
-                "data": traces,
-                "layout": {
-                    "barmode": "stack",
-                    "xaxis": {"title": "Episode", "dtick": 1},
-                    "yaxis": {
-                        "title": "Value traded" if measure == "value" else "Units traded",
-                        "rangemode": "tozero",
-                    },
-                    "legend": {"orientation": "h", "y": 1.12},
-                    "hovermode": "x unified",
+        # Shared figure builder: colors are content-hashed per resource name, so
+        # a resource keeps its color across runs and episode windows.
+        return bar_figure(
+            {resource: dict(per_resource[resource]) for resource in sorted(per_resource)},
+            mode="stack",
+            x_values=sorted(episodes),
+            layout={
+                "xaxis": {"title": "Episode", "dtick": 1},
+                "yaxis": {
+                    "title": "Value traded" if measure == "value" else "Units traded",
+                    "rangemode": "tozero",
                 },
-            }
+                "legend": {"orientation": "h", "y": 1.12},
+                "hovermode": "x unified",
+            },
         )
 
 

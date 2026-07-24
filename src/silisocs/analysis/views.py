@@ -39,38 +39,46 @@ def missing_requirements(panel: type[Panel], artifact: RunArtifact | StudyArtifa
     )
 
 
-def skip_reason(panel: type[Panel], artifact: RunArtifact | StudyArtifact) -> str:
-    """Why this panel says nothing about this artifact, or "" when it applies.
+def declared_skip_reason(panel: type[Panel], artifact: RunArtifact | StudyArtifact) -> str:
+    """The declaration-level gate alone, or "" when the declarations pass.
 
-    The reason names the gate that actually failed — the panel's declarations say
-    which — so the footnote tells you what a run would need rather than a vague
-    "unsupported".
+    Reads only the manifest (streams, tags, semantic roles) — never event logs —
+    so lazy contexts like the exploration capability document can gate panels
+    without parsing a run. A panel's data-based ``applicable()`` override is
+    deliberately NOT consulted here; :func:`skip_reason` adds it at render time.
     """
     from silisocs.analysis.panels._shared import run_has_tags, run_semantic_roles
 
     missing = missing_requirements(panel, artifact)
     if missing:
         return f"requires {', '.join(missing)} — not recorded by this run"
-    if panel.applicable(artifact):
-        return ""
     if not isinstance(artifact, RunArtifact):
-        return "not applicable to this artifact"
+        return ""
     if panel.needs_tags and not run_has_tags(artifact):
         return "this run's backend declares no action tags"
     if panel.semantics and not (panel.semantics & run_semantic_roles(artifact)):
         needs = ", ".join(sorted(panel.semantics))
         return f"needs {needs} — not declared by this run's backend"
+    return ""
+
+
+def skip_reason(panel: type[Panel], artifact: RunArtifact | StudyArtifact) -> str:
+    """Why this panel says nothing about this artifact, or "" when it applies.
+
+    The reason names the gate that actually failed — the panel's declarations say
+    which — so the footnote tells you what a run would need rather than a vague
+    "unsupported". Builds on :func:`declared_skip_reason` (the lazy tier) and
+    adds the panel's ``applicable()`` check, which may read run data.
+    """
+    reason = declared_skip_reason(panel, artifact)
+    if reason:
+        return reason
+    if panel.applicable(artifact):
+        return ""
+    if not isinstance(artifact, RunArtifact):
+        return "not applicable to this artifact"
     # A panel gating on its own reading of the run's data (see Panel.applicable).
     return "nothing in this run to show"
-
-
-def applicable_panels(view: View, artifact: RunArtifact | StudyArtifact) -> list[type[Panel]]:
-    """The view's panels that this artifact can actually populate."""
-    return [
-        panel
-        for panel in (slot.panel_class() for slot in view.panels)
-        if not skip_reason(panel, artifact)
-    ]
 
 
 def view_applies(view: View, artifact: RunArtifact | StudyArtifact) -> bool:
