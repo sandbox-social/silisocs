@@ -7,7 +7,7 @@ by Studio, exported reports, and backend-declared platform viewers.
 from __future__ import annotations
 
 from .css import css_variables
-from .plotly import apply_template, register_template, template_layout
+from .plotly import apply_template, template_layout
 from .tokens import (
     ACCENT,
     ACCENT_HOVER,
@@ -63,7 +63,6 @@ __all__ = [
     "action_color",
     "apply_template",
     "css_variables",
-    "register_template",
     "tag_color",
     "template_layout",
 ]

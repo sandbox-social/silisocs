@@ -13,11 +13,23 @@ indirection without cutting real duplication.
 
 from __future__ import annotations
 
-import pytest
+import os
 
-from silisocs.environments.backends import factory as backend_factory
-from silisocs.evaluations import vocabulary
-from silisocs.runtime.checkpointing import replay_mappers
+# Cap implicit BLAS/OpenMP pools BEFORE anything imports numpy: on a many-core
+# host each Python process otherwise spawns one BLAS thread per core, and the
+# subprocess-driven e2e tests multiply that past per-user task limits (cgroup
+# TasksMax / RLIMIT_NPROC), failing random thread-heavy tests with "can't start
+# new thread". Nothing in the suite needs BLAS parallelism; `setdefault` keeps
+# an explicit environment override in charge. Inherited by runner subprocesses,
+# which copy `os.environ`.
+for _variable in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+    os.environ.setdefault(_variable, "2")
+
+import pytest  # noqa: E402
+
+from silisocs.environments.backends import factory as backend_factory  # noqa: E402
+from silisocs.evaluations import vocabulary  # noqa: E402
+from silisocs.runtime.checkpointing import replay_mappers  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

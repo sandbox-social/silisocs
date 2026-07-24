@@ -59,15 +59,6 @@ def template_layout() -> dict[str, Any]:
     }
 
 
-def register_template() -> None:
-    """Register the ``silisocs`` template when the optional Plotly package exists."""
-    try:
-        import plotly.io as pio
-    except ImportError:
-        return
-    pio.templates["silisocs"] = {"layout": template_layout()}
-
-
 def _merge_under(default: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Deep-merge ``override`` onto a copy of ``default``; override values win."""
     out = copy.deepcopy(default)

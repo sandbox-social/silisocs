@@ -1,1 +1,1 @@
-"""Reusable Jinja component package for Studio and extension pages."""
+"""Shared static assets (viewer CSS/JS) served to backend viewer pages."""
