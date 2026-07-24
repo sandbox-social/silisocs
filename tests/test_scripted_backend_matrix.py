@@ -156,6 +156,37 @@ class PublicGoodsBehavior:
         return [ToolCall("CONTRIBUTE", {"amount": self._AMOUNTS.get(agent, 0)})]
 
 
+class MessagingBehavior:
+    """Each agent privately pings the next in the roster; Devon broadcasts."""
+
+    _TARGETS = {"Alex": "Blair", "Blair": "Casey", "Casey": "Alex"}
+
+    def sample_tool_calls(
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        *,
+        model: Any,
+    ) -> list[ToolCall]:
+        del prompt
+        tool_names = {_tool_name(spec) for spec in tools}
+        agent = str(model.meta_data.get("agent_name", "") or "")
+        episode = int(model.meta_data.get("episode_idx", 0) or 0)
+        if agent == "Devon" and "BROADCAST" in tool_names:
+            return [ToolCall("BROADCAST", {"text": f"hello everyone (ep {episode})"})]
+        if agent in self._TARGETS and "SEND_MESSAGE" in tool_names:
+            return [
+                ToolCall(
+                    "SEND_MESSAGE",
+                    {
+                        "recipient": self._TARGETS[agent],
+                        "text": f"{agent} pings you (ep {episode})",
+                    },
+                )
+            ]
+        return []
+
+
 class SocialPostLikeBehavior:
     """Post on the first step, then like visible timeline posts."""
 
@@ -391,3 +422,38 @@ def test_virtual_space_scripted_talks_from_observation(tmp_path: Path) -> None:
     assert any("VIRTUAL SPACE STATE" in str(row.get("prompt", "")) for row in prompts)
     assert any("Room tasks:" in str(row.get("prompt", "")) for row in prompts)
     assert any("Room notes:" in str(row.get("prompt", "")) for row in prompts)
+
+
+def test_messaging_scripted_private_and_broadcast_delivery(tmp_path: Path) -> None:
+    """The built-in messaging env runs end-to-end: send, deliver, observe.
+
+    Real engine, real tool-calling resolve; step-1 prompts must contain the
+    messages committed in step 0 (private ones only for their recipients).
+    """
+    output_dir = _run_scripted(
+        tmp_path,
+        env="messaging",
+        agents="messaging",
+        world="messaging",
+        behavior="tests.test_scripted_backend_matrix.MessagingBehavior",
+        num_agents=4,
+        extra_overrides=["num_steps=2"],
+    )
+
+    rows = _read_jsonl(output_dir / "action_events.jsonl")
+    labels = [str(row.get("label", "")) for row in rows]
+    assert labels.count("send_message") == 6  # noqa: PLR2004 — 3 senders x 2 steps
+    assert labels.count("broadcast_message") == 2  # noqa: PLR2004 — Devon x 2 steps
+    sends = [row for row in rows if row.get("label") == "send_message"]
+    assert {str((row.get("data") or {}).get("recipient")) for row in sends} == {
+        "Alex",
+        "Blair",
+        "Casey",
+    }
+
+    prompts = _read_jsonl(output_dir / "prompts_and_responses.jsonl")
+    prompt_text = "\n".join(str(row.get("prompt", "")) for row in prompts)
+    assert "MESSAGES" in prompt_text
+    # Step-0 traffic is visible in step-1 observations.
+    assert "Alex -> You: Alex pings you (ep 0)" in prompt_text
+    assert "Devon broadcast: hello everyone (ep 0)" in prompt_text

@@ -1,0 +1,44 @@
+# @package agents
+
+builder:
+  class_path: null
+  params: {}
+
+persona_pipeline:
+  defaults:
+    params:
+      seed_post: ""
+      bio: ""
+      style: ""
+      goal: null
+      world_context: ${event.context}
+    shared_memories:
+      - They are part of a small group that communicates by direct message.
+      - ${event.context}
+  classes:
+    participant:
+      count: ${num_agents}
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: participant
+      data:
+        source: inline
+        records:
+          - name: Alex
+            persona: Alex writes short, direct messages and answers quickly.
+          - name: Blair
+            persona: Blair likes to coordinate the group and asks clarifying questions.
+          - name: Casey
+            persona: Casey prefers one-on-one conversations over broadcasts.
+          - name: Devon
+            persona: Devon shares observations with the whole group when they matter.
+      field_map:
+        name: name
+        context: persona
+
+shared_memories:
+  - They are part of a small group that communicates by direct message.
+  - ${event.context}
+
+initial_observations:
+  - "{name} joins the group's messaging channel."
+  - "{name} can send a private message to any named participant or broadcast to everyone."

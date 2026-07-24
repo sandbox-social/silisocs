@@ -1,0 +1,53 @@
+gm:
+  backend:
+    type: messaging
+    class_path: null
+    params:
+      history_window: 20
+      max_message_length: 2000
+      app_description: |
+        You are in a group of participants who communicate by direct message.
+        You can send a private message to any named participant, or broadcast a
+        message that everyone will see.
+    enabled_actions: null
+    excluded_actions: null
+  components:
+    initialize:
+      built_in: app_initialize
+      class_path: null
+      params: {}
+    next_acting:
+      built_in: all_agents
+      class_path: null
+      params: {}
+    update:
+      built_in: app_update
+      class_path: null
+      params: {}
+    observe:
+      built_in: app_observation
+      class_path: null
+      params: {}
+    resolve:
+      built_in: tool_calling
+      class_path: null
+      params: {}
+    action_prompt:
+      built_in: default
+      class_path: null
+      params:
+        action_prompt: |
+          You are in a group of participants who communicate by direct message.
+
+          ## YOUR TURN
+          Review your inbox, then send a private message to another participant
+          or broadcast to everyone. Say something useful to your goals.
+
+          [OUTPUT STYLE]
+        output_style: |
+          ## OUTPUT FORMAT
+          ACTION: SEND_MESSAGE
+          recipient: <participant name>
+          text: <your message>
+  name: messaging_gm
+  class_path: silisocs.environments.gm.game_master.ComponentGameMaster

@@ -1,0 +1,23 @@
+# @package _global_
+
+scenario_name: messaging
+jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
+num_agents: 4
+num_steps: 5
+run_name: run1
+seed: 1
+output_rootname: ""
+
+setting:
+  name: Group messaging channel
+  background:
+    - Participants are members of a small group that communicates by direct message.
+    - Anyone can privately message any named participant or broadcast to everyone.
+
+event:
+  name: Open conversation session
+  context: |
+    Participants exchange messages to get to know each other and coordinate.
+    They can send private messages to individuals or broadcast to the group.
+
+data: {}
