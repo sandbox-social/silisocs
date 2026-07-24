@@ -81,6 +81,25 @@ def test_studio_is_the_single_visual_install_surface() -> None:
     assert "design/fonts/*.txt" in package_data
 
 
+def test_study_explore_lens_nav_is_wired_not_decorative() -> None:
+    """Every lens strip must switch scenes; a nav of dead buttons is worse than none.
+
+    Regression: explore_study.html once rendered every lens button with a
+    hardcoded ``class="active"`` and no click handler — clicking silently did
+    nothing while the run-scope explore page behaved normally.
+    """
+    study = (ROOT / "src/silisocs/studio/templates/explore_study.html").read_text(encoding="utf-8")
+    run = (ROOT / "src/silisocs/studio/templates/explore.html").read_text(encoding="utf-8")
+    for template in (study, run):
+        assert 'class="active"' not in template  # active state must be conditional
+        assert "data-scene" in template
+    # The study page owns its scene dispatch (the run page delegates to explore.js).
+    assert "renderStudyScene" in study
+    assert "addEventListener('click'" in study
+    assert "aria-pressed" in study
+    assert "initExplore" in run
+
+
 def test_active_docs_do_not_reference_retired_dashboard_entrypoints() -> None:
     nav = (ROOT / "properdocs.yml").read_text(encoding="utf-8")
     scenario_docs = (ROOT / "agent_docs/scenario_design.md").read_text(encoding="utf-8")
