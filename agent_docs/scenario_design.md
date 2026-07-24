@@ -338,8 +338,13 @@ built. Use `null` to expose everything.
 ### Non-social scenarios (resource markets, worlds, games)
 
 Nothing about the framework is social; only the defaults are. `scenarios/resource_market`
-is the reference non-social scenario — copy it rather than a social one. Three
-differences matter:
+is the reference non-social scenario (a stateful economy);
+`scenarios/public_goods_game` is the reference **game-theoretic** scenario
+(simultaneous-move repeated game with payoffs — copy it for cooperation/game
+studies, and subclass `environments/backends/round_game.py` for a new game);
+the built-in `messaging` env is the reference agent-to-agent communication
+channel (`env=messaging agents=messaging world=messaging`). Copy the nearest
+one rather than a social scenario. Three differences matter:
 
 1. **Pick the generic GM components.** The default env group is `twitter_like`,
    whose `initialize`/`observe`/`update` components call social-only backend
@@ -365,11 +370,11 @@ differences matter:
    action prompt is generated from your backend's `@app_action` catalog rather
    than the twitter prompt text.
 
-3. **Turn-based runs opt out of the activity model.** `sim/base.yaml` ships
-   `participation.built_in: activity_probability`, whose rates are keyed by sim
-   role; agents matching no rate act only ~30% of steps. Set
-   `sim.engine.participation.built_in: all` in the scenario's `sim.yaml` for a
-   deterministic roster.
+3. **The default roster is already deterministic.** `sim/base.yaml` ships
+   `participation.built_in: all` (everyone acts every step). Activity gating is
+   opt-in: a scenario that wants stochastic participation sets
+   `sim.engine.participation.built_in: activity_probability` with rates keyed
+   by agent name or sim role.
 
 See [docs/backends.md](../docs/backends.md) for the backend-authoring contract,
 including database-free backends (`resource_market` holds all state in memory).

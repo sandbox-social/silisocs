@@ -17,6 +17,7 @@ uv run silisocs env=reddit_like
 uv run silisocs env=mastodon
 uv run silisocs world=resource_market agents=resource_market env=resource_market
 uv run silisocs world=virtual_space agents=virtual_space env=virtual_space
+uv run silisocs world=messaging agents=messaging env=messaging
 ```
 
 Curated external examples live under `scenarios/resource_market/`,
@@ -167,6 +168,68 @@ Features:
   `multiplier`/`group_size`, so the cooperation metric is derived from the action
   log alone (see the `public_goods_capability` study's `eval.py`).
 - Authoritative checkpoint state (contributions, results, cumulative payoffs).
+
+**Writing a second game**: the referee mechanics above are not public-goods
+specific — they live in `environments/backends/round_game.py` as
+`SimultaneousRoundGame`, and `PublicGoodsApp` is its reference subclass. A new
+simultaneous-move repeated game (prisoner's dilemma, trust game, matching,
+auction rounds) subclasses it and implements only:
+
+- one `@app_action` per legal move, validating inputs and buffering via
+  `record_choice(agent_name, value)` (repeat submissions are rejected for you,
+  worded with the class's `choice_verb`);
+- `resolve_round(rnd, choices) -> RoundResult` — the reveal: return the round's
+  `summary` (stored + logged on the `round_resolved` event), per-player
+  `payoffs` (added to cumulative totals), a human-readable `narrative`, and
+  `event_extra` fields (game constants worth stamping on every logged row).
+  What a *missing* choice means is this hook's call (public goods treats an
+  absentee as contributing zero);
+- `observe(...)` — the player-facing rules/history text (helpers:
+  `resolved_rounds_before`, `current_episode`, `self._results`,
+  `self._cumulative`).
+
+Hidden buffering, resolve-at-the-round-boundary, cumulative payoffs,
+`round_resolved` logging, and the checkpoint round-trip (including a mid-buffer
+round) are inherited and already covered by `tests/test_round_game_base.py`.
+
+---
+
+## Messaging (Local)
+
+The default agent-to-agent communication channel: agents exchange private
+direct messages (and optional broadcasts), mediated by the backend like every
+other interaction — there is no side channel. Use it standalone for
+conversation/coordination studies, or compose it with a game backend through
+multi-GM flow chains ("talk, then move": chain the flow through a messaging GM
+before the game GM) for negotiation and cheap-talk experiments.
+
+**Actions**: `SEND_MESSAGE`, `BROADCAST`, `FINISHED`
+
+**Config**: `env/messaging.yaml` (built-in: `env=messaging agents=messaging world=messaging`)
+
+```yaml
+gm:
+  backend:
+    type: messaging
+    class_path: null
+    params:
+      history_window: 20        # delivered messages shown per observation
+      max_message_length: 2000  # longer submissions are rejected, not cut
+```
+
+Features:
+
+- Delivery is observational: a message lands in the recipient's next
+  observation (the generic `app_observation` component), so ordering stays
+  deterministic under any executor.
+- Privacy is a rendering rule: every message is stored once; an agent's
+  observation shows only what they sent, what was sent to them, and broadcasts
+  — while the committed log records all traffic for the experimenter.
+- `SEND_MESSAGE` is tagged `interaction.directed` with a `network.target_actor`
+  field, so the existing interaction-network analysis panel draws the
+  who-messages-whom graph with no panel changes.
+- No database: in-memory state with authoritative checkpoint snapshots
+  (participants, messages, committed-event mirror).
 
 ---
 
