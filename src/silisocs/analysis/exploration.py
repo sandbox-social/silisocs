@@ -316,11 +316,13 @@ def _scene_json(scene: SceneSpec) -> dict[str, Any]:
     }
 
 
-def _panel_json(panel: Any, *, available: bool) -> dict[str, Any]:
+def _panel_json(panel: Any, *, reason: str = "") -> dict[str, Any]:
+    """A panel's capability row; ``reason`` says why it is unavailable ("" = available)."""
     return {
         "id": panel.name,
         "title": panel.title,
-        "available": available,
+        "available": not reason,
+        "reason": reason,
         "requires": sorted(panel.requires),
         "semantics": sorted(panel.semantics),
     }
@@ -376,7 +378,7 @@ def run_capability_document(artifact: RunArtifact, artifact_id: str) -> dict[str
         # capability request must not parse logs, so a panel's data-based
         # `applicable()` override resolves at render time — such a panel may
         # still render as "nothing in this run to show".
-        panels.append(_panel_json(panel, available=not declared_skip_reason(panel, artifact)))
+        panels.append(_panel_json(panel, reason=declared_skip_reason(panel, artifact)))
     if any(panel["available"] for panel in panels):
         features.add("panels")
 
@@ -419,9 +421,7 @@ def study_capability_document(artifact: StudyArtifact, artifact_id: str) -> dict
     status_counts = Counter(str(row.get("status") or "unknown") for row in progress)
     features = {"study.comparison", "panels"}
     scenes = list_scenes("study", features)
-    panels = [
-        _panel_json(panel, available=True) for panel in list_panels() if panel.scope == "study"
-    ]
+    panels = [_panel_json(panel) for panel in list_panels() if panel.scope == "study"]
     fingerprint_paths = [
         artifact.study_dir / "study.yaml",
         artifact.study_dir / "generated" / "organized" / "study_summary.yaml",

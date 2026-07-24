@@ -220,7 +220,10 @@ parsing a run's data. `skip_reason()` is the render-time check: the declared
 tier plus `Panel.applicable(artifact)`, which may read event data. A panel
 gated only by an `applicable()` override is therefore listed as available in
 the capability document and resolves to "nothing in this run to show" when
-rendered — a deliberate trade so that listing panels stays cheap.
+rendered — a deliberate trade so that listing panels stays cheap. The
+capability document carries each panel's declared reason string alongside
+`available`, so exploration surfaces can show *why* a panel is missing (the
+Run page's Analyze footnote and the Explore evidence rail both render it).
 
 Worked example, both directions: `resource_market` declares `market.*` roles and
 so shows `market_activity`/`market_ledger` and never a follow graph;

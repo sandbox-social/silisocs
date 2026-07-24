@@ -250,11 +250,16 @@ def test_capability_document_gates_through_the_shared_declared_predicate(tmp_pat
         artifact = _artifact(tmp_path)
         document = run_capability_document(artifact, "custom/run")
         availability = {panel["id"]: panel["available"] for panel in document["panels"]}
+        reasons = {panel["id"]: panel["reason"] for panel in document["panels"]}
         # Declarations resolve identically in both tiers.
         assert availability["test_undeclared_role"] is False
         assert "needs never.declared" in skip_reason(_UndeclaredRolePanel, artifact)
+        # The UI shows WHY, not just that: unavailable rows carry the declared
+        # reason, available rows carry "".
+        assert "needs never.declared" in reasons["test_undeclared_role"]
         # The data-based override is render-time only: lazily available, skipped on render.
         assert availability["test_data_gated"] is True
+        assert reasons["test_data_gated"] == ""
         assert skip_reason(_DataGatedPanel, artifact) == "nothing in this run to show"
     finally:
         _PANELS.pop("test_undeclared_role", None)

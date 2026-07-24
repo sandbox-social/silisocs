@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{% block title %}Silisocs Studio{% endblock %}</title>
   <link rel="stylesheet" href="/assets/tokens.css">
-  <script>document.documentElement.dataset.theme=localStorage.getItem('silisocs-theme')||'light';window.paletteCommands=[];window.registerPaletteCommand=command=>window.paletteCommands.push(command)</script>
+  <script>document.documentElement.dataset.theme=localStorage.getItem('silisocs-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');window.paletteCommands=[];window.registerPaletteCommand=command=>window.paletteCommands.push(command)</script>
   <script defer src="/assets/studio.js"></script>
 </head>
 <body>
