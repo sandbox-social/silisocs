@@ -180,6 +180,23 @@ def test_early_stopped_run_scores_only_the_rounds_that_ran(tmp_path: Path) -> No
     assert result["aggregated"]["avg_contribution_rate"] == pytest.approx(1.0)
 
 
+def test_silent_final_round_counts_via_sim_metrics_not_only_manifest(tmp_path: Path) -> None:
+    """The executed-episode count alone must surface a fully silent final round.
+
+    sim_metrics says 4 episodes ran; contribution/resolved rows only reach
+    round 2. The manifest target (20) is a stale ceiling — the denominator must
+    come from the episodes that actually ran (4), scoring round 3 as defection.
+    """
+    agents = ["Alex", "Blair", "Casey", "Devon"]
+    contribs = [(a, rnd, 20.0) for rnd in range(3) for a in agents]  # rounds 0-2 full
+    run_dir = _write_run(tmp_path, contribs, resolved_rounds=[0, 1, 2])
+    _write_manifest(run_dir, num_steps=20)
+    _write_sim_metrics(run_dir, episodes=4)  # round 3 ran, fully silent
+    result = _EVAL.evaluate_run_dir(run_dir)
+    assert result["summary"]["rounds"] == 4
+    assert result["aggregated"]["avg_contribution_rate"] == pytest.approx(3.0 / 4.0)
+
+
 def test_all_defect_healthy_run_scores_zero_not_none(tmp_path: Path) -> None:
     """A healthy run where nobody ever contributed is full defection, not a gap.
 

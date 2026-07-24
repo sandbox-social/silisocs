@@ -161,6 +161,26 @@ def test_control_file_start_discards_stale_file(tmp_path) -> None:
     controller.close()
 
 
+def test_control_file_partial_payload_preserves_the_other_field(tmp_path) -> None:
+    """Fields apply independently: a payload naming one must not reset the other.
+
+    Exercises _apply directly (the unit behind the poller) because a
+    stopped-only no-op payload has no observable effect to poll for.
+    """
+    gate = StepGate(target=0)
+    controller = ControlFileController(gate, tmp_path / "run.control", poll_interval=0.02)
+
+    assert controller._apply({"target": 2}) is False
+    assert gate.snapshot()["target"] == 2
+    # A stopped:false-only payload leaves the previously set target alone.
+    assert controller._apply({"stopped": False}) is False
+    assert gate.snapshot()["target"] == 2
+    assert gate.snapshot()["stopped"] is False
+    # And a later stop does not disturb it either.
+    assert controller._apply({"stopped": True}) is True
+    assert gate.snapshot()["target"] == 2
+
+
 def test_control_file_stop_lands_despite_malformed_target(tmp_path) -> None:
     """`stopped` in the same payload as a bad `target` must still stop the run."""
     control = tmp_path / "run.control"
