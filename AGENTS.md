@@ -61,9 +61,16 @@ Core runtime layers:
 
 ### 5. Backend Action Layer
 - `src/silisocs/environments/backends/base.py` — ActionCatalog, base app interface
+- `src/silisocs/environments/backends/round_game.py` — SimultaneousRoundGame, the
+  reusable referee base for simultaneous-move repeated games (hidden choice
+  buffering, resolve-at-the-round-boundary, payoffs, checkpoint round-trip)
 - `src/silisocs/environments/backends/twitter_like/` — TwitterLikeApp with SQL backend
 - `src/silisocs/environments/backends/reddit_like/` — RedditLikeApp
 - `src/silisocs/environments/backends/mastodon/` — Real Mastodon server integration
+- `src/silisocs/environments/backends/public_goods/` — PublicGoodsApp, the
+  reference game-theoretic backend (subclasses SimultaneousRoundGame)
+- `src/silisocs/environments/backends/messaging/` — MessagingApp, the default
+  agent-to-agent direct-message/broadcast channel (`env=messaging`)
 - Actions discovered via `@app_action(selectable_name=..., description=...)`
 - To add custom backend: subclass `SocialBackendApp`, implement action methods, register in app factory
 
