@@ -63,10 +63,13 @@ class Control:
 
     Panels stay pure functions of ``(artifact, params)``; interactivity is a
     shell concern. ``kind`` names the widget (``episode_slider``,
-    ``agent_select``, ``probe_select``, ``select``); ``param`` is the ``params``
-    key the widget writes; ``choices`` (optional) enumerates values for selects
-    whose options are static — shells derive dynamic ones (episodes, agents,
-    probes) from the artifact.
+    ``agent_select``, ``probe_select``, ``select``, ``text``); ``param`` is the
+    ``params`` key the widget writes; ``choices`` (optional) enumerates values
+    for selects whose options are static — shells derive dynamic ones (episodes,
+    agents, probes) from the artifact. A ``kind`` the shell does not recognize
+    renders as a free-text input bound to the same param (``text`` is the
+    canonical spelling of that widget), so a custom kind is never silently
+    inert.
     """
 
     kind: str
@@ -156,8 +159,12 @@ _PANELS: dict[str, type[Panel]] = {}
 _ENTRY_POINTS_LOADED: list[bool] = []
 
 
-def register_panel(cls: type[Panel]) -> type[Panel]:
-    """Register a panel class by its declared name."""
+def validate_panel(cls: type[Panel]) -> type[Panel]:
+    """Validate a panel class's declarations, raising on contract violations.
+
+    Shared by :func:`register_panel` and the view-slot ``class_path`` loader so
+    every panel — registered or one-off — is held to the same contract.
+    """
     if not isinstance(cls, type) or not issubclass(cls, Panel):
         raise TypeError("register_panel expects a Panel subclass")
     name = str(getattr(cls, "name", "")).strip()
@@ -165,7 +172,23 @@ def register_panel(cls: type[Panel]) -> type[Panel]:
         raise ValueError("Panel.name must be non-empty")
     if getattr(cls, "scope", None) not in {"run", "study"}:
         raise ValueError(f"Panel {name!r} must declare scope='run' or 'study'")
-    _PANELS[name] = cls
+    # ``requires``/``semantics``/``needs_tags`` gate RUN artifacts only (they
+    # read a run's manifest). On a study panel they would be silently ignored —
+    # fail loud at declaration time instead of letting the author believe the
+    # gate is in force.
+    if cls.scope == "study" and (cls.requires or cls.semantics or cls.needs_tags):
+        raise ValueError(
+            f"Panel {name!r} has scope='study' but declares requires/semantics/"
+            "needs_tags — those gates apply to run artifacts only and would be "
+            "silently ignored at study scope"
+        )
+    return cls
+
+
+def register_panel(cls: type[Panel]) -> type[Panel]:
+    """Register a panel class by its declared name."""
+    validate_panel(cls)
+    _PANELS[str(cls.name).strip()] = cls
     return cls
 
 

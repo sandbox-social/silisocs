@@ -65,6 +65,27 @@ def test_custom_panel_registration_and_output_shape():
     assert output_to_dict(Markdown("hello")) == {"type": "markdown", "text": "hello"}
 
 
+def test_study_panel_rejects_run_only_declarations():
+    """requires/semantics/needs_tags gate run artifacts only; a study panel
+    declaring them would get a silently-ignored gate — registration fails loud
+    instead.
+    """
+    with pytest.raises(ValueError, match="run artifacts only"):
+
+        @register_panel
+        class _BadStudyPanel(Panel):
+            name = "test_bad_study_panel"
+            title = "Bad"
+            scope = "study"
+            requires = frozenset({"action_events"})
+
+            def build(self, artifact, params):
+                return Markdown("never built")
+
+    with pytest.raises(KeyError):
+        get_panel("test_bad_study_panel")
+
+
 def test_view_composes_built_in_panels(tmp_path):
     view = parse_view(
         {

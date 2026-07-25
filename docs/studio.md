@@ -22,19 +22,25 @@ Studio organizes the complete workflow around filesystem-backed objects:
 2. **Preflight**: validate config semantics, provider requirements, action names,
    and estimated calls/tokens before launching.
 3. **Live**: follow queued or running jobs, process logs, artifact growth, steps,
-   and usage. Active runs automatically open in Watch mode. An **interactive
-   launch** additionally shows Step / Play / Pause / End-run controls that drive
-   the simulation one episode at a time (see below); active runs automatically
-   open in Watch mode. The runner writes a provisional manifest (status
-   `running`) at launch, so a run's page — including live Watch panels — is
-   available while it executes, with event streams discovered live; the final
-   manifest replaces it on completion. In a multi-GM run the Watch ribbon's
-   action counter breaks down per game master.
+   and usage. Non-interactive runs automatically open in Watch mode; an
+   **interactive launch** stays on the live view (its run starts paused) and
+   shows Step / Play / Pause / End-run controls that drive the simulation one
+   episode at a time (see below) — the same control bar also appears on the
+   run page's Watch tab, so following the run there never loses the controls.
+   The runner writes a provisional manifest (status `running`) at launch, so a
+   run's page — including live Watch panels — is available while it executes,
+   with event streams discovered live; the final manifest replaces it on
+   completion. In a multi-GM run the Watch ribbon's action counter breaks down
+   per game master.
 4. **Runs**: inspect manifest health and provenance, open a backend-declared
    platform visualizer, render analysis views, compare the effective config to
-   the scenario baseline, and export a self-contained report.
+   the scenario baseline, and export a self-contained report. The catalog also
+   indexes study replicate runs (under `/runs/studies/...` ids), and a run that
+   belongs to a study links back to it from its heading.
 5. **Studies**: author `study.yaml`, fan conditions and seeds through the same
    queue, watch the progress board, compare results, and inspect hypotheses.
+   Completed board rows link to their replicate's run page, closing the
+   aggregate → drill-down loop in both directions.
 
 Press `Ctrl+K` from any page to navigate to an object. Object pages also register
 contextual commands such as launch, switch tab, and select an analysis view.
@@ -133,7 +139,8 @@ Choose **Interactive** beside Launch in the scenario editor (or send
 `interactive: true` in the launch payload) to run the simulation under
 episode-boundary control. Studio injects the runner's
 `sim.engine.control` overrides and a `run.control` file path both processes agree
-on, then the live view renders four controls:
+on. An interactive launch stays on the live view (the run holds before episode
+0), and both that view and the run page's Watch tab render four controls:
 
 - **Step** — advance exactly one episode, then hold.
 - **Play** — run freely to `num_steps`.
@@ -154,7 +161,9 @@ scheduler branch — it only decides *whether* the next episode runs.
 
 Analysis is artifact-driven. Register a panel with `@register_panel`, a package
 entry point, or a configured class path. Views are YAML arrangements of panels
-and can ship with a scenario under `conf/views/*.yaml`.
+and can ship with a scenario under `conf/views/*.yaml` — including study-scope
+views (`scope: study`), which every study declaring that scenario can select
+via `?view=<name>` on its page and on `/api/studies/{id}/compare`.
 
 Studio shows a run only the panels its backend can feed: a panel declares the
 semantic roles it reads (`Panel.semantics`) and the event streams it needs
@@ -167,7 +176,10 @@ composer applies the same rule to its view builder. See
 Changing a panel control (an episode slider, an agent picker) refreshes that one
 panel in place through `/api/runs/{id}/panels/{name}` and updates the URL, so the
 view stays linkable without reloading the page — and without re-fetching the
-vendored plot bundles, which are served with long-lived validators.
+vendored plot bundles, which are served with long-lived validators. Study pages
+share the same machinery: panel controls render there too, `p.<panel>.<param>`
+query args drive study panels exactly as run panels, and in-place refresh goes
+through `/api/studies/{id}/panels/{name}`.
 
 ### Unified exploration
 

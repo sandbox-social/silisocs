@@ -97,18 +97,22 @@
       if(output.type==='figure'){body.innerHTML='<div class="plot"></div>';try{await loadPlotly()}catch(error){body.textContent='Chart renderer could not be loaded.';return}const layout=output.figure.layout||{};await Plotly.newPlot(body.firstElementChild,output.figure.data||[],layout,{responsive:true,displaylogo:false,modeBarButtonsToRemove:['lasso2d','select2d']});await Plotly.relayout(body.firstElementChild,chartTheme());return}
       if(output.type==='html'){body.innerHTML=output.html;await initNetwork(body);return}
       if(output.type==='markdown'){const note=document.createElement('p');note.className='panel-note';note.textContent=output.text;body.replaceChildren(note);return}
-      if(output.type==='table'){const wrap=document.createElement('div'),table=document.createElement('table'),head=table.createTHead().insertRow(),tbody=table.createTBody();wrap.className='table-scroll';for(const column of output.columns){const th=document.createElement('th');th.textContent=typeof column==='string'?column:column.name;head.append(th)}for(const row of output.rows){const tr=tbody.insertRow();for(const column of output.columns)tr.insertCell().textContent=row[typeof column==='string'?column:column.name]??''}wrap.append(table);body.replaceChildren(wrap);return}
+      if(output.type==='table'){const wrap=document.createElement('div'),table=document.createElement('table'),head=table.createTHead().insertRow(),tbody=table.createTBody();wrap.className='table-scroll';for(const column of output.columns){const th=document.createElement('th');th.textContent=typeof column==='string'?column:column.name;head.append(th)}for(const row of output.rows){const tr=tbody.insertRow();for(const column of output.columns){const value=row[typeof column==='string'?column:column.name],cell=tr.insertCell();if(value&&typeof value==='object'){const el=document.createElement(value.href?'a':'span');if(value.href)el.href=value.href;el.textContent=value.text??'';cell.append(el)}else cell.textContent=value??''}}wrap.append(table);body.replaceChildren(wrap);return}
       if(output.type==='grid'){const grid=document.createElement('div');grid.className='stat-grid';if(output.items.some(item=>item.type!=='markdown'))grid.classList.add('rich');for(const item of output.items)grid.append(renderGridItem(item));body.replaceChildren(grid)}
     };
     // The panel's params live in the URL, so a refreshed panel and a reloaded
     // page always show the same thing.
     function panelQuery(name){const query=new URLSearchParams();for(const [key,value] of new URL(location).searchParams)if(key.startsWith(`p.${name}.`))query.set(key.slice(name.length+3),value);return query}
+    // Scope-generic: the enclosing grid names its subject (data-run-id or
+    // data-study-id) and the matching generic panel endpoint answers, so run
+    // and study surfaces share one refresh path.
     window.refreshPanel=async(section)=>{
-      const grid=section.closest('[data-run-id]');if(!grid)return;
+      const grid=section.closest('[data-run-id],[data-study-id]');if(!grid)return;
+      const base=grid.dataset.runId?`/api/runs/${grid.dataset.runId}`:`/api/studies/${grid.dataset.studyId}`;
       const name=section.dataset.panel,body=section.querySelector('.panel-body');
       body.classList.add('loading');body.setAttribute('aria-busy','true');
       try{
-        const response=await fetch(`/api/runs/${grid.dataset.runId}/panels/${name}?${panelQuery(name)}`);
+        const response=await fetch(`${base}/panels/${name}?${panelQuery(name)}`);
         if(!response.ok)return;
         const data=await response.json();
         await renderPanel(body,data.output);
@@ -123,7 +127,7 @@
       if (value === '' || value === null) url.searchParams.delete(`p.${panel}.${param}`);
       else url.searchParams.set(`p.${panel}.${param}`, value);
       const section = document.querySelector(`[data-panel="${panel}"]`);
-      if (!section || !section.closest('[data-run-id]')) { window.location = url; return; }
+      if (!section || !section.closest('[data-run-id],[data-study-id]')) { window.location = url; return; }
       history.replaceState(null, '', url);
       refreshPanel(section);
     };

@@ -348,3 +348,307 @@ def test_running_run_is_listed_and_its_pages_load_mid_run(tmp_path):
     page = client.get(f"/runs/{run_id}?tab=analyze&view=overview")
     assert page.status_code == 200
     assert "Alice" in page.text
+
+
+def test_generic_study_panel_endpoint_serves_any_study_panel(tmp_path):
+    """/api/studies/{id}/panels/{name} mirrors the run-panel endpoint at study
+    scope, so live surfaces (the Board's SSE refresh) render any study panel
+    through the shared machinery instead of hand-building one panel's shape.
+    """
+    import yaml
+
+    workspace = tmp_path / "workspace"
+    study_dir = workspace / "experiments" / "studies" / "exp1"
+    study_dir.mkdir(parents=True)
+    (study_dir / "study.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "study": {
+                    "name": "Exp",
+                    "id": "exp1",
+                    "scenarios": ["world_a"],
+                    "run_defaults": {"seed_start": 1, "seed_repeats": 1},
+                },
+                "hypotheses": {"h1": {"statement": "s", "conditions": {"c": {"overrides": {}}}}},
+            },
+            sort_keys=False,
+        )
+    )
+    organized = study_dir / "generated" / "organized"
+    organized.mkdir(parents=True)
+    (organized / "study_summary.yaml").write_text(
+        json.dumps({"metrics_by_condition": {"h1": {"c": {"metric": 1.0}}}})
+    )
+    client = TestClient(create_app(tmp_path, state_dir=tmp_path / "state", repo_root=workspace))
+
+    payload = client.get("/api/studies/exp1/panels/condition_comparison")
+    assert payload.status_code == 200
+    assert payload.json()["output"]["type"] == "figure"
+
+    # A run-scope panel is not served at study scope.
+    assert client.get("/api/studies/exp1/panels/action_trends").status_code == 404
+
+    # The compare endpoint routes its params to any named study panel.
+    compared = client.get("/api/studies/exp1/compare", params={"compare": "seed"})
+    assert compared.status_code == 200
+    assert (
+        client.get("/api/studies/exp1/compare", params={"panel": "no_such_panel"}).status_code
+        == 200
+    )
+    # A run-scope or unknown view is a 404, never an unhandled scope error.
+    assert client.get("/api/studies/exp1/compare", params={"view": "overview"}).status_code == 404
+    assert client.get("/api/studies/exp1/compare", params={"view": "nope"}).status_code == 404
+
+
+def _make_study(workspace, study_id="exp1", scenarios=("world_a",)):
+    import yaml
+
+    study_dir = workspace / "experiments" / "studies" / study_id
+    study_dir.mkdir(parents=True)
+    (study_dir / "study.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "study": {
+                    "name": "Exp",
+                    "id": study_id,
+                    "scenarios": list(scenarios),
+                    "run_defaults": {"seed_start": 1, "seed_repeats": 1},
+                },
+                "hypotheses": {"h1": {"statement": "s", "conditions": {"c": {"overrides": {}}}}},
+            },
+            sort_keys=False,
+        )
+    )
+    return study_dir
+
+
+def test_study_board_links_each_completed_replicate_to_its_run_page(tmp_path):
+    """The board's run cells resolve to run pages, and those runs link back.
+
+    Study replicate runs live under the studies root (outside the output root),
+    so this also covers the second discovery root: the run must be addressable
+    at /runs/studies/... and carry a back-link to its parent study.
+    """
+    outputs = tmp_path / "outputs"
+    workspace = tmp_path / "workspace"
+    study_dir = _make_study(workspace)
+    replicate = study_dir / "runs" / "h1" / "c" / "world_a" / "seed_1"
+    _make_run(replicate, name="run")
+    (replicate / "run" / "RUN_COMPLETE.json").write_text("{}")
+    client = TestClient(create_app(outputs, state_dir=tmp_path / "state", repo_root=workspace))
+
+    run_href = "/runs/studies/exp1/runs/h1/c/world_a/seed_1/run"
+    board = client.get("/studies/exp1?tab=board")
+    assert board.status_code == 200
+    assert f'href="{run_href}"' in board.text
+
+    # The API shape carries the same link for live board refreshes.
+    payload = client.get("/api/studies/exp1/panels/study_progress").json()
+    linked = [
+        cell
+        for row in payload["output"]["rows"]
+        for cell in row.values()
+        if isinstance(cell, dict) and cell.get("href")
+    ]
+    assert [cell["href"] for cell in linked] == [run_href]
+
+    # The replicate is a first-class run page, and it knows its parent study.
+    run_page = client.get(run_href)
+    assert run_page.status_code == 200
+    assert 'href="/studies/exp1"' in run_page.text
+    assert any(
+        item["id"].startswith("studies/") for item in client.get("/api/runs").json()["items"]
+    )
+
+
+def test_unregistered_class_path_panel_is_served_by_name(tmp_path):
+    """A one-off view-slot class_path panel answers the by-name panel endpoint.
+
+    Live refresh resolves panels by name; a panel referenced only via
+    class_path in a shipped view (never registered) must still refresh instead
+    of silently 404-ing after its first render.
+    """
+    import sys
+    import types
+
+    from silisocs.analysis import Markdown, Panel
+
+    module = types.ModuleType("studio_oneoff_panels")
+
+    class OneOffPanel(Panel):
+        name = "oneoff_metric"
+        title = "One-off metric"
+        scope = "run"
+
+        def build(self, artifact, params):
+            return Markdown("one-off output")
+
+    module.OneOffPanel = OneOffPanel
+    sys.modules["studio_oneoff_panels"] = module
+    try:
+        outputs = tmp_path / "artifacts"
+        _make_run(outputs)
+        view_dir = tmp_path / "workspace" / "scenarios" / "demo" / "conf" / "views"
+        view_dir.mkdir(parents=True)
+        (view_dir / "custom.yaml").write_text(
+            "view:\n  name: custom\n  title: Custom\n  scope: run\n  layout: rows\n"
+            "  panels:\n    - class_path: studio_oneoff_panels.OneOffPanel\n",
+            encoding="utf-8",
+        )
+        client = TestClient(
+            create_app(outputs, state_dir=tmp_path / "state", repo_root=tmp_path / "workspace")
+        )
+        payload = client.get("/api/runs/demo/run-1/panels/oneoff_metric")
+        assert payload.status_code == 200
+        assert payload.json()["output"]["text"] == "one-off output"
+        # A name in no registry and no shipped view is still a 404.
+        assert client.get("/api/runs/demo/run-1/panels/never_heard_of_it").status_code == 404
+    finally:
+        sys.modules.pop("studio_oneoff_panels", None)
+
+
+def test_scenario_shipped_study_view_serves_for_study(tmp_path):
+    """A scenario may ship a study-scope view; studies using it can select it."""
+    workspace = tmp_path / "workspace"
+    _make_study(workspace)
+    view_dir = workspace / "scenarios" / "world_a" / "conf" / "views"
+    view_dir.mkdir(parents=True)
+    (view_dir / "custom_study.yaml").write_text(
+        "view:\n  name: custom_study\n  title: Custom Study View\n  scope: study\n"
+        "  layout: rows\n  panels:\n    - built_in: per_agent_distributions\n",
+        encoding="utf-8",
+    )
+    (view_dir / "lab.yaml").write_text(
+        "view:\n  name: lab\n  title: Lab\n  scope: run\n  layout: rows\n"
+        "  panels:\n    - built_in: health_summary\n",
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(tmp_path / "outputs", state_dir=tmp_path / "state", repo_root=workspace),
+        raise_server_exceptions=False,
+    )
+
+    page = client.get("/studies/exp1?tab=analyze&view=custom_study")
+    assert page.status_code == 200
+    assert 'data-panel="per_agent_distributions"' in page.text
+    assert (
+        client.get("/api/studies/exp1/compare", params={"view": "custom_study"}).status_code == 200
+    )
+    # A run-scope view — shipped or built-in — stays a 404 at study scope.
+    assert client.get("/studies/exp1?tab=analyze&view=lab").status_code == 404
+    assert client.get("/studies/exp1?tab=analyze&view=overview").status_code == 404
+
+
+def test_study_panels_render_their_controls(tmp_path):
+    """Study panels' declared controls render on the study page like run panels'."""
+    workspace = tmp_path / "workspace"
+    _make_study(workspace)
+    client = TestClient(
+        create_app(tmp_path / "outputs", state_dir=tmp_path / "state", repo_root=workspace)
+    )
+
+    page = client.get("/studies/exp1?tab=compare")
+    assert page.status_code == 200
+    assert 'data-study-id="exp1"' in page.text
+    assert "setPanelParam('condition_comparison','baseline'" in page.text
+    assert "setPanelParam('condition_comparison','compare'" in page.text
+
+
+def test_interactive_watch_tab_carries_run_controls(tmp_path):
+    """The Watch tab shows Step/Play/Pause for an interactive running job.
+
+    The live -> watch handoff must not strand a start-paused interactive run on
+    a page without its controls.
+    """
+    run = _make_run(tmp_path)
+    app = create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path)
+    app.state.jobs.store.insert(
+        Job(
+            id="interactive-run",
+            kind="run",
+            status="running",
+            pid=None,
+            created_at=100.0,
+            started_at=101.0,
+            ended_at=None,
+            exit_code=None,
+            scenario="demo",
+            config_snapshot_path=None,
+            output_dir=str(run),
+            log_path=str(tmp_path / "interactive.log"),
+            parent_study=None,
+            port=None,
+            command_json=json.dumps(
+                {
+                    "argv": [],
+                    "cwd": str(tmp_path),
+                    "env": {},
+                    "control_path": str(run / "run.control"),
+                }
+            ),
+        )
+    )
+
+    page = TestClient(app).get("/runs/demo/run-1?tab=watch")
+    assert page.status_code == 200
+    assert "control-bar" in page.text
+    assert "ctlStep()" in page.text
+    assert "/control" in page.text
+
+
+def test_run_track_reflects_completion_not_step_count(tmp_path):
+    """The archive's run track is a completion signal, not a step-count bar."""
+    _make_run(tmp_path)  # status success, 1 step
+    running = tmp_path / "demo" / "run-live"
+    running.mkdir(parents=True)
+    (running / "run_manifest.json").write_text(
+        json.dumps({"status": "running", "scenario": "demo", "num_steps": 20, "artifacts": {}})
+    )
+    client = TestClient(create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path))
+
+    page = client.get("/runs").text
+    # The 1-step successful run is full; the 20-step running run is not.
+    assert "width:100%" in page
+    assert "width:0%" in page
+    assert "width:10%" not in page
+
+
+def test_unknown_control_kind_degrades_to_text_input_not_nothing(tmp_path):
+    """A custom Control.kind the shell does not know must still render a working
+    widget (a text input bound to setPanelParam), never silently vanish.
+    """
+    from silisocs.analysis import Control, Markdown, Panel, register_panel
+    from silisocs.analysis.panel import _PANELS
+
+    @register_panel
+    class _ThresholdProbe(Panel):
+        name = "test_threshold_probe"
+        title = "Threshold probe"
+        scope = "run"
+        requires = frozenset({"action_events"})
+        controls = (Control(kind="threshold_slider", param="threshold", label="Threshold"),)
+
+        def build(self, artifact, params):
+            return Markdown(f"threshold={params.get('threshold', 'unset')}")
+
+    try:
+        outputs = tmp_path / "artifacts"
+        _make_run(outputs)
+        view_dir = tmp_path / "workspace" / "scenarios" / "demo" / "conf" / "views"
+        view_dir.mkdir(parents=True)
+        (view_dir / "custom.yaml").write_text(
+            "view:\n  name: custom\n  title: Custom\n  scope: run\n  layout: rows\n"
+            "  panels:\n    - built_in: test_threshold_probe\n",
+            encoding="utf-8",
+        )
+        client = TestClient(
+            create_app(outputs, state_dir=tmp_path / "state", repo_root=tmp_path / "workspace")
+        )
+        page = client.get("/runs/demo/run-1?tab=analyze&view=custom")
+        assert page.status_code == 200
+        assert "setPanelParam('test_threshold_probe','threshold'" in page.text
+        assert 'type="text"' in page.text
+    finally:
+        _PANELS.pop("test_threshold_probe", None)

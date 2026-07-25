@@ -1,0 +1,17 @@
+{# Shell-rendered panel controls, shared by the run and study pages so both
+   scopes describe a panel's interactivity identically. ``facets`` supplies the
+   dynamic choices (episodes, agents, probes, backends) and is none at study
+   scope, where facet-driven kinds have nothing to enumerate and are skipped.
+   An unknown kind degrades to a functional text input bound to the same param
+   ('text' is the canonical spelling), so a custom kind is never silently inert. #}
+{% macro render_controls(panel, facets) -%}
+{% for control in panel.controls %}
+{% if control.kind == 'episode_slider' %}{% if facets and facets.max_episode >= 0 %}<label class="ctl">Episode <input type="range" min="0" max="{{ facets.max_episode }}" value="{{ control.value if control.value is not none else facets.max_episode }}" onchange="setPanelParam('{{ panel.name }}','{{ control.param }}',this.value)"><output data-control-output="{{ control.param }}">{{ control.value if control.value is not none else 'all' }}</output><button type="button" class="ctl-reset" onclick="setPanelParam('{{ panel.name }}','{{ control.param }}','')" title="Show all episodes">all</button></label>{% endif %}
+{% elif control.kind == 'agent_select' %}{% if facets %}<label class="ctl">{{ control.label }} <select onchange="setPanelParam('{{ panel.name }}','{{ control.param }}',this.value)"><option value="">auto</option>{% for agent in facets.agents %}<option value="{{ agent }}" {{ 'selected' if control.value == agent }}>{{ agent }}</option>{% endfor %}</select></label>{% endif %}
+{% elif control.kind == 'probe_select' %}{% if facets %}<label class="ctl">{{ control.label }} <select onchange="setPanelParam('{{ panel.name }}','{{ control.param }}',this.value)"><option value="">auto</option>{% for probe in facets.probes %}<option value="{{ probe }}" {{ 'selected' if control.value == probe }}>{{ probe }}</option>{% endfor %}</select></label>{% endif %}
+{% elif control.kind == 'backend_select' %}{% if facets and facets.backends|length > 1 %}<label class="ctl">{{ control.label }} <select onchange="setPanelParam('{{ panel.name }}','{{ control.param }}',this.value)"><option value="">all</option>{% for backend in facets.backends %}<option value="{{ backend }}" {{ 'selected' if control.value == backend }}>{{ backend }}</option>{% endfor %}</select></label>{% endif %}
+{% elif control.kind == 'select' %}<label class="ctl">{{ control.label }} <select onchange="setPanelParam('{{ panel.name }}','{{ control.param }}',this.value)">{% for choice in control.choices %}<option value="{{ choice }}" {{ 'selected' if control.value == choice }}>{{ choice }}</option>{% endfor %}</select></label>
+{% else %}{# 'text' and unknown control kinds: degrade to a functional text input so a custom kind is never silently inert. #}<label class="ctl">{{ control.label }} <input type="text" value="{{ control.value if control.value is not none else '' }}" onchange="setPanelParam('{{ panel.name }}','{{ control.param }}',this.value)"></label>
+{% endif %}
+{% endfor %}
+{%- endmacro %}

@@ -15,6 +15,7 @@ from silisocs.analysis.panel import (
     get_panel,
     output_to_dict,
     serialize_controls,
+    validate_panel,
 )
 from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
 
@@ -118,7 +119,9 @@ class PanelSlot:
         cls = getattr(importlib.import_module(module_name), class_name)
         if not isinstance(cls, type) or not issubclass(cls, Panel):
             raise TypeError(f"{self.class_path} is not a Panel class")
-        return cls
+        # One-off class_path panels get the same declaration checks registered
+        # panels do (e.g. a study panel declaring run-only gates fails loud).
+        return validate_panel(cls)
 
 
 @dataclass(frozen=True)

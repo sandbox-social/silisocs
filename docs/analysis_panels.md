@@ -33,10 +33,17 @@ class ContagionCurve(Panel):
 
 Installed packages can expose panel classes through the
 `silisocs.panels` entry-point group. One-off panels can be referenced by
-`class_path` without registration. A panel entry point that fails to import is
-skipped with a warning rather than breaking every analysis surface, and a panel
-that raises while building renders an error card in its slot rather than failing
-the whole view.
+`class_path` without registration — Studio's by-name panel endpoints (which
+back live refresh) resolve such a panel by scanning the shipped view files that
+reference it, so registration is never required for refresh to work. A panel
+entry point that fails to import is skipped with a warning rather than breaking
+every analysis surface, and a panel that raises while building renders an error
+card in its slot rather than failing the whole view.
+
+Scope determines which gates apply: `requires`, `semantics`, and `needs_tags`
+read a **run's** manifest, so declaring any of them on a `scope="study"` panel
+is a registration-time `ValueError` (they would otherwise be silently ignored).
+Study panels gate with `applicable(artifact)` instead.
 
 ### `Html` output must escape untrusted content
 
@@ -78,10 +85,25 @@ class AgentTimeline(Panel):
 Built-in `kind`s are `episode_slider`, `agent_select`, `probe_select`,
 `backend_select` (the run's manifest-declared backend types; the shell renders
 it only when a run has more than one, so single-backend runs see no extra
-control), and `select` (static `choices`). Params travel as `p.<panel>.<param>`
-query args, so a control state is deep-linkable. A panel whose `params` value
-is missing must fall back to a sensible default (e.g. most-active agent, all
-episodes, all backends).
+control), `select` (static `choices`), and `text` (a free-text input). A `kind`
+the shell does not know degrades to the same text input bound to the same param
+— a custom kind is never silently inert, it just isn't pretty until the shell
+grows a widget for it. Params travel as `p.<panel>.<param>` query args, so a
+control state is deep-linkable. A panel whose `params` value is missing must
+fall back to a sensible default (e.g. most-active agent, all episodes, all
+backends). Controls render at both scopes: study panels' controls appear on the
+study page exactly like run panels' (facet-driven kinds — episodes, agents,
+probes, backends — enumerate run data and are skipped at study scope).
+
+### Run reference cells
+
+A `Table` cell may be a **run reference** — a mapping `{"run_path": "<run
+directory>", "text": "<label>"}` — instead of a scalar. The panel stays
+portable: Studio resolves the path against its run catalog and renders a link
+to the run's page (a path it cannot resolve, or any other renderer — static
+reports, notebooks — shows just the text). The built-in `study_progress` board
+panel emits one per completed replicate, which is how a study board row links
+to its run. Any panel, run- or study-scope, may emit them.
 
 ## Compose a view
 
@@ -110,9 +132,12 @@ silisocs-report outputs/path/to/run --view overview -o report.html
 
 Built-in run views are `overview`, `network`, `content`, `market`, `probes`, and
 `cost`; built-in study views are `comparison`, `hypotheses`, and `progress`. A
-scenario can ship additional views under `conf/views/*.yaml`; Studio enumerates
-those files and never accepts a request-provided filesystem path. Views that a
-run's backend cannot feed are not offered at all — see the next section.
+scenario can ship additional views under `conf/views/*.yaml` — run-scope views
+join the run page's navigation, and study-scope views (`scope: study`) become
+selectable by every study that declares the scenario, via `?view=<name>` on the
+study page and `/api/studies/{id}/compare`. Studio enumerates those files and
+never accepts a request-provided filesystem path. Views that a run's backend
+cannot feed are not offered at all — see the next section.
 
 ## Backend-neutral semantics
 
@@ -174,8 +199,15 @@ figures and tables can be built with `line_figure`, `bar_figure`, and `table`.
 
 For a semantic shape shared across backend implementations, or a third-party
 class you cannot decorate, call
-`register_event_semantics(backend_type, EventSemantics(...))`. An explicit
-registration takes precedence over derived declarations. The five built-in
+`register_event_semantics(backend_type, EventSemantics(...))`, or set a
+class-level `event_semantics` declaration on the backend (an `EventSemantics`
+or the portable `{roles, fields, labels}` mapping — the shipped social backends
+declare theirs this way via `social_event_semantics(...)`). Resolution MERGES:
+the explicit registration or class declaration wins per entry, and decorator
+declarations fill everything they add — so decorating a new action on a backend
+that also carries an explicit declaration always reaches the analysis surfaces.
+A malformed class declaration raises at resolution (a manifest's semantics
+block, being artifact data, still degrades leniently). The five built-in
 behavior names (`creates_content`, `endorses`, `negative`, `social_graph`, and
 `reads`) are color and ordering conventions only; any tag works throughout the
 analysis system.
