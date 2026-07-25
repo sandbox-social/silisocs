@@ -784,23 +784,37 @@ class SchedulingMixin:
                     with concurrent.futures.ThreadPoolExecutor(
                         max_workers=driver_count
                     ) as driver_pool:
-                        driver_futures = [
+                        driver_futures = {
                             driver_pool.submit(
                                 self._run_chain_pipeline,
                                 turn_pool,
                                 groups,
                                 failed_tasks,
                                 worker_limit,
-                            )
-                            for groups in active_chains
-                        ]
+                            ): index
+                            for index, groups in enumerate(active_chains)
+                        }
+                        driver_errors: list[tuple[int, BaseException]] = []
                         for future in concurrent.futures.as_completed(driver_futures):
                             # Per-turn failures are already isolated inside the driver;
-                            # this only surfaces an unexpected driver-level error (e.g. a
-                            # pool/scheduling fault) so it is logged rather than swallowed.
+                            # an exception here is a driver-level fault (e.g. a broken
+                            # branch router) and must fail the step, exactly as the
+                            # serial/staged traversals do when the same resolution runs
+                            # inline on the calling thread.
                             exc = future.exception()
                             if exc is not None:
-                                _LOGGER.error("Chain pipeline driver failed", exc_info=exc)
+                                driver_errors.append((driver_futures[future], exc))
+                        if driver_errors:
+                            # Raise the first chain's error (deterministic across
+                            # thread timing, matching serial/staged flow order) and
+                            # log the rest.
+                            driver_errors.sort(key=lambda item: item[0])
+                            for _, extra in driver_errors[1:]:
+                                _LOGGER.error(
+                                    "Additional chain pipeline driver failure",
+                                    exc_info=extra,
+                                )
+                            raise driver_errors[0][1]
 
             return runner
 
