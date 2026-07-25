@@ -519,6 +519,21 @@ def main(cfg: DictConfig):
                 restore_rng_state_from_metadata(checkpoint_meta)
         _log_startup_phase("engine_initialize", time.time() - t0)
 
+        # Provisional manifest: the run becomes loadable (Studio run page, live
+        # Watch panels) while it executes. Status "running" tells consumers the
+        # index is live — RunArtifact re-resolves event files on each load
+        # instead of trusting this snapshot's artifact list — and the final
+        # write in `finally` overwrites it with the completed record.
+        provisional_snapshot = metrics.to_dict()
+        write_run_manifest(
+            output_dir=output_dir,
+            status="running",
+            meta=provisional_snapshot.get("meta"),
+            counters=provisional_snapshot.get("counters"),
+            game_masters=runtime_objects.game_masters_by_sequence(),
+            project_root=_resolve_project_root(),
+        )
+
         t0 = time.time()
         with metrics.phase("engine_run_loop"):
             checkpoint_save_strategy = build_checkpoint_save_strategy(

@@ -122,6 +122,14 @@ class RunArtifact:
     # ---- event logs -------------------------------------------------------
 
     def _event_files(self, manifest_key: str) -> list[Path]:
+        if self.status == "running":
+            # A provisional manifest indexes a run still writing its logs: its
+            # artifact list is a stale snapshot from launch time, so discover
+            # the stream files live (same resolvers the final manifest uses).
+            from silisocs.evaluations.action_events import LIVE_STREAM_RESOLVERS
+
+            resolver = LIVE_STREAM_RESOLVERS.get(manifest_key)
+            return resolver(self.run_dir) if resolver else []
         artifacts = self.manifest.get("artifacts")
         listed = artifacts.get(manifest_key) if isinstance(artifacts, dict) else None
         if not isinstance(listed, list):

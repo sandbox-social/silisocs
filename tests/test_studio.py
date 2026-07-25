@@ -311,3 +311,40 @@ def test_cross_site_origin_is_rejected(tmp_path):
         headers={"origin": "http://testserver", "host": "testserver"},
     )
     assert same.status_code == 200
+
+
+def test_running_run_is_listed_and_its_pages_load_mid_run(tmp_path):
+    """A provisional (status "running") manifest makes a live run watchable.
+
+    The session writes it at launch; the run must appear in the catalog and its
+    pages must load while event logs are still growing — including logs the
+    launch-time snapshot never saw (discovered live for a running status).
+    """
+    run = tmp_path / "demo" / "run-live"
+    run.mkdir(parents=True)
+    (run / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "status": "running",
+                "scenario": "demo",
+                "num_agents": 2,
+                "num_steps": 5,
+                "game_masters": [{"name": "gm", "backend_type": "twitter_like"}],
+                "artifacts": {"action_events": []},  # nothing written yet at launch
+            }
+        )
+    )
+    client = TestClient(create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path))
+
+    listed = client.get("/api/runs").json()["items"]
+    assert [item["status"] for item in listed] == ["running"]
+    run_id = listed[0]["id"]
+    assert client.get(f"/runs/{run_id}?tab=watch&view=overview").status_code == 200
+
+    # Events written after launch are visible on the next page load.
+    (run / "action_events.jsonl").write_text(
+        json.dumps({"source_user": "Alice", "label": "post", "episode": 0, "data": {}}) + "\n"
+    )
+    page = client.get(f"/runs/{run_id}?tab=analyze&view=overview")
+    assert page.status_code == 200
+    assert "Alice" in page.text

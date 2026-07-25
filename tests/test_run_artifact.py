@@ -93,6 +93,40 @@ def test_load_run_rejects_stale_manifest_paths(tmp_path: Path) -> None:
         list(artifact.iter_actions())
 
 
+def test_running_manifest_discovers_event_files_live(tmp_path: Path) -> None:
+    """A provisional (status "running") manifest must not freeze the artifact list.
+
+    The session writes it at launch, before any event log exists; logs that
+    appear later — flat or per-GM — must be visible to every load without a
+    manifest rewrite. The final manifest overwrite restores strict indexing.
+    """
+    run = tmp_path / "live_run"
+    run.mkdir()
+    (run / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "status": "running",
+                "scenario": "demo",
+                "game_masters": [
+                    {"name": "talk_gm", "backend_type": "messaging"},
+                    {"name": "game_gm", "backend_type": "public_goods"},
+                ],
+                "artifacts": {"action_events": [], "probe_events": []},  # launch-time snapshot
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert list(load_run(run).iter_actions()) == []  # nothing written yet
+
+    # Logs appear as the run executes — discovered live, stale index ignored.
+    _write_jsonl(run / "talk_gm" / "action_events.jsonl", [{"source_user": "Alice"}])
+    _write_jsonl(run / "game_gm" / "action_events.jsonl", [{"source_user": "Bob"}])
+    artifact = load_run(run)
+    assert sorted(row["source_user"] for row in artifact.iter_actions()) == ["Alice", "Bob"]
+    assert list(artifact.iter_probes()) == []
+
+
 def test_load_run_rejects_malformed_manifest(tmp_path: Path) -> None:
     run = _manifestless_run(tmp_path)
     (run / "run_manifest.json").write_text("{not-json", encoding="utf-8")

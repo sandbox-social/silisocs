@@ -58,3 +58,14 @@ def resolve_harness_event_files(run_dir: str | Path) -> list[Path]:
     (single-GM) vs per-GM ``<gm_name>/`` layout as action/exposure logs.
     """
     return resolve_event_files(run_dir, HARNESS_EVENTS_FILENAME)
+
+
+# Manifest artifact key -> live resolver: the map RunArtifact uses to discover
+# a RUNNING run's stream files (its provisional manifest's artifact list is a
+# stale launch-time snapshot). Keys match build_run_manifest's artifacts keys.
+LIVE_STREAM_RESOLVERS = {
+    "action_events": resolve_action_event_files,
+    "exposure_events": resolve_exposure_event_files,
+    "probe_events": resolve_probe_event_files,
+    "harness_events": resolve_harness_event_files,
+}
