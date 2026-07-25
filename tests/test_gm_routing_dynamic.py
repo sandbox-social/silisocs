@@ -296,6 +296,19 @@ def test_custom_router_reads_backend_and_asks_agent_directly() -> None:
     assert {gm.name for gm in gms if gm.resolved} == {"tw_gm"}  # agent's own answer honored
 
 
+@pytest.mark.parametrize("mode", ["concurrent", "staged", "serial"])
+def test_broken_router_fails_the_step_in_every_traversal(mode: str) -> None:
+    # A router that leaves an agent unrouted is a config/programming error; it must
+    # fail the step loudly under every traversal — including concurrent mode, where
+    # branch resolution runs on a chain-driver thread rather than inline.
+    branch = BranchSpec(choices=("tw_gm", "rd_gm"), router=lambda agents, gms, ctx: {})
+    flow_chains = {"social": [branch]}
+    primary = _GM("primary", agent_flow_tags={"Alice": "social"})
+    gms = [primary, _GM("tw_gm"), _GM("rd_gm")]
+    with pytest.raises(ValueError, match="left agent"):
+        _run(_MODES[mode], flow_chains, gms, [_Agent("Alice")])
+
+
 # -------------------------------------------------------- engine-side validation
 
 
