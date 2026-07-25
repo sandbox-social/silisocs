@@ -343,7 +343,9 @@ is the reference non-social scenario (a stateful economy);
 (simultaneous-move repeated game with payoffs — copy it for cooperation/game
 studies, and subclass `environments/backends/round_game.py` for a new game);
 the built-in `messaging` env is the reference agent-to-agent communication
-channel (`env=messaging agents=messaging world=messaging`). Copy the nearest
+channel (`env=messaging agents=messaging world=messaging`); and
+`scenarios/talk_then_contribute` is the reference **multi-GM composition** (a
+messaging GM chained before a game GM — "talk, then move"). Copy the nearest
 one rather than a social scenario. Three differences matter:
 
 1. **Pick the generic GM components.** The default env group is `twitter_like`,

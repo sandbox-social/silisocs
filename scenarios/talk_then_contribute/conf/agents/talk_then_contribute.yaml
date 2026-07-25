@@ -1,0 +1,44 @@
+# @package agents
+
+builder:
+  class_path: null
+  params: {}
+
+persona_pipeline:
+  defaults:
+    params:
+      seed_post: ""
+      bio: ""
+      style: ""
+      goal: null
+      world_context: ${event.context}
+    shared_memories:
+      - They are playing a repeated public-goods game with a talk phase each round.
+      - ${event.context}
+  classes:
+    player:
+      count: ${num_agents}
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: player
+      data:
+        source: inline
+        records:
+          - name: Alex
+            persona: Alex keeps promises and expects others to keep theirs.
+          - name: Blair
+            persona: Blair coordinates loudly and pushes the group toward full contribution.
+          - name: Casey
+            persona: Casey says little and watches what others actually do.
+          - name: Devon
+            persona: Devon agrees readily in conversation but acts on self-interest.
+      field_map:
+        name: name
+        context: persona
+
+shared_memories:
+  - They are playing a repeated public-goods game with a talk phase each round.
+  - ${event.context}
+
+initial_observations:
+  - "{name} joins the game."
+  - "{name} can message other players each round before choosing a contribution."

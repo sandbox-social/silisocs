@@ -27,6 +27,7 @@ Curated external examples live under `scenarios/resource_market/`,
 uv run silisocs --config-path scenarios/resource_market/conf world=resource_market agents=resource_market env=resource_market
 uv run silisocs --config-path scenarios/virtual_space/conf world=virtual_space agents=virtual_space env=virtual_space
 uv run silisocs --config-path scenarios/public_goods_game/conf world=public_goods_game agents=public_goods_game env=public_goods_game
+uv run silisocs --config-path scenarios/talk_then_contribute/conf world=talk_then_contribute agents=talk_then_contribute env=talk_then_contribute
 ```
 
 Or in the top-level Hydra defaults:
@@ -201,7 +202,9 @@ direct messages (and optional broadcasts), mediated by the backend like every
 other interaction — there is no side channel. Use it standalone for
 conversation/coordination studies, or compose it with a game backend through
 multi-GM flow chains ("talk, then move": chain the flow through a messaging GM
-before the game GM) for negotiation and cheap-talk experiments.
+before the game GM) for negotiation and cheap-talk experiments —
+`scenarios/talk_then_contribute/` is the runnable reference for that
+composition.
 
 **Actions**: `SEND_MESSAGE`, `BROADCAST`, `FINISHED`
 
