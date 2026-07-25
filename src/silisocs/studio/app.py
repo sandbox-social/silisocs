@@ -129,11 +129,16 @@ def _run_facets(artifact: Any) -> dict[str, Any]:
             max_episode = max(max_episode, episode)
         if row.get("label"):
             probes.add(str(row["label"]))
+    from silisocs.analysis.panels._shared import backend_types
+
     return {
         "max_episode": max_episode,
         "action_count": action_count,
         "agents": sorted(agents),
         "probes": sorted(probes),
+        # Manifest-declared backend types; backend_select controls render only
+        # when a run actually has more than one.
+        "backends": backend_types(artifact),
     }
 
 

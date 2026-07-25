@@ -198,3 +198,46 @@ def test_empty_run_yields_html_without_raising(tmp_path):
     assert isinstance(output, Html)
     payload = _payload(output)
     assert payload["elements"] == []
+
+
+def test_backend_filter_isolates_one_environment_in_a_multi_gm_run(tmp_path):
+    """With two backends in one run, backend_type reads one GM's edges alone."""
+    rows = [
+        {
+            "source_user": "Bob",
+            "label": "follow",
+            "episode": 0,
+            "backend_type": "twitter_like",
+            "data": {"target_user": "Alice"},
+        },
+        {
+            "source_user": "Alice",
+            "label": "send_message",
+            "episode": 0,
+            "backend_type": "messaging",
+            "data": {"recipient": "Carol", "text": "hi", "round": 0},
+        },
+    ]
+    (tmp_path / "action_events.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+    (tmp_path / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "status": "success",
+                "game_masters": [
+                    {"name": "social_gm", "backend_type": "twitter_like"},
+                    {"name": "talk_gm", "backend_type": "messaging"},
+                ],
+                "artifacts": {"action_events": ["action_events.jsonl"]},
+            }
+        )
+    )
+    artifact = load_run(tmp_path)
+
+    merged = _payload(InteractionNetworkPanel().build(artifact, {}))
+    assert _nodes(merged) == {"Alice", "Bob", "Carol"}
+    assert len(_edges(merged)) == 2
+
+    talk_only = _payload(InteractionNetworkPanel().build(artifact, {"backend_type": "messaging"}))
+    assert _nodes(talk_only) == {"Alice", "Carol"}
+    (edge,) = _edges(talk_only)
+    assert (edge["data"]["source"], edge["data"]["target"]) == ("Alice", "Carol")

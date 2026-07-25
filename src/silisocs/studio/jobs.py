@@ -25,11 +25,17 @@ EVENT_STREAMS = ("action", "exposure", "probe", "harness")
 def _read_event_growth(
     paths: list[Path],
     positions: dict[Path, int],
-) -> tuple[int, int]:
-    """Read only complete JSONL records appended to ``paths`` since the previous call."""
-    new_count = 0
+    root: Path,
+) -> tuple[dict[str, int], int]:
+    """Read only complete JSONL records appended to ``paths`` since the previous call.
+
+    Returns growth keyed by source — the per-GM subdirectory name for multi-GM
+    layouts, "" for a flat run-root log — plus the latest episode index seen.
+    """
+    growth: dict[str, int] = {}
     latest_step = -1
     for path in paths:
+        source = "" if path.parent == root else path.parent.name
         try:
             position = positions.get(path, 0)
             if path.stat().st_size < position:
@@ -46,13 +52,13 @@ def _read_event_growth(
                         continue
                     if not isinstance(row, dict):
                         continue
-                    new_count += 1
+                    growth[source] = growth.get(source, 0) + 1
                     episode = row.get("episode")
                     if isinstance(episode, int):
                         latest_step = max(latest_step, episode)
         except OSError:
             continue
-    return new_count, latest_step
+    return growth, latest_step
 
 
 # How often the SSE loop re-discovers event-log files. The recursive glob for all
@@ -483,6 +489,7 @@ class JobManager:
         previous_status: str | None = None
         previous_output: str | None = None
         artifact_counts: dict[str, int] = {}
+        artifact_sources: dict[str, dict[str, int]] = {}
         stream_positions: dict[Path, int] = {}
         stream_files: dict[str, list[Path]] = {}
         last_glob = 0.0
@@ -511,15 +518,21 @@ class JobManager:
                 latest_step = -1
                 for stream in EVENT_STREAMS:
                     growth, stream_step = _read_event_growth(
-                        stream_files.get(stream, []), stream_positions
+                        stream_files.get(stream, []), stream_positions, root
                     )
                     if growth:
-                        artifact_counts[stream] = artifact_counts.get(stream, 0) + growth
+                        by_source = artifact_sources.setdefault(stream, {})
+                        for source, count in growth.items():
+                            by_source[source] = by_source.get(source, 0) + count
+                        artifact_counts[stream] = sum(by_source.values())
                         yield {
                             "event": "artifact_grown",
                             "data": {
                                 "stream": stream,
                                 "new_count": artifact_counts[stream],
+                                # Per-GM breakdown ("" = flat run-root log);
+                                # the watch ribbon shows it for multi-GM runs.
+                                "sources": dict(by_source),
                             },
                         }
                     latest_step = max(latest_step, stream_step)

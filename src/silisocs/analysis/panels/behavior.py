@@ -8,7 +8,7 @@ from typing import Any
 
 from silisocs.analysis.charts import bar_figure
 from silisocs.analysis.inputs import event_frame
-from silisocs.analysis.panel import Figure, Panel, register_panel
+from silisocs.analysis.panel import Control, Figure, Panel, register_panel
 from silisocs.analysis.panels._shared import backend_types, semantics_for_backend
 from silisocs.design.tokens import GROUP_COLORS, tag_color
 from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
@@ -23,16 +23,19 @@ class BehaviorBreakdownPanel(Panel):
     scope = "run"
     requires = frozenset({"action_events"})
     needs_tags = True
+    controls = (Control(kind="backend_select", param="backend_type", label="Environment"),)
 
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Figure:
         assert isinstance(artifact, RunArtifact)
         types = backend_types(artifact)
-        backend_type = str(params.get("backend_type") or (types[0] if types else ""))
-        fallback = semantics_for_backend(artifact, backend_type)
+        wanted = str(params.get("backend_type") or "")
+        fallback = semantics_for_backend(artifact, wanted or (types[0] if types else ""))
 
         counts: dict[str, Counter[int]] = defaultdict(Counter)
         episodes: set[int] = set()
         for event in event_frame(artifact):
+            if wanted and event.backend_type != wanted:
+                continue
             episodes.add(event.episode)
             tags = event.tags or fallback.tags_of(event.label)
             counts[tags[0] if tags else "other"][event.episode] += 1
