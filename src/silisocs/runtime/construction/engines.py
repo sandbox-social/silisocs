@@ -87,7 +87,7 @@ _STEP_STRATEGIES: dict[str, type[Any]] = {
     str(strategy.name): strategy for strategy in _STEP_STRATEGY_TYPES
 }
 _ENGINE_STEP_PARAMS = frozenset(
-    {"flow_order", "flow_turn_policies", "gm_turn_policies", "gm_concurrency_caps"}
+    {"flow_order", "agent_to_flow", "flow_turn_policies", "gm_turn_policies", "gm_concurrency_caps"}
 )
 
 

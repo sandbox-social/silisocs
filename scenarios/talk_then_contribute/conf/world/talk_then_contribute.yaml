@@ -1,0 +1,30 @@
+# @package _global_
+
+scenario_name: talk_then_contribute
+jobname_format: "talk_contribute_N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
+num_agents: 4
+num_steps: 10
+run_name: run1
+seed: 1
+output_rootname: ""
+
+setting:
+  name: Talk, then contribute
+  background:
+    - Players repeat two phases each round. First they exchange private messages
+      or broadcasts; then each privately chooses how many tokens to contribute
+      to a shared pool.
+    - The pooled contributions are multiplied and split equally, so cooperation
+      helps the group while keeping tokens helps the individual — and the talk
+      phase is where promises, threats, and coordination happen.
+
+event:
+  name: Communication round
+  context: |
+    A repeated public-goods game with a communication phase is underway. Each
+    round, players first talk — private messages or broadcasts to the group —
+    and then privately choose their contribution to the common pool.
+    Contributions are revealed simultaneously; the pool is multiplied and
+    shared equally.
+
+data: {}

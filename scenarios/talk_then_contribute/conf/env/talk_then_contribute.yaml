@@ -1,0 +1,157 @@
+# Two chained game masters: a messaging GM (talk phase) then a public-goods GM
+# (move phase). The default flow runs through both every step — the reference
+# multi-GM composition ("talk, then move") for communication-in-games studies.
+gm:
+  # Base/default GM definition (the messaging channel); orchestration below is
+  # what actually schedules the two-GM chain.
+  backend:
+    type: messaging
+    class_path: null
+    params:
+      history_window: 20
+    enabled_actions: null
+  components:
+    initialize:
+      built_in: app_initialize
+      class_path: null
+      params: {}
+    next_acting:
+      built_in: all_agents
+      class_path: null
+      params: {}
+    update:
+      built_in: app_update
+      class_path: null
+      params: {}
+    observe:
+      built_in: app_observation
+      class_path: null
+      params: {}
+    resolve:
+      built_in: tool_calling
+      class_path: null
+      params: {}
+    action_prompt:
+      built_in: default
+      class_path: null
+      params:
+        action_prompt: |
+          Talk phase: you may send one message before contributions are chosen.
+
+          ## YOUR TURN
+          Review your inbox and the game so far, then send a private message to
+          one player or broadcast to everyone. Use it to coordinate, promise,
+          or persuade.
+
+          [OUTPUT STYLE]
+        output_style: |
+          ## OUTPUT FORMAT
+          ACTION: SEND_MESSAGE
+          recipient: <player name>
+          text: <your message>
+  name: talk_gm
+  class_path: silisocs.environments.gm.game_master.ComponentGameMaster
+gm_orchestration:
+  gms:
+    - gm_name: talk_gm
+      sequence: 0
+      backend:
+        type: messaging
+        class_path: null
+        params:
+          history_window: 20
+        enabled_actions: null
+      components:
+        initialize:
+          built_in: app_initialize
+          class_path: null
+          params: {}
+        next_acting:
+          built_in: all_agents
+          class_path: null
+          params: {}
+        update:
+          built_in: app_update
+          class_path: null
+          params: {}
+        observe:
+          built_in: app_observation
+          class_path: null
+          params: {}
+        resolve:
+          built_in: tool_calling
+          class_path: null
+          params: {}
+        action_prompt:
+          built_in: default
+          class_path: null
+          params:
+            action_prompt: |
+              Talk phase: you may send one message before contributions are chosen.
+
+              ## YOUR TURN
+              Review your inbox and the game so far, then send a private message
+              to one player or broadcast to everyone. Use it to coordinate,
+              promise, or persuade.
+
+              [OUTPUT STYLE]
+            output_style: |
+              ## OUTPUT FORMAT
+              ACTION: SEND_MESSAGE
+              recipient: <player name>
+              text: <your message>
+    - gm_name: game_gm
+      sequence: 1
+      backend:
+        type: public_goods
+        class_path: null
+        params:
+          endowment: 20
+          multiplier: 1.6
+          num_rounds: ${num_steps}
+          history_window: 0
+        enabled_actions: null
+      components:
+        initialize:
+          built_in: app_initialize
+          class_path: null
+          params: {}
+        next_acting:
+          built_in: all_agents
+          class_path: null
+          params: {}
+        update:
+          built_in: app_update
+          class_path: null
+          params: {}
+        observe:
+          built_in: app_observation
+          class_path: null
+          params: {}
+        resolve:
+          built_in: tool_calling
+          class_path: null
+          params: {}
+        action_prompt:
+          built_in: default
+          class_path: null
+          params:
+            action_prompt: |
+              Game phase: the talk is over — choose your contribution.
+
+              ## YOUR DECISION
+              Each round you privately decide how many of your tokens to
+              contribute to the shared pool. Contributions are revealed
+              simultaneously after everyone decides; the pool is then multiplied
+              and split equally. Weigh what was said against what was done.
+
+              [OUTPUT STYLE]
+            output_style: |
+              ## OUTPUT FORMAT
+              ACTION: CONTRIBUTE
+              amount: <integer from 0 to your endowment>
+  flow_bindings:
+    flow_to_gms:
+      default:
+        - talk_gm
+        - game_gm

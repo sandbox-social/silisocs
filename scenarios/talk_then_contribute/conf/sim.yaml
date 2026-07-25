@@ -1,0 +1,16 @@
+action_mode: generic
+tool_calling:
+  mode: single
+engine:
+  step:
+    built_in: multi_gm
+    class_path: null
+    params: {}
+  turn_policy:
+    built_in: single_action
+    class_path: null
+    params: {}
+  participation:
+    built_in: all
+    class_path: null
+    params: {}

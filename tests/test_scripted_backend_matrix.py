@@ -490,127 +490,24 @@ class TalkThenContributeBehavior:
         return []
 
 
-def _generic_gm_components(action_prompt: str, output_style: str) -> dict[str, Any]:
-    return {
-        "initialize": {"built_in": "app_initialize", "class_path": None, "params": {}},
-        "next_acting": {"built_in": "all_agents", "class_path": None, "params": {}},
-        "update": {"built_in": "app_update", "class_path": None, "params": {}},
-        "observe": {"built_in": "app_observation", "class_path": None, "params": {}},
-        "resolve": {"built_in": "tool_calling", "class_path": None, "params": {}},
-        "action_prompt": {
-            "built_in": "default",
-            "class_path": None,
-            "params": {"action_prompt": action_prompt, "output_style": output_style},
-        },
-    }
-
-
 def test_multi_gm_talk_then_contribute_chain(tmp_path: Path) -> None:
-    """The flagship composition: a messaging GM chained before a game GM.
+    """The shipped talk-then-contribute scenario runs its two-GM chain end-to-end.
 
-    One flow runs through both GMs each step (multi_gm chain). Proves per-GM
-    action logs, cross-GM prompt delivery (step-1 game prompts follow step-0
-    talk), and that the public-goods evaluator scores the composed run.
+    A messaging GM chained before a public-goods GM (multi_gm flow chain).
+    Proves per-GM action logs, cross-GM prompt delivery (step-1 game prompts
+    follow step-0 talk), and that the public-goods evaluator scores the
+    composed run.
     """
-    overlay = tmp_path / "conf_chain"
-    overlay.mkdir()
-    (overlay / "eval.yaml").write_text(
-        yaml.safe_dump({"probes": {"deployment": {"enabled": False}, "probes": {}}}),
-        encoding="utf-8",
+    output_dir = _run_scripted(
+        tmp_path,
+        env="talk_then_contribute",
+        agents="talk_then_contribute",
+        world="talk_then_contribute",
+        behavior="tests.test_scripted_backend_matrix.TalkThenContributeBehavior",
+        num_agents=4,
+        config_path="scenarios/talk_then_contribute/conf",
+        extra_overrides=["num_steps=2"],
     )
-    (overlay / "sim.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "llm": {
-                    "provider": "scripted",
-                    "name": "scripted",
-                    "extra_kwargs": {
-                        "behavior_class_path": (
-                            "tests.test_scripted_backend_matrix.TalkThenContributeBehavior"
-                        )
-                    },
-                },
-                "tool_calling": {"mode": "multi"},
-                "engine": {"step": {"built_in": "multi_gm"}},
-                "initialization": {
-                    "simulation": {"built_in": "none", "class_path": None, "params": {}}
-                },
-            },
-            sort_keys=False,
-        ),
-        encoding="utf-8",
-    )
-    (overlay / "env.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "gm_orchestration": {
-                    "gms": [
-                        {
-                            "gm_name": "talk_gm",
-                            "sequence": 0,
-                            "backend": {
-                                "type": "messaging",
-                                "class_path": None,
-                                "params": {},
-                                "enabled_actions": None,
-                            },
-                            "components": _generic_gm_components(
-                                "Talk phase: message another player.\n[OUTPUT STYLE]",
-                                "ACTION: SEND_MESSAGE\nrecipient: <name>\ntext: <message>",
-                            ),
-                        },
-                        {
-                            "gm_name": "game_gm",
-                            "sequence": 1,
-                            "backend": {
-                                "type": "public_goods",
-                                "class_path": None,
-                                "params": {"endowment": 20, "multiplier": 1.6, "num_rounds": 2},
-                                "enabled_actions": None,
-                            },
-                            "components": _generic_gm_components(
-                                "Game phase: choose your contribution.\n[OUTPUT STYLE]",
-                                "ACTION: CONTRIBUTE\namount: <integer>",
-                            ),
-                        },
-                    ],
-                    "flow_bindings": {"flow_to_gms": {"default": ["talk_gm", "game_gm"]}},
-                }
-            },
-            sort_keys=False,
-        ),
-        encoding="utf-8",
-    )
-    output_dir = tmp_path / "run_chain"
-    hydra_dir = tmp_path / "hydra_chain"
-    cmd = [
-        sys.executable,
-        "-m",
-        "silisocs.runtime.runner",
-        "--overlay-config-path",
-        str(overlay),
-        "world=messaging",
-        "agents=messaging",
-        "env=messaging",
-        "num_agents=4",
-        "num_steps=2",
-        "sim.llm.provider=scripted",
-        "sim.llm.name=scripted",
-        "sim.tool_calling.mode=multi",
-        "sim.engine.participation.built_in=all",
-        f"output_rootname={output_dir}",
-        f"hydra.run.dir={hydra_dir}",
-        "hydra.output_subdir=configs",
-    ]
-    result = subprocess.run(
-        cmd,
-        cwd=Path(__file__).resolve().parents[1],
-        check=False,
-        text=True,
-        capture_output=True,
-        timeout=_SUBPROCESS_TIMEOUT_S,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
 
     # Per-GM isolation: each GM writes its own action log under <output>/<gm_name>/.
     talk_rows = _read_jsonl(output_dir / "talk_gm" / "action_events.jsonl")
