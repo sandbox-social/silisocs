@@ -25,7 +25,11 @@ Studio organizes the complete workflow around filesystem-backed objects:
    and usage. Active runs automatically open in Watch mode. An **interactive
    launch** additionally shows Step / Play / Pause / End-run controls that drive
    the simulation one episode at a time (see below); active runs automatically
-   open in Watch mode.
+   open in Watch mode. The runner writes a provisional manifest (status
+   `running`) at launch, so a run's page — including live Watch panels — is
+   available while it executes, with event streams discovered live; the final
+   manifest replaces it on completion. In a multi-GM run the Watch ribbon's
+   action counter breaks down per game master.
 4. **Runs**: inspect manifest health and provenance, open a backend-declared
    platform visualizer, render analysis views, compare the effective config to
    the scenario baseline, and export a self-contained report.
