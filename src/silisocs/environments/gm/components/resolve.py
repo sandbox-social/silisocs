@@ -6,13 +6,14 @@ import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from silisocs.environments.backends.base import (
     LEGACY_RUNTIME_AGENT_PARAMS,
     RUNTIME_AGENT_PARAM,
+    ActionResult,
 )
 from silisocs.environments.gm.components.base import (
     ComponentState,
@@ -205,6 +206,13 @@ class _BaseResolveComponent(ResolveComponent):
     flow_action_filters: Any = None
     agent_flow_tags: Any = None
 
+    # Whether filter names outside the backend catalog are legitimate literal
+    # tokens (custom-mode verbs are world-defined, so the parsed resolver keeps
+    # them with a warning). Catalog-bound resolvers treat them as config typos
+    # and refuse to build: a filter naming a nonexistent action can never match,
+    # silently rejecting every action in that flow for the whole run.
+    _literal_filter_tokens: ClassVar[bool] = False
+
     def __post_init__(self) -> None:
         self._flow_tags: dict[str, str] = {
             str(name): str(flow)
@@ -320,6 +328,14 @@ class _BaseResolveComponent(ResolveComponent):
             )
             filters[flow_name] = (enabled, excluded)
         if unknown:
+            if not self._literal_filter_tokens:
+                raise ValueError(
+                    f"flow_action_filters reference action name(s) not declared on "
+                    f"backend {type(self.backend).__name__}: {sorted(unknown)}. "
+                    "A filter naming a nonexistent action can never match, so every "
+                    "action in that flow would be rejected for the whole run — "
+                    "check for typos."
+                )
             _LOGGER.warning(
                 "flow_action_filters reference action name(s) not declared on backend %s: %s. "
                 "Custom-mode verbs (e.g. 'post'/'like') are matched literally; check for typos.",
@@ -389,6 +405,10 @@ class _BaseResolveComponent(ResolveComponent):
 class ParsedActionResolveComponent(_BaseResolveComponent):
     """Resolve using ACTION TYPE/TARGET ID/CONTENT parser output."""
 
+    # Custom-mode verbs are world-defined; a filter may name one the backend
+    # catalog does not declare, so unknown names match literally (with a warning).
+    _literal_filter_tokens: ClassVar[bool] = True
+
     def resolve(self, *, active_agent: str, action: ActionOutput | str) -> str:
         """Resolve raw action text into a backend operation result."""
         action_text = action.text if isinstance(action, ActionOutput) else str(action)
@@ -418,7 +438,10 @@ class ParsedActionResolveComponent(_BaseResolveComponent):
         canonical = getattr(self.backend, "canonical_action_name", lambda _name: None)(action_type)
         if canonical and canonical != action_type:
             action_data = {**action_data, "action_type": canonical}
-        return self.backend.parse_and_resolve_action(active_agent, action_data)
+        result = self.backend.parse_and_resolve_action(active_agent, action_data)
+        # A failure/no-op branch returns a typed non-committed result; the agent
+        # observes its message text either way.
+        return result.message if isinstance(result, ActionResult) else result
 
 
 @dataclass(eq=False)

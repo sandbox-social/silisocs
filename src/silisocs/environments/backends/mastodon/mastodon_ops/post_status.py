@@ -87,6 +87,15 @@ def post_status(  # noqa: PLR0913
         poll_multiple (bool): Whether multiple choices are allowed in the poll.
         poll_hide_totals (bool): Whether to hide poll totals until the poll ends.
         quote_id (int): ID of the status to quote (Fedibird-specific feature).
+
+    Returns
+    -------
+        The posted status dict as returned by the Mastodon API.
+
+    Raises
+    ------
+        ValueError: If there is a problem with the login or the status post.
+        Exception: If an unexpected error occurs.
     """
     load_dotenv(find_dotenv())  # Load environment variables from .env file
 
@@ -140,8 +149,10 @@ def post_status(  # noqa: PLR0913
         return status_dict
     except ValueError as e:
         logger.error(f"Error: {e}")
+        raise
     except Exception as e:
         logger.exception(f"An unexpected error occurred: {e}")
+        raise
 
 
 if __name__ == "__main__":

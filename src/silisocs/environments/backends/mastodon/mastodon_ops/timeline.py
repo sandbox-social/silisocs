@@ -51,10 +51,10 @@ def get_public_timeline(limit: None | int = 10) -> mastodon.utility.AttribAccess
         return timeline
     except ValueError as e:
         logger.error(f"Error: {e}")
-        return []
+        raise
     except Exception as e:
         logger.exception(f"An unexpected error occurred: {e}")
-        return []
+        raise
 
 
 def get_own_timeline(
@@ -163,10 +163,10 @@ def get_user_timeline(
         return []
     except ValueError as e:
         logger.error(f"Error: {e}")
-        return []
+        raise
     except Exception as e:
         logger.exception(f"An unexpected error occurred: {e}")
-        return []
+        raise
 
 
 def print_timeline(timeline) -> None:

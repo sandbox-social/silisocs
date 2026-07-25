@@ -18,6 +18,7 @@ from typing import Any, Literal, get_type_hints
 import docstring_parser
 import termcolor
 
+from silisocs.evaluations.vocabulary import EventSemantics
 from silisocs.exceptions import ActionError, BackendError
 
 _LOGGER = logging.getLogger(__name__)
@@ -356,8 +357,13 @@ class BackendApp(metaclass=abc.ABCMeta):
     provides_checkpoint_state: bool = False
     visualizer: typing.ClassVar[VisualizerSpec | None] = None
     # Optional aggregate semantics for shared or externally declared event
-    # shapes. Most backends declare tags and fields directly on each @app_action.
-    event_semantics: typing.ClassVar[Mapping[str, Mapping[str, Sequence[str]]] | None] = None
+    # shapes: an EventSemantics instance or the portable {roles, fields, labels}
+    # mapping. Most backends declare tags and fields directly on each
+    # @app_action; decorator declarations MERGE with this (declared wins per
+    # entry), so a subclass adding a tagged action extends the semantics.
+    event_semantics: typing.ClassVar[
+        Mapping[str, Mapping[str, Sequence[str]]] | EventSemantics | None
+    ] = None
 
     def __init__(self) -> None:
         self._enabled_actions: set[str] | None = None
@@ -1254,7 +1260,11 @@ class SocialBackendApp(BackendApp):
         del timeline
         raise NotImplementedError(f"{type(self).__name__} does not format social timelines.")
 
-    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
-        """Dispatch a parsed social action to the correct backend method."""
+    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str | ActionResult:
+        """Dispatch a parsed social action to the correct backend method.
+
+        A failure/no-op branch may return ``ActionResult(committed=False)``; the
+        parsed-action resolve component unwraps it to its message text.
+        """
         del user_name, action_data
         raise NotImplementedError(f"{type(self).__name__} does not resolve social actions.")

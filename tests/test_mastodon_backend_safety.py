@@ -9,8 +9,21 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+from silisocs.environments.backends.base import ActionResult
 from silisocs.environments.backends.mastodon import apps as mastodon_apps
 from silisocs.environments.backends.mastodon.apps import SocialNetworkApp
+
+
+def _rejected(result: object) -> str:
+    """Unwrap a failure/no-op return: it must be a typed non-committed result.
+
+    A plain-string return would be auto-logged as a COMMITTED row by the
+    invocation layer, so failure branches must return
+    ``ActionResult(committed=False)``.
+    """
+    assert isinstance(result, ActionResult), f"expected ActionResult, got {result!r}"
+    assert result.committed is False
+    return result.message
 
 
 def test_mastodon_dry_run_init_does_not_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -185,9 +198,58 @@ def test_mastodon_already_liked_or_boosted_noop_logs_no_event() -> None:
     app.perform_operations = True
     app._mastodon_ops = ops
 
-    like_msg = app.like_toot("user_1", "123")
-    boost_msg = app.boost_toot("user_1", "123")
+    like_msg = _rejected(app.like_toot("user_1", "123"))
+    boost_msg = _rejected(app.boost_toot("user_1", "123"))
 
     assert "previously liked" in like_msg
     assert "previously boosted" in boost_msg
     assert logger.events == []  # neither no-op logged a row
+
+
+def test_mastodon_failed_live_op_leaves_no_committed_row() -> None:
+    """A raising live Mastodon op must not be auto-logged as a committed action.
+
+    The ops re-raise after logging, so the app action reports a typed
+    non-committed result: nothing reached the server, and ``get_state`` embeds
+    the committed history that ``set_state`` replays on restore.
+    """
+
+    class Logger:
+        def __init__(self) -> None:
+            self.events: list[dict] = []
+
+        def log(self, event: dict) -> None:
+            self.events.append(event)
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("server unreachable")
+
+    logger = Logger()
+    ops = SimpleNamespace(
+        follow=_boom,
+        block_user=_boom,
+        update_bio=_boom,
+    )
+    app = SocialNetworkApp(perform_operations=False, action_logger=logger)
+    app.set_user_mapping({"Alice Smith": "user0001", "Bob Jones": "user0002"})
+    app.perform_operations = True
+    app._mastodon_ops = ops
+
+    for action, payload, expected in (
+        (
+            "follow_user",
+            {"agent_name": "Alice Smith", "target_user": "Bob Jones"},
+            "Error following",
+        ),
+        ("block_user", {"agent_name": "Alice Smith", "target_user": "Bob Jones"}, "Error blocking"),
+        (
+            "update_profile",
+            {"agent_name": "Alice Smith", "bio": "new bio"},
+            "Error updating profile",
+        ),
+    ):
+        committed, message = app.invoke_action_detailed(action, payload)
+        assert committed is False, action
+        assert expected in message, action
+    assert logger.events == []
+    assert app.count_committed_events() == 0

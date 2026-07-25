@@ -15,6 +15,11 @@ def toot(login_user: str, status: str) -> None:
     Args:
         login_user (str): The user to log in with.
         status (str): The status to toot.
+
+    Raises
+    ------
+        ValueError: If there is a problem with the login or the toot call.
+        Exception: If an unexpected error occurs.
     """
     load_dotenv(find_dotenv())  # Load environment variables from .env file
 
@@ -29,8 +34,10 @@ def toot(login_user: str, status: str) -> None:
         logger.info(f"{login_user} successfully tooted the status.")
     except ValueError as e:
         logger.error(f"Error: {e}")
+        raise
     except Exception as e:
         logger.exception(f"An unexpected error occurred: {e}")
+        raise
 
 
 if __name__ == "__main__":

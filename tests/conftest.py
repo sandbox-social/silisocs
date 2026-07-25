@@ -79,8 +79,8 @@ def _isolate_backend_capability_registries():
         (backend_factory._RUNTIME_BACKEND_CLASSES, dict(backend_factory._RUNTIME_BACKEND_CLASSES)),
         (vocabulary._EVENT_SEMANTICS, dict(vocabulary._EVENT_SEMANTICS)),
         (
-            vocabulary._DERIVED_EVENT_SEMANTICS,
-            dict(vocabulary._DERIVED_EVENT_SEMANTICS),
+            vocabulary._RESOLVED_EVENT_SEMANTICS,
+            dict(vocabulary._RESOLVED_EVENT_SEMANTICS),
         ),
     ]
     try:

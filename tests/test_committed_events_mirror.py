@@ -14,8 +14,20 @@ from typing import Any
 
 import pytest
 
+from silisocs.environments.backends.base import ActionResult
 from silisocs.environments.backends.reddit_like.app import RedditLikeApp
 from silisocs.environments.backends.twitter_like.app import TwitterLikeApp
+
+
+def _rejected(result: Any) -> str:
+    """Unwrap a failure/no-op return: it must be a typed non-committed result.
+
+    A plain-string return would be auto-logged as a COMMITTED row by the
+    invocation layer, so failure branches return ``ActionResult(committed=False)``.
+    """
+    assert isinstance(result, ActionResult), f"expected ActionResult, got {result!r}"
+    assert result.committed is False
+    return result.message
 
 
 class _RecordingLogger:
@@ -43,8 +55,8 @@ def test_mirror_appends_only_on_commit(twitter: Any) -> None:
     before = app.count_committed_events(labels=["post", "like"])
     app.create_tweet("Alice", "hello world")  # commits -> mirrored
     app.like_tweet("Bob", 1)  # commits -> mirrored
-    assert "Error" in app.like_tweet("Bob", 999)  # failure -> not mirrored
-    assert "already liked" in app.like_tweet("Bob", 1)  # no-op -> not mirrored
+    assert "Error" in _rejected(app.like_tweet("Bob", 999))  # failure -> not mirrored
+    assert "already liked" in _rejected(app.like_tweet("Bob", 1))  # no-op -> not mirrored
     assert app.count_committed_events(labels=["post", "like"]) - before == 2
 
 
@@ -144,7 +156,7 @@ def test_reddit_subreddit_actions_mirror_only_on_commit(tmp_path: Any) -> None:
 
     original = app._platform.create_subreddit
     app._platform.create_subreddit = _boom  # type: ignore[method-assign]
-    fail_msg = app.create_subreddit("Alice", "general", "dupe")
+    fail_msg = _rejected(app.create_subreddit("Alice", "general", "dupe"))
     app._platform.create_subreddit = original  # type: ignore[method-assign]
     assert "Error creating subreddit" in fail_msg
     assert app.count_committed_events(labels=["create_subreddit"]) == 0
@@ -204,3 +216,39 @@ def test_mastodon_resume_round_trips_mirror_including_non_replayable_labels() ->
     # episodes survive (a replay-only rebuild would collapse them), and the
     # non-replayable label is present.
     assert dst.count_committed_events(labels=["block_user"], since_episode=2) == 1
+
+
+def test_reddit_failed_invocation_leaves_no_committed_row(tmp_path: Any) -> None:
+    """The full invocation path: a failed reddit action must not be auto-logged.
+
+    ``_dispatch_action`` treats a plain-string return as ``committed=True`` and
+    auto-logs a row, so reddit's failure/no-op branches must return typed
+    non-committed results — otherwise a rejected vote lands in
+    ``action_events.jsonl`` (and the mirror) as ground truth. Direct-call tests
+    bypass the dispatcher; this test goes through it.
+    """
+    logger = _RecordingLogger()
+    app = RedditLikeApp(db_path=str(tmp_path / "rd.db"), action_logger=logger)
+    app.setup_social_state(agent_names=["Alice", "Bob"])
+    logger.rows.clear()  # drop init_* rows
+
+    committed, message = app.invoke_action_detailed(
+        "upvote", {"agent_name": "Alice", "target_id": 999, "target_type": "post"}
+    )
+    assert committed is False
+    assert "Error" in message
+    assert logger.rows == []
+    assert app.count_committed_events(labels=["upvote"]) == 0
+
+    # An idempotent no-op (re-affirming an existing vote) behaves the same way.
+    app.create_reddit_post("Alice", "general", "Hi", "hello reddit")
+    app.upvote("Bob", 1, "post")
+    logger.rows.clear()
+    committed, message = app.invoke_action_detailed(
+        "upvote", {"agent_name": "Bob", "target_id": 1, "target_type": "post"}
+    )
+    assert committed is False
+    assert "had already upvoted" in message
+    assert logger.rows == []
+    assert app.count_committed_events(labels=["upvote"]) == 1  # only the real vote
+    app.shutdown()

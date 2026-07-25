@@ -211,6 +211,61 @@ def test_an_explicit_registration_wins_over_the_class_declaration():
     assert event_semantics_for("override_demo").tags_of("alternate") == ("other",)
 
 
+def test_decorated_actions_extend_a_registered_declaration():
+    """A registration no longer shadows the decorators — it merges with them.
+
+    Forking a shipped backend and decorating a NEW action must reach the
+    analysis surfaces without editing any central table; the declared entry
+    still wins for labels it names.
+    """
+    create_backend_app("merge_demo", class_path=_path(_DeclaringBackend))
+    register_event_semantics(
+        "merge_demo",
+        EventSemantics(
+            roles={"other": frozenset({"alternate"})},
+            label_tags={"alternate": ("other",)},
+        ),
+    )
+    semantics = event_semantics_for("merge_demo")
+    # The registered entry is intact...
+    assert semantics.tags_of("alternate") == ("other",)
+    # ...and the decorator-declared action is visible alongside it.
+    assert semantics.labels("market.trade") == frozenset({"ping"})
+    assert semantics.tags_of("ping") == ("market.trade",)
+    assert semantics.fields["market.qty"] == ("n",)
+
+
+def test_malformed_class_declaration_fails_loud():
+    """A backend author's broken `event_semantics` raises instead of silently
+    degrading to empty semantics (which would just hide every panel).
+    """
+    from silisocs.evaluations.vocabulary import declared_event_semantics
+
+    class _BrokenDeclaration(BackendApp):
+        event_semantics = {"roles": "not-a-mapping"}
+
+        def name(self) -> str:
+            return "broken"
+
+        def description(self) -> str:
+            return "broken"
+
+    with pytest.raises(ValueError, match="event_semantics is malformed"):
+        declared_event_semantics(_BrokenDeclaration)
+
+    class _NotEvenAMapping(BackendApp):
+        event_semantics = ["roles"]
+
+        def name(self) -> str:
+            return "broken"
+
+        def description(self) -> str:
+            return "broken"
+
+    with pytest.raises(TypeError, match="event_semantics must be"):
+        declared_event_semantics(_NotEvenAMapping)
+
+
 def _context(backend: Any) -> GameMasterContext:
     return GameMasterContext(
         gm_name="gm",

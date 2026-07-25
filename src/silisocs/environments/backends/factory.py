@@ -115,7 +115,7 @@ def _record_runtime_backend_class(backend_type: str, cls: type[BackendApp]) -> N
             previous.__name__,
         )
     _RUNTIME_BACKEND_CLASSES[key] = cls
-    vocabulary._DERIVED_EVENT_SEMANTICS.pop(key, None)
+    vocabulary._RESOLVED_EVENT_SEMANTICS.pop(key, None)
 
 
 def _validate_checkpoint_contract(cls: type[BackendApp]) -> None:

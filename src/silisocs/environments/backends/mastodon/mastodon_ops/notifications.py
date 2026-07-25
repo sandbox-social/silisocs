@@ -144,12 +144,13 @@ def read_notifications(  # noqa: C901, PLR0913, PLR0912
 
     except MastodonAPIError as e:
         logger.error(f"Mastodon API error for user {login_user}: {e}")
+        raise
     except MastodonNetworkError as e:
         logger.error(f"Network error while fetching notifications for user {login_user}: {e}")
+        raise
     except Exception as e:
         logger.exception(f"An unexpected error occurred for user {login_user}: {e}")
-
-    return []
+        raise
 
 
 def categorize_notifications(notifications: list[dict]) -> dict[str, list[dict]]:

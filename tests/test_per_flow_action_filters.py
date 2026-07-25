@@ -269,6 +269,8 @@ def test_tool_calling_mode_filters_per_call_and_allows_finished() -> None:
 
 
 def test_unknown_action_name_warns_but_does_not_raise(caplog) -> None:
+    # Custom (parsed) mode only: world-defined verbs may legitimately be absent
+    # from the backend catalog, so unknown names match literally with a warning.
     SimMetricsCollector.reset()
     backend = _FakeBackend()
     with caplog.at_level(logging.WARNING):
@@ -278,6 +280,23 @@ def test_unknown_action_name_warns_but_does_not_raise(caplog) -> None:
             agent_flow_tags={"Bob": "x"},
         )
     assert any("not declared on backend" in record.message for record in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "component_cls", [GenericActionResolveComponent, ToolCallingResolveComponent]
+)
+def test_unknown_action_name_raises_for_catalog_bound_modes(component_cls) -> None:
+    # Generic/tool-calling resolvers execute catalog actions by name, so a filter
+    # naming a nonexistent action can never match anything — it would silently
+    # reject every action in that flow. That is a config typo; refuse to build.
+    SimMetricsCollector.reset()
+    backend = _FakeBackend()
+    with pytest.raises(ValueError, match="not declared on backend"):
+        component_cls(
+            backend=backend,
+            flow_action_filters={"x": {"enabled_actions": ["totally_made_up"]}},
+            agent_flow_tags={"Bob": "x"},
+        )
 
 
 def test_build_resolve_component_threads_filter_and_flow_tags() -> None:
