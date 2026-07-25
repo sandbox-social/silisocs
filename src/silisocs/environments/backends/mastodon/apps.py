@@ -25,11 +25,13 @@ from silisocs.environments.backends.base import (  # noqa: F401
     RUNTIME_AGENT_PARAM,
     ActionArgumentError,
     ActionDescriptor,
+    ActionResult,
     BackendApp,
     Parameter,
     SocialBackendApp,
     app_action,
 )
+from silisocs.evaluations.vocabulary import social_event_semantics
 from silisocs.runtime.types import ActionOutput, ToolCall
 
 _LOGGER = logging.getLogger(__name__)
@@ -94,6 +96,19 @@ class SocialNetworkApp(SocialBackendApp):
     """
 
     action_logger: Any = None
+    # Self-described analysis semantics (custom-mode labels the decorators can't
+    # see); decorator-declared tags on new actions merge in on top.
+    event_semantics = social_event_semantics(
+        roots={"post", "post_status"},
+        replies={"reply"},
+        reactions={"like_toot", "boost_toot"},
+        follows={"follow", "unfollow", "block_user", "mute_account"},
+        negative=set(),
+        reads={"get_public_timeline", "get_own_timeline", "get_user_timeline"},
+        content_ids=("toot_id",),
+        response_ids=("toot_id",),
+        parent_ids=("reply_to.toot_id", "in_reply_to_id"),
+    )
     # Mastodon's authoritative state lives on a live server a checkpoint cannot
     # snapshot, so its checkpoint "state" IS its replayable action history:
     # ``get_state`` embeds the logged actions and ``set_state`` replays them to
@@ -560,7 +575,7 @@ class SocialNetworkApp(SocialBackendApp):
             {"boost", "repost", "boost_toot"},
         ]
 
-    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
+    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str | ActionResult:
         """Dispatch a parsed action to the correct Mastodon app_action method.
 
         Args:
@@ -634,7 +649,7 @@ class SocialNetworkApp(SocialBackendApp):
         return self._get_username(display_name)
 
     @app_action
-    def update_profile(self, agent_name: str, bio: str) -> str:
+    def update_profile(self, agent_name: str, bio: str) -> str | ActionResult:
         """Update the user's bio."""
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
@@ -642,7 +657,15 @@ class SocialNetworkApp(SocialBackendApp):
         username = self._get_username(agent_name)
         self._print(f"Updating profile for @{username}: {agent_name}", emoji="✏️")
         if self.perform_operations:
-            self._require_mastodon_ops().update_bio(username, agent_name, bio)
+            # A failing op raises: the profile did NOT change, so return a typed
+            # non-committed result rather than letting the invocation layer
+            # auto-log a committed row (get_state replays logged rows on restore).
+            try:
+                self._require_mastodon_ops().update_bio(username, agent_name, bio)
+            except Exception as e:
+                error_msg = f"Error updating profile for @{username}: {e}"
+                self._print(error_msg, emoji="❌")
+                return ActionResult(error_msg, committed=False)
         else:
             self._print(
                 "Skipping real Mastodon API call since perform_operations is set to False",
@@ -693,7 +716,7 @@ class SocialNetworkApp(SocialBackendApp):
         return display_name, bio
 
     @app_action
-    def follow_user(self, agent_name: str, target_user: str) -> str:
+    def follow_user(self, agent_name: str, target_user: str) -> str | ActionResult:
         """Follow a user on Mastodon social network."""
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
@@ -702,7 +725,12 @@ class SocialNetworkApp(SocialBackendApp):
         current_username = self._get_username(agent_name)
         target_username = self._get_username(target_user)
         if self.perform_operations:
-            self._require_mastodon_ops().follow(current_username, target_username)
+            try:
+                self._require_mastodon_ops().follow(current_username, target_username)
+            except Exception as e:
+                error_msg = f"Error following @{target_username}: {e}"
+                self._print(error_msg, emoji="❌")
+                return ActionResult(error_msg, committed=False)
         else:
             self._print(
                 "Skipping real Mastodon API call since perform_operations is set to False",
@@ -720,7 +748,7 @@ class SocialNetworkApp(SocialBackendApp):
         return follow_message
 
     @app_action
-    def unfollow_user(self, agent_name: str, target_user: str) -> str:
+    def unfollow_user(self, agent_name: str, target_user: str) -> str | ActionResult:
         """Unfollow a user."""
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
@@ -733,7 +761,12 @@ class SocialNetworkApp(SocialBackendApp):
             emoji="➖",  # noqa: RUF001
         )
         if self.perform_operations:
-            self._require_mastodon_ops().unfollow(current_username, target_username)
+            try:
+                self._require_mastodon_ops().unfollow(current_username, target_username)
+            except Exception as e:
+                error_msg = f"Error unfollowing @{target_username}: {e}"
+                self._print(error_msg, emoji="❌")
+                return ActionResult(error_msg, committed=False)
         else:
             self._print(
                 "Skipping real Mastodon API call since perform_operations is set to False",
@@ -760,7 +793,7 @@ class SocialNetworkApp(SocialBackendApp):
         spoiler_text: str | None = None,
         in_reply_to_id: int | None = None,
         media_files: list[str] | None = None,
-    ) -> str:
+    ) -> str | ActionResult:
         """Post a status with visibility, content-warning, reply, and media controls.
 
         Args:
@@ -820,6 +853,13 @@ class SocialNetworkApp(SocialBackendApp):
             toot_id = return_val["id"]
         else:
             return_msg = f'{agent_name} posted a status!: "{status}"\n'
+            if self.perform_operations:
+                # Live mode returned no status object, so nothing was posted (a real
+                # failure raises above). Never log a committed row for it: get_state
+                # embeds the logged history and set_state replays it on restore.
+                error_msg = f"Error posting status for @{username}: no status returned."
+                self._print(error_msg, emoji="❌")
+                return ActionResult(error_msg, committed=False)
         self._log_action_event(
             {
                 "source_user": actor_display_name,
@@ -839,7 +879,7 @@ class SocialNetworkApp(SocialBackendApp):
         agent_name: str,
         status: str,
         media_links: list[str] | None = None,
-    ) -> str:
+    ) -> str | ActionResult:
         """Post a new toot to the Mastodon-like social network.
 
         Args:
@@ -889,6 +929,12 @@ class SocialNetworkApp(SocialBackendApp):
             toot_id = return_val["id"]
         else:
             return_msg = f'{agent_name} posted a toot!: "{status}"\n'
+            if self.perform_operations:
+                # Live mode returned no status object: nothing was posted, so this is
+                # not a committed change (a real failure raises above).
+                error_msg = f"Error posting toot for @{username}: no status returned."
+                self._print(error_msg, emoji="❌")
+                return ActionResult(error_msg, committed=False)
         self._log_action_event(
             {
                 "source_user": actor_display_name,
@@ -904,13 +950,51 @@ class SocialNetworkApp(SocialBackendApp):
     # ``post_media_toot`` was removed: ``post_toot`` above supersedes it (media via
     # its ``media_links`` argument), and the old version never forwarded media anyway.
 
+    def _reply_fallback_post(
+        self, actor_display_name: str, agent_name: str, status: str, username: str | None
+    ) -> str | ActionResult:
+        """Post the reply text as a plain toot after a failed reply, honestly logged.
+
+        The reply itself never committed, so no ``reply`` row may be written. If the
+        fallback toot really lands it IS a state change, so it is logged as a ``post``
+        (which also suppresses the invocation layer's auto-row for the wrong label);
+        if the fallback fails too, nothing committed at all.
+        """
+        fallback_msg = f'''There was an error in posting {agent_name}'s reply, response was posted as a new toot!: "{status}"'''
+        if not (self.perform_operations and self._mastodon_ops is not None and username):
+            # Dry run (or no ops loaded): nothing was sent to a server.
+            return ActionResult(fallback_msg, committed=False)
+        try:
+            return_val = self._require_mastodon_ops().post_status(
+                login_user=username,
+                status=status,
+            )
+        except Exception as e:
+            error_msg = f"Error posting {agent_name}'s fallback toot: {e}"
+            self._print(error_msg, emoji="❌")
+            return ActionResult(error_msg, committed=False)
+        if not return_val:
+            error_msg = f"Error posting {agent_name}'s fallback toot: no status returned."
+            self._print(error_msg, emoji="❌")
+            return ActionResult(error_msg, committed=False)
+        toot_id = return_val["id"]
+        self._log_action_event(
+            {
+                "source_user": actor_display_name,
+                "label": "post",
+                "data": {"toot_id": str(toot_id), "post_text": status},
+            }
+        )
+        self._record_replayed_post_id(toot_id)
+        return fallback_msg
+
     @app_action
     def reply_to_toot(
         self,
         agent_name: str,
         status: str,
         in_reply_to_id: int,
-    ) -> str:
+    ) -> str | ActionResult:
         """Post a new status update to the Mastodon-like social network.
 
         Args:
@@ -924,8 +1008,8 @@ class SocialNetworkApp(SocialBackendApp):
             Exception: For any other unexpected errors during posting.
         """
         return_val = None
+        actor_display_name = str(agent_name)
         try:
-            actor_display_name = str(agent_name)
             agent_name = _display_name_key(agent_name)
             username = self._get_username(agent_name)
             if self.perform_operations:
@@ -937,8 +1021,13 @@ class SocialNetworkApp(SocialBackendApp):
                 if return_val:
                     toot_id = return_val["id"]
                 else:
-                    toot_id = ""
+                    # No status object back means the reply never landed: not a
+                    # committed change, so no action row may be logged for it.
                     self._print("Failed to post reply.", color="red")
+                    return ActionResult(
+                        f"Error replying to toot {in_reply_to_id}: no status returned.",
+                        committed=False,
+                    )
             else:
                 self._print(
                     "Skipping real Mastodon API call since perform_operations is set to False",
@@ -967,38 +1056,34 @@ class SocialNetworkApp(SocialBackendApp):
             self._record_replayed_post_id(toot_id)
         except ValueError as e:
             self._print(f"Invalid input, regular toot posted: {e!s}", emoji="❌")
-            return_msg = f'''There was an error in posting {agent_name}'s reply, response was posted as a new toot!: "{status}"'''
-            if (
-                self.perform_operations
-                and self._mastodon_ops is not None
-                and "username" in locals()
-            ):
-                self._require_mastodon_ops().post_status(
-                    login_user=username,
-                    status=status,
-                )
-
+            return self._reply_fallback_post(
+                actor_display_name,
+                agent_name,
+                status,
+                username if "username" in locals() else None,
+            )
         except Exception as e:
             self._print(f"An unexpected error occurred, regular toot posted: {e!s}", emoji="❌")
-            return_msg = f'''There was an error in posting {agent_name}'s reply, response was posted as a new toot!: "{status}"'''
-            if (
-                self.perform_operations
-                and self._mastodon_ops is not None
-                and "username" in locals()
-            ):
-                self._require_mastodon_ops().post_status(
-                    login_user=username,
-                    status=status,
-                )
+            return self._reply_fallback_post(
+                actor_display_name,
+                agent_name,
+                status,
+                username if "username" in locals() else None,
+            )
         return return_msg
 
     @app_action
-    def get_public_timeline(self, agent_name: str, limit: int) -> str:
+    def get_public_timeline(self, agent_name: str, limit: int) -> str | ActionResult:
         """Read the public Mastodon social network feed."""
         actor_display_name = str(agent_name)
         self._print(f"Fetching public timeline (limit: {limit})", emoji="🌐")
         if self.perform_operations:
-            timeline = self._require_mastodon_ops().get_public_timeline(limit=limit)
+            try:
+                timeline = self._require_mastodon_ops().get_public_timeline(limit=limit)
+            except Exception as e:
+                error_msg = f"Error fetching the public timeline: {e}"
+                self._print(error_msg, color="red")
+                return ActionResult(error_msg, committed=False)
         else:
             self._print(
                 "Skipping real Mastodon API call since perform_operations is set to False",
@@ -1059,7 +1144,9 @@ class SocialNetworkApp(SocialBackendApp):
         return str_timeline
 
     @app_action
-    def get_own_timeline(self, agent_name: str, limit: int, return_str: bool = False) -> str:
+    def get_own_timeline(
+        self, agent_name: str, limit: int, return_str: bool = False
+    ) -> str | ActionResult:
         """Read the Mastodon social network feed for the current user."""
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
@@ -1073,8 +1160,11 @@ class SocialNetworkApp(SocialBackendApp):
             try:
                 timeline = self._require_mastodon_ops().get_own_timeline(username, limit=limit)
             except Exception as e:
-                self._print(f"Error fetching timeline for @{username}: {e}", color="red")
-                timeline = []
+                # A FAILED read must not be logged as a committed zero-result
+                # read — the two would be indistinguishable in the action log.
+                error_msg = f"Error fetching timeline for @{username}: {e}"
+                self._print(error_msg, color="red")
+                return ActionResult(error_msg, committed=False)
         else:
             timeline = []
             self._print(
@@ -1100,7 +1190,9 @@ class SocialNetworkApp(SocialBackendApp):
         return timeline
 
     @app_action
-    def get_user_timeline(self, agent_name: str, target_user: str, limit: int) -> str:
+    def get_user_timeline(
+        self, agent_name: str, target_user: str, limit: int
+    ) -> str | ActionResult:
         """Read a specific user's timeline on the Mastodon social network."""
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
@@ -1113,9 +1205,14 @@ class SocialNetworkApp(SocialBackendApp):
             emoji="👥",
         )
         if self.perform_operations:
-            timeline = self._require_mastodon_ops().get_user_timeline(
-                current_username, target_username, limit=limit
-            )
+            try:
+                timeline = self._require_mastodon_ops().get_user_timeline(
+                    current_username, target_username, limit=limit
+                )
+            except Exception as e:
+                error_msg = f"Error fetching @{target_username}'s timeline: {e}"
+                self._print(error_msg, color="red")
+                return ActionResult(error_msg, committed=False)
         else:
             timeline = []
             self._print(
@@ -1171,7 +1268,7 @@ class SocialNetworkApp(SocialBackendApp):
         return "\n".join(notification_lines)
 
     @app_action
-    def read_notifications(self, agent_name: str, clear: bool, limit: int) -> str:
+    def read_notifications(self, agent_name: str, clear: bool, limit: int) -> str | ActionResult:
         """Read Mastodon social network notifications."""
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
@@ -1182,9 +1279,14 @@ class SocialNetworkApp(SocialBackendApp):
             emoji="🔔",
         )
         if self.perform_operations:
-            notifications = self._require_mastodon_ops().read_notifications(
-                username, clear=clear, limit=limit
-            )
+            try:
+                notifications = self._require_mastodon_ops().read_notifications(
+                    username, clear=clear, limit=limit
+                )
+            except Exception as e:
+                error_msg = f"Error reading notifications for @{username}: {e}"
+                self._print(error_msg, color="red")
+                return ActionResult(error_msg, committed=False)
         else:
             notifications = []
             self._print(
@@ -1211,7 +1313,7 @@ class SocialNetworkApp(SocialBackendApp):
         return full_output
 
     @app_action
-    def like_toot(self, agent_name: str, toot_id: str) -> str:
+    def like_toot(self, agent_name: str, toot_id: str) -> str | ActionResult:
         """Like (favorite) a toot."""
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
@@ -1240,28 +1342,33 @@ class SocialNetworkApp(SocialBackendApp):
                     color="light_grey",
                 )
             self._print(like_message, emoji="✅")
-            if committed:
-                self._log_action_event(
-                    {
-                        "source_user": actor_display_name,
-                        "label": "like_toot",
-                        "data": {"toot_id": str(toot_id)},
-                    }
-                )
+            if not committed:
+                return ActionResult(like_message, committed=False)
+            self._log_action_event(
+                {
+                    "source_user": actor_display_name,
+                    "label": "like_toot",
+                    "data": {"toot_id": str(toot_id)},
+                }
+            )
 
         except ValueError as e:
             self._print(f"Invalid input: {e!s}", emoji="❌")
-            like_message = '''There was an error in liking due to invalid toot id"'''
+            return ActionResult(
+                f"There was an error in liking toot {toot_id}: {e}", committed=False
+            )
 
         except Exception as e:
             self._print(f"An unexpected error occurred{e!s}", emoji="❌")
-            like_message = '''There was an error in liking due to invalid toot id"'''
+            return ActionResult(
+                f"There was an error in liking toot {toot_id}: {e}", committed=False
+            )
         return like_message
 
     # region[additional methods]
 
     @app_action
-    def boost_toot(self, agent_name: str, toot_id: str) -> str:
+    def boost_toot(self, agent_name: str, toot_id: str) -> str | ActionResult:
         """Boost (reblog) a toot."""
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
@@ -1287,25 +1394,30 @@ class SocialNetworkApp(SocialBackendApp):
                 f"@{current_username} boosted post {toot_id}",
                 emoji="✅",
             )
-            if committed:
-                self._log_action_event(
-                    {
-                        "source_user": actor_display_name,
-                        "label": "boost_toot",
-                        "data": {"toot_id": str(toot_id)},
-                    }
-                )
+            if not committed:
+                return ActionResult(boost_message, committed=False)
+            self._log_action_event(
+                {
+                    "source_user": actor_display_name,
+                    "label": "boost_toot",
+                    "data": {"toot_id": str(toot_id)},
+                }
+            )
         except ValueError as e:
             self._print(f"Invalid input: {e!s}", emoji="❌")
-            boost_message = '''There was an error in boosting due to invalid toot id"'''
+            return ActionResult(
+                f"There was an error in boosting toot {toot_id}: {e}", committed=False
+            )
 
         except Exception as e:
             self._print(f"An unexpected error occurred{e!s}", emoji="❌")
-            boost_message = '''There was an error in boosting due to invalid toot id"'''
+            return ActionResult(
+                f"There was an error in boosting toot {toot_id}: {e}", committed=False
+            )
         return boost_message
 
     @app_action
-    def block_user(self, agent_name: str, target_user: str) -> str:
+    def block_user(self, agent_name: str, target_user: str) -> str | ActionResult:
         """Block a user on the Mastodon social network."""
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
@@ -1315,7 +1427,12 @@ class SocialNetworkApp(SocialBackendApp):
         target_username = self._get_username(target_user)
         self._print(f"@{current_username} blocking user: @{target_username}", emoji="🚫")
         if self.perform_operations:
-            self._require_mastodon_ops().block_user(current_username, target_username)
+            try:
+                self._require_mastodon_ops().block_user(current_username, target_username)
+            except Exception as e:
+                error_msg = f"Error blocking @{target_username}: {e}"
+                self._print(error_msg, emoji="❌")
+                return ActionResult(error_msg, committed=False)
         else:
             self._print(
                 "Skipping real Mastodon API call since perform_operations is set to False",
@@ -1336,7 +1453,7 @@ class SocialNetworkApp(SocialBackendApp):
         return block_message
 
     @app_action
-    def unblock_user(self, agent_name: str, target_user: str) -> str:
+    def unblock_user(self, agent_name: str, target_user: str) -> str | ActionResult:
         """Unblock a previously blocked user."""
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
@@ -1346,7 +1463,12 @@ class SocialNetworkApp(SocialBackendApp):
         target_username = self._get_username(target_user)
         self._print(f"@{current_username} unblocking user: @{target_username}", emoji="✅")
         if self.perform_operations:
-            self._require_mastodon_ops().unblock_user(current_username, target_username)
+            try:
+                self._require_mastodon_ops().unblock_user(current_username, target_username)
+            except Exception as e:
+                error_msg = f"Error unblocking @{target_username}: {e}"
+                self._print(error_msg, emoji="❌")
+                return ActionResult(error_msg, committed=False)
         else:
             self._print(
                 "Skipping real Mastodon API call since perform_operations is set to False",
@@ -1373,7 +1495,7 @@ class SocialNetworkApp(SocialBackendApp):
         target_user: str,
         notifications: bool = False,
         duration: int = 0,
-    ) -> str:
+    ) -> str | ActionResult:
         """Mute an account, optionally suppressing notifications for a duration."""
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
@@ -1387,12 +1509,17 @@ class SocialNetworkApp(SocialBackendApp):
             emoji="🔇",
         )
         if self.perform_operations:
-            self._require_mastodon_ops().mute_account(
-                current_username,
-                target_username,
-                notifications=notifications,
-                duration=duration,
-            )
+            try:
+                self._require_mastodon_ops().mute_account(
+                    current_username,
+                    target_username,
+                    notifications=notifications,
+                    duration=duration,
+                )
+            except Exception as e:
+                error_msg = f"Error muting @{target_username}: {e}"
+                self._print(error_msg, emoji="❌")
+                return ActionResult(error_msg, committed=False)
         else:
             self._print(
                 "Skipping real Mastodon API call since perform_operations is set to False",
@@ -1413,7 +1540,7 @@ class SocialNetworkApp(SocialBackendApp):
         return mute_message
 
     @app_action
-    def unmute_account(self, agent_name: str, target_user: str) -> str:
+    def unmute_account(self, agent_name: str, target_user: str) -> str | ActionResult:
         """Unmute a previously muted account."""
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
@@ -1423,7 +1550,12 @@ class SocialNetworkApp(SocialBackendApp):
         target_username = self._get_username(target_user)
         self._print(f"@{current_username} unmuting @{target_username}", emoji="🔊")
         if self.perform_operations:
-            self._require_mastodon_ops().unmute_account(current_username, target_username)
+            try:
+                self._require_mastodon_ops().unmute_account(current_username, target_username)
+            except Exception as e:
+                error_msg = f"Error unmuting @{target_username}: {e}"
+                self._print(error_msg, emoji="❌")
+                return ActionResult(error_msg, committed=False)
         else:
             self._print(
                 "Skipping real Mastodon API call since perform_operations is set to False",
@@ -1450,7 +1582,7 @@ class SocialNetworkApp(SocialBackendApp):
         post_ids: list[int] | None = None,
         recent_count: int = 0,
         delete_all: bool = False,
-    ) -> str:
+    ) -> str | ActionResult:
         """Delete a user's own posts (by id, recent count, or all)."""
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
@@ -1463,15 +1595,27 @@ class SocialNetworkApp(SocialBackendApp):
             self._print(f"Deleting specific posts for @{username}", emoji="🗑️")
         else:
             self._print("No posts specified for deletion", emoji="❌")
-            return f"{actor_display_name} (@{username}) specified no posts to delete."
+            # Nothing was deleted, so this is a no-op, not a committed change.
+            return ActionResult(
+                f"{actor_display_name} (@{username}) specified no posts to delete.",
+                committed=False,
+            )
 
         if self.perform_operations:
-            self._require_mastodon_ops().delete_posts(
-                username,
-                post_ids=post_ids,
-                recent_count=recent_count,
-                delete_all=delete_all,
-            )
+            try:
+                # skip_confirm: a simulation must never block on an interactive
+                # stdin confirmation prompt.
+                self._require_mastodon_ops().delete_posts(
+                    username,
+                    post_ids=post_ids,
+                    recent_count=recent_count,
+                    delete_all=delete_all,
+                    skip_confirm=True,
+                )
+            except Exception as e:
+                error_msg = f"Error deleting posts for @{username}: {e}"
+                self._print(error_msg, emoji="❌")
+                return ActionResult(error_msg, committed=False)
         else:
             self._print(
                 "Skipping real Mastodon API call since perform_operations is set to False",
@@ -1493,7 +1637,9 @@ class SocialNetworkApp(SocialBackendApp):
         return delete_message
 
     @app_action
-    def send_direct_message(self, agent_name: str, target_user: str, message: str) -> str:
+    def send_direct_message(
+        self, agent_name: str, target_user: str, message: str
+    ) -> str | ActionResult:
         """Send a direct (private) message to another user."""
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
@@ -1503,11 +1649,22 @@ class SocialNetworkApp(SocialBackendApp):
         target_username = self._get_username(target_user)
         self._print(f"@{current_username} sending DM to @{target_username}", emoji="✉️")
         if self.perform_operations:
-            self._require_mastodon_ops().post_status(
-                login_user=current_username,
-                status=f"@{target_username} {message}",
-                visibility="direct",
-            )
+            try:
+                sent = self._require_mastodon_ops().post_status(
+                    login_user=current_username,
+                    status=f"@{target_username} {message}",
+                    visibility="direct",
+                )
+            except Exception as e:
+                error_msg = f"Error sending direct message to @{target_username}: {e}"
+                self._print(error_msg, emoji="❌")
+                return ActionResult(error_msg, committed=False)
+            if not sent:
+                error_msg = (
+                    f"Error sending direct message to @{target_username}: no status returned."
+                )
+                self._print(error_msg, emoji="❌")
+                return ActionResult(error_msg, committed=False)
         else:
             self._print(
                 "Skipping real Mastodon API call since perform_operations is set to False",

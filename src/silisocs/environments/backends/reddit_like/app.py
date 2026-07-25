@@ -12,12 +12,18 @@ import os
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from silisocs.environments.backends.base import SocialBackendApp, VisualizerSpec, app_action
+from silisocs.environments.backends.base import (
+    ActionResult,
+    SocialBackendApp,
+    VisualizerSpec,
+    app_action,
+)
 from silisocs.environments.backends.reddit_like.engine import RedditLikePlatform
 from silisocs.environments.backends.sqlite_state import (
     restore_sqlite_database,
     snapshot_sqlite_database,
 )
+from silisocs.evaluations.vocabulary import social_event_semantics
 
 
 @dataclasses.dataclass
@@ -32,6 +38,21 @@ class RedditLikeApp(SocialBackendApp):
     action_logger: Any = None
     # Authoritative checkpoint state: full SQLite snapshot + user mapping.
     provides_checkpoint_state = True
+    # Self-described analysis semantics (custom-mode labels the decorators can't
+    # see); decorator-declared tags on new actions merge in on top.
+    event_semantics = social_event_semantics(
+        roots={"post"},
+        replies={"comment"},
+        reactions={"upvote", "downvote"},
+        follows={"mute_user", "unmute_user"},
+        negative={"downvote", "dislike_post", "report_post"},
+        reads={"get_home_feed", "get_post_comments", "get_trending", "timeline_retrieval"},
+        content_ids=("post_id",),
+        response_ids=("comment_id",),
+        parent_ids=("parent_id", "post_id"),
+        reaction_target_id_fields=("target_id",),
+        reaction_target_type_fields=("target_type",),
+    )
     visualizer = VisualizerSpec(
         "REDDIT_LIKE_DB",
         "silisocs.environments.backends.reddit_like.visualizer.server",
@@ -358,7 +379,7 @@ class RedditLikeApp(SocialBackendApp):
             {"comment", "create_comment", "reply"},
         ]
 
-    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
+    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str | ActionResult:
         """Dispatch a parsed action to the correct app_action method.
 
         Args:
@@ -537,7 +558,7 @@ class RedditLikeApp(SocialBackendApp):
         return result_msg
 
     @app_action
-    def upvote(self, agent_name: str, target_id: int, target_type: str) -> str:
+    def upvote(self, agent_name: str, target_id: int, target_type: str) -> str | ActionResult:
         """Upvote a post or comment to increase its score.
 
         Args:
@@ -561,16 +582,17 @@ class RedditLikeApp(SocialBackendApp):
         self._print(result_msg, emoji="⬆️")
         # Committed state changes only: failures leave no row in the canonical
         # action log (replay/eval consume it as ground truth).
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="upvote",
-                data={"target_id": str(target_id), "target_type": target_type},
-            )
+        if not committed:
+            return ActionResult(result_msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="upvote",
+            data={"target_id": str(target_id), "target_type": target_type},
+        )
         return result_msg
 
     @app_action
-    def downvote(self, agent_name: str, target_id: int, target_type: str) -> str:
+    def downvote(self, agent_name: str, target_id: int, target_type: str) -> str | ActionResult:
         """Downvote a post or comment to decrease its score.
 
         Args:
@@ -592,12 +614,13 @@ class RedditLikeApp(SocialBackendApp):
             result_msg = f"Error downvoting {target_type} {target_id}: {e}"
             committed = False
         self._print(result_msg, emoji="⬇️")
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="downvote",
-                data={"target_id": str(target_id), "target_type": target_type},
-            )
+        if not committed:
+            return ActionResult(result_msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="downvote",
+            data={"target_id": str(target_id), "target_type": target_type},
+        )
         return result_msg
 
     @app_action
@@ -620,7 +643,7 @@ class RedditLikeApp(SocialBackendApp):
         return f"Reddit Home Feed for {actor_display_name}:\n{str_timeline}"
 
     @app_action
-    def update_profile(self, agent_name: str, bio: str) -> str:
+    def update_profile(self, agent_name: str, bio: str) -> str | ActionResult:
         """Update your profile bio.
 
         Args:
@@ -637,16 +660,17 @@ class RedditLikeApp(SocialBackendApp):
             msg = f"Error updating profile: {e}"
             committed = False
         self._print(msg, emoji="✏️")
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="update_profile",
-                data={"new_bio": bio},
-            )
+        if not committed:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="update_profile",
+            data={"new_bio": bio},
+        )
         return msg
 
     @app_action
-    def view_profile(self, agent_name: str, target_user: str) -> str:
+    def view_profile(self, agent_name: str, target_user: str) -> str | ActionResult:
         """View a user's profile including their bio and stats.
 
         Args:
@@ -665,14 +689,19 @@ class RedditLikeApp(SocialBackendApp):
                     f"  Comment Karma: {profile.get('comment_karma', 0)}\n"
                 )
             else:
-                msg = f"Profile not found for {target_user_full}."
+                self._print(f"Profile not found for {target_user_full}.", emoji="👤")
+                return ActionResult(f"Profile not found for {target_user_full}.", committed=False)
         except Exception as e:
             msg = f"Error viewing profile for {target_user_full}: {e}"
+            self._print(msg, emoji="👤")
+            return ActionResult(msg, committed=False)
         self._print(msg, emoji="👤")
         return msg
 
     @app_action
-    def get_post_comments(self, agent_name: str, post_id: int, limit: int = 20) -> str:
+    def get_post_comments(
+        self, agent_name: str, post_id: int, limit: int = 20
+    ) -> str | ActionResult:
         """Read the comments on a specific post.
 
         Args:
@@ -700,16 +729,17 @@ class RedditLikeApp(SocialBackendApp):
             msg = f"Error fetching comments for post {post_id}: {e}"
             committed = False
         self._print(msg, emoji="💬")
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="get_post_comments",
-                data={"post_id": str(post_id)},
-            )
+        if not committed:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="get_post_comments",
+            data={"post_id": str(post_id)},
+        )
         return msg
 
     @app_action
-    def search_subreddits(self, agent_name: str, query: str, limit: int = 20) -> str:
+    def search_subreddits(self, agent_name: str, query: str, limit: int = 20) -> str | ActionResult:
         """Search for subreddits by name or description.
 
         Args:
@@ -727,6 +757,8 @@ class RedditLikeApp(SocialBackendApp):
                 msg = f"No subreddits found matching '{query}'."
         except Exception as e:
             msg = f"Error searching subreddits: {e}"
+            self._print(msg, emoji="🔍")
+            return ActionResult(msg, committed=False)
         self._print(msg, emoji="🔍")
         return msg
 
@@ -735,7 +767,7 @@ class RedditLikeApp(SocialBackendApp):
     # ================================================================ #
 
     @app_action
-    def unlike_post(self, agent_name: str, post_id: int) -> str:
+    def unlike_post(self, agent_name: str, post_id: int) -> str | ActionResult:
         """Remove an upvote from a post.
 
         Args:
@@ -747,16 +779,17 @@ class RedditLikeApp(SocialBackendApp):
         result = self._platform.unlike_post(username, post_id)
         msg = f"{actor_display_name} {'removed upvote from' if result else 'could not remove upvote from'} post {post_id}."
         self._print(msg, emoji="🚫⬆️")
-        if result:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="unlike_post",
-                data={"post_id": str(post_id)},
-            )
+        if not result:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="unlike_post",
+            data={"post_id": str(post_id)},
+        )
         return msg
 
     @app_action
-    def dislike_post(self, agent_name: str, post_id: int) -> str:
+    def dislike_post(self, agent_name: str, post_id: int) -> str | ActionResult:
         """Downvote a post (negative reaction).
 
         Args:
@@ -768,16 +801,17 @@ class RedditLikeApp(SocialBackendApp):
         result = self._platform.dislike_post(username, post_id)
         msg = f"{actor_display_name} {'downvoted' if result else 'could not downvote'} post {post_id}."
         self._print(msg, emoji="⬇️")
-        if result:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="dislike_post",
-                data={"post_id": str(post_id)},
-            )
+        if not result:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="dislike_post",
+            data={"post_id": str(post_id)},
+        )
         return msg
 
     @app_action
-    def undo_dislike_post(self, agent_name: str, post_id: int) -> str:
+    def undo_dislike_post(self, agent_name: str, post_id: int) -> str | ActionResult:
         """Remove a downvote from a post.
 
         Args:
@@ -789,16 +823,17 @@ class RedditLikeApp(SocialBackendApp):
         result = self._platform.undo_dislike_post(username, post_id)
         msg = f"{actor_display_name} {'removed downvote from' if result else 'could not remove downvote from'} post {post_id}."
         self._print(msg, emoji="🆗")
-        if result:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="undo_dislike_post",
-                data={"post_id": str(post_id)},
-            )
+        if not result:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="undo_dislike_post",
+            data={"post_id": str(post_id)},
+        )
         return msg
 
     @app_action
-    def mute_user(self, agent_name: str, target_user: str) -> str:
+    def mute_user(self, agent_name: str, target_user: str) -> str | ActionResult:
         """Mute another user to hide their posts.
 
         Args:
@@ -812,16 +847,17 @@ class RedditLikeApp(SocialBackendApp):
         result = self._platform.mute_user(src_username, tgt_username)
         msg = f"{actor_display_name} {'muted' if result else 'could not mute'} {target_user_full}."
         self._print(msg, emoji="🔇")
-        if result:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="mute_user",
-                data={"target_user": target_user_full},
-            )
+        if not result:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="mute_user",
+            data={"target_user": target_user_full},
+        )
         return msg
 
     @app_action
-    def unmute_user(self, agent_name: str, target_user: str) -> str:
+    def unmute_user(self, agent_name: str, target_user: str) -> str | ActionResult:
         """Unmute a user.
 
         Args:
@@ -835,18 +871,19 @@ class RedditLikeApp(SocialBackendApp):
         result = self._platform.unmute_user(src_username, tgt_username)
         msg = f"{actor_display_name} {'unmuted' if result else 'could not unmute'} {target_user_full}."
         self._print(msg, emoji="🔊")
-        if result:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="unmute_user",
-                data={"target_user": target_user_full},
-            )
+        if not result:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="unmute_user",
+            data={"target_user": target_user_full},
+        )
         return msg
 
     @app_action
     def report_post(
         self, agent_name: str, post_id: int, reason: str = "Inappropriate content"
-    ) -> str:
+    ) -> str | ActionResult:
         """Report a post for moderation.
 
         Args:
@@ -859,16 +896,19 @@ class RedditLikeApp(SocialBackendApp):
         result = self._platform.report_post(username, post_id, reason)
         msg = f"{actor_display_name} {'reported' if result else 'could not report'} post {post_id} ({reason})."
         self._print(msg, emoji="⚠️")
-        if result:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="report_post",
-                data={"post_id": str(post_id), "reason": reason},
-            )
+        if not result:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="report_post",
+            data={"post_id": str(post_id), "reason": reason},
+        )
         return msg
 
     @app_action
-    def get_trending_posts(self, agent_name: str, limit: int = 10, days: int = 7) -> str:
+    def get_trending_posts(
+        self, agent_name: str, limit: int = 10, days: int = 7
+    ) -> str | ActionResult:
         """Get trending posts from the last N days.
 
         Args:
@@ -894,12 +934,13 @@ class RedditLikeApp(SocialBackendApp):
             msg = f"Error getting trending posts: {e}"
             committed = False
         self._print(msg, emoji="🔥")
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="get_trending",
-                data={"limit": limit, "days": days},
-            )
+        if not committed:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="get_trending",
+            data={"limit": limit, "days": days},
+        )
         return msg
 
     @app_action
@@ -923,7 +964,9 @@ class RedditLikeApp(SocialBackendApp):
     # ------------------------------------------------------------------ #
 
     @app_action
-    def create_subreddit(self, agent_name: str, subreddit_name: str, description: str) -> str:
+    def create_subreddit(
+        self, agent_name: str, subreddit_name: str, description: str
+    ) -> str | ActionResult:
         """Create a new subreddit.
 
         Args:
@@ -940,16 +983,17 @@ class RedditLikeApp(SocialBackendApp):
             msg = f"Error creating subreddit: {e}"
             committed = False
         self._print(msg, emoji="🏠")
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="create_subreddit",
-                data={"subreddit_name": subreddit_name, "description": description},
-            )
+        if not committed:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="create_subreddit",
+            data={"subreddit_name": subreddit_name, "description": description},
+        )
         return msg
 
     @app_action
-    def join_subreddit(self, agent_name: str, subreddit_name: str) -> str:
+    def join_subreddit(self, agent_name: str, subreddit_name: str) -> str | ActionResult:
         """Join a subreddit to see its posts in your home feed.
 
         Args:
@@ -966,16 +1010,17 @@ class RedditLikeApp(SocialBackendApp):
             msg = f"Error joining subreddit: {e}"
             committed = False
         self._print(msg, emoji="📌")
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="join_subreddit",
-                data={"subreddit_name": subreddit_name},
-            )
+        if not committed:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="join_subreddit",
+            data={"subreddit_name": subreddit_name},
+        )
         return msg
 
     @app_action
-    def leave_subreddit(self, agent_name: str, subreddit_name: str) -> str:
+    def leave_subreddit(self, agent_name: str, subreddit_name: str) -> str | ActionResult:
         """Leave a subreddit to stop seeing its posts.
 
         Args:
@@ -992,16 +1037,19 @@ class RedditLikeApp(SocialBackendApp):
             msg = f"Error leaving subreddit: {e}"
             committed = False
         self._print(msg, emoji="🚪")
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="leave_subreddit",
-                data={"subreddit_name": subreddit_name},
-            )
+        if not committed:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="leave_subreddit",
+            data={"subreddit_name": subreddit_name},
+        )
         return msg
 
     @app_action
-    def get_subreddit_feed(self, agent_name: str, subreddit_name: str, limit: int) -> str:
+    def get_subreddit_feed(
+        self, agent_name: str, subreddit_name: str, limit: int
+    ) -> str | ActionResult:
         """Read the feed for a specific subreddit.
 
         Args:
@@ -1020,10 +1068,11 @@ class RedditLikeApp(SocialBackendApp):
             msg = f"Error fetching subreddit feed: {e}"
             committed = False
         self._print(msg, emoji="📰")
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="get_subreddit_feed",
-                data={"subreddit_name": subreddit_name},
-            )
+        if not committed:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="get_subreddit_feed",
+            data={"subreddit_name": subreddit_name},
+        )
         return msg

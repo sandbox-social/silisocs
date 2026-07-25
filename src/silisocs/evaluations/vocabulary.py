@@ -67,7 +67,7 @@ class EventSemantics:
 
 
 _EVENT_SEMANTICS: dict[str, EventSemantics] = {}
-_DERIVED_EVENT_SEMANTICS: dict[str, EventSemantics] = {}
+_RESOLVED_EVENT_SEMANTICS: dict[str, EventSemantics] = {}
 
 
 def _backend_class(backend_type: str) -> type[Any] | None:
@@ -98,11 +98,19 @@ def register_event_semantics(backend_type: str, semantics: EventSemantics) -> No
     if not isinstance(semantics, EventSemantics):
         raise TypeError("semantics must be EventSemantics")
     _EVENT_SEMANTICS[key] = semantics
-    _DERIVED_EVENT_SEMANTICS.pop(key, None)
+    _RESOLVED_EVENT_SEMANTICS.pop(key, None)
 
 
 def parse_event_semantics(raw: Any) -> EventSemantics:
-    """Build semantics from the portable ``{roles, fields, labels}`` shape."""
+    """Build semantics from the portable ``{roles, fields, labels}`` shape.
+
+    Deliberately lenient: this parses ARTIFACT data (run manifests written by
+    other versions), where a malformed block degrades to empty semantics rather
+    than breaking every analysis surface. Author-owned class declarations go
+    through the strict :func:`declared_event_semantics` instead.
+    """
+    if isinstance(raw, EventSemantics):
+        return raw
     if not isinstance(raw, Mapping):
         return EventSemantics()
     roles = raw.get("roles") or {}
@@ -111,6 +119,62 @@ def parse_event_semantics(raw: Any) -> EventSemantics:
     if not all(isinstance(value, Mapping) for value in (roles, fields, labels)):
         return EventSemantics()
     return EventSemantics(roles=roles, fields=fields, label_tags=labels)
+
+
+def declared_event_semantics(cls: type[Any]) -> EventSemantics | None:
+    """Parse a backend class's ``event_semantics`` declaration, failing loud.
+
+    Unlike manifest parsing (untrusted data, best-effort), a class-level
+    declaration is the author's own code: a malformed shape is a bug, and
+    silently degrading it to empty semantics would just make every panel
+    quietly disappear. Accepts an :class:`EventSemantics` instance or the
+    portable ``{roles, fields, labels}`` mapping.
+    """
+    raw = getattr(cls, "event_semantics", None)
+    if raw is None or (isinstance(raw, Mapping) and not raw):
+        return None
+    if isinstance(raw, EventSemantics):
+        return raw
+    if not isinstance(raw, Mapping):
+        raise TypeError(
+            f"{cls.__name__}.event_semantics must be an EventSemantics or a "
+            f"{{roles, fields, labels}} mapping, got {type(raw).__name__}"
+        )
+    parsed = parse_event_semantics(raw)
+    if not (parsed.roles or parsed.fields or parsed.label_tags):
+        raise ValueError(
+            f"{cls.__name__}.event_semantics is malformed: 'roles', 'fields', and "
+            "'labels' must each be mappings when present."
+        )
+    return parsed
+
+
+def merge_event_semantics(declared: EventSemantics, derived: EventSemantics) -> EventSemantics:
+    """Merge an explicit declaration with decorator-derived semantics.
+
+    The declaration wins per entry; derived declarations fill everything they
+    add — so decorating a NEW action on a backend that also carries an explicit
+    declaration extends its semantics instead of being silently ignored.
+    Roles union their label sets; a field's declared paths come first with
+    unseen derived paths appended; a label declared in both keeps its declared
+    tag order.
+    """
+    if not (derived.roles or derived.fields or derived.label_tags):
+        return declared
+    if not (declared.roles or declared.fields or declared.label_tags):
+        return derived
+    merged_roles: dict[str, set[str]] = {
+        name: set(labels) for name, labels in derived.roles.items()
+    }
+    for name, labels in declared.roles.items():
+        merged_roles.setdefault(name, set()).update(labels)
+    roles = {name: frozenset(labels) for name, labels in merged_roles.items()}
+    fields = {
+        name: tuple(dict.fromkeys((*declared.fields.get(name, ()), *derived.fields.get(name, ()))))
+        for name in {**derived.fields, **declared.fields}
+    }
+    label_tags = {**derived.label_tags, **declared.label_tags}
+    return EventSemantics(roles=roles, fields=fields, label_tags=label_tags)
 
 
 def derive_event_semantics(cls: type[Any]) -> EventSemantics:
@@ -147,29 +211,35 @@ def derive_event_semantics(cls: type[Any]) -> EventSemantics:
 
 
 def event_semantics_for(backend_type: str) -> EventSemantics:
-    """Resolve registered, class-declared, or decorator-derived semantics."""
+    """Resolve a backend type's semantics.
+
+    An explicit ``register_event_semantics`` registration or class-level
+    ``event_semantics`` declaration is the base (registration wins over the
+    class attribute), and decorator-derived declarations are MERGED in — so
+    ``@app_action(tags=...)`` on a new action always reaches the analysis
+    surfaces, even for a backend that carries an explicit declaration.
+    """
     key = str(backend_type).strip()
-    registered = _EVENT_SEMANTICS.get(key)
-    if registered is not None:
-        return registered
-    cached = _DERIVED_EVENT_SEMANTICS.get(key)
+    cached = _RESOLVED_EVENT_SEMANTICS.get(key)
     if cached is not None:
         return cached
 
     cls = _backend_class(key)
-    if cls is None:
-        return EventSemantics()
-    declared = parse_event_semantics(getattr(cls, "event_semantics", None))
-    semantics = (
-        declared
-        if declared.roles or declared.fields or declared.label_tags
-        else derive_event_semantics(cls)
-    )
-    _DERIVED_EVENT_SEMANTICS[key] = semantics
+    declared = _EVENT_SEMANTICS.get(key)
+    if declared is None and cls is not None:
+        declared = declared_event_semantics(cls)
+    declared = declared or EventSemantics()
+    derived = derive_event_semantics(cls) if cls is not None else EventSemantics()
+    semantics = merge_event_semantics(declared, derived)
+    if cls is None and not (declared.roles or declared.fields or declared.label_tags):
+        # Nothing known yet; don't cache so a later-registered runtime class
+        # (or registration) is picked up on the next call.
+        return semantics
+    _RESOLVED_EVENT_SEMANTICS[key] = semantics
     return semantics
 
 
-def _social_semantics(
+def social_event_semantics(
     *,
     roots: set[str],
     replies: set[str],
@@ -220,47 +290,7 @@ def _social_semantics(
     )
 
 
-register_event_semantics(
-    "twitter_like",
-    _social_semantics(
-        roots={"post", "quote_repost"},
-        replies={"reply"},
-        reactions={"like", "repost"},
-        follows={"follow", "unfollow", "mute_user", "unmute_user"},
-        negative={"dislike_post", "report_post"},
-        reads={"get_own_timeline", "get_trending", "timeline_retrieval"},
-        content_ids=("post_id", "tweet_id"),
-        response_ids=("post_id",),
-        parent_ids=("reply_to_id", "target_id"),
-    ),
-)
-register_event_semantics(
-    "reddit_like",
-    _social_semantics(
-        roots={"post"},
-        replies={"comment"},
-        reactions={"upvote", "downvote"},
-        follows={"mute_user", "unmute_user"},
-        negative={"downvote", "dislike_post", "report_post"},
-        reads={"get_home_feed", "get_post_comments", "get_trending", "timeline_retrieval"},
-        content_ids=("post_id",),
-        response_ids=("comment_id",),
-        parent_ids=("parent_id", "post_id"),
-        reaction_target_id_fields=("target_id",),
-        reaction_target_type_fields=("target_type",),
-    ),
-)
-register_event_semantics(
-    "mastodon",
-    _social_semantics(
-        roots={"post", "post_status"},
-        replies={"reply"},
-        reactions={"like_toot", "boost_toot"},
-        follows={"follow", "unfollow", "block_user", "mute_account"},
-        negative=set(),
-        reads={"get_public_timeline", "get_own_timeline", "get_user_timeline"},
-        content_ids=("toot_id",),
-        response_ids=("toot_id",),
-        parent_ids=("reply_to.toot_id", "in_reply_to_id"),
-    ),
-)
+# The shipped social backends declare their own semantics: each app class sets
+# `event_semantics = social_event_semantics(...)` — the same self-description
+# seam custom backends use — so forking one and decorating a new action extends
+# its semantics (via merge_event_semantics) without editing any central table.

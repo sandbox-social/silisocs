@@ -203,6 +203,9 @@ Use class-level behavior flows instead of adding custom manager branches:
 - `env.gm.components.resolve.params.flow_action_filters` (map flow_tag ->
   `{enabled_actions, excluded_actions}`; further-restricts the backend filter,
   enforced at resolve time, never blocks `FINISHED`). Works on the default GM.
+  A filter name matching no backend action raises at build for the
+  catalog-bound resolvers (`generic_action`/`tool_calling`); `parsed_action`
+  keeps literal matching with a warning (custom-mode verbs are world-defined).
 
 7. Optional per-flow probe/eval targeting:
 - `eval.probes.deployment.include_flows` / `exclude_flows` (deploy probes only to
@@ -659,7 +662,11 @@ An omitted `observe` slot picks `timeline_every_turn` for a social backend and
 SQLite backends; `resource_market`/`virtual_space` are in-memory references).
 Open `tags` and semantic `fields` declared on `@app_action` are derived for
 custom backend types and persisted in the run manifest. A class-level
-`event_semantics` declaration remains available for aggregate definitions.
+`event_semantics` declaration remains available for aggregate definitions (an
+`EventSemantics` or the portable `{roles, fields, labels}` mapping — the shipped
+social backends declare theirs this way); resolution MERGES the declaration with
+decorator-derived tags (declaration wins per entry), so decorating a new action
+always reaches analysis, and a malformed class declaration raises.
 
 **Committed-only action log** (backend authors): `action_events.jsonl` is the
 canonical log of actions that committed a state change or performed a deliberate

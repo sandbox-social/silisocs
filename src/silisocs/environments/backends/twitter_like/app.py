@@ -13,6 +13,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from silisocs.environments.backends.base import (
+    ActionResult,
     SocialBackendApp,
     VisualizerSpec,
     app_action,
@@ -22,6 +23,7 @@ from silisocs.environments.backends.sqlite_state import (
     snapshot_sqlite_database,
 )
 from silisocs.environments.backends.twitter_like.engine import TwitterLikePlatform
+from silisocs.evaluations.vocabulary import social_event_semantics
 
 
 @dataclasses.dataclass
@@ -35,6 +37,19 @@ class TwitterLikeApp(SocialBackendApp):
     action_logger: Any = None
     # Authoritative checkpoint state: full SQLite snapshot + user mapping.
     provides_checkpoint_state = True
+    # Self-described analysis semantics (custom-mode labels the decorators can't
+    # see); decorator-declared tags on new actions merge in on top.
+    event_semantics = social_event_semantics(
+        roots={"post", "quote_repost"},
+        replies={"reply"},
+        reactions={"like", "repost"},
+        follows={"follow", "unfollow", "mute_user", "unmute_user"},
+        negative={"dislike_post", "report_post"},
+        reads={"get_own_timeline", "get_trending", "timeline_retrieval"},
+        content_ids=("post_id", "tweet_id"),
+        response_ids=("post_id",),
+        parent_ids=("reply_to_id", "target_id"),
+    )
     visualizer = VisualizerSpec(
         "TWITTER_LIKE_DB",
         "silisocs.environments.backends.twitter_like.visualizer.server",
@@ -318,7 +333,7 @@ class TwitterLikeApp(SocialBackendApp):
             {"repost", "retweet", "boost", "repost_tweet"},
         ]
 
-    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
+    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str | ActionResult:
         """Dispatch a parsed action to the correct app_action method.
 
         Args:
@@ -462,7 +477,7 @@ class TwitterLikeApp(SocialBackendApp):
         return result_msg
 
     @app_action
-    def like_tweet(self, agent_name: str, post_id: int) -> str:
+    def like_tweet(self, agent_name: str, post_id: int) -> str | ActionResult:
         """Like (favorite) a tweet.
 
         Args:
@@ -484,16 +499,17 @@ class TwitterLikeApp(SocialBackendApp):
         self._print(like_msg, emoji="❤️")
         # Committed state changes only: failures and already-liked no-ops leave no
         # row in the canonical action log (replay/eval consume it as ground truth).
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="like",
-                data={"post_id": str(post_id)},
-            )
+        if not committed:
+            return ActionResult(like_msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="like",
+            data={"post_id": str(post_id)},
+        )
         return like_msg
 
     @app_action
-    def repost_tweet(self, agent_name: str, post_id: int) -> str:
+    def repost_tweet(self, agent_name: str, post_id: int) -> str | ActionResult:
         """Repost (retweet) an existing tweet to share it with your followers.
 
         Args:
@@ -510,16 +526,17 @@ class TwitterLikeApp(SocialBackendApp):
             repost_msg = f"Error reposting tweet {post_id}: {e}"
             committed = False
         self._print(repost_msg, emoji="🔁")
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="repost",
-                data={"post_id": str(post_id)},
-            )
+        if not committed:
+            return ActionResult(repost_msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="repost",
+            data={"post_id": str(post_id)},
+        )
         return repost_msg
 
     @app_action
-    def follow_user(self, agent_name: str, target_user: str) -> str:
+    def follow_user(self, agent_name: str, target_user: str) -> str | ActionResult:
         """Follow another user to see their tweets in your timeline.
 
         Args:
@@ -542,16 +559,17 @@ class TwitterLikeApp(SocialBackendApp):
             follow_msg = f"Error following {target_user_full}: {e}"
             committed = False
         self._print(follow_msg, emoji="➕")
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="follow",
-                data={"target_user": target_user_full},
-            )
+        if not committed:
+            return ActionResult(follow_msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="follow",
+            data={"target_user": target_user_full},
+        )
         return follow_msg
 
     @app_action
-    def unfollow_user(self, agent_name: str, target_user: str) -> str:
+    def unfollow_user(self, agent_name: str, target_user: str) -> str | ActionResult:
         """Unfollow a user to stop seeing their tweets.
 
         Args:
@@ -570,12 +588,13 @@ class TwitterLikeApp(SocialBackendApp):
             msg = f"Error unfollowing {target_user_full}: {e}"
             committed = False
         self._print(msg, emoji="➖")
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="unfollow",
-                data={"target_user": target_user_full},
-            )
+        if not committed:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="unfollow",
+            data={"target_user": target_user_full},
+        )
         return msg
 
     @app_action
@@ -598,7 +617,7 @@ class TwitterLikeApp(SocialBackendApp):
         return f"Twitter Timeline for {actor_display_name}:\n{str_timeline}"
 
     @app_action
-    def update_profile(self, agent_name: str, bio: str) -> str:
+    def update_profile(self, agent_name: str, bio: str) -> str | ActionResult:
         """Update your profile bio.
 
         Args:
@@ -618,16 +637,17 @@ class TwitterLikeApp(SocialBackendApp):
             msg = f"Error updating profile: {e}"
             committed = False
         self._print(msg, emoji="✏️")
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="update_profile",
-                data={"new_bio": bio},
-            )
+        if not committed:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="update_profile",
+            data={"new_bio": bio},
+        )
         return msg
 
     @app_action
-    def view_profile(self, agent_name: str, target_user: str) -> str:
+    def view_profile(self, agent_name: str, target_user: str) -> str | ActionResult:
         """View a user's profile including their bio and stats.
 
         Args:
@@ -647,14 +667,17 @@ class TwitterLikeApp(SocialBackendApp):
                     f"  Following: {profile.get('following_count', 0)}\n"
                 )
             else:
-                msg = f"Profile not found for {target_user_full}."
+                self._print(f"Profile not found for {target_user_full}.", emoji="👤")
+                return ActionResult(f"Profile not found for {target_user_full}.", committed=False)
         except Exception as e:
             msg = f"Error viewing profile for {target_user_full}: {e}"
+            self._print(msg, emoji="👤")
+            return ActionResult(msg, committed=False)
         self._print(msg, emoji="👤")
         return msg
 
     @app_action
-    def unlike_tweet(self, agent_name: str, post_id: int) -> str:
+    def unlike_tweet(self, agent_name: str, post_id: int) -> str | ActionResult:
         """Remove your like from a tweet.
 
         Args:
@@ -675,16 +698,17 @@ class TwitterLikeApp(SocialBackendApp):
             msg = f"Error unliking tweet {post_id}: {e}"
             committed = False
         self._print(msg, emoji="💔")
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="unlike",
-                data={"post_id": str(post_id)},
-            )
+        if not committed:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="unlike",
+            data={"post_id": str(post_id)},
+        )
         return msg
 
     @app_action
-    def quote_repost_tweet(self, agent_name: str, post_id: int, status: str) -> str:
+    def quote_repost_tweet(self, agent_name: str, post_id: int, status: str) -> str | ActionResult:
         """Quote-repost a tweet, adding your own commentary.
 
         Args:
@@ -702,16 +726,17 @@ class TwitterLikeApp(SocialBackendApp):
             msg = f"Error quote-reposting tweet {post_id}: {e}"
             committed = False
         self._print(msg, emoji="🔁💬")
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="quote_repost",
-                data={"post_id": str(post_id), "content": status},
-            )
+        if not committed:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="quote_repost",
+            data={"post_id": str(post_id), "content": status},
+        )
         return msg
 
     @app_action
-    def search_posts(self, agent_name: str, query: str, limit: int = 20) -> str:
+    def search_posts(self, agent_name: str, query: str, limit: int = 20) -> str | ActionResult:
         """Search for tweets containing specific text.
 
         Args:
@@ -732,6 +757,8 @@ class TwitterLikeApp(SocialBackendApp):
                 msg = f"No results found for '{query}'."
         except Exception as e:
             msg = f"Error searching posts: {e}"
+            self._print(msg, emoji="🔍")
+            return ActionResult(msg, committed=False)
         self._print(msg, emoji="🔍")
         return msg
 
@@ -740,7 +767,7 @@ class TwitterLikeApp(SocialBackendApp):
     # ================================================================ #
 
     @app_action
-    def unlike_post(self, agent_name: str, post_id: int) -> str:
+    def unlike_post(self, agent_name: str, post_id: int) -> str | ActionResult:
         """Remove a like from a previously liked post.
 
         Args:
@@ -752,16 +779,17 @@ class TwitterLikeApp(SocialBackendApp):
         result = self._platform.unlike_post(username, post_id)
         msg = f"{actor_display_name} {'unliked' if result else 'could not unlike'} post {post_id}."
         self._print(msg, emoji="🚫❤️")
-        if result:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="unlike_post",
-                data={"post_id": str(post_id)},
-            )
+        if not result:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="unlike_post",
+            data={"post_id": str(post_id)},
+        )
         return msg
 
     @app_action
-    def dislike_post(self, agent_name: str, post_id: int) -> str:
+    def dislike_post(self, agent_name: str, post_id: int) -> str | ActionResult:
         """Dislike (downvote) a post.
 
         Args:
@@ -775,16 +803,17 @@ class TwitterLikeApp(SocialBackendApp):
             f"{actor_display_name} {'disliked' if result else 'could not dislike'} post {post_id}."
         )
         self._print(msg, emoji="👎")
-        if result:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="dislike_post",
-                data={"post_id": str(post_id)},
-            )
+        if not result:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="dislike_post",
+            data={"post_id": str(post_id)},
+        )
         return msg
 
     @app_action
-    def undo_dislike_post(self, agent_name: str, post_id: int) -> str:
+    def undo_dislike_post(self, agent_name: str, post_id: int) -> str | ActionResult:
         """Remove a dislike from a post.
 
         Args:
@@ -796,16 +825,17 @@ class TwitterLikeApp(SocialBackendApp):
         result = self._platform.undo_dislike_post(username, post_id)
         msg = f"{actor_display_name} {'removed dislike from' if result else 'could not remove dislike from'} post {post_id}."
         self._print(msg, emoji="🆗")
-        if result:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="undo_dislike_post",
-                data={"post_id": str(post_id)},
-            )
+        if not result:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="undo_dislike_post",
+            data={"post_id": str(post_id)},
+        )
         return msg
 
     @app_action
-    def mute_user(self, agent_name: str, target_user: str) -> str:
+    def mute_user(self, agent_name: str, target_user: str) -> str | ActionResult:
         """Mute another user to hide their posts from your timeline.
 
         Args:
@@ -819,16 +849,17 @@ class TwitterLikeApp(SocialBackendApp):
         result = self._platform.mute_user(src_username, tgt_username)
         msg = f"{actor_display_name} {'muted' if result else 'could not mute'} {target_user_full}."
         self._print(msg, emoji="🔇")
-        if result:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="mute_user",
-                data={"target_user": target_user_full},
-            )
+        if not result:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="mute_user",
+            data={"target_user": target_user_full},
+        )
         return msg
 
     @app_action
-    def unmute_user(self, agent_name: str, target_user: str) -> str:
+    def unmute_user(self, agent_name: str, target_user: str) -> str | ActionResult:
         """Unmute a previously muted user.
 
         Args:
@@ -842,18 +873,19 @@ class TwitterLikeApp(SocialBackendApp):
         result = self._platform.unmute_user(src_username, tgt_username)
         msg = f"{actor_display_name} {'unmuted' if result else 'could not unmute'} {target_user_full}."
         self._print(msg, emoji="🔊")
-        if result:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="unmute_user",
-                data={"target_user": target_user_full},
-            )
+        if not result:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="unmute_user",
+            data={"target_user": target_user_full},
+        )
         return msg
 
     @app_action
     def report_post(
         self, agent_name: str, post_id: int, reason: str = "Inappropriate content"
-    ) -> str:
+    ) -> str | ActionResult:
         """Report a post for violation of community guidelines.
 
         Args:
@@ -866,16 +898,19 @@ class TwitterLikeApp(SocialBackendApp):
         result = self._platform.report_post(username, post_id, reason)
         msg = f"{actor_display_name} {'reported' if result else 'could not report'} post {post_id} ({reason})."
         self._print(msg, emoji="⚠️")
-        if result:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="report_post",
-                data={"post_id": str(post_id), "reason": reason},
-            )
+        if not result:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="report_post",
+            data={"post_id": str(post_id), "reason": reason},
+        )
         return msg
 
     @app_action
-    def get_trending_posts(self, agent_name: str, limit: int = 10, days: int = 7) -> str:
+    def get_trending_posts(
+        self, agent_name: str, limit: int = 10, days: int = 7
+    ) -> str | ActionResult:
         """Get trending posts from the last N days.
 
         Args:
@@ -901,12 +936,13 @@ class TwitterLikeApp(SocialBackendApp):
             msg = f"Error getting trending posts: {e}"
             committed = False
         self._print(msg, emoji="🔥")
-        if committed:
-            self._log_action_event(
-                source_user=actor_display_name,
-                label="get_trending",
-                data={"limit": limit, "days": days},
-            )
+        if not committed:
+            return ActionResult(msg, committed=False)
+        self._log_action_event(
+            source_user=actor_display_name,
+            label="get_trending",
+            data={"limit": limit, "days": days},
+        )
         return msg
 
     @app_action

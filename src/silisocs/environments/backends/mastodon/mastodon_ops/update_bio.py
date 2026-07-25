@@ -16,6 +16,11 @@ def update_bio(login_user: str, display_name: str, bio: str) -> None:
         login_user (str): The user to log in with.
         display_name (str): The new display name.
         bio (str): The new bio content.
+
+    Raises
+    ------
+        ValueError: If there is a problem with the login or the credentials update.
+        Exception: If an unexpected error occurs.
     """
     load_dotenv(find_dotenv())  # Load environment variables from .env file
 
@@ -30,8 +35,10 @@ def update_bio(login_user: str, display_name: str, bio: str) -> None:
         logger.info(f"{login_user} successfully updated the display name and bio.")
     except ValueError as e:
         logger.error(f"Error: {e}")
+        raise
     except Exception as e:
         logger.exception(f"An unexpected error occurred: {e}")
+        raise
 
 
 if __name__ == "__main__":

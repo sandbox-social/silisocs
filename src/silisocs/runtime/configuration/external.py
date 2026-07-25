@@ -12,19 +12,31 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
 
+def _hydra_task_overrides() -> list[str]:
+    """The run's CLI overrides, or ``[]`` when not running under a Hydra app.
+
+    ``HydraConfig.get()`` raising ``ValueError`` means there is no Hydra context
+    (programmatic use, e.g. tests calling the merge directly); anything else is a
+    real failure and must propagate.
+    """
+    try:
+        hydra_cfg = HydraConfig.get()
+    except ValueError:
+        return []
+    return [str(item) for item in hydra_cfg.overrides.task]
+
+
 def merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
     paths_csv = os.environ.get("SILISOCS_EXTERNAL_CONFIG_DIRS", "").strip()
     if not paths_csv:
         return cfg
 
+    task_overrides = _hydra_task_overrides()
     world_variant = ""
-    try:
-        for item in HydraConfig.get().overrides.task:
-            if str(item).startswith("world="):
-                world_variant = str(item).split("=", 1)[1].strip()
-                break
-    except Exception:
-        world_variant = ""
+    for item in task_overrides:
+        if item.startswith("world="):
+            world_variant = item.split("=", 1)[1].strip()
+            break
 
     OmegaConf.set_struct(cfg, False)
     merged_cfg: DictConfig = cfg
@@ -58,24 +70,27 @@ def merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
                     OmegaConf.merge(merged_cfg, OmegaConf.create({group: loaded})),
                 )
 
-    try:
-        task_overrides = list(HydraConfig.get().overrides.task)
-        external_group_overrides = {"world", "agents", "env", "eval", "sim"}
-        value_overrides = []
-        for item in task_overrides:
-            text = str(item)
-            if "=" not in text or text.startswith(("+", "~")):
-                value_overrides.append(text)
-                continue
-            key = text.split("=", 1)[0].strip()
-            if key in external_group_overrides:
-                continue
-            value_overrides.append(text)
-        if value_overrides:
-            override_cfg = OmegaConf.from_dotlist(value_overrides)
-            merged_cfg = cast(DictConfig, OmegaConf.merge(merged_cfg, override_cfg))
-    except Exception:
-        pass
+    # Re-apply the user's CLI value overrides on top of the external merges so
+    # `--config-path ... sim.llm.temperature=0.9` keeps winning. A malformed
+    # override must fail the run here, not be silently dropped.
+    external_group_overrides = {"world", "agents", "env", "eval", "sim"}
+    value_overrides = []
+    for text in task_overrides:
+        if text.startswith("~"):
+            # Hydra deletions were applied at compose time and have no dotlist
+            # equivalent to re-apply.
+            continue
+        # `+key=value` additions merge exactly like plain assignments here.
+        text = text.lstrip("+")
+        if "=" not in text:
+            continue
+        key = text.split("=", 1)[0].strip()
+        if key in external_group_overrides:
+            continue
+        value_overrides.append(text)
+    if value_overrides:
+        override_cfg = OmegaConf.from_dotlist(value_overrides)
+        merged_cfg = cast(DictConfig, OmegaConf.merge(merged_cfg, override_cfg))
 
     return merged_cfg
 

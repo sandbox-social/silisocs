@@ -792,9 +792,13 @@ both canonical and selectable names. This works on the default
 signal is never blocked, so open-ended flows can always terminate. Omitting the
 key preserves current behavior. In `custom` (`parsed_action`) mode, specify
 filters using the agent-facing verbs the parser emits (`post`, `like`, `reply`,
-`repost`); in `generic`/`tool_calling` mode, use backend action names. Names that
-match no backend action are matched literally and logged as a warning to catch
-typos. Per-flow filtering enforces; to also *hide* actions from a flow's prompt,
+`repost`); in `generic`/`tool_calling` mode, use backend action names. The
+strictness follows the RESOLVE COMPONENT (not `sim.action_mode`): under
+`resolve.built_in: parsed_action`, names that match no backend action are
+matched literally and logged as a warning (world-defined verbs may
+legitimately be absent from the catalog); under `generic_action` or
+`tool_calling` — the catalog-bound resolvers — such a name can never match a
+real action, so it is a build-time `ValueError`. Per-flow filtering enforces; to also *hide* actions from a flow's prompt,
 give that flow its own `action_prompt` instance via `MultiFlowGameMaster`.
 
 | Backend | Common actions |
