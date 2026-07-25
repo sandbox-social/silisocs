@@ -322,3 +322,32 @@ def test_all_four_panels_registered() -> None:
 )
 def test_panels_declare_run_scope(panel_cls: type[Panel]) -> None:
     assert panel_cls.scope == "run"
+
+
+def test_behavior_breakdown_backend_filter_counts_one_environment(tmp_path: Path) -> None:
+    """With two backends in one run, backend_type counts one GM's actions alone."""
+    events = [
+        _simple("Dana", "like", 0),  # twitter_like (from _simple)
+        {
+            "source_user": "Alex",
+            "label": "send_message",
+            "episode": 0,
+            "backend_type": "messaging",
+            "data": {"recipient": "Dana", "text": "hi", "round": 0},
+        },
+    ]
+    run = _write_run(
+        tmp_path / "run",
+        events,
+        game_masters=[
+            {"name": "social_gm", "backend_type": "twitter_like"},
+            {"name": "talk_gm", "backend_type": "messaging"},
+        ],
+    )
+    artifact = load_run(run)
+
+    merged = BehaviorBreakdownPanel().build(artifact, {})
+    assert sum(sum(trace["y"]) for trace in merged.figure["data"]) == 2
+
+    filtered = BehaviorBreakdownPanel().build(artifact, {"backend_type": "twitter_like"})
+    assert sum(sum(trace["y"]) for trace in filtered.figure["data"]) == 1

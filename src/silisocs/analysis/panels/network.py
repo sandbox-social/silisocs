@@ -155,6 +155,7 @@ class InteractionNetworkPanel(Panel):
         Control(kind="episode_slider", param="episode", label="Episode"),
         Control(kind="select", param="layout", label="Layout", choices=("force", "circle")),
         Control(kind="agent_select", param="highlight", label="Highlight"),
+        Control(kind="backend_select", param="backend_type", label="Environment"),
     )
 
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Html:
@@ -162,6 +163,7 @@ class InteractionNetworkPanel(Panel):
         episode = _coerce_episode(params.get("episode"))
         layout_name = str(params.get("layout") or "force")
         highlight = str(params.get("highlight") or "")
+        wanted_backend = str(params.get("backend_type") or "")
 
         nodes: set[str] = set()
         owner: _OwnerMap = {}
@@ -169,6 +171,8 @@ class InteractionNetworkPanel(Panel):
         interaction_edges: list[tuple[str, str, str]] = []  # (source, target, color)
 
         for event in event_frame(artifact):
+            if wanted_backend and event.backend_type != wanted_backend:
+                continue
             label = event.label
             source = _str_or_none(event.actor)
             if source is not None:

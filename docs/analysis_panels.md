@@ -75,10 +75,13 @@ class AgentTimeline(Panel):
     )
 ```
 
-Built-in `kind`s are `episode_slider`, `agent_select`, `probe_select`, and
-`select` (static `choices`). Params travel as `p.<panel>.<param>` query args, so
-a control state is deep-linkable. A panel whose `params` value is missing must
-fall back to a sensible default (e.g. most-active agent, all episodes).
+Built-in `kind`s are `episode_slider`, `agent_select`, `probe_select`,
+`backend_select` (the run's manifest-declared backend types; the shell renders
+it only when a run has more than one, so single-backend runs see no extra
+control), and `select` (static `choices`). Params travel as `p.<panel>.<param>`
+query args, so a control state is deep-linkable. A panel whose `params` value
+is missing must fall back to a sensible default (e.g. most-active agent, all
+episodes, all backends).
 
 ## Compose a view
 

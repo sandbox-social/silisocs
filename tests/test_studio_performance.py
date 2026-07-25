@@ -271,14 +271,15 @@ def test_event_growth_reads_a_prediscovered_file_list_incrementally(tmp_path):
     assert len(files) == 2  # flat + per-GM shard, discovered in one glob
 
     positions: dict = {}
-    count, latest = _read_event_growth(files, positions)
-    assert (count, latest) == (2, 1)
+    growth, latest = _read_event_growth(files, positions, root)
+    # Growth is keyed by source: "" for the flat root log, gm name per shard.
+    assert (growth, latest) == ({"": 1, "social_gm": 1}, 1)
     # A second read over the same list without new bytes returns nothing.
-    assert _read_event_growth(files, positions) == (0, -1)
+    assert _read_event_growth(files, positions, root) == ({}, -1)
     # Appending is picked up on the next read, without re-globbing.
     with flat.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"episode": 5}) + "\n")
-    assert _read_event_growth(files, positions) == (1, 5)
+    assert _read_event_growth(files, positions, root) == ({"": 1}, 5)
 
 
 def test_discovery_finds_runs_in_one_walk_and_skips_per_gm_shards(tmp_path):
