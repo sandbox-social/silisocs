@@ -52,7 +52,7 @@
   <a class="run-row" href="/runs/{{ record.id }}">
     <span class="run-index">{{ '%02d'|format(loop.index) }}</span>
     <span class="run-mark {{ 'ok' if record.artifact.status == 'success' else '' }}">{{ (record.artifact.scenario or 'R')[:2]|upper }}</span>
-    <span class="run-name"><strong>{{ record.artifact.scenario or record.path.name }}</strong><small>{{ record.id }}</small><span class="run-track"><i style="width:{{ ([record.artifact.num_steps or 1, 10]|min * 10) }}%"></i></span></span>
+    <span class="run-name"><strong>{{ record.artifact.scenario or record.path.name }}</strong><small>{{ record.id }}</small>{# Full only when the run actually completed — the track is a completion signal, not a step-count decoration. #}<span class="run-track"><i style="width:{{ '100' if record.artifact.status == 'success' else '0' }}%"></i></span></span>
     <span class="run-meta"><b>{{ record.artifact.num_agents or '—' }}</b><small>agents</small></span>
     <span class="run-meta"><b>{{ record.artifact.num_steps or '—' }}</b><small>episodes</small></span>
     <span class="badge {{ 'success' if record.artifact.status == 'success' else 'neutral' }}"><i></i>{{ record.artifact.status or 'legacy' }}</span><span class="arrow"><svg><use href="#icon-arrow"/></svg></span>

@@ -14,6 +14,7 @@ import socket
 import sys
 import threading
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from difflib import unified_diff
 from pathlib import Path
 from typing import Any
@@ -366,11 +367,48 @@ def create_app(
             return Response("Studio control-plane authorization required", status_code=401)
         return await call_next(request)
 
+    # Study replicate runs live under the studies root (experiments/studies/
+    # <id>/runs/...), which is usually outside the output root. They are runs
+    # like any other, so they join the catalog under a second discovery root
+    # with a stable id prefix — that is what makes a study board row's run
+    # reference addressable as a run page at all.
+    _STUDY_RUN_PREFIX = "studies/"
+
+    def _studies_root_is_separate() -> bool:
+        return not studies.root.resolve().is_relative_to(root)
+
+    def discover_all_runs():
+        records = list(discover_runs(root))
+        if _studies_root_is_separate():
+            # An output-root run already owning an id wins (same precedence as
+            # record_or_404), so a literal <root>/studies/... run never coexists
+            # with a study replicate under one duplicated id.
+            taken = {record.id for record in records}
+            records.extend(
+                record
+                for record in (
+                    replace(record, id=f"{_STUDY_RUN_PREFIX}{record.id}")
+                    for record in discover_runs(studies.root)
+                )
+                if record.id not in taken
+            )
+            records.sort(key=lambda record: record.modified, reverse=True)
+        return records
+
     def record_or_404(run_id: str):
+        # Output-root runs win the namespace; the studies/ prefix is only
+        # consulted when no output-root run matches.
         try:
             return find_run(root, run_id)
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail="Run not found") from exc
+        except KeyError:
+            pass
+        if run_id.startswith(_STUDY_RUN_PREFIX) and _studies_root_is_separate():
+            try:
+                record = find_run(studies.root, run_id[len(_STUDY_RUN_PREFIX) :])
+                return replace(record, id=run_id)
+            except KeyError:
+                pass
+        raise HTTPException(status_code=404, detail="Run not found")
 
     def study_or_404(study_id: str, **kwargs: Any) -> dict[str, Any]:
         try:
@@ -428,6 +466,126 @@ def create_app(
                 names.append(name)
         return names
 
+    def study_view_or_404(view_name: str, study: dict[str, Any]):
+        """Resolve a study-scope view: built-ins plus the study's scenarios' shipped views.
+
+        A study is scoped to the scenarios its definition declares, so a
+        scenario may ship a study-scope view (``conf/views/*.yaml`` with
+        ``scope: study``) and every study using that scenario can select it —
+        the same enumerated, repo-owned allowlist the run routes use. A view
+        that resolves but is run-scope is a 404, never a scope error mid-build.
+        """
+        meta = (study.get("definition") or {}).get("study") or {}
+        scenario_names = [name for name in (meta.get("scenarios") or []) if isinstance(name, str)]
+        wrong_scope = False
+        for scenario in (None, *scenario_names):
+            try:
+                view = view_or_404(view_name, scenario)
+            except HTTPException:
+                continue
+            # A same-named run-scope view in one scenario must not shadow a
+            # study-scope view of that name shipped by another — keep looking.
+            if view.scope != "study":
+                wrong_scope = True
+                continue
+            return view
+        detail = (
+            f"{view_name!r} is not a study view" if wrong_scope else f"Unknown view {view_name!r}"
+        )
+        raise HTTPException(status_code=404, detail=detail)
+
+    def _shipped_panel(panel_name: str, scope: str, scenario_names: list[str]):
+        """Find a view-slot ``class_path`` panel by name in shipped view files.
+
+        One-off panels (referenced only by ``class_path`` in a view, never
+        registered) still need to answer the by-name panel endpoints — that is
+        what live refresh calls — so resolution falls back to scanning the same
+        enumerated view files ``view_or_404`` trusts. Never a free-form import.
+        """
+        seen: set[str] = set()
+        for scenario in scenario_names:
+            for source in workspace.sources:
+                for path in scenario_view_files(scenario, source.scenario_root).values():
+                    if str(path) in seen:
+                        continue
+                    seen.add(str(path))
+                    try:
+                        view = load_view(path)
+                    except (OSError, ValueError, yaml.YAMLError):
+                        continue
+                    if view.scope != scope:
+                        continue
+                    for slot in view.panels:
+                        if not slot.class_path:
+                            continue
+                        try:
+                            cls = slot.panel_class()
+                        except (ImportError, AttributeError, TypeError, ValueError):
+                            continue
+                        if cls.name == panel_name:
+                            return cls
+        return None
+
+    def panel_or_404(panel_name: str, scope: str, scenario_names: list[str]):
+        try:
+            panel = get_panel(panel_name)
+        except KeyError as exc:
+            panel = _shipped_panel(panel_name, scope, scenario_names)
+            if panel is None:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if panel.scope != scope:
+            raise HTTPException(status_code=404, detail=f"{panel_name!r} is not a {scope} panel")
+        return panel
+
+    def _run_href_index() -> dict[str, str]:
+        """Resolved run path -> Studio run-page href, across both discovery roots."""
+        return {
+            record.path.resolve().as_posix(): f"/runs/{record.id}" for record in discover_all_runs()
+        }
+
+    def resolve_run_links(payload: dict[str, Any]) -> dict[str, Any]:
+        """Resolve run-reference table cells into Studio run links, in place.
+
+        Panels emit portable ``{"run_path", "text"}`` cells (see
+        docs/analysis_panels.md — "Run reference cells"); only a shell that can
+        address run pages turns them into hrefs, and only here. A path no
+        discovery root knows degrades to its text. The run index is built
+        lazily, on the first reference actually seen.
+        """
+        hrefs: dict[str, str] | None = None
+
+        def index() -> dict[str, str]:
+            nonlocal hrefs
+            if hrefs is None:
+                hrefs = _run_href_index()
+            return hrefs
+
+        def linkify_cell(value: Any) -> Any:
+            if not (isinstance(value, dict) and "run_path" in value):
+                return value
+            text = str(value.get("text") or "open")
+            run_path = str(value.get("run_path") or "")
+            href = index().get(Path(run_path).resolve().as_posix()) if run_path else None
+            return {"text": text, "href": href} if href else {"text": text}
+
+        def walk(output: Any) -> None:
+            if not isinstance(output, dict):
+                return
+            if output.get("type") == "table":
+                output["rows"] = [
+                    {key: linkify_cell(cell) for key, cell in row.items()}
+                    for row in output.get("rows", [])
+                    if isinstance(row, dict)
+                ]
+            elif output.get("type") == "grid":
+                for item in output.get("items", []):
+                    walk(item)
+
+        for panel in payload.get("panels", []):
+            walk(panel.get("output"))
+        walk(payload.get("output"))
+        return payload
+
     def run_json(record) -> dict[str, Any]:
         artifact = record.artifact
         return {
@@ -447,7 +605,7 @@ def create_app(
     def study_composer_catalog() -> dict[str, Any]:
         return {
             "evaluation_presets": evaluation_presets(),
-            "run_choices": [run_json(record) for record in discover_runs(root)],
+            "run_choices": [run_json(record) for record in discover_all_runs()],
             "scenario_choices": workspace.scenarios(),
             "repositories": [source.to_dict() for source in workspace.sources],
         }
@@ -494,7 +652,7 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request):
-        runs = discover_runs(root)
+        runs = discover_all_runs()
         return templates.TemplateResponse(
             request,
             "home.html",
@@ -532,7 +690,7 @@ def create_app(
 
     @app.get("/runs", response_class=HTMLResponse)
     def runs_page(request: Request, q: str = "", status: str = "", sort: str = "recent"):
-        records = discover_runs(root)
+        records = discover_all_runs()
         statuses = sorted({record.artifact.status or "unknown" for record in records})
         return templates.TemplateResponse(
             request,
@@ -559,7 +717,7 @@ def create_app(
             match = next(
                 (
                     record
-                    for record in discover_runs(root)
+                    for record in discover_all_runs()
                     if record.path.resolve() == Path(selected.output_dir).resolve()
                 ),
                 None,
@@ -632,10 +790,18 @@ def create_app(
         # Validate through the same allowlist the run routes use: an unmapped tab
         # falls through to the raw ?view= param, which build_view would otherwise
         # turn into a Path.read_text + class_path import (arbitrary file read +
-        # import-time code execution). Studies are not scenario-scoped, so only
-        # the built-in study views resolve.
+        # import-time code execution). A study resolves built-in study views plus
+        # study-scope views shipped by its declared scenarios. ``p.<panel>.
+        # <param>`` query args drive panel params exactly as on the run page, so
+        # study-panel controls and links work symmetrically.
         built = (
-            build_view(view_or_404(selected_view), load_study(study["path"]))
+            resolve_run_links(
+                build_view(
+                    study_view_or_404(selected_view, study),
+                    load_study(study["path"]),
+                    _panel_param_overrides(request.query_params),
+                )
+            )
             if tab != "definition"
             else None
         )
@@ -765,14 +931,30 @@ def create_app(
         built = facets = None
         if active_tab in {"analyze", "watch"}:
             try:
-                built = build_view(
-                    selected_view,
-                    record.artifact,
-                    _panel_param_overrides(request.query_params),
+                built = resolve_run_links(
+                    build_view(
+                        selected_view,
+                        record.artifact,
+                        _panel_param_overrides(request.query_params),
+                    )
                 )
             except (KeyError, ValueError) as exc:  # unknown panel in a shipped view
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
             facets = _run_facets(record.artifact)
+
+        # A run under the studies root belongs to that study; surface the way
+        # back so study -> run -> study navigation closes the loop.
+        parent_study = None
+        run_path = record.path.resolve()
+        if run_path.is_relative_to(studies.root.resolve()):
+            segments = run_path.relative_to(studies.root.resolve()).parts
+            if segments:
+                try:
+                    parent_study = studies.load(
+                        segments[0], include_definition=False, include_board=False
+                    )
+                except (KeyError, ValueError):
+                    parent_study = None
 
         effective_config = baseline_config = ""
         manifest_text = ""
@@ -807,6 +989,8 @@ def create_app(
                 ),
                 "tab": active_tab,
                 "job": related_job,
+                "interactive": bool(related_job and related_job.to_dict().get("interactive")),
+                "parent_study": parent_study,
                 "viewer_backends": (
                     sorted({backend for backend, _ in find_backend_dbs(record.path)})
                     if active_tab == "platform"
@@ -854,7 +1038,7 @@ def create_app(
 
     @app.get("/api/runs")
     def api_runs(q: str = "", status: str = "", sort: str = "recent"):
-        records = arrange_runs(discover_runs(root), query=q, status=status, sort=sort)
+        records = arrange_runs(discover_all_runs(), query=q, status=status, sort=sort)
         return {"items": [run_json(record) for record in records]}
 
     @app.get("/api/scenarios")
@@ -922,9 +1106,33 @@ def create_app(
     def api_study(study_id: str):
         return study_or_404(study_id)
 
-    @app.get("/api/studies/{study_id}/board")
-    def api_study_board(study_id: str):
-        return {"items": study_or_404(study_id)["board"]}
+    @app.get("/api/studies/{study_id}/panels/{panel_name}")
+    def api_study_panel(request: Request, study_id: str, panel_name: str):
+        # Mirror of the run-panel endpoint at study scope, so live surfaces
+        # refresh ANY study panel through the shared renderPanel path instead of
+        # rebuilding a specific panel's output shape by hand.
+        study = study_or_404(study_id, include_board=False)
+        meta = (study.get("definition") or {}).get("study") or {}
+        scenario_names = [name for name in (meta.get("scenarios") or []) if isinstance(name, str)]
+        panel = panel_or_404(panel_name, "study", scenario_names)
+        artifact = load_study(study["path"])
+        reason = skip_reason(panel, artifact)
+        if reason:
+            raise HTTPException(status_code=409, detail=f"Panel {panel_name!r} {reason}")
+        params = {
+            key: _coerce_param(value)
+            for key, value in request.query_params.items()
+            if not key.startswith("p.")
+        }
+        return resolve_run_links(
+            {
+                "name": panel.name,
+                "title": panel.title,
+                "params": params,
+                "controls": serialize_controls(panel, params),
+                "output": output_to_dict(panel().build(artifact, params)),
+            }
+        )
 
     @app.get("/api/studies/{study_id}/compare")
     def api_study_compare(
@@ -932,8 +1140,13 @@ def create_app(
         compare: str | None = None,
         baseline: str | None = None,
         hypothesis: str | None = None,
+        panel: str = "condition_comparison",
+        view: str = "comparison",
     ):
+        # `panel`/`view` let a study ship its own comparison panel and still be
+        # driven by the same query params, instead of hard-wiring the built-in.
         study = study_or_404(study_id)
+        compare_view = study_view_or_404(view, study)
         params = {
             key: value
             for key, value in (
@@ -943,10 +1156,12 @@ def create_app(
             )
             if value
         }
-        return build_view(
-            load_view("comparison"),
-            load_study(study["path"]),
-            param_overrides={"condition_comparison": params} if params else None,
+        return resolve_run_links(
+            build_view(
+                compare_view,
+                load_study(study["path"]),
+                param_overrides={panel: params} if params else None,
+            )
         )
 
     @app.get("/api/explore/studies/{study_id}/capabilities")
@@ -1204,10 +1419,12 @@ def create_app(
     def api_run_view(request: Request, run_id: str, view_name: str):
         record = record_or_404(run_id)
         try:
-            return build_view(
-                view_or_404(view_name, record.artifact.scenario),
-                record.artifact,
-                _panel_param_overrides(request.query_params),
+            return resolve_run_links(
+                build_view(
+                    view_or_404(view_name, record.artifact.scenario),
+                    record.artifact,
+                    _panel_param_overrides(request.query_params),
+                )
             )
         except (KeyError, ValueError) as exc:  # unknown panel in a shipped view
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -1215,12 +1432,8 @@ def create_app(
     @app.get("/api/runs/{run_id:path}/panels/{panel_name}")
     def api_run_panel(request: Request, run_id: str, panel_name: str):
         record = record_or_404(run_id)
-        try:
-            panel = get_panel(panel_name)
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        if panel.scope != "run":
-            raise HTTPException(status_code=404, detail=f"{panel_name!r} is not a run panel")
+        scenario_names = [record.artifact.scenario] if record.artifact.scenario else []
+        panel = panel_or_404(panel_name, "run", scenario_names)
         reason = skip_reason(panel, record.artifact)
         if reason:
             raise HTTPException(status_code=409, detail=f"Panel {panel_name!r} {reason}")
@@ -1229,13 +1442,15 @@ def create_app(
             for key, value in request.query_params.items()
             if not key.startswith("p.")
         }
-        return {
-            "name": panel.name,
-            "title": panel.title,
-            "params": params,
-            "controls": serialize_controls(panel, params),
-            "output": output_to_dict(panel().build(record.artifact, params)),
-        }
+        return resolve_run_links(
+            {
+                "name": panel.name,
+                "title": panel.title,
+                "params": params,
+                "controls": serialize_controls(panel, params),
+                "output": output_to_dict(panel().build(record.artifact, params)),
+            }
+        )
 
     @app.get("/api/runs/{run_id:path}/report")
     def api_run_report(run_id: str, view: str = "overview"):

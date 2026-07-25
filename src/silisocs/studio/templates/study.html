@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_output.html" as out %}
+{% import "_controls.html" as pc %}
 {% block title %}{{ study.name }} | Silisocs Studio{% endblock %}
 {% block crumb %}<a href="/studies">Studies</a><span>/</span>{{ study.name }}{% endblock %}
 {% block content %}
@@ -47,8 +48,8 @@
   <section class="yaml-mirror"><label class="yaml-document"><span>study.yaml</span><textarea id="study-yaml" spellcheck="false">{{ study.yaml }}</textarea></label></section>
 </div>
 {% else %}
-<div class="panel-grid {{ view.layout }}">
-{% for panel in view.panels %}<section class="panel wide" data-panel="{{ panel.name }}"><header><h3>{{ panel.title }}</h3></header><div class="panel-body">{{ out.render_output(panel.output, grid_class='hypothesis-grid') }}</div></section>{% endfor %}
+<div class="panel-grid {{ view.layout }}" data-study-id="{{ study.id }}">
+{% for panel in view.panels %}<section class="panel wide" data-panel="{{ panel.name }}"><header><div><h3>{{ panel.title }}</h3></div><div class="panel-controls">{{ pc.render_controls(panel, none) }}</div></header><div class="panel-body">{{ out.render_output(panel.output, grid_class='hypothesis-grid') }}</div></section>{% endfor %}
 </div>
 {% endif %}
 <dialog id="study-entity-dialog" class="command-palette compact-dialog"><form class="form-group" onsubmit="createStudyEntity(event)"><p class="eyebrow">Experiment structure</p><h2 id="study-entity-title">Add item</h2><label class="form-field"><span>Identifier</span><input id="study-entity-id" required pattern="[A-Za-z0-9_-]+"></label><div class="composer-actions"><button class="button quiet" type="button" onclick="document.getElementById('study-entity-dialog').close()">Cancel</button><button class="button primary" type="submit"><svg><use href="#icon-plus"/></svg>Add</button></div></form></dialog>
@@ -74,7 +75,10 @@ async function launchStudy(){if(yamlEditor&&!await saveStudy())return;const resp
 async function saveStudy(){if(!yamlEditor)return true;const response=await fetch(`/api/studies/${studyId}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({yaml:yamlEditor.value})});if(response.ok)markStudySaved();notify(response.ok?'Saved':await response.text(),response.ok?'success':'danger');return response.ok}
 registerPaletteCommand({label:'Launch study',keywords:'queue compare run',action:launchStudy});registerPaletteCommand({label:'Save study',keywords:'yaml definition',action:saveStudy});registerPaletteCommand({label:'Study: Board',href:'?tab=board',keywords:'progress watch'});registerPaletteCommand({label:'Study: Compare',href:'?tab=compare',keywords:'results confidence interval'});registerPaletteCommand({label:'Study: Hypotheses',href:'?tab=hypotheses',keywords:'claims findings'});registerPaletteCommand({label:'Study: Definition',href:'?tab=definition',keywords:'yaml composer'});
 {% if tab == 'board' and job and job.status in ('queued','running') %}
-async function refreshStudyBoard(){const body=document.querySelector('[data-panel="study_progress"] .panel-body');if(!body)return;body.classList.add('loading');body.setAttribute('aria-busy','true');try{const response=await fetch(`/api/studies/${studyId}/board`);if(!response.ok)return;const rows=(await response.json()).items||[],columns=['hypothesis','condition','scenario','seed','status'],table=document.createElement('table'),head=table.createTHead().insertRow(),tbody=table.createTBody();for(const column of columns){const th=document.createElement('th');th.textContent=column;head.append(th)}for(const row of rows){const tr=tbody.insertRow();for(const column of columns)tr.insertCell().textContent=row[column]??''}const shell=document.createElement('div');shell.className='table-scroll';shell.append(table);body.replaceChildren(shell)}finally{body.classList.remove('loading');body.removeAttribute('aria-busy')}}
+// Every board panel refreshes through the shared refreshPanel (base.html),
+// which resolves the generic study-panel endpoint from data-study-id — no
+// panel name, column list, or bespoke fetch path is wired here.
+async function refreshStudyBoard(){for(const section of document.querySelectorAll('.panel-grid [data-panel]'))await refreshPanel(section)}
 const studyEvents=new EventSource('/api/jobs/{{ job.id }}/stream');studyEvents.addEventListener('artifact_grown',refreshStudyBoard);studyEvents.addEventListener('status_changed',refreshStudyBoard);studyEvents.addEventListener('done',()=>{refreshStudyBoard();studyEvents.close()});
 {% endif %}
 </script>

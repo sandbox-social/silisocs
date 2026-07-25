@@ -1,0 +1,28 @@
+{# Interactive run control (Step / Play / Pause / End run), shared by the live
+   job page and the run page's Watch tab so the controls survive the live ->
+   watch handoff. ``script`` wires the buttons to an already-declared
+   EventSource variable (named by ``events_var``); ``initial_episode`` seeds the
+   episode counters from persisted artifacts when the page attaches mid-run. #}
+{% macro bar() -%}
+<div class="live-ribbon control-bar"><span class="control-state" id="control-state">paused</span><button class="button quiet" type="button" onclick="ctlStep()"><svg><use href="#icon-arrow"/></svg>Step</button><button class="button quiet" type="button" onclick="ctlPlay()">Play</button><button class="button quiet" type="button" onclick="ctlPause()">Pause</button><button class="button quiet" type="button" onclick="ctlStop()">End run</button></div>
+{%- endmacro %}
+
+{% macro script(job_id, events_var, initial_episode=-1) -%}
+<script>
+// Episode-boundary run control. The SSE stream already reports step boundaries;
+// the client tracks them to translate Step/Play/Pause into an absolute target
+// (first episode to hold before) the server writes to the run's control file.
+const ctlJobId={{ job_id|tojson }};
+let ctlStarted={{ initial_episode }},ctlFinished={{ initial_episode }};const ctlState=document.getElementById('control-state');
+const ctlDone=()=>ctlFinished+1,ctlInFlight=()=>ctlStarted>ctlFinished;
+function ctlRender(){if(ctlState)ctlState.textContent=ctlInFlight()?`running episode ${ctlStarted}`:`paused · ${ctlDone()} done`}
+async function ctlSend(body){await fetch(`/api/jobs/${ctlJobId}/control`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})}
+function ctlStep(){ctlSend({target:ctlDone()+1})}
+function ctlPlay(){ctlSend({target:null})}
+function ctlPause(){ctlSend({target:ctlInFlight()?ctlStarted+1:ctlDone()})}
+function ctlStop(){ctlSend({stopped:true})}
+{{ events_var }}.addEventListener('step_started',e=>{ctlStarted=Math.max(ctlStarted,JSON.parse(e.data).step);ctlRender()});
+{{ events_var }}.addEventListener('step_finished',e=>{ctlFinished=Math.max(ctlFinished,JSON.parse(e.data).step);ctlRender()});
+ctlRender();
+</script>
+{%- endmacro %}

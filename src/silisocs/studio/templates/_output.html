@@ -6,7 +6,10 @@
 {%- if output.type == 'figure' -%}
 <div class="plot" data-figure='{{ output.figure|tojson }}'></div>
 {%- elif output.type == 'table' -%}
-<div class="table-scroll"><table><thead><tr>{% for column in output.columns %}<th>{{ column if column is string else column.name }}</th>{% endfor %}</tr></thead><tbody>{% for row in output.rows %}<tr>{% for column in output.columns %}{% set key = column if column is string else column.name %}<td>{{ row[key] }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+{# Mapping cells are references: {"text", "href"} renders a link (Studio's
+   run-link resolution emits these); {"text"} alone renders the text — so the
+   same panel output stays portable on link-less surfaces (static reports). #}
+<div class="table-scroll"><table><thead><tr>{% for column in output.columns %}<th>{{ column if column is string else column.name }}</th>{% endfor %}</tr></thead><tbody>{% for row in output.rows %}<tr>{% for column in output.columns %}{% set cell = row[column if column is string else column.name] %}<td>{% if cell is mapping %}{% if cell.href %}<a href="{{ cell.href }}">{{ cell.text }}</a>{% else %}{{ cell.text }}{% endif %}{% else %}{{ cell }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
 {%- elif output.type == 'markdown' -%}
 <p class="panel-note">{{ output.text }}</p>
 {%- elif output.type == 'html' -%}

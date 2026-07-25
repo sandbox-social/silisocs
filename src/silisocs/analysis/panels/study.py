@@ -7,6 +7,7 @@ import html
 from typing import Any
 
 from silisocs.analysis.panel import (
+    Control,
     Figure,
     Grid,
     Html,
@@ -45,6 +46,11 @@ class ConditionComparisonPanel(Panel):
     name = "condition_comparison"
     title = "Condition comparison"
     scope = "study"
+    controls = (
+        Control(kind="select", param="compare", label="Compare", choices=("condition", "seed")),
+        Control(kind="text", param="baseline", label="Baseline"),
+        Control(kind="text", param="hypothesis", label="Hypothesis"),
+    )
 
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Figure:
         assert isinstance(artifact, StudyArtifact)
@@ -227,6 +233,7 @@ class PerAgentDistributionsPanel(Panel):
     name = "per_agent_distributions"
     title = "Per-agent distributions"
     scope = "study"
+    controls = (Control(kind="text", param="metric", label="Metric"),)
 
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Figure:
         assert isinstance(artifact, StudyArtifact)
@@ -280,7 +287,22 @@ class StudyProgressPanel(Panel):
 
     def build(self, artifact: RunArtifact | StudyArtifact, params: dict[str, Any]) -> Table:
         assert isinstance(artifact, StudyArtifact)
+        # ``run`` cells are run references ({"run_path", "text"}): a shell that
+        # can address run pages (Studio) turns them into links; every other
+        # renderer (static report, notebook) shows the text. See
+        # docs/analysis_panels.md — "Run reference cells".
+        rows = [
+            {
+                **row,
+                "run": (
+                    {"run_path": str(row.get("run_dir") or ""), "text": "open"}
+                    if row.get("run_dir") and row.get("status") in {"complete", "reused"}
+                    else ""
+                ),
+            }
+            for row in artifact.progress
+        ]
         return Table(
-            columns=["hypothesis", "condition", "scenario", "seed", "status"],
-            rows=artifact.progress,
+            columns=["hypothesis", "condition", "scenario", "seed", "status", "run"],
+            rows=rows,
         )
