@@ -82,6 +82,17 @@ Core runtime layers:
   execution, checkpoint save/resume, and artifact writing
 - Handles: model creation, direct runtime construction, initialization,
   simulation execution, checkpoint save/resume
+- **Failure policy**: prefer failing loudly. A condition the run cannot
+  legitimately continue past raises (config errors raise at build/first use, not
+  behind an invented default); what a run genuinely survives — one isolated agent
+  turn, one failed harness tool call, one routing call that fell back — is COUNTED
+  instead, never silently swallowed. Those counters are registered once in
+  `evaluations/vocabulary.py::HEALTH_COUNTERS`, which drives the run-end degraded
+  warning, `run_manifest.json`'s `health` block, and `RunArtifact.health` together
+  (see `docs/usage.md` → "Run Health"). Add a new counter there, and it surfaces
+  everywhere; emit it with `SimMetricsCollector.get().increment_counter(...)`.
+- `effective_config.yaml` (both copies) is written with every `api_key` masked, so a
+  run directory stays shareable; nothing reads credentials back from it.
 
 ## 3) Configuration Model
 
@@ -112,7 +123,7 @@ Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
 | `sim.engine.turn_policy.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended`. `fixed_count` params: `count`; optional `count_committed: true` counts only actions that COMMITTED a backend change (a failed-resolve tool call no longer burns the budget), bounded by `max_attempts` (default `2*count`) |
 | `sim.engine.executor` | threads | Turn executor: `threads` (one pool worker per in-flight turn) \| `asyncio` (turns are coroutines on one background event loop — thousands of LLM calls in flight on a handful of threads). Sync `act`/`sample_text` stay the REQUIRED contracts; `act_async` / `sample_*_async` / turn-policy `run_async` are OPTIONAL loop-native overrides (shipped: NativeAgent, FixedAgent, OpenAI-compatible providers, all built-in turn policies), and sync-only agents/models/policies automatically run on helper threads via `asyncio.to_thread` — both kinds mix freely in one step. `max_concurrent_actions` keeps its meaning (max in-flight turns, enforced as an asyncio semaphore); all scheduling semantics (flow chains, barriers, per-GM caps/locks, failure isolation, retry telemetry) are identical across executors |
 | `sim.engine.control.built_in` | none | Interactive run control (play / pause / step one episode): `none` (default — no gate attached, loop runs uninterrupted, zero cost) \| `stdin` (terminal REPL: `n`/next `[k]`, `c`/continue, `p`/pause, `s`/stop between episodes) \| `control_file` (obeys a JSON file another process writes: `{"target": <int\|null>, "stopped": <bool>}` — `target` = first episode index to hold before, `null` = run freely). Implemented as a thread-safe `StepGate` (`simulation_engines/control.py`) the loop consults at each episode boundary, exactly like `probe_runner`/`interventions`; controllers only call the gate's primitives so it is input-agnostic. A custom `LoopStrategy` owns interactive control the same way it owns probe timing: call `loops.await_step_permission(engine, step)` at its episode boundary and `break` when it returns `False` — it returns `True` immediately when no gate is attached, so a replacement loop inherits play/pause/step/stop for free and costs nothing when control is off. `start_paused` holds before episode 0; `control_file` defaults to `<output>/run.control`; `poll_interval` (0.3s) is the file poll cadence. Control acts at episode boundaries and every paused loop still checkpoints per step, so a paused/stopped run is resume-stable. Studio exposes it as Step/Play/Pause/End-run on the live view (interactive launch → `control_file` overrides + `POST /api/jobs/{id}/control`) |
-| `sim.engine.participation.built_in` | all | Sim-level per-step roster filter: `all` \| `activity_probability` \| `activity_markov` (or `class_path` to a custom `ParticipationPolicy`). Filters who is in the step's roster BEFORE scheduling, every GM's next_acting (effective acting = participation ∩ next_acting), AND per-step GM `update`s — so per-step backend work (e.g. recsys refresh) is O(active); an update component that needs the population declares `requires_full_roster = True`. Stateless/seed-derived, so replay- and resume-stable. The GM `next_acting` slot keeps only env-derived built-ins (`all_agents`, `fixed_order`); a config naming the moved built-ins there gets a migration error. Default `all` = everyone acts every step (deterministic, turn-based); activity gating is opt-in via `activity_probability`/`activity_markov` — rates are keyed by agent name or sim role, and an agent matching neither falls back to p=0.3 (a one-time warning names the roles it saw) |
+| `sim.engine.participation.built_in` | all | Sim-level per-step roster filter: `all` \| `activity_probability` \| `activity_markov` (or `class_path` to a custom `ParticipationPolicy`). Filters who is in the step's roster BEFORE scheduling, every GM's next_acting (effective acting = participation ∩ next_acting), AND per-step GM `update`s — so per-step backend work (e.g. recsys refresh) is O(active); an update component that needs the population declares `requires_full_roster = True`. Stateless/seed-derived, so replay- and resume-stable. The GM `next_acting` slot keeps only env-derived built-ins (`all_agents`, `fixed_order`); a config naming the moved built-ins there gets a migration error. Default `all` = everyone acts every step (deterministic, turn-based); activity gating is opt-in via `activity_probability`/`activity_markov` — rates are keyed by agent name or sim role, and an agent matching NO entry fails the run at its first step (naming the unmatched agents/roles) rather than falling back to an invented probability; the explicit ways out are per-role rates, a global `active_probability`, or `built_in: all` |
 | `sim.engine.step.params.gm_turn_policies` | {} | Per-GM turn policy map (`gm_name -> {built_in\|class_path, params}`); applies under any step mode |
 | `sim.engine.step.params.gm_concurrency_caps` | {} | Per-GM concurrency caps (`gm_name -> int`); effective per-GM = `min(cap, sim.max_concurrent_actions)` via a per-GM semaphore; empty = global cap everywhere; applies under any step mode |
 | `sim.checkpoint.every_n_steps` | null | Checkpoint frequency (run_study.py sets 1 by default) |
@@ -249,8 +260,18 @@ Use class-level behavior flows instead of adding custom manager branches:
   agent (not split per choice). Built-ins: `random` (`RandomChoiceRouter`, weighted,
   deterministic per `(seed, flow, step, agent)`) and `agent_choice`
   (`AgentChoiceRouter` — asks each agent to pick a GM via a CHOICE probe; params
-  `prompt` template + `on_invalid: random|first|raise`). An LLM-driven router is only
-  as reproducible as the model it calls. Rules: ≤1 branch/chain, ≥2 distinct known
+  `prompt` template + `on_invalid: random|first|raise`; `on_invalid` also covers a
+  routing call that RAISES — provider outage/retry exhaustion — so one agent's
+  transient model failure only aborts the run under `raise`. Every fallback is
+  TRACKED, not silent: it increments the `routing_fallbacks` run-health counter, so
+  it surfaces in the degraded-run warning, `sim_metrics.json`, and the manifest).
+  An LLM-driven router is
+  only as reproducible as the model it calls. Routing calls run serially on the
+  chain-driver thread, outside `max_concurrent_actions`/`gm_concurrency_caps` — keep
+  LLM-routed branches to modest flows. Under concurrent `multi_gm`, branch hops into
+  a shared GM with a STATEFUL `next_acting` (e.g. `fixed_order`) are not
+  replay-stable (driver timing orders them); use `multi_gm_serial`/`multi_gm_staged`
+  when exact replay matters there. Rules: ≤1 branch/chain, ≥2 distinct known
   choices whose `sequence`s sit strictly between the branch's neighbours, `multi_gm*`
   mode only, not inside a `flow_order` flow. Restore + per-GM `owned_flows` treat a
   branch as any of its choices via `collapse_flow_chains` / `flow_chain_gm_names`.

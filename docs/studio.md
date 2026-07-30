@@ -32,9 +32,11 @@ Studio organizes the complete workflow around filesystem-backed objects:
    with event streams discovered live; the final manifest replaces it on
    completion. In a multi-GM run the Watch ribbon's action counter breaks down
    per game master.
-4. **Runs**: inspect manifest health and provenance, open a backend-declared
-   platform visualizer, render analysis views, compare the effective config to
-   the scenario baseline, and export a self-contained report. The catalog also
+4. **Runs**: inspect manifest health (the [run-health counters](usage.md#run-health))
+   and provenance, open a backend-declared platform visualizer, render analysis
+   views, compare the effective config to the scenario baseline (rendered from the
+   run's `effective_config.yaml`, whose `api_key` values are stored redacted), and
+   export a self-contained report. The catalog also
    indexes study replicate runs (under `/runs/studies/...` ids), and a run that
    belongs to a study links back to it from its heading.
 5. **Studies**: author `study.yaml`, fan conditions and seeds through the same
@@ -152,6 +154,10 @@ The buttons `POST /api/jobs/<id>/control`, which writes the run's control file;
 the runner's `control_file` controller polls it and gates the loop. The client
 derives the absolute target episode from the `step_started` / `step_finished`
 events the existing SSE stream already emits, so no new stream is introduced.
+Controls exist only while a job is live: they are not rendered for a job that has
+already finished, they disappear when the stream's `done` event arrives, and a
+control `POST` against a terminal job is refused with `422` rather than writing to
+a control file nobody reads.
 Because control acts at boundaries and every paused loop still checkpoints per
 step, a paused or ended interactive run is resume-stable. Studio launches remain
 backend-neutral: the control channel names no backend action and adds no

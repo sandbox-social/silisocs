@@ -122,6 +122,7 @@ nav:
     - Environment Backends: backends.md
     - Evaluation Probes: probes.md
     - Studio: studio.md
+    - Studio Analysis Panels: analysis_panels.md
   - Tutorials:
     - Election Scenario Walkthrough: tutorials/election.md
   - Development:
