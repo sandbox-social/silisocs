@@ -913,7 +913,7 @@ def _run_reused_spec(
             eval_path = (repo_root / eval_path).resolve()
         record["evaluations"].append(
             {
-                "id": "legacy_reused_eval",
+                "id": "reused_eval",
                 "status": "reused",
                 "path": str(eval_path),
                 "command": [],
@@ -922,7 +922,7 @@ def _run_reused_spec(
                 "tail": [],
             }
         )
-        record["eval_paths"]["legacy_reused_eval"] = str(eval_path)
+        record["eval_paths"]["reused_eval"] = str(eval_path)
 
     if spec.eval_specs and spec.re_evaluate:
         record["evaluations"] = _run_evaluations(

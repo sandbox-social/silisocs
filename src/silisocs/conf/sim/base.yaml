@@ -124,8 +124,10 @@ engine:
   # (resource_market, virtual_space, …) whose roles aren't `user` don't silently
   # drop to random participation. Activity gating is OPT-IN: a social scenario
   # that wants it sets `participation.built_in: activity_probability` (plus
-  # per-role `activity_transition_rates`) in its own sim config. An example
-  # activity block is left commented below as a copy-paste starting point.
+  # per-role `activity_transition_rates`) in its own sim config. Rates must cover
+  # every agent (by name or sim role) — an unmatched agent fails the run instead of
+  # being gated on an invented probability. An example activity block is left
+  # commented below as a copy-paste starting point.
   participation:
     built_in: all
     class_path: null

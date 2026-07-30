@@ -84,7 +84,6 @@ ParserFunc = Callable[[str], Any]
 
 _ACTION_PROPERTY = "__app_action__"
 RUNTIME_AGENT_PARAM = "agent_name"
-LEGACY_RUNTIME_AGENT_PARAMS = frozenset({"current_user"})
 RUNTIME_OWNED_ACTION_PARAMS = frozenset({RUNTIME_AGENT_PARAM})
 
 COLOR_TYPE = (

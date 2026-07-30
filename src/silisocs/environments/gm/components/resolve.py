@@ -11,8 +11,8 @@ from typing import Any, ClassVar
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from silisocs.environments.backends.base import (
-    LEGACY_RUNTIME_AGENT_PARAMS,
     RUNTIME_AGENT_PARAM,
+    RUNTIME_OWNED_ACTION_PARAMS,
     ActionResult,
 )
 from silisocs.environments.gm.components.base import (
@@ -142,9 +142,7 @@ _TARGET_REQUIRED_ACTIONS = {
 }
 _RUNTIME_ARG_PATTERN = re.compile(
     r"(?im)^\s*(?:"
-    + "|".join(
-        re.escape(name) for name in sorted({RUNTIME_AGENT_PARAM, *LEGACY_RUNTIME_AGENT_PARAMS})
-    )
+    + "|".join(re.escape(name) for name in sorted(RUNTIME_OWNED_ACTION_PARAMS))
     + r")\s*:"
 )
 
@@ -462,7 +460,7 @@ class GenericActionResolveComponent(_BaseResolveComponent):
         if _RUNTIME_ARG_PATTERN.search(args_text):
             raise ValueError(
                 "Agent action output must not include runtime-owned actor arguments "
-                f"({RUNTIME_AGENT_PARAM} or legacy current_user)."
+                f"({RUNTIME_AGENT_PARAM})."
             )
         if self._action_has_parameter(action_name, RUNTIME_AGENT_PARAM):
             args_text = f"{RUNTIME_AGENT_PARAM}: {active_agent}" + (
@@ -493,9 +491,7 @@ class ToolCallingResolveComponent(_BaseResolveComponent):
                 plans.append(("reject", self._reject_filtered_action(active_agent, tool_name)))
                 continue
             payload = dict(payload)
-            provided_actor_args = sorted(
-                set(payload) & ({RUNTIME_AGENT_PARAM} | set(LEGACY_RUNTIME_AGENT_PARAMS))
-            )
+            provided_actor_args = sorted(set(payload) & RUNTIME_OWNED_ACTION_PARAMS)
             if provided_actor_args:
                 raise ValueError(
                     "Agent tool calls must not include runtime-owned actor arguments: "

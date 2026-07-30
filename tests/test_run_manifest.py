@@ -159,6 +159,36 @@ def test_manifest_derived_tags_survive_to_a_fresh_analysis_process(tmp_path: Pat
     assert semantics.value({"message": "hello"}, "content.text") == "hello"
 
 
+def test_every_registered_health_counter_reaches_the_manifest(tmp_path: Path) -> None:
+    """One registry drives every health surface.
+
+    ``evaluations.vocabulary.HEALTH_COUNTERS`` is what the run-end warning, the
+    manifest, and ``RunArtifact.health`` all read, so a counter an emitter bumps
+    (e.g. harness tool failures, routing fallbacks) cannot be counted and then go
+    unreported.
+    """
+    from silisocs.agents.harness.bridge import HARNESS_TOOL_FAILURES_COUNTER
+    from silisocs.evaluations.run_artifact import load_run
+    from silisocs.evaluations.vocabulary import HEALTH_COUNTERS
+    from silisocs.simulation_engines.policies.routers import ROUTING_FALLBACKS_COUNTER
+
+    assert {HARNESS_TOOL_FAILURES_COUNTER, ROUTING_FALLBACKS_COUNTER} <= set(HEALTH_COUNTERS)
+
+    run = tmp_path / "run"
+    run.mkdir()
+    manifest = build_run_manifest(
+        output_dir=run,
+        status="success",
+        meta={},
+        counters=dict.fromkeys(HEALTH_COUNTERS, 3),
+        game_masters=[],
+    )
+    (run / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert all(manifest["health"][name] == 3 for name in HEALTH_COUNTERS)
+    assert load_run(run).health == {**dict.fromkeys(HEALTH_COUNTERS, 3), "silent_backends": 0}
+
+
 def test_manifest_health_records_silent_backend(tmp_path: Path) -> None:
     # A backend that committed nothing must leave a trace in the health block so
     # Studio's Run-health panel does not read all-green over blank analysis panels.

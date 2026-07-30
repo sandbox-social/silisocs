@@ -20,8 +20,8 @@ from typing import Any
 
 from silisocs.agents.harness.types import ExecutedToolCall
 from silisocs.environments.backends.base import (
-    LEGACY_RUNTIME_AGENT_PARAMS,
     RUNTIME_AGENT_PARAM,
+    RUNTIME_OWNED_ACTION_PARAMS,
 )
 from silisocs.runtime.telemetry.collector import SimMetricsCollector
 
@@ -33,7 +33,7 @@ EVENT_TOOL_FAILED = "tool_failed"
 EVENT_TURN_COMPLETED = "turn_completed"
 EVENT_PROBE_ANSWERED = "probe_answered"
 
-_RESERVED_ACTOR_ARGS = frozenset({RUNTIME_AGENT_PARAM}) | frozenset(LEGACY_RUNTIME_AGENT_PARAMS)
+_RESERVED_ACTOR_ARGS = RUNTIME_OWNED_ACTION_PARAMS
 _RESULT_PREVIEW_CHARS = 500
 
 

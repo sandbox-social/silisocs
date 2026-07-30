@@ -16,12 +16,9 @@ from typing import Any
 
 import yaml
 
-_HEALTH_COUNTERS = (
-    "agent_turn_failures",
-    "action_parse_failures",
-    "action_invalid_targets",
-    "backend_action_errors",
-)
+from silisocs.evaluations.vocabulary import HEALTH_COUNTERS
+
+_HEALTH_COUNTERS = tuple(HEALTH_COUNTERS)
 
 
 def iter_jsonl(files: list[Path]) -> Iterator[dict[str, Any]]:

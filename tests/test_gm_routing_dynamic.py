@@ -20,6 +20,7 @@ from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType
 from silisocs.simulation_engines.base_engines import RuntimeEngine
 from silisocs.simulation_engines.policies.factory import build_router
 from silisocs.simulation_engines.policies.routers import (
+    ROUTING_FALLBACKS_COUNTER,
     AgentChoiceRouter,
     BranchSpec,
     RandomChoiceRouter,
@@ -210,6 +211,60 @@ def test_agent_choice_random_fallback_is_replay_stable() -> None:
     picks = {_route_one(router, "junk") for _ in range(4)}
     assert picks <= {"tw_gm", "rd_gm"}
     assert len(picks) == 1  # deterministic for a fixed (seed, flow, step, agent)
+
+
+class _RaisingAgent(_Agent):
+    """Agent whose routing call itself raises (provider outage, retry exhaustion)."""
+
+    def act(self, action_spec: ActionSpec) -> ActionOutput:
+        raise RuntimeError("provider unreachable")
+
+
+def _route_raising(router: AgentChoiceRouter, *, seed: int = 5) -> str:
+    agent = _RaisingAgent("Alice")
+    out = router(
+        [cast(Any, agent)], {"tw_gm": object(), "rd_gm": object()}, RouteInfo("social", 0, seed)
+    )
+    return out["Alice"]
+
+
+def test_agent_choice_raised_call_honors_on_invalid_fallback() -> None:
+    """A raised routing call falls back like an unusable answer, not a run-killer.
+
+    Normal turns isolate one agent's transient model failure; routing must not be
+    the one place in a step where the same failure aborts the whole run.
+    """
+    picks = {_route_raising(AgentChoiceRouter(on_invalid="random")) for _ in range(3)}
+    assert picks <= {"tw_gm", "rd_gm"}
+    assert len(picks) == 1  # same deterministic fallback as an invalid reply
+    assert _route_raising(AgentChoiceRouter(on_invalid="first")) == "tw_gm"
+
+
+def test_agent_choice_raised_call_propagates_under_on_invalid_raise() -> None:
+    with pytest.raises(RuntimeError, match="provider unreachable"):
+        _route_raising(AgentChoiceRouter(on_invalid="raise"))
+
+
+def test_routing_fallbacks_are_counted_as_run_health() -> None:
+    """Continuing past a routing failure is tracked, not silent.
+
+    Both degradations — a raised call and an unusable answer — land on the same
+    run-health counter, so a run that quietly routed itself shows up in
+    sim_metrics.json and the run manifest.
+    """
+    from silisocs.evaluations.vocabulary import HEALTH_COUNTERS
+    from silisocs.runtime.telemetry.collector import SimMetricsCollector
+
+    assert ROUTING_FALLBACKS_COUNTER in HEALTH_COUNTERS  # reaches run health at all
+
+    SimMetricsCollector.reset()
+    _route_raising(AgentChoiceRouter())
+    _route_one(AgentChoiceRouter(), "neither of those")
+    assert SimMetricsCollector.get().counter(ROUTING_FALLBACKS_COUNTER) == 2
+
+    SimMetricsCollector.reset()
+    _route_one(AgentChoiceRouter(), "rd_gm")
+    assert SimMetricsCollector.get().counter(ROUTING_FALLBACKS_COUNTER) == 0
 
 
 def test_match_choice_variants() -> None:
