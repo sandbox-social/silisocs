@@ -271,9 +271,13 @@ def test_tool_calling_resolve_rejects_agent_authored_actor_identity() -> None:
     with pytest.raises(ValueError, match="runtime-owned actor"):
         resolve.resolve(active_agent="Alice", action=action)
 
-    legacy_action = entity_lib.ActionOutput.from_tool_calls(
+    # The guard covers exactly what the runtime injects. Any other actor-ish argument
+    # an agent invents is an ordinary unexpected argument: rejected by the backend,
+    # never silently dropped.
+    invented_action = entity_lib.ActionOutput.from_tool_calls(
         [entity_lib.ToolCall("toot", {"current_user": "Mallory", "status": "Nope"})]
     )
 
-    with pytest.raises(ValueError, match="runtime-owned actor"):
-        resolve.resolve(active_agent="Alice", action=legacy_action)
+    result = resolve.resolve(active_agent="Alice", action=invented_action)
+
+    assert "Unexpected argument(s): current_user" in result

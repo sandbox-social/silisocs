@@ -43,10 +43,15 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from silisocs.agents.base_agent import Agent
+from silisocs.runtime.telemetry.collector import SimMetricsCollector
 from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType
 from silisocs.simulation_engines.policies._rng import stable_rng
 
 _LOGGER = logging.getLogger(__name__)
+
+# Run-health counter for routing calls that could not be honoured (registered in
+# evaluations.vocabulary.HEALTH_COUNTERS, so it reaches run health and the manifest).
+ROUTING_FALLBACKS_COUNTER = "routing_fallbacks"
 
 
 @dataclass(frozen=True)
@@ -186,6 +191,20 @@ class AgentChoiceRouter:
                 "valid placeholders are {choices}, {flow}, {step}, {agent}."
             ) from exc
 
+    def _fallback(self, agent_name: str, choices: tuple[str, ...], ctx: RouteInfo) -> str:
+        """Count one unhonoured routing call and return the configured stand-in.
+
+        Routing failures are tracked, not swallowed: the run continues (one agent's
+        transient model failure must not abort it) but the count reaches run health,
+        ``sim_metrics.json``, and the run manifest.
+        """
+        SimMetricsCollector.get().increment_counter(ROUTING_FALLBACKS_COUNTER)
+        if self.on_invalid == "first":
+            return choices[0]
+        return _deterministic_choice(
+            seed=ctx.seed, flow=ctx.flow, step=ctx.step, agent=agent_name, choices=choices
+        )
+
     def _route_one(self, agent: Agent, choices: tuple[str, ...], ctx: RouteInfo) -> str:
         spec = ActionSpec(
             prompt=self._render(agent.name, choices, ctx),
@@ -206,6 +225,22 @@ class AgentChoiceRouter:
             # A custom agent's act() may return a str or an ActionOutput; treat it as
             # duck-typed (Any) so both cases stay reachable.
             result: Any = agent.act(spec)
+        except Exception as exc:
+            # A raised routing call (provider outage, retry exhaustion) is handled
+            # like an unusable answer: normal turns isolate one agent's transient
+            # model failure, and routing must not be the one place it kills the run.
+            if self.on_invalid == "raise":
+                raise
+            _LOGGER.warning(
+                "Routing: agent '%s' raised during routing call for flow '%s' (%s: %s); "
+                "on_invalid=%s",
+                agent.name,
+                ctx.flow,
+                type(exc).__name__,
+                exc,
+                self.on_invalid,
+            )
+            return self._fallback(agent.name, choices, ctx)
         finally:
             if callable(clear_ctx):
                 clear_ctx()
@@ -230,11 +265,7 @@ class AgentChoiceRouter:
                 f"Agent '{agent.name}' returned invalid routing choice '{answer}' "
                 f"(choices: {list(choices)})."
             )
-        if self.on_invalid == "first":
-            return choices[0]
-        return _deterministic_choice(
-            seed=ctx.seed, flow=ctx.flow, step=ctx.step, agent=agent.name, choices=choices
-        )
+        return self._fallback(agent.name, choices, ctx)
 
 
 @dataclass(frozen=True)

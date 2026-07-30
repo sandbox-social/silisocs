@@ -23,6 +23,7 @@ from silisocs.evaluations.action_events import (
     resolve_probe_event_files,
 )
 from silisocs.evaluations.vocabulary import (
+    HEALTH_COUNTERS,
     EventSemantics,
     derive_event_semantics,
     event_semantics_for,
@@ -35,13 +36,8 @@ logger = logging.getLogger(__name__)
 MANIFEST_FILENAME = "run_manifest.json"
 MANIFEST_SCHEMA_VERSION = 1
 
-# Degraded-run counters surfaced as run health (mirrors _warn_degraded_health).
-_HEALTH_COUNTERS = (
-    "agent_turn_failures",
-    "action_parse_failures",
-    "action_invalid_targets",
-    "backend_action_errors",
-)
+# Degraded-run counters surfaced as run health (registry: evaluations.vocabulary).
+_HEALTH_COUNTERS = tuple(HEALTH_COUNTERS)
 
 
 def _portable_event_semantics(value: Any) -> dict[str, Any] | None:

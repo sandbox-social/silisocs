@@ -34,6 +34,7 @@ from silisocs.agents.harness.runtime import (
 )
 from silisocs.agents.memory import build_memory_policy
 from silisocs.evaluations.probes.deployment import DefaultProbeRunner
+from silisocs.evaluations.vocabulary import HEALTH_COUNTERS
 from silisocs.initialization.agents import build_agent_initializer
 from silisocs.initialization.game_masters import build_game_master_initializer_strategy
 from silisocs.initialization.simulation import build_simulation_initializer
@@ -191,6 +192,28 @@ def _setup_run_environment(
     return cfg, metrics, logger
 
 
+_REDACTED_SECRET = "**redacted**"
+
+
+def _redact_secrets(node: Any) -> Any:
+    """Return a copy of a plain config container with credential values masked.
+
+    Masks every non-empty ``api_key`` value (the documented config-settable
+    credential field, global ``sim.llm`` and per-class model blocks alike) so
+    on-disk config artifacts never carry a live key. Mirrors the intent of
+    ``construction/models._effective_model_key``, which hashes keys before
+    using them in log signatures.
+    """
+    if isinstance(node, dict):
+        return {
+            key: (_REDACTED_SECRET if key == "api_key" and value else _redact_secrets(value))
+            for key, value in node.items()
+        }
+    if isinstance(node, list):
+        return [_redact_secrets(item) for item in node]
+    return node
+
+
 def _resolve_output_directory(
     cfg: DictConfig, metrics: SimMetricsCollector, logger: logging.Logger
 ) -> str:
@@ -235,8 +258,12 @@ def _resolve_output_directory(
     os.makedirs(output_dir, exist_ok=True)
 
     # Persist runtime-effective config after external overrides are applied.
+    # Secrets are redacted first: this file is a run artifact (rendered verbatim
+    # by Studio's Effective YAML panel, archived, shared) and nothing reads model
+    # credentials back out of it — the runtime resolves keys from live config/env.
+    redacted_cfg = _redact_secrets(cast(Any, OmegaConf.to_container(cfg, resolve=True)))
     effective_cfg_path = os.path.join(output_dir, "effective_config.yaml")
-    OmegaConf.save(config=cfg, f=effective_cfg_path, resolve=True)
+    OmegaConf.save(config=OmegaConf.create(redacted_cfg), f=effective_cfg_path)
     logger.info("Wrote runtime-effective config to: %s", effective_cfg_path)
 
     # Mirror it next to Hydra's composed snapshot (configs/<run_root_name>/).
@@ -246,20 +273,14 @@ def _resolve_output_directory(
     )
     os.makedirs(config_snapshot_dir, exist_ok=True)
     effective_cfg_snapshot_path = os.path.join(config_snapshot_dir, "effective_config.yaml")
-    OmegaConf.save(config=cfg, f=effective_cfg_snapshot_path, resolve=True)
+    OmegaConf.save(config=OmegaConf.create(redacted_cfg), f=effective_cfg_snapshot_path)
     logger.info("Wrote runtime-effective config snapshot to: %s", effective_cfg_snapshot_path)
     return output_dir
 
 
 def _warn_degraded_health(metrics: SimMetricsCollector, logger: logging.Logger) -> None:
     """Surface degraded-run signals so silent failures cannot pass as clean runs."""
-    health_counters = {
-        "agent_turn_failures": "agent turns raised an exception",
-        "action_parse_failures": "agent actions were dropped as unparseable",
-        "action_invalid_targets": "agent actions referenced invalid target ids",
-        "backend_action_errors": "backend actions raised unexpected exceptions",
-    }
-    for counter_name, description in health_counters.items():
+    for counter_name, description in HEALTH_COUNTERS.items():
         count = metrics.counter(counter_name)
         if count:
             health_line = f"⚠ DEGRADED RUN: {count} {description} (see sim_metrics.json)"
@@ -414,70 +435,75 @@ def main(cfg: DictConfig):
     all_agent_names = [agent.name for agent in runtime_objects.agents]
     for built_model in models.values():
         if hasattr(built_model, "agent_names"):
-            try:
-                built_model.agent_names = list(all_agent_names)  # type: ignore[attr-defined]
-            except Exception:
-                pass
+            built_model.agent_names = list(all_agent_names)  # type: ignore[attr-defined]
         rebuild_index = getattr(built_model, "_rebuild_agent_name_index", None)
         if callable(rebuild_index):
             rebuild_index()
     _log_startup_phase("runtime_construction", time.time() - t0)
 
-    # Harness Model Proxy: one telemetry plane for harness + native model calls. Starts
-    # only when the run has harness agents; binds each to a per-agent routing token; its
-    # usage accumulators fold into the unified llm_usage summary. Stopped in `finally`.
-    harness_proxy = setup_harness_proxy(
-        runtime_objects.agents, prompt_logger=PromptProxyLogger(prompts_file)
-    )
-    for usage_model in harness_usage_models(harness_proxy):
-        models[f"harness::{getattr(usage_model, '_model_name', 'model')}"] = usage_model
-
-    checkpoint_cfg = getattr(cfg.sim, "checkpoint", None)
-    resume = plan_checkpoint_resume(
-        checkpoint_cfg=checkpoint_cfg,
-        output_dir=output_dir,
-        initializer_context=initializer_context,
-        metrics=metrics,
-        logger=logger,
-    )
-    start_step = resume.start_step
-    checkpoint_data = resume.checkpoint_data
-    checkpoint_restore = resume.checkpoint_restore
-    checkpoint_action_event_files = resume.action_event_files
-    checkpoint_authoritative_gms = resume.authoritative_gm_names
-    checkpoint_meta = resume.checkpoint_meta
-    initializer_context = resume.initializer_context
-
-    probes_cfg = OmegaConf.select(cfg, "eval.probes") or OmegaConf.select(cfg, "evaluations.probes")
-    probes_cfg_map = (
-        cast(dict[str, Any], OmegaConf.to_container(probes_cfg, resolve=True))
-        if isinstance(probes_cfg, DictConfig)
-        else cast(dict[str, Any], probes_cfg or {})
-    )
-    probe_runner = DefaultProbeRunner(
-        probes_cfg_map, output_dir, seed=int(getattr(cfg, "seed", 0) or 0)
-    )
-    sim_engine.probe_runner = probe_runner
-
-    # Optional interactive run control (play/pause/step). `none` returns
-    # (None, None) and the loop runs uninterrupted; stdin/control_file attach a
-    # gate the loop consults at each episode boundary.
-    control_node = OmegaConf.select(cfg, "sim.engine.control")
-    control_cfg = (
-        OmegaConf.to_container(control_node, resolve=True)
-        if isinstance(control_node, DictConfig)
-        else control_node
-    )
-    step_gate, run_controller = build_run_control(cast(Any, control_cfg), output_dir=output_dir)
-    if step_gate is not None:
-        sim_engine.step_gate = step_gate
-    if run_controller is not None:
-        run_controller.start()
-
     checkpoint_output_dir = os.path.join(output_dir, "checkpoints")
     completion_status = "success"
     completion_error = ""
+    # From here on, setup starts real threads/sockets (harness proxy, run
+    # controller), so it runs under the completion `try`: a config error raised
+    # in resume planning, probe config, or run control still reaches the
+    # `finally` that stops them — and marks the run failed instead of vanishing.
+    harness_proxy = None
+    run_controller = None
     try:
+        # Harness Model Proxy: one telemetry plane for harness + native model calls. Starts
+        # only when the run has harness agents; binds each to a per-agent routing token; its
+        # usage accumulators fold into the unified llm_usage summary. Stopped in `finally`.
+        harness_proxy = setup_harness_proxy(
+            runtime_objects.agents, prompt_logger=PromptProxyLogger(prompts_file)
+        )
+        for usage_model in harness_usage_models(harness_proxy):
+            models[f"harness::{getattr(usage_model, '_model_name', 'model')}"] = usage_model
+
+        checkpoint_cfg = getattr(cfg.sim, "checkpoint", None)
+        resume = plan_checkpoint_resume(
+            checkpoint_cfg=checkpoint_cfg,
+            output_dir=output_dir,
+            initializer_context=initializer_context,
+            metrics=metrics,
+            logger=logger,
+        )
+        start_step = resume.start_step
+        checkpoint_data = resume.checkpoint_data
+        checkpoint_restore = resume.checkpoint_restore
+        checkpoint_action_event_files = resume.action_event_files
+        checkpoint_authoritative_gms = resume.authoritative_gm_names
+        checkpoint_meta = resume.checkpoint_meta
+        initializer_context = resume.initializer_context
+
+        probes_cfg = OmegaConf.select(cfg, "eval.probes") or OmegaConf.select(
+            cfg, "evaluations.probes"
+        )
+        probes_cfg_map = (
+            cast(dict[str, Any], OmegaConf.to_container(probes_cfg, resolve=True))
+            if isinstance(probes_cfg, DictConfig)
+            else cast(dict[str, Any], probes_cfg or {})
+        )
+        probe_runner = DefaultProbeRunner(
+            probes_cfg_map, output_dir, seed=int(getattr(cfg, "seed", 0) or 0)
+        )
+        sim_engine.probe_runner = probe_runner
+
+        # Optional interactive run control (play/pause/step). `none` returns
+        # (None, None) and the loop runs uninterrupted; stdin/control_file attach a
+        # gate the loop consults at each episode boundary.
+        control_node = OmegaConf.select(cfg, "sim.engine.control")
+        control_cfg = (
+            OmegaConf.to_container(control_node, resolve=True)
+            if isinstance(control_node, DictConfig)
+            else control_node
+        )
+        step_gate, run_controller = build_run_control(cast(Any, control_cfg), output_dir=output_dir)
+        if step_gate is not None:
+            sim_engine.step_gate = step_gate
+        if run_controller is not None:
+            run_controller.start()
+
         t0 = time.time()
         with metrics.phase("engine_initialize"):
             sim_engine.initialize(
@@ -577,7 +603,7 @@ def main(cfg: DictConfig):
         # accumulators — already in `models` — are final and its thread is joined.
         if harness_proxy is not None:
             harness_proxy.stop()
-        _record_llm_usage_summary(cfg, models=locals().get("models"), metrics=metrics)
+        _record_llm_usage_summary(cfg, models=models, metrics=metrics)
         metrics.write_json(output_dir)
 
         completion_line = (

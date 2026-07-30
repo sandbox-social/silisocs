@@ -17,7 +17,6 @@ persisted) instead of carrying per-agent state.
 
 from __future__ import annotations
 
-import logging
 import random
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
@@ -26,11 +25,7 @@ from typing import Any
 
 from silisocs.simulation_engines.policies._rng import stable_rng
 
-_LOGGER = logging.getLogger(__name__)
-
-# Activation probability used when an agent matches no configured rate. Low enough
-# to matter: a run that lands here silently has ~70% of its agents idle each step.
-_DEFAULT_ACTIVATION_PROBABILITY = 0.3
+_RATE_KEYS = ("inactive_to_active", "active_to_inactive")
 
 
 def _rng(seed: int, step_index: int, salt: str) -> random.Random:
@@ -51,37 +46,78 @@ def _rates_for(
     return activity_transition_rates.get(agent_name, activity_transition_rates.get(role, {}))
 
 
-def _warn_if_no_rates_match(policy: Any, agent_names: Sequence[str]) -> None:
-    """Warn once when every agent falls back to the default activation probability.
+def _clamp_probability(value: float) -> float:
+    return max(0.0, min(1.0, value))
 
-    Rates are keyed by agent name or sim role, so rates written for roles this run
-    doesn't have leave every agent on the default — a run that looks configured but
-    throttles ~70% of its agents each step. Checked once per instance; never
-    affects any draw.
+
+def _activation_rates(
+    agent_name: str,
+    *,
+    activity_transition_rates: Mapping[str, Mapping[str, float]],
+    sim_roles: Mapping[str, str],
+) -> tuple[float, float]:
+    """Resolve ``(inactive_to_active, active_to_inactive)`` for one agent.
+
+    A rates entry may declare either key; the missing one mirrors the declared one
+    (symmetric switching). Both missing is a config error that :func:`_require_rates`
+    has already failed the run on, so the raise here is a safety net, not a path.
     """
-    if policy._warned_default_rate:
+    rates = _rates_for(
+        agent_name,
+        activity_transition_rates=activity_transition_rates,
+        sim_roles=sim_roles,
+    )
+    inactive_to_active = rates.get("inactive_to_active")
+    active_to_inactive = rates.get("active_to_inactive")
+    if inactive_to_active is None:
+        inactive_to_active = active_to_inactive
+    if active_to_inactive is None:
+        active_to_inactive = inactive_to_active
+    if inactive_to_active is None or active_to_inactive is None:
+        raise ValueError(f"No activity_transition_rates entry matches agent '{agent_name}'.")
+    return (
+        _clamp_probability(float(inactive_to_active)),
+        _clamp_probability(float(active_to_inactive)),
+    )
+
+
+def _require_rates(policy: Any, agent_names: Sequence[str]) -> None:
+    """Fail the run when any agent matches no activity rate (checked once, on the
+    real roster).
+
+    Rates are keyed by agent name or sim role, so a role that is left out — or rates
+    written for roles this run doesn't have — would otherwise throttle those agents
+    on an invented default: a run that looks configured while part of its population
+    barely acts. That is a config error, so it stops the run instead.
+    """
+    if policy._rates_checked:
         return
-    policy._warned_default_rate = True
-    if any(
-        _rates_for(
-            str(name),
-            activity_transition_rates=policy.activity_transition_rates,
-            sim_roles=policy.sim_roles,
-        )
+    policy._rates_checked = True
+    unmatched = sorted(
+        str(name)
         for name in agent_names
-    ):
+        if str(name).strip()
+        and not any(
+            key
+            in _rates_for(
+                str(name),
+                activity_transition_rates=policy.activity_transition_rates,
+                sim_roles=policy.sim_roles,
+            )
+            for key in _RATE_KEYS
+        )
+    )
+    if not unmatched:
         return
-    roles = sorted({policy.sim_roles.get(str(name), "") for name in agent_names} - {""})
-    _LOGGER.warning(
-        "sim.engine.participation (%s): no activity_transition_rates entry matches any agent "
-        "name or sim role (roles seen: %s), so every agent falls back to the default activation "
-        "probability %.1f — only ~%d%% of agents act each step. Set "
-        "'sim.engine.participation.built_in: all' for deterministic/turn-based runs, or add "
-        "rates for your roles.",
-        policy.name,
-        roles or "none",
-        _DEFAULT_ACTIVATION_PROBABILITY,
-        int(_DEFAULT_ACTIVATION_PROBABILITY * 100),
+    roles = sorted({policy.sim_roles.get(name, "") for name in unmatched} - {""})
+    raise ValueError(
+        f"sim.engine.participation ({policy.name}): no activity_transition_rates entry "
+        f"declares 'inactive_to_active' or 'active_to_inactive' for {len(unmatched)} agent(s) "
+        f"(e.g. {unmatched[:3]}; unmatched sim roles: {roles or 'none'}). Add rates keyed by "
+        "those agent names or sim roles, set "
+        "'sim.engine.participation.params.active_probability' for one global rate "
+        "(activity_probability only), or use 'sim.engine.participation.built_in: all' so every "
+        "agent acts every step."
     )
 
 
@@ -137,9 +173,10 @@ class ActivityProbabilityParticipation(ParticipationPolicy):
 
     ``active_probability`` (when set) applies globally; otherwise each agent's
     probability comes from ``activity_transition_rates`` keyed by agent name or
-    sim role (``inactive_to_active``, falling back to ``active_to_inactive``,
-    then 0.3). ``min_active_agents`` tops up a too-small draw with a
-    deterministic shuffle of the remaining agents.
+    sim role (``inactive_to_active``, falling back to ``active_to_inactive``). An
+    agent matching no entry is a config error, not a default.
+    ``min_active_agents`` tops up a too-small draw with a deterministic shuffle of
+    the remaining agents.
     """
 
     activity_transition_rates: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
@@ -147,28 +184,22 @@ class ActivityProbabilityParticipation(ParticipationPolicy):
     active_probability: float | None = None
     min_active_agents: int = 0
     name: str = "activity_probability"
-    _warned_default_rate: bool = field(default=False, repr=False, compare=False)
+    _rates_checked: bool = field(default=False, repr=False, compare=False)
 
     def _agent_probability(self, agent_name: str) -> float:
         if self.active_probability is not None:
-            return max(0.0, min(1.0, float(self.active_probability)))
-        rates = _rates_for(
+            return _clamp_probability(float(self.active_probability))
+        return _activation_rates(
             agent_name,
             activity_transition_rates=self.activity_transition_rates,
             sim_roles=self.sim_roles,
-        )
-        p = rates.get("inactive_to_active")
-        if p is None:
-            p = rates.get("active_to_inactive")
-        if p is None:
-            p = _DEFAULT_ACTIVATION_PROBABILITY
-        return max(0.0, min(1.0, float(p)))
+        )[0]
 
     def participating_agents(
         self, *, agent_names: Sequence[str], step_index: int, seed: int
     ) -> list[str]:
         if self.active_probability is None:
-            _warn_if_no_rates_match(self, agent_names)
+            _require_rates(self, agent_names)
         active = [
             name
             for name in agent_names
@@ -202,16 +233,14 @@ class ActivityMarkovParticipation(ParticipationPolicy):
     _chain_memo: dict[str, tuple[int, int, int]] = field(
         default_factory=dict, repr=False, compare=False
     )
-    _warned_default_rate: bool = field(default=False, repr=False, compare=False)
+    _rates_checked: bool = field(default=False, repr=False, compare=False)
 
     def _advance(self, state: int, agent_name: str, step: int, seed: int) -> int:
-        rates = _rates_for(
+        inactive_to_active, active_to_inactive = _activation_rates(
             agent_name,
             activity_transition_rates=self.activity_transition_rates,
             sim_roles=self.sim_roles,
         )
-        inactive_to_active = float(rates.get("inactive_to_active", _DEFAULT_ACTIVATION_PROBABILITY))
-        active_to_inactive = float(rates.get("active_to_inactive", inactive_to_active))
         draw = _rng(seed, step, agent_name).random()
         if state == 0:
             return 1 if draw < inactive_to_active else 0
@@ -231,7 +260,7 @@ class ActivityMarkovParticipation(ParticipationPolicy):
     def participating_agents(
         self, *, agent_names: Sequence[str], step_index: int, seed: int
     ) -> list[str]:
-        _warn_if_no_rates_match(self, agent_names)
+        _require_rates(self, agent_names)
         active = [
             name
             for name in agent_names

@@ -52,12 +52,8 @@ def set_model_retry_phase(models: Sequence[Any], phase: str) -> None:
     """Set retry accounting phase for model wrappers that support it."""
     for model in models:
         setter = getattr(model, "set_retry_phase", None)
-        if not callable(setter):
-            continue
-        try:
+        if callable(setter):
             setter(phase)
-        except Exception:
-            continue
 
 
 # Sensible default when no configured cap and no prior adaptive history.

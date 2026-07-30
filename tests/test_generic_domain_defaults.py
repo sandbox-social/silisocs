@@ -147,7 +147,7 @@ def test_activity_summary_still_counts_social_labels():
     assert _summarize_activity(events)["action_counts"] == {"post": 2, "like": 1}
 
 
-# --- Participation: a default that silently idles agents says so ----------------
+# --- Participation: an unmatched agent is a config error, not an invented default -
 
 
 def _agents() -> list[str]:
@@ -157,47 +157,49 @@ def _agents() -> list[str]:
 @pytest.mark.parametrize(
     "policy_class", [ActivityProbabilityParticipation, ActivityMarkovParticipation]
 )
-def test_rates_that_match_no_agent_warn_once(policy_class, caplog):
+def test_rates_that_match_no_agent_fail_loudly(policy_class):
     policy = policy_class(
         activity_transition_rates={"user": {"inactive_to_active": 0.9}},
         sim_roles={"Ada": "trader", "Boris": "trader"},
     )
-    for step in range(3):
-        policy.participating_agents(agent_names=_agents(), step_index=step, seed=1)
-    assert caplog.text.count("no activity_transition_rates entry matches") == 1
-    assert "trader" in caplog.text  # names the roles it did see
-    assert "participation.built_in: all" in caplog.text  # and the fix
+    with pytest.raises(ValueError) as excinfo:
+        policy.participating_agents(agent_names=_agents(), step_index=0, seed=1)
+    message = str(excinfo.value)
+    assert "trader" in message  # names the roles it could not match
+    assert "participation.built_in: all" in message  # and the ways out
 
 
 @pytest.mark.parametrize(
     "policy_class", [ActivityProbabilityParticipation, ActivityMarkovParticipation]
 )
-def test_matching_rates_do_not_warn(policy_class, caplog):
+def test_partially_covered_rates_fail_too(policy_class):
+    """Coverage is per agent: rates for one role don't excuse the other role."""
+    policy = policy_class(
+        activity_transition_rates={"trader": {"inactive_to_active": 0.9}},
+        sim_roles={"Ada": "trader", "Boris": "lurker"},
+    )
+    with pytest.raises(ValueError, match="lurker"):
+        policy.participating_agents(agent_names=_agents(), step_index=0, seed=1)
+
+
+@pytest.mark.parametrize(
+    "policy_class", [ActivityProbabilityParticipation, ActivityMarkovParticipation]
+)
+def test_matching_rates_participate_normally(policy_class):
     policy = policy_class(
         activity_transition_rates={"trader": {"inactive_to_active": 0.9}},
         sim_roles={"Ada": "trader", "Boris": "trader"},
     )
-    policy.participating_agents(agent_names=_agents(), step_index=0, seed=1)
-    assert "activity_transition_rates" not in caplog.text
+    for step in range(3):
+        active = policy.participating_agents(agent_names=_agents(), step_index=step, seed=1)
+        assert set(active) <= set(_agents())
 
 
-def test_an_explicit_probability_is_not_a_fallback(caplog):
+def test_an_explicit_probability_needs_no_rates():
     policy = ActivityProbabilityParticipation(active_probability=0.5)
-    policy.participating_agents(agent_names=_agents(), step_index=0, seed=1)
-    assert "activity_transition_rates" not in caplog.text
-
-
-def test_the_warning_never_changes_who_participates():
-    kwargs = {
-        "activity_transition_rates": {"user": {"inactive_to_active": 0.9}},
-        "sim_roles": {"Ada": "trader"},
-    }
-    quiet = ActivityProbabilityParticipation(**kwargs, _warned_default_rate=True)
-    loud = ActivityProbabilityParticipation(**kwargs)
-    for step in range(5):
-        assert quiet.participating_agents(
-            agent_names=_agents(), step_index=step, seed=7
-        ) == loud.participating_agents(agent_names=_agents(), step_index=step, seed=7)
+    assert set(policy.participating_agents(agent_names=_agents(), step_index=0, seed=1)) <= set(
+        _agents()
+    )
 
 
 # --- Config errors: the Hydra sharp edge explains itself ------------------------

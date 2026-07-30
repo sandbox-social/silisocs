@@ -1,4 +1,6 @@
-"""Open action tags and semantic fields shared by analysis surfaces."""
+"""Open action tags, semantic fields, and run-health counters shared by analysis
+surfaces.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +8,26 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any
+
+# Degraded-run counters, in one place: incremented during the run through
+# ``SimMetricsCollector.increment_counter``, warned about at run end
+# (``session._warn_degraded_health``), written to ``run_manifest.json`` under
+# ``health``, and read back by ``RunArtifact.health``. Registering a counter here is
+# what makes it visible on all of those surfaces.
+#
+# A counter records something the run SURVIVED — an isolated agent turn, one failed
+# tool call, one routing call that fell back. Anything a run cannot legitimately
+# continue past raises instead of being counted.
+HEALTH_COUNTERS: Mapping[str, str] = MappingProxyType(
+    {
+        "agent_turn_failures": "agent turns raised an exception",
+        "action_parse_failures": "agent actions were dropped as unparseable",
+        "action_invalid_targets": "agent actions referenced invalid target ids",
+        "backend_action_errors": "backend actions raised unexpected exceptions",
+        "harness_tool_failures": "harness tool calls failed",
+        "routing_fallbacks": "branch routing calls fell back to a default choice",
+    }
+)
 
 
 @dataclass(frozen=True)
