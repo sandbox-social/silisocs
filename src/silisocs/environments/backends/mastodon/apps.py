@@ -31,6 +31,7 @@ from silisocs.environments.backends.base import (  # noqa: F401
     SocialBackendApp,
     app_action,
 )
+from silisocs.environments.backends.mastodon.errors import PartialDeletionError
 from silisocs.evaluations.vocabulary import social_event_semantics
 from silisocs.runtime.types import ActionOutput, ToolCall
 
@@ -639,7 +640,6 @@ class SocialNetworkApp(SocialBackendApp):
             username = self._user_mapping.get(alias)
             if username:
                 break
-        # self._print(f"Mapped {display_name} to @{username}", emoji="🔗")
         if not username:
             raise ValueError(f"No username found for display name: {display_name}")
         return username
@@ -680,7 +680,7 @@ class SocialNetworkApp(SocialBackendApp):
         return bio_message
 
     @app_action
-    def read_profile(self, agent_name: str, target_user: str) -> tuple[str, str]:
+    def read_profile(self, agent_name: str, target_user: str) -> tuple[str, str] | ActionResult:
         """Read a user's profile on Mastodon social network."""
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
@@ -696,8 +696,11 @@ class SocialNetworkApp(SocialBackendApp):
                     current_username, target_username
                 )
             except Exception as e:
-                self._print(f"Error reading profile of @{target_username}: {e}", color="red")
-                display_name, bio = "Error", "Error fetching profile"
+                error_msg = f"Error reading profile of @{target_username}: {e}"
+                self._print(error_msg, color="red")
+                # A FAILED read must not be logged as a committed profile read —
+                # fabricated bio text would be indistinguishable from real data.
+                return ActionResult(error_msg, committed=False)
         else:
             display_name, bio = "Mock Name", "Mock Bio"
             self._print(
@@ -912,7 +915,6 @@ class SocialNetworkApp(SocialBackendApp):
                 f'Status posted for user: {agent_name} ({username}): "{status}"',
                 emoji="📝",
             )
-            # self._print(return_val)
 
         except ValueError as e:
             self._print(f"Invalid input: {e!s}", emoji="❌")
@@ -1114,7 +1116,6 @@ class SocialNetworkApp(SocialBackendApp):
             self._print(f"Content: {_clean_html(post['content'])}")
             self._print(f"Toot ID: {post['id']}")
             self._print(f"Favourites: {post['favourites_count']}, Reblogs: {post['reblogs_count']}")
-            # self._print(f"URL: {post['url']}")
         self._print("----------------------------------------")
 
     def print_and_return_timeline(self, timeline: list[dict[str, Any]]) -> str:
@@ -1318,10 +1319,6 @@ class SocialNetworkApp(SocialBackendApp):
         actor_display_name = str(agent_name)
         agent_name = _display_name_key(agent_name)
         current_username = self._get_username(agent_name)
-        # self._print(
-        #     f"@{current_username} liking post {toot_id}",
-        #     emoji="❤️",
-        # )
         try:
             like_message = f"{agent_name} (@{current_username}) liked post {toot_id}"
             committed = True
@@ -1611,6 +1608,31 @@ class SocialNetworkApp(SocialBackendApp):
                     recent_count=recent_count,
                     delete_all=delete_all,
                     skip_confirm=True,
+                )
+            except PartialDeletionError as e:
+                error_msg = f"Error deleting posts for @{username}: {e}"
+                self._print(error_msg, emoji="❌")
+                if not e.deleted:
+                    return ActionResult(error_msg, committed=False)
+                # Some posts really were removed from the live server before the
+                # failures — an irreversible state change that must be committed,
+                # or the action log/mirror undercounts what actually happened.
+                self._log_action_event(
+                    {
+                        "source_user": actor_display_name,
+                        "label": "delete_posts",
+                        "data": {
+                            "post_ids": [str(pid) for pid in e.deleted],
+                            "failed_post_ids": [str(pid) for pid in e.failed],
+                            "recent_count": recent_count,
+                            "delete_all": delete_all,
+                        },
+                    }
+                )
+                return ActionResult(
+                    f"{actor_display_name} (@{username}) deleted {len(e.deleted)} post(s); "
+                    f"{len(e.failed)} failed: {e.failed}.",
+                    committed=True,
                 )
             except Exception as e:
                 error_msg = f"Error deleting posts for @{username}: {e}"

@@ -28,6 +28,7 @@ import argparse
 
 from dotenv import find_dotenv, load_dotenv
 
+from silisocs.environments.backends.mastodon.errors import PartialDeletionError
 from silisocs.environments.backends.mastodon.logging_config import logger
 from silisocs.environments.backends.mastodon.mastodon_ops.get_client import get_client
 from silisocs.environments.backends.mastodon.mastodon_ops.login import login
@@ -75,18 +76,22 @@ def delete_posts(
             logger.error("No posts specified for deletion.")
             return
 
+        deleted: list[int] = []
         failed: list[int] = []
         for post_id in post_ids:
             try:
                 mastodon.status_delete(post_id)
                 logger.info(f"Successfully deleted post with ID: {post_id}")
+                deleted.append(post_id)
             except Exception as e:
                 logger.error(f"Failed to delete post with ID {post_id}: {e!s}")
                 failed.append(post_id)
 
         logger.info(f"Deletion process completed. Attempted to delete {len(post_ids)} post(s).")
         if failed:
-            raise RuntimeError(f"Failed to delete post(s): {failed}")
+            # Deletions are irreversible: report which posts WERE removed so the
+            # caller can commit those instead of mislabeling the batch a no-op.
+            raise PartialDeletionError(deleted, failed)
 
     except ValueError as e:
         logger.error(f"Error: {e}")

@@ -598,6 +598,57 @@ def test_interactive_watch_tab_carries_run_controls(tmp_path):
     assert "/control" in page.text
 
 
+def _finished_interactive_job(tmp_path, run) -> Job:
+    return Job(
+        id="finished-interactive",
+        kind="run",
+        status="finished",
+        pid=None,
+        created_at=100.0,
+        started_at=101.0,
+        ended_at=200.0,
+        exit_code=0,
+        scenario="demo",
+        config_snapshot_path=None,
+        output_dir=str(run),
+        log_path=str(tmp_path / "interactive.log"),
+        parent_study=None,
+        port=None,
+        command_json=json.dumps(
+            {
+                "argv": [],
+                "cwd": str(tmp_path),
+                "env": {},
+                "control_path": str(run / "run.control"),
+            }
+        ),
+    )
+
+
+def test_finished_interactive_job_renders_no_run_controls(tmp_path):
+    """A dead job's control file is inert — the live page must not offer controls."""
+    run = _make_run(tmp_path)
+    app = create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path)
+    app.state.jobs.store.insert(_finished_interactive_job(tmp_path, run))
+
+    page = TestClient(app).get("/live?job=finished-interactive")
+    assert page.status_code == 200
+    assert "control-bar" not in page.text
+    assert "ctlStep()" not in page.text
+
+
+def test_run_controls_are_rejected_for_a_terminal_job(tmp_path):
+    """POSTing controls to a finished job errors loudly instead of a silent 200."""
+    run = _make_run(tmp_path)
+    app = create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path)
+    app.state.jobs.store.insert(_finished_interactive_job(tmp_path, run))
+
+    response = TestClient(app).post("/api/jobs/finished-interactive/control", json={"target": 1})
+    assert response.status_code == 422
+    assert "finished" in response.json()["detail"]
+    assert not (run / "run.control").exists()
+
+
 def test_run_track_reflects_completion_not_step_count(tmp_path):
     """The archive's run track is a completion signal, not a step-count bar."""
     _make_run(tmp_path)  # status success, 1 step

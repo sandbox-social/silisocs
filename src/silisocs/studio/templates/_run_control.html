@@ -23,6 +23,9 @@ function ctlPause(){ctlSend({target:ctlInFlight()?ctlStarted+1:ctlDone()})}
 function ctlStop(){ctlSend({stopped:true})}
 {{ events_var }}.addEventListener('step_started',e=>{ctlStarted=Math.max(ctlStarted,JSON.parse(e.data).step);ctlRender()});
 {{ events_var }}.addEventListener('step_finished',e=>{ctlFinished=Math.max(ctlFinished,JSON.parse(e.data).step);ctlRender()});
+// A finished job's control file is dead — remove the bar rather than leave
+// clickable controls that silently do nothing.
+{{ events_var }}.addEventListener('done',()=>document.querySelector('.control-bar')?.remove());
 ctlRender();
 </script>
 {%- endmacro %}
