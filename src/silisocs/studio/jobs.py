@@ -418,6 +418,10 @@ class JobManager:
         control_path = payload.get("control_path") if isinstance(payload, dict) else None
         if not control_path:
             raise ValueError("Job is not interactive")
+        if job.status not in ("queued", "running"):
+            # Writing a terminal job's control file would return 200 while doing
+            # nothing; refuse loudly instead.
+            raise ValueError(f"Job is {job.status}; run controls only apply to a live job")
         if command.get("stopped"):
             state: dict[str, Any] = {"stopped": True}
         elif "target" in command:

@@ -253,3 +253,81 @@ def test_mastodon_failed_live_op_leaves_no_committed_row() -> None:
         assert expected in message, action
     assert logger.events == []
     assert app.count_committed_events() == 0
+
+
+class _EventLogger:
+    def __init__(self) -> None:
+        self.events: list[dict] = []
+
+    def log(self, event: dict) -> None:
+        self.events.append(event)
+
+
+def _live_app(ops: SimpleNamespace, logger: _EventLogger) -> SocialNetworkApp:
+    """A Mastodon app in live mode with fake ops (no real server involved)."""
+    app = SocialNetworkApp(perform_operations=False, action_logger=logger)
+    app.set_user_mapping({"Alice Smith": "user0001", "Bob Jones": "user0002"})
+    app.perform_operations = True
+    app._mastodon_ops = ops
+    return app
+
+
+def test_mastodon_failed_profile_read_leaves_no_committed_row() -> None:
+    """A failed live profile read must not log fabricated bio text as committed."""
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("rate limited")
+
+    logger = _EventLogger()
+    app = _live_app(SimpleNamespace(read_bio=_boom), logger)
+
+    committed, message = app.invoke_action_detailed(
+        "read_profile", {"agent_name": "Alice Smith", "target_user": "Bob Jones"}
+    )
+
+    assert committed is False
+    assert "Error reading profile" in message
+    assert logger.events == []
+    assert app.count_committed_events() == 0
+
+
+def test_mastodon_partial_delete_commits_only_what_was_deleted() -> None:
+    """N-1 real server-side deletions must not be reported as fully uncommitted."""
+    from silisocs.environments.backends.mastodon.errors import PartialDeletionError
+
+    def _partial(*_args: object, **_kwargs: object) -> None:
+        raise PartialDeletionError(deleted=[11, 12], failed=[13])
+
+    logger = _EventLogger()
+    app = _live_app(SimpleNamespace(delete_posts=_partial), logger)
+
+    committed, message = app.invoke_action_detailed(
+        "delete_posts", {"agent_name": "Alice Smith", "post_ids": [11, 12, 13]}
+    )
+
+    assert committed is True
+    assert "deleted 2 post(s)" in message
+    assert "1 failed" in message
+    [event] = logger.events
+    assert event["label"] == "delete_posts"
+    assert event["data"]["post_ids"] == ["11", "12"]
+    assert event["data"]["failed_post_ids"] == ["13"]
+    assert app.count_committed_events(labels=["delete_posts"]) == 1
+
+
+def test_mastodon_total_delete_failure_stays_uncommitted() -> None:
+    from silisocs.environments.backends.mastodon.errors import PartialDeletionError
+
+    def _total(*_args: object, **_kwargs: object) -> None:
+        raise PartialDeletionError(deleted=[], failed=[11])
+
+    logger = _EventLogger()
+    app = _live_app(SimpleNamespace(delete_posts=_total), logger)
+
+    committed, _message = app.invoke_action_detailed(
+        "delete_posts", {"agent_name": "Alice Smith", "post_ids": [11]}
+    )
+
+    assert committed is False
+    assert logger.events == []
+    assert app.count_committed_events() == 0
