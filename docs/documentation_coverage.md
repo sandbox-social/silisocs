@@ -3,7 +3,7 @@
 This page tracks what the documentation covers, where it is stale, and which
 runtime surfaces need explicit docs before they should be treated as stable.
 
-Last reviewed: 2026-07-08.
+Last reviewed: 2026-07-29.
 
 ## Coverage Matrix
 
@@ -19,20 +19,23 @@ Last reviewed: 2026-07-08.
 | Engine policies | `src/silisocs/simulation_engines/policies/` | [Environment Layer](environment_layer.md), [Simulation Extensibility API](simulation_extensibility_api.md) | Covered after path correction |
 | Evaluation probes and studies | `evaluations/probes/`, study docs | [Probes](probes.md), [Study Guide](study_guide.md), [Study Schema](study_schema.md) | Covered; update when evaluator APIs change |
 | Studio | `src/silisocs/studio/` | [Studio](studio.md) | Covered; forms and panels are declarative extension surfaces |
+| Studio analysis panels and views | `src/silisocs/analysis/` | [Analysis Panels](analysis_panels.md), [Studio](studio.md) | Covered; panels bind to semantic roles, never backend names |
+| Interactive run control | `simulation_engines/control.py` | [Configuration](configuration.md), [Studio](studio.md) | Covered; controls act at episode boundaries only |
+| Run artifacts and run health | `runtime/execution/manifest.py`, `evaluations/run_artifact.py`, `evaluations/vocabulary.py` | [Usage](usage.md) | Covered; the health-counter registry is the single source |
+| Harness agents (experimental) | `src/silisocs/agents/harness/` | [Harness Agents](harness_agents.md) | Experimental; config surface and internals may change |
 | Extension API docs | Public extension contracts | [Simulation Extensibility API](simulation_extensibility_api.md) | Curated API reference; generated internal pages are not shipped |
 | Coding-agent guidance | `AGENTS.md`, `agent_docs/` | `AGENTS.md`, `agent_docs/README.md` | Covered; keep tool-neutral and synced with runtime paths |
 
 ## Stale or Risky Content Register
 
+Only open risks belong here; entries whose issue is fixed are removed rather than
+left as history (the [migration notes](upgrading.md) carry what users need).
+
 | Issue | Impact | Required action |
 |---|---|---|
-| Old `src/silisocs/engines/...` paths | Misleads contributors; code now lives under `simulation_engines` | Replace stale paths in public docs |
-| Backend capability wording | Hides that all backends are peer environment choices | Reframe docs around named backends; mention `SocialBackendApp` only for timeline/recsys component requirements |
-| `sim.enable_engine_multi_flow` references | Incorrect config knob | Use `sim.engine.step.built_in: flow` |
-| Prompt addition key mismatch | Users may set a no-op key | Document `sim.prompt_additions.action_count_guidance` |
 | Advanced flow docs duplicated across `docs/` and `agent_docs/` | Divergence risk | Keep public docs canonical; use `agent_docs` as agent-facing deep dives |
 | Agent workflow docs are tool-discoverable only through `AGENTS.md` | Non-Claude agents may miss `/new-scenario` and `/new-study` flows | Keep `agent_docs/README.md` and public shortcut links current |
-| Backend boundary refactor log in docs | Useful history but not a user guide | Keep linked from roadmap or remove before release docs if it becomes stale |
+| Harness agent internals are newer than their tests | Live Hermes/OpenClaw runs are less exercised than the deterministic core | Keep the experimental label until live-harness coverage lands |
 
 ## Extension Surface Coverage
 

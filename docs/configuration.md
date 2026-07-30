@@ -985,16 +985,20 @@ in **both** `sim/base.yaml` and the in-code `build_engine` fallback used when th
 `participation` slot is absent entirely (e.g. a programmatic call). This is
 deterministic, matches the pre-participation behavior, and keeps a bare `env=`
 preset run (e.g. `env=resource_market`, whose roles are `farmer`/`miner`/… rather
-than `user`) from silently dropping ~70% of agents to a role-mismatched 0.3
-activation probability. Activity gating is therefore **opt-in**: a scenario that
-wants probability filtering sets `built_in: activity_probability` (with per-role
-`activity_transition_rates` matching its own roles) in its `sim.yaml`, exactly as
-the bundled social scenarios do.
+than `user`) from being gated by rates that never matched it. Activity gating is
+therefore **opt-in**: a scenario that wants probability filtering sets
+`built_in: activity_probability` (with per-role `activity_transition_rates`
+matching its own roles) in its `sim.yaml`, exactly as the bundled social
+scenarios do.
 
-`activity_transition_rates` are keyed by agent name or sim role, and an agent
-matching neither falls back to a 0.3 activation probability — so rates written
-for roles a scenario does not have silently leave ~70% of agents idle each step.
-The run logs a one-time warning naming the roles it did see when that happens.
+`activity_transition_rates` are keyed by agent name or sim role, and **every agent
+must match an entry** that declares `inactive_to_active` or `active_to_inactive`
+(the missing one of the pair mirrors the declared one). An agent that matches
+neither is a configuration error: the run fails at its first step with a message
+naming the unmatched agents and roles, instead of throttling them on an invented
+default. The ways out are all explicit — add rates for those agent names or sim
+roles, set `active_probability` for one global rate (`activity_probability` only),
+or use `built_in: all` so every agent acts every step.
 
 ### Timeline Observation
 
@@ -1649,11 +1653,20 @@ state and may involve the agents. This holds in all three `multi_gm*` traversals
 unlocked; only the follow-up per-chosen-GM turn selection is serialized under that
 GM's lock; and the engine validates the returned assignment (every agent covered,
 every GM one of `choices`). An LLM-driven router is only as reproducible as the model
-it calls.
+it calls. Routing calls run serially on the flow's chain driver, outside
+`sim.max_concurrent_actions` and `gm_concurrency_caps` — budget one sequential model
+call per routed agent per branch stage, and prefer the `random` router for large
+flows (see [Multi-GM Architecture](multi_gm_architecture.md) for this and the
+concurrent-mode replay caveat).
 
 `agent_choice` params: `prompt` (a template; placeholders `{choices}`, `{flow}`, `{step}`,
 `{agent}`) and `on_invalid` (`random` — the default, a replay-stable fallback;
-`first`; or `raise`). It matches the agent's answer with the shared `match_choice`
+`first`; or `raise`). `on_invalid` covers both an answer naming no choice and a
+routing call that raises (provider outage, retry exhaustion), so one agent's
+transient model failure aborts the run only under `raise`. Each fallback increments
+the `routing_fallbacks` [run-health counter](usage.md#run-health) — the run
+continues, but never quietly. It matches the agent's
+answer with the shared `match_choice`
 helper (exact → case-insensitive → contained-once), which custom routers can import.
 Example:
 

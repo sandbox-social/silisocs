@@ -44,6 +44,24 @@ Notes for moving between releases. Each entry lists only user-affecting changes.
   `agent_names`), and leave `next_acting` on an environment-derived built-in
   (`all_agents` or `fixed_order`). Effective acting each step is participation ∩
   `next_acting`.
+- **Unmatched activity rates fail the run (BREAKING for misconfigured runs).**
+  Under `activity_probability` / `activity_markov`, every agent must match an
+  `activity_transition_rates` entry (by agent name or sim role) declaring
+  `inactive_to_active` or `active_to_inactive`. An agent matching none used to fall
+  back to a 0.3 activation probability with a one-time warning; it now raises at the
+  first step, naming the unmatched agents and roles. Add the missing rates, set
+  `active_probability` for one global rate (`activity_probability` only), or use
+  `sim.engine.participation.built_in: all`. Runs whose rates already covered their
+  roles — including every bundled scenario — are unaffected.
+- **The `current_user` actor-argument alias is gone.** `agent_name` is the only
+  runtime-injected actor parameter, and the anti-impersonation guard now covers
+  exactly that name. A backend action that declared `current_user` never received
+  injection anyway; an agent that supplies it now gets the ordinary
+  `Unexpected argument(s): current_user` rejection.
+- **Routing fallbacks are counted.** A branch router that falls back (an unusable
+  answer or a raised routing call under `on_invalid: random|first`) increments the
+  new `routing_fallbacks` [run-health counter](usage.md#run-health), alongside
+  `harness_tool_failures`, which now also reaches run health and the manifest.
 - **Branch routers are now plain callables (BREAKING for custom routers only).**
   A custom `{branch: {router: {class_path: ...}}}` router is no longer a `Router`
   subclass. The `Router` ABC, `RouteContext`, `RouterGMView`, and the

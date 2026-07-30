@@ -389,16 +389,33 @@ No capability flags, no context facade, no engine-provided ask helper.
 - `agent_choice` (`AgentChoiceRouter`) — asks each agent to pick, via a CHOICE
   `ActionSpec`. Params: a `prompt` template with placeholders `{choices}` /
   `{flow}` / `{step}` / `{agent}`, and `on_invalid` = `random` (default) | `first`
-  | `raise` — the fallback when the agent's answer names no choice (default
-  `random` is a replay-stable pick). It uses the shared `match_choice` helper
-  (exact, then case-insensitive, then contained-once), which custom routers can
-  import too.
+  | `raise` — the fallback when the agent's answer names no choice OR when the
+  routing call itself raises (provider outage, retry exhaustion), so one agent's
+  transient model failure never aborts the run unless you opt into `raise`
+  (default `random` is a replay-stable pick). Continuing is tracked, not silent:
+  each fallback increments the `routing_fallbacks` [run-health
+  counter](usage.md#run-health). It uses the shared `match_choice`
+  helper (exact, then case-insensitive, then contained-once), which custom
+  routers can import too.
 
 A custom router is a `class_path` to a callable — a plain function (config
 `params` bound as keyword arguments) or a class (built with `params`, instances
 callable). An LLM-driven router is only as reproducible as the model it calls. See
 [Simulation Extensibility API](simulation_extensibility_api.md) for the
 custom-router authoring recipe.
+
+**Router execution constraints.** Routing calls run serially on the flow's
+chain-driver thread, outside the turn pool — they are not governed by
+`sim.max_concurrent_actions` or `gm_concurrency_caps` (under `multi_gm_staged`
+they additionally block the stage barrier). With an LLM-backed router, budget
+one sequential model call per routed agent per branch stage; keep
+`agent_choice` branches to modestly-sized flows, or use the `random` router for
+large ones. Additionally, under the concurrent `multi_gm` traversal, branch
+hops resolve on chain-driver threads whose *ordering* is timing-dependent: if
+two flows branch into the same GM and that GM's `next_acting` component is
+stateful (e.g. `fixed_order`), the acting order at that GM is not replay-stable.
+Use `multi_gm_serial` or `multi_gm_staged` (which resolve branches in
+deterministic flow order) when exact replay matters for such a topology.
 
 ### Per-GM Concurrency Caps
 

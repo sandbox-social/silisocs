@@ -478,6 +478,33 @@ outputs/<scenario_name>/<jobname>/<jobname>_<timestamp>/
 | `.hydra/config.yaml` | YAML | Fully resolved Hydra config snapshot |
 | `.hydra/overrides.yaml` | YAML | CLI overrides used for this run |
 
+`effective_config.yaml` (and its `configs/` snapshot) is written with every
+`api_key` masked as `**redacted**`, so a run directory stays shareable even when a
+key was set in config rather than the environment.
+
+### Run Health
+
+A run records what it *survived*. Each counter below is incremented during the
+run, printed as a `⚠ DEGRADED RUN` line at the end, written to
+`run_manifest.json` under `health`, and rendered by Studio's **Run health** panel
+(and `RunArtifact.health`). Anything a run cannot legitimately continue past
+raises and fails the run instead of being counted.
+
+| Counter | Meaning |
+|---------|---------|
+| `agent_turn_failures` | Agent turns that raised an exception (isolated: the step continued) |
+| `action_parse_failures` | Agent actions dropped as unparseable |
+| `action_invalid_targets` | Agent actions that referenced invalid target ids |
+| `backend_action_errors` | Backend actions that raised unexpectedly |
+| `harness_tool_failures` | Harness tool calls that failed inside a harness turn |
+| `routing_fallbacks` | Branch routing calls that fell back to a default choice |
+| `silent_backends` | Backends that committed no action events (names in the manifest) |
+
+Zero on every counter is the only clean run; a non-zero count means results are
+partial in a specific, named way. The counter set lives in one registry
+(`silisocs.evaluations.vocabulary.HEALTH_COUNTERS`), so a new counter reaches the
+warning, the manifest, and the artifact loader together.
+
 ### Action Events Format
 
 Each line in `action_events.jsonl` is a JSON object:
@@ -571,8 +598,8 @@ re-discovering the file layout:
 from silisocs.evaluations.run_artifact import load_run, load_study
 
 run = load_run("outputs/my_world/run_dir")
-run.status, run.scenario, run.seed        # from run_manifest.json (legacy runs
-run.health, run.llm_usage, run.provenance # fall back to sim_metrics.json)
+run.status, run.scenario, run.seed        # from run_manifest.json, which the
+run.health, run.llm_usage, run.provenance # loader requires (see Run Health)
 for event in run.iter_actions():          # streams flat or per-GM event logs
     ...
 
