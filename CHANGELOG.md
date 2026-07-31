@@ -1,3 +1,93 @@
+## v0.4.0 (2026-07-30)
+
+### ✨ Features
+
+- **studio,analysis**: close the journey gaps — study drill-down, live controls, study-scope parity
+- **scenarios**: talk_then_contribute — the multi-GM reference scenario
+- **studio,analysis**: per-backend reading of multi-GM runs
+- **runtime,studio**: live run pages via a provisional manifest
+- **studio**: wire the study comparison controls — compare-by-seed and baseline
+- **backends**: messaging inbox honors the observe component's limit param
+- **backends**: default agent-to-agent messaging backend
+- **backends**: public-goods game backend + capability-ladder reproduction study
+- **studio**: unified exploration workspace, capability-gated analysis, and interactive run control
+- **studio**: unify all visual surfaces
+- **studio**: complete unified visual framework
+- **studio**: checkpoint unified visual framework
+- **eval**: per-probe deployment overrides + named loop anchors
+- **backends**: committed-events mirror + query API on SocialBackendApp
+- **agents**: harness agents + committed-only action log, count_committed, phase/model fixes
+- **runtime**: silisocs tutorial, generated config reference, dashboard artifact loading
+- **runtime**: run artifact loader, silisocs doctor, run history view
+- **runtime**: run manifest, provenance, dashboard console commands
+- **runtime**: memory policies, interventions, run telemetry
+- **engine**: scalable execution — async turn executor, participation policy, sharded checkpoints
+- **engine**: branch routing over flow chains with a plain-callable Router contract
+- **config**: fail loudly on unknown engine/GM config keys
+- **engine**: sim-level participation layer + branch-node flow routing
+- **engine**: per-GM turn policies (gm_turn_policies)
+- **engine**: concurrent multi-GM chain execution by default
+
+### 🐛🚑️ Fixes
+
+- **backends,studio**: log only what really happened, retire dead controls
+- **runtime,engine**: fail loudly, count what a run survives
+- **backends,config**: fail-loud gates, committed-only log, self-described semantics
+- **engine**: propagate chain-driver failures in concurrent multi_gm
+- **studio**: wire the study explore lens nav — buttons were decorative
+- **control**: discard stale control files at launch; apply fields independently
+- **public-goods**: reject malformed contributions; score only executed rounds
+- **backends**: sort generated follow lists for cross-process determinism
+- **test**: resume-planning fixture uses a tuple for shared_memories (mypy)
+- **test**: _KeepOnly participation double uses Sequence[str] (Liskov)
+- **engine**: keep _run_tasks_with_limit's return map (used by isolation test)
+- **backends**: hoist view_dms_with into SqliteSocialEngineBase with mark-as-read
+- **dashboard**: emit sim.engine.participation params from activity sliders
+- **llm**: honor multi tool-calling mode end-to-end
+
+### ♻️  Refactorings
+
+- **backends**: extract SimultaneousRoundGame referee base from public_goods
+- **analysis**: two-tier panel gating predicate; shared bar_figure in market panel
+
+### ✅🤡🧪 Tests
+
+- multi-GM talk-then-move chain + audit-flagged coverage gaps
+- add tests/conftest.py with a shared replay-registry isolation fixture
+- probe-metrics coverage + drop dead --doctest-modules
+- **infra**: subprocess marker + deterministic reddit wait
+- **engine**: cover branch-restore + staged×participation intersections
+
+### 💄🚸 UI & UIX
+
+- **studio**: explain unavailable panels, respect OS theme, frame Analyze vs Explore
+
+### 📝💡 Documentation
+
+- file the unreleased upgrade notes under their own version
+- document run health, config redaction, and the failure policy
+- round-game base, messaging backend, and non-social reference updates
+- align participation default, control-file ownership, panel gating tiers
+- add scalability analysis and phased plan (SCALABILITY_PLAN.md)
+- **engine**: document the per-GM semaphore head-of-line-blocking envelope
+- correct stale participation locations and default consistency
+- rename project to Silicon Society Sandbox
+
+### 🦺 Validation
+
+- **backends**: reject non-player payoffs from resolve_round
+
+### 🧹 chore
+
+- **evaluations**: drop the empty analysis package
+- **experiments**: untrack generated study artifacts
+- untrack scratch planning docs from the branch
+- remove dead design code; cap BLAS threads in tests
+- **engine**: give probe-schedule policies a Protocol; document seam convention
+- micro-cleanups across engine/runtime/backends
+- **runtime**: dedupe class-loading/instantiation plumbing
+- ignore local audit-plan scratch file
+
 ## v0.3.0 (2026-06-26)
 
 ### ✨ Features
