@@ -8,9 +8,8 @@ original (clearing-house price formation, memory carry-over across days, the
 consumption-visibility manipulation, the three conditions), not its
 model-specific numbers.
 
-This design was derived independently from the two pinned codebases, not from
-the earlier draft plan; where it differs from that plan, the difference and its
-reason are stated (§9).
+This design was derived from the two pinned codebases; §9 records the
+load-bearing design decisions and their reasons.
 
 ---
 
@@ -279,7 +278,7 @@ One persistent agent class per buyer covering all phases (this is where
 Concordia needs two prefabs + memory copying). It keeps `NativeAgent`'s
 observe/memory/checkpoint machinery and overrides `act`/`act_async` to run
 the upstream question-chains before answering, switching pipeline on the
-offered surface (no config needed):
+action spec (no config needed):
 
 - ActionSpec offers `BID` → consumer pipeline: SituationPerception,
   SelfPerception, ConsumerEvaluation (verbatim questions, each one
@@ -288,7 +287,12 @@ offered surface (no config needed):
 - ActionSpec offers `SEND_MESSAGE` → convo pipeline: SituationPerception,
   SelfPerception, PersonBySituation, LastSentence, PinkNoiseStrategy
   (verbatim converge/diverge question).
-- Free-text spec (journal) → plain `NativeAgent` path.
+- Free-text reflection spec (journal; the spec carries its calendar
+  `reflection_kind` in `extra_args`) → the market reflection runs the
+  consumer pipeline and the four post-date reflections run the convo
+  pipeline, matching which upstream entity answers each (upstream's
+  switcher diverts only choice-type specs, so its FREE reflections get the
+  full chain).
 
 Sellers are plain `NativeAgent` with the verbatim seller goal — no subclass.
 
@@ -398,35 +402,34 @@ at a non-trivial rate. Magnitude deltas vs. the paper are recorded in
 | Tool-calling (`BID`/`ASK`/`SEND_MESSAGE` schemas) instead of free-text JSON + regex resolve | Idiomatic SiliSocS; upstream's JSON-in-prose was a parsing workaround, not mechanism. Call-to-action wording preserved. | Order *submission reliability* improves (fewer dropped orders than upstream's regex path) — direction-safe |
 | Window memory instead of associative retrieval + `ImportantMemories` tag filter | Carry-over is the mechanism; retrieval is prompt engineering. Removes embedder dependency. | Context composition differs; mitigated by generous windows + tags preserved on injected events |
 | Dyads run concurrently within a step (upstream: serial) | Engine parallelism; dyads are causally independent | None (independence is upstream's own assumption) |
-| Final market round of a day resolves at the day boundary (before reflection), upstream leaves its outcome queued until next day's first observation | Upstream artifact of queue-delivery timing; resolving before reflection is arguably *more* faithful to "reflect on what you bought today" | Reflections see one extra round of outcomes |
 | One persistent agent instead of consumer/convo prefab pair + memory copying | SiliSocS agents persist; the pair was a lifecycle workaround | None — pipelines preserved per phase |
 | No numeric RNG parity (cash draws, shuffles other than the dyad schedule) | Different RNG call orders; distributions and seeds preserved | Mechanism-level parity only, as scoped |
 
 ---
 
-## 9. Differences from the earlier draft plan, and why
+## 9. Load-bearing design decisions, and why
 
 - **No `date_initialize.py`/`date_observe.py` GM components** for the DIAL
   setup: generation + injection lives in one update component
   (`DayBoundaryUpdateComponent`, §4.7) at the day boundary, because (a) it
   needs cross-GM access (market inventory → wearing/eating) which the update
   slot provides by design and observe components do not, and (b) injection via
-  `agent.observe` reproduces upstream's queue semantics exactly. (An earlier
-  draft used an `InterventionHandler`; the update slot derives its schedule
-  from the calendar instead of a hand-written `at_step` list.)
-- **Reflections are steps, not handler code**: the draft had them inside the
-  dyad runner; making them `journal_gm` turns lets the engine parallelize
-  ~50 reflection calls per boundary instead of serializing them, and puts
-  every reflection in `action_events.jsonl` with zero extra logging code.
+  `agent.observe` reproduces upstream's queue semantics exactly. (The update
+  slot derives its schedule from the calendar rather than a hand-written
+  `at_step` list.)
+- **Reflections are steps, not handler code**: as `journal_gm` turns the
+  engine parallelizes ~50 reflection calls per boundary instead of
+  serializing them, and every reflection lands in `action_events.jsonl` with
+  zero extra logging code.
 - **`fixed_prices` ships in the backend but is CLI/config-unreachable as a
   condition** (same as upstream: in the library, not the product), preserved
   deliberately as extension fodder.
 - **Three GMs, not two**: the journal GM costs ~70 backend lines and buys
   free-text reflections under a per-GM `tool_calling: none` override without
   contaminating the tool-calling market/date GMs.
-- **No custom engine/step/loop policy at all.** The draft's `multi_gm_staged`
-  is unnecessary: phase exclusivity comes from calendar-gated `next_acting`,
-  so the default concurrent `multi_gm` traversal is correct and simpler.
+- **No custom engine/step/loop policy at all**: phase exclusivity comes from
+  calendar-gated `next_acting`, so the default concurrent `multi_gm`
+  traversal is correct and simpler.
 
 ## 10. Implementation order
 

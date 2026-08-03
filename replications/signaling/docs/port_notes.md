@@ -124,9 +124,7 @@ step, so the day's last round is cleared before the reflection loop and the
 wearing draw; only the outcome *messages* stay queued until the next market
 observation. The port is identical: the every-step backend update resolves
 each finished round at the next step, and the market queue drains only on
-market-phase observations. (An earlier revision of this note claimed the port
-diverged here by "forcing the resolve at the day boundary"; both halves of
-that claim were wrong — there is no divergence.)
+market-phase observations. No divergence.
 
 **`dial_turns` counts utterances; upstream's `--num_dial_rounds` counts engine
 steps.** Upstream's 80 is `default_max_steps` for the whole dyad simulation:
@@ -139,23 +137,25 @@ conversational turns — a slightly longer conversation at the same number. Set
 ## Upstream is broken at the pin (the port implements the documented design)
 
 Two defects in the pinned upstream mean its *executed* behavior differs from
-its *documented* design; the port implements the design. Both were
-established by static reading (the pinned tree does not import under Python
-3.11 on this host) — confirm with a `--disable_language_model` run per
-condition on a compatible interpreter before citing them in print.
+its *documented* design; the port implements the design. Both confirmed by
+live runs (2026-08-03, Python 3.12, `--disable_language_model
+--use_dummy_embedder`, one day, four agents).
 
 - **`--condition=social` crashes at the first dyad.** `dial.py`'s prefab
   registry has no `'dialogic__GameMaster'` key, but `dial.py:176` requests
-  that prefab and the builder indexes the dict unguarded → `KeyError` on day
-  0. Upstream's flagship arm is unrunnable at the pin; only `asocial` runs
-  end-to-end.
+  that prefab and the builder indexes the dict unguarded. Confirmed: the run
+  exits 1 with `KeyError: 'dialogic__GameMaster'` raised from
+  `dial.py:241 → create_simulation_for_dyad → generic.py:164` after the
+  market completes. Upstream's flagship arm is unrunnable at the pin.
 - **`--condition=asocial_personal` never generates personal events.** With
   the shared setup skipped the dyad sim has exactly one game master, the
   sequential engine short-circuits `NEXT_GAME_MASTER`, and the DITL
   initializer's `_process_dyad` only fires under a `NEXT_GAME_MASTER` spec —
-  so nothing is ever generated or injected; the arm spins its 80 steps on
-  make-observation LLM filler. The port's middle arm is content-bearing
-  where upstream's is empty.
+  so nothing is ever generated or injected; the arm spins its steps on
+  make-observation LLM filler. Confirmed: the run completes (it never
+  requests the missing prefab — corroborating the one-GM path) and writes no
+  dyad logs. The port's middle arm is content-bearing where upstream's is
+  empty.
 
 Consequence for any magnitude comparison: for the date ceremony,
 conversation, and post-date reflections there is no *executable* upstream
@@ -213,8 +213,8 @@ accumulates in context:
 ## Observed data differences
 
 - The `subculture` goods table has **49** items (Clothing and Accessories carry
-  6-7 per tier), not the ~24 an earlier reading suggested. `original` and
-  `synthetic` have 25 each; `both` (their merge) has 50.
+  6-7 per tier). `original` and `synthetic` have 25 each; `both` (their merge)
+  has 50.
 - Upstream is internally inconsistent about `item_list=synthetic`: the
   **market** uses the synthetic-only table (`simulation.py:143-144`), while
   the **eat/wear draws** merge original+synthetic (`dial.py:63` treats
