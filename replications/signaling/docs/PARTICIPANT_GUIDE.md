@@ -128,6 +128,16 @@ per day:
 
 ### 2.4 How to run
 
+One-time setup, from the repository root (Python **3.12 or newer**):
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e . sentence-transformers
+```
+
+(`sentence-transformers` is imported by the entry point even for no-model
+runs.)
+
 Run from the repository root. `--condition` is one of
 `social | asocial | asocial_personal`.
 
@@ -305,6 +315,10 @@ The exact composed config of every run is written to its output directory as
 `effective_config.yaml` — diff it when in doubt.
 
 ### 3.5 How to run
+
+One-time setup, from the repository root:
+[`uv`](https://docs.astral.sh/uv/) installed, then `uv sync --group dev`
+(creates the environment and installs everything).
 
 ```bash
 # One-time, per shell, from the repo root: `replications/` is repository
