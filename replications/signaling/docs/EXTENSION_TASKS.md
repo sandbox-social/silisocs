@@ -23,7 +23,17 @@ Ground rules:
   run and the acceptance criteria below hold. Your facilitator runs the
   acceptance checks; you do not need to write tests.
 - For development, use the smallest configuration your repository provides
-  (short runs are enough to demonstrate every behavior below).
+  (short runs are enough to demonstrate every behavior below). Both codebases
+  have a no-cost way to run without a language model — see the Participant
+  Guide's "How to run" section for your codebase, and develop against it. If
+  your codebase's no-model run cannot produce the activity a task depends on
+  (sensible bids, parseable ratings, numeric answers), your facilitator will
+  supply the run configuration used for acceptance instead.
+- Tasks accumulate in one working copy. Wherever a criterion below says "the
+  baseline" or "unchanged", read: unchanged relative to your working copy as
+  it stood before you began the current task.
+- Every quoted text in this document is a **single line**: line breaks inside
+  the quoted blocks are page wrapping, not newlines.
 - When you finish a task, note which files you changed and roughly how many
   lines you added or edited.
 
@@ -31,9 +41,14 @@ Terminology used below (identical in both codebases):
 
 - **Day**: one full cycle of the simulation — a morning of market rounds,
   followed by reflections, then the evening dates and post-date reflections.
+  Days are numbered from 1 in this document, regardless of how the code or
+  its logs count them.
 - **Market phase**: the consecutive market rounds at the start of a day.
-- **Observation**: a piece of text an agent receives and remembers (the same
-  mechanism the simulation already uses to tell agents what happened).
+- **Observation**: a piece of text an agent receives and remembers (the
+  simulation already delivers texts of this kind to tell agents what
+  happened).
+- **An agent's context**: the accumulated text the agent has received and
+  remembers, as visible in the run's records.
 - **Buyers / sellers**: the consumer agents who shop and date, and the vendor
   agents who sell goods.
 
@@ -60,21 +75,23 @@ good's price move?
    recorded list) — re-running with the same configuration must treat the same
    agents. The remaining buyers (the control group) and all sellers must
    receive nothing.
-3. The event fires **exactly once** per run.
+3. The news is delivered **exactly once** per run.
 4. It must be possible to determine, from the run's recorded outputs alone,
    which agents were treated.
 5. All other behavior is unchanged.
+
+*(In a development configuration with fewer than three days, deliver the news
+at the start of the final day's market phase instead; all earlier days are
+unaffected.)*
 
 **Acceptance criteria.**
 
 - Two runs with the same configuration treat the same agents; a treated
   agent's context contains the news text before its first day-3 market action;
   a control agent's never does.
-- Days 1 and 2 are unaffected, and the event does not repeat on later days.
+- Days 1 and 2 are unaffected, and the news is not delivered again on later
+  days.
 - The treated-agent set is recoverable from the run's outputs.
-
-*(In a short development configuration with fewer days, demonstrate the same
-behavior at the start of the final day's market phase instead.)*
 
 ---
 
@@ -99,8 +116,9 @@ tasks.
 
 2. Each response is recorded in a **machine-readable file** in the run's
    outputs, with at least: the day, the responding agent, which question was
-   asked, the raw response text, and the parsed numeric value (or a null/empty
-   marker when the response contains no parseable number).
+   asked, the raw response text, and the parsed numeric value — the **first**
+   number (integer or decimal) appearing in the response — or a null/empty
+   marker when the response contains no number.
 3. The survey is **measurement, not an event in the world**: answering it must
    not deliver any observation to any agent (neither the respondent nor
    anyone else). Sellers are not surveyed.
@@ -110,8 +128,8 @@ tasks.
 
 - The output file contains one record per buyer, per day, per question, with
   correct day and agent attribution.
-- Responses consisting of or containing a number have that number recorded;
-  unparseable responses are recorded with the raw text and a null value.
+- Responses containing a number have their first number recorded; responses
+  with none are recorded with the raw text and a null value.
 - No survey text appears in any agent's observations, and nothing about the
   simulation's events changes because the survey ran.
 
@@ -127,7 +145,8 @@ premium — when sellers persist and can adapt?
 **Required behavior.**
 
 1. Add a switch named `persistent_sellers`. **Off by default**, and when off,
-   runs must behave exactly as the baseline does today.
+   runs must behave exactly as the baseline does today. State in your task
+   notes how to turn it on.
 2. When the switch is on:
    - Each seller **keeps its memories** across days: on day *N*+1 a seller
      still remembers what happened on day *N*.
@@ -136,8 +155,8 @@ premium — when sellers persist and can adapt?
      run).
    - Each seller's **inventory restocks**: at the start of every day its stock
      of its good returns to the starting quantity.
-3. Buyers, the daily eating draw, the dates, and everything else are unchanged
-   in both positions of the switch.
+3. Buyers, the daily random draw of what each buyer eats, the dates, and
+   everything else are unchanged in both positions of the switch.
 
 **Acceptance criteria.**
 
@@ -159,30 +178,41 @@ dampen the premium on status goods?
 **Required behavior.**
 
 1. From **day 2 onward**, every observation a **buyer** receives during the
-   market phase additionally contains a market-buzz report of the previous
-   day's demand: every good that received at least one bid yesterday, with the
-   **total units bid** for it (summed over all of yesterday's bids, whether or
-   not they were filled), sorted by units descending (ties alphabetically),
-   in exactly this format:
+   market phase additionally carries, **appended at the end**, a market-buzz
+   report of the previous day's demand: every good that received at least one
+   bid yesterday, with the **total units bid** for it (summed over all of
+   yesterday's bids at the quantities as submitted — whether or not they were
+   filled, and before any reduction during clearing), sorted by units
+   descending (ties alphabetically), in exactly this format:
 
    > `[Market buzz] Yesterday's demand: {good}: {units} units bid; {good}:
    > {units} units bid; ...`
 
+   `{good}` is the good's name exactly as it appears in the simulation's data
+   (e.g. `Chanel Handbag`); `{units}` is a whole number. Observations
+   introduced by other tasks in this document (the morning news of Task 1,
+   the overnight gossip of Task 5) are exempt and keep their exact specified
+   text.
+
 2. From day 2 onward, every observation a **seller** receives during the
-   market phase additionally contains only its own good's report, in exactly
-   this format (with `{units}` = 0 if nobody bid for it):
+   market phase additionally carries, appended at the end, a report covering
+   only its own good, in exactly this format (with `{units}` = 0 if nobody
+   bid for it):
 
    > `[Market buzz] Yesterday, buyers bid for {units} units of {good} in
    > total.`
 
-3. Day 1's observations are unchanged (there is no previous day). All
+3. If **no** good received any bid the previous day, buyers get no buzz
+   report that day (sellers still get their own-good line, with 0 units).
+4. Day 1's observations are unchanged (there is no previous day). All
    observations outside the market phase are unchanged. Everything else is
    unchanged.
 
 **Acceptance criteria.**
 
-- On every market-phase step of day *N* (for *N* ≥ 2), each buyer's
-  observation contains the report, its numbers equal to the sum of bid
+- On every market-phase step of day *N* (for *N* ≥ 2, when day *N*−1 had at
+  least one bid), each buyer's observation contains the report, its numbers
+  equal to the sum of bid
   quantities actually submitted on day *N*−1 (verifiable from the run's
   records), sorted as specified; each seller's observation contains exactly
   its own good's line with the correct total.
@@ -210,14 +240,20 @@ replaces the costly signal)?
    > `[Overnight gossip] Yesterday's dates, as rated by the daters:
    > {rater} rated {ratee} {rating}/10; {rater} rated {ratee} {rating}/10; ...`
 
+   Entries appear in the order the ratings were produced the previous
+   evening. `{rating}` is the parsed numeric value, written without a decimal
+   point when it is a whole number (e.g. `7/10`, not `7.0/10`) and with no
+   trailing zeros otherwise (e.g. `8.5/10`).
+
 3. It must contain every rating recorded the previous day for which a numeric
    value exists, and only those (no ratings from earlier days, none from the
    current day; a reflection with no parseable number is omitted).
-4. On day 1 (no previous day) nothing is delivered.
-5. All other behavior is unchanged, and the baseline behavior must be
-   recoverable (it is acceptable for the feature to be always-on in your
-   modified copy, but do not alter what the ratings themselves are or when
-   they are produced).
+4. On day 1 (no previous day) nothing is delivered. Likewise, if the previous
+   day produced no parseable ratings at all, nothing is delivered that
+   morning.
+5. All other behavior is unchanged. You do not need an on/off switch —
+   always-on is acceptable — but do not alter what the ratings themselves are
+   or when they are produced.
 
 **Acceptance criteria.**
 

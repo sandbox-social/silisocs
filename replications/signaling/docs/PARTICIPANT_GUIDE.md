@@ -11,13 +11,16 @@ Keep it open while you work — it is meant as a cheatsheet.
 ## 1. The experiment (identical in both codebases)
 
 The simulation implements a *conspicuous consumption* study. A population of
-~50 Los Angeles personas lives through a multi-day cycle. Each **day**:
+buyers drawn from a pool of 50 Los Angeles personas (a run uses `num_agents`
+of them, default 10 — silisocs takes the first N in the file, Concordia draws
+a seeded random sample), plus one seller per good, lives through a multi-day
+cycle. Each **day**:
 
 1. **Market phase.** Several rounds of a sealed-bid clearing-house market.
    Buyers submit bids (good, price, quantity), sellers submit asks; the market
    clears simultaneously each round (highest bids matched against lowest asks,
-   trade at the ask price). Buyers hold cash and an inventory; each seller
-   sells one good.
+   trading at the midpoint of the matched bid and ask prices). Buyers hold
+   cash and an inventory; each seller sells one good.
 2. **Market reflection.** Each buyer reflects on the day's shopping.
 3. **Day boundary.** Every buyer eats (consumes a random edible item from
    inventory). Buyers are paired into man/woman **dyads** — a fresh partner
@@ -35,10 +38,15 @@ day sellers start fresh** — full stock, starting cash, no memory of previous
 days — while buyers carry everything forward. (This matches the original
 study's design.)
 
-**Conditions.** `social` runs everything above. `asocial_personal` drops the
-shared date scene but keeps personal events. `asocial` drops all generated
+**Conditions.** `social` runs everything above. `asocial_personal` keeps the
+personal events but drops the shared date scene, the date conversation, and
+the post-date reflections (so no ratings). `asocial` drops all generated
 day-boundary content and the dates — a market-only control. (Eating happens in
 every condition.)
+
+One name to know: the day-boundary machinery (eating, dyad pairing, scene and
+event generation) is called **DIAL** — "day in the life" — and the name
+appears in both codebases.
 
 **Data.** Both codebases use the same 50 personas, the same goods tables
 (food/clothing/accessories/gadgets in Low/Mid/High quality tiers), and one
@@ -56,12 +64,13 @@ work across both.
 
 | File | Role |
 |---|---|
+| `examples/signaling/README.md` | Upstream's own overview and quick start. (Heads-up: its quick-start uses the module path of an installed package, `concordia.examples.signaling.run`; from a repository clone, run `python -m examples.signaling.run` as shown in §2.4.) |
 | `examples/signaling/run.py` | CLI entry point. Parses flags, builds the model + embedder, calls `run_experiment`, writes outputs. |
 | `examples/signaling/simulation.py` | **The orchestrator.** `run_experiment()` contains the day loop that drives everything (§2.2). Also builds the per-day marketplace simulation config. |
 | `examples/signaling/dial.py` | The "day in the life" (DIAL) machinery: builds one conversation simulation per dyad, generates personal events and the shared date scene, runs the post-date reflections and parses the 0–10 rating. |
-| `examples/signaling/agents/consumer.py` | The market-side agent record: cash, inventory, outcome queue, role (consumer/producer). Used by the marketplace component as its per-agent ledger. |
+| `examples/signaling/agents/consumer.py` | The buyer entity prefab — the recipe that builds the market-side agent (plus its evaluation questions). The per-agent cash/inventory ledger is NOT here; see §2.3. |
 | `examples/signaling/agents/convo_agent.py` | Builds the conversational entity used on dates. |
-| `examples/signaling/configs/goods.py`, `configs/personas.py` | The data, as Python dicts: goods tables, personas, seller generation, dyad scheduling (`generate_mixed_sex_dates`). |
+| `examples/signaling/configs/goods.py`, `configs/personas.py` | The data, as Python dicts: goods tables, personas, dyad scheduling (`generate_mixed_sex_dates`). (Sellers are generated inline in `simulation.py`, one per good.) |
 | `concordia/contrib/components/game_master/marketplace.py` | **The market engine** (library). Order collection, the clearing algorithm, trade/price history, per-agent ledgers (`_agents`), and market observations. |
 | `concordia/prefabs/game_master/marketplace.py` | Game-master prefab wrapping the above. |
 | `concordia/contrib/components/game_master/day_in_the_life_initializer.py` | DITL initializer (library): per-dyad scene/event injection (`_process_dyad`). |
@@ -83,7 +92,8 @@ per day:
    morning.
 3. **Play the market**: `market_simulation.play()` runs the simultaneous
    rounds; the marketplace component collects bids/asks and clears each round.
-4. **Harvest logs** from the component: `trade_history`, `price_history`.
+4. **Harvest logs** from the component: `trade_history` and `.history`
+   (which the loop stores as `price_history`).
 5. **End-of-day marketplace reflection**: for each buyer, the loop builds a
    free-text action spec (`entity_lib.free_action_spec(call_to_action=...)`),
    calls `entity.act(action_spec)`, and observes the answer back into the
@@ -91,13 +101,15 @@ per day:
    an agent a question.
 6. **Eating**: `dial.get_eating_statement(...)` per consumer (draws from
    inventory, pushes an outcome statement onto the consumer's queue).
-7. **Dates** (social conditions): for each of today's dyads,
+7. **Dates** (skipped only under `asocial`): for each of today's dyads,
    `dial.run_dyad_simulation(...)` builds a two-person conversation simulation
    (the DITL initializer injects personal events and the shared scene generated
    from both partners' wearing statements), runs the conversation, then runs
    the four post-date reflections. The rating reflection is parsed with a
    regex and the result is observed back into the rater's memory as
-   `[Reflection] X rated Y as N/10`.
+   `[Reflection] X rated Y as N/10`. (Under `asocial_personal` the dyad
+   simulation still runs but injects personal events only — no conversation,
+   no reflections.)
 
 ### 2.3 Where state lives
 
@@ -105,8 +117,9 @@ per day:
   (associative memory; needs the embedder). Read/write via
   `get_state()`/`set_state()`; append via `entity.observe(text)`.
 - **Market ledgers** — inside the marketplace *component*, not the entities:
-  `marketplace_component._agents[name]` is the `consumer.py` record holding
-  cash, inventory, and the outcome queue.
+  `marketplace_component._agents[name]` is a `MarketplaceAgent` record (a
+  small dataclass at the top of the marketplace component) holding cash,
+  inventory, and the outcome queue.
 - **Nothing else persists across days by itself.** The `Simulation` is rebuilt
   each morning; only what the day loop explicitly carries (buyer memories,
   buyer ledgers, price history, the dyad schedule computed on day 0) survives.
@@ -115,25 +128,37 @@ per day:
 
 ### 2.4 How to run
 
+Run from the repository root. `--condition` is one of
+`social | asocial | asocial_personal`.
+
 ```bash
+# No-cost dev loop — no API key, checks MECHANICS. Agents produce placeholder
+# text, so anything that depends on model output (sensible bids, parseable
+# ratings) may be empty; use this to verify that your code runs, fires at the
+# right time, and writes what it should — not to verify content.
+python -m examples.signaling.run \
+  --disable_language_model --use_dummy_embedder \
+  --condition=social --num_days=3 --num_agents=4 \
+  --num_marketplace_rounds=2 --num_dial_rounds=2 --seed=1
+
+# Real model (slow, costs money — not needed to demonstrate the tasks):
 python -m examples.signaling.run \
   --api_type=... --model_name=... --api_key=... \
-  --condition=social \                # social | asocial | asocial_personal
+  --condition=social \
   --num_days=5 --num_agents=10 \
   --num_marketplace_rounds=5 --num_dial_rounds=80 \
   --item_list=original --seed=1
 ```
 
-- `--disable_language_model` and `--use_dummy_embedder` give a no-cost run for
-  checking mechanics (agents produce placeholder text).
-- **Dev loop tip:** shrink `--num_days`, `--num_agents`,
-  `--num_marketplace_rounds`, `--num_dial_rounds` to make iteration fast.
+**Dev loop tip:** shrink `--num_days`, `--num_agents`,
+`--num_marketplace_rounds`, `--num_dial_rounds` to make iteration fast.
 
 **Outputs** (written to `/tmp`): per-day marketplace logs
 (`signaling_marketplace_day_N.html`/`.json`), per-dyad date logs
 (`signaling_dial_day_N_<dyad>.html`), `signaling_trades.json`,
 `signaling_prices.json`. Everything else (reflections, ratings, memories) is
-inside the HTML logs.
+inside the HTML logs — open them in a browser; they are per-entity/per-GM
+transcripts of everything said and observed.
 
 ### 2.5 Navigation anchors and idioms
 
@@ -175,7 +200,7 @@ one GM acts on any step (the others' turn-selection returns nobody).
 The three game masters, each a backend + pluggable components:
 
 - **`market_gm`** — `MarketplaceApp` (`components/marketplace_app.py` +
-  `clearing.py`): sealed simultaneous `BID`/`ASK` as typed tool calls, cleared
+  `marketplace_clearing.py`): sealed simultaneous `BID`/`ASK` as typed tool calls, cleared
   at round boundaries; owns cash, inventories, order books, price history, and
   the eating/wearing draws.
 - **`journal_gm`** — `JournalApp` (`components/journal_app.py`): free-prose
@@ -184,10 +209,10 @@ The three game masters, each a backend + pluggable components:
 - **`date_gm`** — `DateMessagingApp` (`components/date_app.py`): the date
   conversation, visibility scoped to today's partner.
 
-Buyers and sellers are two persona classes with **flow tags**
-(`conf/agents/default.yaml`); the tags route buyers through all three GMs and
-sellers through the market only, and drive the config-level action filter
-(buyers may only BID, sellers only ASK).
+Buyers and sellers are two persona classes (`conf/agents/default.yaml`), each
+carrying a **flow tag**. The tags do two jobs: they route buyers through all
+three GMs and sellers through the market only, and they drive the
+config-level action filter (buyers may only BID, sellers only ASK).
 
 ### 3.2 File map
 
@@ -196,10 +221,10 @@ Scenario code (all under `replications/signaling/`):
 | File | Role |
 |---|---|
 | `components/calendar.py` | Step↔day/phase arithmetic (`phase_of`, `day_of`). Everything schedules off this. |
-| `components/marketplace_app.py`, `clearing.py` | The market backend and the clearing algorithm (transcribed from upstream). |
+| `components/marketplace_app.py`, `marketplace_clearing.py` | The market backend and the clearing algorithm (transcribed from upstream). |
 | `components/journal_app.py` | The reflections backend; parses the 0–10 rating into its committed rows. |
 | `components/date_app.py` | The date-conversation backend. |
-| `components/dial_handler.py` | The **day-boundary component** on `market_gm`'s update slot: daily seller reset, the eating draw, and the date-scene/personal-events ceremony. |
+| `components/dial_handler.py` | The **day-boundary component** on `market_gm`'s update slot: daily seller reset, the eating draw, and the date-scene/personal-events ceremony. It also forwards the every-step backend update that resolves the finished market round — it owns the slot the stock update component would otherwise fill. |
 | `components/next_acting.py` | Calendar-gated turn selection (which agents act, per GM, per step). |
 | `components/action_prompt.py` | Per-role market prompts and the reflection prompts. |
 | `components/prompts.py` | Every prompt/template, transcribed verbatim from upstream. |
@@ -209,6 +234,15 @@ Scenario code (all under `replications/signaling/`):
 | `components/scripted_behavior.py` | Deterministic no-LLM behavior for the fast dev loop (§3.5). |
 | `evaluators/metrics.py` | The metrics CLI (§3.6). |
 | `conf/` | All configuration (§3.4). `input/` holds the converted data. |
+
+**Where state lives** (the §2.3 counterpart): agent memory is each agent's
+own state, persists across steps, and is checkpointed at every day boundary —
+the checkpoints are the easiest place to inspect it. The market ledgers
+(cash, inventories, order books, price history) are `MarketplaceApp` backend
+state. Ratings and reflections exist twice: as structured rows in
+`journal_gm`'s committed action log *and* as text observed back into the
+rater's memory. The dyad schedule is a pure function of the roster and seed
+(`dyads.py`) — computed, not stored.
 
 Framework machinery lives in the installed package (`src/silisocs/`) — the
 engine and step loop (`simulation_engines/`), game-master core and component
@@ -222,21 +256,25 @@ wonder "who calls this?", the answer is usually the engine — see §3.3.
 
 Order of operations per step (all framework-driven):
 
-1. Scheduled **interventions** due at this step fire (if any are configured).
-2. Every GM's **update component** runs, serially, with the full roster —
-   *before any agent acts*. This is the per-step housekeeping slot; in this
-   scenario `market_gm`'s update component (`dial_handler.py`) is where the
-   day-boundary work happens (which is why "nobody acts" on that step — the
-   work is in update, not in turns).
-3. The acting GM's **next_acting** component picks who acts (calendar-gated
+1. **Measurement probes** due at this step fire (if any are configured; by
+   default they fire here, *before* anything changes — they can also be
+   anchored after the step).
+2. Scheduled **interventions** due at this step fire (if any are configured).
+3. Every GM's **update component** runs, serially, before any agent acts
+   (with the step's roster — everyone, in this scenario). This is the
+   per-step housekeeping slot; in this scenario `market_gm`'s update
+   component (`dial_handler.py`) is where the day-boundary work happens
+   (which is why "nobody acts" on that step — the work is in update, not in
+   turns).
+4. The acting GM's **next_acting** component picks who acts (calendar-gated
    here).
-4. For each actor: the **action_prompt** component builds the prompt/tool
-   schemas → the agent acts → the **resolve** component validates and executes
-   the action against the backend → the result message is **observed back**
-   into the acting agent (this observe-back is how reflections re-enter
-   memory).
-5. Probes due at this step run (if configured); a checkpoint is saved per the
-   configured cadence.
+5. For each actor: the **observe** component builds this turn's observation
+   and delivers it to the agent → the **action_prompt** component builds the
+   prompt/tool schemas → the agent acts → the **resolve** component validates
+   and executes the action against the backend → the result message is
+   **observed back** into the acting agent (this observe-back is how
+   reflections re-enter memory).
+6. A checkpoint is saved per the configured cadence (each day boundary here).
 
 Every executed backend action is appended to that GM's
 **`action_events.jsonl`** — the committed action log — and mirrored in memory
@@ -269,14 +307,24 @@ The exact composed config of every run is written to its output directory as
 ### 3.5 How to run
 
 ```bash
+# One-time, per shell, from the repo root: `replications/` is repository
+# content (not part of the installed package), so the repo root must be
+# importable for the scenario's class_paths to resolve:
+export PYTHONPATH="$PWD"
+
 # Real model — condition = world file; OPENAI_API_KEY in .env
 uv run silisocs --config-path replications/signaling/conf env=signaling world=default
 uv run silisocs --config-path replications/signaling/conf env=signaling world=asocial
 
-# No-LLM fast loop (seconds; deterministic scripted answers; every phase executes)
+# No-LLM fast loop (seconds; deterministic scripted answers; every phase
+# executes). The script sets PYTHONPATH itself, so it works from anywhere:
 ./replications/signaling/tools/run_scripted.sh smoke
 ./replications/signaling/tools/run_scripted.sh smoke seed=7          # + any overrides
 ```
+
+Forgetting the `PYTHONPATH` export fails fast at startup with a clear
+`cannot import 'replications...'` validation error — if you see that, you are
+missing the export or not in the repo root.
 
 Model selection: `SIGNALING_MODEL` env var or `sim.llm.name=...`;
 provider/key config is in `docs/configuration.md`. Use the scripted loop for
@@ -285,12 +333,14 @@ alternate, ratings parse) without a provider call.
 
 ### 3.6 Outputs
 
-Each run writes a self-contained directory:
+Each run writes a self-contained directory — the run prints
+`Output directory: ...` at startup (a timestamped directory under `outputs/`
+unless `output_rootname` is set):
 
 | Artifact | Contents |
 |---|---|
 | `market_gm/`, `journal_gm/`, `date_gm/` `action_events.jsonl` | The committed action log, per GM. One JSON row per executed action: `label` (action name), `source_user` (actor), `episode` (step), `data` (structured fields — e.g. journal rows carry `day`, `kind`, `partner`, `rating`). **This is the primary data surface.** |
-| `checkpoints/step_N_checkpoint.json` | Full state (every agent's memory/observations, every GM/backend/component) at each day boundary. A run resumes from these automatically if restarted with the same output dir. Also the easiest place to inspect what an agent has in memory. |
+| `checkpoints/step_N_checkpoint.json` | Full state (every agent's memory/observations, every GM/backend/component) at each day boundary. Resume is opt-in in this scenario (it sets `sim.checkpoint.auto_resume: false`): pass `sim.checkpoint.source_run=<dir>` or `sim.checkpoint.auto_resume=true`. Also the easiest place to inspect what an agent has in memory. |
 | `sim_metrics.json` | Telemetry and run-health counters. |
 | `run_manifest.json` | Status, artifact index, health summary. |
 | `effective_config.yaml` | The exact composed config (API keys masked). |
@@ -326,11 +376,11 @@ existing behavior?".
 | | Concordia | silisocs |
 |---|---|---|
 | Orchestration | hand-written day loop in `simulation.py` | framework step loop + calendar-gated components |
-| A "day" | one loop iteration; the simulation object is rebuilt daily | 91 consecutive steps (calendar) |
+| A "day" | one loop iteration; the simulation object is rebuilt daily | 91 consecutive steps in social (calendar-defined) |
 | Agent memory | `__memory__` component per entity; buyers hand-copied across days | agent state; persists across steps; checkpointed |
 | Market ledger | marketplace component's `_agents` dict | `MarketplaceApp` backend state |
 | Ask an agent | `free_action_spec` + `act` in the loop | the GM turn pipeline (or the probe plane) |
 | Give an agent info | `entity.observe(text)` | `agent.observe(text)` / backend observation queues |
-| Data out | HTML logs + two JSON files in `/tmp` | per-GM `action_events.jsonl` + checkpoints + metrics CLI |
+| Data out | HTML logs + JSON files in `/tmp` | per-GM `action_events.jsonl` + checkpoints + metrics CLI |
 | Config | CLI flags in `run.py`; behavior in code | Hydra YAML (`conf/`), CLI-overridable, recorded per run |
 | No-LLM dev loop | `--disable_language_model` (placeholder text) | scripted behavior (meaningful deterministic runs) |
