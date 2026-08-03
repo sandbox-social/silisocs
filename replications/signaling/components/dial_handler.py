@@ -159,9 +159,11 @@ class DayBoundaryUpdateComponent(UpdateComponent):
         """Advance the backend, then run whichever boundary duties this step has.
 
         The backend update runs on EVERY step (this component owns the slot the
-        built-in ``app_update`` would otherwise fill). On the ``dial_setup`` step
-        it also clears the day's last market round, so the wearing statement
-        below reflects everything bought today.
+        built-in ``app_update`` would otherwise fill), so each finished market
+        round resolves at the next step's update. By the market reflection —
+        and a fortiori by the wearing draw here — the whole day's trading is
+        final, exactly as upstream's engine resolves each round inside its own
+        step before the reflection loop runs.
         """
         self._backend.update(
             step=step,
@@ -355,7 +357,13 @@ class DayBoundaryUpdateComponent(UpdateComponent):
                 player2_wearing_statement=wearing.get(second, ""),
                 date_theme=self._date_theme(day, first, second),
             )
-            scene = _generate(model, prompt, what=f"shared setup ({first}, {second})")
+            scene = _generate(
+                model,
+                prompt,
+                what=f"shared setup ({first}, {second})",
+                max_tokens=750,
+                terminators=("\n",),
+            )
             if scene:
                 scenes[first] = scene
                 scenes[second] = scene
@@ -390,7 +398,13 @@ class DayBoundaryUpdateComponent(UpdateComponent):
             num_events=self.num_personal_events,
             delimiter=prompts.EVENT_DELIMITER,
         )
-        raw = _generate(model, prompt, what=f"personal events ({agent.name})")
+        raw = _generate(
+            model,
+            prompt,
+            what=f"personal events ({agent.name})",
+            max_tokens=1500,
+            terminators=(),
+        )
         events = [part.strip() for part in raw.split(prompts.EVENT_DELIMITER) if part.strip()]
         if events and len(events) != self.num_personal_events:
             logger.warning(
@@ -419,33 +433,53 @@ class DayBoundaryUpdateComponent(UpdateComponent):
 
 
 def _background(agent: Any) -> str:
-    """Render an agent's full memory as of now (upstream ``get_memories``).
+    """Render an agent's full identity + memory (upstream ``get_memories``).
 
-    Upstream dumps the entity's entire memory bank — persona, formative
-    memories, and everything the run has added since — and the initializer
-    wraps it as ``Relevant Memories:``. A custom agent without a memory API
-    falls back to its persona context.
+    Upstream dumps the entity's entire memory bank — the ``[Persona]`` blob,
+    formative memories, and everything the run has added since — and the
+    initializer wraps it as ``Relevant Memories:``. The port stores the persona
+    blob as the agent's *context* rather than a memory entry, so it must be
+    prepended here explicitly or the generation prompts would see only the
+    formative memories.
     """
+    parts: list[str] = []
+    persona = str(getattr(agent, "_persona_context", "") or "").strip()
+    if persona:
+        parts.append(persona)
     memories = getattr(agent, "get_all_memories_as_text", None)
-    text = ""
     if callable(memories):
-        text = "\n".join(str(item) for item in memories() or ())
-    if not text.strip():
-        text = str(getattr(agent, "_persona_context", "") or "")
-    text = text.strip()
-    if not text:
+        text = "\n".join(str(item) for item in memories() or ()).strip()
+        if text:
+            parts.append(text)
+    combined = "\n".join(parts).strip()
+    if not combined:
         return "No background information available."
-    return f"Relevant Memories:\n{text}"
+    return f"Relevant Memories:\n{combined}"
 
 
-def _generate(model: Any, prompt: str, *, what: str) -> str:
+def _generate(
+    model: Any,
+    prompt: str,
+    *,
+    what: str,
+    max_tokens: int = 1500,
+    terminators: tuple[str, ...] = (),
+) -> str:
     """One generation call; a failure skips that piece instead of aborting the day.
+
+    The prompt is wrapped in upstream's ``interactive_document.open_question``
+    envelope (``Question: ...\\nAnswer: ``), and callers pass upstream's
+    per-call sampling limits: the shared scene stops at 750 tokens or the
+    first newline; personal events run to 1500 tokens unterminated.
 
     Generation is serial here (upstream is too) and a day is ~75 calls at n=50,
     so a single transient provider error must not cost the whole run.
     """
     try:
-        return str(model.sample_text(prompt) or "").strip()
+        wrapped = f"Question: {prompt}\nAnswer: "
+        return str(
+            model.sample_text(wrapped, max_tokens=max_tokens, terminators=terminators) or ""
+        ).strip()
     except Exception as exc:
         logger.warning("dial setup: %s generation failed: %s", what, exc)
         try:

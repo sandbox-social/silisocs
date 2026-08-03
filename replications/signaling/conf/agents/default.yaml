@@ -20,8 +20,11 @@ persona_pipeline:
       # purchases and reflections are still in context when today's date starts.
       observation_history: 400
       memory_history: 8000
-    shared_memories:
-      - ${event.context}
+    # No shared memories and no seeded arrival observation: upstream agents
+    # start with exactly their persona memories — the marketplace premise is
+    # observed by the GAME MASTER only and never reaches an entity's memory
+    # (sequential.py run_loop; see docs/port_notes.md).
+    shared_memories: []
 
   classes:
     buyer:
@@ -60,8 +63,6 @@ persona_pipeline:
         context: goal
         goal: goal
 
-shared_memories:
-  - ${event.context}
+shared_memories: []
 
-initial_observations:
-  - "{name} arrives at the marketplace."
+initial_observations: []

@@ -276,6 +276,14 @@ class MarketplaceApp(SimultaneousRoundGame):
         """
         for name in self._sellers:
             self._reset_seller(name)
+        if self.market_type != "clearing_house":
+            # Upstream rebuilds the goods list from its spec every morning, so
+            # fixed-price market stock also replenishes daily.
+            self._goods_inventory = {
+                good_id: int(good.inventory)
+                for good_id, good in self._goods.items()
+                if good.inventory is not None
+            }
 
     # ---- actions --------------------------------------------------------
 
@@ -304,7 +312,8 @@ class MarketplaceApp(SimultaneousRoundGame):
         selectable_name="ASK",
         description=(
             "Submit a sealed ask to SELL some of your stock this round: the good's id, the "
-            "minimum price per unit you will accept, and how many units you offer."
+            "minimum price per unit you will accept, and how many units you offer "
+            "(1 up to the units in your stock)."
         ),
         tags=("market.order",),
         fields={
@@ -561,10 +570,17 @@ class MarketplaceApp(SimultaneousRoundGame):
         if phase.phase != PHASE_MARKET:
             return f"{last_action_obs}The marketplace is closed for day {phase.day}."
 
-        prices = self._price_history[-1] if self._price_history else {}
+        # Checkpoints store an unpriced good as None (JSON-safe); upstream's
+        # observation renders it as nan, so restore that for display parity.
+        stored = self._price_history[-1] if self._price_history else {}
+        prices = {
+            good: (float("nan") if value is None else value) for good, value in stored.items()
+        }
         cash = self.cash_of(actor_name)
         inventory = self.inventory_of(actor_name)
-        round_line = f"Day {phase.day}: round {phase.position + 1} of {self._calendar.rounds_per_day} is starting\n"
+        # Upstream tells the agent only the in-day round number — never the day
+        # or the horizon (a fresh MarketPlace per day resets its counter).
+        round_line = f"Round: {phase.position + 1} is starting\n"
         if self.market_type == "clearing_house":
             common_obs = (
                 f"{last_action_obs}"

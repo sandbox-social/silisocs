@@ -50,11 +50,16 @@ envelope. **Direction of the effect:** order submission is more reliable than
 upstream's regex path, which silently drops unparseable answers. This narrows,
 not widens, the gap between conditions.
 
-**Missing wearable is counted, not fatal.** Upstream raises when a buyer on a
-date owns nothing wearable, killing the run at day N. The port substitutes
-"plain, unremarkable everyday clothes" and increments the
-`signaling_missing_wearable` health counter, so the run degrades loudly instead
-of dying. (Upstream text never contains that fallback sentence.)
+**Missing wearable / failed generation is counted, not fatal.** Upstream
+asserts when a buyer on a date owns nothing wearable (or an eating/wearing
+statement is empty), killing the run at day N. The port substitutes "plain,
+unremarkable everyday clothes" (a sentence upstream never contains) and skips
+a failed scene/events generation, incrementing `signaling_missing_wearable` /
+`signaling_dial_generation_failures`. Caveat: these are replication-local
+counters — they appear in `sim_metrics.json`'s counter dict but are NOT in the
+framework's `HEALTH_COUNTERS` registry, so they do not surface in the run-end
+degraded warning or the manifest `health` block. Check `sim_metrics.json`
+after a run.
 
 **Window memory instead of associative retrieval.** Upstream uses an embedder-
 backed associative memory plus an `ImportantMemories` component that filters by
@@ -66,9 +71,16 @@ mechanism; retrieval is prompt engineering. This also removes the
 stamped on injected observations, so switching to `sim.memory.built_in:
 retrieval` later remains possible.
 
-**Role enforcement is config, not code.** Buyers may only `BID` and sellers only
-`ASK`, expressed as a per-flow action filter on the market GM's resolver.
-Upstream branches on `agent.role` inside the component.
+**Role enforcement is an addition, not a transcription.** Buyers may only
+`BID` and sellers only `ASK`, expressed as a per-flow action filter on the
+market GM's resolver plus a backend-side check. Upstream branches on
+`agent.role` only to choose which call-to-action and observation an agent
+gets — it never rejects a submitted order, so a consumer ASK would be booked
+there and is refused here. The port also validates orders more strictly than
+upstream's `if not all([...])` (price must be a positive finite number, qty
+≥ 1), which closes upstream's negative-quantity exploit (a negative-value
+trade *increases* buyer cash there) at the cost of refusing orders upstream
+would book.
 
 ## Randomness
 
@@ -90,14 +102,31 @@ file order, so the roster is a pure function of config and the dyad schedule is
 reproducible from the config alone. The dyad *algorithm* is verbatim and is
 tested for exact equality against upstream on the same roster.
 
+**Model plane defaults differ from upstream's.** Upstream's `run.py` defaults
+to `--model_name=gpt-4o` at the provider-default temperature 1.0 (Concordia's
+`DEFAULT_TEMPERATURE`; nothing in the example overrides it). The port defaults
+to `gpt-4o-mini` (`conf/sim.yaml`, `SIGNALING_MODEL` env override) at
+temperature 0.5. These are the largest uncontrolled levers on any magnitude
+comparison against the paper: for a faithful reproduction run set
+`SIGNALING_MODEL=gpt-4o sim.llm.temperature=1.0`.
+
+**The persona blob is context, not memory.** Upstream loads the raw
+`[Persona] {json}` string into associative memory alongside the formative
+memories; the port promotes its fields (description, traits, initial context)
+into the agent's always-on `context` instead. Every persona fact still reaches
+the agent — more salient than upstream's retrieval, not less.
+
 ## Timing
 
-**The day's final market round resolves before the reflection.** Upstream leaves
-the last round's outcome queued until the next day's first observation, an
-artifact of its queue-delivery timing. The port forces the resolve at the day
-boundary so the "reflect on what you bought today" prompt and the wearing draw
-both see the full day. Reflections therefore see one more round of outcomes than
-upstream's do.
+**The day's final market round resolves before the reflection — on both
+sides.** Upstream's simultaneous engine resolves each round inside its own
+step, so the day's last round is cleared before the reflection loop and the
+wearing draw; only the outcome *messages* stay queued until the next market
+observation. The port is identical: the every-step backend update resolves
+each finished round at the next step, and the market queue drains only on
+market-phase observations. (An earlier revision of this note claimed the port
+diverged here by "forcing the resolve at the day boundary"; both halves of
+that claim were wrong — there is no divergence.)
 
 **`dial_turns` counts utterances; upstream's `--num_dial_rounds` counts engine
 steps.** Upstream's 80 is `default_max_steps` for the whole dyad simulation:
@@ -106,6 +135,66 @@ first utterance, and the dialogic GM retains a terminate seam that can end a
 conversation early. The port schedules exactly `calendar.dial_turns`
 conversational turns — a slightly longer conversation at the same number. Set
 `calendar.dial_turns` lower to match a measured upstream effective length.
+
+## Upstream is broken at the pin (the port implements the documented design)
+
+Two defects in the pinned upstream mean its *executed* behavior differs from
+its *documented* design; the port implements the design. Both were
+established by static reading (the pinned tree does not import under Python
+3.11 on this host) — confirm with a `--disable_language_model` run per
+condition on a compatible interpreter before citing them in print.
+
+- **`--condition=social` crashes at the first dyad.** `dial.py`'s prefab
+  registry has no `'dialogic__GameMaster'` key, but `dial.py:176` requests
+  that prefab and the builder indexes the dict unguarded → `KeyError` on day
+  0. Upstream's flagship arm is unrunnable at the pin; only `asocial` runs
+  end-to-end.
+- **`--condition=asocial_personal` never generates personal events.** With
+  the shared setup skipped the dyad sim has exactly one game master, the
+  sequential engine short-circuits `NEXT_GAME_MASTER`, and the DITL
+  initializer's `_process_dyad` only fires under a `NEXT_GAME_MASTER` spec —
+  so nothing is ever generated or injected; the arm spins its 80 steps on
+  make-observation LLM filler. The port's middle arm is content-bearing
+  where upstream's is empty.
+
+Consequence for any magnitude comparison: for the date ceremony,
+conversation, and post-date reflections there is no *executable* upstream
+baseline — fidelity claims for those surfaces are source-level (verbatim
+prompts, transcribed logic, differential tests against the pinned sources),
+not run-level.
+
+## Known composition differences (deliberate, direction understood)
+
+These do not change any prompt literal or event, but change how text
+accumulates in context:
+
+- **The date transcript is re-observed cumulatively.** Upstream delivers each
+  utterance once, to both partners, as one memory entry. The port's date
+  backend shows the acting agent the day's transcript-so-far at each of its
+  turns (speaker's own line included in the transcript, not as a separate
+  memory), so a date contributes O(n²) transcript lines to the context window
+  vs upstream's O(n). Same information, heavier repetition.
+- **The marketplace goal is standing context.** Upstream's conversational
+  prefab carries no goal component, so dates and post-date reflections run
+  without the "buyer at the marketplace" goal; the port's single persistent
+  agent keeps it all day.
+- **Journal steps are framed.** The port's journal backend delivers a short
+  framing observation ("JOURNAL — day N", "reflection k of n") before each
+  reflection; upstream reflections arrive with no preceding observation.
+- **Ceremony observations arrive as separate entries.** Upstream joins the 5
+  personal events + scene into one queued observation; the port issues them
+  as separate `observe` calls. Identical text; different memory chunking
+  (irrelevant for window memory, relevant under retrieval).
+- **`trade_history` rows stamp the engine step as `round`.** Upstream's rows
+  carry round-in-day (0..R−1, reset daily) with `day` stamped externally; the
+  port's carry the global step plus `day`. Use the `round_resolved` action
+  events (which carry `round_in_day`) for per-round analysis.
+- **The dyad schedule is derived, not stored.** Upstream computes it once on
+  day 0 and reuses it; the port derives it per ceremony from the live roster
+  (memoized, and independently in the date GM's turn selection). Identical
+  under the static rosters of every shipped condition; a mid-run roster
+  mutation would desync the two derivations, which upstream structurally
+  cannot do.
 
 ## Out of scope (no upstream baseline exists at the pin)
 
@@ -126,11 +215,18 @@ conversational turns — a slightly longer conversation at the same number. Set
 - The `subculture` goods table has **49** items (Clothing and Accessories carry
   6-7 per tier), not the ~24 an earlier reading suggested. `original` and
   `synthetic` have 25 each; `both` (their merge) has 50.
-- Upstream treats `item_list=synthetic` as the original+synthetic **merge**
-  (identical to `both`) everywhere — market and eat/wear draws alike. The
-  port's `input/goods/synthetic.json` is the synthetic-only table; use
-  `item_list: both` to reproduce upstream's `synthetic` behaviour. No shipped
-  condition uses either.
+- Upstream is internally inconsistent about `item_list=synthetic`: the
+  **market** uses the synthetic-only table (`simulation.py:143-144`), while
+  the **eat/wear draws** merge original+synthetic (`dial.py:63` treats
+  `synthetic` and `both` alike). The port's `input/goods/synthetic.json` is
+  the synthetic-only table, so `item_list: synthetic` reproduces upstream's
+  market and diverges on the eat/wear pool; `item_list: both` reproduces the
+  eat/wear pool and diverges on the market. No shipped condition uses either.
+- Upstream's starting-outfit draw has no `both` branch
+  (`personas.py:4691-4697` falls through to `ORIGINAL_GOODS`), so under
+  `item_list=both` upstream seeds outfits from original's 2 Clothing/Low
+  items while the port draws from the active table's 4. Likely an upstream
+  missing-branch bug; unreachable from any shipped condition.
 - Upstream's per-round supply/demand `curve_history` (an analysis artifact,
   written to its logs and read by nothing at the pin) is not reproduced;
   the port's `round_resolved` rows carry prices, trades, and order counts.

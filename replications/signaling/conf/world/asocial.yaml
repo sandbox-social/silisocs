@@ -5,8 +5,9 @@
 # skip_personal_events / skip_shared_setup / skip_dial_simulation all True.
 #
 # Tests whether signaling behaviour emerges without any social feedback, so the
-# ONLY difference from `default.yaml` is the calendar shape and the absence of
-# the day-boundary handler — same agents, same env, same GMs.
+# ONLY difference from `default.yaml` is the calendar shape and the ceremony
+# switches (the day-boundary handler still runs — it owns seller resets and
+# eating — but generates no events, scenes, or dates).
 
 scenario_name: signaling
 condition: asocial

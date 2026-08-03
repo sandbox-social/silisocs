@@ -155,4 +155,11 @@ class ReflectionActionPromptComponent(ActionPromptComponent):
         if self._action_prompt_template:
             preamble = format_action_prompt(self._action_prompt_template, agent_name)
             text = f"{preamble}\n\n{text}"
-        return ActionSpec(prompt=text, output_type=OutputType.TEXT)
+        # The kind rides along so the agent can run the reflection's question
+        # chain (consumer chain for the market reflection, convo chain for the
+        # post-date ones), matching which upstream entity answers each.
+        return ActionSpec(
+            prompt=text,
+            output_type=OutputType.TEXT,
+            extra_args={"reflection_kind": kind},
+        )

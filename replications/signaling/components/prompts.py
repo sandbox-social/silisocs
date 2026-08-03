@@ -251,14 +251,39 @@ PINK_NOISE_QUESTION = (
 )
 
 #: Section headers used when the question answers are concatenated into the
-#: acting context, mirroring the upstream components' ``pre_act_label``s.
+#: acting context — the upstream components' ``pre_act_label``s, verbatim, one
+#: per component per chain (the two chains word even the shared questions
+#: differently, so the keys are chain-qualified). Two quirks are reproduced
+#: deliberately: upstream's evaluation/strategy labels contain a literal
+#: ``{question}`` placeholder that nothing ever formats (the model sees the
+#: braces), kept here as ``{{question}}``; and each label restates its
+#: question before ``Answer``, so the answer is self-describing in context.
 QUESTION_LABELS: dict[str, str] = {
-    "situation": "Question: What situation is {name} in right now?\nAnswer",
-    "self": "Question: What kind of person is {name}?\nAnswer",
-    "evaluation": "--- Consumer Market Evaluation ---\nAnswer",
-    "person_by_situation": "--- Person by Situation ---\nAnswer",
-    "last_sentence": "--- Last Sentence ---\nAnswer",
-    "strategy": "--- Conversational Strategy ---\nAnswer",
+    # agents/consumer.py (the marketplace chain)
+    "consumer_situation": "Question: What situation is {name} in right now?\nAnswer",
+    "consumer_self": (
+        "Question: What kind of person is {name} and what are their preferences?\nAnswer"
+    ),
+    "evaluation": "--- Consumer Market Evaluation ---\n{{question}}",
+    # agents/convo_agent.py (the conversational chain)
+    "convo_situation": (
+        "--- Situational Awareness ---\nQuestion: What kind of situation is {name} in "
+        "right now? Response using 1-5 sentences.\nAnswer"
+    ),
+    "convo_self": (
+        "--- Self Perception ---\nQuestion: What kind of person is {name}? What are "
+        "their values and conservational style?\nAnswer"
+    ),
+    "person_by_situation": (
+        "--- Person by Situation ---\nQuestion: What would a person like {name} do in "
+        "a situation like this?\nAnswer"
+    ),
+    "last_sentence": (
+        "--- Last Sentence ---\nQuestion: Is there something in the last sentence in "
+        "the conversation that {name} could respond to to move the conversation "
+        "forward?\nAnswer"
+    ),
+    "strategy": "--- Conversational Strategy ---\n{{question}}",
 }
 
 #: dial.py — the opening line queued into both partners' observations.

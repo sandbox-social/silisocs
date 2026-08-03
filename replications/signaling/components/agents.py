@@ -17,11 +17,14 @@ concatenated into the context the acting call finally sees. This class
 reproduces that: one ``sample_text`` per question, answers concatenated under
 :data:`prompts.QUESTION_LABELS`, then the real action call.
 
-Which chain runs is decided by the **offered action surface**, not by config:
-a spec offering ``BID``/``ASK`` is a marketplace turn (consumer chain), one
-offering ``SEND_MESSAGE`` is a conversational turn (convo chain), and anything
-else — the free-text journal reflections — takes the plain ``NativeAgent`` path,
-exactly as upstream's ``SwitchingActComponent`` switches on the action spec.
+Which chain runs is decided by the **action spec**, not by config: a spec
+offering ``BID``/``ASK`` is a marketplace turn (consumer chain), one offering
+``SEND_MESSAGE`` is a conversational turn (convo chain), and the free-text
+journal reflections declare their calendar kind in ``extra_args`` — the market
+reflection runs the consumer chain (upstream asks it of the consumer entity)
+and the four post-date reflections run the convo chain (upstream asks them of
+the conversational entity, whose ``SwitchingActComponent`` diverts only
+choice-type specs, so ``OutputType.FREE`` falls through to the full chain).
 This keeps one agent class usable across all three game masters with no
 per-phase wiring.
 """
@@ -41,15 +44,15 @@ logger = logging.getLogger(__name__)
 
 #: (label key, question template) for a marketplace turn — agents/consumer.py.
 CONSUMER_CHAIN: tuple[tuple[str, str], ...] = (
-    ("situation", prompts.SITUATION_PERCEPTION_QUESTION),
-    ("self", prompts.CONSUMER_SELF_PERCEPTION_QUESTION),
+    ("consumer_situation", prompts.SITUATION_PERCEPTION_QUESTION),
+    ("consumer_self", prompts.CONSUMER_SELF_PERCEPTION_QUESTION),
     ("evaluation", prompts.CONSUMER_EVALUATION_QUESTION),
 )
 
 #: (label key, question template) for a conversational turn — agents/convo_agent.py.
 CONVO_CHAIN: tuple[tuple[str, str], ...] = (
-    ("situation", prompts.CONVO_SITUATION_QUESTION),
-    ("self", prompts.CONVO_SELF_PERCEPTION_QUESTION),
+    ("convo_situation", prompts.CONVO_SITUATION_QUESTION),
+    ("convo_self", prompts.CONVO_SELF_PERCEPTION_QUESTION),
     ("person_by_situation", prompts.PERSON_BY_SITUATION_QUESTION),
     ("last_sentence", prompts.LAST_SENTENCE_QUESTION),
     ("strategy", prompts.PINK_NOISE_QUESTION),
@@ -93,13 +96,27 @@ class SignalingAgent(NativeAgent):
     # ---- pipeline selection --------------------------------------------
 
     def _questions_for(self, action_spec: ActionSpec) -> tuple[tuple[str, str], ...]:
-        """Pick the chain for one action spec from the actions it offers."""
+        """Pick the chain for one action spec.
+
+        Tool-offering specs identify themselves (BID/ASK = market turn,
+        SEND_MESSAGE = date turn). The free-text reflections carry a
+        ``reflection_kind`` in ``extra_args`` instead: upstream issues the
+        market reflection on the *consumer* entity (consumer chain) and the
+        four post-date reflections on the *conversational* entity — whose
+        ``SwitchingActComponent`` only diverts choice-type specs, so a FREE
+        spec runs the full convo chain there.
+        """
         if not self.question_chain:
             return ()
         offered = _offered_tool_names(action_spec)
         if offered & _MARKET_TOOLS:
             return CONSUMER_CHAIN
         if offered & _CONVO_TOOLS:
+            return CONVO_CHAIN
+        kind = getattr(action_spec, "extra_args", {}).get("reflection_kind")
+        if kind == "market_reflection":
+            return CONSUMER_CHAIN
+        if kind:
             return CONVO_CHAIN
         return ()
 

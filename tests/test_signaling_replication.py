@@ -938,7 +938,7 @@ class _CeremonyAgent:
         self.state: dict = {"memory": [f"{name} initial"]}
         self.set_states: list[dict] = []
 
-        def _sample(prompt: str) -> str:
+        def _sample(prompt: str, **kwargs: object) -> str:
             self.prompts.append(prompt)
             return "first***second"
 
