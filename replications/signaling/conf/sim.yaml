@@ -1,0 +1,59 @@
+# Merged over sim/base.yaml (flat scenario file => merge, not replace), so every
+# unset knob keeps its framework default.
+#
+# The three GMs disagree about how agents express themselves, so action_mode and
+# tool_calling are set PER GM in env/signaling.yaml; the globals below are the
+# market/date convention and journal_gm overrides them to free text.
+action_mode: generic
+tool_calling:
+  mode: single
+
+# One utterance/order per agent per step: the calendar, not the turn policy, is
+# what gives an agent several actions per day.
+engine:
+  # fixed_steps, plus a startup check that num_steps/day_length agree with the
+  # day calendar. They are the two numbers config cannot derive (no arithmetic in
+  # OmegaConf), so this is what keeps them honest -- including under a CLI
+  # override like `calendar.rounds_per_day=3`, which a config test cannot see.
+  loop:
+    built_in: null
+    class_path: replications.signaling.components.loop.CalendarLoopStrategy
+    params:
+      calendar: ${calendar}
+      num_days: ${num_days}
+      day_length: ${day_length}
+  step:
+    built_in: multi_gm
+    class_path: null
+    params: {}
+  turn_policy:
+    built_in: single_action
+    class_path: null
+    params: {}
+  participation:
+    built_in: all
+    class_path: null
+    params: {}
+  # A date step puts one speaker per dyad in flight and a market step every buyer
+  # and seller at once, so turns are LLM-latency bound rather than CPU bound;
+  # coroutines on one loop beat a thread per turn by an order of magnitude here.
+  executor: asyncio
+
+# Upstream keeps the whole day in the agent's context and filters it by tag; the
+# port keeps a large window instead (see docs/port_notes.md). A social day is 91
+# steps, so these must comfortably span several days of observations.
+memory:
+  built_in: window
+  class_path: null
+  params: {}
+
+checkpoint:
+  # One checkpoint per day boundary rather than per step: a social day is 91
+  # steps and the state is small but not free. ${day_length} is declared in the
+  # world file and validated against the calendar by the loop strategy above.
+  every_n_steps: ${day_length}
+  auto_resume: false
+
+llm:
+  name: ${oc.env:SIGNALING_MODEL,gpt-4o-mini}
+  temperature: 0.5

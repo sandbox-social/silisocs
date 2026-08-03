@@ -1,0 +1,14 @@
+# Probes are off: every quantity this replication measures is already a committed
+# action row. Purchases and clearing prices come from market_gm's
+# action_events.jsonl, and the four post-date reflections — including the 0-10
+# rating that is the study's dependent variable — from journal_gm's.
+#
+# Probes are also the wrong instrument for the reflections specifically: the
+# deployment path calls agent.act ONLY and never agent.observe, whereas upstream
+# feeds every reflection back into the agent's memory, where it conditions the
+# following day. Making them probes would silently delete that feedback path.
+probes:
+  schedule:
+    built_in: disabled
+    class_path: null
+    params: {}

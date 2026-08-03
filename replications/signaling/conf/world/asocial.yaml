@@ -1,0 +1,69 @@
+# @package _global_
+#
+# Condition: ASOCIAL — marketplace only. No personal events, no dates, no
+# post-date reflections. Upstream: `--condition=asocial`, which sets
+# skip_personal_events / skip_shared_setup / skip_dial_simulation all True.
+#
+# Tests whether signaling behaviour emerges without any social feedback, so the
+# ONLY difference from `default.yaml` is the calendar shape and the absence of
+# the day-boundary handler — same agents, same env, same GMs.
+
+scenario_name: signaling
+condition: asocial
+jobname_format: "signaling_${condition}_${item_list}_N${num_agents}_D${num_days}_${run_name}"
+
+num_agents: 10
+num_sellers: 25
+item_list: original
+
+#   day_length = 5 + 1 (market reflection) + 1 (dial setup, empty here) = 7
+#   num_steps  = 5 * 7 = 35
+# The dial_setup slot is kept so day indices line up with the social arm.
+# Both numbers are checked against the calendar at startup (see sim.yaml).
+num_days: 5
+calendar:
+  rounds_per_day: 5
+  dial_turns: 0
+  date_reflections: 0
+day_length: 7
+num_steps: 35
+
+seed: 42
+run_name: run1
+output_rootname: ""
+
+signaling_root: replications/signaling
+personas_path: ${signaling_root}/input/personas_la.json
+goods_path: ${signaling_root}/input/goods/${item_list}.json
+sellers_path: ${signaling_root}/input/sellers_${item_list}.json
+
+# Which game-master chain buyers pass through (env/signaling.yaml reads this).
+buyer_chain: [market_gm, journal_gm]
+
+market_type: clearing_house
+show_advert: true
+cash_distribution: mixed
+
+setting:
+  name: Signaling Marketplace (asocial)
+  background:
+    - Agents shop each morning in a clearing-house marketplace for food, clothing, gadgets, and accessories.
+    - There are no social interactions: nobody sees what anybody else bought.
+event:
+  name: A day of shopping
+  context: |
+    Each day begins in a marketplace where buyers bid for goods and sellers ask
+    for their stock; the market clears simultaneously each round. There are no
+    dates and no social events.
+
+data:
+  replication: signaling
+
+# No DIAL ceremony in this condition — no generated events or scenes. The
+# unconditional day-boundary duties still run, as upstream's do in every arm:
+# sellers reset fresh each morning, and every buyer eats (or starves) daily,
+# with the statement surfacing in the next morning's market observation.
+dial_setup:
+  enabled: false
+  shared_setup: false
+  personal_events: false

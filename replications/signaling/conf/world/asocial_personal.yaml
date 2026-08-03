@@ -1,0 +1,68 @@
+# @package _global_
+#
+# Condition: ASOCIAL_PERSONAL — marketplace + personal daily events, but no date
+# conversation. Upstream: `--condition=asocial_personal`, which sets
+# skip_shared_setup=True (no dialogic GM, no shared scene, and — because the
+# post-date reflection block is guarded by the same flag — no date reflections)
+# while personal events are still generated and injected.
+#
+# Identical to `asocial.yaml` except the day-boundary handler runs in
+# events-only mode: agents still live a day, they just never meet anyone.
+
+scenario_name: signaling
+condition: asocial_personal
+jobname_format: "signaling_${condition}_${item_list}_N${num_agents}_D${num_days}_${run_name}"
+
+num_agents: 10
+num_sellers: 25
+item_list: original
+
+#   day_length = 5 + 1 (market reflection) + 1 (dial setup) = 7
+#   num_steps  = 5 * 7 = 35
+# Both numbers are checked against the calendar at startup (see sim.yaml).
+num_days: 5
+calendar:
+  rounds_per_day: 5
+  dial_turns: 0
+  date_reflections: 0
+day_length: 7
+num_steps: 35
+
+seed: 42
+run_name: run1
+output_rootname: ""
+
+signaling_root: replications/signaling
+personas_path: ${signaling_root}/input/personas_la.json
+goods_path: ${signaling_root}/input/goods/${item_list}.json
+sellers_path: ${signaling_root}/input/sellers_${item_list}.json
+
+# Which game-master chain buyers pass through (env/signaling.yaml reads this).
+buyer_chain: [market_gm, journal_gm]
+
+market_type: clearing_house
+show_advert: true
+cash_distribution: mixed
+
+setting:
+  name: Signaling Marketplace (asocial, with personal events)
+  background:
+    - Agents shop each morning in a clearing-house marketplace for food, clothing, gadgets, and accessories.
+    - They live out a personal day afterwards, but never meet another participant.
+event:
+  name: A day of shopping and ordinary life
+  context: |
+    Each day begins in a marketplace where buyers bid for goods and sellers ask
+    for their stock; the market clears simultaneously each round. Afterwards each
+    buyer lives out an ordinary day, but there are no dates.
+
+data:
+  replication: signaling
+
+# Events-only: the dyad schedule still decides who gets personal events (as
+# upstream's per-dyad DIAL run does), but no shared date scene is generated and
+# with dial_turns: 0 no conversation ever runs. Eating still happens daily.
+dial_setup:
+  enabled: true
+  shared_setup: false
+  personal_events: true

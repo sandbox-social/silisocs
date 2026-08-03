@@ -1,0 +1,168 @@
+# Three game masters, one per surface the experiment needs; which one acts on a
+# given step is decided by the day calendar (components/calendar.py), not by the
+# engine. Off-phase GMs select nobody, so the stock concurrent `multi_gm`
+# traversal is correct with no custom step strategy.
+#
+#   market_gm   simultaneous sealed BID/ASK, cleared at the round boundary
+#   journal_gm  free-text reflections (the four post-date ones carry the study's
+#               dependent variable, the 0-10 rating)
+#   date_gm     one conversational utterance per dyad per step
+#
+# The GMs disagree about how agents express themselves, which is exactly what a
+# per-GM `action_mode` / `tool_calling` override is for: orders and messages are
+# typed tool calls, reflections are prose.
+
+# Present but unused: with a non-empty `gm_orchestration.gms` list the loader
+# discards the single-GM spec it would otherwise build from this block.
+gm: {}
+
+gm_orchestration:
+  gms:
+    # ---------------------------------------------------------------- market
+    - gm_name: market_gm
+      sequence: 0
+      action_mode: generic
+      tool_calling: single
+      backend:
+        type: signaling_marketplace
+        class_path: replications.signaling.components.marketplace_app.MarketplaceApp
+        params:
+          goods_path: ${goods_path}
+          sellers_path: ${sellers_path}
+          personas_path: ${personas_path}
+          market_type: ${market_type}
+          show_advert: ${show_advert}
+          cash_distribution: ${cash_distribution}
+          seed: ${seed}
+          calendar: ${calendar}
+          app_description: ${event.context}
+        enabled_actions: null
+      components:
+        initialize: {built_in: app_initialize, class_path: null, params: {}}
+        next_acting:
+          built_in: null
+          class_path: replications.signaling.components.next_acting.CalendarNextActing
+          params:
+            phases: [market]
+            roles: all
+            personas_path: ${personas_path}
+            calendar: ${calendar}
+        # Drives SimultaneousRoundGame.update -> resolve of the finished round,
+        # strictly before the next round's observations are built -- plus the
+        # day boundaries: the daily seller reset at each day start, and on the
+        # calendar's dial_setup step the daily eating draw (all conditions) and
+        # the DIAL ceremony (wearing draw, personal events, shared date scene).
+        # All live in one slot because the engine calls it every step, serially,
+        # before any agent acts, which is exactly the boundary they all need.
+        update:
+          built_in: null
+          class_path: replications.signaling.components.dial_handler.DayBoundaryUpdateComponent
+          params:
+            calendar: ${calendar}
+            personas_path: ${personas_path}
+            seed: ${seed}
+            num_days: ${num_days}
+            enabled: ${dial_setup.enabled}
+            shared_setup: ${dial_setup.shared_setup}
+            personal_events: ${dial_setup.personal_events}
+        observe: {built_in: app_observation, class_path: null, params: {}}
+        resolve:
+          built_in: tool_calling
+          class_path: null
+          params:
+            # Role enforcement in config rather than backend code: the buyer flow
+            # may only BID, the seller flow only ASK.
+            flow_action_filters:
+              buyer: {enabled_actions: [BID], excluded_actions: []}
+              seller: {enabled_actions: [ASK], excluded_actions: []}
+        # Upstream's CTA is per-role (consumer bids, producer asks), so the
+        # component picks the verbatim prompts.py constant from the backend's
+        # role map; the BID/ASK tool schemas supply the output envelope.
+        action_prompt:
+          built_in: null
+          class_path: replications.signaling.components.action_prompt.MarketActionPromptComponent
+          params: {}
+
+    # --------------------------------------------------------------- journal
+    - gm_name: journal_gm
+      sequence: 1
+      # Reflections are free prose, so this GM opts out of tool calling; its
+      # resolver hands the text straight to the backend.
+      action_mode: custom
+      tool_calling: none
+      backend:
+        type: signaling_journal
+        class_path: replications.signaling.components.journal_app.JournalApp
+        params:
+          personas_path: ${personas_path}
+          seed: ${seed}
+          num_days: ${num_days}
+          calendar: ${calendar}
+        enabled_actions: null
+      components:
+        initialize: {built_in: app_initialize, class_path: null, params: {}}
+        next_acting:
+          built_in: null
+          class_path: replications.signaling.components.next_acting.CalendarNextActing
+          params:
+            phases: [market_reflection, date_reflection]
+            roles: buyers
+            personas_path: ${personas_path}
+            calendar: ${calendar}
+        update: {built_in: disabled, class_path: null, params: {}}
+        observe: {built_in: app_observation, class_path: null, params: {}}
+        resolve:
+          built_in: null
+          class_path: replications.signaling.components.resolve.JournalResolveComponent
+          params: {}
+        action_prompt:
+          built_in: null
+          class_path: replications.signaling.components.action_prompt.ReflectionActionPromptComponent
+          params:
+            calendar: ${calendar}
+
+    # ------------------------------------------------------------------ date
+    - gm_name: date_gm
+      sequence: 2
+      action_mode: generic
+      tool_calling: single
+      backend:
+        type: signaling_date
+        class_path: replications.signaling.components.date_app.DateMessagingApp
+        params:
+          personas_path: ${personas_path}
+          seed: ${seed}
+          num_days: ${num_days}
+          calendar: ${calendar}
+        # A date is a private two-person conversation: no broadcasts.
+        enabled_actions: [SEND_MESSAGE]
+      components:
+        initialize: {built_in: app_initialize, class_path: null, params: {}}
+        next_acting:
+          built_in: null
+          class_path: replications.signaling.components.next_acting.DyadTurnNextActing
+          params:
+            personas_path: ${personas_path}
+            seed: ${seed}
+            num_days: ${num_days}
+            calendar: ${calendar}
+        update: {built_in: disabled, class_path: null, params: {}}
+        observe: {built_in: app_observation, class_path: null, params: {}}
+        resolve: {built_in: tool_calling, class_path: null, params: {}}
+        # Verbatim upstream DEFAULT_CALL_TO_SPEECH minus its speech-format
+        # clause (the SEND_MESSAGE tool schema supplies the envelope). Must
+        # match prompts.DATE_CALL_TO_ACTION — a test pins the two together.
+        action_prompt:
+          built_in: default
+          class_path: null
+          params:
+            action_prompt: "Given the above, what is {name} likely to say next?"
+
+  flow_bindings:
+    flow_to_gms:
+      # Buyers pass through every surface their condition has; only the GM whose
+      # phase is active selects any turns on a given step. The chain comes from
+      # the world config so the asocial arms — which have no date phase — say so
+      # rather than routing through a GM that can never act.
+      buyer: ${buyer_chain}
+      seller: [market_gm]

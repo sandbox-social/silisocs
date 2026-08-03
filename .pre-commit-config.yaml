@@ -45,6 +45,9 @@ repos:
       - id: mixed-line-ending
       - id: name-tests-test
         args: [--pytest-test-first]
+        # Test-support module (pinned upstream sources for the differential
+        # tests), imported by test_signaling_replication.py — not a test file.
+        exclude: ^tests/signaling_pinned\.py$
       - id: trailing-whitespace
         types: [python]
   - repo: local

@@ -1,0 +1,67 @@
+# @package agents
+#
+# Two classes, two flows. Buyers are the 50 Los Angeles personas converted from
+# upstream (`tools/convert_concordia_data.py`); sellers are generated one per
+# good in the active item list, so their roster changes with `item_list`.
+#
+# `flow_tag` is what routes each class through its GM chain
+# (env/signaling.yaml -> gm_orchestration.flow_bindings) AND what the market GM's
+# per-flow action filter keys on, so buyers can only BID and sellers only ASK
+# without either restriction living in backend code.
+
+builder:
+  class_path: null
+  params: {}
+
+persona_pipeline:
+  defaults:
+    params:
+      # A social day is 91 steps; these must span several days so yesterday's
+      # purchases and reflections are still in context when today's date starts.
+      observation_history: 400
+      memory_history: 8000
+    shared_memories:
+      - ${event.context}
+
+  classes:
+    buyer:
+      # The first `num_agents` personas in the converted file. Upstream instead
+      # takes a seeded random sample of its 50; the port takes a prefix so the
+      # roster is a pure function of config (see docs/port_notes.md).
+      count: ${num_agents}
+      class_path: replications.signaling.components.agents.SignalingAgent
+      sim_role_name: buyer
+      flow_tag: buyer
+      data:
+        source: local_json
+        path: ${personas_path}
+      field_map:
+        name: name
+        context: context
+      # Formative memories, verbatim from upstream. They are seeded into memory
+      # (not the observation feed), matching Concordia's memory-bank preload.
+      specific_memories_field: memories
+      params:
+        question_chain: true
+
+    seller:
+      # One producer per good in the active table; `num_sellers` must match the
+      # length of input/sellers_${item_list}.json (asserted by the test suite).
+      count: ${num_sellers}
+      class_path: silisocs.agents.native.NativeAgent
+      sim_role_name: seller
+      flow_tag: seller
+      data:
+        source: local_json
+        path: ${sellers_path}
+      field_map:
+        name: name
+        # The verbatim upstream seller goal is the seller's whole persona.
+        context: goal
+        goal: goal
+
+shared_memories:
+  - ${event.context}
+
+initial_observations:
+  - "{name} arrives at the marketplace."

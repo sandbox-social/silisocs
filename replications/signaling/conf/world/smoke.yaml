@@ -1,0 +1,61 @@
+# @package _global_
+#
+# A tiny SOCIAL run for development and the end-to-end test: every phase of the
+# experiment happens, at a scale that finishes in seconds. Not an experimental
+# condition — use `world=default` for that.
+
+scenario_name: signaling
+condition: smoke
+jobname_format: "signaling_smoke_N${num_agents}_D${num_days}_${run_name}"
+
+num_agents: 4
+num_sellers: 6      # a prefix of the sellers file; the shipped conditions use all of them
+item_list: original
+
+#   day_length = 2 + 1 + 1 + 2 + 4 = 10 ; num_steps = 2 * 10 = 20
+# Both numbers are checked against the calendar at startup (see sim.yaml).
+num_days: 2
+calendar:
+  rounds_per_day: 2
+  dial_turns: 2
+  date_reflections: 4
+day_length: 10
+num_steps: 20
+
+seed: 42
+run_name: smoke
+output_rootname: ""
+
+signaling_root: replications/signaling
+personas_path: ${signaling_root}/input/personas_la.json
+goods_path: ${signaling_root}/input/goods/${item_list}.json
+sellers_path: ${signaling_root}/input/sellers_${item_list}.json
+
+# Which game-master chain buyers pass through (env/signaling.yaml reads this).
+buyer_chain: [market_gm, journal_gm, date_gm]
+
+market_type: clearing_house
+show_advert: true
+cash_distribution: mixed
+
+setting:
+  name: Signaling Marketplace (smoke)
+  background:
+    - Agents shop each morning in a clearing-house marketplace.
+    - In the evening they meet a new partner for a first date.
+event:
+  name: A day of shopping and a first date
+  context: |
+    Each day begins in a marketplace where buyers bid for goods and sellers ask
+    for their stock; the market clears simultaneously each round. In the evening
+    each buyer meets a different partner for a first date, wearing one of the
+    items they own.
+
+data:
+  replication: signaling
+
+# Day-boundary ceremony, same as the social condition.
+dial_setup:
+  enabled: true
+  shared_setup: true
+  personal_events: true

@@ -1,0 +1,159 @@
+{
+  "Food": {
+    "Low": {
+      "Street Taco": {
+        "price": 2.0,
+        "inventory": 100,
+        "advert": "Authentic flavor, unbeatable price! Perfectly seasoned, grilled to order, and served on a warm corn tortilla. The true taste of the street."
+      },
+      "Cup Noodles": {
+        "price": 2.5,
+        "inventory": 100,
+        "advert": "Quick, easy, and delicious. Your perfect savory meal is just three minutes away. Just add hot water and enjoy."
+      }
+    },
+    "Mid": {
+      "Gourmet Burger": {
+        "price": 15.0,
+        "inventory": 50,
+        "advert": "A burger experience like no other. A juicy, thick-cut patty made with premium, locally-sourced beef, served on a toasted brioche bun."
+      },
+      "Sushi Platter": {
+        "price": 22.0,
+        "inventory": 40,
+        "advert": "A fresh and vibrant selection of our finest rolls and nigiri. A taste of Japan in every artfully prepared bite."
+      }
+    },
+    "High": {
+      "Michelin Star Meal": {
+        "price": 75.0,
+        "inventory": 10,
+        "advert": "An unforgettable culinary journey. Allow our celebrated chef to present a multi-course tasting menu that will delight your senses."
+      },
+      "Omakase Experience": {
+        "price": 90.0,
+        "inventory": 8,
+        "advert": "Trust the chef. An intimate, curated selection of the finest seasonal fish and delicacies, flown in daily and prepared before your eyes."
+      }
+    }
+  },
+  "Clothing": {
+    "Low": {
+      "Brown Fast Fashion T-Shirt": {
+        "price": 5.0,
+        "inventory": 100,
+        "advert": "Trendy, affordable, and effortlessly cool. Update your style for any season without breaking the bank."
+      },
+      "White Cotton T-Shirt": {
+        "price": 6.0,
+        "inventory": 100,
+        "advert": "The essential classic for any wardrobe. Made from 100% soft, breathable cotton for a perfect, comfortable fit every time."
+      }
+    },
+    "Mid": {
+      "Levi's Jeans": {
+        "price": 80.0,
+        "inventory": 50,
+        "advert": "Quality never goes out of style. The original, iconic blue jean, crafted from durable denim for a timeless look and feel."
+      },
+      "AllSaints Leather Jacket": {
+        "price": 100.0,
+        "inventory": 25,
+        "advert": "Define your edge. Cut from supple, premium lambskin leather with signature metal hardware. A timeless investment piece."
+      }
+    },
+    "High": {
+      "Armani Suit": {
+        "price": 1200.0,
+        "inventory": 10,
+        "advert": "Exude confidence and power. Impeccable Italian tailoring and luxurious fabrics combine for a silhouette that commands attention."
+      },
+      "Burberry Jacket": {
+        "price": 2500.0,
+        "inventory": 5,
+        "advert": "Iconic British luxury. The ultimate statement in outerwear, featuring the classic check and unparalleled craftsmanship."
+      }
+    }
+  },
+  "Gadgets": {
+    "Low": {
+      "Basic Headphones": {
+        "price": 15.0,
+        "inventory": 100,
+        "advert": "Your daily audio companion. Delivers crisp, clear sound for your music, podcasts, and calls, wherever you go."
+      },
+      "USB Power Bank": {
+        "price": 20.0,
+        "inventory": 100,
+        "advert": "Never run out of power again. This compact and reliable power bank ensures your devices stay charged on the go."
+      }
+    },
+    "Mid": {
+      "Kindle E-book Reader": {
+        "price": 200.0,
+        "inventory": 40,
+        "advert": "Carry your library in one hand. A glare-free display that reads like real paper, even in direct sunlight. Read anytime, anywhere."
+      },
+      "Apple AirPods Pro": {
+        "price": 225.0,
+        "inventory": 30,
+        "advert": "Magic, remastered. Experience a new level of immersive sound with active noise cancellation and intuitive touch controls."
+      }
+    },
+    "High": {
+      "Macbook Laptop": {
+        "price": 1800.0,
+        "inventory": 15,
+        "advert": "Power to the pro. Supercharged by the latest chip, this laptop delivers game-changing performance for your biggest ideas."
+      },
+      "Sony 4K TV": {
+        "price": 2000.0,
+        "inventory": 10,
+        "advert": "Picture-perfect reality. Experience breathtaking color, contrast, and clarity that brings entertainment to life in stunning 4K."
+      }
+    }
+  },
+  "Accessories": {
+    "Low": {
+      "Scaly the Lizard Beanie Baby": {
+        "price": 8.0,
+        "inventory": 100,
+        "advert": "A collectible friend for all ages! This rare, retired Beanie Baby is a must-have for any nostalgic collector. Don't miss out!"
+      },
+      "Temu Watch": {
+        "price": 10.0,
+        "inventory": 100,
+        "advert": "Stylish and surprisingly affordable. Get the look of a high-end watch for a fraction of the price. Why pay more?"
+      }
+    },
+    "Mid": {
+      "Stanley Cup Quencher Tumbler": {
+        "price": 45.0,
+        "inventory": 50,
+        "advert": "The hydration must-have you never knew you needed. Made from recycled stainless steel with vacuum insulation to keep drinks cold for hours. Features an advanced FlowState lid, an easy-carry handle, and a car cup holder-friendly base."
+      },
+      "Longchamp Le Pliage Bag": {
+        "price": 100.0,
+        "inventory": 40,
+        "advert": "Effortless Parisian chic. This iconic, foldable bag is the perfect, lightweight companion for work, travel, and every day."
+      }
+    },
+    "High": {
+      "Chanel Handbag": {
+        "price": 1800.0,
+        "inventory": 8,
+        "advert": "An icon of elegance. The ultimate accessory for the discerning fashionista. Rectangular shape, braided chain strap, brand monogram clasp, double flap design, double compartment, slip pockets at interior, polished hardware."
+      },
+      "Rolex Watch": {
+        "price": 2000.0,
+        "inventory": 5,
+        "advert": "A crown for every achievement. Meticulously crafted from Oystersteel and precious metals, this is more than a timepiece—it is a legacy."
+      },
+      "Pop Mart Labubu Monster Vinyl Plush Doll (Limited Edition)": {
+        "price": 280.0,
+        "inventory": 15,
+        "advert": "Extremely rare collector's item! Designed by Kasing Lung, this limited-edition Labubu is the must-have for any serious art toy enthusiast."
+      }
+    }
+  }
+}

@@ -1,0 +1,110 @@
+schema_version: 1
+
+study:
+  name: Signaling Marketplace
+  study_id: signaling
+  study_version: 1
+  question: >
+    Does making consumption socially visible change what agents buy? The
+    marketplace is identical in all three arms; only what happens after it
+    differs, so any divergence in purchasing is attributable to social feedback.
+  scenarios:
+    - signaling
+  study_summary_path: replications/signaling/generated/study_summary.json
+  summary_log_path: replications/signaling/generated/summary.log
+
+  run_defaults:
+    config_path: replications/signaling/conf
+    run_name_template: "{condition}_seed{seed}"
+    output_root_override: replications/signaling/generated/runs
+    seed_start: 42
+    seed_repeats: 3
+    checkpoint_every_n_steps: 91
+    overrides:
+      env: signaling
+
+evaluations:
+  - id: metrics
+    command: >
+      uv run python -m replications.signaling.evaluators.metrics
+    input_mode: run_dir
+    run_dir_arg: --run-dir
+    output_arg: --output
+    output_subpath: signaling_metrics.json
+
+hypotheses:
+  h1_social_raises_status_consumption:
+    statement: >
+      Agents whose consumption is socially observed buy a larger share of
+      high-quality goods than agents shopping in isolation.
+    independent_variable: condition
+    prediction: >
+      status_share.overall is higher under `social` than under `asocial`, and
+      the per-day series trends upward under `social` only.
+    status: untested
+    conditions:
+      social:
+        seeds: 3
+        scenarios: [signaling]
+        overrides:
+          world: default
+      asocial:
+        seeds: 3
+        scenarios: [signaling]
+        overrides:
+          world: asocial
+
+  h2_prices_move_only_under_social:
+    statement: >
+      Competition for status goods moves clearing prices; without social
+      feedback prices stay flat or decline.
+    independent_variable: condition
+    prediction: >
+      prices.mean_change is positive under `social` and <= 0 under `asocial`.
+    status: untested
+    conditions:
+      social:
+        seeds: 3
+        scenarios: [signaling]
+        overrides:
+          world: default
+        execution:
+          mode: reuse_existing
+      asocial:
+        seeds: 3
+        scenarios: [signaling]
+        overrides:
+          world: asocial
+        execution:
+          mode: reuse_existing
+
+  h3_personal_events_are_not_the_mechanism:
+    statement: >
+      Living out a day is not what drives status consumption — being seen is.
+      `asocial_personal` isolates the daily-events half of the manipulation.
+    independent_variable: condition
+    prediction: >
+      status_share.overall under `asocial_personal` resembles `asocial` rather
+      than `social`. This is the arm that can falsify the story: if events alone
+      reproduce the effect, visibility is not the mechanism.
+    status: untested
+    conditions:
+      asocial_personal:
+        seeds: 3
+        scenarios: [signaling]
+        overrides:
+          world: asocial_personal
+      social:
+        seeds: 3
+        scenarios: [signaling]
+        overrides:
+          world: default
+        execution:
+          mode: reuse_existing
+      asocial:
+        seeds: 3
+        scenarios: [signaling]
+        overrides:
+          world: asocial
+        execution:
+          mode: reuse_existing

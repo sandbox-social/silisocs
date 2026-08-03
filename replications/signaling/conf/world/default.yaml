@@ -1,0 +1,85 @@
+# @package _global_
+#
+# Condition: SOCIAL — marketplace + personal events + date conversation.
+# Upstream: `--condition=social` (examples/signaling/run.py).
+
+scenario_name: signaling
+condition: social
+jobname_format: "signaling_${condition}_${item_list}_N${num_agents}_D${num_days}_${run_name}"
+
+# --- Population ------------------------------------------------------------
+# num_agents = BUYERS (upstream `--num_agents`, max 50). Sellers are generated
+# one per good, so num_sellers must equal the length of input/sellers_<item_list>.json
+# (25 for original/synthetic, 49 for subculture, 50 for both). A test asserts it.
+num_agents: 10
+num_sellers: 25
+item_list: original
+
+# --- Day calendar ----------------------------------------------------------
+# A day is a fixed block of steps (see components/calendar.py):
+#   day_length = rounds_per_day + 1 (market reflection) + 1 (dial setup)
+#                + dial_turns + date_reflections
+#              = 5 + 1 + 1 + 80 + 4 = 91
+#   num_steps  = num_days * day_length = 5 * 91 = 455
+# OmegaConf does no arithmetic and the framework reads num_steps before any of
+# the replication's code is importable, so these two are written out. Nothing
+# else is: CalendarLoopStrategy (sim.yaml) checks both against the calendar at
+# startup, so a stale number — including one from a CLI override — fails the run
+# instead of silently truncating the experiment.
+num_days: 5
+calendar:
+  rounds_per_day: 5    # upstream --num_marketplace_rounds
+  dial_turns: 80       # upstream --num_dial_rounds
+  date_reflections: 4
+day_length: 91
+num_steps: 455
+
+seed: 42               # upstream --seed
+run_name: run1
+output_rootname: ""
+
+# --- Data ------------------------------------------------------------------
+signaling_root: replications/signaling
+personas_path: ${signaling_root}/input/personas_la.json
+goods_path: ${signaling_root}/input/goods/${item_list}.json
+sellers_path: ${signaling_root}/input/sellers_${item_list}.json
+
+# Which game-master chain buyers pass through (env/signaling.yaml reads this).
+buyer_chain: [market_gm, journal_gm, date_gm]
+
+# clearing_house = the double auction with agent sellers (upstream add_sellers=True).
+# fixed_prices is reachable in the backend but is not a shipped condition, exactly
+# as upstream keeps it in the library and out of the CLI.
+market_type: clearing_house
+show_advert: true
+cash_distribution: mixed
+
+setting:
+  name: Signaling Marketplace
+  background:
+    - Agents shop each morning in a clearing-house marketplace for food, clothing, gadgets, and accessories.
+    - In the evening they meet a new partner for a first date, where what they bought is on display.
+event:
+  name: A day of shopping and a first date
+  context: |
+    Each day begins in a marketplace where buyers bid for goods and sellers ask
+    for their stock; the market clears simultaneously each round. In the evening
+    each buyer meets a different partner for a first date, wearing one of the
+    items they own.
+
+data:
+  replication: signaling
+
+# --- Day-boundary ceremony -------------------------------------------------
+# The market GM's update component (components/dial_handler.py) owns the day
+# boundaries: sellers reset fresh at each day start and every buyer eats daily
+# in ALL conditions; on the calendar's dial_setup step it additionally resolves
+# the day's final market round, draws the wearing statements from what was
+# bought, then generates and injects the personal events and the shared date
+# scene for today's dyads. It asks the calendar which step it is, so there is
+# no per-day schedule to write down. These switches gate only the generated
+# (DIAL) content.
+dial_setup:
+  enabled: true
+  shared_setup: true
+  personal_events: true

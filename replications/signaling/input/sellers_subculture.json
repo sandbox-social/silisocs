@@ -1,0 +1,443 @@
+[
+  {
+    "name": "Seller_1",
+    "good": "Street Taco",
+    "category": "Food",
+    "quality": "Low",
+    "cost": 2.0,
+    "stock": 100,
+    "goal": "You are a seller of Street Taco. Your cost to produce each unit is $2.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_2",
+    "good": "Cup Noodles",
+    "category": "Food",
+    "quality": "Low",
+    "cost": 2.5,
+    "stock": 100,
+    "goal": "You are a seller of Cup Noodles. Your cost to produce each unit is $2.50. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_3",
+    "good": "Gourmet Burger",
+    "category": "Food",
+    "quality": "Mid",
+    "cost": 15.0,
+    "stock": 50,
+    "goal": "You are a seller of Gourmet Burger. Your cost to produce each unit is $15.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_4",
+    "good": "Sushi Platter",
+    "category": "Food",
+    "quality": "Mid",
+    "cost": 22.0,
+    "stock": 40,
+    "goal": "You are a seller of Sushi Platter. Your cost to produce each unit is $22.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_5",
+    "good": "Michelin Star Meal",
+    "category": "Food",
+    "quality": "High",
+    "cost": 75.0,
+    "stock": 10,
+    "goal": "You are a seller of Michelin Star Meal. Your cost to produce each unit is $75.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_6",
+    "good": "Omakase Experience",
+    "category": "Food",
+    "quality": "High",
+    "cost": 90.0,
+    "stock": 8,
+    "goal": "You are a seller of Omakase Experience. Your cost to produce each unit is $90.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_7",
+    "good": "Brown Fast Fashion T-Shirt",
+    "category": "Clothing",
+    "quality": "Low",
+    "cost": 5.0,
+    "stock": 100,
+    "goal": "You are a seller of Brown Fast Fashion T-Shirt. Your cost to produce each unit is $5.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_8",
+    "good": "White Cotton T-Shirt",
+    "category": "Clothing",
+    "quality": "Low",
+    "cost": 6.0,
+    "stock": 100,
+    "goal": "You are a seller of White Cotton T-Shirt. Your cost to produce each unit is $6.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_9",
+    "good": "Vintage Flannel Shirt (Worn Look)",
+    "category": "Clothing",
+    "quality": "Low",
+    "cost": 40.0,
+    "stock": 120,
+    "goal": "You are a seller of Vintage Flannel Shirt (Worn Look). Your cost to produce each unit is $40.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_10",
+    "good": "Ironic Graphic Tee of Jesus Dabbing",
+    "category": "Clothing",
+    "quality": "Low",
+    "cost": 35.0,
+    "stock": 100,
+    "goal": "You are a seller of Ironic Graphic Tee of Jesus Dabbing. Your cost to produce each unit is $35.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_11",
+    "good": "Oversized Graphic Tee",
+    "category": "Clothing",
+    "quality": "Low",
+    "cost": 35.0,
+    "stock": 100,
+    "goal": "You are a seller of Oversized Graphic Tee. Your cost to produce each unit is $35.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_12",
+    "good": "Vintage Wash Sweatpants",
+    "category": "Clothing",
+    "quality": "Low",
+    "cost": 45.0,
+    "stock": 80,
+    "goal": "You are a seller of Vintage Wash Sweatpants. Your cost to produce each unit is $45.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_13",
+    "good": "Levi's Jeans",
+    "category": "Clothing",
+    "quality": "Mid",
+    "cost": 80.0,
+    "stock": 50,
+    "goal": "You are a seller of Levi's Jeans. Your cost to produce each unit is $80.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_14",
+    "good": "AllSaints Leather Jacket",
+    "category": "Clothing",
+    "quality": "Mid",
+    "cost": 100.0,
+    "stock": 25,
+    "goal": "You are a seller of AllSaints Leather Jacket. Your cost to produce each unit is $100.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_15",
+    "good": "Raw Selvedge Denim Jeans",
+    "category": "Clothing",
+    "quality": "Mid",
+    "cost": 220.0,
+    "stock": 45,
+    "goal": "You are a seller of Raw Selvedge Denim Jeans. Your cost to produce each unit is $220.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_16",
+    "good": "Upcycled Patchwork Crewneck",
+    "category": "Clothing",
+    "quality": "Mid",
+    "cost": 160.0,
+    "stock": 30,
+    "goal": "You are a seller of Upcycled Patchwork Crewneck. Your cost to produce each unit is $160.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_17",
+    "good": "Authentic Lakers Swingman Jersey",
+    "category": "Clothing",
+    "quality": "Mid",
+    "cost": 130.0,
+    "stock": 45,
+    "goal": "You are a seller of Authentic Lakers Swingman Jersey. Your cost to produce each unit is $130.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_18",
+    "good": "Tech-Nylon Cargo Pants",
+    "category": "Clothing",
+    "quality": "Mid",
+    "cost": 160.0,
+    "stock": 35,
+    "goal": "You are a seller of Tech-Nylon Cargo Pants. Your cost to produce each unit is $160.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_19",
+    "good": "Armani Suit",
+    "category": "Clothing",
+    "quality": "High",
+    "cost": 1200.0,
+    "stock": 10,
+    "goal": "You are a seller of Armani Suit. Your cost to produce each unit is $1200.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_20",
+    "good": "Burberry Jacket",
+    "category": "Clothing",
+    "quality": "High",
+    "cost": 2500.0,
+    "stock": 5,
+    "goal": "You are a seller of Burberry Jacket. Your cost to produce each unit is $2500.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_21",
+    "good": "Vintage Corduroy Sport Coat (Elbow Patches)",
+    "category": "Clothing",
+    "quality": "High",
+    "cost": 350.0,
+    "stock": 15,
+    "goal": "You are a seller of Vintage Corduroy Sport Coat (Elbow Patches). Your cost to produce each unit is $350.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_22",
+    "good": "Hand-Knit Alpaca Cardigan",
+    "category": "Clothing",
+    "quality": "High",
+    "cost": 600.0,
+    "stock": 8,
+    "goal": "You are a seller of Hand-Knit Alpaca Cardigan. Your cost to produce each unit is $600.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_23",
+    "good": "GORE-TEX Hype Shell",
+    "category": "Clothing",
+    "quality": "High",
+    "cost": 600.0,
+    "stock": 15,
+    "goal": "You are a seller of GORE-TEX Hype Shell. Your cost to produce each unit is $600.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_24",
+    "good": "Supreme Box Logo T-Shirt",
+    "category": "Clothing",
+    "quality": "High",
+    "cost": 400.0,
+    "stock": 5,
+    "goal": "You are a seller of Supreme Box Logo T-Shirt. Your cost to produce each unit is $400.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_25",
+    "good": "Basic Headphones",
+    "category": "Gadgets",
+    "quality": "Low",
+    "cost": 15.0,
+    "stock": 100,
+    "goal": "You are a seller of Basic Headphones. Your cost to produce each unit is $15.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_26",
+    "good": "USB Power Bank",
+    "category": "Gadgets",
+    "quality": "Low",
+    "cost": 20.0,
+    "stock": 100,
+    "goal": "You are a seller of USB Power Bank. Your cost to produce each unit is $20.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_27",
+    "good": "Kindle E-book Reader",
+    "category": "Gadgets",
+    "quality": "Mid",
+    "cost": 200.0,
+    "stock": 40,
+    "goal": "You are a seller of Kindle E-book Reader. Your cost to produce each unit is $200.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_28",
+    "good": "Apple AirPods Pro",
+    "category": "Gadgets",
+    "quality": "Mid",
+    "cost": 225.0,
+    "stock": 30,
+    "goal": "You are a seller of Apple AirPods Pro. Your cost to produce each unit is $225.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_29",
+    "good": "Macbook Laptop",
+    "category": "Gadgets",
+    "quality": "High",
+    "cost": 1800.0,
+    "stock": 15,
+    "goal": "You are a seller of Macbook Laptop. Your cost to produce each unit is $1800.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_30",
+    "good": "Sony 4K TV",
+    "category": "Gadgets",
+    "quality": "High",
+    "cost": 2000.0,
+    "stock": 10,
+    "goal": "You are a seller of Sony 4K TV. Your cost to produce each unit is $2000.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_31",
+    "good": "Scaly the Lizard Beanie Baby",
+    "category": "Accessories",
+    "quality": "Low",
+    "cost": 8.0,
+    "stock": 100,
+    "goal": "You are a seller of Scaly the Lizard Beanie Baby. Your cost to produce each unit is $8.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_32",
+    "good": "Temu Watch",
+    "category": "Accessories",
+    "quality": "Low",
+    "cost": 10.0,
+    "stock": 100,
+    "goal": "You are a seller of Temu Watch. Your cost to produce each unit is $10.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_33",
+    "good": "Cuffed Logo Beanie (Neutral Tone)",
+    "category": "Accessories",
+    "quality": "Low",
+    "cost": 30.0,
+    "stock": 150,
+    "goal": "You are a seller of Cuffed Logo Beanie (Neutral Tone). Your cost to produce each unit is $30.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_34",
+    "good": "Canvas High-Top Sneakers (Pre-distressed)",
+    "category": "Accessories",
+    "quality": "Low",
+    "cost": 95.0,
+    "stock": 70,
+    "goal": "You are a seller of Canvas High-Top Sneakers (Pre-distressed). Your cost to produce each unit is $95.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_35",
+    "good": "LA Dodgers Fitted Cap",
+    "category": "Accessories",
+    "quality": "Low",
+    "cost": 45.0,
+    "stock": 120,
+    "goal": "You are a seller of LA Dodgers Fitted Cap. Your cost to produce each unit is $45.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_36",
+    "good": "Classic 'Air Force 1' Style Kicks",
+    "category": "Accessories",
+    "quality": "Low",
+    "cost": 90.0,
+    "stock": 100,
+    "goal": "You are a seller of Classic 'Air Force 1' Style Kicks. Your cost to produce each unit is $90.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_37",
+    "good": "Stanley Cup Quencher Tumbler",
+    "category": "Accessories",
+    "quality": "Mid",
+    "cost": 45.0,
+    "stock": 50,
+    "goal": "You are a seller of Stanley Cup Quencher Tumbler. Your cost to produce each unit is $45.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_38",
+    "good": "Longchamp Le Pliage Bag",
+    "category": "Accessories",
+    "quality": "Mid",
+    "cost": 100.0,
+    "stock": 40,
+    "goal": "You are a seller of Longchamp Le Pliage Bag. Your cost to produce each unit is $100.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_39",
+    "good": "Thick-Rimmed Acetate Glasses",
+    "category": "Accessories",
+    "quality": "Mid",
+    "cost": 130.0,
+    "stock": 60,
+    "goal": "You are a seller of Thick-Rimmed Acetate Glasses. Your cost to produce each unit is $130.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_40",
+    "good": "Birkenstock Arizona Suede Sandals",
+    "category": "Accessories",
+    "quality": "Mid",
+    "cost": 145.0,
+    "stock": 40,
+    "goal": "You are a seller of Birkenstock Arizona Suede Sandals. Your cost to produce each unit is $145.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_41",
+    "good": "Crossbody Utility Bag",
+    "category": "Accessories",
+    "quality": "Mid",
+    "cost": 85.0,
+    "stock": 60,
+    "goal": "You are a seller of Crossbody Utility Bag. Your cost to produce each unit is $85.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_42",
+    "good": "Retro '85 High-Top Sneakers",
+    "category": "Accessories",
+    "quality": "Mid",
+    "cost": 220.0,
+    "stock": 25,
+    "goal": "You are a seller of Retro '85 High-Top Sneakers. Your cost to produce each unit is $220.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_43",
+    "good": "Chanel Handbag",
+    "category": "Accessories",
+    "quality": "High",
+    "cost": 1800.0,
+    "stock": 8,
+    "goal": "You are a seller of Chanel Handbag. Your cost to produce each unit is $1800.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_44",
+    "good": "Rolex Watch",
+    "category": "Accessories",
+    "quality": "High",
+    "cost": 2000.0,
+    "stock": 5,
+    "goal": "You are a seller of Rolex Watch. Your cost to produce each unit is $2000.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_45",
+    "good": "Pop Mart Labubu Monster Vinyl Plush Doll (Limited Edition)",
+    "category": "Accessories",
+    "quality": "High",
+    "cost": 280.0,
+    "stock": 15,
+    "goal": "You are a seller of Pop Mart Labubu Monster Vinyl Plush Doll (Limited Edition). Your cost to produce each unit is $280.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_46",
+    "good": "Doc Martens 1460 Leather Boots",
+    "category": "Accessories",
+    "quality": "High",
+    "cost": 380.0,
+    "stock": 15,
+    "goal": "You are a seller of Doc Martens 1460 Leather Boots. Your cost to produce each unit is $380.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_47",
+    "good": "Vintage Film Camera (Working Condition)",
+    "category": "Accessories",
+    "quality": "High",
+    "cost": 450.0,
+    "stock": 12,
+    "goal": "You are a seller of Vintage Film Camera (Working Condition). Your cost to produce each unit is $450.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_48",
+    "good": "Limited Designer Collab Sneaker",
+    "category": "Accessories",
+    "quality": "High",
+    "cost": 950.0,
+    "stock": 5,
+    "goal": "You are a seller of Limited Designer Collab Sneaker. Your cost to produce each unit is $950.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  },
+  {
+    "name": "Seller_49",
+    "good": "Supreme® Branded 'Drop' Collectible",
+    "category": "Accessories",
+    "quality": "High",
+    "cost": 350.0,
+    "stock": 3,
+    "goal": "You are a seller of Supreme® Branded 'Drop' Collectible. Your cost to produce each unit is $350.00. Your goal is to sell your stock for a profit. You must sell for more than your cost to be profitable."
+  }
+]
