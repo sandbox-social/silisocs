@@ -1,0 +1,63 @@
+schema_version: 1
+
+# Small end-to-end demo study over the bundled misinformation scenario.
+# Two call-to-action framings x two seeds = 4 short runs (~500 gpt-4o-mini
+# calls each). Used by the Studio walkthrough (docs/tutorials/studio_demo.md)
+# to show study authoring, the progress board, and condition comparison.
+study:
+  name: misinformation_cta_demo
+  study_id: misinformation_cta_demo
+  study_version: v1
+  question: >-
+    Does the framing of the action call-to-action prompt change how far a false
+    health claim spreads through a six-agent social network? Compares a reactive
+    ("act on your immediate impulse") framing against a deliberate ("choose the
+    action most consistent with your character") framing.
+  scenarios:
+    - misinformation
+  study_summary_path: experiments/studies/misinformation_cta_demo/SUMMARY.md
+  summary_log_path: experiments/studies/misinformation_cta_demo/generated/summary_log.jsonl
+
+  run_defaults:
+    config_path: scenarios/misinformation/conf
+    runner_module: silisocs.runtime.runner
+    run_name_template: "{study_id}_{hypothesis_id}_{condition_id}_{scenario}_seed{seed}"
+    output_root_override: "experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run"
+
+    # Seeds ARE the replicates: each condition fans out to seeds 7 and 8.
+    seed_start: 7
+    seed_repeats: 2
+
+    checkpoint_every_n_steps: 1
+
+    overrides:                     # matches the scenario defaults; stated
+      num_agents: 6                # explicitly so `plan` can estimate scale
+      num_steps: 10
+
+evaluations:
+  - id: spread
+    preset: builtin.study_eval                # ./eval.py: spread + belief metrics
+  - id: action_metrics
+    preset: builtin.action_metrics_detailed
+
+hypotheses:
+  h1_cta_framing:
+    statement: >-
+      Reactive call-to-action framing spreads the false claim further (more
+      reposts, higher believed_claim / shared_misinfo probe rates) than
+      deliberate framing.
+    independent_variable: env.action_prompt
+    prediction: >-
+      cta=reactive produces more repost/like actions and higher end-of-run
+      believed_claim rates; cta=deliberate produces more replies that push back
+      on the claim.
+    status: testing
+    overrides: {}
+
+    conditions:
+      cta=reactive:
+        overrides:
+          env: cta_reactive        # scenario-bundled env variant (impulse framing)
+      cta=deliberate:
+        overrides:
+          env: cta_deliberate      # scenario-bundled env variant (character framing)

@@ -205,6 +205,7 @@ site/
 # Generated study orchestration artifacts (keep authored study.yaml files tracked)
 experiments/*/generated/
 experiments/studies/*/generated/
+experiments/studies/*/runs/
 
 # Replication outputs and local run artifacts
 replications/**/generated/

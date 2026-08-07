@@ -1,0 +1,21 @@
+# Bundled analysis view for the misinformation scenario.
+#
+# Studio discovers this file automatically (scenarios/<name>/conf/views/*.yaml)
+# and offers it on every run of this scenario at /runs/<run-id>?tab=analyze&view=spread.
+# Panels are built-ins; each renders only when the run records the streams and
+# semantic roles it declares, so the view degrades gracefully on partial runs.
+view:
+  name: spread
+  title: Misinformation Spread
+  scope: run
+  layout: rows
+  panels:
+  - built_in: health_summary
+  - built_in: interaction_network
+  - built_in: content_feed
+  - built_in: probe_trends
+  - built_in: probe_distribution
+    params:
+      probe: believed_claim
+  - built_in: behavior_breakdown
+  - built_in: exposure_funnel
