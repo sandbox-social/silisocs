@@ -1,0 +1,10 @@
+{
+  "name": "silisocs-demo-videos",
+  "private": true,
+  "description": "Scripted production pipeline for the bundled silisocs demo videos",
+  "type": "module",
+  "dependencies": {
+    "@xterm/xterm": "5.5.0",
+    "playwright-core": "1.56.1"
+  }
+}

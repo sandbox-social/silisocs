@@ -1,0 +1,50 @@
+# Tape for the CLI quickstart video (see capture_cli.py for the format).
+# Commands run for real; `display` is what the viewer sees typed. The demo run
+# uses the bundled misinformation scenario with the OpenAI key from .env.
+cols: 100
+rows: 28
+outro_hold: 3.5
+steps:
+  - caption: "Silisocs — social simulation with LLM agents. A quick tour from the terminal."
+    cmd: "silisocs doctor"
+    display: "uv run silisocs doctor"
+    prompt_delay: 2.2
+    timescale: 2
+    hold: 2.5
+
+  - caption: "No API key yet? The tutorial runs a scripted demo and tours the artifacts."
+    cmd: "silisocs tutorial"
+    display: "uv run silisocs tutorial"
+    prompt_delay: 1.2
+    timescale: 2
+    hold: 3.5
+
+  - caption: "Now a real run: 6 LLM agents, 10 steps, a false claim spreading on a small network."
+    cmd: 'silisocs --config-path scenarios/misinformation/conf "++output_rootname=$PWD/outputs/misinformation/quickstart"'
+    display: "uv run silisocs --config-path scenarios/misinformation/conf"
+    prompt_delay: 1.4
+    timescale: 14
+    idle_limit: 0.6
+    hold: 3
+
+  - caption: "Every run is self-describing: manifest, health counters, and event logs."
+    cmd: "jq '{status, health}' outputs/misinformation/quickstart/run_manifest.json"
+    prompt_delay: 1.2
+    hold: 4
+
+  - caption: "action_events.jsonl records every committed action — one JSON row per event."
+    cmd: "head -c 600 outputs/misinformation/quickstart/action_events.jsonl; echo"
+    display: "head outputs/misinformation/quickstart/action_events.jsonl"
+    prompt_delay: 1.2
+    hold: 4
+
+  - caption: "Studies fan a scenario across conditions and seeds — one YAML, reproducible."
+    cmd: "silisocs-study --study experiments/studies/misinformation_cta_demo plan"
+    display: "uv run silisocs-study --study experiments/studies/misinformation_cta_demo plan"
+    prompt_delay: 1.4
+    timescale: 2
+    hold: 5
+
+  - caption: "Next: silisocs-studio — the visual workspace. See the Studio tour video."
+    prompt_delay: 0.5
+    hold: 4

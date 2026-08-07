@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>silisocs terminal player</title>
+<link rel="stylesheet" href="vendor/xterm.css">
+<style>
+  /* Fetched by run_all.sh (too large to commit); tofu boxes without it. */
+  @font-face { font-family: "Noto Color Emoji";
+               src: url("vendor/NotoColorEmoji.ttf") format("truetype"); }
+</style>
+<style>
+  html, body { margin: 0; height: 100%; background: #10141c; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; font-family: "DejaVu Sans", sans-serif; }
+  .window { width: 1160px; border-radius: 10px; overflow: hidden;
+            box-shadow: 0 18px 60px rgba(0,0,0,.55); border: 1px solid #2a3040; }
+  .titlebar { display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+              background: #1a1f2b; border-bottom: 1px solid #2a3040; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .titlebar span.title { margin-left: 10px; color: #8b93a7; font-size: 13px; }
+  #term { background: #0d1117; padding: 14px 16px 18px; }
+  .xterm .xterm-viewport { background: #0d1117 !important; }
+  #caption { position: fixed; left: 0; right: 0; bottom: 26px; display: flex;
+             justify-content: center; pointer-events: none; }
+  #caption div { max-width: 900px; background: rgba(13,17,23,.92); color: #e8ecf4;
+                 border: 1px solid #2a3040; border-radius: 8px; padding: 10px 22px;
+                 font-size: 21px; line-height: 1.35; opacity: 0; transition: opacity .35s; }
+</style>
+</head>
+<body>
+  <div class="window">
+    <div class="titlebar">
+      <div class="dot" style="background:#f26d6d"></div>
+      <div class="dot" style="background:#e8b750"></div>
+      <div class="dot" style="background:#5fc06a"></div>
+      <span class="title">silisocs — terminal</span>
+    </div>
+    <div id="term"></div>
+  </div>
+  <div id="caption"><div id="caption-text"></div></div>
+  <script src="vendor/xterm.js"></script>
+  <script>
+    // Replays an asciicast v2 file on xterm.js with timed caption cues.
+    // The Playwright recorder calls playCast(...) and polls window.__castDone.
+    window.__castDone = false;
+    async function playCast(castUrl, captionsUrl) {
+      const lines = (await (await fetch(castUrl)).text()).trim().split("\n");
+      const header = JSON.parse(lines[0]);
+      const events = lines.slice(1).map(JSON.parse);
+      const captions = captionsUrl ? await (await fetch(captionsUrl)).json() : [];
+      await document.fonts.load('16px "Noto Color Emoji"').catch(() => {});
+      const term = new Terminal({
+        cols: header.width, rows: header.height, fontSize: 17,
+        fontFamily: '"DejaVu Sans Mono", "Noto Color Emoji", monospace', cursorBlink: true,
+        theme: { background: "#0d1117", foreground: "#dfe6f1", cursor: "#7aa2f7" },
+      });
+      term.open(document.getElementById("term"));
+      const start = performance.now();
+      const el = document.getElementById("caption-text");
+      for (const cue of captions) {
+        setTimeout(() => { el.textContent = cue.text; el.style.opacity = 1; },
+                   cue.time * 1000);
+      }
+      for (const [when, kind, data] of events) {
+        if (kind !== "o") continue;
+        const delay = when * 1000 - (performance.now() - start);
+        if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+        term.write(data);
+      }
+      window.__castDone = true;
+    }
+  </script>
+</body>
+</html>
