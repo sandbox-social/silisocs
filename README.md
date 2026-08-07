@@ -20,6 +20,7 @@ agents is available through an optional bridge extra.
 - 2026 ICML Position Paper [ICML 2026](https://www.complexdatalab.com/stamina/papers/puelmatouzel_CloseEvalGap.pdf)
 - 2026 EASE Configuration: [arXiv:2605.30258](https://arxiv.org/abs/2605.30258)
 - Documentation: [sandbox-social.github.io/silisocs](https://sandbox-social.github.io/silisocs)
+- Demo videos (CLI quickstart + Studio tour): [End-to-End Demo](https://sandbox-social.github.io/silisocs/tutorials/studio_demo/)
 
 Papers on a previous version centered on a served Mastodon social media network:
 - 2024 NeurIPS Workshop Paper: [arXiv:2410.13915](http://arxiv.org/abs/2410.13915)

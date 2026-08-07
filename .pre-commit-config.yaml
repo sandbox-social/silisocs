@@ -23,6 +23,9 @@ repos:
     rev: v4.6.0
     hooks:
       - id: check-added-large-files
+        # The bundled demo videos are intentionally committed binaries
+        # (see demo/README.md for the pipeline that regenerates them).
+        exclude: ^docs/assets/videos/.*\.mp4$
       - id: check-ast
       - id: check-builtin-literals
       - id: check-case-conflict

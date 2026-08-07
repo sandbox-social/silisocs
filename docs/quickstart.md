@@ -89,6 +89,9 @@ Open `http://127.0.0.1:8765`. Studio authors the same scenario YAML used by the
 CLI, validates and launches it through a persistent job queue, streams progress,
 starts any backend-declared platform viewer, and analyzes run artifacts.
 
+For a guided walkthrough of both workflows — with demo videos — see the
+[End-to-End Demo](tutorials/studio_demo.md).
+
 ## 5. Analyze a Completed Run
 
 Use the Runs station in Studio, or export a self-contained report from the CLI:
@@ -123,6 +126,7 @@ packaged base config: omit `--config-path` entirely (see
 
 ## Next Steps
 
+- [End-to-End Demo](tutorials/studio_demo.md): CLI + Studio walkthrough with videos
 - [Usage Overview](usage.md): Full end-to-end guide
 - [Configuration Reference](configuration.md): All config options
 - [Building Agents](building_agents.md): Create custom agent populations

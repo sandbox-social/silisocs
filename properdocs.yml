@@ -124,6 +124,7 @@ nav:
     - Studio: studio.md
     - Studio Analysis Panels: analysis_panels.md
   - Tutorials:
+    - End-to-End Demo (CLI + Studio): tutorials/studio_demo.md
     - Election Scenario Walkthrough: tutorials/election.md
   - Development:
     - Contributing: contributing.md
