@@ -282,12 +282,24 @@ class StudyArtifact:
 
     @cached_property
     def summary(self) -> dict[str, Any] | None:
-        path = self.study_dir / "generated" / "organized" / "study_summary.yaml"
+        """The organized study summary: descriptive header + aggregated metrics.
+
+        The runner's ``organize`` step writes two sibling files under
+        ``generated/organized/`` — ``study_summary.yaml`` (name, question,
+        hypothesis ids) and ``summary.json`` (``metrics_by_condition`` /
+        ``metrics_stats_by_condition`` built from the eval payloads). Consumers
+        like the condition-comparison panel need both, so they are merged here.
+        """
+        organized = self.study_dir / "generated" / "organized"
         try:
-            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            header = yaml.safe_load((organized / "study_summary.yaml").read_text(encoding="utf-8"))
         except (OSError, yaml.YAMLError):
+            header = None
+        header = header if isinstance(header, dict) else None
+        metrics = _load_json(organized / "summary.json")
+        if header is None and metrics is None:
             return None
-        return data if isinstance(data, dict) else None
+        return {**(header or {}), **(metrics or {})}
 
     @cached_property
     def run_records(self) -> list[dict[str, Any]]:
@@ -372,9 +384,11 @@ class StudyArtifact:
     ) -> dict[str, Any]:
         """One (hyp, cond, scenario, seed) row for the default run-dir layout.
 
-        A custom ``output_root_override`` puts the run at a path this projection
-        does not model, so its completion is reported ``skipped`` (unknown), never
-        falsely ``pending``.
+        A completion marker at the default location wins outright — the standard
+        ``output_root_override`` template resolves to exactly this layout, so an
+        override must not hide a run that demonstrably completed here. Only when
+        the marker is absent does an override mean "path unknown": reported
+        ``skipped``, never falsely ``pending``.
         """
         run_dir = (
             self.study_dir
@@ -385,10 +399,12 @@ class StudyArtifact:
             / f"seed_{seed}"
             / "run"
         )
-        if has_output_override:
+        if (run_dir / "RUN_COMPLETE.json").is_file():
+            status = "complete"
+        elif has_output_override:
             status = "skipped"
         else:
-            status = "complete" if (run_dir / "RUN_COMPLETE.json").is_file() else "pending"
+            status = "pending"
         return {
             "hypothesis": hypothesis_id,
             "condition": condition_id,

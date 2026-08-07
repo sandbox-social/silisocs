@@ -157,6 +157,31 @@ def test_load_study_reads_plan_summary_and_provenance(tmp_path: Path) -> None:
     assert empty.plan is None and empty.summary is None and empty.provenance == {}
 
 
+def test_load_study_summary_merges_aggregated_metrics(tmp_path: Path) -> None:
+    """``summary`` combines study_summary.yaml with the sibling summary.json.
+
+    The organize step writes descriptive header and aggregated metrics to two
+    files; the condition-comparison panel reads ``metrics_by_condition`` off
+    ``summary``, so the artifact must expose both together.
+    """
+    organized = tmp_path / "study" / "generated" / "organized"
+    organized.mkdir(parents=True)
+    (organized / "study_summary.yaml").write_text(
+        "study_id: demo\nhypotheses: [h1]\n", encoding="utf-8"
+    )
+    metrics = {
+        "conditions": [{"hypothesis": "h1", "condition": "a"}],
+        "metrics_by_condition": {"h1": {"a": {"score": 1.5}}},
+        "metrics_stats_by_condition": {},
+    }
+    (organized / "summary.json").write_text(json.dumps(metrics), encoding="utf-8")
+
+    summary = load_study(tmp_path / "study").summary
+    assert summary is not None
+    assert summary["study_id"] == "demo"
+    assert summary["metrics_by_condition"] == {"h1": {"a": {"score": 1.5}}}
+
+
 def test_health_surfaces_silent_backends_as_count(tmp_path: Path) -> None:
     run = tmp_path / "silent_run"
     run.mkdir()
@@ -259,3 +284,33 @@ def test_progress_marks_reuse_and_output_override_not_pending(tmp_path: Path) ->
     assert statuses["reuse_c"] == "reused"
     assert statuses["run_c"] == "skipped"  # output_root_override path not modeled
     assert "pending" not in set(statuses.values())
+
+
+def test_progress_completion_marker_beats_output_override(tmp_path: Path) -> None:
+    """The standard override template lands on the default layout — a run that
+    completed there must show ``complete``, not ``skipped``.
+    """
+    study = tmp_path / "study"
+    _write_study(
+        study,
+        {
+            "study": {
+                "name": "demo",
+                "scenarios": ["default"],
+                "run_defaults": {
+                    "seed": 1,
+                    "output_root_override": (
+                        "studies/{study_id}/runs/{hypothesis_id}/{condition_id}"
+                        "/{scenario}/seed_{seed}/run"
+                    ),
+                },
+            },
+            "hypotheses": {"h1": {"conditions": {"c1": {"overrides": {}}}}},
+        },
+    )
+    run_dir = study / "runs" / "h1" / "c1" / "default" / "seed_1" / "run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN_COMPLETE.json").write_text("{}", encoding="utf-8")
+
+    rows = load_study(study).progress
+    assert [r["status"] for r in rows] == ["complete"]
