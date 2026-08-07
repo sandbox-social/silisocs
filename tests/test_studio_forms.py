@@ -107,6 +107,32 @@ def test_preflight_reports_bad_numbers_instead_of_raising() -> None:
     assert any(item["path"] == "world.num_agents" for item in result["findings"])
 
 
+def test_preflight_null_active_probability_uses_transition_rate_steady_state() -> None:
+    """An explicit null defers to per-role markov rates — never an error."""
+    files = _files()
+    files["sim.yaml"] = yaml.safe_dump(
+        {
+            "engine": {
+                "participation": {
+                    "built_in": "activity_probability",
+                    "params": {
+                        "active_probability": None,
+                        "activity_transition_rates": {
+                            "user": {"inactive_to_active": 0.8, "active_to_inactive": 0.1}
+                        },
+                    },
+                }
+            }
+        }
+    )
+
+    result = preflight_payload(files)
+
+    assert result["ok"] is True, result["findings"]
+    # 2 agents x 3 steps x steady state 0.8/(0.8+0.1)
+    assert result["estimate"]["agent_steps"] == round(2 * 3 * (0.8 / 0.9))
+
+
 def test_persona_preview_uses_registered_provider(tmp_path: Path) -> None:
     result = run_preview_provider(
         "persona.records",

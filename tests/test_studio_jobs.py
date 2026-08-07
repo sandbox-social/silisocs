@@ -168,6 +168,43 @@ def test_terminal_event_stream_reports_growth_and_step(tmp_path):
     assert steps == {2}
 
 
+def test_checkpoint_completes_step_for_a_holding_interactive_run(tmp_path):
+    """A saved step checkpoint emits step_finished without a next episode.
+
+    An interactive run holding at the boundary never starts episode N+1, so the
+    stream-derived boundary detection alone would report episode N as running
+    forever; the per-step checkpoint is the completion signal.
+    """
+    from silisocs.studio.jobs import _checkpoint_finished_step
+
+    run = tmp_path / "run"
+    (run / "checkpoints").mkdir(parents=True)
+    assert _checkpoint_finished_step(run) == -1
+    (run / "checkpoints" / "step_1_checkpoint.json").write_text("{}", encoding="utf-8")
+    assert _checkpoint_finished_step(run) == 0  # step_1 saved => episode 0 done
+    (run / "checkpoints" / "step_3_checkpoint.json").write_text("{}", encoding="utf-8")
+    assert _checkpoint_finished_step(run) == 2
+
+    manager = JobManager(tmp_path / "state", output_root=tmp_path / "outputs")
+    (run / "action_events.jsonl").write_text(
+        json.dumps({"episode": 2, "source_user": "A", "label": "move"}) + "\n",
+        encoding="utf-8",
+    )
+    job = manager.submit(
+        kind="run",
+        command=[sys.executable, "-c", "pass"],
+        cwd=tmp_path,
+        output_dir=run,
+    )
+    _wait(manager, job.id)
+
+    events = list(manager.events(job.id))
+    finished = [item["data"]["step"] for item in events if item["event"] == "step_finished"]
+    # The checkpoint-derived completion (episode 2) arrives from the holding
+    # state, not only from the terminal flush.
+    assert 2 in finished
+
+
 def test_event_stream_reads_only_appended_records(tmp_path):
     manager = JobManager(tmp_path / "state", output_root=tmp_path / "outputs")
     run = tmp_path / "outputs" / "run"

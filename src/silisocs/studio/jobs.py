@@ -73,6 +73,25 @@ def _event_stream_files(root: Path, stream: str) -> list[Path]:
     return list(root.glob(f"**/{stream}_events.jsonl"))
 
 
+def _checkpoint_finished_step(root: Path) -> int:
+    """Highest episode index proven complete by a saved per-step checkpoint.
+
+    ``checkpoints/step_{N}_checkpoint.json`` is written after episode ``N-1``
+    finishes, so it is the authoritative completion signal for a run that is
+    HOLDING at an episode boundary (interactive Step/Pause): the event streams
+    alone cannot distinguish "episode N still running" from "episode N done,
+    paused before N+1" until the next episode's rows appear. Returns ``-1``
+    when no checkpoint exists (or checkpointing is off — callers keep the
+    stream-derived signal as the fallback).
+    """
+    latest = -1
+    for path in root.glob("checkpoints/step_*_checkpoint.json"):
+        digits = path.name.removeprefix("step_").removesuffix("_checkpoint.json")
+        if digits.isdigit():
+            latest = max(latest, int(digits) - 1)
+    return latest
+
+
 def _refresh_event_files(
     root: Path,
     stream_files: dict[str, list[Path]],
@@ -546,6 +565,15 @@ class JobManager:
                         yield {"event": "step_finished", "data": {"step": finished_step}}
                     started_step = latest_step
                     yield {"event": "step_started", "data": {"step": started_step}}
+                # A saved per-step checkpoint completes an episode even when no
+                # later episode has started — the case for an interactive run
+                # holding at the boundary, whose control bar must flip from
+                # "running episode N" to "paused · N+1 done" on the hold.
+                completed = _checkpoint_finished_step(root)
+                if completed > finished_step:
+                    finished_step = completed
+                    started_step = max(started_step, completed)
+                    yield {"event": "step_finished", "data": {"step": finished_step}}
             if job.status in TERMINAL_STATUSES:
                 if started_step >= 0 and finished_step < started_step:
                     yield {"event": "step_finished", "data": {"step": started_step}}

@@ -200,6 +200,32 @@ def test_find_run_reuses_one_artifact_until_events_change(tmp_path):
     assert find_run(tmp_path, "demo/run-cache", use_cache=False).artifact is not third.artifact
 
 
+def test_find_run_sees_the_final_manifest_of_a_completed_run(tmp_path):
+    """The manifest replacing its provisional copy invalidates the cache.
+
+    A finishing run's last event row usually lands BEFORE the final manifest
+    write, so an event-only fingerprint would serve the stale ``running``
+    record forever.
+    """
+    import os
+
+    from silisocs.studio.catalog import clear_discovery_cache, find_run
+
+    clear_discovery_cache()
+    run = _make_run(tmp_path, name="demo/run-finishing", events=1)
+    manifest = run / "run_manifest.json"
+    provisional = json.loads(manifest.read_text(encoding="utf-8"))
+    manifest.write_text(json.dumps({**provisional, "status": "running"}), encoding="utf-8")
+
+    assert find_run(tmp_path, "demo/run-finishing").artifact.status == "running"
+
+    manifest.write_text(json.dumps({**provisional, "status": "success"}), encoding="utf-8")
+    stat = manifest.stat()  # force a distinct mtime even on coarse filesystems
+    os.utime(manifest, (stat.st_atime, stat.st_mtime + 1))
+
+    assert find_run(tmp_path, "demo/run-finishing").artifact.status == "success"
+
+
 def test_discovery_is_memoized_briefly_then_refreshed(tmp_path):
     from silisocs.studio.catalog import clear_discovery_cache, discover_runs
 

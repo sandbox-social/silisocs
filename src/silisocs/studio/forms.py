@@ -804,6 +804,27 @@ class ScenarioRepository:
         return self.load(name)
 
 
+def _steady_state_active_share(rates: Any) -> float:
+    """Mean steady-state active probability implied by activity transition rates.
+
+    Each role's two-state markov chain settles at on/(on+off); the estimate
+    averages the roles (agent counts per role are unknown at this layer).
+    Returns 1.0 — everyone acts — when no usable rates are configured.
+    """
+    shares = []
+    for entry in (rates or {}).values() if isinstance(rates, dict) else ():
+        if not isinstance(entry, dict):
+            continue
+        try:
+            on = float(entry.get("inactive_to_active") or 0.0)
+            off = float(entry.get("active_to_inactive") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if on + off > 0:
+            shares.append(on / (on + off))
+    return sum(shares) / len(shares) if shares else 1.0
+
+
 def preflight_payload(files: dict[str, str]) -> dict[str, Any]:
     """Validate composer documents and estimate scale without executing a run."""
     findings: list[dict[str, str]] = []
@@ -928,11 +949,18 @@ def preflight_payload(files: dict[str, str]) -> dict[str, Any]:
     else:
         actions_per_turn = 1
     participation = ((sim.get("engine") or {}).get("participation") or {}).get("params") or {}
-    active_fraction = number(
-        participation.get("active_probability", 1.0),
-        "sim.engine.participation.params.active_probability",
-        1.0,
-    )
+    raw_active = participation.get("active_probability")
+    if raw_active is None:
+        # An explicit null (or absent key) defers to the per-role
+        # activity_transition_rates; estimate the steady-state active share
+        # those rates imply, and assume everyone acts when there are none.
+        active_fraction = _steady_state_active_share(participation.get("activity_transition_rates"))
+    else:
+        active_fraction = number(
+            raw_active,
+            "sim.engine.participation.params.active_probability",
+            1.0,
+        )
     active_fraction = min(1.0, max(0.0, active_fraction))
     calls = round(agents * steps * active_fraction * actions_per_turn)
     estimate_cfg = sim.get("preflight") or {}

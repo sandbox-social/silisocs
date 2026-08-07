@@ -34,9 +34,17 @@ _artifact_cache_lock = threading.Lock()
 
 
 def _action_events_signature(resolved: Path) -> _ArtifactSignature:
-    """Fingerprint a run's action-event logs so growth invalidates the cache."""
+    """Fingerprint a run so on-disk changes invalidate the cached artifact.
+
+    Covers the action-event logs (a live run growing) AND the run manifest —
+    the final manifest REPLACES the provisional one at completion, usually
+    after the last event row landed, so without it a finished run would keep
+    serving its cached ``running`` record forever.
+    """
     signature: list[tuple[str, float, int]] = []
-    for path in sorted(resolved.glob("**/action_events.jsonl")):
+    paths = sorted(resolved.glob("**/action_events.jsonl"))
+    paths.append(resolved / "run_manifest.json")
+    for path in paths:
         try:
             stat = path.stat()
         except OSError:

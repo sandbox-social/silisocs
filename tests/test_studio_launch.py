@@ -37,6 +37,27 @@ def test_interactive_launch_injects_control_overrides(tmp_path: Path) -> None:
     assert "sim.engine.control.built_in=control_file" in spec.command
     assert f"sim.engine.control.control_file={spec.control_path}" in spec.command
     assert "sim.engine.control.start_paused=true" in spec.command
+    # Interactive runs must be resume-stable at every hold, and the saved
+    # checkpoint is the live view's episode-completed signal.
+    assert "sim.checkpoint.every_n_steps=1" in spec.command
+
+
+def test_interactive_launch_respects_explicit_checkpoint_override(tmp_path: Path) -> None:
+    (tmp_path / "scenarios" / "world" / "conf").mkdir(parents=True)
+
+    spec = prepare_launch(
+        {
+            "scenario": "world",
+            "interactive": True,
+            "overrides": ["sim.checkpoint.every_n_steps=5"],
+        },
+        repository_root=tmp_path,
+        output_root=tmp_path / "outputs",
+        draft_root=tmp_path / "drafts",
+    )
+
+    assert "sim.checkpoint.every_n_steps=5" in spec.command
+    assert "sim.checkpoint.every_n_steps=1" not in spec.command
 
 
 def test_non_interactive_launch_has_no_control_overrides(tmp_path: Path) -> None:

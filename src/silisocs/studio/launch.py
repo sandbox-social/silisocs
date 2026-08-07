@@ -155,4 +155,10 @@ def _apply_interactive(
         f"sim.engine.control.control_file={control_path}",
         f"sim.engine.control.start_paused={'true' if start_paused else 'false'}",
     ]
+    # Interactive runs checkpoint per step (unless the payload says otherwise):
+    # a paused or ended run must be resume-stable, and the saved checkpoint is
+    # what tells the live view an episode COMPLETED at a hold — the event
+    # streams alone cannot distinguish "still running" from "done, holding".
+    if not any("sim.checkpoint.every_n_steps=" in item for item in overrides):
+        control_overrides.append("sim.checkpoint.every_n_steps=1")
     return control_path, [*overrides, *control_overrides]
