@@ -155,7 +155,7 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
             return json.load(f)
 
     def _build_from_classes(self) -> list[AgentConfig]:
-        pipeline_cfg = self._to_plain(self.config.persona_pipeline)
+        pipeline_cfg = to_plain(self.config.persona_pipeline, where="agents.persona_pipeline")
         defaults = pipeline_cfg.get("defaults", {})
         classes = pipeline_cfg.get("classes", {})
         fixed_action_sets = self._load_fixed_action_sets()
@@ -191,16 +191,12 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
         fixed_action_sets: dict[str, list[dict[str, Any]]],
     ) -> list[AgentConfig]:
         data_cfg = class_cfg.get("data", {})
-        count = class_cfg.get("count")
-        records = (
-            self._load_records(data_cfg, max_records=int(count) if count is not None else None)
-            if data_cfg
-            else [{}]
-        )
+        count = self._resolve_count(class_name, class_cfg.get("count"))
+        records = self._load_records(data_cfg, max_records=count) if data_cfg else [{}]
         base_record_count = len(records)
         if count is not None:
             records = self._fit_records_to_count(
-                records, int(count), class_name=class_name, allow_cycle=bool(data_cfg)
+                records, count, class_name=class_name, allow_cycle=bool(data_cfg)
             )
 
         class_path = str(class_cfg.get("class_path", "") or "").strip()
@@ -259,11 +255,38 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
                 fixed_action_sets=fixed_action_sets,
                 record=record,
                 sim_role=sim_role,
+                class_name=class_name,
             )
             agents.append(
                 AgentConfig(class_path=class_path, params=params, compat=class_compat or None)
             )
         return agents
+
+    @staticmethod
+    def _resolve_count(class_name: str, raw: Any) -> int | None:
+        """Validate a class's ``count``, which decides how many agents it builds.
+
+        ``None`` means "one agent per available record". Anything else must be a
+        non-negative integer: a negative value used to reach ``records[:count]``
+        and silently drop agents off the end of the list.
+        """
+        if raw is None:
+            return None
+        if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+            raise ValueError(
+                f"Class `{class_name}` count must be a non-negative integer; got {raw!r}."
+            )
+        try:
+            count = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Class `{class_name}` count must be a non-negative integer; got {raw!r}."
+            ) from exc
+        if count < 0:
+            raise ValueError(
+                f"Class `{class_name}` count must be a non-negative integer; got {count}."
+            )
+        return count
 
     def _fit_records_to_count(
         self,
@@ -280,11 +303,25 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
         cycling is allowed, the base records are repeated (the build loop adds a
         numbered suffix to keep names unique) so any ``num_agents`` works
         out-of-the-box instead of silently capping at the record count.
+
+        When cycling is NOT possible the shortfall raises: returning the short
+        list would build fewer agents than the scenario asked for, and nothing
+        downstream would ever say so.
         """
         if count <= len(records):
             return records[:count]
-        if not records or not allow_cycle:
-            return records
+        if not records:
+            raise ValueError(
+                f"Class `{class_name}` requests {count} agent(s) but its data source "
+                "produced no records. Check the class's `data` block."
+            )
+        if not allow_cycle:
+            raise ValueError(
+                f"Class `{class_name}` requests {count} agent(s) but declares no `data` "
+                "block, so only 1 agent can be built. Add a `data` source with at least "
+                f"{count} record(s) (or one record, which is recycled with numbered "
+                "name suffixes), or set count: 1."
+            )
         base = len(records)
         _LOGGER.warning(
             "Class `%s` requested %d agents but only %d persona record(s) are "
@@ -341,8 +378,14 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
         fixed_action_sets: dict[str, list[dict[str, Any]]],
         record: Mapping[str, Any],
         sim_role: str,
+        class_name: str = "",
     ) -> None:
-        fixed_action = self._build_fixed_action_config(
+        where = (
+            f"agents.persona_pipeline.classes.{class_name}.fixed_action"
+            if class_name
+            else "fixed_action"
+        )
+        fixed_action = self.fixed_actions.build_fixed_action_config(
             class_cfg=class_cfg,
             fixed_action_sets=fixed_action_sets,
             render_context={
@@ -351,12 +394,13 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
                 "context": params.get("context", ""),
                 "sim_role": sim_role,
             },
+            where=where,
         )
         if fixed_action is None:
             return
         if class_path == "silisocs.agents.fixed.FixedAgent":
-            params["fixed_action_plan"] = self._normalize_fixed_action_plan(
-                fixed_action.get("actions", [])
+            params["fixed_action_plan"] = self.fixed_actions.normalize_fixed_action_plan(
+                fixed_action.get("actions", []), where=f"{where}.actions"
             )
             exhaustion = str(fixed_action.get("on_exhaustion", "")).strip().lower()
             if exhaustion in {"finish", "finished"}:

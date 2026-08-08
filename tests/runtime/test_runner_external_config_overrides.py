@@ -3,6 +3,7 @@
 import os
 import sys
 
+import pytest
 from omegaconf import OmegaConf
 
 from silisocs.runtime.config_dry_run import DryRunTarget, _build_command
@@ -118,3 +119,23 @@ def test_config_dry_run_selects_matching_external_agent_and_env_groups(tmp_path)
     assert "++sim.llm.provider=scripted" in command
     assert "++sim.llm.name=scripted" in command
     assert "++sim.llm.disabled=true" in command
+
+
+def test_malformed_override_fails_instead_of_being_silently_dropped(tmp_path, monkeypatch) -> None:
+    """An override with no `=` cannot be re-applied over the scenario's flat groups.
+
+    Dropping it would run with the scenario's value while the user believes their
+    override took effect, so it must fail the run here.
+    """
+    overlay = tmp_path / "overlay"
+    overlay.mkdir()
+    (overlay / "sim.yaml").write_text("llm:\n  temperature: 0.1\n", encoding="utf-8")
+    monkeypatch.setenv("SILISOCS_EXTERNAL_CONFIG_DIRS", str(overlay))
+    cfg = OmegaConf.create({"sim": {"llm": {"temperature": 0.7}}})
+
+    with pytest.raises(ValueError, match="Malformed override"):
+        merge_external_group_overrides(cfg, value_overrides=["sim.llm.temperature"])
+
+    # Well-formed overrides still win over the merged flat group file.
+    merged = merge_external_group_overrides(cfg, value_overrides=["sim.llm.temperature=0.9"])
+    assert merged.sim.llm.temperature == 0.9

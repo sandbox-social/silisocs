@@ -286,3 +286,27 @@ def test_native_agent_new_state_round_trip() -> None:
     restored = NativeAgent(name="A", model=NoLanguageModel())
     restored.set_state(state)
     assert restored.get_all_memories_as_text() == ["x", "y"]
+
+
+class _FailingModel:
+    """A model whose summarization call always fails."""
+
+    def sample_text(self, prompt: str, **kwargs: Any) -> str:
+        raise RuntimeError("provider down")
+
+
+def test_summarization_failure_warns_once_per_policy(caplog: pytest.LogCaptureFixture) -> None:
+    """A configured summarizing memory that degrades to truncation must be visible.
+
+    It changes what every later prompt contains, so it may not be a DEBUG-only
+    event — but it also may not spam a warning per compressed chunk.
+    """
+    mem = SummarizingMemory(model=_FailingModel(), max_memories=3, chunk_size=2)
+    with caplog.at_level("WARNING", logger="silisocs.agents.memory"):
+        for i in range(12):
+            mem.record(f"m{i}")
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert "summarization failed" in warnings[0].getMessage()
+    # The run still continues on truncated chunks rather than dying mid-turn.
+    assert mem.all_memories()

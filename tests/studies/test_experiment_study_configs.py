@@ -302,3 +302,40 @@ def test_study_artifact_metadata_reads_current_effective_config(tmp_path: Path) 
         metadata["run_command"] == "uv run python -m silisocs.runtime.runner --config-path "
         "scenarios/resource_market/conf world=resource_market seed=99"
     )
+
+
+def _study_with_seeds(seeds: object) -> dict:
+    return {
+        "schema_version": 1,
+        "study": {"name": "s", "run_defaults": {"scenario": "default", "num_steps": 1}},
+        "hypotheses": {
+            "h_focus": {
+                "conditions": {
+                    "c_ok": {"overrides": {}, "seeds": [1]},
+                    "c_bad": {"overrides": {}, "seeds": seeds},
+                }
+            }
+        },
+    }
+
+
+def test_seed_validation_error_names_the_hypothesis_and_condition(tmp_path: Path) -> None:
+    """A study can hold dozens of conditions; the error must say which one is bad."""
+    study_path = tmp_path / "study.yaml"
+    study_path.write_text(yaml.safe_dump(_study_with_seeds(["one"])), encoding="utf-8")
+
+    with pytest.raises(StudyConfigError) as exc:
+        _expand_runs(study_path, yaml.safe_load(study_path.read_text(encoding="utf-8")))
+    assert "hypotheses.h_focus.conditions.c_bad.seeds" in str(exc.value)
+
+
+def test_seed_repeats_error_names_the_condition(tmp_path: Path) -> None:
+    study = _study_with_seeds([1])
+    del study["hypotheses"]["h_focus"]["conditions"]["c_bad"]["seeds"]
+    study["hypotheses"]["h_focus"]["conditions"]["c_bad"]["seed_repeats"] = 0
+    study_path = tmp_path / "study.yaml"
+    study_path.write_text(yaml.safe_dump(study), encoding="utf-8")
+
+    with pytest.raises(StudyConfigError) as exc:
+        _expand_runs(study_path, yaml.safe_load(study_path.read_text(encoding="utf-8")))
+    assert "hypotheses.h_focus.conditions.c_bad" in str(exc.value)

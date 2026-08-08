@@ -128,38 +128,48 @@ def _resolve_scenarios(study: dict[str, Any], run_defaults: dict[str, Any]) -> l
     return scenarios
 
 
-def _resolve_seeds(run_defaults: dict[str, Any], node: dict[str, Any]) -> list[int]:  # noqa: C901
+def _resolve_seeds(  # noqa: C901
+    run_defaults: dict[str, Any], node: dict[str, Any], *, where: str = "condition"
+) -> list[int]:
+    """Resolve a condition's seed list.
+
+    ``where`` is the condition's config location (``hypotheses.<h>.conditions.<c>``),
+    named in every error so a bad seed in one of dozens of conditions is findable
+    without bisecting the study file.
+    """
     if "seeds" in node:
         seeds = node["seeds"]
         if not isinstance(seeds, list) or not all(isinstance(v, int) for v in seeds):
-            raise StudyConfigError("Condition seeds must be a list of ints")
+            raise StudyConfigError(f"{where}.seeds must be a list of ints")
         return seeds
 
     if "seed" in node:
         if not isinstance(node["seed"], int):
-            raise StudyConfigError("Condition seed must be an int")
+            raise StudyConfigError(f"{where}.seed must be an int")
         return [node["seed"]]
 
     repeats = node.get("seed_repeats", run_defaults.get("seed_repeats"))
     if repeats is not None:
         if not isinstance(repeats, int) or repeats <= 0:
-            raise StudyConfigError("seed_repeats must be a positive int")
+            raise StudyConfigError(f"seed_repeats must be a positive int (resolved for {where})")
         seed_start = node.get(
             "seed_start", run_defaults.get("seed_start", run_defaults.get("seed", 1))
         )
         if not isinstance(seed_start, int):
-            raise StudyConfigError("seed_start must be an int")
+            raise StudyConfigError(f"seed_start must be an int (resolved for {where})")
         return [seed_start + i for i in range(repeats)]
 
     if "seeds" in run_defaults:
         seeds = run_defaults["seeds"]
         if not isinstance(seeds, list) or not all(isinstance(v, int) for v in seeds):
-            raise StudyConfigError("run_defaults.seeds must be a list of ints")
+            raise StudyConfigError(
+                f"run_defaults.seeds must be a list of ints (resolved for {where})"
+            )
         return seeds
 
     seed = run_defaults.get("seed", 1)
     if not isinstance(seed, int):
-        raise StudyConfigError("run_defaults.seed must be an int")
+        raise StudyConfigError(f"run_defaults.seed must be an int (resolved for {where})")
     return [seed]
 
 
@@ -461,7 +471,9 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                     )
                 continue
 
-            seeds = _resolve_seeds(run_defaults, cond_node)
+            seeds = _resolve_seeds(
+                run_defaults, cond_node, where=f"hypotheses.{hyp_id}.conditions.{cond_id}"
+            )
             merged = _merge_overrides(default_overrides, hyp_overrides, cond_overrides)
 
             for scenario in scenarios:

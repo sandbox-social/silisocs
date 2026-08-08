@@ -20,7 +20,9 @@ class FixedActionBuilder:
         self.resolve_file_path = resolve_file_path
 
     def load_fixed_action_sets(self) -> dict[str, list[dict[str, Any]]]:
-        cfg = to_plain(getattr(self.config, "fixed_action_sets", {})) or {}
+        cfg = (
+            to_plain(getattr(self.config, "fixed_action_sets", {}), where="fixed_action_sets") or {}
+        )
         inline_sets = cfg.get("inline", {}) if isinstance(cfg, Mapping) else {}
         file_path = cfg.get("file") if isinstance(cfg, Mapping) else None
 
@@ -60,28 +62,33 @@ class FixedActionBuilder:
         class_cfg: Any,
         fixed_action_sets: dict[str, list[dict[str, Any]]],
         render_context: Mapping[str, Any],
+        where: str = "fixed_action",
     ) -> dict[str, Any] | None:
-        cfg = to_plain(class_cfg) or {}
+        cfg = to_plain(class_cfg, where=where) or {}
         if not isinstance(cfg, Mapping) or not bool(cfg.get("enabled", False)):
             return None
 
         set_ref = str(cfg.get("action_set_ref", "")).strip()
         if not set_ref:
-            raise ValueError("fixed_action.enabled=true requires fixed_action.action_set_ref")
+            raise ValueError(f"{where}.enabled=true requires {where}.action_set_ref")
         if set_ref not in fixed_action_sets:
             available = ", ".join(sorted(fixed_action_sets.keys())) or "<none>"
             raise ValueError(
-                f"fixed_action.action_set_ref '{set_ref}' not found. Available sets: {available}"
+                f"{where}.action_set_ref '{set_ref}' not found. Available sets: {available}"
             )
 
         rendered_actions: list[dict[str, Any]] = []
-        for raw_action in fixed_action_sets[set_ref]:
+        for index, raw_action in enumerate(fixed_action_sets[set_ref]):
+            entry = f"fixed_action_sets[{set_ref!r}][{index}]"
             action_name = str(raw_action.get("action", "")).strip()
             if not action_name:
-                continue
+                raise ValueError(
+                    f"{entry} (referenced by {where}.action_set_ref) declares no "
+                    "`action`; every fixed-action entry must name a backend action."
+                )
             args = raw_action.get("args") or {}
             if not isinstance(args, Mapping):
-                args = {}
+                raise ValueError(f"{entry}.args must be a mapping; got {type(args).__name__}.")
             item: dict[str, Any] = {
                 "action": action_name,
                 "args": {str(k): self.render_template(v, render_context) for k, v in args.items()},
@@ -99,32 +106,62 @@ class FixedActionBuilder:
         }
 
     @staticmethod
-    def normalize_fixed_action_plan(actions: Any) -> dict[int, list[dict[str, Any]]]:
-        if not isinstance(actions, list):
+    def _episode_index(raw: Any, *, where: str) -> int:
+        """Coerce a plan entry's ``episode`` to an int, raising on anything else.
+
+        Defaulting a malformed value to 0 silently reschedules the action to the
+        very first step, which is indistinguishable from an intentional step-0
+        action in the logs.
+        """
+        if raw is None:
+            return 0
+        if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+            raise ValueError(f"{where} has a non-numeric `episode`: {raw!r}.")
+        try:
+            episode = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{where} has a non-numeric `episode`: {raw!r}.") from exc
+        if episode < 0:
+            raise ValueError(f"{where} has a negative `episode`: {episode}.")
+        return episode
+
+    @staticmethod
+    def normalize_fixed_action_plan(
+        actions: Any, *, where: str = "fixed_action.actions"
+    ) -> dict[int, list[dict[str, Any]]]:
+        """Group a fixed-action list into an episode -> actions plan.
+
+        Every rejection raises rather than dropping the entry: a plan that silently
+        loses an action produces a run that looks fine and does the wrong thing.
+        """
+        if actions is None:
             return {}
+        if not isinstance(actions, list):
+            raise ValueError(
+                f"{where} must be a list of action entries; got {type(actions).__name__}."
+            )
 
         plan: dict[int, list[dict[str, Any]]] = {}
-        for item in actions:
+        for index, item in enumerate(actions):
+            entry = f"{where}[{index}]"
             if not isinstance(item, Mapping):
-                continue
+                raise ValueError(f"{entry} must be a mapping; got {type(item).__name__}.")
             if "action_type" in item:
-                try:
-                    episode = int(item.get("episode", 0))
-                except (TypeError, ValueError):
-                    episode = 0
+                episode = FixedActionBuilder._episode_index(item.get("episode"), where=entry)
                 plan.setdefault(episode, []).append(dict(item))
                 continue
 
             action_name = str(item.get("action", "")).strip()
             if not action_name:
-                continue
+                raise ValueError(
+                    f"{entry} declares neither `action` nor `action_type`; every "
+                    "fixed-action entry must name the backend action to invoke."
+                )
             args = item.get("args") or {}
             if not isinstance(args, Mapping):
-                args = {}
-            try:
-                episode = int(item.get("episode", args.get("episode", 0)))
-            except (TypeError, ValueError):
-                episode = 0
+                raise ValueError(f"{entry}.args must be a mapping; got {type(args).__name__}.")
+            raw_episode = item.get("episode", args.get("episode"))
+            episode = FixedActionBuilder._episode_index(raw_episode, where=entry)
             normalized = {
                 "action_type": action_name,
                 "target_id": str(args.get("post_id", args.get("target_id", "")) or ""),

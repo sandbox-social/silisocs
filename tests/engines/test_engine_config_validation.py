@@ -7,6 +7,8 @@ unknown GM name in the per-GM maps must raise rather than silently no-op.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from omegaconf import DictConfig, OmegaConf
 
@@ -244,3 +246,39 @@ def test_run_dir_check_passes_when_params_present() -> None:
     )
     cb.on_run_start(good)
     cb.on_multirun_start(good)
+
+
+# --- flow_order: absent (default prefix) vs explicit [] (no prefix) -----------
+
+
+def _step_strategy(step_params: dict | None) -> Any:
+    from silisocs.runtime.construction.engines import build_engine
+
+    step: dict = {"built_in": "flow"}
+    if step_params is not None:
+        step["params"] = step_params
+    cfg = OmegaConf.create({"sim": {"engine": {"step": step}}})
+    return build_engine(cfg).step_strategy
+
+
+def test_absent_flow_order_gets_the_default_serial_prefix() -> None:
+    assert _step_strategy(None).flow_order == ("fixed_pre", "default")
+    assert _step_strategy({}).flow_order == ("fixed_pre", "default")
+
+
+def test_explicit_empty_flow_order_means_no_serial_prefix() -> None:
+    """`flow_order: []` is documented as "no serial prefix" and must survive.
+
+    It used to be collapsed back to the default prefix, silently reintroducing a
+    barrier the scenario deliberately removed.
+    """
+    assert _step_strategy({"flow_order": []}).flow_order == ()
+
+
+def test_explicit_flow_order_is_preserved() -> None:
+    assert _step_strategy({"flow_order": ["a", "b"]}).flow_order == ("a", "b")
+
+
+def test_non_list_flow_order_raises() -> None:
+    with pytest.raises(ValueError, match="flow_order must be a list"):
+        _step_strategy({"flow_order": "default"})

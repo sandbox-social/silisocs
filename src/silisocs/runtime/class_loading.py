@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any, cast
 
 # Engine presets retired in the strategy-based refactor. The three RuntimeEngine
@@ -114,10 +114,54 @@ def describe_target(target: Any) -> str:
     return f"{module}.{name}" if module else str(name)
 
 
+def _positional_names(target: Any, limit: int) -> set[str]:
+    """The first ``limit`` parameter names ``target`` accepts positionally."""
+    if limit <= 0:
+        return set()
+    try:
+        params = inspect.signature(target).parameters
+    except (TypeError, ValueError):
+        return set()
+    positional = [
+        name
+        for name, param in params.items()
+        if param.kind
+        in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    ]
+    return set(positional[:limit])
+
+
+def reject_unsupported_kwargs(
+    target: Any,
+    keys: Collection[str],
+    *,
+    config_path: str | None = None,
+    supported: set[str] | None = None,
+) -> None:
+    """Raise unless ``target`` accepts every name in ``keys``.
+
+    The single home for the "unsupported config param" message, so a seam that must
+    validate EARLIER than it instantiates (e.g. a per-agent factory validated once at
+    build) reports failure identically to
+    :func:`instantiate_with_supported_kwargs`. A ``**kwargs`` target accepts anything.
+    """
+    if supported is None:
+        supported = supported_kwargs(target)
+    if supported is None:
+        return
+    unsupported = sorted(set(keys) - supported)
+    if unsupported:
+        raise ValueError(
+            f"Unsupported config param(s) for {describe_target(target)}"
+            f"{_at(config_path)}: {unsupported}. Supported params: {sorted(supported)}"
+        )
+
+
 def instantiate_with_supported_kwargs(
     target: Any,
     kwargs: Mapping[str, Any],
     *,
+    args: Sequence[Any] = (),
     strict_keys: Collection[str] | None = None,
     config_path: str | None = None,
 ) -> Any:
@@ -134,6 +178,10 @@ def instantiate_with_supported_kwargs(
     (GM components, backends, LLM providers) list only the user-authored keys there;
     the rest are filtered out silently.
 
+    ``args`` are framework-injected POSITIONAL arguments (e.g. the run-control gate a
+    controller is constructed around), passed through so the target may name those
+    parameters freely; the names they bind are excluded from the keyword filter.
+
     A ``TypeError`` raised while *binding* the arguments (missing required param,
     keyword rejected by a ``**kwargs``-free C callable) is re-raised as the same kind
     of config error; a ``TypeError`` raised *inside* a Python target propagates
@@ -143,16 +191,12 @@ def instantiate_with_supported_kwargs(
     """
     supported = supported_kwargs(target)
     if supported is not None:
+        supported = supported - _positional_names(target, len(args))
         checked = set(kwargs) if strict_keys is None else set(strict_keys)
-        unsupported = sorted(checked - supported)
-        if unsupported:
-            raise ValueError(
-                f"Unsupported config param(s) for {describe_target(target)}"
-                f"{_at(config_path)}: {unsupported}. Supported params: {sorted(supported)}"
-            )
+        reject_unsupported_kwargs(target, checked, config_path=config_path, supported=supported)
         kwargs = {key: value for key, value in kwargs.items() if key in supported}
     try:
-        return target(**dict(kwargs))
+        return target(*args, **dict(kwargs))
     except TypeError as exc:
         traceback = exc.__traceback__
         if traceback is not None and traceback.tb_next is not None:

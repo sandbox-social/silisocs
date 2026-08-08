@@ -530,6 +530,9 @@ def test_concurrent_multi_gm_resolves_all_turns_under_asyncio() -> None:
         }
     )
     engine = build_engine(cfg, flow_chains={"fa": ["gm_a"], "fb": ["gm_b"]})
+    # An explicit `flow_order: []` means "no serial prefix" and must survive to the
+    # strategy; it used to be replaced by the ("fixed_pre", "default") default.
+    assert engine.step_strategy.flow_order == ()
     alice, bob = _AsyncAgent("Alice"), _AsyncAgent("Bob")
     primary = _MultiGM(name="primary", selected=[], tags={"Alice": "fa", "Bob": "fb"})
     gm_a = _MultiGM(name="gm_a", selected=["Alice"])

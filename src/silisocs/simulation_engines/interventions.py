@@ -30,12 +30,12 @@ import logging
 from abc import ABC, abstractmethod
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from silisocs.initialization.simulation.seed_posts import build_seed_post_action
-from silisocs.runtime.class_loading import load_class
+from silisocs.runtime.class_loading import instantiate_with_supported_kwargs, load_class
 from silisocs.runtime.types import ActionOutput, OutputType, ToolCall
 from silisocs.simulation_engines.policies.factory import (
     build_participation_policy,
@@ -644,18 +644,25 @@ _BUILTIN_HANDLERS: dict[str, InterventionHandler] = {
 }
 
 
-def _resolve_handler(action: Mapping[str, Any]) -> InterventionHandler:
+def _resolve_handler(
+    action: Mapping[str, Any], *, where: str = "interventions"
+) -> InterventionHandler:
     kind = str(action.get("kind") or "").strip()
     if kind == "custom":
         class_path = str(action.get("class_path") or "").strip()
         if not class_path:
-            raise ValueError("intervention kind 'custom' requires a 'class_path'.")
+            raise ValueError(f"{where}: intervention kind 'custom' requires a 'class_path'.")
         cls = load_class(class_path)
         if not (isinstance(cls, type) and issubclass(cls, InterventionHandler)):
             raise ValueError(
                 f"custom intervention '{class_path}' must subclass InterventionHandler."
             )
-        return cls(**dict(action.get("params") or {}))
+        return cast(
+            InterventionHandler,
+            instantiate_with_supported_kwargs(
+                cls, dict(action.get("params") or {}), config_path=f"{where}.params"
+            ),
+        )
     if kind not in _BUILTIN_HANDLERS:
         raise ValueError(
             f"unknown intervention kind '{kind}'; available: "
@@ -696,7 +703,7 @@ def _parse_interventions(raw: Any) -> list[_Intervention]:
     if not isinstance(raw, (list, tuple)):
         raise ValueError("'interventions' must be a list of {at_step, actions} entries.")
     parsed: list[_Intervention] = []
-    for raw_entry in raw:
+    for entry_index, raw_entry in enumerate(raw):
         entry = _to_plain(raw_entry)
         if not isinstance(entry, Mapping):
             raise ValueError("each intervention must be a mapping with 'at_step' and 'actions'.")
@@ -709,10 +716,13 @@ def _parse_interventions(raw: Any) -> list[_Intervention]:
         actions_raw = _to_plain(entry.get("actions"))
         if not isinstance(actions_raw, (list, tuple)) or not actions_raw:
             raise ValueError(f"intervention at step {at_step} needs a non-empty 'actions' list.")
-        actions = [
-            _Action(handler=_resolve_handler(_to_plain(a)), config=dict(_to_plain(a)))
-            for a in actions_raw
-        ]
+        actions = []
+        for action_index, raw_action in enumerate(actions_raw):
+            plain = _to_plain(raw_action)
+            where = f"interventions[{entry_index}].actions[{action_index}]"
+            actions.append(
+                _Action(handler=_resolve_handler(plain, where=where), config=dict(plain))
+            )
         parsed.append(_Intervention(at_step=at_step, actions=actions))
     parsed.sort(key=lambda i: i.at_step)  # stable: same-step entries keep declaration order
     return parsed

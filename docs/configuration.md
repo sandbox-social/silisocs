@@ -84,8 +84,10 @@ Two near-slots differ in shape: `sim.engine.class_path` / `sim.engine.params`
 replaces the whole engine and has no `built_in` (there is one built-in engine),
 and `sim.engine.control` carries sibling scalars (`start_paused`,
 `control_file`, `poll_interval`) alongside its `built_in` instead of putting them
-in `params`. `env.gm.backend` selects a shipped backend with `type` rather than
-`built_in`.
+in `params` — it is otherwise a normal slot: `sim.engine.control.class_path` +
+`params` build a custom controller, constructed with the run's `StepGate` plus
+strictly-checked `params` (an unknown key fails naming `sim.engine.control.params`).
+`env.gm.backend` selects a shipped backend with `type` rather than `built_in`.
 
 ---
 
@@ -549,6 +551,27 @@ outputs/
             └── effective_config.yaml      # Runtime-resolved config
 ```
 
+### Preflight validation
+
+Every run validates the composed config **before** any model is constructed or any
+checkpoint is loaded. In addition to the structural and `class_path` checks, two
+cross-cutting validators run against `agents.persona_pipeline.classes` as it is
+actually composed (i.e. under the `agents` package, the way every scenario writes
+it):
+
+- **Cross-references.** `fully_connected_targets` (anywhere in the config,
+  including per-GM `gm_orchestration` blocks) must name a declared **sim role** —
+  a class's `sim_role_name`, defaulting to the class name — not the class name
+  when the two differ. `fixed_action.action_set_ref` must name a known set. Each
+  `eval.probes.probes.<id>` must be a mapping declaring a `probe_type`, so a
+  mis-shaped probe block cannot silently deploy zero probes.
+- **Data files.** A class's `data.path` (for the file sources `local_json`, `csv`,
+  `jsonl`), its `shared_memories.path`, and `fixed_action_sets.file` must resolve
+  against the scenario directory. A typo fails preflight naming the path.
+
+An unresolved interpolation in the agents config (e.g. `${event.contxt}`) is also
+an error rather than a literal `${...}` pasted into every affected persona.
+
 ---
 
 ## World Config (`world/default.yaml`)
@@ -659,6 +682,23 @@ it is validated against the agent class's own constructor at build time). A cust
 `agents.builder.class_path` defines its own class vocabulary, so the check is
 skipped when one is configured.
 
+### Fixed-action sets
+
+A class with `fixed_action.enabled: true` draws its actions from a named set under
+`fixed_action_sets` (`inline:` sets declared in the agents config, and/or a `file:`
+loaded at build time). Every rejection here **raises**, naming the class and the
+offending entry — a dropped or rescheduled fixed action silently changes what the
+scenario does while the run still looks healthy:
+
+- `enabled: true` with no `action_set_ref`, or an `action_set_ref` naming no
+  inline set (when no `file:` is configured), fails **preflight** at config
+  validation.
+- An action entry that declares neither `action` nor `action_type` is an error,
+  not a skipped entry.
+- `args` must be a mapping, and `actions` must be a list.
+- `episode` must be a non-negative integer. A malformed value is an error — it
+  used to silently become `0` and fire the action at the very first step.
+
 ### Data Sources
 
 | Source | Required Keys | Description |
@@ -678,6 +718,11 @@ two automatically:
   extra pass gets a numbered suffix so agent names stay unique
   (`Alex`, `Alex 2`, `Alex 3`, …). A single `WARNING` is logged naming the class
   and the shortfall.
+- **`count` > 1 with no `data` block**: raises, naming the class. There is no
+  record to recycle, so the class could only ever build one agent; building it
+  silently would leave the run short of the agents the scenario asked for.
+- **`count` must be a non-negative integer** (`0` disables the class). A negative
+  or non-numeric `count` raises, naming the class.
 
 This means any `num_agents` works out-of-the-box. There is no silent cap at the
 record count. The bundled default agents config ships **100 distinct starter
@@ -1724,6 +1769,15 @@ routing and actor selection.
 and materialized before runtime. The Engine and Game Masters both read the same
 final `agent_flow_tags`, so component routing cannot drift from Engine flow
 scheduling.
+
+`sim.engine.step.params.flow_order` is the serial prefix these strategies (and
+`flow`) run first. It distinguishes ABSENT from EMPTY:
+
+- Omitted (or `null`) → the default prefix `[fixed_pre, default]`.
+- `flow_order: []` → **no serial prefix**: every flow runs in the concurrent /
+  staged group. This is honored exactly as written; it is not collapsed back to
+  the default.
+- Anything that is not a list (e.g. `flow_order: default`) fails at engine build.
 
 `sim.engine.step.built_in` selects how flow chains traverse their GMs, via three
 `multi_gm*` step strategies:

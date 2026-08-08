@@ -96,7 +96,11 @@ def merge_external_group_overrides(
         # `+key=value` additions merge exactly like plain assignments here.
         text = text.lstrip("+")
         if "=" not in text:
-            continue
+            raise ValueError(
+                f"Malformed override {text!r}: expected 'key=value'. It cannot be "
+                "re-applied on top of the scenario's flat sim.yaml/env.yaml group "
+                "files, so dropping it would silently run with the scenario's value."
+            )
         key = text.split("=", 1)[0].strip()
         if key in external_group_overrides:
             continue

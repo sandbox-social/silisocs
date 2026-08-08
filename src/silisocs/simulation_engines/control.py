@@ -259,10 +259,16 @@ def build_run_control(
         # constructed with the shared gate plus its params, driving the run
         # through the gate's primitives exactly like the built-ins. Must expose
         # start()/close(), checked here rather than as an AttributeError mid-run.
-        from silisocs.runtime.class_loading import load_class
+        from silisocs.runtime.class_loading import (
+            instantiate_with_supported_kwargs,
+            load_class,
+        )
 
-        controller = load_class(class_path, what="run controller")(
-            gate, **dict(control_cfg.get("params") or {})
+        controller = instantiate_with_supported_kwargs(
+            load_class(class_path, what="run controller"),
+            dict(control_cfg.get("params") or {}),
+            args=(gate,),
+            config_path="sim.engine.control.params",
         )
         for required in ("start", "close"):
             if not callable(getattr(controller, required, None)):

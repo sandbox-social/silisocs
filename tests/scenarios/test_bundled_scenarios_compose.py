@@ -78,3 +78,47 @@ def test_bundled_scenario_composes_with_standard_overrides(
     assert cfg.num_agents == 3, f"{scenario}: num_agents override not applied"
     assert cfg.seed == 2, f"{scenario}: seed override not applied"
     assert cfg.output_dir == "/tmp/compose_check"
+
+
+@pytest.mark.parametrize(
+    ("scenario", "conf_dir", "world"),
+    _scenario_targets(),
+    ids=[f"{name}:{world}" for name, _, world in _scenario_targets()],
+)
+def test_bundled_scenario_passes_preflight_validation(
+    scenario: str,
+    conf_dir: Path,
+    world: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Composing is not enough: the preflight validators must also accept it.
+
+    `validate_cross_references` / `validate_data_files` read the composed config at
+    `agents.persona_pipeline.classes`; when they read the wrong path they passed
+    everything, so this is the net that keeps them honest about real scenarios
+    (a `fully_connected_targets` entry naming a persona CLASS rather than its
+    `sim_role_name` is exactly what it caught).
+    """
+    from silisocs.runtime.configuration.external import merge_external_group_overrides
+    from silisocs.runtime.configuration.validation import validate_scenario_config
+
+    monkeypatch.setenv("SILISOCS_EXTERNAL_CONFIG_DIRS", str(conf_dir))
+    register_search_path_plugin()
+
+    overrides = [f"world={world}", *STANDARD_OVERRIDES]
+    if (conf_dir / "agents" / f"{world}.yaml").is_file() and world != "default":
+        overrides.append(f"agents={world}")
+    if (conf_dir / "env" / f"{world}.yaml").is_file() and world != "default":
+        overrides.append(f"env={world}")
+
+    GlobalHydra.instance().clear()
+    try:
+        with initialize_config_dir(config_dir=str(BASE_CONF), version_base=None):
+            cfg = compose(config_name="experiment", overrides=overrides)
+    finally:
+        GlobalHydra.instance().clear()
+
+    cfg = merge_external_group_overrides(cfg, value_overrides=overrides)
+    validate_scenario_config(cfg, conf_dir.parent)
+    capsys.readouterr()  # the validators print a per-check summary

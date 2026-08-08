@@ -172,6 +172,171 @@ def validate_scenario_structure(cfg: DictConfig) -> None:
     print("✓ Scenario structure validation passed")
 
 
+# The persona pipeline is normally packaged at ``agents`` (``# @package agents`` in
+# a scenario's ``agents/default.yaml``); the bare spelling is the legacy/root form
+# some programmatic callers still compose. Every reader here must accept BOTH, or
+# it silently validates nothing (see ``validate_scenario_structure``).
+_PERSONA_CLASSES_PATHS: tuple[str, ...] = (
+    "agents.persona_pipeline.classes",
+    "persona_pipeline.classes",
+)
+_FIXED_ACTION_SETS_PATHS: tuple[str, ...] = ("agents.fixed_action_sets", "fixed_action_sets")
+# Persona ``data.source`` values that name a file on disk (as opposed to inline
+# records, a config path, or a remote dataset), so a typo'd path can be caught
+# before any model is built.
+_FILE_DATA_SOURCES: frozenset[str] = frozenset({"local_json", "csv", "jsonl"})
+
+
+def _select_mapping(cfg: DictConfig, path: str) -> Mapping[str, Any] | None:
+    """Select ``path`` and return it only when it is a non-empty mapping.
+
+    ``OmegaConf.select`` returns a ``DictConfig``, which is a ``Mapping`` but NOT a
+    ``dict`` — an ``isinstance(..., dict)`` guard here silently disables whatever
+    check it protects.
+    """
+    node = OmegaConf.select(cfg, path)
+    if isinstance(node, (Mapping, DictConfig)) and len(node) > 0:
+        return node
+    return None
+
+
+def _select_persona_classes(cfg: DictConfig) -> tuple[str, Mapping[str, Any]] | None:
+    """Return ``(config path, classes mapping)`` for whichever spelling is present."""
+    for path in _PERSONA_CLASSES_PATHS:
+        classes = _select_mapping(cfg, path)
+        if classes is not None:
+            return path, classes
+    return None
+
+
+def _declared_sim_roles(cfg: DictConfig) -> set[str]:
+    """Every sim role an agent can carry, as the runtime derives it.
+
+    A persona class's role is its ``sim_role_name``, defaulting to the class name —
+    the same value the follow-graph generator matches ``fully_connected_targets``
+    against (``environments/backends/social/network.py``). The legacy top-level
+    ``roles`` mapping is included for pre-pipeline scenario configs.
+    """
+    roles: set[str] = set()
+    legacy = OmegaConf.select(cfg, "roles")
+    if isinstance(legacy, (Mapping, DictConfig)):
+        roles.update(str(name) for name in legacy)
+    selected = _select_persona_classes(cfg)
+    if selected is not None:
+        for class_name, class_cfg in selected[1].items():
+            role = (
+                class_cfg.get("sim_role_name")
+                if isinstance(class_cfg, (Mapping, DictConfig))
+                else None
+            )
+            roles.add(str(role or class_name))
+    return roles
+
+
+def _collect_key(node: Any, key: str, location: str, found: list[tuple[str, Any]]) -> None:
+    """Collect every ``(dotted location, value)`` for ``key`` anywhere in ``node``."""
+    if isinstance(node, Mapping):
+        for child_key, value in node.items():
+            child_location = f"{location}.{child_key}" if location else str(child_key)
+            if str(child_key) == key:
+                found.append((child_location, value))
+            else:
+                _collect_key(value, key, child_location, found)
+    elif isinstance(node, list):
+        for index, item in enumerate(node):
+            _collect_key(item, key, f"{location}[{index}]", found)
+
+
+def _validate_follow_graph_roles(cfg: DictConfig, errors: list[str]) -> None:
+    """Reject ``fully_connected_targets`` entries that name no declared sim role.
+
+    Collected from anywhere in the config so per-GM orchestration blocks
+    (``env.gm_orchestration.gms[i].components.initialize...``) are covered by the
+    same rule as the single ``env.gm`` block.
+    """
+    roles = _declared_sim_roles(cfg)
+    if not roles:
+        return  # roles are not statically known; nothing to check against
+    found: list[tuple[str, Any]] = []
+    _collect_key(OmegaConf.to_container(cfg, resolve=False), "fully_connected_targets", "", found)
+    for location, targets in found:
+        if not isinstance(targets, list):
+            continue
+        for role in targets:
+            if str(role) not in roles:
+                errors.append(
+                    f"{location} references unknown sim role '{role}'; declared roles are "
+                    f"{sorted(roles)} (a persona class's `sim_role_name`, defaulting to "
+                    "the class name)."
+                )
+
+
+def _validate_fixed_action_refs(cfg: DictConfig, errors: list[str]) -> None:
+    """Reject a ``fixed_action`` block whose ``action_set_ref`` names no known set."""
+    selected = _select_persona_classes(cfg)
+    if selected is None:
+        return
+    classes_path, class_pipeline = selected
+
+    inline_names: set[str] = set()
+    file_sets: Any = None
+    for base in _FIXED_ACTION_SETS_PATHS:
+        inline = OmegaConf.select(cfg, f"{base}.inline")
+        if isinstance(inline, (Mapping, DictConfig)):
+            inline_names.update(str(name) for name in inline)
+        file_sets = file_sets or OmegaConf.select(cfg, f"{base}.file")
+
+    # File-based set names are only knowable once the file is loaded at build time,
+    # so a configured file suppresses the "unknown set" error (the builder still
+    # raises there); an inline-only config is fully checkable here.
+    for class_name, class_cfg in class_pipeline.items():
+        if not isinstance(class_cfg, (Mapping, DictConfig)):
+            continue
+        fixed_cfg = class_cfg.get("fixed_action")
+        if not isinstance(fixed_cfg, (Mapping, DictConfig)):
+            continue
+        if not bool(fixed_cfg.get("enabled", False)):
+            continue
+        where = f"{classes_path}.{class_name}.fixed_action"
+        set_ref = str(fixed_cfg.get("action_set_ref") or "").strip()
+        if not set_ref:
+            errors.append(f"{where} has enabled=true but no action_set_ref")
+            continue
+        if set_ref not in inline_names and not file_sets:
+            available = ", ".join(sorted(inline_names)) or "<none>"
+            errors.append(
+                f"{where}.action_set_ref references unknown fixed-action set "
+                f"`{set_ref}`; available inline sets: {available}"
+            )
+
+
+def _validate_probe_entries(cfg: DictConfig, errors: list[str]) -> None:
+    """Reject an ``eval.probes.probes`` block the probe deployer would silently drop.
+
+    The deployer skips a non-mapping ``probes`` block and any non-mapping entry
+    (``evaluations/probes/deployment.py``), so a mis-shaped probe config runs the
+    whole simulation and produces no probe data at all. An entry missing
+    ``probe_type`` is an outright ``KeyError`` there, mid-run.
+    """
+    probes = OmegaConf.select(cfg, "eval.probes.probes")
+    if probes is None:
+        return
+    if not isinstance(probes, (Mapping, DictConfig, list, ListConfig)):
+        errors.append(
+            "eval.probes.probes must be a mapping of probe id -> probe config (or a "
+            f"list of probe configs); got {type(probes).__name__}."
+        )
+        return
+    entries = probes.items() if isinstance(probes, (Mapping, DictConfig)) else enumerate(probes)
+    for probe_id, entry in entries:
+        where = f"eval.probes.probes.{probe_id}"
+        if not isinstance(entry, (Mapping, DictConfig)):
+            errors.append(f"{where} must be a mapping; got {type(entry).__name__}.")
+            continue
+        if not str(entry.get("probe_type") or "").strip():
+            errors.append(f"{where} must declare a `probe_type`.")
+
+
 def validate_cross_references(cfg: DictConfig) -> None:
     """
     Validate that cross-references in config are consistent.
@@ -183,85 +348,10 @@ def validate_cross_references(cfg: DictConfig) -> None:
     ------
         ValueError: If cross-references are invalid
     """
-    errors = []
-
-    world_cfg = cfg
-
-    # Validate that probe candidate references exist
-    if hasattr(world_cfg, "probes"):
-        probes_cfg = world_cfg.probes
-
-        # Get candidate names from refactored structure first.
-        candidate_names: list[str] = []
-        if hasattr(world_cfg, "candidates"):
-            for _partisan_type, info in world_cfg.candidates.items():
-                if hasattr(info, "name"):
-                    candidate_names.append(str(info.name))
-                elif isinstance(info, dict) and "name" in info:
-                    candidate_names.append(str(info["name"]))
-
-        # Validate probe references
-        probes_to_validate = getattr(probes_cfg, "probes", None)
-
-        if probes_to_validate is not None:
-            for probe_num, probe_data in probes_to_validate.items():
-                if hasattr(probe_data, "interaction_premise_template"):
-                    premise = probe_data.interaction_premise_template
-                elif hasattr(probe_data, "probe_data") and hasattr(
-                    probe_data.probe_data, "interaction_premise_template"
-                ):
-                    premise = probe_data.probe_data.interaction_premise_template
-                else:
-                    continue
-
-                # Check candidate references
-                for field in ["candidate", "candidate1", "candidate2"]:
-                    if hasattr(premise, field):
-                        candidate = getattr(premise, field)
-                        if candidate and candidate not in candidate_names:
-                            errors.append(
-                                f"Probe {probe_num} references unknown candidate: {candidate}"
-                            )
-
-    roles_cfg = OmegaConf.select(world_cfg, "roles") or {}
-    roles = set(roles_cfg.keys()) if isinstance(roles_cfg, dict) else set()
-
-    graph_cfg = OmegaConf.select(world_cfg, "env.gm.components.initialize.params.graph")
-    fully_connected_targets = (
-        graph_cfg.get("fully_connected_targets", []) if isinstance(graph_cfg, dict) else []
-    )
-    for role in fully_connected_targets:
-        if roles and role not in roles:
-            errors.append(
-                f"GM initialize graph fully_connected_targets references unknown role: {role}"
-            )
-
-    # Validate fixed-action set references in class pipeline.
-    class_pipeline = OmegaConf.select(world_cfg, "persona_pipeline.classes")
-    if class_pipeline:
-        inline_sets = OmegaConf.select(world_cfg, "fixed_action_sets.inline") or {}
-        file_sets = OmegaConf.select(world_cfg, "fixed_action_sets.file")
-        available_set_names = set(inline_sets.keys()) if isinstance(inline_sets, dict) else set()
-
-        # File-based set names are validated at build-time once file is loaded.
-        # Here we only assert that refs are not empty and that inline refs exist.
-        for class_name, class_cfg in class_pipeline.items():
-            class_cfg = class_cfg or {}
-            fixed_cfg = class_cfg.get("fixed_action") if isinstance(class_cfg, dict) else None
-            if not isinstance(fixed_cfg, dict):
-                continue
-            if not bool(fixed_cfg.get("enabled", False)):
-                continue
-            set_ref = str(fixed_cfg.get("action_set_ref", "")).strip()
-            if not set_ref:
-                errors.append(
-                    f"Class `{class_name}` has fixed_action.enabled=true but no action_set_ref"
-                )
-                continue
-            if set_ref not in available_set_names and not file_sets:
-                errors.append(
-                    f"Class `{class_name}` references unknown fixed_action set `{set_ref}`"
-                )
+    errors: list[str] = []
+    _validate_follow_graph_roles(cfg, errors)
+    _validate_fixed_action_refs(cfg, errors)
+    _validate_probe_entries(cfg, errors)
 
     if errors:
         raise ValueError(
@@ -284,7 +374,8 @@ def validate_data_files(cfg: DictConfig, scenario_path: Path) -> None:
         FileNotFoundError: If required files don't exist
     """
     missing_files = []
-    class_pipeline = OmegaConf.select(cfg, "persona_pipeline.classes")
+    selected = _select_persona_classes(cfg)
+    classes_path, class_pipeline = selected if selected is not None else ("", {})
 
     def _resolve_local_path(raw_path: str) -> Path | None:
         """_resolve_local_path.
@@ -323,30 +414,33 @@ def validate_data_files(cfg: DictConfig, scenario_path: Path) -> None:
                 if not news_file.exists():
                     missing_files.append(str(news_file))
 
-    if class_pipeline:
-        for class_name, class_cfg in class_pipeline.items():
-            class_cfg = class_cfg or {}
-            data_cfg = class_cfg.get("data", {})
-            data_source = data_cfg.get("source")
+    for class_name, class_cfg in class_pipeline.items():
+        if not isinstance(class_cfg, (Mapping, DictConfig)):
+            continue
+        data_cfg = class_cfg.get("data")
+        if isinstance(data_cfg, (Mapping, DictConfig)):
+            # ``local_json`` is the default source, so an omitted ``source`` with a
+            # ``path`` is still a file reference.
+            data_source = str(data_cfg.get("source") or "local_json").strip()
             data_path = data_cfg.get("path") or data_cfg.get("dataset")
-            if data_source == "local_json":
-                resolved_data_path = _resolve_local_path(str(data_path))
-                if resolved_data_path is None:
-                    missing_files.append(f"class `{class_name}` data path not found: {data_path}")
-
-            shared_memories = class_cfg.get("shared_memories")
-            if isinstance(shared_memories, dict):
-                shared_path = shared_memories.get("path")
-                if shared_path and _resolve_local_path(str(shared_path)) is None:
+            if data_source in _FILE_DATA_SOURCES and data_path:
+                if _resolve_local_path(str(data_path)) is None:
                     missing_files.append(
-                        f"class `{class_name}` shared memories path not found: {shared_path}"
+                        f"{classes_path}.{class_name}.data.path not found: {data_path}"
                     )
 
-    fixed_action_file = OmegaConf.select(cfg, "fixed_action_sets.file")
-    if fixed_action_file:
-        resolved = _resolve_local_path(str(fixed_action_file))
-        if resolved is None:
-            missing_files.append(f"fixed_action_sets.file path not found: {fixed_action_file}")
+        shared_memories = class_cfg.get("shared_memories")
+        if isinstance(shared_memories, (Mapping, DictConfig)):
+            shared_path = shared_memories.get("path")
+            if shared_path and _resolve_local_path(str(shared_path)) is None:
+                missing_files.append(
+                    f"{classes_path}.{class_name}.shared_memories.path not found: {shared_path}"
+                )
+
+    for base in _FIXED_ACTION_SETS_PATHS:
+        fixed_action_file = OmegaConf.select(cfg, f"{base}.file")
+        if fixed_action_file and _resolve_local_path(str(fixed_action_file)) is None:
+            missing_files.append(f"{base}.file path not found: {fixed_action_file}")
 
     if missing_files:
         raise FileNotFoundError(
@@ -529,7 +623,11 @@ def _validate_control_config(cfg: DictConfig) -> None:
     _assert_allowed_keys(
         cfg,
         "sim.engine.control",
-        {"built_in", "start_paused", "control_file", "poll_interval"},
+        # A standard slot ({built_in|class_path, params}) plus the built-ins' own
+        # top-level knobs. `class_path`/`params` are what `build_run_control` reads
+        # for a custom controller, so omitting them here made that seam unreachable
+        # from config.
+        {"built_in", "class_path", "params", "start_paused", "control_file", "poll_interval"},
     )
     built_in = str(OmegaConf.select(cfg, "sim.engine.control.built_in") or "none").strip()
     if built_in not in {"none", "stdin", "control_file"}:
@@ -830,7 +928,10 @@ _UNIVERSAL_WORLD_PARAMS = (
     'jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"',
     "scenario_name: my_scenario",
     "run_name: baseline",
-    "output_dir: outputs",
+    # Empty is the right default: a non-empty output_dir takes precedence over
+    # Hydra's per-run directory, so a literal path collapses every run into one
+    # directory that each run overwrites.
+    'output_dir: ""  # empty = Hydra\'s per-run output directory',
     "num_agents: 10",
     "num_steps: 5",
     "seed: 1",

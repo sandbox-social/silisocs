@@ -7,17 +7,33 @@ from collections.abc import Mapping
 from typing import Any
 
 from omegaconf import DictConfig, ListConfig, OmegaConf
+from omegaconf.errors import InterpolationResolutionError
 
 from silisocs.runtime.construction.specs import AgentConfig
 
 
-def to_plain(data: Any) -> Any:
-    """Convert OmegaConf containers into ordinary Python values."""
+def to_plain(data: Any, *, where: str = "the agents config") -> Any:
+    """Convert OmegaConf containers into ordinary Python values, resolving refs.
+
+    An interpolation that cannot resolve raises, naming ``where`` and the missing
+    key. It must never fall back to ``resolve=False``: persona text routinely
+    interpolates world values (``context: ${event.context}``), so an unresolved
+    reference silently becomes the LITERAL string ``${event.context}`` in every
+    affected agent's prompt and the run completes looking healthy.
+    """
     if isinstance(data, (DictConfig, ListConfig)):
         try:
             return OmegaConf.to_container(data, resolve=True)
-        except Exception:
-            return OmegaConf.to_container(data, resolve=False)
+        except InterpolationResolutionError as exc:
+            # OmegaConf's message already names BOTH the unresolved reference and
+            # the config key that carries it (its ``full_key``); flatten it onto
+            # one line rather than re-deriving either.
+            detail = " ".join(str(exc).split())
+            raise ValueError(
+                f"Could not resolve an interpolation while reading {where}: {detail}. "
+                "Define the referenced key in the composed config (the scenario's "
+                "world/agents groups) or remove the reference."
+            ) from exc
     return data
 
 

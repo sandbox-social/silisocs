@@ -30,52 +30,18 @@ through their own components.
 
 from __future__ import annotations
 
-import inspect
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, cast
 
-from silisocs.runtime.class_loading import load_class
+from silisocs.runtime.class_loading import (
+    instantiate_with_supported_kwargs,
+    load_class,
+    reject_unsupported_kwargs,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def _build_filtered(cls: type[Any], kwargs: Mapping[str, Any]) -> Any:
-    """Instantiate ``cls``, passing only the kwargs its constructor accepts.
-
-    Framework kwargs (``model``, ``memory_history``) are offered to every policy;
-    those a policy doesn't declare are dropped rather than raising (e.g. the
-    window policy ignores ``model``).
-    """
-    try:
-        params = inspect.signature(cls).parameters
-    except (TypeError, ValueError):
-        return cls(**dict(kwargs))
-    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values()):
-        return cls(**dict(kwargs))
-    return cls(**{key: value for key, value in kwargs.items() if key in params})
-
-
-def _reject_unknown_params(cls: type[Any], params: Mapping[str, Any]) -> None:
-    """Fail loudly when user-supplied ``sim.memory.params`` name unknown kwargs.
-
-    The silent filtering in :func:`_build_filtered` exists for the FRAMEWORK
-    kwargs (``model``, ``memory_history``), which are offered to every policy;
-    a user param a policy doesn't declare is a config typo, not an option.
-    """
-    try:
-        signature = inspect.signature(cls).parameters
-    except (TypeError, ValueError):
-        return
-    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.values()):
-        return
-    unknown = sorted(set(params) - set(signature))
-    if unknown:
-        raise ValueError(
-            f"sim.memory.params {unknown} are not accepted by {cls.__name__}; "
-            f"accepted params: {sorted(signature)}."
-        )
 
 
 def _normalize(items: Any) -> list[str]:
@@ -249,6 +215,7 @@ class SummarizingMemory(MemoryPolicy):
         self._summary_max_tokens = max(1, int(summary_max_tokens))
         self._memories: list[str] = []
         self._summaries: list[str] = []
+        self._warned_summary_failure = False
 
     def record(self, text: str) -> None:
         self._memories.append(text)
@@ -280,8 +247,21 @@ class SummarizingMemory(MemoryPolicy):
                 ).strip()
                 or joined[:500]
             )
-        except Exception:  # pragma: no cover - summarization must not break a turn
-            logger.debug("memory summarization failed; keeping raw chunk", exc_info=True)
+        except Exception:  # summarization must not break a turn, but must be visible
+            # A configured summarizing memory that silently degrades to truncation
+            # changes what every later prompt contains; warn (once per policy, not
+            # once per compressed chunk) so the run is not quietly reinterpreted as
+            # a window memory.
+            if not self._warned_summary_failure:
+                self._warned_summary_failure = True
+                logger.warning(
+                    "sim.memory summarization failed; this agent's memory falls back to "
+                    "truncating the oldest chunk for the rest of the run "
+                    "(further failures logged at DEBUG).",
+                    exc_info=True,
+                )
+            else:
+                logger.debug("memory summarization failed; keeping raw chunk", exc_info=True)
             return joined[:500]
 
     def render(self, *, query: str | None = None) -> str:
@@ -350,9 +330,23 @@ def build_memory_policy(slot_cfg: Mapping[str, Any] | None = None) -> MemoryPoli
             f"Unknown sim.memory.built_in {built_in!r}. Available: "
             f"{sorted(_MEMORY_BUILT_INS)}, or set sim.memory.class_path."
         )
-    _reject_unknown_params(cls, params)
+    # Validate eagerly (at config-build time, before any agent exists) but with the
+    # shared seam's message, so a typo'd sim.memory.params key reads the same as a
+    # typo in any other class_path slot.
+    reject_unsupported_kwargs(cls, params, config_path="sim.memory.params")
 
     def factory(*, model: Any = None, memory_history: int = 1000) -> MemoryPolicy:
-        return _build_filtered(cls, {"memory_history": memory_history, "model": model, **params})
+        # ``strict_keys`` = the user's params only: the framework kwargs (model,
+        # memory_history) are offered to every policy and silently dropped by the
+        # ones that don't declare them (WindowMemory takes no model).
+        return cast(
+            MemoryPolicy,
+            instantiate_with_supported_kwargs(
+                cls,
+                {"memory_history": memory_history, "model": model, **params},
+                strict_keys=params.keys(),
+                config_path="sim.memory.params",
+            ),
+        )
 
     return factory

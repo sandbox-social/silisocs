@@ -324,3 +324,148 @@ def test_custom_agent_builder_keeps_its_own_class_vocabulary() -> None:
         }
     )
     _validate_persona_classes(cfg)
+
+
+# --- positional framework args (run-control gate) ----------------------------
+
+
+class _PositionalTarget:
+    def __init__(self, handle: object, alpha: int = 1) -> None:
+        self.handle = handle
+        self.alpha = alpha
+
+
+def test_positional_args_pass_through_and_leave_their_names_out_of_params() -> None:
+    handle = object()
+    built = instantiate_with_supported_kwargs(
+        _PositionalTarget, {"alpha": 3}, args=(handle,), config_path="sim.somewhere.params"
+    )
+    assert built.handle is handle and built.alpha == 3
+    # The positionally-bound parameter is not a configurable param.
+    with pytest.raises(ValueError, match="handle"):
+        instantiate_with_supported_kwargs(
+            _PositionalTarget, {"handle": 1}, args=(handle,), config_path="sim.somewhere.params"
+        )
+
+
+# --- run controller (sim.engine.control) -------------------------------------
+
+
+class _Controller:
+    def __init__(self, gate: object, endpoint: str = "") -> None:
+        self.gate = gate
+        self.endpoint = endpoint
+
+    def start(self) -> None: ...
+
+    def close(self) -> None: ...
+
+
+def test_run_controller_param_typo_names_the_control_config_block(tmp_path) -> None:
+    from silisocs.simulation_engines.control import build_run_control
+
+    with pytest.raises(ValueError) as exc:
+        build_run_control(
+            {"class_path": f"{__name__}._Controller", "params": {"endpont": "x"}},
+            output_dir=tmp_path,
+        )
+    assert "endpont" in str(exc.value)
+    assert "sim.engine.control.params" in str(exc.value)
+
+
+def test_run_controller_still_receives_the_gate_positionally(tmp_path) -> None:
+    from silisocs.simulation_engines.control import StepGate, build_run_control
+
+    gate, controller = build_run_control(
+        {"class_path": f"{__name__}._Controller", "params": {"endpoint": "http://x"}},
+        output_dir=tmp_path,
+    )
+    assert isinstance(gate, StepGate)
+    assert isinstance(controller, _Controller)
+    assert controller.gate is gate and controller.endpoint == "http://x"
+
+
+def test_run_control_slot_accepts_class_path_and_params_in_validation() -> None:
+    from silisocs.runtime.configuration.validation import _validate_control_config
+
+    _validate_control_config(
+        OmegaConf.create(
+            {
+                "sim": {
+                    "engine": {
+                        "control": {
+                            "class_path": f"{__name__}._Controller",
+                            "params": {"endpoint": "http://x"},
+                        }
+                    }
+                }
+            }
+        )
+    )
+
+
+# --- custom intervention kind (interventions[i].params) ----------------------
+
+
+def _custom_intervention_cls() -> type:
+    from silisocs.simulation_engines.interventions import InterventionHandler
+
+    class _CustomIntervention(InterventionHandler):
+        kind = "custom"
+        persistent = False
+
+        def __init__(self, label: str = "") -> None:
+            self.label = label
+
+        def apply(self, action, ctx) -> None: ...
+
+    return _CustomIntervention
+
+
+_CustomIntervention = _custom_intervention_cls()
+
+
+def test_custom_intervention_param_typo_names_the_intervention_index() -> None:
+    from silisocs.simulation_engines.interventions import InterventionSchedule
+
+    cfg = OmegaConf.create(
+        {
+            "interventions": [
+                {
+                    "at_step": 1,
+                    "actions": [
+                        {
+                            "kind": "custom",
+                            "class_path": f"{__name__}._CustomIntervention",
+                            "params": {"labl": "x"},
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    with pytest.raises(ValueError) as exc:
+        InterventionSchedule.parse(cfg)
+    assert "labl" in str(exc.value)
+    assert "interventions[0].actions[0].params" in str(exc.value)
+
+
+# --- memory policy (sim.memory.params) ---------------------------------------
+
+
+def test_memory_policy_param_typo_names_the_memory_config_block() -> None:
+    from silisocs.agents.memory import build_memory_policy
+
+    with pytest.raises(ValueError) as exc:
+        build_memory_policy({"built_in": "retrieval", "params": {"windw_count": 5}})
+    assert "windw_count" in str(exc.value)
+    assert "sim.memory.params" in str(exc.value)
+
+
+def test_memory_policy_still_filters_framework_kwargs() -> None:
+    from silisocs.agents.memory import WindowMemory, build_memory_policy
+
+    policy = build_memory_policy({"built_in": "window", "params": {"render_count": 3}})(
+        model=object(), memory_history=50
+    )
+    assert isinstance(policy, WindowMemory)

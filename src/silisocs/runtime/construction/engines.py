@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any, cast
 
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from silisocs.runtime.class_loading import instantiate_with_supported_kwargs, load_class
 from silisocs.simulation_engines.base_engines import RuntimeEngine
@@ -170,7 +170,7 @@ def _build_step_strategy(
         return strategy
     _reject_retired_chain_execution(params)
     built_in = str(step_cfg.get("built_in") or "base").strip()
-    flow_order = tuple(str(item) for item in (params.get("flow_order") or ["fixed_pre", "default"]))
+    flow_order = _resolve_flow_order(params)
     flow_turn_policies = build_flow_turn_policies(params.get("flow_turn_policies"))
     strategy_cls = _STEP_STRATEGIES.get(built_in)
     if strategy_cls not in _MULTI_GM_STRATEGIES.values() and _chains_have_branch(chains):
@@ -209,6 +209,28 @@ def _build_step_strategy(
             strategy_cls, strategy_params, config_path="sim.engine.step.params"
         )
     raise ValueError(f"Unknown sim.engine.step.built_in='{built_in}'.")
+
+
+_DEFAULT_FLOW_ORDER: tuple[str, ...] = ("fixed_pre", "default")
+
+
+def _resolve_flow_order(params: Mapping[str, Any]) -> tuple[str, ...]:
+    """Resolve ``sim.engine.step.params.flow_order``, honoring an explicit ``[]``.
+
+    An ABSENT ``flow_order`` gets the documented default serial prefix. An
+    explicitly empty list means "no serial prefix" (docs/configuration.md) and must
+    be preserved: collapsing it back to the default silently reintroduces a
+    barrier the scenario deliberately removed.
+    """
+    if params.get("flow_order") is None:
+        return _DEFAULT_FLOW_ORDER
+    flow_order = params["flow_order"]
+    if isinstance(flow_order, str) or not isinstance(flow_order, (list, tuple, ListConfig)):
+        raise ValueError(
+            "sim.engine.step.params.flow_order must be a list of flow names "
+            f"(use [] for no serial prefix); got {type(flow_order).__name__}."
+        )
+    return tuple(str(item) for item in flow_order)
 
 
 def _reject_retired_chain_execution(params: Mapping[str, Any]) -> None:
