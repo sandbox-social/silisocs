@@ -6,7 +6,6 @@ import logging
 
 import pytest
 
-from silisocs.environments.backends.base import RUNTIME_AGENT_PARAM
 from silisocs.environments.gm.components.resolve import (
     ACTION_FLOW_FILTERED_COUNTER,
     GenericActionResolveComponent,
@@ -14,7 +13,7 @@ from silisocs.environments.gm.components.resolve import (
     ToolCallingResolveComponent,
 )
 from silisocs.runtime.telemetry.collector import SimMetricsCollector
-from silisocs.runtime.types import ActionOutput
+from silisocs.runtime.types import RUNTIME_AGENT_PARAM, ActionOutput
 
 
 class _Descriptor:

@@ -10,17 +10,20 @@ from typing import Any, ClassVar
 
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
-from silisocs.environments.backends.base import (
-    RUNTIME_AGENT_PARAM,
-    RUNTIME_OWNED_ACTION_PARAMS,
-    ActionResult,
-)
+from silisocs.environments.backends.base import ActionResult
 from silisocs.environments.gm.components.base import (
     ComponentState,
     ResolveComponent,
 )
 from silisocs.runtime.telemetry.collector import SimMetricsCollector
-from silisocs.runtime.types import HARNESS_TURN_KEY, ActionOutput, OutputType, ResolveReport
+from silisocs.runtime.types import (
+    HARNESS_TURN_KEY,
+    RUNTIME_AGENT_PARAM,
+    RUNTIME_OWNED_ACTION_PARAMS,
+    ActionOutput,
+    OutputType,
+    ResolveReport,
+)
 
 _LOGGER = logging.getLogger(__name__)
 

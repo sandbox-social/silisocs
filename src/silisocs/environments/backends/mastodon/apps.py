@@ -31,8 +31,8 @@ from silisocs.environments.backends.base import (  # noqa: F401
     SocialBackendApp,
     app_action,
 )
+from silisocs.environments.backends.event_semantics import social_event_semantics
 from silisocs.environments.backends.mastodon.errors import PartialDeletionError
-from silisocs.evaluations.vocabulary import social_event_semantics
 from silisocs.runtime.types import ActionOutput, ToolCall
 
 _LOGGER = logging.getLogger(__name__)

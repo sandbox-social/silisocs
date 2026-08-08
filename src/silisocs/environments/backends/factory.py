@@ -100,7 +100,7 @@ def _load_app_class(class_path: str) -> type[BackendApp]:
 
 
 def _record_runtime_backend_class(backend_type: str, cls: type[BackendApp]) -> None:
-    from silisocs.evaluations import vocabulary
+    from silisocs.environments.backends import event_semantics
 
     key = str(backend_type or "").strip()
     previous = _RUNTIME_BACKEND_CLASSES.get(key)
@@ -115,7 +115,7 @@ def _record_runtime_backend_class(backend_type: str, cls: type[BackendApp]) -> N
             previous.__name__,
         )
     _RUNTIME_BACKEND_CLASSES[key] = cls
-    vocabulary._RESOLVED_EVENT_SEMANTICS.pop(key, None)
+    event_semantics._RESOLVED_EVENT_SEMANTICS.pop(key, None)
 
 
 def _validate_checkpoint_contract(cls: type[BackendApp]) -> None:

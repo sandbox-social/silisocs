@@ -16,15 +16,15 @@ from typing import Any
 import pytest
 
 from silisocs.environments.backends.base import BackendApp, app_action
-from silisocs.environments.backends.factory import create_backend_app
-from silisocs.environments.gm.components.factory import build_observe_component
-from silisocs.environments.gm.context import GameMasterContext
-from silisocs.environments.gm.game_master import _create_backend
-from silisocs.evaluations.vocabulary import (
+from silisocs.environments.backends.event_semantics import (
     EventSemantics,
     event_semantics_for,
     register_event_semantics,
 )
+from silisocs.environments.backends.factory import create_backend_app
+from silisocs.environments.gm.components.factory import build_observe_component
+from silisocs.environments.gm.context import GameMasterContext
+from silisocs.environments.gm.game_master import _create_backend
 from silisocs.runtime.io.jsonl import flush_jsonl_writers
 
 
@@ -239,7 +239,7 @@ def test_malformed_class_declaration_fails_loud():
     """A backend author's broken `event_semantics` raises instead of silently
     degrading to empty semantics (which would just hide every panel).
     """
-    from silisocs.evaluations.vocabulary import declared_event_semantics
+    from silisocs.environments.backends.event_semantics import declared_event_semantics
 
     class _BrokenDeclaration(BackendApp):
         event_semantics = {"roles": "not-a-mapping"}

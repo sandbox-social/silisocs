@@ -84,3 +84,12 @@ repos:
         language: system
         pass_filenames: false
         args: [src/silisocs, tests]
+      - id: lint-imports
+        name: lint-imports
+        # Layering contracts live in pyproject.toml ([tool.importlinter]): the
+        # runtime kernel imports no upper layer, and the big layers stay
+        # unidirectional. Whole-graph check, so it takes no filenames.
+        entry: lint-imports
+        language: system
+        pass_filenames: false
+        files: ^(src/silisocs/.*\.py|pyproject\.toml)$

@@ -19,11 +19,8 @@ from collections.abc import Mapping
 from typing import Any
 
 from silisocs.agents.harness.types import ExecutedToolCall
-from silisocs.environments.backends.base import (
-    RUNTIME_AGENT_PARAM,
-    RUNTIME_OWNED_ACTION_PARAMS,
-)
 from silisocs.runtime.telemetry.collector import SimMetricsCollector
+from silisocs.runtime.types import RUNTIME_AGENT_PARAM, RUNTIME_OWNED_ACTION_PARAMS
 
 HARNESS_TOOL_FAILURES_COUNTER = "harness_tool_failures"
 

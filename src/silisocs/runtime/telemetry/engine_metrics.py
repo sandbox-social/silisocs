@@ -8,8 +8,6 @@ from typing import Any
 
 from omegaconf import OmegaConf
 
-from silisocs.agents.base_agent import Agent
-
 
 def resolve_configured_worker_cap(cfg: Any) -> int | None:
     """Read optional worker cap from config. `null` keeps existing behavior."""
@@ -30,10 +28,16 @@ def resolve_configured_worker_cap(cfg: Any) -> int | None:
 
 
 def collect_unique_models(
-    game_master: Agent,
-    entities_to_process: Sequence[Agent] | None = None,
+    game_master: Any,
+    entities_to_process: Sequence[Any] | None = None,
 ) -> list[Any]:
-    """Collect unique model objects used by the game master and active agents."""
+    """Collect unique model objects used by the game master and active agents.
+
+    Duck-typed on purpose: callers pass game masters as well as agents, and an
+    object without a ``model`` attribute simply contributes nothing. Typing this
+    against the agent class would make this telemetry module — part of the
+    runtime kernel every upper layer imports — depend on the agent layer.
+    """
     candidate_models: list[Any] = []
     gm_model = getattr(game_master, "model", None)
     if gm_model is not None:

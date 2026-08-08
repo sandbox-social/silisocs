@@ -121,6 +121,7 @@ dev = [
   "commitizen>=3.27.0,<4.0.0",
   "cruft>=2.15.0",
   "cz-conventional-gitmoji>=0.3.2,<0.4.0",
+  "import-linter>=2.13",
   "ipykernel>=6.29.4",
   "ipywidgets>=8.1.2",
   "isort>=5.13.2,<6.0.0",
@@ -183,6 +184,56 @@ source = ["src/silisocs"]
 
 [tool.coverage.xml]  # https://coverage.readthedocs.io/en/latest/config.html#xml
 output = "reports/coverage.xml"
+
+[tool.importlinter]  # https://import-linter.readthedocs.io
+root_package = "silisocs"
+
+# The runtime kernel is what every upper layer imports; it must import none of them
+# back. Enforced as its own contract (not just as the bottom layer below) so it also
+# covers the packages the layered contract leaves out.
+[[tool.importlinter.contracts]]
+name = "Runtime kernel imports no upper layer"
+type = "forbidden"
+source_modules = [
+  "silisocs.runtime.types",
+  "silisocs.runtime.io",
+  "silisocs.runtime.telemetry",
+  "silisocs.runtime.class_loading",
+  "silisocs.runtime.language_models",
+]
+forbidden_modules = [
+  "silisocs.adapters",
+  "silisocs.agents",
+  "silisocs.analysis",
+  "silisocs.environments",
+  "silisocs.evaluations",
+  "silisocs.initialization",
+  "silisocs.scenario_gen",
+  "silisocs.simulation_engines",
+  "silisocs.studies",
+  "silisocs.studio",
+]
+
+# The layering that actually holds today, highest first. Deliberately partial:
+# `silisocs.runtime` outside the kernel is the assembly/orchestration layer and is
+# mutually recursive with `simulation_engines` (engines reach back for
+# `runtime.configuration.validation` and `runtime.execution.concurrency`), and
+# `initialization`/`adapters` are mutually recursive with `agents`/`environments`, so
+# none of them can be placed in a unidirectional list without real moves. Siblings
+# joined by `|` may not import each other; `:` allows it (the kernel modules do).
+[[tool.importlinter.contracts]]
+name = "Top-down layers"
+type = "layers"
+layers = [
+  "silisocs.studio",
+  "silisocs.analysis | silisocs.studies",
+  "silisocs.evaluations",
+  "silisocs.simulation_engines",
+  "silisocs.environments",
+  "silisocs.agents",
+  "silisocs.runtime.types : silisocs.runtime.io : silisocs.runtime.telemetry : silisocs.runtime.class_loading : silisocs.runtime.language_models",
+  "silisocs.design | silisocs.exceptions",
+]
 
 [tool.mypy]  # https://mypy.readthedocs.io/en/latest/config_file.html
 junit_xml = "reports/mypy.xml"

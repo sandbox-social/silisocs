@@ -30,6 +30,14 @@ CHOICE_ACTION_TYPES = frozenset({OutputType.CHOICE})
 # to import the other. See ``silisocs.agents.harness`` and the harness resolve component.
 HARNESS_TURN_KEY = "harness_turn"
 
+# The backend-action parameter names the RUNTIME supplies rather than the acting agent:
+# the actor argument is injected by whatever executes the call (a GM resolve component or
+# a harness Tool Bridge), never chosen by the agent. Neutral contract constants for the
+# same reason as ``HARNESS_TURN_KEY``: the backend layer, the GM component layer, and the
+# agent layer all speak this convention, so none of them has to import another.
+RUNTIME_AGENT_PARAM = "agent_name"
+RUNTIME_OWNED_ACTION_PARAMS = frozenset({RUNTIME_AGENT_PARAM})
+
 
 @dataclass(frozen=True, init=False)
 class ActionSpec:

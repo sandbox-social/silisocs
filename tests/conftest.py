@@ -27,8 +27,8 @@ for _variable in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
 
 import pytest  # noqa: E402
 
+from silisocs.environments.backends import event_semantics  # noqa: E402
 from silisocs.environments.backends import factory as backend_factory  # noqa: E402
-from silisocs.evaluations import vocabulary  # noqa: E402
 from silisocs.runtime.checkpointing import replay_mappers  # noqa: E402
 
 
@@ -77,10 +77,10 @@ def _isolate_backend_capability_registries():
     """
     snapshots = [
         (backend_factory._RUNTIME_BACKEND_CLASSES, dict(backend_factory._RUNTIME_BACKEND_CLASSES)),
-        (vocabulary._EVENT_SEMANTICS, dict(vocabulary._EVENT_SEMANTICS)),
+        (event_semantics._EVENT_SEMANTICS, dict(event_semantics._EVENT_SEMANTICS)),
         (
-            vocabulary._RESOLVED_EVENT_SEMANTICS,
-            dict(vocabulary._RESOLVED_EVENT_SEMANTICS),
+            event_semantics._RESOLVED_EVENT_SEMANTICS,
+            dict(event_semantics._RESOLVED_EVENT_SEMANTICS),
         ),
     ]
     try:

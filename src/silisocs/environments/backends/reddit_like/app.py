@@ -18,12 +18,12 @@ from silisocs.environments.backends.base import (
     VisualizerSpec,
     app_action,
 )
+from silisocs.environments.backends.event_semantics import social_event_semantics
 from silisocs.environments.backends.reddit_like.engine import RedditLikePlatform
 from silisocs.environments.backends.sqlite_state import (
     restore_sqlite_database,
     snapshot_sqlite_database,
 )
-from silisocs.evaluations.vocabulary import social_event_semantics
 
 
 @dataclasses.dataclass

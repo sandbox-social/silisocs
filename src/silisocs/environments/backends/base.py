@@ -18,8 +18,9 @@ from typing import Any, Literal, get_type_hints
 import docstring_parser
 import termcolor
 
-from silisocs.evaluations.vocabulary import EventSemantics
+from silisocs.environments.backends.event_semantics import EventSemantics
 from silisocs.exceptions import ActionError, BackendError
+from silisocs.runtime.types import RUNTIME_AGENT_PARAM, RUNTIME_OWNED_ACTION_PARAMS
 
 _LOGGER = logging.getLogger(__name__)
 _ACTION_LOG_SCOPES: ContextVar[tuple[list[bool], ...]] = ContextVar(
@@ -83,8 +84,6 @@ _ARGUMENT_REGEX = re.compile(r"(?P<param>\w+):\s*(?P<value>[^\n]+)")
 ParserFunc = Callable[[str], Any]
 
 _ACTION_PROPERTY = "__app_action__"
-RUNTIME_AGENT_PARAM = "agent_name"
-RUNTIME_OWNED_ACTION_PARAMS = frozenset({RUNTIME_AGENT_PARAM})
 
 COLOR_TYPE = (
     Literal[

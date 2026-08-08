@@ -74,6 +74,27 @@ def test_register_health_counter_is_live_everywhere():
         register_health_counter("custom_widget_failures", "something else")
 
 
+def test_event_semantics_registration_is_one_registry_under_both_import_paths():
+    """The declaring layer owns the registry; the documented path re-exports it.
+
+    ``EventSemantics`` lives in the environments layer so a backend can declare
+    its own vocabulary without importing the evaluation layer that reads it;
+    ``evaluations.vocabulary`` stays the documented import home. A second
+    registry behind the second path would silently drop registrations.
+    """
+    from silisocs.environments.backends import event_semantics as declaring_layer
+    from silisocs.evaluations import vocabulary as documented_path
+
+    assert documented_path.register_event_semantics is declaring_layer.register_event_semantics
+    documented_path.register_event_semantics(
+        "plugin_seam_demo",
+        documented_path.EventSemantics(roles={"content.root": frozenset({"post"})}),
+    )
+    assert declaring_layer.event_semantics_for("plugin_seam_demo").labels("content.root") == (
+        frozenset({"post"})
+    )
+
+
 def test_health_counters_reach_the_manifest_after_registration(tmp_path):
     """No import-time snapshot: a counter registered late still lands in health."""
     from silisocs.runtime.execution.manifest import build_run_manifest
