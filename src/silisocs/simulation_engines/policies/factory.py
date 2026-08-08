@@ -18,6 +18,9 @@ from silisocs.runtime.class_loading import (
 from silisocs.runtime.class_loading import (
     load_class as _load_class,
 )
+from silisocs.runtime.class_loading import (
+    supported_kwargs as _supported_kwargs,
+)
 from silisocs.simulation_engines.policies.participation import (
     ActivityMarkovParticipation,
     ActivityProbabilityParticipation,
@@ -77,6 +80,7 @@ def _build_policy(
     built_ins: Mapping[str, type[Any]],
     default_built_in: str,
     runtime_kwargs: Mapping[str, Any] | None = None,
+    config_path: str | None = None,
 ) -> Any:
     """Build a policy from a slot config, using class_path or a built-in name.
 
@@ -102,16 +106,23 @@ def _build_policy(
         # Inject only into explicitly named constructor params: a policy opts in
         # to an injection by declaring it (a bare **kwargs or no __init__ at all
         # must not receive surprise keywords).
-        signature = inspect.signature(cls.__init__).parameters
+        declared = _supported_kwargs(cls) or set()
         for key, value in runtime_kwargs.items():
-            if key not in params and key in signature:
+            if key not in params and key in declared:
                 params[key] = value
-    return _instantiate_with_supported_kwargs(cls, params)
+    return _instantiate_with_supported_kwargs(cls, params, config_path=config_path)
 
 
-def build_turn_policy(slot_cfg: Mapping[str, Any] | None = None) -> Any:
+def build_turn_policy(
+    slot_cfg: Mapping[str, Any] | None = None, *, config_path: str = "sim.engine.turn_policy.params"
+) -> Any:
     """Build turn policy from YAML config."""
-    return _build_policy(slot_cfg, built_ins=_TURN_BUILT_INS, default_built_in="single_action")
+    return _build_policy(
+        slot_cfg,
+        built_ins=_TURN_BUILT_INS,
+        default_built_in="single_action",
+        config_path=config_path,
+    )
 
 
 def build_router(slot_cfg: Mapping[str, Any] | None = None) -> Any:
@@ -128,7 +139,9 @@ def build_router(slot_cfg: Mapping[str, Any] | None = None) -> Any:
         params = dict(cfg.get("params") or {})
         target = _load_attr(class_path)
         if inspect.isclass(target):
-            router: Any = _instantiate_with_supported_kwargs(target, params)
+            router: Any = _instantiate_with_supported_kwargs(
+                target, params, config_path="flow_to_gms branch router params"
+            )
         elif params:
             router = functools.partial(target, **params)
         else:
@@ -139,7 +152,12 @@ def build_router(slot_cfg: Mapping[str, Any] | None = None) -> Any:
                 "((agents, gms, ctx) -> {agent name: gm name})."
             )
         return router
-    return _build_policy(cfg, built_ins=_ROUTER_BUILT_INS, default_built_in="random")
+    return _build_policy(
+        cfg,
+        built_ins=_ROUTER_BUILT_INS,
+        default_built_in="random",
+        config_path="flow_to_gms branch router params",
+    )
 
 
 def build_participation_policy(
@@ -163,6 +181,7 @@ def build_participation_policy(
         built_ins=_PARTICIPATION_BUILT_INS,
         default_built_in="all",
         runtime_kwargs={"sim_roles": dict(sim_roles or {})},
+        config_path="sim.engine.participation.params",
     )
 
 
@@ -191,7 +210,10 @@ def build_named_turn_policies(raw: Any, *, config_key: str, key_noun: str) -> di
             raise ValueError(
                 f"{config_key}['{key}'] must be a mapping of {{built_in|class_path, params}}."
             )
-        resolved[key] = build_turn_policy(dict(slot or {}))
+        resolved[key] = build_turn_policy(
+            dict(slot or {}),
+            config_path=f"sim.engine.step.params.{config_key}['{key}'].params",
+        )
     return resolved
 
 
@@ -235,6 +257,9 @@ def build_gm_concurrency_caps(raw: Any) -> dict[str, int]:
 def build_probe_schedule_policy(slot_cfg: Mapping[str, Any] | None = None) -> ProbeSchedulePolicy:
     """Build a :class:`ProbeSchedulePolicy` from ``eval.probes.schedule`` config."""
     policy: ProbeSchedulePolicy = _build_policy(
-        slot_cfg, built_ins=_PROBE_BUILT_INS, default_built_in="step_schedule"
+        slot_cfg,
+        built_ins=_PROBE_BUILT_INS,
+        default_built_in="step_schedule",
+        config_path="eval.probes.schedule.params",
     )
     return policy

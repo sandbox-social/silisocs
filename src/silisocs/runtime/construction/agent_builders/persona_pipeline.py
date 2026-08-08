@@ -35,6 +35,32 @@ from silisocs.runtime.model_fields import MODEL_FIELDS
 
 _LOGGER = logging.getLogger(__name__)
 
+# Every key this builder reads off `agents.persona_pipeline.classes.<class>`. It is
+# the single source of truth for the config validator (`runtime.configuration.
+# validation`), so an unknown sub-key — a typo like `flow_tags:` — fails the run
+# instead of being silently ignored. Extend it in the same commit that teaches
+# `_build_class` to read a new key.
+PERSONA_CLASS_KEYS: frozenset[str] = frozenset(
+    {
+        "class_path",
+        "compat",
+        "count",
+        "data",
+        "derive_name_from_context",
+        "field_map",
+        "fixed_action",
+        "flow_tag",
+        "include_news_images",
+        "model",
+        "name_from_context_words",
+        "params",
+        "shared_memories",
+        "sim_role_name",
+        "specific_memories_field",
+        "use_news_file_posts",
+    }
+)
+
 # Per-class `model` block fields that override the matching global `sim.llm` field.
 _ALLOWED_MODEL_KEYS = frozenset(MODEL_FIELDS)
 # String-or-None subset of _ALLOWED_MODEL_KEYS, type-checked separately

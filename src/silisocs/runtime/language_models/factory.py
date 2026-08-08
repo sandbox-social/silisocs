@@ -1,9 +1,9 @@
 """Language-model provider selection."""
 
-import importlib
 import os
 from typing import Any
 
+from silisocs.runtime.class_loading import instantiate_with_supported_kwargs, load_attr
 from silisocs.runtime.language_models.base import LanguageModel, NoLanguageModel
 from silisocs.runtime.language_models.catalog import (
     BUILT_IN_PROVIDERS,
@@ -41,8 +41,13 @@ def select_large_language_model(
     if normalized_provider == "disabled":
         return NoLanguageModel()
     if normalized_provider == "scripted":
-        return ScriptedLanguageModel(
-            log_file=log_file, debug=debug_mode, **dict(extra_kwargs or {})
+        # The scripted provider has no request body, so its ``extra_kwargs`` are
+        # constructor params (text_response, tool_calls, behavior_class_path, ...):
+        # a typo there is a config error, not an ignored API field.
+        return instantiate_with_supported_kwargs(
+            ScriptedLanguageModel,
+            {"log_file": log_file, "debug": debug_mode, **dict(extra_kwargs or {})},
+            config_path="sim.llm.extra_kwargs (provider 'scripted')",
         )
     if normalized_provider == "openai":
         effective_api_key = api_key or os.getenv("OPENAI_API_KEY")
@@ -72,9 +77,8 @@ def select_large_language_model(
     # Reserved core names above stay non-shadowable; presets apply otherwise.
     custom_factory = get_llm_provider(normalized_provider)
     if custom_factory is None and "." in str(provider or ""):
-        module_path, _, attr = str(provider).strip().rpartition(".")
         try:
-            custom_factory = getattr(importlib.import_module(module_path), attr)
+            custom_factory = load_attr(str(provider).strip())
         except (ImportError, AttributeError) as exc:
             raise ValueError(
                 f"sim.llm.provider '{provider}' looks like a class path but cannot "
@@ -92,6 +96,7 @@ def select_large_language_model(
                 "temperature": temperature,
                 "extra_kwargs": extra_kwargs,
             },
+            provider=str(provider or normalized_provider),
         )
         if not isinstance(built, LanguageModel):
             raise TypeError(

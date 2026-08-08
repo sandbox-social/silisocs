@@ -18,17 +18,22 @@ Two extension paths exist for `sim.llm.provider`:
 
 Either way the factory is called with the standard provider kwargs
 (``model_name``, ``log_file``, ``debug``, ``api_base``, ``api_key``,
-``temperature``, ``extra_kwargs``); unsupported kwargs are dropped to the
-factory's signature. Providers that talk to OpenAI-compatible HTTP APIs should
-subclass :class:`OpenAICompatibleLanguageModel` to inherit retry/backoff and
-telemetry support.
+``temperature``, ``extra_kwargs``). Kwargs the factory does not declare are
+dropped to its signature *except* the user-authored routing/pass-through fields
+(:data:`STRICT_PROVIDER_FIELDS`): if one of those is set in ``sim.llm`` and the
+provider cannot accept it, construction fails loudly rather than silently sending
+requests to the wrong endpoint (or without the requested body fields). Providers
+that talk to OpenAI-compatible HTTP APIs should subclass
+:class:`OpenAICompatibleLanguageModel` to inherit retry/backoff and telemetry
+support.
 """
 
 from __future__ import annotations
 
-import inspect
 from collections.abc import Callable
 from typing import Any, TypeVar
+
+from silisocs.runtime.class_loading import instantiate_with_supported_kwargs
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -61,17 +66,28 @@ def available_llm_providers() -> list[str]:
     return sorted(_PROVIDERS)
 
 
-def instantiate_provider(factory: Callable[..., Any], kwargs: dict[str, Any]) -> Any:
-    """Call a provider factory with only the kwargs its signature accepts."""
-    try:
-        params = inspect.signature(factory).parameters
-    except (TypeError, ValueError):
-        return factory(**kwargs)
-    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values()):
-        return factory(**kwargs)
-    supported = {
-        name
-        for name, param in params.items()
-        if param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
-    }
-    return factory(**{key: value for key, value in kwargs.items() if key in supported})
+# ``sim.llm`` fields whose silent loss would change where a request goes, which
+# model answers it, or what the request body contains. A provider that cannot accept
+# one of these while it is actually set is a config error, not a filtered framework
+# kwarg. ``log_file``/``debug``/``temperature`` stay filterable: they are supplied by
+# the framework on every call (with defaults), so a provider may legitimately ignore
+# them.
+STRICT_PROVIDER_FIELDS: tuple[str, ...] = ("model_name", "api_base", "api_key", "extra_kwargs")
+
+
+def instantiate_provider(
+    factory: Callable[..., Any], kwargs: dict[str, Any], *, provider: str = ""
+) -> Any:
+    """Call a provider factory with the kwargs its signature accepts.
+
+    Framework kwargs the factory does not declare are dropped; a *set*
+    :data:`STRICT_PROVIDER_FIELDS` entry it cannot accept raises a config error
+    naming the provider and the offending field(s).
+    """
+    strict = {field for field in STRICT_PROVIDER_FIELDS if kwargs.get(field)}
+    return instantiate_with_supported_kwargs(
+        factory,
+        kwargs,
+        strict_keys=strict,
+        config_path=f"sim.llm (provider '{provider}')" if provider else "sim.llm",
+    )

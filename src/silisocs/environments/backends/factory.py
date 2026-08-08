@@ -9,13 +9,12 @@ to fully-qualified class path. Custom backends can set
 """
 
 import importlib
-import inspect
 import logging
 import os
-from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from silisocs.environments.backends.base import BackendApp
+from silisocs.runtime.class_loading import instantiate_with_supported_kwargs
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -143,33 +142,6 @@ def _validate_checkpoint_contract(cls: type[BackendApp]) -> None:
     )
 
 
-def _instantiate_app_with_supported_kwargs(
-    cls: type[BackendApp],
-    kwargs: Mapping[str, Any],
-    *,
-    config_param_keys: Any = (),
-) -> BackendApp:
-    """Instantiate an app while validating user-supplied config params."""
-    params = inspect.signature(cls.__init__).parameters
-    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
-        return cls(**dict(kwargs))
-
-    supported = {
-        name
-        for name, param in params.items()
-        if name != "self"
-        and param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
-    }
-    unsupported_config = sorted(set(config_param_keys) - supported)
-    if unsupported_config:
-        raise ValueError(
-            f"Unsupported config param(s) for {cls.__module__}.{cls.__name__}: "
-            f"{unsupported_config}. Supported params: {sorted(supported)}"
-        )
-    filtered = {k: v for k, v in kwargs.items() if k in supported}
-    return cls(**filtered)
-
-
 def create_backend_app(backend_type: str, **kwargs: Any) -> BackendApp:
     """Create and return a BackendApp for the given backend type.
 
@@ -218,8 +190,12 @@ def create_backend_app(backend_type: str, **kwargs: Any) -> BackendApp:
     }
     init_kwargs.update(backend_params)
 
-    return _instantiate_app_with_supported_kwargs(
-        cls,
-        init_kwargs,
-        config_param_keys=backend_params.keys(),
+    return cast(
+        BackendApp,
+        instantiate_with_supported_kwargs(
+            cls,
+            init_kwargs,
+            strict_keys=backend_params.keys(),
+            config_path=f"env params for backend '{backend_type}'",
+        ),
     )

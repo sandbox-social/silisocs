@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import re
 from collections.abc import Mapping
 from typing import Any, cast
@@ -17,6 +16,10 @@ from silisocs.environments.gm.components.base import (
     UpdateComponent,
 )
 from silisocs.environments.gm.context import GameMasterContext
+from silisocs.runtime.class_loading import (
+    instantiate_with_supported_kwargs,
+    supported_kwargs,
+)
 from silisocs.runtime.class_loading import load_class as _load_class
 
 _INITIALIZE_BUILT_INS = {
@@ -148,29 +151,15 @@ def _instantiate_with_supported_kwargs(
     *,
     config_param_keys: Any = (),
 ) -> Any:
-    """Instantiate a class using only kwargs supported by its constructor."""
-    params = inspect.signature(cls.__init__).parameters
-    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
-        return cls(**dict(kwargs))
+    """Instantiate a class using only kwargs supported by its constructor.
 
-    supported = {
-        name
-        for name, param in params.items()
-        if name != "self"
-        and param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
-    }
-    if "observation_params" in supported:
-        filtered = {k: v for k, v in kwargs.items() if k in supported}
-        return cls(**filtered)
-
-    unsupported_config = sorted(set(config_param_keys) - supported)
-    if unsupported_config:
-        raise ValueError(
-            f"Unsupported config param(s) for {cls.__module__}.{cls.__name__}: "
-            f"{unsupported_config}. Supported params: {sorted(supported)}"
-        )
-    filtered = {k: v for k, v in kwargs.items() if k in supported}
-    return cls(**filtered)
+    Components declaring ``observation_params`` bundle their config into that one
+    mapping, so their individual keys are not checkable against the signature.
+    """
+    supported = supported_kwargs(cls)
+    if supported is not None and "observation_params" in supported:
+        config_param_keys = ()
+    return instantiate_with_supported_kwargs(cls, kwargs, strict_keys=config_param_keys)
 
 
 def _class_to_kebab_case(class_name: str) -> str:

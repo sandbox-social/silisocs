@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import json
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
@@ -11,6 +10,11 @@ from typing import Any
 from omegaconf import OmegaConf
 
 from silisocs.runtime.checkpointing.replay_mappers import get_replay_mapper
+from silisocs.runtime.class_loading import (
+    instantiate_with_supported_kwargs,
+    load_class,
+    supported_kwargs,
+)
 from silisocs.runtime.types import ActionOutput
 
 
@@ -162,10 +166,17 @@ def build_checkpoint_restore(slot_cfg: Any) -> CheckpointRestoreStrategy:
         raise ValueError("sim.checkpoint.source_run requires sim.checkpoint.restore.")
     built_in = str(getattr(slot_cfg, "built_in", "") or "").strip()
     class_path = str(getattr(slot_cfg, "class_path", "") or "").strip()
+    params = getattr(slot_cfg, "params", None)
+    kwargs: dict[str, Any] = (
+        {str(key): value for key, value in params.items()} if isinstance(params, Mapping) else {}
+    )
     if class_path:
-        return _load_restore_strategy(class_path, getattr(slot_cfg, "params", None))
+        return _load_restore_strategy(class_path, kwargs)
     if built_in == "social_action_event_replay":
-        return SocialActionEventReplayRestore()
+        strategy: CheckpointRestoreStrategy = instantiate_with_supported_kwargs(
+            SocialActionEventReplayRestore, kwargs, config_path="sim.checkpoint.restore.params"
+        )
+        return strategy
     raise ValueError(
         "Unknown sim.checkpoint.restore.built_in "
         f"{built_in!r}. Available: social_action_event_replay. "
@@ -252,39 +263,24 @@ def _call_restore(
     documented ``**_`` forward-compat convention receive it; an older custom
     strategy that declares neither is called without it instead of raising.
     """
-    params = inspect.signature(strategy.restore).parameters
-    accepts = "flow_chains" in params or any(
-        param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values()
-    )
-    if accepts:
+    declared = supported_kwargs(strategy.restore)
+    if declared is None or "flow_chains" in declared:
         strategy.restore(flow_chains=flow_chains, **kwargs)
     else:
         strategy.restore(**kwargs)
 
 
-def _load_restore_strategy(class_path: str, params: Any) -> CheckpointRestoreStrategy:
+def _load_restore_strategy(class_path: str, kwargs: Mapping[str, Any]) -> CheckpointRestoreStrategy:
     """Import and instantiate a custom CheckpointRestoreStrategy from a class path."""
-    import importlib
-
-    module_path, _, attr = class_path.rpartition(".")
-    if not module_path:
-        raise ValueError(f"Invalid checkpoint restore class_path: {class_path!r}")
     try:
-        cls = getattr(importlib.import_module(module_path), attr)
-    except (ImportError, AttributeError) as exc:
+        cls = load_class(class_path, what="checkpoint restore strategy")
+    except (ImportError, AttributeError, ValueError) as exc:
         raise ValueError(
             f"Could not import checkpoint restore class_path {class_path!r}: {exc}"
         ) from exc
-    kwargs: dict[str, Any] = {}
-    if isinstance(params, Mapping):
-        kwargs = {str(key): value for key, value in params.items()}
-    try:
-        strategy = cls(**kwargs)
-    except TypeError as exc:
-        raise ValueError(
-            f"Could not instantiate checkpoint restore {class_path!r} with params "
-            f"{sorted(kwargs)}: {exc}"
-        ) from exc
+    strategy = instantiate_with_supported_kwargs(
+        cls, kwargs, config_path="sim.checkpoint.restore.params"
+    )
     if not isinstance(strategy, CheckpointRestoreStrategy):
         raise TypeError(
             f"Checkpoint restore class {class_path!r} must subclass CheckpointRestoreStrategy."

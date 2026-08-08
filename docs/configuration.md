@@ -208,6 +208,27 @@ their OpenAI-compatible endpoints. For a provider not listed here, use
 `provider: openai_compatible` with an explicit `sim.llm.api_base`, or register a
 custom provider (see [Building Agents](building_agents.md)).
 
+**Where model config is strict, and where it is open.** Two different surfaces
+live in `sim.llm`, and they have opposite rules:
+
+- **The config surface** — `provider`, `name`, `api_base`, `api_key`,
+  `temperature`, `disabled`, `extra_kwargs` (plus telemetry-only `pricing`) — is
+  **closed**. An unknown key under `sim.llm` (or under a per-class `model` block)
+  fails validation naming the key. Building the model is strict too: if
+  `api_base`, `api_key`, `extra_kwargs`, or the model name is *set* and the
+  selected provider's constructor cannot accept it, the run fails at build naming
+  the provider and the offending field(s) rather than silently sending requests to
+  the wrong endpoint. Only relevant to custom providers — every built-in and preset
+  accepts all four. `log_file`, `debug`, and `temperature` are framework-supplied
+  with defaults, so a custom provider may ignore them.
+- **`extra_kwargs` contents** are **open** for API-backed providers (`openai`,
+  `openai_compatible`, every preset): the mapping is merged into the chat-completion
+  request body, so its keys are the provider API's vocabulary, not the framework's.
+  A key the API does not know surfaces as that API's error on the first call.
+  The exception is `provider: scripted`, which has no request body — there
+  `extra_kwargs` are the scripted model's constructor params (`text_response`,
+  `tool_calls`, `behavior_class_path`, …) and a typo fails at build.
+
 ### Engine and Runtime
 
 | Parameter | Default | Description |
@@ -621,6 +642,21 @@ shared_memories:
 initial_observations:
   - "{name} is at home checking their social media feed."
 ```
+
+**Class keys are a closed set.** Each `persona_pipeline.classes.<class>` mapping
+accepts exactly the keys the builder reads:
+
+`class_path`, `compat`, `count`, `data`, `derive_name_from_context`, `field_map`,
+`fixed_action`, `flow_tag`, `include_news_images`, `model`,
+`name_from_context_words`, `params`, `shared_memories`, `sim_role_name`,
+`specific_memories_field`, `use_news_file_posts`.
+
+Anything else fails validation naming the class, the bad key, and the nearest
+valid key — so `flow_tags:` no longer silently leaves every agent in the default
+flow. Per-agent constructor arguments belong under `params` (which stays open:
+it is validated against the agent class's own constructor at build time). A custom
+`agents.builder.class_path` defines its own class vocabulary, so the check is
+skipped when one is configured.
 
 ### Data Sources
 

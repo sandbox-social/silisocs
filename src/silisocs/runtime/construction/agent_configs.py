@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import importlib
 import logging
 from pathlib import Path
 from typing import Any
 
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
+from silisocs.runtime.class_loading import load_attr
 from silisocs.runtime.construction.agent_builders import (
     AgentBuilder,
     PersonaPipelineAgentBuilder,
@@ -60,8 +60,7 @@ def _warn_on_agent_count_mismatch(cfg: DictConfig, actual: int) -> None:
 def _resolve_builder_class(class_path: str | None) -> type[AgentBuilder]:
     if not class_path:
         return PersonaPipelineAgentBuilder
-    module_path, name = str(class_path).rsplit(".", 1)
-    builder_cls = getattr(importlib.import_module(module_path), name)
+    builder_cls = load_attr(str(class_path))
     if not isinstance(builder_cls, type) or not issubclass(builder_cls, AgentBuilder):
         raise TypeError(
             f"Configured agents.builder.class_path `{class_path}` must subclass "

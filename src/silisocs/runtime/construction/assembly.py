@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import importlib
-import inspect
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from silisocs.agents.base_agent import Agent
+from silisocs.runtime.class_loading import (
+    instantiate_with_supported_kwargs,
+    load_attr,
+    supported_kwargs,
+)
 from silisocs.runtime.construction.specs import RuntimeRole, RuntimeSpec
 from silisocs.runtime.language_models import LanguageModel
 from silisocs.runtime.telemetry import SimMetricsCollector
@@ -125,14 +129,19 @@ def add_agent(
                 f"Agent class '{spec.class_path}' is Concordia compatibility code. "
                 "Set `compat: concordia` so it is wrapped by ConcordiaAgentAdapter."
             )
-        cls = _load_object(spec.class_path)
+        cls = load_attr(spec.class_path)
         agent_kwargs: dict[str, Any] = {"model": model, **_constructor_params(spec)}
         # Inject the memory-policy factory only into agents that accept it (a
         # framework kwarg, so it is filtered rather than raising for agents —
         # e.g. FixedAgent — that don't take it; user params still raise on typo).
-        if memory_factory is not None and _class_accepts(cls, "memory_policy"):
+        accepted = supported_kwargs(cls)
+        if memory_factory is not None and (accepted is None or "memory_policy" in accepted):
             agent_kwargs["memory_policy"] = memory_factory
-        built = _instantiate_with_supported_kwargs(cls, agent_kwargs)
+        built = instantiate_with_supported_kwargs(
+            cls,
+            agent_kwargs,
+            config_path=f"agents.persona_pipeline params for agent '{name}'",
+        )
         if not isinstance(built, Agent):
             raise TypeError(
                 f"Agent class '{spec.class_path}' returned {type(built).__name__}, "
@@ -171,10 +180,11 @@ def add_game_master(
     elif spec.compat:
         raise ValueError(f"Unsupported game-master compat value: {spec.compat}")
     else:
-        cls = _load_object(spec.class_path)
-        built = _instantiate_with_supported_kwargs(
+        cls = load_attr(spec.class_path)
+        built = instantiate_with_supported_kwargs(
             cls,
             {"model": model, "agents": runtime.agents, **_constructor_params(spec)},
+            config_path=f"env.gm params for game master '{name}'",
         )
         missing = [method for method in _GM_METHODS if not callable(getattr(built, method, None))]
         if missing:
@@ -210,47 +220,10 @@ def construct_runtime_with_metrics(
         )
 
 
-def _load_object(class_path: str) -> Any:
-    module_path, name = str(class_path).rsplit(".", 1)
-    return getattr(importlib.import_module(module_path), name)
-
-
-def _class_accepts(cls: Any, param: str) -> bool:
-    """Whether ``cls.__init__`` accepts ``param`` (directly or via ``**kwargs``)."""
-    try:
-        params = inspect.signature(cls).parameters
-    except (TypeError, ValueError):
-        return True
-    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
-        return True
-    return param in params
-
-
-def _instantiate_with_supported_kwargs(cls: Any, kwargs: dict[str, Any]) -> Any:
-    try:
-        params = inspect.signature(cls).parameters
-    except (TypeError, ValueError):
-        return cls(**kwargs)
-    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values()):
-        return cls(**kwargs)
-    supported = {
-        name
-        for name, param in params.items()
-        if param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
-    }
-    unsupported = sorted(set(kwargs) - supported)
-    if unsupported:
-        raise ValueError(
-            f"Unsupported config param(s) for {cls.__module__}.{cls.__name__}: "
-            f"{unsupported}. Supported params: {sorted(supported)}"
-        )
-    return cls(**{key: value for key, value in kwargs.items() if key in supported})
-
-
 def _build_concordia_agent(*, spec: RuntimeSpec, model: LanguageModel) -> Agent:
     adapter = importlib.import_module("silisocs.adapters.concordia")
-    builder_cls = _load_object(spec.class_path)
-    builder = _instantiate_with_supported_kwargs(builder_cls, {"params": _constructor_params(spec)})
+    builder_cls = load_attr(spec.class_path)
+    builder = instantiate_with_supported_kwargs(builder_cls, {"params": _constructor_params(spec)})
     memory_bank = adapter.make_concordia_memory_bank(
         str(spec.params.get("memory_backend", "list") or "list")
     )
@@ -265,8 +238,8 @@ def _build_concordia_game_master(
     agents: list[Agent],
 ) -> Any:
     adapter = importlib.import_module("silisocs.adapters.concordia")
-    builder_cls = _load_object(spec.class_path)
-    builder = _instantiate_with_supported_kwargs(builder_cls, {"params": _constructor_params(spec)})
+    builder_cls = load_attr(spec.class_path)
+    builder = instantiate_with_supported_kwargs(builder_cls, {"params": _constructor_params(spec)})
     if hasattr(builder, "agents"):
         builder.agents = agents
     memory_bank = adapter.make_concordia_memory_bank(

@@ -21,7 +21,6 @@ from __future__ import annotations
 import base64
 import contextlib
 import hashlib
-import importlib
 import itertools
 import json
 import os
@@ -29,6 +28,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
+
+from silisocs.runtime.class_loading import instantiate_with_supported_kwargs, load_class
 
 # Marker replacing a value extracted to a sidecar file in the sharded layout.
 FILE_REF_KEY = "__checkpoint_file_ref__"
@@ -269,51 +270,40 @@ def build_checkpoint_save_strategy(slot_cfg: Any | None) -> CheckpointSaveStrate
     built_in = str(_field("built_in") or "").strip()
     class_path = str(_field("class_path") or "").strip()
     params = _field("params")
-    if class_path:
-        return _load_save_strategy(class_path, params)
-    kwargs: dict[str, Any] = {}
-    if isinstance(params, Mapping):
-        kwargs = {str(key): value for key, value in params.items()}
-    try:
-        if built_in in ("", "monolithic_json"):
-            return MonolithicJsonSaveStrategy()
-        if built_in == "sharded":
-            return ShardedCheckpointSaveStrategy(**kwargs)
-    except TypeError as exc:
-        # Same friendly wrap as the class_path branch: a typo'd param name
-        # should read as a config error, not a raw TypeError.
-        raise ValueError(
-            f"Could not build sim.checkpoint.save built_in {built_in!r} with "
-            f"params {sorted(kwargs)}: {exc}"
-        ) from exc
-    raise ValueError(
-        f"Unknown sim.checkpoint.save.built_in {built_in!r}. Available: "
-        "monolithic_json, sharded. Set sim.checkpoint.save.class_path for a "
-        "custom strategy."
+    kwargs: dict[str, Any] = (
+        {str(key): value for key, value in params.items()} if isinstance(params, Mapping) else {}
     )
+    if class_path:
+        return _load_save_strategy(class_path, kwargs)
+    built_ins: dict[str, type[CheckpointSaveStrategy]] = {
+        "": MonolithicJsonSaveStrategy,
+        "monolithic_json": MonolithicJsonSaveStrategy,
+        "sharded": ShardedCheckpointSaveStrategy,
+    }
+    strategy_cls = built_ins.get(built_in)
+    if strategy_cls is None:
+        raise ValueError(
+            f"Unknown sim.checkpoint.save.built_in {built_in!r}. Available: "
+            "monolithic_json, sharded. Set sim.checkpoint.save.class_path for a "
+            "custom strategy."
+        )
+    strategy: CheckpointSaveStrategy = instantiate_with_supported_kwargs(
+        strategy_cls, kwargs, config_path="sim.checkpoint.save.params"
+    )
+    return strategy
 
 
-def _load_save_strategy(class_path: str, params: Any) -> CheckpointSaveStrategy:
+def _load_save_strategy(class_path: str, kwargs: Mapping[str, Any]) -> CheckpointSaveStrategy:
     """Import and instantiate a custom CheckpointSaveStrategy from a class path."""
-    module_path, _, attr = class_path.rpartition(".")
-    if not module_path:
-        raise ValueError(f"Invalid checkpoint save class_path: {class_path!r}")
     try:
-        cls = getattr(importlib.import_module(module_path), attr)
-    except (ImportError, AttributeError) as exc:
+        cls = load_class(class_path, what="checkpoint save strategy")
+    except (ImportError, AttributeError, ValueError) as exc:
         raise ValueError(
             f"Could not import checkpoint save class_path {class_path!r}: {exc}"
         ) from exc
-    kwargs: dict[str, Any] = {}
-    if isinstance(params, Mapping):
-        kwargs = {str(key): value for key, value in params.items()}
-    try:
-        strategy = cls(**kwargs)
-    except TypeError as exc:
-        raise ValueError(
-            f"Could not instantiate checkpoint save {class_path!r} with params "
-            f"{sorted(kwargs)}: {exc}"
-        ) from exc
+    strategy = instantiate_with_supported_kwargs(
+        cls, kwargs, config_path="sim.checkpoint.save.params"
+    )
     if not isinstance(strategy, CheckpointSaveStrategy):
         raise TypeError(
             f"Checkpoint save class {class_path!r} must subclass CheckpointSaveStrategy."

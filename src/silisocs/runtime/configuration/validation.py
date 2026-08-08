@@ -10,6 +10,7 @@ The validation functions raise :class:`ValueError` or :class:`FileNotFoundError`
 when checks fail.
 """
 
+import difflib
 import importlib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -356,6 +357,7 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
     """Validate framework-owned config sections while leaving params open."""
     _assert_allowed_keys(cfg, "agents.builder", {"class_path", "params"})
     _assert_allowed_keys(cfg, "agents.persona_pipeline", {"defaults", "classes"})
+    _validate_persona_classes(cfg)
 
     _assert_allowed_keys(
         cfg,
@@ -444,6 +446,46 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
     _assert_allowed_keys(cfg, "eval", {"probes"})
     _validate_interventions_config(cfg)
     print("✓ Runtime section validation passed")
+
+
+_PERSONA_BUILDER_CLASS_PATH = (
+    "silisocs.runtime.construction.agent_builders.persona_pipeline.PersonaPipelineAgentBuilder"
+)
+
+
+def _validate_persona_classes(cfg: DictConfig) -> None:
+    """Reject unknown sub-keys under ``agents.persona_pipeline.classes.<class>``.
+
+    The persona-pipeline builder reads a fixed set of sub-keys, so anything else is a
+    typo that would otherwise be silently ignored (``flow_tags`` instead of
+    ``flow_tag`` leaves every agent in the default flow). A custom
+    ``agents.builder.class_path`` defines its own class vocabulary, so the check is
+    skipped there.
+    """
+    builder = str(OmegaConf.select(cfg, "agents.builder.class_path") or "").strip()
+    if builder and builder != _PERSONA_BUILDER_CLASS_PATH:
+        return
+    classes = OmegaConf.select(cfg, "agents.persona_pipeline.classes")
+    if not isinstance(classes, (Mapping, DictConfig)):
+        return
+    # Imported lazily: construction imports this module, so a top-level import
+    # would be circular.
+    from silisocs.runtime.construction.agent_builders.persona_pipeline import PERSONA_CLASS_KEYS
+
+    for class_name, class_cfg in classes.items():
+        if not isinstance(class_cfg, (Mapping, DictConfig)):
+            continue
+        for key in (str(k) for k in class_cfg):
+            if key in PERSONA_CLASS_KEYS:
+                continue
+            close = difflib.get_close_matches(key, sorted(PERSONA_CLASS_KEYS), n=1, cutoff=0.6)
+            suggestion = f" Did you mean `{close[0]}`?" if close else ""
+            raise ValueError(
+                f"Unsupported config key `{key}` under "
+                f"agents.persona_pipeline.classes.{class_name}.{suggestion} "
+                f"Known keys: {sorted(PERSONA_CLASS_KEYS)}. Per-agent constructor "
+                "arguments belong under `params`."
+            )
 
 
 def _validate_control_config(cfg: DictConfig) -> None:

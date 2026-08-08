@@ -1,22 +1,22 @@
 """Shared ``class_path`` loading + signature-filtered instantiation.
 
-Loading a class from a dotted ``class_path`` and instantiating it with only the
-kwargs its constructor accepts is the identical operation behind every ``class_path``
-extension seam — engine policies, GM components, backends, and the agent/GM/simulation
-initializers. This leaf module is the one home for it so the seam behaves the same
-everywhere (same loud "unsupported config param" error, same non-class rejection).
+Loading a class (or plain factory callable) from a dotted ``class_path`` and calling
+it with only the kwargs it accepts is the identical operation behind every
+``class_path`` extension seam — engine policies, GM components, backends, LLM
+providers, checkpoint strategies, and the agent/GM/simulation initializers. This leaf
+module is the one home for it so the seam behaves the same everywhere: the same loud
+"unsupported config param" error naming the offending keys, the target, and the config
+block they came from.
 
 It is a leaf: it imports only the standard library, so any layer can depend on it
-without an import cycle. A caller whose instantiation must also accept plain factory
-functions (not just classes) keeps its own variant — see
-``runtime/construction/assembly.py`` — rather than widening this contract.
+without an import cycle.
 """
 
 from __future__ import annotations
 
 import importlib
 import inspect
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import Any, cast
 
 # Engine presets retired in the strategy-based refactor. The three RuntimeEngine
@@ -83,26 +83,82 @@ def load_class(class_path: str, *, what: str = "class") -> type[Any]:
     return cast(type[Any], loaded)
 
 
-def instantiate_with_supported_kwargs(cls: type[Any], kwargs: Mapping[str, Any]) -> Any:
-    """Instantiate ``cls`` passing only the kwargs its ``__init__`` accepts.
+def supported_kwargs(target: Any) -> set[str] | None:
+    """Return the keyword names ``target`` accepts, or ``None`` for "accepts anything".
 
-    A ``**kwargs`` constructor receives everything; otherwise any key the constructor
-    does not declare raises ``ValueError`` naming the class and its supported params,
-    so a mistyped config key fails loudly instead of being silently dropped.
+    ``None`` means the target declares ``**kwargs`` (or its signature cannot be
+    introspected, e.g. a C-implemented callable), so nothing may be filtered out and
+    the target itself owns validation. Otherwise the returned set is exactly the
+    keyword-passable parameters — the contract every ``class_path`` seam checks a
+    config's ``params`` against.
     """
-    params = inspect.signature(cls.__init__).parameters
-    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
-        return cls(**dict(kwargs))
-    supported = {
+    try:
+        params = inspect.signature(target).parameters
+    except (TypeError, ValueError):
+        return None
+    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values()):
+        return None
+    return {
         name
         for name, param in params.items()
-        if name != "self"
-        and param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+        if param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
     }
-    unsupported = sorted(set(kwargs) - supported)
-    if unsupported:
+
+
+def describe_target(target: Any) -> str:
+    """Human-readable ``module.Qualname`` for a class or callable, for error text."""
+    module = getattr(target, "__module__", "") or ""
+    name = getattr(target, "__qualname__", None) or getattr(target, "__name__", None)
+    if name is None:
+        name = type(target).__name__
+    return f"{module}.{name}" if module else str(name)
+
+
+def instantiate_with_supported_kwargs(
+    target: Any,
+    kwargs: Mapping[str, Any],
+    *,
+    strict_keys: Collection[str] | None = None,
+    config_path: str | None = None,
+) -> Any:
+    """Call ``target`` (a class or factory callable) with only the kwargs it accepts.
+
+    Any key the target does not declare raises ``ValueError`` naming the offending
+    keys, the target, its supported params, and — when the caller supplies
+    ``config_path`` — the config block the keys came from, so a mistyped config key
+    fails loudly instead of being silently dropped. A ``**kwargs`` target receives
+    everything.
+
+    ``strict_keys`` narrows *which* keys must be accepted (default: all of ``kwargs``).
+    Callers that also pass framework-injected kwargs a custom class need not declare
+    (GM components, backends, LLM providers) list only the user-authored keys there;
+    the rest are filtered out silently.
+
+    A ``TypeError`` raised while *binding* the arguments (missing required param,
+    keyword rejected by a ``**kwargs``-free C callable) is re-raised as the same kind
+    of config error; a ``TypeError`` raised *inside* the target propagates untouched.
+    """
+    supported = supported_kwargs(target)
+    if supported is not None:
+        checked = set(kwargs) if strict_keys is None else set(strict_keys)
+        unsupported = sorted(checked - supported)
+        if unsupported:
+            raise ValueError(
+                f"Unsupported config param(s) for {describe_target(target)}"
+                f"{_at(config_path)}: {unsupported}. Supported params: {sorted(supported)}"
+            )
+        kwargs = {key: value for key, value in kwargs.items() if key in supported}
+    try:
+        return target(**dict(kwargs))
+    except TypeError as exc:
+        traceback = exc.__traceback__
+        if traceback is not None and traceback.tb_next is not None:
+            raise  # raised inside the target's body, not by argument binding
         raise ValueError(
-            f"Unsupported config param(s) for {cls.__module__}.{cls.__name__}: "
-            f"{unsupported}. Supported params: {sorted(supported)}"
-        )
-    return cls(**{k: v for k, v in kwargs.items() if k in supported})
+            f"Could not construct {describe_target(target)}{_at(config_path)} with params "
+            f"{sorted(kwargs)}: {exc}"
+        ) from exc
+
+
+def _at(config_path: str | None) -> str:
+    return f" (configured at {config_path})" if config_path else ""

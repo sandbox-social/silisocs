@@ -9,11 +9,10 @@ from typing import Any, cast
 
 from omegaconf import DictConfig, OmegaConf
 
+from silisocs.runtime.class_loading import instantiate_with_supported_kwargs, load_class
 from silisocs.simulation_engines.base_engines import RuntimeEngine
 from silisocs.simulation_engines.interventions import InterventionSchedule
 from silisocs.simulation_engines.policies.factory import (
-    _instantiate_with_supported_kwargs,
-    _load_class,
     build_flow_turn_policies,
     build_gm_concurrency_caps,
     build_gm_turn_policies,
@@ -52,12 +51,16 @@ def _build_loop_strategy(loop_cfg: Mapping[str, Any]) -> Any:
     class_path = str(loop_cfg.get("class_path") or "").strip()
     params = dict(loop_cfg.get("params") or {})
     if class_path:
-        return _instantiate_with_supported_kwargs(_load_class(class_path), params)
+        return instantiate_with_supported_kwargs(
+            load_class(class_path), params, config_path="sim.engine.loop.params"
+        )
     built_in = str(loop_cfg.get("built_in") or "fixed_steps").strip()
     strategy_cls = _LOOP_STRATEGIES.get(built_in)
     if strategy_cls is None:
         raise ValueError(f"Unknown sim.engine.loop.built_in='{built_in}'.")
-    return _instantiate_with_supported_kwargs(strategy_cls, params)
+    return instantiate_with_supported_kwargs(
+        strategy_cls, params, config_path="sim.engine.loop.params"
+    )
 
 
 _LOOP_STRATEGIES: dict[str, type[Any]] = {
@@ -149,7 +152,9 @@ def _build_step_strategy(
     params = dict(step_cfg.get("params") or {})
     chains = dict(flow_chains or {})
     if class_path:
-        strategy = _instantiate_with_supported_kwargs(_load_class(class_path), params)
+        strategy = instantiate_with_supported_kwargs(
+            load_class(class_path), params, config_path="sim.engine.step.params"
+        )
         # A custom step strategy may be a multi-GM router (e.g. a MultiGMStepStrategy
         # subclass). Such strategies previously read the chains off the default game
         # master; now they are supplied here. Set the field post-construction (only
@@ -200,7 +205,9 @@ def _build_step_strategy(
         strategy_params = {
             key: value for key, value in params.items() if key not in _ENGINE_STEP_PARAMS
         }
-        return _instantiate_with_supported_kwargs(strategy_cls, strategy_params)
+        return instantiate_with_supported_kwargs(
+            strategy_cls, strategy_params, config_path="sim.engine.step.params"
+        )
     raise ValueError(f"Unknown sim.engine.step.built_in='{built_in}'.")
 
 
@@ -281,8 +288,8 @@ def build_engine(
     interventions = InterventionSchedule.parse(cfg, sim_roles=sim_roles)
 
     if class_path:
-        cls = _load_class(class_path)
-        return _instantiate_with_supported_kwargs(
+        cls = load_class(class_path)
+        return instantiate_with_supported_kwargs(
             cls,
             {
                 "config": cfg,
@@ -300,6 +307,7 @@ def build_engine(
                 "seed": seed,
                 "executor": executor,
             },
+            config_path="sim.engine",
         )
 
     step_built_in = str(step_cfg.get("built_in") or "base").strip()

@@ -1,10 +1,10 @@
 """Deterministic scripted model provider for tests and dry runs."""
 
-import importlib
 import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from silisocs.runtime.class_loading import instantiate_with_supported_kwargs, load_attr
 from silisocs.runtime.io import write_jsonl_item
 from silisocs.runtime.language_models.base import (
     ContextLocal,
@@ -169,6 +169,6 @@ def _load_behavior(class_path: str | None, params: Mapping[str, Any]) -> Any | N
     path = str(class_path or "").strip()
     if not path:
         return None
-    module_name, class_name = path.rsplit(".", 1)
-    cls = getattr(importlib.import_module(module_name), class_name)
-    return cls(**dict(params or {}))
+    return instantiate_with_supported_kwargs(
+        load_attr(path), dict(params or {}), config_path="sim.llm.extra_kwargs.behavior_params"
+    )
