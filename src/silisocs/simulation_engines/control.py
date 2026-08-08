@@ -29,6 +29,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+import psutil
+
 
 class StepGate:
     """Thread-safe permission gate consulted at each episode boundary.
@@ -168,9 +170,16 @@ class ControlFileController:
         relaunched into the same output dir) must not leak into a fresh launch —
         a stale ``{"stopped": true}`` would otherwise end the new run before
         episode 0. Pre-seed a held start via ``start_paused`` config instead.
+
+        Staleness is judged by mtime against this process's start: a command
+        written AFTER the process spawned is a launcher (e.g. Studio) pressing
+        play/pause while engine startup is still importing — that command is for
+        this run and must survive, not be silently discarded.
         """
         try:
-            self._path.unlink(missing_ok=True)
+            started = psutil.Process().create_time()
+            if self._path.exists() and self._path.stat().st_mtime < started - 1.0:
+                self._path.unlink(missing_ok=True)
         except OSError:
             pass  # unwritable path: the poller below will simply read nothing
         self._thread = threading.Thread(target=self._run, daemon=True, name="run-control-file")

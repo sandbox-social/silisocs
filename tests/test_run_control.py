@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from typing import Any
@@ -152,12 +153,32 @@ def test_control_file_start_discards_stale_file(tmp_path) -> None:
     """A leftover control file from a prior run must not command a fresh one."""
     control = tmp_path / "run.control"
     control.write_text('{"stopped": true}', encoding="utf-8")  # stale leftover
+    stale = time.time() - 3600  # older than this test process
+    os.utime(control, (stale, stale))
     gate = StepGate()
     controller = ControlFileController(gate, control, poll_interval=0.02)
     controller.start()
 
     assert _until(lambda: not control.exists())
     assert gate.snapshot()["stopped"] is False
+    controller.close()
+
+
+def test_control_file_start_keeps_a_command_racing_engine_startup(tmp_path) -> None:
+    """A command written after this process spawned is for THIS run.
+
+    Studio marks a job running at spawn, ~seconds before the runner's controller
+    starts; a play press in that window used to be deleted as "stale" and the
+    paused run hung forever.
+    """
+    control = tmp_path / "run.control"
+    control.write_text('{"target": null}', encoding="utf-8")  # fresh play press
+    gate = StepGate(target=0)  # start_paused hold
+    controller = ControlFileController(gate, control, poll_interval=0.02)
+    controller.start()
+
+    assert _until(lambda: gate.snapshot()["target"] is None)
+    assert control.exists()
     controller.close()
 
 
