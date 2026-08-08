@@ -5,6 +5,7 @@ Core abstractions are available directly from the top-level package::
     from silisocs import Agent, LanguageModel, BackendApp, app_action
     from silisocs import ActionSpec, ActionOutput, OutputType
     from silisocs import ProbeBase, RuntimeEngine
+    from silisocs import compose_config, run_simulation, load_run
 
 Internal modules can still be imported for advanced use cases, but the
 symbols below cover the most common extension points.
@@ -20,6 +21,11 @@ except PackageNotFoundError:  # pragma: no cover
 
 def __getattr__(name: str):
     _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
+        # Programmatic run API
+        "compose_config": ("silisocs.runtime.execution.session", "compose_config"),
+        "run_simulation": ("silisocs.runtime.execution.session", "run_simulation"),
+        "load_run": ("silisocs.evaluations.run_artifact", "load_run"),
+        "load_study": ("silisocs.evaluations.run_artifact", "load_study"),
         # Agents
         "Agent": ("silisocs.agents.base_agent", "Agent"),
         # Language models
@@ -69,6 +75,11 @@ def __getattr__(name: str):
 
 __all__ = [
     "__version__",
+    # Programmatic run API
+    "compose_config",
+    "run_simulation",
+    "load_run",
+    "load_study",
     # Agents
     "Agent",
     # Language models

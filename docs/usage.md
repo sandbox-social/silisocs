@@ -464,6 +464,29 @@ See [Evaluation Probes](probes.md) for details.
 
 ---
 
+## Run from Python
+
+Everything the CLI does is available in-process — compose a config, run it,
+and load the artifacts back, with no subprocess and no Hydra invocation:
+
+```python
+from silisocs import compose_config, run_simulation, load_run
+
+cfg = compose_config(
+    scenario="misinformation",  # optional; like --config-path
+    overrides=["num_steps=2", "sim.llm.provider=scripted"],
+)
+run_dir = run_simulation(cfg, output_dir="outputs/notebook_run")
+artifact = load_run(run_dir)
+print(artifact.status, sum(1 for _ in artifact.iter_actions()))
+```
+
+Outside a Hydra invocation, pass `output_dir=` explicitly (or set
+`output_rootname` in the config). `load_run`/`load_study` return the same
+typed artifacts Studio and the analysis panels consume.
+
+---
+
 ## Output
 
 Each simulation run produces output under the Hydra-managed directory:

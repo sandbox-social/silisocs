@@ -215,14 +215,27 @@ def _redact_secrets(node: Any) -> Any:
     return node
 
 
+def _hydra_run_dir() -> str | None:
+    """Hydra's job output dir, or ``None`` when not running under a Hydra app."""
+    try:
+        return str(HydraConfig.get().runtime.output_dir)
+    except ValueError:
+        return None
+
+
 def _resolve_output_directory(
-    cfg: DictConfig, metrics: SimMetricsCollector, logger: logging.Logger
+    cfg: DictConfig,
+    metrics: SimMetricsCollector,
+    logger: logging.Logger,
+    *,
+    explicit_output_dir: str | os.PathLike[str] | None = None,
 ) -> str:
     """Validate the scenario config and resolve/persist the run output directory.
 
-    Runs schema validation, resolves the output directory (explicit ``output_rootname``
-    or Hydra's job dir), stamps it back onto ``cfg``, and writes the runtime-effective
-    config plus a snapshot next to Hydra's. Returns the resolved output directory.
+    Runs schema validation, resolves the output directory (explicit argument,
+    ``output_rootname``, or Hydra's job dir, in that order), stamps it back
+    onto ``cfg``, and writes the runtime-effective config (plus a snapshot next
+    to Hydra's when running under Hydra). Returns the resolved directory.
     """
     project_root = _resolve_project_root()
     top_scenario = project_root / "scenarios" / cfg.scenario_name
@@ -239,15 +252,21 @@ def _resolve_output_directory(
     configured_output_rootname = str(
         OmegaConf.select(cfg, "output_rootname", default="") or ""
     ).strip()
-    if configured_output_rootname:
+    if explicit_output_dir is not None:
+        output_dir = os.path.abspath(os.fspath(explicit_output_dir))
+    elif configured_output_rootname:
         output_dir = configured_output_rootname
         if not os.path.isabs(output_dir):
             output_dir = os.path.abspath(output_dir)
     else:
-        output_dir = os.path.join(
-            HydraConfig.get().runtime.output_dir,
-            HydraConfig.get().job.name,
-        )
+        hydra_dir = _hydra_run_dir()
+        if hydra_dir is None:
+            raise ValueError(
+                "No output directory: outside a Hydra invocation, pass "
+                "run_simulation(cfg, output_dir=...) or set 'output_rootname' "
+                "in the config."
+            )
+        output_dir = os.path.join(hydra_dir, HydraConfig.get().job.name)
 
     # Disable struct mode to allow setting new keys, then re-enable.
     OmegaConf.set_struct(cfg, False)
@@ -267,15 +286,15 @@ def _resolve_output_directory(
     OmegaConf.save(config=OmegaConf.create(redacted_cfg), f=effective_cfg_path)
     logger.info("Wrote runtime-effective config to: %s", effective_cfg_path)
 
-    # Mirror it next to Hydra's composed snapshot (configs/<run_root_name>/).
-    run_root_name = os.path.basename(HydraConfig.get().runtime.output_dir)
-    config_snapshot_dir = os.path.join(
-        HydraConfig.get().runtime.output_dir, "configs", run_root_name
-    )
-    os.makedirs(config_snapshot_dir, exist_ok=True)
-    effective_cfg_snapshot_path = os.path.join(config_snapshot_dir, "effective_config.yaml")
-    OmegaConf.save(config=OmegaConf.create(redacted_cfg), f=effective_cfg_snapshot_path)
-    logger.info("Wrote runtime-effective config snapshot to: %s", effective_cfg_snapshot_path)
+    # Mirror it next to Hydra's composed snapshot (configs/<run_root_name>/) —
+    # only meaningful under a Hydra invocation.
+    hydra_dir = _hydra_run_dir()
+    if hydra_dir is not None:
+        config_snapshot_dir = os.path.join(hydra_dir, "configs", os.path.basename(hydra_dir))
+        os.makedirs(config_snapshot_dir, exist_ok=True)
+        effective_cfg_snapshot_path = os.path.join(config_snapshot_dir, "effective_config.yaml")
+        OmegaConf.save(config=OmegaConf.create(redacted_cfg), f=effective_cfg_snapshot_path)
+        logger.info("Wrote runtime-effective config snapshot to: %s", effective_cfg_snapshot_path)
     return output_dir
 
 
@@ -310,25 +329,26 @@ def _warn_silent_backends(game_masters: Sequence[Any], logger: logging.Logger) -
         print(line)
 
 
-@hydra.main(version_base=None, config_path=str(CONF_DIR), config_name="experiment")
-def main(cfg: DictConfig):
-    """Hydra entrypoint for running an experiment.
+def run_simulation(cfg: DictConfig, *, output_dir: str | os.PathLike[str] | None = None) -> Path:
+    """Run a composed experiment configuration to completion (programmatic API).
 
-    Parameters
-    ----------
-    cfg:
-        Composed Hydra :class:`omegaconf.DictConfig` representing the
-        experiment configuration. The config includes grouped sections such
-        as ``sim``, ``agents``, ``env`` and ``eval``.
+    The in-process twin of the ``silisocs`` CLI, for notebooks, tools, and
+    orchestrators::
 
-    Notes
-    -----
-    This function performs environment initialization, logging setup,
-    agent construction, and delegates execution to the configured simulation
-    engine.
+        from silisocs import compose_config, run_simulation
+
+        cfg = compose_config(overrides=["num_steps=2", "sim.llm.provider=scripted"])
+        run_dir = run_simulation(cfg, output_dir="outputs/notebook_run")
+
+    ``cfg`` is any composed experiment config (see :func:`compose_config`).
+    Outside a Hydra invocation, pass ``output_dir`` explicitly or set
+    ``output_rootname`` in the config. Returns the resolved output directory
+    holding the run's artifacts (``run_manifest.json``, event logs,
+    checkpoints, ...); load them with
+    :func:`silisocs.evaluations.run_artifact.load_run`.
     """
     cfg, metrics, logger = _setup_run_environment(cfg)
-    output_dir = _resolve_output_directory(cfg, metrics, logger)
+    output_dir = _resolve_output_directory(cfg, metrics, logger, explicit_output_dir=output_dir)
     run_stats_path = os.path.join(output_dir, "run_stats.log")
 
     def _log_startup_phase(phase_name: str, duration_s: float, details: str = "") -> None:
@@ -645,6 +665,36 @@ def main(cfg: DictConfig):
         )
         if manifest_path is not None:
             logger.info("Wrote run manifest to: %s", manifest_path)
+    return Path(output_dir)
+
+
+def compose_config(
+    *,
+    scenario: str | Path | None = None,
+    overrides: Sequence[str] = (),
+) -> DictConfig:
+    """Compose the experiment config without running it (programmatic API).
+
+    ``scenario`` selects a scenario config directory exactly like the CLI's
+    ``--config-path`` (a filesystem path, or a repository scenario name such
+    as ``"misinformation"``); ``overrides`` are Hydra override strings
+    (``["num_agents=4", "sim.llm.provider=scripted"]``). Pair the result with
+    :func:`run_simulation`.
+    """
+    from hydra import compose, initialize_config_dir
+
+    from silisocs.runtime.configuration.external import set_external_config_dirs
+
+    set_external_config_dirs([scenario] if scenario is not None else [])
+    register_search_path_plugin()
+    with initialize_config_dir(config_dir=str(CONF_DIR), version_base=None):
+        return compose(config_name="experiment", overrides=list(overrides))
+
+
+@hydra.main(version_base=None, config_path=str(CONF_DIR), config_name="experiment")
+def main(cfg: DictConfig):
+    """Hydra entrypoint for running an experiment (see :func:`run_simulation`)."""
+    run_simulation(cfg)
 
 
 def _inject_external_config_path() -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
 
@@ -111,6 +112,29 @@ def _resolve_config_dir_argument(raw: str) -> Path | None:
         return scenario_conf_path(raw)
     except FileNotFoundError:
         return None
+
+
+def set_external_config_dirs(dirs: Sequence[str | Path]) -> None:
+    """Programmatic twin of the CLI's ``--config-path``/``--overlay-config-path``.
+
+    Resolves each entry like the CLI flag does (a filesystem path, or a
+    repository scenario reference such as ``election``) and points the
+    search-path plugin and group merge at them. An empty sequence clears any
+    previous selection.
+    """
+    resolved: list[Path] = []
+    for raw in dirs:
+        directory = _resolve_config_dir_argument(str(raw))
+        if directory is None:
+            from silisocs.scenario_library import list_scenarios
+
+            available = ", ".join(list_scenarios()) or "<none>"
+            raise FileNotFoundError(
+                f"'{raw}' is neither an existing directory nor a known repository "
+                f"scenario. Available scenarios: {available}"
+            )
+        resolved.append(directory)
+    os.environ["SILISOCS_EXTERNAL_CONFIG_DIRS"] = ":".join(str(path) for path in resolved)
 
 
 def inject_external_config_path() -> None:
