@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sys
 
-from silisocs.studies.run_study import PROCESS_TIMEOUT_RC, _run_subprocess
+from silisocs.studies.execute import PROCESS_TIMEOUT_RC, _run_subprocess
 
 
 def test_run_subprocess_times_out_and_reports_rc_124(tmp_path) -> None:

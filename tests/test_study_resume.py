@@ -10,23 +10,16 @@ from typing import Any
 
 import pytest
 
-from silisocs.studies.run_study import (
-    RUN_COMPLETE_MARKER,
-    EvalSpec,
-    RunSpec,
-    StudyConfigError,
-    _confirm_run_count,
-    _expand_runs,
-    _partition_completed_runs,
-    _planned_run_dir,
-    _preflight_summary,
-)
+from silisocs.studies.cli import _confirm_run_count
+from silisocs.studies.execute import RUN_COMPLETE_MARKER, _partition_completed_runs
+from silisocs.studies.plan import _expand_runs, _planned_run_dir, _preflight_summary
 from silisocs.studies.study_artifacts import (
     _combine_eval_payloads,
     _metric_stats,
     _t_critical_95,
     build_summary,
 )
+from silisocs.studies.study_types import EvalSpec, RunSpec, StudyConfigError
 
 
 def _make_spec(output_rootname: str | None, **kwargs: Any) -> RunSpec:

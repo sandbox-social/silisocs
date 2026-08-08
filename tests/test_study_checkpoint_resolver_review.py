@@ -1,6 +1,6 @@
 """Regression tests for the study checkpoint resolver (code-review fix G5).
 
-``run_study._find_latest_checkpoint`` previously globbed ``*.json`` and ordered
+``studies.execute._find_latest_checkpoint`` previously globbed ``*.json`` and ordered
 by ``st_mtime``, which could diverge from the canonical runtime resolver
 ``runtime.checkpointing.state.resolve_checkpoint_source`` (which globs
 ``step_*_checkpoint.json`` and orders by parsed step number). When they
@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from silisocs.runtime.checkpointing import resolve_checkpoint_source
-from silisocs.studies.run_study import _find_latest_checkpoint
+from silisocs.studies.execute import _find_latest_checkpoint
 
 
 def _write_checkpoint(checkpoints_dir: Path, step: int) -> Path:

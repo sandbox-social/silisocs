@@ -9,8 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from silisocs.studies.run_study import (
-    StudyConfigError,
+from silisocs.studies.plan import (
     _build_run_command,
     _build_submitit_job_commands,
     _expand_runs,
@@ -18,6 +17,7 @@ from silisocs.studies.run_study import (
     validate_schema,
 )
 from silisocs.studies.study_artifacts import extract_run_metadata, load_study_definition
+from silisocs.studies.study_types import StudyConfigError
 
 pytestmark = pytest.mark.subprocess
 

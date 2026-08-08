@@ -210,7 +210,7 @@ def _string_list(value: Any) -> list[str]:
 
 
 def _resolve_study_seeds(run_defaults: dict[str, Any], node: dict[str, Any]) -> list[int] | None:
-    """Mirror ``run_study._resolve_seeds`` tolerantly (None when unresolvable).
+    """Mirror ``studies.plan._resolve_seeds`` tolerantly (None when unresolvable).
 
     Honors condition ``seeds``/``seed``/``seed_repeats``/``seed_start`` and the
     run-defaults ``seeds``/``seed``/``seed_repeats``/``seed_start`` fallbacks, so
@@ -246,7 +246,7 @@ def _resolve_study_seeds(run_defaults: dict[str, Any], node: dict[str, Any]) -> 
 
 
 def _resolve_study_scenarios(meta: dict[str, Any], run_defaults: dict[str, Any]) -> list[str]:
-    """Mirror ``run_study._resolve_scenarios`` (study.scenarios / base_scenarios / run default)."""
+    """Mirror ``studies.plan._resolve_scenarios`` (study.scenarios / base_scenarios / run default)."""
     scenarios = _string_list(meta.get("scenarios"))
     if not scenarios:
         scenarios = _string_list(meta.get("base_scenarios"))
