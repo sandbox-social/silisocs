@@ -1,5 +1,4 @@
 """Contracts for the backend-neutral exploration model."""
-# ruff: noqa: PLC0415, PLR2004
 
 from __future__ import annotations
 

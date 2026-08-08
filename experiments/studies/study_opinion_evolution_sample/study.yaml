@@ -26,6 +26,11 @@ study:
     overrides:
       num_agents: 50
       num_steps: 12
+      # num_agents is the DECLARED total; the built count is the sum of the
+      # persona-class counts, so the scenario's voter count has to shrink with it
+      # (47 voters + 2 candidates + 1 news account = 50). Without this the runs
+      # build the scenario's default 500 agents while preflight estimates 50.
+      agents.persona_pipeline.classes.voter.count: 47
 
   notes:
     objective: "Measure direction and stability of opinion change across regimes."

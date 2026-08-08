@@ -4,7 +4,6 @@ A viewer is an ASGI app declared by its backend (``VisualizerSpec.app_factory``)
 and mounted inside Studio, so it is ready the moment the page asks for it. The
 subprocess launch plan stays for viewers that are not ASGI apps.
 """
-# ruff: noqa: D103
 
 from __future__ import annotations
 

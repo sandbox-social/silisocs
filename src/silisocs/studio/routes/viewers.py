@@ -1,5 +1,4 @@
 """Platform viewers: start one for a run (embedded or subprocess) and poll it."""
-# ruff: noqa: D103
 #
 # D103: a route handler's contract is its decorator (method + path) and its
 # return shape; the ones with a non-obvious rule carry a docstring.

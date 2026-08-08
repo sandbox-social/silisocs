@@ -3,7 +3,6 @@
 They are authored in YAML, so they arrive as OmegaConf containers with
 interpolations still to resolve; agents must receive the finished text.
 """
-# ruff: noqa: D103
 
 from __future__ import annotations
 

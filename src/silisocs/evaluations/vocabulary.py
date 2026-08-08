@@ -35,6 +35,10 @@ from silisocs.environments.backends.event_semantics import (
 _HEALTH_COUNTER_REGISTRY: dict[str, str] = {
     "agent_turn_failures": "agent turns raised an exception",
     "action_parse_failures": "agent actions were dropped as unparseable",
+    "action_argument_coercion_failures": (
+        "action arguments did not match their declared parameter type and were "
+        "passed through as raw strings (the action still ran)"
+    ),
     "action_invalid_targets": "agent actions referenced invalid target ids",
     "backend_action_errors": "backend actions raised unexpected exceptions",
     "exposure_log_failures": "exposure rows could not be written to exposure_events.jsonl",

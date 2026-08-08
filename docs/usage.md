@@ -559,7 +559,8 @@ raises and fails the run instead of being counted.
 | Counter | Meaning |
 |---------|---------|
 | `agent_turn_failures` | Agent turns that raised an exception (isolated: the step continued) |
-| `action_parse_failures` | Agent actions dropped as unparseable (and action arguments a declared parameter type could not coerce) |
+| `action_parse_failures` | Agent actions dropped as unparseable |
+| `action_argument_coercion_failures` | Action arguments that did not match their declared parameter type and were passed through as raw strings (the action still ran) |
 | `action_invalid_targets` | Agent actions that referenced invalid target ids |
 | `backend_action_errors` | Backend actions that raised unexpectedly |
 | `exposure_log_failures` | Exposure rows that could not be written to `exposure_events.jsonl` |

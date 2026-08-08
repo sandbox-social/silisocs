@@ -4,7 +4,6 @@ The framework's defaults, its composer, its summaries, and its config errors are
 all reachable by a non-social scenario, so each of them has to say something true
 for one — or say clearly what to pick instead.
 """
-# ruff: noqa: D103
 
 from __future__ import annotations
 

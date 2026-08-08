@@ -15,14 +15,27 @@ from silisocs.runtime.construction.agent_builders.common import resolve_source, 
 class FixedActionBuilder:
     """Load fixed action sets and render per-agent fixed-action config."""
 
-    def __init__(self, config: Any, resolve_file_path: Callable[[str], Path]):
+    def __init__(
+        self,
+        config: Any,
+        resolve_file_path: Callable[[str], Path],
+        *,
+        root_sets: Any = None,
+    ):
         self.config = config
         self.resolve_file_path = resolve_file_path
+        # Root-level `fixed_action_sets:` (declared in a `@package _global_` world
+        # file) is an accepted spelling — config validation and the class-pipeline
+        # `action_set_ref` check both read it — but this builder is constructed with
+        # `cfg.agents`, so the root block has to be threaded in or a config that
+        # validates would silently load no sets at all.
+        self.root_sets = root_sets
 
     def load_fixed_action_sets(self) -> dict[str, list[dict[str, Any]]]:
-        cfg = (
-            to_plain(getattr(self.config, "fixed_action_sets", {}), where="fixed_action_sets") or {}
-        )
+        raw = getattr(self.config, "fixed_action_sets", None)
+        if not raw:
+            raw = self.root_sets
+        cfg = to_plain(raw or {}, where="fixed_action_sets") or {}
         inline_sets = cfg.get("inline", {}) if isinstance(cfg, Mapping) else {}
         file_path = cfg.get("file") if isinstance(cfg, Mapping) else None
 

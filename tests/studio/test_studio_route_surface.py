@@ -5,7 +5,6 @@ internal detail — but WHICH paths exist, and in WHICH order they are matched, 
 the contract clients and bookmarks depend on. Moving a handler between routers
 must therefore change neither, which is what these tests make provable.
 """
-# ruff: noqa: D103
 
 from __future__ import annotations
 

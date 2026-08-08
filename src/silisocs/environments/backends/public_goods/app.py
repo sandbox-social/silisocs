@@ -160,7 +160,7 @@ class PublicGoodsApp(SimultaneousRoundGame):
                 f"{int(self.endowment)}; got {amount!r}.",
                 committed=False,
             )
-        contribution = int(round(requested))
+        contribution = round(requested)
         error = self.record_choice(agent_name, float(contribution))
         if error:
             return ActionResult(error, committed=False)

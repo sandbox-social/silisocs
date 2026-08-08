@@ -203,21 +203,30 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
             ("UPDATE users SET posts_count = posts_count + 1 WHERE id = ?", (user_id,)),
         ]
         if reply_to_id:
-            queries.append(
-                ("UPDATE posts SET reply_count = reply_count + 1 WHERE id = ?", (reply_to_id,))
-            )
-            # Notification for reply
+            # Validate the parent BEFORE inserting, like the sibling
+            # repost/quote_repost paths. Without this a hallucinated id reached
+            # the INSERT and (with PRAGMA foreign_keys=ON) raised
+            # sqlite3.IntegrityError, which the invoke layer counts as a backend
+            # bug and which discards the agent's whole turn. A bad id is an agent
+            # mistake: reject it as an ordinary uncommitted ValueError.
             with self.get_connection() as conn:
                 target_user = conn.execute(
                     "SELECT user_id FROM posts WHERE id = ?", (reply_to_id,)
                 ).fetchone()
-                if target_user and target_user["user_id"] != user_id:
-                    queries.append(
-                        (
-                            "INSERT INTO activities (target_user_id, source_user_id, action_type, post_id, created_at) VALUES (?, ?, 'reply', ?, ?)",
-                            (target_user["user_id"], user_id, reply_to_id, time.time()),
-                        )
+            if not target_user:
+                raise ValueError(f"Post {reply_to_id} not found")
+
+            queries.append(
+                ("UPDATE posts SET reply_count = reply_count + 1 WHERE id = ?", (reply_to_id,))
+            )
+            # Notification for reply
+            if target_user["user_id"] != user_id:
+                queries.append(
+                    (
+                        "INSERT INTO activities (target_user_id, source_user_id, action_type, post_id, created_at) VALUES (?, ?, 'reply', ?, ?)",
+                        (target_user["user_id"], user_id, reply_to_id, time.time()),
                     )
+                )
 
         return self._execute_write(queries, sync=sync)
 
@@ -1263,7 +1272,12 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
 
                 logger.info(f"Updated {recsys_type} recommendations for {len(rec_matrix)} users")
 
-        conn.commit()
+            # Inside the ``with``: get_connection's error path discards the
+            # thread-local connection and reraises, so a commit failure out here
+            # would leave an open write transaction on a connection the pool
+            # keeps handing back. Matches the reddit twin.
+            conn.commit()
+
         logger.info(
             f"Recommendations update complete for {len(self._recsys_types)} algorithm types"
         )

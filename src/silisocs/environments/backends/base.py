@@ -230,7 +230,12 @@ def record_unexpected_action_error(action_name: str, exc: Exception) -> None:
 def _record_argument_parse_failure(
     action_name: str, parameter_name: str, value: str, exc: Exception
 ) -> None:
-    """Log and count an action argument the declared parameter type could not parse."""
+    """Log and count an action argument the declared parameter type could not parse.
+
+    Its own counter, NOT ``action_parse_failures``: nothing is dropped here. The
+    raw string is passed through and the action still executes, so counting it as
+    "actions dropped as unparseable" overstated how much of the run was lost.
+    """
     _LOGGER.warning(
         "Action '%s' argument '%s'=%r did not parse as its declared type (%s); "
         "passing the raw string through.",
@@ -239,7 +244,7 @@ def _record_argument_parse_failure(
         value,
         exc,
     )
-    SimMetricsCollector.get().increment_counter("action_parse_failures")
+    SimMetricsCollector.get().increment_counter("action_argument_coercion_failures")
 
 
 def record_invalid_action_target(action_type: str, target_id: Any) -> str:
@@ -1058,8 +1063,9 @@ class BackendApp(metaclass=abc.ABCMeta):
                     processed[name] = param.value_from_text(value)
                 except Exception as exc:
                     # The raw string still goes through (an action may accept it),
-                    # but a coercion the declared type rejected is a real parse
-                    # failure — counted, never silent.
+                    # so this is NOT a dropped action: it is counted under
+                    # ``action_argument_coercion_failures``, never silent and
+                    # never conflated with ``action_parse_failures``.
                     _record_argument_parse_failure(action.name, name, value, exc)
                     processed[name] = value
             else:

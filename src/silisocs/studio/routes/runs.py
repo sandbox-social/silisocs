@@ -4,7 +4,6 @@ Registered LAST in ``create_app``: ``/api/runs/{run_id:path}`` is a greedy
 catch-all, so it would shadow every suffix route (``/views/…``, ``/panels/…``,
 ``/report``) if it were registered ahead of them.
 """
-# ruff: noqa: D103
 #
 # D103: a route handler's contract is its decorator (method + path) and its
 # return shape; the ones with a non-obvious rule carry a docstring.

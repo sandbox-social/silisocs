@@ -1,5 +1,4 @@
 """Scenario documents: the editor pages and the API behind them."""
-# ruff: noqa: D103
 #
 # D103: a route handler's contract is its decorator (method + path) and its
 # return shape; the ones with a non-obvious rule carry a docstring.

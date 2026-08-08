@@ -1,5 +1,4 @@
 """Contracts for the shell-independent panel and view language."""
-# ruff: noqa: D103
 
 from __future__ import annotations
 

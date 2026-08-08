@@ -622,7 +622,7 @@ class RedditLikePlatform(SqliteSocialEngineBase):
                 return top_level
 
             # Build Tree
-            for c_id, cdict in flat_comments.items():
+            for cdict in flat_comments.values():
                 if cdict.get("parent_id"):
                     parent = flat_comments.get(cdict["parent_id"])
                     if parent:

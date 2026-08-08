@@ -304,7 +304,7 @@ class TwitterLikeApp(SocialBackendApp):
             return self._user_mapping[display_name]
         # Try generating from name
         username = self._display_name_to_username(display_name)
-        if username in {v for v in self._user_mapping.values()}:
+        if username in set(self._user_mapping.values()):
             return username
         raise ValueError(f"No username found for display name: {display_name}")
 

@@ -1,5 +1,4 @@
 """The shell pages that belong to no single domain, plus the assets they load."""
-# ruff: noqa: D103
 #
 # D103: a route handler's contract is its decorator (method + path) and its
 # return shape; the ones with a non-obvious rule carry a docstring.

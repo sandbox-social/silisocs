@@ -122,3 +122,27 @@ def test_bundled_scenario_passes_preflight_validation(
     cfg = merge_external_group_overrides(cfg, value_overrides=overrides)
     validate_scenario_config(cfg, conf_dir.parent)
     capsys.readouterr()  # the validators print a per-check summary
+
+
+@pytest.mark.subprocess
+def test_every_shipped_config_builds_a_runtime() -> None:
+    """`silisocs-config-dry-run` over the whole repo must report zero failures.
+
+    Composing and passing preflight is still not enough: construction itself can
+    reject a config (a component built-in that moved layers, an action filter that
+    leaves no callable action). Nothing ran this over the repo — CI only invoked
+    `--help` — so scenarios and replications drifted past a breaking release while
+    the documented command reported them broken. This is the guard.
+    """
+    from silisocs.runtime.config_dry_run import run_dry_runs
+
+    results = run_dry_runs(REPO_ROOT)
+
+    assert results, "no config targets discovered"
+    failures = [
+        f"{r.target.label} world={r.target.world_variant}: "
+        f"{(r.stderr or r.stdout).strip().splitlines()[-1:] or ['(no output)']}"
+        for r in results
+        if not r.ok
+    ]
+    assert not failures, "config dry-run failures:\n" + "\n".join(failures)

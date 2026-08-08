@@ -1,5 +1,4 @@
 """Smoke tests for Studio's artifact-backed HTTP surface."""
-# ruff: noqa: D103
 
 from __future__ import annotations
 
@@ -117,21 +116,54 @@ def test_malformed_scenario_reports_the_parse_error_instead_of_500ing(tmp_path):
     assert client.get("/api/scenarios/absent").status_code == 404
 
 
-def test_unhandled_error_answers_with_the_error_not_a_blank_wall(tmp_path):
+def test_compose_reports_a_scalar_document_instead_of_500ing(tmp_path):
+    """The exact shape preflight was hardened against, one endpoint over.
+
+    A whole document typed as a scalar (``sim.yaml`` holding a bare model name)
+    is an ordinary YAML typo; composing into it must name the file, not raise a
+    TypeError from the middle of the write.
+    """
+    client = TestClient(
+        create_app(tmp_path / "outputs", state_dir=tmp_path / "state", repo_root=tmp_path),
+        raise_server_exceptions=False,
+    )
+
+    response = client.post(
+        "/api/compose",
+        json={
+            "files": {"world/default.yaml": "num_steps: 1\n", "sim.yaml": "gpt-4o-mini\n"},
+            "updates": {"world.num_steps": 3},
+        },
+    )
+
+    assert 400 <= response.status_code < 500
+    assert "sim.yaml" in response.json()["detail"]
+
+
+def test_unhandled_error_answers_with_the_error_not_a_blank_wall(tmp_path, caplog):
     """Starlette's default 500 body is the bare string "Internal Server Error".
     Studio answers the same JSON envelope every other error uses, so the client
     can show it — and logs the traceback server-side.
+
+    The body names the exception TYPE only: an unhandled message is arbitrary
+    text (here, an absolute host path) and a token-holding reader is not
+    necessarily the operator, so the message stays in the log.
     """
     app = create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path)
 
     @app.get("/api/_boom")
     def boom():
-        raise RuntimeError("the recommender fell over")
+        raise RuntimeError(f"the recommender fell over reading {tmp_path}/secret")
 
     client = TestClient(app, raise_server_exceptions=False)
-    response = client.get("/api/_boom")
+    with caplog.at_level("ERROR", logger="silisocs.studio"):
+        response = client.get("/api/_boom")
     assert response.status_code == 500
-    assert response.json()["detail"] == "RuntimeError: the recommender fell over"
+    assert response.json()["detail"].startswith("RuntimeError")
+    assert "see the Studio server log" in response.json()["detail"]
+    assert str(tmp_path) not in response.text
+    # The operator still gets the whole thing, traceback included.
+    assert "the recommender fell over" in caplog.text
 
 
 def test_scenario_save_conflicts_on_a_stale_fingerprint(tmp_path):
@@ -366,6 +398,59 @@ def test_malformed_scenario_view_does_not_500_the_run_page(tmp_path):
     # dropped, leaving the page (and the valid sibling view) working.
     assert client.get("/runs/demo/run-1").status_code == 200
     assert client.get("/api/runs/demo/run-1/views/lab").status_code == 200
+
+
+def test_invalid_shipped_view_is_422_everywhere_and_logged_when_dropped(tmp_path, caplog):
+    """A view that EXISTS but does not parse answers 422 on every surface.
+
+    Layout `tabs` was legal before it was rejected, so a scenario in the wild
+    ships one. 404 would send the author looking for a missing file and 500
+    tells them nothing, so each surface answers the parser's own message — and
+    the nav, which drops the view rather than breaking every tab, says so in
+    the server log instead of dropping it silently.
+    """
+    outputs = tmp_path / "artifacts"
+    workspace = tmp_path / "workspace"
+    _make_run(outputs)
+    _make_study(workspace, scenarios=("demo",))
+    view_dir = workspace / "scenarios" / "demo" / "conf" / "views"
+    view_dir.mkdir(parents=True)
+    (view_dir / "tabbed.yaml").write_text(
+        "view:\n  name: tabbed\n  title: Tabbed\n  scope: run\n  layout: tabs\n"
+        "  panels:\n    - built_in: health_summary\n",
+        encoding="utf-8",
+    )
+    (view_dir / "tabbed_study.yaml").write_text(
+        "view:\n  name: tabbed_study\n  title: Tabbed Study\n  scope: study\n  layout: tabs\n"
+        "  panels:\n    - built_in: condition_comparison\n",
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(outputs, state_dir=tmp_path / "state", repo_root=workspace),
+        raise_server_exceptions=False,
+    )
+
+    message = "View layout 'tabs' is not implemented"
+    for url in (
+        "/runs/demo/run-1?tab=analyze&view=tabbed",
+        "/api/runs/demo/run-1/views/tabbed",
+        "/api/runs/demo/run-1/report?view=tabbed",
+        "/studies/exp1?tab=analyze&view=tabbed_study",
+        "/api/studies/exp1/compare?view=tabbed_study",
+    ):
+        response = client.get(url)
+        assert response.status_code == 422, url
+        assert message in response.text, url
+
+    # A genuinely absent view is still a 404 on the same surfaces.
+    assert client.get("/api/runs/demo/run-1/views/nope").status_code == 404
+    assert client.get("/api/studies/exp1/compare?view=nope").status_code == 404
+
+    # The run page still renders without the invalid view — and names it.
+    with caplog.at_level("WARNING", logger="silisocs.studio"):
+        assert client.get("/runs/demo/run-1?tab=analyze").status_code == 200
+    assert "tabbed.yaml" in caplog.text
+    assert message in caplog.text
 
 
 def test_studio_hides_per_gm_event_shards(tmp_path):

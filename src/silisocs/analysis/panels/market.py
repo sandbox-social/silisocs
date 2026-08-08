@@ -4,7 +4,6 @@ These read only semantic roles (``market.trade``, ``market.listing``,
 ``market.stock``) and fields, never a backend name — any backend that declares
 those roles gets these panels, and every backend that does not never sees them.
 """
-# ruff: noqa: D102
 
 from __future__ import annotations
 

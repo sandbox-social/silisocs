@@ -15,7 +15,6 @@ Two things here are invisible to every other test in the suite:
 ``tests/studio/test_studio.py`` already proves that every ``<script src>`` in a
 shipped template resolves to a served asset; this file does not repeat that.
 """
-# ruff: noqa: D103
 
 from __future__ import annotations
 
@@ -120,6 +119,33 @@ def test_both_composer_pages_load_the_shared_module_before_their_own(tmp_path):
         assert page.is_success, url
         shared = page.text.index('<script src="/assets/composer.js">')
         assert shared < page.text.index(f'<script src="/assets/{module}">'), url
+
+
+def test_panel_refresh_keeps_a_409_as_an_awaiting_note_not_an_error(tmp_path):
+    """A Watch placeholder must survive a refresh that is merely premature.
+
+    The Watch tab renders "Awaiting <stream>" for a panel skipped only because
+    a stream is not recorded yet, and refreshes it when any of its streams
+    grows. A panel needing TWO streams then 409s while the second is still
+    missing — which is the placeholder's own message, not a failure, so
+    ``refreshPanel`` must not replace it with an error note until reload.
+    """
+    outputs = tmp_path / "outputs"
+    _make_run(outputs)
+    client = TestClient(create_app(outputs, state_dir=tmp_path / "state", repo_root=tmp_path))
+
+    # The server's half of the contract: a not-yet-recorded stream is a 409
+    # whose detail names what the panel is waiting for.
+    premature = client.get("/api/runs/demo/run-1/panels/exposure_funnel")
+    assert premature.status_code == 409
+    assert "exposure_events" in premature.json()["detail"]
+
+    # The client's half: 409 renders as its own note, never the error note.
+    refresh = client.get("/assets/panels.js").text
+    body = refresh[refresh.index("window.refreshPanel") :]
+    assert "response.status === 409" in body
+    assert body.index("panel-awaiting") < body.index("panel-error")
+    assert "could not be refreshed" in body
 
 
 def test_study_island_carries_only_the_keys_its_module_reads(tmp_path):

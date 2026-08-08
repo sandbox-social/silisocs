@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any
 
-from silisocs.environments.gm.components.base import BaseComponent
+from silisocs.environments.gm.components.base import ResolveComponent
 from silisocs.runtime.types import ActionOutput
 
 
@@ -36,7 +36,7 @@ def _extract_json(text: str) -> dict[str, Any] | None:
     return None
 
 
-class EchoChamberResolve(BaseComponent):
+class EchoChamberResolve(ResolveComponent):
     """Parse agent belief updates and stage them in shared replication state."""
 
     def __init__(self, *, backend: Any | None = None, **kwargs: Any) -> None:

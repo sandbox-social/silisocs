@@ -37,6 +37,16 @@ engine:
     params:
       flow_order: [fixed_pre, default]
       agent_to_flow: {}
+  # Every echo_user acts every step (activation probability 1.0), matching the
+  # replication's fixed-network schedule.
+  participation:
+    built_in: activity_probability
+    class_path: null
+    params:
+      activity_transition_rates:
+        echo_user:
+          inactive_to_active: 1.0
+          active_to_inactive: 0.0
   turn_policy:
     built_in: null
     class_path: replications.echo_chambers.components.turn_policy.FixedActionsThenBeliefProbePolicy

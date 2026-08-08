@@ -92,6 +92,11 @@ class ConfigValidationError(ValueError):
     Distinct from a plain ``ValueError`` so the CLI can report bad user input as
     one actionable message instead of a stack trace, while a genuine internal
     bug still surfaces its full traceback.
+
+    Only the exception types the validators raise deliberately (``ValueError``
+    and ``FileNotFoundError``) are wrapped. A validator's own ``AttributeError``
+    or ``TypeError`` is a bug in this codebase, not bad user input, and keeps its
+    traceback rather than masquerading as a one-line config error.
     """
 
 
@@ -263,7 +268,10 @@ def _resolve_output_directory(
     with metrics.phase("config_validation"):
         try:
             validate_scenario_config(cfg, scenario_path)
-        except Exception as e:
+        # Deliberately narrow: these are the two types the validators raise for
+        # rejected user config. Anything else (AttributeError, TypeError, ...) is
+        # an internal validator bug and must keep its traceback.
+        except (ValueError, FileNotFoundError) as e:
             raise ConfigValidationError(f"Configuration validation failed: {e}") from e
 
     configured_output_dir = str(OmegaConf.select(cfg, "output_dir", default="") or "").strip()

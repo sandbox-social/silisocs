@@ -53,16 +53,23 @@ def _coerce_target_id(target_id: Any) -> int | None:
 
 
 def _subreddit_name(sub_cfg: Any) -> str:
-    """Return a configured subreddit's name, refusing to invent one.
+    """Return a configured subreddit's canonical name, refusing to invent one.
 
     A mistyped key (``names:``) previously fell back to ``"general"``, quietly
     creating and subscribing everyone to the wrong community — a scenario that
     never runs what it declares. Config errors raise at setup.
+
+    The ``r/`` prefix is stripped HERE, once, so every setup caller resolves the
+    same canonical name. ``create_subreddit`` strips it internally but
+    ``join_subreddit``/``get_subreddit_id`` do not, so a configured
+    ``name: "r/politics"`` created ``politics`` and then failed to find it to
+    subscribe anyone.
     """
     if not isinstance(sub_cfg, dict):
         name = str(sub_cfg).strip()
     else:
         name = str(sub_cfg.get("name", "")).strip()
+    name = name.removeprefix("r/").strip()
     if not name:
         raise ValueError(
             "Each entry of env.graph_config.subreddits must declare a non-empty 'name'; "
@@ -391,7 +398,7 @@ class RedditLikeApp(SocialBackendApp):
         if display_name in self._user_mapping:
             return self._user_mapping[display_name]
         username = self._display_name_to_username(display_name)
-        if username in {v for v in self._user_mapping.values()}:
+        if username in set(self._user_mapping.values()):
             return username
         raise ValueError(f"No username found for display name: {display_name}")
 

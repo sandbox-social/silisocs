@@ -1,7 +1,5 @@
 """Concordia compatibility must stay isolated behind the optional adapter package."""
 
-# ruff: noqa: D103
-
 from __future__ import annotations
 
 import ast

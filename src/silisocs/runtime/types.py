@@ -1,7 +1,5 @@
 """Native action request and response types for Silisocs runtime orchestration."""
 
-# ruff: noqa: D105,UP042
-
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping

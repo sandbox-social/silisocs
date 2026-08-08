@@ -86,6 +86,31 @@ def test_fully_connected_targets_checked_inside_gm_orchestration() -> None:
         validate_cross_references(cfg)
 
 
+def test_role_check_is_skipped_under_a_custom_agents_builder() -> None:
+    """A custom builder owns its roles, so the static role check cannot judge them.
+
+    The composed config still carries the base persona classes, so the "roles are
+    not statically known" fail-open never triggers and a legitimate target the
+    custom builder does produce would be rejected.
+    """
+    cfg = _cfg()
+    OmegaConf.update(cfg, "agents.builder.class_path", "my_pkg.builders.MyBuilder", force_add=True)
+    validate_cross_references(_set_targets(cfg, ["role_only_my_builder_makes"]))
+
+
+def test_role_check_still_runs_for_the_default_persona_builder_spelled_out() -> None:
+    """Naming the built-in builder explicitly must not disable the check."""
+    cfg = _cfg()
+    OmegaConf.update(
+        cfg,
+        "agents.builder.class_path",
+        "silisocs.runtime.construction.agent_builders.persona_pipeline.PersonaPipelineAgentBuilder",
+        force_add=True,
+    )
+    with pytest.raises(ValueError, match="unknown sim role 'typo'"):
+        validate_cross_references(_set_targets(cfg, ["typo"]))
+
+
 def test_role_check_uses_class_name_when_sim_role_name_is_absent() -> None:
     cfg = OmegaConf.create(
         {
@@ -168,6 +193,39 @@ def test_known_inline_action_set_ref_passes() -> None:
 def test_probe_entry_without_probe_type_raises() -> None:
     cfg = _cfg()
     OmegaConf.update(cfg, "eval.probes.probes", {"vote": {"probe_data": {"name": "Vote"}}})
+    with pytest.raises(ValueError, match="must declare a `probe_type`"):
+        validate_cross_references(cfg)
+
+
+def test_disabled_probe_stub_without_probe_type_passes() -> None:
+    """The deployer skips a disabled entry before reading `probe_type`; so does this.
+
+    A commented-out probe stub left with `deployment.enabled: false` is a config
+    the runtime accepts and runs, so preflight must not reject it.
+    """
+    cfg = _cfg()
+    OmegaConf.update(
+        cfg,
+        "eval.probes.probes",
+        {"vote": {"deployment": {"enabled": False}, "probe_data": {"name": "Vote"}}},
+    )
+    validate_cross_references(cfg)
+
+
+def test_probes_disabled_globally_skip_the_probe_type_requirement() -> None:
+    cfg = _cfg()
+    OmegaConf.update(cfg, "eval.probes.deployment", {"enabled": False})
+    OmegaConf.update(cfg, "eval.probes.probes", {"vote": {"probe_data": {"name": "Vote"}}})
+    validate_cross_references(cfg)
+
+
+def test_probe_enabled_by_its_own_block_still_needs_a_probe_type() -> None:
+    """A per-probe block that re-enables a globally disabled probe is checked."""
+    cfg = _cfg()
+    OmegaConf.update(cfg, "eval.probes.deployment", {"enabled": False})
+    OmegaConf.update(
+        cfg, "eval.probes.probes", {"vote": {"deployment": {"enabled": True}, "probe_data": {}}}
+    )
     with pytest.raises(ValueError, match="must declare a `probe_type`"):
         validate_cross_references(cfg)
 

@@ -539,10 +539,16 @@ it):
 
 - **Cross-references.** `fully_connected_targets` (anywhere in the config,
   including per-GM `gm_orchestration` blocks) must name a declared **sim role** —
-  a class's `sim_role_name`, defaulting to the class name — not the class name
-  when the two differ. `fixed_action.action_set_ref` must name a known set. Each
+  a class's `sim_role_name`, defaulting to the class name (an explicit
+  `sim_role_name: null` or `""` also means "use the class name", both here and in
+  the builder) — not the class name when the two differ. Under a custom
+  `agents.builder.class_path` the check is **skipped**: that builder owns the
+  roles its agents carry, so nothing in the config can judge them.
+  `fixed_action.action_set_ref` must name a known set. Each
   `eval.probes.probes.<id>` must be a mapping declaring a `probe_type`, so a
-  mis-shaped probe block cannot silently deploy zero probes.
+  mis-shaped probe block cannot silently deploy zero probes — except for an entry
+  the probe deployer would skip anyway (`deployment.enabled: false`, globally or
+  on the entry), so a disabled stub is not required to carry one.
 - **Data files.** A class's `data.path` (for the file sources `local_json`, `csv`,
   `jsonl`), its `shared_memories.path`, and `fixed_action_sets.file` must resolve
   against the scenario directory. A typo fails preflight naming the path.
@@ -581,7 +587,9 @@ data: {}   # Scenario-specific structured data (e.g. news_file)
 ```
 
 `${event.context}` and `${setting.background}` are available as interpolation
-targets in `agents/default.yaml` and other config files.
+targets in `agents/default.yaml` and other config files. The root `data:` block is
+also passed to the agent builder, so a persona class with
+`use_news_file_posts: true` reads `data.news_file` from here.
 
 ---
 
@@ -664,7 +672,10 @@ skipped when one is configured.
 
 A class with `fixed_action.enabled: true` draws its actions from a named set under
 `fixed_action_sets` (`inline:` sets declared in the agents config, and/or a `file:`
-loaded at build time). Every rejection here **raises**, naming the class and the
+loaded at build time). The block may be declared under `agents:` or at the config
+root (the `@package _global_` world-file spelling); both are validated and both are
+loaded, with the `agents:` spelling winning if a config carries both. Every
+rejection here **raises**, naming the class and the
 offending entry — a dropped or rescheduled fixed action silently changes what the
 scenario does while the run still looks healthy:
 
@@ -726,8 +737,10 @@ add classes with explicit counts, make sure they **sum to `num_agents`** (set
 unused classes to `count: 0`).
 
 If the built total diverges from `num_agents`, a `WARNING` is logged at build
-time (and Studio preflight shows the same mismatch), since this usually
-indicates the class counts were not kept in sync with the declared total.
+time, since this usually indicates the class counts were not kept in sync with
+the declared total. The warning appears when the run starts (including in
+Studio's run log) — Studio's pre-launch preflight does not sum class counts, so
+it will not flag the mismatch before you launch.
 
 ### Alternate Agents Variants
 

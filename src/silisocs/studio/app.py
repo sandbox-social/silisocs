@@ -5,7 +5,6 @@ shared repositories/managers off the typed
 :class:`~silisocs.studio.state.StudioState` this module builds and stores as
 ``app.state.studio``.
 """
-# ruff: noqa: C901, PLC0415
 
 import asyncio
 import importlib
@@ -158,14 +157,20 @@ def create_app(
 
         Starlette's default is the bare string "Internal Server Error", which
         tells a user nothing and a client nothing it can display. This surfaces
-        the exception in the same ``{"detail": ...}`` envelope every deliberate
+        the failure in the same ``{"detail": ...}`` envelope every deliberate
         HTTPException uses (so the browser's toast renders it like any other
         error) and logs the traceback server-side. It classifies nothing and
         recovers nothing: a 500 stays a 500.
+
+        The body carries the exception TYPE and points at the log, not
+        ``str(exc)``: an unhandled message is arbitrary text (absolute paths,
+        config values, a provider's response) and a token-holding reader is not
+        necessarily the operator. The full message stays in the server log,
+        which the operator already has.
         """
         _log.exception("Unhandled Studio error: %s %s", request.method, request.url.path)
         return JSONResponse(
-            {"detail": f"{type(exc).__name__}: {exc}"},
+            {"detail": f"{type(exc).__name__} — see the Studio server log for the traceback"},
             status_code=500,
         )
 

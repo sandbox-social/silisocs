@@ -1057,7 +1057,7 @@ def compare_runs(
         series = query_series(artifact, query)
         totals = dict.fromkeys(series["episodes"], 0)
         for signal in series["series"]:
-            for episode, value in zip(series["episodes"], signal["values"]):
+            for episode, value in zip(series["episodes"], signal["values"], strict=False):
                 totals[episode] += value
         per_run.append({"id": run_id, "totals": totals, "events": sum(totals.values())})
         domain.update(series["episodes"])

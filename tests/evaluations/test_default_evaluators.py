@@ -1,5 +1,3 @@
-# ruff: noqa: D103, PLR2004
-
 """Tests for default detailed study evaluators."""
 
 from __future__ import annotations
@@ -347,3 +345,30 @@ def test_probe_lib_module_import_failure_raises(tmp_path: Path) -> None:
 
     with pytest.raises(ImportError, match="definitely.not.a.module"):
         _load_probe_type_map(run_dir)
+
+
+def test_probe_lib_module_import_error_names_the_process_boundary(tmp_path: Path) -> None:
+    """The raise must say WHY it usually fires and what to do about it.
+
+    Evaluators commonly run in a different process and working directory than the
+    runner, where a scenario-local module is simply not on ``sys.path`` — so the
+    message points at that, not just at the missing name.
+    """
+    from silisocs.evaluations.default_evaluators import _load_probe_type_map
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "effective_config.yaml").write_text(
+        yaml.safe_dump({"eval": {"probes": {"probe_lib_module": "scenario_local.probes"}}}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ImportError) as excinfo:
+        _load_probe_type_map(run_dir)
+
+    message = str(excinfo.value)
+    assert "sys.path" in message
+    assert "PYTHONPATH" in message
+    assert "working directory" in message
+    assert "plugins:" in message  # says why the runner-side mechanism does not help
+    assert str(run_dir) in message

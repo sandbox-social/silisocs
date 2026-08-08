@@ -1,5 +1,4 @@
 """Unit tests for Studio's backend-neutral platform-viewer orchestration."""
-# ruff: noqa: D103
 
 from __future__ import annotations
 

@@ -1,5 +1,4 @@
 """Behavioral run panels: per-episode action mix by open action tag."""
-# ruff: noqa: D101, D102
 
 from __future__ import annotations
 

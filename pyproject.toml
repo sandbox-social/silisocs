@@ -46,6 +46,10 @@ concordia = [
 ]
 analysis = [
   "ipympl>=0.9.4,<0.10.0",
+  # `silisocs-report` (analysis/report.py) imports jinja2 at module scope to
+  # render the export through Studio's `_output.html` macro; it must not need
+  # the whole `studio` extra to run.
+  "jinja2>=3.1.4,<4.0.0",
   "matplotlib>=3.9.1,<4.0.0",
   # `EventFrame.to_pandas()` imports pandas lazily; this extra is what supplies it.
   "pandas>=2.2",
@@ -205,6 +209,7 @@ source_modules = [
   "silisocs.runtime.model_fields",
   "silisocs.runtime.plugins",
   "silisocs.runtime.provenance",
+  "silisocs.runtime.prompts",
 ]
 forbidden_modules = [
   "silisocs.adapters",
@@ -221,6 +226,10 @@ forbidden_modules = [
 
 # The layering the whole core is held to, highest first. Every package that
 # participates in a run is listed, so a new wrong-direction import fails here.
+# Deliberately absent: the CLI leaf modules (`runtime.runner`, `runtime.doctor`,
+# `runtime.config_dry_run` — nothing imports them, so they cannot launder an
+# edge) and the scenario-authoring packages (`scenario_gen`, `scenario_library`),
+# which the contract below forbids runtime from importing.
 # Siblings joined by `|` may not import each other; `:` allows it. The handful of
 # back-edges that exist today are enumerated in `ignore_imports` with a reason —
 # never left implicit by omitting a package from the stack.
@@ -240,7 +249,7 @@ layers = [
   "silisocs.environments",
   "silisocs.agents",
   "silisocs.adapters",
-  "silisocs.runtime.types : silisocs.runtime.io : silisocs.runtime.telemetry : silisocs.runtime.class_loading : silisocs.runtime.language_models : silisocs.runtime.concurrency",
+  "silisocs.runtime.types : silisocs.runtime.io : silisocs.runtime.telemetry : silisocs.runtime.class_loading : silisocs.runtime.language_models : silisocs.runtime.concurrency : silisocs.runtime.model_fields : silisocs.runtime.plugins : silisocs.runtime.provenance : silisocs.runtime.prompts",
   "silisocs.design | silisocs.exceptions",
 ]
 ignore_imports = [

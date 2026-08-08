@@ -1,5 +1,4 @@
 """Silisocs Studio web application."""
-# ruff: noqa: PLC0415
 
 
 def create_app(*args, **kwargs):

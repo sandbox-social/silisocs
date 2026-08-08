@@ -1,5 +1,4 @@
 """Regression checks for the shared visual identity across product surfaces."""
-# ruff: noqa: D103
 
 from __future__ import annotations
 

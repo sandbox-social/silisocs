@@ -446,3 +446,75 @@ def test_openai_language_model_sample_text_uses_direct_instruct_messages() -> No
         {"role": "system", "content": "You are a helpful, instruction-following assistant."},
         {"role": "user", "content": "What should Alice do?"},
     ]
+
+
+# --------------------------------------------------------------------------- #
+# History window sizing: null means "unset", an explicit number is honoured
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("param", "attribute", "default"),
+    [
+        ("observation_history", "_observation_history", 100),
+        ("memory_history", "_memory_history", 1000),
+    ],
+)
+def test_history_params_resolve_null_zero_and_numbers(param, attribute, default) -> None:
+    """An explicit YAML ``null`` takes the default; an explicit 0 clamps to 1.
+
+    ``int(None)`` raised a TypeError during construction on the observation side,
+    while the memory side's ``or 1000`` silently turned a deliberate 0 into the
+    default. Both are now the same rule.
+    """
+
+    def _resolved(**configured: Any) -> int:
+        agent = NativeAgent(name="A", model=NoLanguageModel(), **configured)
+        return int(getattr(agent, attribute))
+
+    assert _resolved() == default  # omitted -> default
+    assert _resolved(**{param: None}) == default  # explicit null -> default, no raise
+    assert _resolved(**{param: 0}) == 1  # clamped, NOT reverted to the default
+    assert _resolved(**{param: 7}) == 7  # an explicit number is honoured
+
+
+def test_observation_window_actually_trims_to_the_configured_size() -> None:
+    agent = NativeAgent(name="A", model=NoLanguageModel(), observation_history=2)
+    for text in ("one", "two", "three"):
+        agent.observe(text)
+    assert agent._observations == ["two", "three"]
+
+
+def test_history_size_helper_matches_the_agent_rule() -> None:
+    from silisocs.agents.native import history_size
+
+    assert history_size(None, 100) == 100
+    assert history_size(0, 100) == 1
+    assert history_size(-5, 100) == 1
+    assert history_size(7, 100) == 7
+    assert history_size("7", 100) == 7
+
+
+def test_concordia_prefab_resolves_observation_history_like_the_native_agent() -> None:
+    """``observation_history: null`` must take the default, not raise on ``int(None)``.
+
+    ``params.get("observation_history", 100)`` returns an explicit ``null`` as
+    ``None``; the default only applies to an ABSENT key.
+    """
+    pytest.importorskip("concordia")
+
+    from silisocs.adapters.concordia import make_concordia_memory_bank, observation
+    from silisocs.agents.concordia import ConcordiaAgent
+    from silisocs.runtime.language_models import NoLanguageModel
+
+    def _history(**params: object) -> int:
+        agent = ConcordiaAgent(params={"name": "A", **params}).build(
+            model=NoLanguageModel(), memory_bank=make_concordia_memory_bank()
+        )
+        component = agent.get_component(observation.DEFAULT_OBSERVATION_COMPONENT_KEY)
+        return int(component._history_length)
+
+    assert _history() == 100
+    assert _history(observation_history=None) == 100
+    assert _history(observation_history=0) == 1  # clamped, not reverted to 100
+    assert _history(observation_history=7) == 7

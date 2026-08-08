@@ -16,6 +16,7 @@ from silisocs.adapters.concordia import (
     observation,
     prefab_lib,
 )
+from silisocs.agents.native import history_size
 
 OBSERVATION_TO_MEMORY_KEY = "__observation_to_memory__"
 WORLD_CONTEXT_KEY = "__World Context__"
@@ -61,9 +62,10 @@ class ConcordiaAgent(prefab_lib.Prefab):
             self.params.get("roleplaying_instructions", DEFAULT_ROLEPLAYING_INSTRUCTIONS)
             or DEFAULT_ROLEPLAYING_INSTRUCTIONS
         )
-        # No ``or 100``: an explicitly configured 0 must stay 0, not silently
-        # become the default 100.
-        observation_history = int(self.params.get("observation_history", 100))
+        # Same resolution as NativeAgent: an explicit ``null`` takes the default
+        # (``int(None)`` would raise), an explicit number is honoured and clamped
+        # to at least 1 rather than reverting to the default.
+        observation_history = history_size(self.params.get("observation_history"), 100)
 
         role_instructions = instructions.Instructions(agent_name=agent_name)
         role_instructions._state = roleplaying.format(name=agent_name)

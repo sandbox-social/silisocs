@@ -38,7 +38,7 @@ class EchoChamberInitializer(GameMasterInitializer):
         if state is None:
             raise ValueError("EchoChamberInitializer requires an app with echo_state.")
         expected = set(state.agent_names)
-        actual = set(str(name) for name in agent_names)
+        actual = {str(name) for name in agent_names}
         missing = sorted(expected - actual)
         extra = sorted(actual - expected)
         if missing or extra:

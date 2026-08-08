@@ -4,7 +4,6 @@ Between them these are what make navigating Studio quick: the browser stops
 re-fetching megabytes of vendored JS, and the server stops rebuilding panels for
 tabs that never show them.
 """
-# ruff: noqa: D103
 
 from __future__ import annotations
 

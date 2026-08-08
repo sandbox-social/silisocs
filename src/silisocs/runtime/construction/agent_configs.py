@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +19,12 @@ from silisocs.runtime.construction.specs import AgentConfig
 
 _LOGGER = logging.getLogger(__name__)
 
-_RESERVED_BUILDER_PARAMS = {"scenario_name", "project_root"}
+_RESERVED_BUILDER_PARAMS = {
+    "scenario_name",
+    "project_root",
+    "world_data",
+    "world_fixed_action_sets",
+}
 
 
 def build_agent_configs(cfg: DictConfig) -> list[AgentConfig]:
@@ -88,4 +94,24 @@ def _builder_params(cfg: DictConfig) -> dict[str, Any]:
         **params,
         "scenario_name": str(OmegaConf.select(cfg, "scenario_name", default="default")),
         "project_root": str(Path(__file__).resolve().parents[4]),
+        "world_data": _root_block(cfg, "data"),
+        "world_fixed_action_sets": _root_block(cfg, "fixed_action_sets"),
     }
+
+
+def _root_block(cfg: DictConfig, path: str) -> dict[str, Any]:
+    """A root-level scenario block, threaded in for builders that read it.
+
+    Builders are constructed with ``cfg.agents``, but a scenario's ``data`` block
+    (``news_file``, ``persona_file``, ...) and its ``fixed_action_sets`` may be
+    declared at the config ROOT — the ``@package _global_`` world-file spelling
+    that ``BaseScenarioSchema`` documents and config validation already reads.
+    Passing them explicitly keeps builders from guessing at config paths they
+    cannot see.
+    """
+    node = OmegaConf.select(cfg, path, default=None)
+    if isinstance(node, DictConfig):
+        node = OmegaConf.to_container(node, resolve=True)
+    if not isinstance(node, Mapping):
+        return {}
+    return {str(key): value for key, value in node.items()}

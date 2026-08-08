@@ -7,7 +7,6 @@ stream, the run page, and the scenario-bundled ``spread`` analysis view —
 against the real ``scenarios/misinformation`` config with the offline
 ``scripted`` model provider, so it stays fast, deterministic, and CI-safe.
 """
-# ruff: noqa: D103
 
 from __future__ import annotations
 

@@ -262,7 +262,7 @@ def generate_graph_from_networkx(
     # Shuffle agents to avoid bias if agent list is ordered by role
     dataset_agents = list(all_agents)
     random.shuffle(dataset_agents)
-    node_mapping = {i: name for i, name in enumerate(dataset_agents)}
+    node_mapping = dict(enumerate(dataset_agents))
 
     # Use sets internally for O(1) membership checks, convert to lists at the end.
     following_sets: dict[str, set[str]] = {agent: set() for agent in all_agents}

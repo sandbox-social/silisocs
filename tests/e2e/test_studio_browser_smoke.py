@@ -23,7 +23,6 @@ The run itself is offline: the scenario is copied into a temp workspace with the
 ``scripted`` model provider and ``num_steps=2`` (the same override set the HTTP
 e2e uses), so the smoke needs no API key and finishes in seconds.
 """
-# ruff: noqa: D103
 
 from __future__ import annotations
 

@@ -1,5 +1,4 @@
 """Run-scope metrics panels: model token usage and (when priced) cost."""
-# ruff: noqa: D101, D102
 
 from __future__ import annotations
 

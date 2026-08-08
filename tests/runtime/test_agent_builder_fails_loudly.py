@@ -8,6 +8,7 @@ a plan entry that was simply dropped.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from omegaconf import DictConfig, OmegaConf
 from silisocs.runtime.construction.agent_builders import PersonaPipelineAgentBuilder
 from silisocs.runtime.construction.agent_builders.common import to_plain
 from silisocs.runtime.construction.agent_builders.fixed_actions import FixedActionBuilder
+from silisocs.runtime.construction.agent_configs import build_agent_configs
 
 
 class _TestBuilder(PersonaPipelineAgentBuilder):
@@ -74,8 +76,15 @@ def test_count_greater_than_one_without_data_raises() -> None:
             }
         }
     )
-    with pytest.raises(ValueError, match="Class `user` requests 3 agent"):
+    with pytest.raises(ValueError) as excinfo:
         _TestBuilder(world).build_agent_configs()
+    # The raise is right (agent names must be unique, so a params-only class
+    # cannot replicate), but only if the message says so and names the fix.
+    message = str(excinfo.value)
+    assert "Class `user` requests 3 agent" in message
+    assert "single-instance" in message
+    assert "`data` source" in message
+    assert "count: 1" in message
 
 
 def test_negative_count_raises() -> None:
@@ -164,3 +173,132 @@ def test_action_set_entry_without_an_action_raises_naming_the_class() -> None:
             render_context={},
             where="agents.persona_pipeline.classes.news.fixed_action",
         )
+
+
+# ------------------------------------------------- root-level scenario blocks
+#
+# A builder is constructed with ``cfg.agents``, but a scenario's ``data`` and
+# ``fixed_action_sets`` may be declared at the config ROOT (the ``@package
+# _global_`` world-file spelling that config validation already accepts). Both
+# are threaded in as reserved builder params; without that, root ``data`` was a
+# hard ``ConfigAttributeError`` and root ``fixed_action_sets`` validated but was
+# silently never loaded.
+
+
+def _root_cfg(classes: dict[str, Any], **root: Any) -> DictConfig:
+    return OmegaConf.create(
+        {"scenario_name": "default", "agents": {"persona_pipeline": {"classes": classes}}, **root}
+    )
+
+
+_NEWS_CLASS: dict[str, Any] = {
+    "count": 1,
+    "class_path": "silisocs.agents.native.NativeAgent",
+    "params": {"name": "Gazette", "context": "The local paper."},
+    "use_news_file_posts": True,
+    "include_news_images": True,
+}
+
+
+def test_root_level_data_news_file_reaches_the_builder(tmp_path: Path) -> None:
+    (tmp_path / "news.json").write_text(json.dumps({"Mayor debates": ["debate.png"]}))
+    cfg = _root_cfg(
+        {"news_account": dict(_NEWS_CLASS)},
+        data={"news_file": str(tmp_path / "news")},
+    )
+
+    agents = build_agent_configs(cfg)
+
+    assert agents[0].params["posts"] == {"Mayor debates": "debate.png"}
+
+
+def test_news_posts_without_a_root_data_block_raises_the_config_error() -> None:
+    cfg = _root_cfg({"news_account": dict(_NEWS_CLASS)})
+
+    with pytest.raises(ValueError, match="data.news_file is unset"):
+        build_agent_configs(cfg)
+
+
+def test_root_level_fixed_action_sets_are_loaded(tmp_path: Path) -> None:
+    cfg = _root_cfg(
+        {
+            "scripted": {
+                "count": 1,
+                "class_path": "silisocs.agents.fixed.FixedAgent",
+                "params": {"name": "Bot", "context": "Scripted."},
+                "fixed_action": {"enabled": True, "action_set_ref": "opening"},
+            }
+        },
+        fixed_action_sets={
+            "inline": {
+                "opening": {"actions": [{"action": "create_tweet", "args": {"status": "hello"}}]}
+            }
+        },
+    )
+
+    agents = build_agent_configs(cfg)
+
+    assert agents[0].params["fixed_action_plan"][0][0]["content"] == "hello"
+
+
+def test_agents_level_fixed_action_sets_still_win() -> None:
+    cfg = OmegaConf.create(
+        {
+            "scenario_name": "default",
+            "agents": {
+                "fixed_action_sets": {
+                    "inline": {
+                        "opening": {
+                            "actions": [{"action": "create_tweet", "args": {"status": "near"}}]
+                        }
+                    }
+                },
+                "persona_pipeline": {
+                    "classes": {
+                        "scripted": {
+                            "count": 1,
+                            "class_path": "silisocs.agents.fixed.FixedAgent",
+                            "params": {"name": "Bot", "context": "Scripted."},
+                            "fixed_action": {"enabled": True, "action_set_ref": "opening"},
+                        }
+                    }
+                },
+            },
+            "fixed_action_sets": {
+                "inline": {
+                    "opening": {"actions": [{"action": "create_tweet", "args": {"status": "far"}}]}
+                }
+            },
+        }
+    )
+
+    agents = build_agent_configs(cfg)
+
+    assert agents[0].params["fixed_action_plan"][0][0]["content"] == "near"
+
+
+# ------------------------------------------------------------- sim_role_name
+
+
+@pytest.mark.parametrize("declared", [None, ""])
+def test_explicit_empty_sim_role_name_defaults_to_the_class_name(declared: Any) -> None:
+    """An explicit null/empty role means "default", exactly as validation reads it.
+
+    Taking it literally gave every agent of the class a role that matches nothing
+    in the follow graph, while ``fully_connected_targets: [voter]`` still passed
+    config validation (which resolves the same class as ``voter``).
+    """
+    cfg = _root_cfg(
+        {
+            "voter": {
+                "count": 1,
+                "class_path": "silisocs.agents.native.NativeAgent",
+                "sim_role_name": declared,
+                "params": {"name": "Vi", "context": "A voter."},
+            }
+        }
+    )
+
+    agents = build_agent_configs(cfg)
+
+    assert agents[0].params["sim_role"]["name"] == "voter"

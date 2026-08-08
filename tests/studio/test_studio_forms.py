@@ -100,6 +100,19 @@ def test_compose_preserves_unknown_yaml_keys() -> None:
     assert yaml.safe_load(composed["agents/default.yaml"])["hand_authored"] == {"preserved": True}
 
 
+def test_compose_names_a_document_that_is_not_a_mapping() -> None:
+    """The shape preflight already reports must not 500 the composer either.
+
+    A whole document typed as a scalar (``sim.yaml`` holding a bare model name)
+    used to reach ``cursor.setdefault`` on a ``str``. It is a ValueError naming
+    the file, which /api/compose answers as a 4xx.
+    """
+    files = {**_files(), "sim.yaml": "gpt-4o-mini\n"}
+
+    with pytest.raises(ValueError, match=r"sim\.yaml must contain a YAML mapping"):
+        compose_files(files, {"world.num_steps": 7})
+
+
 def test_preflight_reports_bad_numbers_instead_of_raising() -> None:
     files = _files()
     files["world/default.yaml"] = "num_agents: many\nnum_steps: 3\n"

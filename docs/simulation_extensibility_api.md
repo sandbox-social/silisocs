@@ -272,11 +272,16 @@ Factory entrypoint: `build_engine(cfg)` in
 
 `RuntimeEngine` provides startup initialization, per-step GM updates,
 per-agent observe/act/resolve, action concurrency, retry telemetry, and probe
-phase orchestration. There is a single engine class; the scheduling behavior is
-chosen entirely by its step strategy, which `build_engine` selects from
-`sim.engine.step.built_in` (`base`, `sequential`, `flow`, or the `multi_gm*`
-traversals). To add a new traversal, write a step strategy and register it — no
-new engine class is needed.
+phase orchestration. There is a single engine class; the traversal is *chosen* by
+its step strategy, which `build_engine` selects from `sim.engine.step.built_in`
+(`base`, `sequential`, `flow`, or the `multi_gm*` traversals), and *executed* by
+the engine's `SchedulingMixin`
+(`src/silisocs/simulation_engines/scheduling.py`), which owns three execution
+shapes: `execute_batches`, `execute_chain_groups`, and `execute_staged_groups`.
+Every shipped step strategy composes those, so a new traversal usually means a
+new step strategy and no engine change. A genuinely novel scheduling shape — a
+different barrier or concurrency discipline — means adding a fourth execution
+shape to the mixin.
 
 ## 6) Engine Policy API
 

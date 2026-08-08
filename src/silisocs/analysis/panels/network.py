@@ -5,7 +5,6 @@ The panel knows semantic roles such as ``content.root``,
 own labels and payload paths to those open roles. Layout is baked into a
 CSP-friendly Cytoscape payload so shells never need backend-specific code.
 """
-# ruff: noqa: D101, D102
 
 from __future__ import annotations
 

@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import importlib
+import logging
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
+from omegaconf import OmegaConf
 
 from silisocs.runtime.execution import session
 
@@ -187,3 +191,48 @@ def test_internal_errors_are_not_swallowed(monkeypatch: pytest.MonkeyPatch) -> N
 
     with pytest.raises(ValueError, match="a genuine bug"):
         session.main.__wrapped__(None)
+
+
+class _StubMetrics:
+    """Just enough of ``SimMetricsCollector`` for the validation phase."""
+
+    @contextmanager
+    def phase(self, _name: str) -> Iterator[None]:
+        yield
+
+
+def _validation_raises(exc: Exception) -> Any:
+    def _raise(*_args: Any, **_kwargs: Any) -> None:
+        raise exc
+
+    return _raise
+
+
+def _validate_only(monkeypatch: pytest.MonkeyPatch, exc: Exception) -> None:
+    monkeypatch.setattr(session, "validate_scenario_config", _validation_raises(exc))
+    session._resolve_output_directory(
+        OmegaConf.create({"scenario_name": "nonexistent"}),
+        cast(Any, _StubMetrics()),
+        logging.getLogger("test_cli_dispatch"),
+    )
+
+
+def test_rejected_config_is_wrapped_as_a_config_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(session.ConfigValidationError, match="Unsupported config key"):
+        _validate_only(monkeypatch, ValueError("Unsupported config key(s) under sim: ['typo']"))
+
+
+def test_missing_data_file_is_wrapped_as_a_config_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(session.ConfigValidationError, match="personas.json"):
+        _validate_only(monkeypatch, FileNotFoundError("personas.json"))
+
+
+def test_validator_internal_bug_keeps_its_own_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A bug inside a validator must not masquerade as a one-line config error."""
+    bug = AttributeError("Key 'data' is not in struct")
+    with pytest.raises(AttributeError, match="not in struct"):
+        _validate_only(monkeypatch, bug)

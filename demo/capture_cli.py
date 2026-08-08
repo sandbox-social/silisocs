@@ -81,8 +81,14 @@ def run_command(cast: CastWriter, command: str, step: dict) -> int:
         "COLUMNS": str(cast.header["width"]),
         "LINES": str(cast.header["height"]),
     }
+    # `bash -c`, never `-lc`: a login shell sources the user's profile, and a
+    # profile that installs a `command_not_found_handle` (the distro default on
+    # this host) turns "binary not on PATH" — the single most likely capture
+    # failure — into a printed message and exit 0, which would record a broken
+    # run as a good one. The command inherits the caller's environment (run_all.sh
+    # already activates the venv and sources .env), so no login shell is needed.
     process = subprocess.Popen(
-        ["bash", "-lc", command],
+        ["bash", "-c", command],
         stdin=slave,
         stdout=slave,
         stderr=slave,

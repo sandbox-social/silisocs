@@ -127,7 +127,11 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
             scenario_name=str(self.params.get("scenario_name", "default")),
             project_root=self.params.get("project_root"),
         )
-        self.fixed_actions = FixedActionBuilder(agents_config, self.records.resolve_file_path)
+        self.fixed_actions = FixedActionBuilder(
+            agents_config,
+            self.records.resolve_file_path,
+            root_sets=(self.params.get("world_fixed_action_sets")),
+        )
 
     def build_agent_configs(self) -> list[AgentConfig]:
         """Build all agent specs from the class-based persona pipeline."""
@@ -204,7 +208,11 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
             raise ValueError(f"Class `{class_name}` must define `class_path`")
 
         class_compat = self._normalize_compat(class_name, class_cfg.get("compat"))
-        sim_role = class_cfg.get("sim_role_name", class_name)
+        # `or class_name`, not `.get(..., class_name)`: an explicit null/empty
+        # `sim_role_name` means "use the default", exactly as config validation
+        # resolves it (`_declared_sim_roles`). Taking the explicit null literally
+        # gave agents a role that matches nothing in the follow graph.
+        sim_role = class_cfg.get("sim_role_name") or class_name
         class_params = dict(class_cfg.get("params", {}) or {})
         class_flow_tag = str(class_cfg.get("flow_tag", "") or "").strip()
         if class_flow_tag:
@@ -318,9 +326,12 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
         if not allow_cycle:
             raise ValueError(
                 f"Class `{class_name}` requests {count} agent(s) but declares no `data` "
-                "block, so only 1 agent can be built. Add a `data` source with at least "
-                f"{count} record(s) (or one record, which is recycled with numbered "
-                "name suffixes), or set count: 1."
+                "block. A params-only class is single-instance: with no per-agent "
+                "records there is nothing to vary, and agent names must be unique, so "
+                f"it cannot be replicated. Give `{class_name}` a `data` source (inline "
+                f"records, csv/jsonl/local_json, or hf_dataset) with {count} record(s) "
+                "— or one record, which is recycled with numbered name suffixes — or "
+                "set count: 1."
             )
         base = len(records)
         _LOGGER.warning(
@@ -358,7 +369,11 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
     def _load_news_posts(self, class_name: str, class_cfg: dict[str, Any]) -> dict[str, str] | None:
         if not bool(class_cfg.get("use_news_file_posts", False)):
             return None
-        news_file = getattr(self.config.data, "news_file", None)
+        # The scenario `data` block lives at the config ROOT, while this builder is
+        # constructed with `cfg.agents`; runtime construction threads it in as the
+        # reserved `world_data` param rather than having the builder guess a path.
+        world_data = self.params.get("world_data") or {}
+        news_file = world_data.get("news_file") if isinstance(world_data, Mapping) else None
         if not news_file:
             raise ValueError(
                 f"Class `{class_name}` requested news posts but data.news_file is unset."

@@ -44,6 +44,26 @@ def _group_file(group: str, available: Sequence[str]) -> str | None:
     return variants[0] if len(variants) == 1 else default
 
 
+def _mapping_documents(files: dict[str, str]) -> dict[str, Any]:
+    """Parse every document, refusing one that is not a YAML mapping.
+
+    A scenario document is always a mapping of config keys. A scalar or list
+    document (``sim.yaml`` holding a bare ``gpt-4o-mini``) is a typo the author
+    has to see: writing into it is impossible, so it is named here rather than
+    surfacing as an ``AttributeError`` from the middle of the write.
+    """
+    documents: dict[str, Any] = {}
+    for name, text in files.items():
+        document = yaml.safe_load(text) or {}
+        if not isinstance(document, dict):
+            raise ValueError(
+                f"{name} must contain a YAML mapping of config keys, "
+                f"not a bare {type(document).__name__}"
+            )
+        documents[name] = document
+    return documents
+
+
 def field_values(files: dict[str, str], schema: FormSchema | None = None) -> dict[str, Any]:
     """Project known schema fields from YAML documents without altering unknown keys."""
     documents = {name: yaml.safe_load(text) or {} for name, text in files.items()}
@@ -175,7 +195,7 @@ def compose_files(files: dict[str, str], updates: dict[str, Any]) -> dict[str, s
     documents are re-serialized but keep their leading comment block (which is
     where the ``# @package`` directives live).
     """
-    documents = {name: yaml.safe_load(text) or {} for name, text in files.items()}
+    documents = _mapping_documents(files)
     touched: set[str] = set()
     names = list(files)
     for key, value in updates.items():

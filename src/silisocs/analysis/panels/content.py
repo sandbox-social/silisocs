@@ -1,5 +1,4 @@
 """Content-oriented run panels: reconstructed feed and per-agent timeline."""
-# ruff: noqa: D101, D102
 
 from __future__ import annotations
 

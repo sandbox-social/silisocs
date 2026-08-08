@@ -6,7 +6,6 @@ events, an empty allow-list exposed no actions, a checkpoint flag with no state
 methods restored nothing, and a social component on a generic backend crashed
 mid-run. Each of those now fails (or is repaired) where the cause is.
 """
-# ruff: noqa: D103
 
 from __future__ import annotations
 
@@ -25,7 +24,9 @@ from silisocs.environments.backends.factory import create_backend_app
 from silisocs.environments.gm.components.factory import build_observe_component
 from silisocs.environments.gm.context import GameMasterContext
 from silisocs.environments.gm.game_master import _create_backend
+from silisocs.evaluations.vocabulary import HEALTH_COUNTERS
 from silisocs.runtime.io.jsonl import flush_jsonl_writers
+from silisocs.runtime.telemetry import SimMetricsCollector
 
 
 class _PlainBackend(BackendApp):
@@ -367,3 +368,45 @@ def test_annotated_action_parameters_are_accepted():
             return f"{agent_name}:{volume}"
 
     assert "shout" in [action.name for action in _Tidy().actions()]
+
+
+# --------------------------------------------------------------------------- #
+# Argument coercion is counted honestly: nothing was dropped
+# --------------------------------------------------------------------------- #
+
+
+class _CoercingBackend(BackendApp):
+    def name(self) -> str:
+        return "coercing"
+
+    def description(self) -> str:
+        return "coercing"
+
+    @app_action(selectable_name="SHOUT", description="Shout at a volume.")
+    def shout(self, agent_name: str, volume: int = 1) -> str:
+        return f"{agent_name}:{volume!r}"
+
+
+def test_uncoercible_argument_is_not_counted_as_a_dropped_action():
+    """The raw string passes through and the action RUNS, so it is not a parse failure.
+
+    ``action_parse_failures`` means "agent actions were dropped as unparseable".
+    Counting a survived coercion there overstated how much of the run was lost;
+    it gets its own honest counter instead.
+    """
+    metrics = SimMetricsCollector.reset()
+    backend = _CoercingBackend()
+
+    committed, message = backend.invoke_action_detailed(
+        "shout", {"agent_name": "Ada", "volume": "loud"}
+    )
+
+    assert committed is True
+    assert "'loud'" in message  # the raw string reached the action
+    assert metrics.counter("action_argument_coercion_failures") == 1
+    assert metrics.counter("action_parse_failures") == 0
+
+
+def test_the_coercion_counter_is_a_registered_health_counter():
+    assert "action_argument_coercion_failures" in HEALTH_COUNTERS
+    assert "still ran" in HEALTH_COUNTERS["action_argument_coercion_failures"]

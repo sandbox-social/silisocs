@@ -169,9 +169,17 @@ def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
         except Exception as exc:
             raise ImportError(
                 f"Could not import the run's probe_lib_module {probe_lib_module!r} "
-                f"({exc}). Evaluators need it to score probes by their declared type; "
-                "install/expose the module (it must be importable in the evaluating "
-                "process, not only in the runner)."
+                f"({exc}). Evaluators need it to score probes by their declared type, "
+                "and they commonly run in a DIFFERENT process and working directory "
+                "than the run that produced "
+                f"{run_dir} — a scenario-local module that imported fine for the "
+                "runner is often not on this process's sys.path.\n"
+                "Fix it by making the module importable from wherever evaluation runs: "
+                "install it (`uv pip install -e <its package>`), put its parent "
+                "directory on PYTHONPATH, or invoke the evaluator from the directory "
+                "the runner used. Listing it under the run's top-level `plugins:` only "
+                "imports it inside the runner, so it does not by itself make the module "
+                "importable here."
             ) from exc
 
     raw_probes = probes.get("probes", {})
@@ -375,7 +383,7 @@ def _write_choice_plots(records: list[dict[str, Any]], out_dir: Path) -> list[st
     for label in sorted(grouped.keys()):
         per_episode = grouped[label]
         episodes = sorted(per_episode.keys())
-        choices = sorted({choice for counts in per_episode.values() for choice in counts.keys()})
+        choices = sorted({choice for counts in per_episode.values() for choice in counts})
         if not episodes or not choices:
             continue
 

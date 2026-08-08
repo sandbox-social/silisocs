@@ -1,5 +1,4 @@
 """Contract tests for the interaction-network run panel."""
-# ruff: noqa: D103
 
 from __future__ import annotations
 

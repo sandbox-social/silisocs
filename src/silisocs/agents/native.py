@@ -33,8 +33,8 @@ class NativeAgent(Agent):
         specific_memories: Sequence[str] | None = None,
         shared_memories: Sequence[str] | None = None,
         flow_tag: str | None = None,
-        observation_history: int = 100,
-        memory_history: int = 1000,
+        observation_history: int | None = 100,
+        memory_history: int | None = 1000,
         memory_policy: MemoryPolicyFactory | None = None,
         **extra_params: Any,
     ) -> None:
@@ -50,10 +50,11 @@ class NativeAgent(Agent):
         self.sim_role = dict(sim_role or {})
         self.flow_tag = flow_tag
         self.extra_params = dict(extra_params)
-        # No ``or 100``: an explicitly configured 0 must clamp to 1, not silently
-        # become the default 100.
-        self._observation_history = max(1, int(observation_history))
-        self._memory_history = max(1, int(memory_history or 1000))
+        # No ``or <default>``: an explicitly configured 0 must clamp to 1, not
+        # silently become the default. An explicit YAML ``null`` means "unset",
+        # so it takes the default instead of raising on ``int(None)``.
+        self._observation_history = history_size(observation_history, 100)
+        self._memory_history = history_size(memory_history, 1000)
         self._observations: list[str] = []
         # Memory is delegated to a MemoryPolicy (sim.memory). None = the default
         # window policy, byte-identical to the pre-slot behavior. Seeded memories
@@ -156,6 +157,19 @@ class NativeAgent(Agent):
         elif "memory_text" in state:
             # Legacy checkpoint (pre-memory-slot): raw memory list.
             self._memory.set_state({"memories": _normalize_text_items(state["memory_text"])})
+
+
+def history_size(value: Any, default: int) -> int:
+    """Resolve a configured history length to a usable window size.
+
+    An omitted key or an explicit YAML ``null`` means "unset" and takes
+    ``default`` — ``int(None)`` would otherwise raise during construction. An
+    explicit number is honoured and clamped to at least 1, so a configured ``0``
+    never silently reverts to the default (what an ``or default`` fallback did).
+    """
+    if value is None:
+        return default
+    return max(1, int(value))
 
 
 def _normalize_text_items(value: Any) -> list[str]:

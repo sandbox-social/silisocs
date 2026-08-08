@@ -208,7 +208,15 @@ def _validate_follow_graph_roles(cfg: DictConfig, errors: list[str]) -> None:
     Collected from anywhere in the config so per-GM orchestration blocks
     (``env.gm_orchestration.gms[i].components.initialize...``) are covered by the
     same rule as the single ``env.gm`` block.
+
+    Skipped entirely under a custom ``agents.builder.class_path``: that builder
+    owns the roles its agents carry, and the composed config still carries the base
+    persona classes, so the "roles are not statically known" fail-open below would
+    never trigger and legitimate targets would be rejected.
     """
+    builder = str(OmegaConf.select(cfg, "agents.builder.class_path") or "").strip()
+    if builder and builder != _PERSONA_BUILDER_CLASS_PATH:
+        return
     roles = _declared_sim_roles(cfg)
     if not roles:
         return  # roles are not statically known; nothing to check against
@@ -272,6 +280,10 @@ def _validate_probe_entries(cfg: DictConfig, errors: list[str]) -> None:
     (``evaluations/probes/deployment.py``), so a mis-shaped probe config runs the
     whole simulation and produces no probe data at all. An entry missing
     ``probe_type`` is an outright ``KeyError`` there, mid-run.
+
+    The deployer resolves ``deployment.enabled`` BEFORE it reads ``probe_type``, so
+    a disabled stub never needs one; this check mirrors that order rather than
+    rejecting a config the runtime accepts.
     """
     probes = OmegaConf.select(cfg, "eval.probes.probes")
     if probes is None:
@@ -282,14 +294,32 @@ def _validate_probe_entries(cfg: DictConfig, errors: list[str]) -> None:
             f"list of probe configs); got {type(probes).__name__}."
         )
         return
+    global_enabled = OmegaConf.select(cfg, "eval.probes.deployment.enabled")
+    global_enabled = True if global_enabled is None else bool(global_enabled)
     entries = probes.items() if isinstance(probes, (Mapping, DictConfig)) else enumerate(probes)
     for probe_id, entry in entries:
         where = f"eval.probes.probes.{probe_id}"
         if not isinstance(entry, (Mapping, DictConfig)):
             errors.append(f"{where} must be a mapping; got {type(entry).__name__}.")
             continue
+        if not _probe_entry_enabled(entry, global_enabled):
+            continue
         if not str(entry.get("probe_type") or "").strip():
             errors.append(f"{where} must declare a `probe_type`.")
+
+
+def _probe_entry_enabled(entry: Mapping[str, Any], global_enabled: bool) -> bool:
+    """Effective ``deployment.enabled`` for one probe entry.
+
+    Mirrors the deployer's overlay: a non-empty per-probe ``deployment`` block is
+    merged over the global one, so its own ``enabled`` wins and an absent one
+    inherits the global value.
+    """
+    override = entry.get("deployment")
+    if isinstance(override, (Mapping, DictConfig)) and len(override) > 0:
+        enabled = override.get("enabled")
+        return global_enabled if enabled is None else bool(enabled)
+    return global_enabled
 
 
 def validate_cross_references(cfg: DictConfig) -> None:
@@ -758,7 +788,7 @@ def _assert_allowed_keys(cfg: DictConfig, path: str, allowed: set[str]) -> None:
         return
     if not isinstance(value, DictConfig):
         raise ValueError(f"{path} must be a mapping.")
-    extras = sorted(str(key) for key in value.keys() if str(key) not in allowed)
+    extras = sorted(str(key) for key in value if str(key) not in allowed)
     if extras:
         raise ValueError(f"Unsupported config key(s) under {path}: {extras}")
 

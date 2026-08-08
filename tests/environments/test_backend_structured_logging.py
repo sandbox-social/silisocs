@@ -4,7 +4,6 @@
 generic panels group and attribute by. It lives on ``BackendApp`` so a non-social
 backend is not stuck emitting anonymous narration.
 """
-# ruff: noqa: D103
 
 from __future__ import annotations
 

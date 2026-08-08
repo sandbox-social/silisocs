@@ -4971,6 +4971,7 @@ all = [
 ]
 analysis = [
     { name = "ipympl" },
+    { name = "jinja2" },
     { name = "matplotlib" },
     { name = "pandas" },
     { name = "plotly" },
@@ -5062,6 +5063,7 @@ requires-dist = [
     { name = "hydra-core", specifier = ">=1.3.2,<2.0.0" },
     { name = "hydra-submitit-launcher", marker = "extra == 'hpc'", specifier = ">=1.2.0,<2.0.0" },
     { name = "ipympl", marker = "extra == 'analysis'", specifier = ">=0.9.4,<0.10.0" },
+    { name = "jinja2", marker = "extra == 'analysis'", specifier = ">=3.1.4,<4.0.0" },
     { name = "jinja2", marker = "extra == 'studio'", specifier = ">=3.1.4,<4.0.0" },
     { name = "loguru", marker = "extra == 'mastodon'", specifier = ">=0.7.2,<0.8.0" },
     { name = "mastodon-py", marker = "extra == 'mastodon'", specifier = ">=1.8.1,<2.0.0" },

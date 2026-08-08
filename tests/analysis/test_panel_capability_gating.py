@@ -4,7 +4,6 @@ Panels declare the semantic roles they read; backends declare the roles they
 populate. Everything else — the view, the run nav, the composer's view builder —
 follows from comparing the two, with no surface naming a backend.
 """
-# ruff: noqa: D103
 
 from __future__ import annotations
 

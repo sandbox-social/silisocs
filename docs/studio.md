@@ -186,6 +186,13 @@ subject panels all fail disappears from the run's navigation, and the scenario
 composer applies the same rule to its view builder. See
 [Analysis panels](analysis_panels.md) for the contract and a worked example.
 
+A shipped view that does not parse (an unimplemented `layout`, a missing
+`scope`, malformed YAML) is not "not found": every surface that resolves it —
+the run page, `/api/runs/{id}/views/{name}`, the report export, the study page
+and `/api/studies/{id}/compare` — answers `422` with the parser's own message.
+It is also dropped from the run page's view navigation rather than 500-ing every
+tab, and the Studio server log names the file and the reason each time.
+
 Changing a panel control (an episode slider, an agent picker) refreshes that one
 panel in place through `/api/runs/{id}/panels/{name}` and updates the URL, so the
 view stays linkable without reloading the page — and without re-fetching the
@@ -261,6 +268,31 @@ Installed packages can add navigation surfaces through the
 `silisocs.studio_pages` entry-point group. The entry point returns a
 `StudioPage(name, label, href, router)`. Settings inventories discovered pages,
 panels, views, form schemas, and choice/preview providers.
+
+A page's router reaches Studio's shared state exactly the way the built-in
+routers do — through the accessor, never through a module-level singleton:
+
+```python
+from fastapi import APIRouter, Request
+
+from silisocs.studio.state import studio_state
+
+router = APIRouter()
+
+@router.get("/my-page")
+def my_page(request: Request):
+    state = studio_state(request)          # a frozen StudioState
+    return state.templates.TemplateResponse(request, "...", {"runs": state.scenarios.list()})
+```
+
+`studio_state(request)` returns the frozen `StudioState` stored as
+`request.app.state.studio`, carrying `output_root`, `repo_root`, `studio_state`,
+`jobs`, `workspace`, `scenarios`, `studies`, `plugin_pages`, `templates`,
+`warmup`, `assets`, and `viewers`. The individual flat `app.state.*` attributes
+an earlier Studio exposed (`app.state.output_root`, `app.state.jobs`, …) are
+gone: one typed record means a mistyped name is a type error rather than an
+`AttributeError` at request time, and one process can host several Studio apps
+with different roots.
 
 ## URLs and API
 
@@ -344,8 +376,9 @@ client code is plain classic scripts under `silisocs/studio/static/`, served
 in `static/` that is not a vendored `*.min.js` bundle is published
 automatically, so adding a module is one file.
 
-A template contains **no JavaScript**. It carries at most two script tags: one
-JSON data island and one module.
+A template contains **no JavaScript**. It carries one JSON data island plus the
+page modules it needs — one for most pages, two for the composer pages, which
+add the shared `composer.js` alongside `scenario.js` / `study.js`.
 
 ```html
 <script type="application/json" id="studio-page-data">{{ {
@@ -366,6 +399,7 @@ never reconstructs a route from an id.
 | `panels.js` | every page (`<head>`) | the one **client** panel renderer + hydration of server-rendered figures/networks |
 | `studio.js` | every page (`<head>`) | shell: auth-attaching `fetch`, `apiFetch`/`apiError`/`withBusy`, theme toggle, toasts, command palette, repositories/settings, home observatory |
 | `runs.js` | run archive, run page, live page | platform viewer, process log, Watch stream, interactive run control |
+| `composer.js` | scenario composer, study page | the half both editors are the same program in: dirty state + unload guard, the compose round trip, the optimistic save/409-conflict flow |
 | `scenario.js` | scenario composer | form ⇄ YAML mirror, deferred choices, preflight, launch, history |
 | `study.js` | study page | study composer, live board refresh |
 | `explore.js` | all three Explore surfaces | run explore, study explore, run comparison |
@@ -379,13 +413,22 @@ what lets a page module's first response already reach `notify()` and
 which turns a non-ok response into a danger toast carrying the server's own
 `detail` and returns `null` so the caller stops rather than continuing on a body
 it never received. The API always answers `{"detail": ...}`, unhandled errors
-included — a global handler logs the traceback and returns the exception in that
-same envelope instead of a bare "Internal Server Error". Danger toasts persist
-until dismissed (success toasts still fade), a panel that cannot refresh says so
-in place of its previous render rather than leaving a stale chart looking fresh,
-and Save/Preflight/Launch hold their button (`withBusy`: disabled +
-`aria-busy`) for the round trip. Saves are the one deliberate exception to
-`apiFetch`: a 409 is the conflict dialog, not a toast.
+included — a global handler logs the traceback server-side and answers with the
+exception TYPE plus a pointer to that log, in the same envelope, instead of a
+bare "Internal Server Error" (the message itself can carry host paths and config
+values, so it stays in the log). Danger toasts persist until dismissed (success
+toasts still fade), a panel that cannot refresh says so in place of its previous
+render rather than leaving a stale chart looking fresh, and
+Save/Preflight/Launch hold their button (`withBusy`: disabled + `aria-busy`) for
+the round trip. Saves are the one deliberate exception to `apiFetch`: a 409 is
+the conflict dialog, not a toast.
+
+A **panel** 409 is not a failure either. The Watch tab renders a placeholder for
+a panel skipped only because an event stream is not yet recorded, and refreshes
+it when that stream grows; a panel needing two streams answers 409 until the
+second one lands. `refreshPanel` renders that 409's reason as the same
+awaiting-style note rather than an error, so the placeholder keeps saying what
+it is waiting for and stays refreshable.
 
 Page-level palette entries are declared as `paletteCommands` **data** in the
 island (an `action` names a global on the page's module), so their labels stay

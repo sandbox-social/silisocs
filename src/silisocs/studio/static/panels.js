@@ -271,11 +271,19 @@ window.refreshPanel = async section => {
     const response = await fetch(`${base}/panels/${name}?${panelQuery(name)}`);
     if (!response.ok) {
       // Leaving the previous render in place makes a stale chart look freshly
-      // refreshed, so the panel says what happened instead.
+      // refreshed, so the panel says what happened instead. A 409 is not a
+      // failure though: it means the panel still has nothing to say (a Watch
+      // placeholder requiring two streams, refreshed when only one grew), so
+      // it keeps saying that — and stays refreshable for when the rest lands.
       const note = document.createElement("p");
       note.className = "panel-note muted";
-      note.dataset.testid = "panel-error";
-      note.textContent = `This panel could not be refreshed: ${await apiError(response)}`;
+      if (response.status === 409) {
+        note.dataset.testid = "panel-awaiting";
+        note.textContent = await apiError(response);
+      } else {
+        note.dataset.testid = "panel-error";
+        note.textContent = `This panel could not be refreshed: ${await apiError(response)}`;
+      }
       body.replaceChildren(note);
       return;
     }

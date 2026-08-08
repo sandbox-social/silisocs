@@ -42,14 +42,13 @@ gm:
           network_type: predefined
           predefined_graph: {}
           predefined_graph_path: ${env.gm.backend.params.network_path}
+    # Activity gating lives on the sim layer since 0.4.0; the equivalent
+    # `activity_probability` rates are in conf/sim.yaml under
+    # sim.engine.participation (see docs/upgrading.md).
     next_acting:
-      built_in: activity_probability
+      built_in: all_agents
       class_path: null
-      params:
-        activity_transition_rates:
-          echo_user:
-            inactive_to_active: 1.0
-            active_to_inactive: 0.0
+      params: {}
     update:
       built_in: ${echo_update_component_built_in}
       class_path: ${echo_update_component_class_path}

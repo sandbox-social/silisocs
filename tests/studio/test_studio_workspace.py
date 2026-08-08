@@ -1,5 +1,4 @@
 """External project discovery and source-aware Studio behavior."""
-# ruff: noqa: D103, PLR2004
 
 from __future__ import annotations
 

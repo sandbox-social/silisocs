@@ -1,5 +1,4 @@
 """Console entry point for Silisocs Studio."""
-# ruff: noqa: PLC0415
 
 from __future__ import annotations
 

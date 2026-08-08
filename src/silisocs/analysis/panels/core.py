@@ -1,5 +1,4 @@
 """Core run-scope panels: health, activity, probes, agents, recent events."""
-# ruff: noqa: D101, D102
 
 from __future__ import annotations
 

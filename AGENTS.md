@@ -188,8 +188,10 @@ What a contributor needs to know beyond the config reference:
 - **The agent→flow mapping is materialized once.** Scheduling, component routing,
   probe targeting, and checkpoint reconciliation all read the same
   `agent_flow_tags`; derive from it rather than re-deriving flows.
-- **New traversal = new step strategy.** Adding a scheduling shape means writing
-  a `StepStrategy` and registering it, not adding a branch to an engine class.
+- **New traversal = new step strategy.** Adding a traversal means writing a
+  `StepStrategy` that composes the `SchedulingMixin`'s execution shapes and
+  registering it, not adding a branch to an engine class (see §2 for the one case
+  that does touch the mixin).
 - **A branch router is a plain callable**, not a subclass:
   `route(agents, gms, ctx) -> {agent name: chosen gm name}` (structural `Router`
   Protocol in `simulation_engines/policies/routers.py`, positional-only
@@ -533,8 +535,10 @@ semantics live in `environments/backends/event_semantics.py` (the declaring
 layer); `evaluations/vocabulary.py` re-exports them for analysis-side readers
 over the same registry. Layering is machine-enforced: import-linter contracts in
 `pyproject.toml` (pre-commit hook `lint-imports`) keep the runtime kernel
-(`runtime/{types,io,telemetry,class_loading,language_models}`) free of
-upper-layer imports and the package layers one-directional.
+(`runtime/{types,io,telemetry,class_loading,language_models,concurrency,model_fields,plugins,provenance,prompts}`)
+free of upper-layer imports and the package layers one-directional. The contract
+in `pyproject.toml` is the authority on that list; add a kernel module there, not
+only here.
 
 **Committed-only action log** (backend authors): `action_events.jsonl` is the
 canonical log of actions that committed a state change or performed a deliberate

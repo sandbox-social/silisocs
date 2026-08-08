@@ -7,6 +7,7 @@ through the matching helper here so those rules are stated once.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
@@ -28,6 +29,8 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 # with a stable id prefix — that is what makes a study board row's run
 # reference addressable as a run page at all.
 STUDY_RUN_PREFIX = "studies/"
+
+_log = logging.getLogger("silisocs.studio")
 
 
 def studies_root_is_separate(state: StudioState) -> bool:
@@ -110,19 +113,36 @@ def scenario_or_404(
         raise HTTPException(status_code=404, detail="Scenario not found") from exc
 
 
+def _parse_view_or_422(source: str | Path, view_name: str) -> Any:
+    """Parse a view document, turning an invalid one into 422 rather than 500.
+
+    A view file that exists but does not parse (an unimplemented ``layout``, a
+    missing ``scope``, malformed YAML) EXISTS — answering 404 would send the
+    author looking for the wrong problem, and letting the error escape 500s
+    every surface that resolves a view. So it is a 422 carrying the parser's own
+    message, which names what the document has to fix.
+    """
+    try:
+        return load_view(source)
+    except (ValueError, yaml.YAMLError) as exc:
+        raise HTTPException(
+            status_code=422, detail=f"View {view_name!r} is invalid: {exc}"
+        ) from exc
+
+
 def view_or_404(state: StudioState, view_name: str, scenario: str | None = None) -> Any:
     """Load a view by name from the built-ins plus a scenario's shipped views."""
     # The HTTP surface serves built-in views plus the run's scenario-shipped
     # views (an enumerated, repo-owned file set) — never a free-form path,
     # which would let a request read (and class_path-import) arbitrary files.
     if view_name in BUILTIN_VIEWS:
-        return load_view(view_name)
+        return _parse_view_or_422(view_name, view_name)
     shipped: dict[str, Path] = {}
     if scenario:
         for source in state.workspace.sources:
             shipped.update(scenario_view_files(scenario, source.scenario_root))
     if view_name in shipped:
-        return load_view(shipped[view_name])
+        return _parse_view_or_422(shipped[view_name], view_name)
     raise HTTPException(status_code=404, detail=f"Unknown view {view_name!r}")
 
 
@@ -133,15 +153,20 @@ def run_view_names(state: StudioState, artifact: Any) -> list[str]:
     market run has no Network tab and a social run has no Market tab.
     """
     scenario = artifact.scenario
+    shipped = scenario_view_files(scenario, state.scenarios.root) if scenario else {}
     candidates = [name for name, spec in BUILTIN_VIEWS.items() if spec["scope"] == "run"]
-    candidates.extend(scenario_view_files(scenario, state.scenarios.root) if scenario else ())
+    candidates.extend(shipped)
     names = []
     for name in candidates:
         try:
             view = view_or_404(state, name, scenario)
-        except (HTTPException, ValueError, OSError, yaml.YAMLError):
+        except (HTTPException, ValueError, OSError, yaml.YAMLError) as exc:
             # A scenario-shipped views/*.yaml can be malformed; skip that one
-            # candidate rather than 500 every tab of the run page.
+            # candidate rather than 500 every tab of the run page. Dropping it
+            # silently would leave the author with a view that simply never
+            # appears, so say which file and why — opening it still answers 422.
+            detail = getattr(exc, "detail", exc)
+            _log.warning("Skipping analysis view %s: %s", shipped.get(name, name), detail)
             continue
         if view_applies(view, artifact):
             names.append(name)
@@ -156,12 +181,18 @@ def study_view_or_404(state: StudioState, view_name: str, study: dict[str, Any])
     ``scope: study``) and every study using that scenario can select it —
     the same enumerated, repo-owned allowlist the run routes use. A view
     that resolves but is run-scope is a 404, never a scope error mid-build.
+
+    A view that resolves but does not PARSE is not "not found" either: its 422
+    is re-raised rather than retried as the next scenario's miss, so an invalid
+    view answers the same way here as it does on the run surfaces.
     """
     wrong_scope = False
     for scenario in (None, *study_scenario_names(study)):
         try:
             view = view_or_404(state, view_name, scenario)
-        except HTTPException:
+        except HTTPException as exc:
+            if exc.status_code != 404:
+                raise
             continue
         # A same-named run-scope view in one scenario must not shadow a
         # study-scope view of that name shipped by another — keep looking.

@@ -371,7 +371,7 @@ def organize_study_outputs(
         hyp_rows: list[dict[str, Any]] = []
 
         cond_map = hyp.get("conditions") or {}
-        for cond_id, _cond in cond_map.items():
+        for cond_id in cond_map:
             cond_records = [record for record in hyp_records if record.get("condition") == cond_id]
             for record in cond_records:
                 scenario = str(record.get("scenario", "")).strip() or "scenario"

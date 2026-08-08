@@ -118,6 +118,14 @@ bumps are listed in the release notes below when they happen.
               active_to_inactive: 0.3
   ```
 
+- **`flow_order: []` means "no serial prefix" (BREAKING, and silent).** An empty
+  list used to be indistinguishable from an absent key, so it collapsed back to
+  the default prefix (`["fixed_pre", "default"]`) and quietly reinstated the
+  barrier the scenario had deliberately removed. An explicit `[]` is now
+  preserved: every flow runs as an independent pipeline with no serial prefix. An
+  absent `flow_order` still gets the default. A non-list value (a bare string, a
+  number) now raises at build time instead of being coerced. If a scenario of
+  yours set `flow_order: []` and relied on the default, spell the two flows out.
 - **Unmatched activity rates fail the run (BREAKING for misconfigured runs).**
   Under `activity_probability` / `activity_markov`, every agent must match an
   `activity_transition_rates` entry (by agent name or sim role) declaring
@@ -144,6 +152,12 @@ bumps are listed in the release notes below when they happen.
   importing private `_helpers` from `run_study` must import them from their new
   module.
 
+- **`silisocs.runtime.execution.concurrency` moved to
+  `silisocs.runtime.concurrency` (BREAKING for direct importers).** The module is
+  a runtime-kernel helper (`run_tasks`, `EventLoopThread`) that layers above
+  `runtime.execution` already used, so it moved down to the kernel where the
+  import-linter contract can hold it. The old path was removed rather than
+  aliased; update the import.
 - **`output_rootname` was renamed to `output_dir` (BREAKING).** The key never named
   a *root* under which run directories were created — it named the run's output
   directory itself, and the runtime stamps the resolved path straight back onto it.
@@ -198,6 +212,32 @@ bumps are listed in the release notes below when they happen.
   logic as a module-level function, or set `provides_checkpoint_state = True` and
   self-restore from `get_state`/`set_state`. A restore that a stateless mapper
   cannot express is a custom `sim.checkpoint.restore.class_path` strategy.
+- **Unexpected backend failures are counted and re-raised (BREAKING for flaky
+  backends).** The shipped social backends wrapped their custom-mode action
+  dispatchers in `except Exception` and returned `Error performing <action>: ...`
+  as an ordinary observation, so a database failure was indistinguishable from a
+  rejected like — and `backend_action_errors` stayed at zero while nothing
+  landed. Those handlers now catch only `ValueError`, the platform's language for
+  a legitimate rejection (unknown user, missing post id). Anything else
+  increments `backend_action_errors` and re-raises into the engine's per-turn
+  isolation: the turn is lost and counted (`agent_turn_failures`), the step
+  continues. A run against a backend that raises unexpectedly therefore reports
+  degraded health where it used to report clean health, and records no action
+  where it used to record a failure message. A custom backend that raised a
+  non-`ValueError` for an expected rejection should raise `ValueError` instead.
+- **`@app_action` rejects unannotated parameters (BREAKING for custom
+  backends).** An action parameter with no type annotation used to fall back to
+  `Any`, which degraded to a bare string in the generated tool schema and to an
+  unparseable argument in generic mode. It now raises a `TypeError` at
+  class-definition time — i.e. at import, naming the method and the parameters —
+  so annotate every parameter of every `@app_action` method (`*args`/`**kwargs`
+  and `self` are exempt).
+- **A recommender that fails to initialize raises (BREAKING for incomplete
+  installs).** `init_recsys` failures were swallowed, so a missing optional
+  embedding dependency or an unsupported algorithm silently ran the whole
+  scenario with no recommender — the one thing it had configured. A configured
+  recsys type that cannot be initialized now raises. Install the extra, or drop
+  the recsys type from the config, to keep the run going.
 - **The `current_user` actor-argument alias is gone.** `agent_name` is the only
   runtime-injected actor parameter, and the anti-impersonation guard now covers
   exactly that name. A backend action that declared `current_user` never received
@@ -210,6 +250,21 @@ bumps are listed in the release notes below when they happen.
   answer or a raised routing call under `on_invalid: random|first`) increments the
   new `routing_fallbacks` [run-health counter](usage.md#run-health), alongside
   `harness_tool_failures`, which now also reaches run health and the manifest.
+- **Three more health counters, and a narrowed one.** `recsys_update_failures`
+  counts scheduled recommendation refreshes that failed (the run continues on the
+  previous rows, which is why this one is counted rather than raised — unlike an
+  *initial* `init_recsys` failure, above); `exposure_log_failures` counts
+  exposure rows that could not be written to `exposure_events.jsonl`, where a
+  bare `pass` used to hide the loss; and `action_argument_coercion_failures`
+  counts action arguments that did not match their declared parameter type and
+  were passed through as raw strings, which used to be folded into
+  `action_parse_failures` — so that counter now means only "the action was
+  dropped", and a run's `action_parse_failures` may read lower than on 0.3.0 for
+  the same behavior. All are ordinary
+  [run-health counters](usage.md#run-health): they appear in the run-end degraded
+  warning, `run_manifest.json`'s `health` block, and `RunArtifact.health`, so a
+  run that hits one now ends with a degraded-health warning it did not print
+  before.
 - **`effective_config.yaml` is redacted.** Both copies are written with every
   non-empty `api_key` masked as `**redacted**`, so a run directory is shareable
   even when a key was set in config rather than the environment. Nothing reads
@@ -217,8 +272,8 @@ bumps are listed in the release notes below when they happen.
 
 ### Only if you tracked `main` between releases
 
-Both knobs below were introduced and changed *within* the 0.4.0 development
-cycle. Neither ever appeared in a release, so nothing on 0.3.0 can hit them.
+Each item below was introduced and changed *within* the 0.4.0 development
+cycle. None ever appeared in a release, so nothing on 0.3.0 can hit them.
 
 - **`sim.engine.step.params.chain_execution` was removed.** The multi-GM flow-chain
   traversal mode is selected by `sim.engine.step.built_in` — `multi_gm`
@@ -226,6 +281,12 @@ cycle. Neither ever appeared in a release, so nothing on 0.3.0 can hit them.
   `multi_gm_staged` (column-major with a per-stage barrier). A config that still
   sets `chain_execution` raises a `ValueError` with a migration hint. Map the old
   value to the matching `built_in`.
+- **View `layout: tabs` is rejected.** The analysis view schema accepted
+  `grid`, `rows`, and `tabs`, but no tabbed renderer was ever written, so a view
+  asking for `tabs` was silently rendered as a grid. `parse_view` now raises
+  `View layout 'tabs' is not implemented; use grid or rows`. Change the view
+  document to `layout: grid` for the layout it was actually getting. See
+  [Analysis panels](analysis_panels.md).
 - **Branch routers are now plain callables.**
   A custom `{branch: {router: {class_path: ...}}}` router is no longer a `Router`
   subclass. The `Router` ABC, `RouteContext`, `RouterGMView`, and the
