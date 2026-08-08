@@ -11,7 +11,7 @@ from typing import Any
 
 import yaml
 
-from silisocs.studio.forms import ScenarioRepository
+from silisocs.studio.scenario_repository import ScenarioRepository
 
 
 class ScenarioNotFoundError(ValueError):

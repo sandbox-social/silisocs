@@ -20,7 +20,8 @@ from silisocs.simulation_engines.policies.participation import (
     ActivityMarkovParticipation,
     ActivityProbabilityParticipation,
 )
-from silisocs.studio.forms import _scenario_relative_files, compose_files
+from silisocs.studio.forms import compose_files
+from silisocs.studio.scenario_repository import scenario_relative_files
 
 # --- Composer: the components follow the backend --------------------------------
 
@@ -104,13 +105,13 @@ def test_group_variant_scenario_files_are_listed(tmp_path):
     (conf / "world" / "market.yaml").write_text("num_agents: 4\n")
     (conf / "env" / "market.yaml").write_text("gm: {}\n")
     (conf / "sim.yaml").write_text("action_mode: generic\n")
-    assert _scenario_relative_files(conf) == ["sim.yaml", "world/market.yaml", "env/market.yaml"]
+    assert scenario_relative_files(conf) == ["sim.yaml", "world/market.yaml", "env/market.yaml"]
 
 
 def test_the_shipped_non_social_scenario_is_visible_to_the_composer():
     from pathlib import Path
 
-    files = _scenario_relative_files(Path("scenarios/resource_market/conf"))
+    files = scenario_relative_files(Path("scenarios/resource_market/conf"))
     assert "world/resource_market.yaml" in files and "env/resource_market.yaml" in files
 
 

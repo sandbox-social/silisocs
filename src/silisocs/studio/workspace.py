@@ -15,7 +15,7 @@ from typing import Any
 
 import yaml
 
-from silisocs.studio.forms import ScenarioRepository
+from silisocs.studio.scenario_repository import ScenarioRepository
 
 _MANIFEST_NAMES = ("silisocs-studio.yaml", "silisocs-studio.yml")
 _MAX_NICKNAME_LENGTH = 64
