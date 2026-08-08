@@ -254,6 +254,7 @@ xfail_strict = true
 markers = [
   "llm_e2e: real-LLM end-to-end simulation tests (opt-in, expensive)",
   "subprocess: tests that shell out to a runner subprocess (slow; run by default, deselect with -m 'not subprocess')",
+  "browser: tests that drive a real browser (auto-skipped unless SILISOCS_SMOKE_CHROME/CHROME names a working Chromium)",
 ]
 
 [tool.ruff]  # https://github.com/charliermarsh/ruff

@@ -23,6 +23,7 @@ re-produced — by a person or a coding agent — whenever the product changes.
 | `assemble.py` | ffmpeg: title card + wait-segment speed-up + 720p H.264 |
 | `run_all.sh` | Orchestrates all of the above |
 | `chrome-wrapper.sh` | Optional launch shim for hosts that need a custom loader |
+| `smoke_studio.mjs` | Headless browser smoke of a live Studio (no recording) — the driver behind `tests/test_studio_browser_smoke.py` |
 
 ## Prerequisites
 
@@ -38,7 +39,7 @@ re-produced — by a person or a coding agent — whenever the product changes.
 
   ```sh
   uv run silisocs --config-path scenarios/misinformation/conf \
-      "++output_rootname=$PWD/outputs/misinformation/hero_run"
+      "++output_dir=$PWD/outputs/misinformation/hero_run"
   uv run silisocs-study --study experiments/studies/misinformation_cta_demo run --yes
   ```
 
@@ -59,6 +60,33 @@ Chromium. On hosts whose system libraries are too old for that binary
 `patchelf --set-interpreter <new ld.so> --set-rpath <new libdirs>` on a *copy*
 of the browser and pass that copy as `CHROME` (child processes re-exec
 `/proc/self/exe`, so patching beats wrapping).
+
+## Browser smoke (not a video)
+
+The same `playwright-core` install doubles as the repo's only browser-level
+test. `tests/test_studio_browser_smoke.py` starts a Studio server over a
+throwaway workspace (a copy of `scenarios/misinformation` pinned to the offline
+`scripted` provider and `num_steps: 2`, random port, temp state dir), then runs
+`smoke_studio.mjs` through home → scenarios → scenario editor → preflight → the
+UI **Launch** button → the live page → Play → the finished run's
+Overview/Watch/Analyze tabs, failing on any `console.error` or uncaught page
+error on any of them. No API key, ~12 s.
+
+```sh
+CHROME=/path/to/chromium uv run pytest tests/test_studio_browser_smoke.py -q
+```
+
+The browser is resolved from `SILISOCS_SMOKE_CHROME`, then `CHROME`, then
+`chrome-wrapper.sh` (configured via `SILISOCS_DEMO_CHROME` as above), and each
+candidate must actually answer `--version`. With none of them working the test
+**skips** — that is the CI default, and no host without a browser ever fails.
+
+To watch it happen, or to point it at a Studio you started yourself:
+
+```sh
+SMOKE_HEADED=1 STUDIO_URL=http://127.0.0.1:8765 CHROME=/path/to/chromium \
+    node demo/smoke_studio.mjs
+```
 
 ## Editing the videos
 
