@@ -292,7 +292,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
         with self.get_connection() as conn:
             orig = conn.execute("SELECT user_id FROM posts WHERE id = ?", (post_id,)).fetchone()
             if not orig:
-                raise ValueError("Post not found")
+                raise ValueError(f"Post {post_id} not found")
 
         queries = [
             (
@@ -322,7 +322,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
         with self.get_connection() as conn:
             orig = conn.execute("SELECT user_id FROM posts WHERE id = ?", (post_id,)).fetchone()
             if not orig:
-                raise ValueError("Post not found")
+                raise ValueError(f"Post {post_id} not found")
 
         queries = [
             (
@@ -351,7 +351,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
         with self.get_connection() as conn:
             orig = conn.execute("SELECT user_id FROM posts WHERE id = ?", (post_id,)).fetchone()
             if not orig:
-                raise ValueError("Post not found")
+                raise ValueError(f"Post {post_id} not found")
 
         queries = [
             (

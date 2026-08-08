@@ -376,7 +376,8 @@ class SqliteSocialEngineBase:
         sender_id = self.get_user_id(username)
         receiver_id = self.get_user_id(target_username)
         if not sender_id or not receiver_id:
-            raise ValueError("User not found")
+            missing = username if not sender_id else target_username
+            raise ValueError(f"send_dm: user '{missing}' not found")
 
         with self.get_connection() as conn:
             if conn.execute(
@@ -400,7 +401,8 @@ class SqliteSocialEngineBase:
         user_id = self.get_user_id(username)
         target_id = self.get_user_id(target_username)
         if not user_id or not target_id:
-            raise ValueError("User not found")
+            missing = username if not user_id else target_username
+            raise ValueError(f"view_dms_with: user '{missing}' not found")
 
         with self.get_connection() as conn:
             rows = conn.execute(
@@ -431,7 +433,8 @@ class SqliteSocialEngineBase:
         blocker_id = self.get_user_id(username)
         blocked_id = self.get_user_id(target_username)
         if not blocker_id or not blocked_id:
-            raise ValueError("User not found")
+            missing = username if not blocker_id else target_username
+            raise ValueError(f"unblock: user '{missing}' not found")
 
         queries = [
             ("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (blocker_id, blocked_id))

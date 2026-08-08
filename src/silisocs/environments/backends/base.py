@@ -231,7 +231,10 @@ class Parameter:
             return self.parse_union_type(text, args)
         if origin is list:
             return self._parse_list_argument(text)
-        raise ValueError(f"Unsupported type {self.kind}")
+        raise ValueError(
+            f"Unsupported parameter type {self.kind!r} for {self.name!r} "
+            "(supported: str, int, float, bool, list, and Optional/Union of these)"
+        )
 
     def parse_union_type(self, value: str, types: tuple[type, ...]) -> Any:
         """Parse a value from a string, trying each type in the union."""
