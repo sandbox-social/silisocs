@@ -336,8 +336,17 @@ engine:
           active_to_inactive: 0.3
 ```
 
-The activity model uses a two-state Markov process: each step, an agent
-transitions between active and inactive states. Only active agents take actions.
+Only active agents take actions. Two built-in activity models read these rates:
+
+- `activity_probability` (shown above) draws each agent independently every
+  step — `inactive_to_active` is the per-step probability of being active, so
+  the example keeps each agent active ~30% of steps.
+- `activity_markov` runs a two-state Markov chain per agent: each step an
+  active agent goes inactive with `active_to_inactive`, an inactive one
+  activates with `inactive_to_active` (long-run active share
+  `on / (on + off)` — 50% in the example).
+
+A rates entry may declare either key; the missing one mirrors the declared one.
 
 ---
 
@@ -460,8 +469,12 @@ See [Evaluation Probes](probes.md) for details.
 Each simulation run produces output under the Hydra-managed directory:
 
 ```
-outputs/<scenario_name>/<jobname>/<jobname>_<timestamp>/
+outputs/<scenario_name>/N<num_agents>_T<num_steps>_<experiment_name>_<run_name>/
 ```
+
+(for example `outputs/default/N10_T5_independent_run1` — the job name is the
+`jobname_format` template from the world config, with no timestamp component;
+re-running the same parameters reuses the directory).
 
 ### Output Files
 

@@ -12,6 +12,9 @@ The scenario is the stage; the study is the experiment.
 **Shortcut:** If you are using a repo-aware coding agent such as Codex, Claude
 Code, Cursor, or another agent that can read `AGENTS.md`, ask it to follow
 `agent_docs/skills/new-study.md` for an interactive `/new-study`-style workflow.
+The workflow ends by calling `silisocs new-study --from-spec-json '<spec>'`,
+which writes the validated study files — you can also call it directly with a
+hand-written spec (`silisocs new-study --help`).
 
 ---
 

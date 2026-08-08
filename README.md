@@ -8,14 +8,18 @@
 **A configurable, extensible framework for multi-agent social simulation and experimentation.**
 
 SiliSocS (Silicon Society Sandbox) is easy to use and is structured around the EASE decomposition (Environment,
-Agents, Simulation engine, and Evaluation), taking inspiration from the Concordia framework and providing a
-principled, reproducible configuration layer for simulated worlds. You define each axis in YAML: the environment
-agents inhabit, the agent population and their memories, the simulation engine that schedules how and when agents
-act, and the evaluation that measures them. Built-in environments span social platforms (a Twitter-like app, a
-Reddit-like app, and a real Mastodon server), a resource market, and a virtual space, and you can add your own.
-SiliSocS offers scenario-driven grounding, game master-mediated environments, local and served backends,
-evaluation probes, runtime telemetry, and experimental study tooling. Interoperability for Concordia-designed
-agents is available through an optional bridge extra.
+Agents, Simulation engine, and Evaluation), providing a principled, reproducible configuration layer for
+simulated worlds. You define each axis in YAML: the environment agents inhabit, the agent population and their
+memories, the simulation engine that schedules how and when agents act, and the evaluation that measures them.
+Built-in environments span social platforms (a Twitter-like app, a Reddit-like app, and a real Mastodon server),
+a resource market, and a virtual space, and you can add your own. SiliSocS offers scenario-driven grounding,
+environments mediated by a game master (the referee component that shows each agent its view of the world and
+turns its responses into platform actions), local and served backends, evaluation probes, runtime telemetry, and
+experimental study tooling. Agents designed for DeepMind's Concordia framework — an inspiration for this project
+— can be reused through an optional compatibility bridge; Concordia is not required.
+
+New here? See the [Glossary](https://sandbox-social.github.io/silisocs/glossary/) for the handful of terms the
+docs use (scenario, run, step, game master, probe, flow, ...).
 
 - 2026 ICML Position Paper [ICML 2026](https://www.complexdatalab.com/stamina/papers/puelmatouzel_CloseEvalGap.pdf)
 - 2026 EASE Configuration: [arXiv:2605.30258](https://arxiv.org/abs/2605.30258)
@@ -56,7 +60,8 @@ uv sync --all-extras --group dev --group docs
 
 ## Quick Start
 
-Run the built-in package default scenario:
+Run the built-in package default scenario (`uv run silisocs` from a repo
+checkout; plain `silisocs` after `pip install silisocs`):
 
 ```sh
 uv run silisocs
@@ -66,6 +71,14 @@ For a local smoke test without model API calls:
 
 ```sh
 uv run silisocs sim.llm.provider=scripted
+```
+
+Two guided commands verify your setup and walk a complete run end to end —
+no API key needed:
+
+```sh
+uv run silisocs doctor
+uv run silisocs tutorial
 ```
 
 Override scale or model settings with Hydra dot notation:
@@ -99,7 +112,8 @@ uv run silisocs --config-path scenarios/resource_market/conf world=resource_mark
 uv run silisocs --config-path scenarios/virtual_space/conf world=virtual_space agents=virtual_space env=virtual_space
 ```
 
-Outputs are written under `outputs/<scenario_name>/<jobname>/` and include
+Outputs are written under `outputs/<scenario_name>/<jobname>/` (for example
+`outputs/default/N10_T5_independent_run1/`) and include
 `action_events.jsonl`, `probe_events.jsonl`, `prompts_and_responses.jsonl`,
 `sim_metrics.json`, a resolved Hydra config snapshot, and a local
 SQLite backend database for local platforms.

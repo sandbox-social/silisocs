@@ -9,7 +9,9 @@ it. The semantic world description for a scenario lives in
 **Shortcut:** If you are using a repo-aware coding agent such as Codex, Claude
 Code, Cursor, or another agent that can read `AGENTS.md`, ask it to follow
 `agent_docs/skills/new-scenario.md` for an interactive `/new-scenario`-style
-workflow.
+workflow. The workflow ends by calling `silisocs new-scenario
+--from-spec-json '<spec>'`, which writes the validated config files — you can
+also call it directly with a hand-written spec (`silisocs new-scenario --help`).
 
 ---
 

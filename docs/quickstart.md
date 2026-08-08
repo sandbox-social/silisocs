@@ -1,6 +1,7 @@
 # Quick Start
 
-Run and inspect your first simulation in 5 minutes.
+Run and inspect your first simulation in 5 minutes. Unfamiliar words along the
+way (scenario, run, step, probe, ...) are defined in the [Glossary](glossary.md).
 
 ## Prerequisites
 
@@ -56,7 +57,9 @@ See [Configuration Reference](configuration.md) for detailed configuration optio
 
 ## 2. Check the Output
 
-Simulation output is saved to `outputs/default/<jobname>/<timestamp>/`:
+Simulation output is saved to
+`outputs/<scenario_name>/N<num_agents>_T<num_steps>_<experiment_name>_<run_name>/`
+(for the default run above: `outputs/default/N10_T5_independent_run1/`):
 
 | File | Content |
 |------|---------|

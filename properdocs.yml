@@ -100,6 +100,7 @@ nav:
   - Getting Started:
     - Installation: installation.md
     - Quick Start: quickstart.md
+    - Glossary: glossary.md
     - Upgrading: upgrading.md
   - User Guide:
     - Usage Overview: usage.md

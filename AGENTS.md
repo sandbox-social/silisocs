@@ -16,7 +16,8 @@ compatibility bridge for legacy scenarios. It has:
 
 The runtime entrypoint is:
 
-- `src/silisocs/runtime/runner.py`
+- `src/silisocs/runtime/execution/session.py` (`runner.py` is a thin re-export
+  shim kept for the `python -m silisocs.runtime.runner` invocation)
 
 ## 2) High-Level Architecture
 
@@ -75,7 +76,7 @@ Core runtime layers:
 - To add custom backend: subclass `SocialBackendApp`, implement action methods, register in app factory
 
 ### 6. Runtime Orchestration
-- `src/silisocs/runtime/runner.py` — CLI entrypoint, Hydra config composition
+- `src/silisocs/runtime/execution/session.py` — CLI entrypoint, Hydra config composition
 - `src/silisocs/runtime/configuration/` — Config projection, external config
   loading, and validation
 - `src/silisocs/runtime/execution/session.py` — Runtime assembly, simulation
@@ -548,17 +549,11 @@ Providers that speak an OpenAI-compatible HTTP API should subclass
 
 ### Validation & Error Handling
 
-Game master initialization (`src/silisocs/environments/gm/game_master.py`) validates agents:
-
-```python
-# Checks at GM build time:
-for entity in self.entities:
-    assert hasattr(entity, 'name'), f"{entity} missing 'name' attribute"
-    assert hasattr(entity, 'observe'), f"{entity} missing 'observe' method"
-    assert hasattr(entity, 'act'), f"{entity} missing 'act' method"
-```
-
-Runner validates direct class construction, so **missing methods fail fast**.
+Agent construction (`src/silisocs/runtime/construction/assembly.py`) validates
+every built agent: a `class_path` that does not produce a native
+`silisocs.agents.base_agent.Agent` raises a `TypeError` at build time (naming
+the class and pointing at `compat: concordia` for Concordia-shaped agents), so
+**missing methods fail fast** — before any LLM call.
 
 ### Multi-Action Support (Open-Ended Policy)
 
@@ -878,7 +873,7 @@ When adding features, update docs in:
 
 Start from these files to understand the flow:
 
-1. **Config composition**: `src/silisocs/runtime/runner.py` — How Hydra merges configs
+1. **Config composition**: `src/silisocs/runtime/execution/session.py` (`cli_main`/`main`) — How Hydra merges configs
 2. **Simulation orchestration**: `src/silisocs/runtime/execution/session.py` — Full workflow
 3. **Engine execution**: `src/silisocs/simulation_engines/base_engines.py` — Episode loop
 4. **Game master**: `src/silisocs/environments/gm/game_master.py` — Simple preset
