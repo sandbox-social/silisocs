@@ -231,10 +231,29 @@ def build_run_control(
     if not isinstance(control_cfg, Mapping):
         return None, None
     mode = str(control_cfg.get("built_in") or "none").strip()
-    if mode == "none":
+    class_path = str(control_cfg.get("class_path") or "").strip()
+    if not class_path and mode == "none":
         return None, None
     start_paused = bool(control_cfg.get("start_paused"))
     gate = StepGate(target=0 if start_paused else None)
+    if class_path:
+        # Custom controller (any transport — HTTP, message queue, ...): a class
+        # constructed with the shared gate plus its params, driving the run
+        # through the gate's primitives exactly like the built-ins. Must expose
+        # start()/close(), checked here rather than as an AttributeError mid-run.
+        from silisocs.runtime.class_loading import load_class
+
+        controller = load_class(class_path, what="run controller")(
+            gate, **dict(control_cfg.get("params") or {})
+        )
+        for required in ("start", "close"):
+            if not callable(getattr(controller, required, None)):
+                raise TypeError(
+                    f"sim.engine.control.class_path {class_path!r} must define "
+                    f"a callable {required}() (the engine starts it before the "
+                    "loop and closes it in the run's finally)."
+                )
+        return gate, controller
     if mode == "stdin":
         return gate, StdinController(gate)
     if mode == "control_file":

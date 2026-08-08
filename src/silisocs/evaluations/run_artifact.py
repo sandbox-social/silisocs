@@ -18,7 +18,8 @@ import yaml
 
 from silisocs.evaluations.vocabulary import HEALTH_COUNTERS
 
-_HEALTH_COUNTERS = tuple(HEALTH_COUNTERS)
+# NOTE: iterate HEALTH_COUNTERS at use time — it is a live registry
+# (register_health_counter), so an import-time snapshot would miss plugins.
 
 
 def iter_jsonl(files: list[Path]) -> Iterator[dict[str, Any]]:
@@ -105,7 +106,7 @@ class RunArtifact:
         source = self.manifest.get("health")
         if not isinstance(source, dict):
             return {}
-        health = {name: int(source.get(name, 0) or 0) for name in _HEALTH_COUNTERS}
+        health = {name: int(source.get(name, 0) or 0) for name in HEALTH_COUNTERS}
         silent = source.get("silent_backends")
         if isinstance(silent, list):
             health["silent_backends"] = len(silent)

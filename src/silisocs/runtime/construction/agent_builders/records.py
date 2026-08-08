@@ -58,12 +58,25 @@ class RecordLoader:
             records = self.load_jsonl(path, max_records=max_records)
         elif source == "hf_dataset":
             records = self.load_hf_dataset(data_cfg, max_records=max_records)
-        else:
+        elif source == "local_json":
             path = data_cfg.get("path") or data_cfg.get("dataset")
             if not path:
                 raise ValueError(f"{source} source requires a `path` or `dataset` field")
             with open(self.resolve_file_path(str(path))) as f:
                 records = json.load(f)
+        elif "." in str(source):
+            # Custom source: a dotted path to a callable
+            # ``(data_cfg, max_records=None) -> records`` — the same plain-
+            # callable seam as branch routers, no base class to subclass.
+            from silisocs.runtime.class_loading import load_attr
+
+            records = load_attr(str(source))(data_cfg, max_records=max_records)
+        else:
+            raise ValueError(
+                f"Unknown persona data source {source!r}. Built-ins: inline, "
+                "config_path, csv, jsonl, hf_dataset, local_json; or a dotted "
+                "path to a callable (data_cfg, max_records=None) -> records."
+            )
 
         records = to_plain(records)
         if isinstance(records, dict):

@@ -24,3 +24,8 @@ hydra:
       _target_: silisocs.runtime.configuration.validation.RunDirInterpolationCheck
 
 experiment_name: independent
+
+# Modules imported before validation so their registrations (LLM providers,
+# replay mappers, panels, health counters, ...) are reachable from YAML-only
+# runs: plugins: [mypkg.silisocs_setup]
+plugins: []

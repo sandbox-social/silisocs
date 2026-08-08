@@ -73,7 +73,13 @@ persona_pipeline:
 | `local_json` | `path` | Local JSON file (array of objects) |
 | `inline` | `records` | Records defined directly in YAML |
 | `config_path` | `path` | Dot-path into another config section (e.g. `candidates`) |
+| `csv` | `path` | Local CSV file (one record per row) |
+| `jsonl` | `path` | Local JSONL file (one record per line) |
 | `hf_dataset` | `dataset`, `split`, `subset` | Hugging Face dataset; requires `silisocs[hf]` |
+| a dotted path | (yours) | Custom source: a callable `(data_cfg, max_records=None) -> records` — e.g. `source: mypkg.sources.load_cohort` |
+
+An unrecognized bare source name is a config error (it is never treated as a
+file path).
 
 ### Field Mapping
 
@@ -131,12 +137,18 @@ Python builder class and point `agents.builder.class_path` at it.
 ```yaml
 agents:
   builder:
-    class_path: worlds.my_world.builders.MyWorldAgentBuilder
+    class_path: scenarios.my_world.builders.MyWorldAgentBuilder
     params:
       cohort: pilot
 ```
 
-`class_path: null` uses `PersonaPipelineAgentBuilder`.
+`class_path: null` uses `PersonaPipelineAgentBuilder`. The runner puts the
+project root on `sys.path`, so a builder living at
+`scenarios/my_world/builders.py` resolves as
+`scenarios.my_world.builders.<Class>` (implicit namespace packages — no
+`__init__.py` needed) from a plain `silisocs` invocation and from Studio
+alike. Any other importable module works too (e.g. an installed package,
+optionally imported via the top-level `plugins:` config list).
 
 ### Example
 

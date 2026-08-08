@@ -73,6 +73,7 @@ from silisocs.runtime.execution.manifest import backend_committed_nothing, write
 from silisocs.runtime.execution.resume import plan_checkpoint_resume
 from silisocs.runtime.execution.run_events import RunEventLog
 from silisocs.runtime.io import configure_logging
+from silisocs.runtime.plugins import load_plugins
 from silisocs.runtime.telemetry import (
     SimMetricsCollector,
     collect_usage_summary,
@@ -134,9 +135,13 @@ def _initialize_runtime_environment() -> Path:
     if project_root != Path.cwd():
         os.chdir(project_root)
 
-    src_path = project_root / "src"
-    if src_path.is_dir() and str(src_path) not in sys.path:
-        sys.path.insert(0, str(src_path))
+    # Make BOTH the src layout and scenario-local code importable: with the
+    # project root on sys.path, `scenarios/<name>/builders.py` resolves as
+    # `scenarios.<name>.builders` (implicit namespace packages) from a plain
+    # CLI invocation — not only under Studio, which patches the path itself.
+    for extra in (project_root / "src", project_root):
+        if extra.is_dir() and str(extra) not in sys.path:
+            sys.path.insert(0, str(extra))
 
     print(f"Config directory: {CONF_DIR}")
     return project_root
@@ -189,6 +194,10 @@ def _setup_run_environment(
 
     configure_logging(logger)
     cfg = merge_external_group_overrides(cfg)
+    # Import plugin modules (config `plugins:` list + silisocs.plugins entry
+    # points) BEFORE validation, so registered providers/mappers/components
+    # resolve like built-ins everywhere downstream.
+    load_plugins(cast(Any, OmegaConf.select(cfg, "plugins", default=None)))
     RuntimeProjection.from_cfg(cfg)
     return cfg, metrics, logger
 

@@ -37,8 +37,8 @@ logger = logging.getLogger(__name__)
 MANIFEST_FILENAME = "run_manifest.json"
 MANIFEST_SCHEMA_VERSION = 1
 
-# Degraded-run counters surfaced as run health (registry: evaluations.vocabulary).
-_HEALTH_COUNTERS = tuple(HEALTH_COUNTERS)
+# Degraded-run counters surfaced as run health: iterate the live registry
+# (evaluations.vocabulary.register_health_counter) at use time, never snapshot.
 
 
 def _portable_event_semantics(value: Any) -> dict[str, Any] | None:
@@ -191,7 +191,7 @@ def build_run_manifest(
         "game_masters": [_game_master_record(gm, out) for gm in (game_masters or [])],
         "llm_usage": meta.get("llm_usage"),
         "health": {
-            **{name: int(counters.get(name, 0)) for name in _HEALTH_COUNTERS},
+            **{name: int(counters.get(name, 0)) for name in HEALTH_COUNTERS},
             "silent_backends": _silent_backend_names(game_masters or []),
         },
         "artifacts": artifacts,

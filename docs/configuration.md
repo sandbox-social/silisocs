@@ -49,6 +49,26 @@ Override from the CLI:
 uv run silisocs env=reddit_like num_agents=500
 ```
 
+### Plugins
+
+Every registry in the framework (`register_llm_provider`,
+`register_replay_mapper`, `register_event_semantics`,
+`register_health_counter`, analysis `register_panel`, ...) needs your module
+imported before the run starts. Two mechanisms, no core edits:
+
+```yaml
+# Top-level config: load-bearing, fails the run if an import fails.
+plugins:
+  - mypkg.silisocs_setup
+```
+
+Installed packages may instead declare a `silisocs.plugins` entry point in
+their own packaging metadata; those modules are imported automatically on
+every run (a broken one warns and is skipped, so one bad installed package
+cannot take down unrelated runs). The runner also puts the project root on
+`sys.path`, so scenario-local modules (`scenarios/<name>/builders.py` →
+`scenarios.<name>.builders`) are importable without any of this.
+
 ---
 
 ## Run Parameters (`world/default.yaml`)
