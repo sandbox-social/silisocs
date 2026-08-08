@@ -39,10 +39,24 @@ experiments/
               run -> <simulation output directory>
               eval.json -> <primary evaluator output>
               eval/{eval_id}/...
-      runs/                             # Optional study-owned simulation output root
+      runs/                             # Study-owned simulation output root (default)
+        {hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run/
+                                        # One run directory per expanded run row
+          run_manifest.json             # ... and the usual run artifacts
+          RUN_COMPLETE.json             # Marker written when the run finishes
 
-outputs/                                # Default simulation output root (gitignored)
+outputs/                                # Simulation output root for plain CLI runs (gitignored)
 ```
+
+Study run directories are **not** timestamped and are not nested under a
+`jobname_format` level: the study runner passes each expanded run an explicit
+`++output_dir=experiments/studies/{study_id}/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run`,
+and a non-empty `output_dir` overrides Hydra's per-run path entirely (see
+[Output Configuration](configuration.md#output-configuration)). That is what
+makes a run's location a pure function of its coordinates in the grid — so
+re-running a row replaces it in place, and `organize` can symlink to it without
+a lookup. To point runs somewhere else, set
+[`output_root_override`](experiments.md#templating-and-placeholders) instead.
 
 `study.yaml` is the single source of truth: it defines the scientific hierarchy
 *and* maps conditions to concrete run/eval paths. It is authored by the user and
@@ -59,7 +73,7 @@ or a study-specific `output_root_override`.
 | Study name | `snake_case` | `style_diversity` |
 | Hypothesis ID | `h{N}_{short_name}` | `h1_model_capacity` |
 | Condition directory | `{iv}={value}` | `sim.llm.name=gpt-4o-mini` |
-| Run directory | `run_{ISO timestamp}` | `run_2026-02-06T23-50-55` |
+| Run directory | `{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run` | `h1_model_capacity/sim.llm.name=gpt-4o-mini/style_forum/seed_11/run` |
 | Notebook file | `notebook.ipynb` (inside study dir) | `experiments/studies/style_diversity/notebook.ipynb` |
 
 The `{iv}={value}` convention (inspired by Hive-style partitioning) makes the independent variable and its level readable from the path alone.
@@ -227,7 +241,7 @@ hypothesis and is the primary data source for per-hypothesis notebook sections.
   {
     "condition": "gpt4o-mini",
     "scenario": "ai_conference",
-    "checkpoint": "outputs/ai_conference_experiment/2026-02-06_23-50-55/checkpoints/step_10_checkpoint.json",
+    "checkpoint": "outputs/ai_conference/N30_T10_independent_run1/ai_conference_2026-02-06_23-50-55/checkpoints/step_10_checkpoint.json",
     "agents": {
       "Agent Name": { "self_bleu": 0.32, "lexical_diversity": 0.30, ... }
     },
@@ -272,7 +286,7 @@ Each entry also carries an `aggregated_stats` map (empty when a run has fewer th
 Frozen snapshot of the run configuration. Captures everything needed to reproduce the run.
 
 ```yaml
-source: outputs/ai_conference_experiment/2026-02-07_09-43-11
+source: outputs/ai_conference/N30_T10_independent_run1/ai_conference_2026-02-07_09-43-11
 model_name: gpt-4o
 model_config: gpt4o
 scenario: ai_conference
@@ -426,7 +440,7 @@ The script finds the latest checkpoint automatically (`step_N` with largest N). 
 
 ```json
 {
-  "source": "outputs/misinformation/.../run_dir",
+  "source": "outputs/misinformation/N20_T10_independent_run1/misinformation_2026-02-06_23-50-55",
   "agents": {
     "Alice": { "self_bleu": 0.05, "lexical_diversity": 0.45, ... },
     ...
@@ -573,7 +587,7 @@ hypotheses:
           runs:
             - scenario: ai_conference
               seed: 42
-              source: outputs/ai_conference_experiment/2026-02-06_23-50-55
+              source: outputs/ai_conference/N30_T10_independent_run1/ai_conference_2026-02-06_23-50-55
               eval:   outputs/eval_style_diversity/baseline/ai_conference/eval.json
       temperature=1.0:
         overrides:
@@ -604,4 +618,7 @@ hypotheses:
 
 ### Adding replicate runs
 
-Multiple `run_{timestamp}/` directories under the same `{iv}={condition}/{scenario}/` path represent replicate runs (e.g. different seeds). The analysis pipeline should average across replicates when computing `summary.json`, and the notebook should show replicate variance where available.
+Replicates are seeds: the `seed_{seed}/run` directories under the same
+`{hypothesis_id}/{condition_id}/{scenario}/` path are replicate runs of one
+condition. The analysis pipeline should average across them when computing
+`summary.json`, and the notebook should show replicate variance where available.

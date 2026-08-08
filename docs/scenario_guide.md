@@ -42,10 +42,11 @@ This file describes where the simulation takes place and what is happening.
 
 scenario_name: my_world
 jobname_format: "MyScenario_N${num_agents}_T${num_steps}_${run_name}"
-num_agents: 9
+num_agents: 3
 num_steps: 10
 seed: 42
 run_name: my_world
+output_dir: ""           # empty = Hydra's per-run output directory (recommended)
 
 setting:
   name: "Riverside Heights Community Forum"
@@ -65,7 +66,14 @@ event:
 - Keep `background` to 4 to 6 bullets. These become shared memories for all agents.
 - The `context` sentence goes into every agent's initial awareness, make it
   the thing they are actually responding to.
-- `num_agents` must equal the total count across all your agent classes (Step 2).
+- `num_agents` must equal the total `count` across all your agent classes
+  (Step 2 below builds `1 + 2 = 3`). It is a *declared total* used for the
+  output directory name and run metadata — the class counts are what actually
+  build agents, and the runner warns when the two disagree. See
+  [`num_agents` vs. per-class `count`](configuration.md#num_agents-vs-per-class-count).
+- Every scenario world file must re-declare all of these keys, `output_dir`
+  included: a scenario `world/default.yaml` **replaces** the packaged one rather
+  than merging into it.
 
 ---
 

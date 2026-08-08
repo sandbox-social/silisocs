@@ -3,13 +3,13 @@
 This page tracks what the documentation covers, where it is stale, and which
 runtime surfaces need explicit docs before they should be treated as stable.
 
-Last reviewed: 2026-07-29.
+Last reviewed: 2026-08-08.
 
 ## Coverage Matrix
 
 | Area | Source of truth | Primary docs | Status |
 |---|---|---|---|
-| Runtime entrypoint and config composition | `src/silisocs/runtime/runner.py`, `src/silisocs/conf/` | [Configuration](configuration.md), [Usage](usage.md) | Covered; keep examples synced with packaged defaults |
+| Runtime entrypoint and config composition | `src/silisocs/runtime/execution/session.py` (`runner.py` is a thin re-export shim), `src/silisocs/conf/` | [Configuration](configuration.md), [Usage](usage.md) | Covered; keep examples synced with packaged defaults |
 | Agent runtime and persona pipeline | `src/silisocs/agents/` | [Building Agents](building_agents.md), [Simulation Extensibility API](simulation_extensibility_api.md) | Covered; custom runtime checkpointing should stay visible |
 | Backend app contract | `src/silisocs/environments/backends/base.py`, `factory.py` | [Backends](backends.md), [Environment Layer](environment_layer.md) | Covered; `BackendApp` is the core contract |
 | Timeline/recsys capability interface | `twitter_like/`, `reddit_like/`, `mastodon/` | [Backends](backends.md), [Configuration](configuration.md) | Covered; `SocialBackendApp` wording is capability-scoped |

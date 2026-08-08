@@ -47,7 +47,7 @@
 
 <div class="section-head"><div><p class="eyebrow">Latest runs</p><h2>Recent runs</h2></div><a class="text-action" href="/runs">Explore the archive <svg><use href="#icon-arrow"/></svg></a></div>
 {% if runs %}
-<div class="run-list trajectory-list">
+<div class="run-list">
 {% for record in runs %}
   <a class="run-row" href="/runs/{{ record.id }}">
     <span class="run-index">{{ '%02d'|format(loop.index) }}</span>

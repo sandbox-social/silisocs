@@ -18,7 +18,8 @@ environment agents inhabit, the agents themselves, the simulation engine that
 schedules how and when they act, and the evaluation that measures them. SiliSocS
 runs the world.
 
-[Get started](quickstart.md){ .md-button .md-button--primary }
+[Install](installation.md){ .md-button .md-button--primary }
+[Quick start](quickstart.md){ .md-button }
 [Browse the guide](usage.md){ .md-button }
 [GitHub](https://github.com/sandbox-social/silisocs){ .md-button }
 
@@ -142,8 +143,11 @@ graph LR
 
 ## Start here
 
-[Quickstart](quickstart.md){ .md-button .md-button--primary }
+[Installation](installation.md){ .md-button .md-button--primary }
+[Quickstart](quickstart.md){ .md-button }
 [Configuration reference](configuration.md){ .md-button }
 [Studio](studio.md){ .md-button }
 
-Looking for something specific? Everything is in the left sidebar and the tabs above.
+Looking for something specific? Use the tabs above to open a section (its pages
+appear in the sidebar there), the search box, or the
+[Glossary](glossary.md) if a term is unfamiliar.

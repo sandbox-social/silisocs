@@ -42,13 +42,15 @@ pip install silisocs
 Optional integrations are exposed as extras:
 
 ```sh
-pip install "silisocs[hf]"        # Hugging Face persona sources
-pip install "silisocs[mastodon]"  # real Mastodon backend
 pip install "silisocs[studio]"    # unified visual workspace
 pip install "silisocs[analysis]"  # notebooks and extended analysis
-pip install "silisocs[concordia]" # optional Concordia bridge
-pip install "silisocs[hpc]"       # optional Submitit/Slurm study helpers
+pip install "silisocs[hf]"        # Hugging Face persona sources
+pip install "silisocs[mastodon]"  # real Mastodon backend
+pip install "silisocs[all]"       # every extra except aws (includes docs)
 ```
+
+The full extra-by-extra table (`recsys`, `concordia`, `hpc`, `aws`, `docs`, ...)
+is in [docs/installation.md](docs/installation.md).
 
 For contributor work from a checkout:
 
@@ -112,11 +114,14 @@ uv run silisocs --config-path scenarios/resource_market/conf world=resource_mark
 uv run silisocs --config-path scenarios/virtual_space/conf world=virtual_space agents=virtual_space env=virtual_space
 ```
 
-Outputs are written under `outputs/<scenario_name>/<jobname>/` (for example
-`outputs/default/N10_T5_independent_run1/`) and include
-`action_events.jsonl`, `probe_events.jsonl`, `prompts_and_responses.jsonl`,
-`sim_metrics.json`, a resolved Hydra config snapshot, and a local
-SQLite backend database for local platforms.
+Outputs are written under
+`outputs/<scenario_name>/<jobname_format>/<scenario_name>_<timestamp>/` (for
+example `outputs/default/N10_T5_independent_run1/default_2026-05-01_12-30-00/`)
+and include `run_manifest.json`, `action_events.jsonl`, `probe_events.jsonl`,
+`prompts_and_responses.jsonl`, `sim_metrics.json`, `effective_config.yaml`, and
+a local SQLite backend database for local platforms. The timestamped leaf means
+re-running the same parameters never overwrites a previous run. See
+[docs/usage.md](docs/usage.md) for the full list.
 
 ## Studies and Experiments
 
@@ -141,10 +146,12 @@ study runner's `submitit` or `slurm-array` commands. Start with
 
 ## Architecture
 
-The canonical runtime entry point is `src/silisocs/runtime/runner.py`. It
-composes Hydra configuration, builds agents, initializes memory, constructs the
-environment backend and game master, runs the simulation engine, and writes
-artifacts.
+The canonical runtime entry point is
+`src/silisocs/runtime/execution/session.py`. It composes Hydra configuration,
+builds agents, initializes memory, constructs the environment backend and game
+master, runs the simulation engine, and writes artifacts.
+(`src/silisocs/runtime/runner.py` is a thin re-export shim kept so
+`python -m silisocs.runtime.runner` keeps working.)
 
 ```text
 silisocs/
@@ -154,7 +161,7 @@ silisocs/
 │   ├── studio/              # Unified visual workspace and control plane
 │   ├── environments/        # Game masters and environment backends
 │   ├── evaluations/         # Probes, telemetry, and optional analysis tools
-│   ├── runtime/             # Runner, config projection, and orchestration
+│   ├── runtime/             # Session entrypoint, config projection, orchestration
 │   └── simulation_engines/  # Engine loop, step, and turn policies
 ├── scenarios/                  # Scenario configs and curated inputs
 ├── experiments/             # Study orchestration and generated study outputs

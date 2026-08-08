@@ -58,18 +58,26 @@ See [Configuration Reference](configuration.md) for detailed configuration optio
 ## 2. Check the Output
 
 Simulation output is saved to
-`outputs/<scenario_name>/N<num_agents>_T<num_steps>_<experiment_name>_<run_name>/`
-(for the default run above: `outputs/default/N10_T5_independent_run1/`):
+`outputs/<scenario_name>/<jobname_format>/<scenario_name>_<timestamp>/`. For the
+default run above that is
+`outputs/default/N10_T5_independent_run1/default_2026-05-01_12-30-00/`. The
+timestamped leaf means a re-run never overwrites the previous one; the CLI
+prints the exact path as `Output directory: ...` when it starts.
 
 | File | Content |
 |------|---------|
+| `run_manifest.json` | Self-describing run index: status, health, artifact paths |
 | `action_events.jsonl` | All agent actions (posts, replies, likes, reposts) |
 | `probe_events.jsonl` | Probe/survey results (if probes are configured) |
 | `prompts_and_responses.jsonl` | Raw LLM prompts and responses |
 | `run_stats.log` | Per-episode timing and worker telemetry |
 | `sim_metrics.json` | Structured metrics summary (durations, resource usage) |
 | `twitter_like.db` | SQLite database with full social media state |
-| `.hydra/config.yaml` | Resolved Hydra config snapshot |
+| `effective_config.yaml` | Runtime-resolved config, API keys masked |
+
+Hydra's composed-config snapshot is written one level up, beside the run
+directory, in `configs/<jobname_format>/`. See
+[Usage Overview: Output](usage.md#output) for the complete list.
 
 ## 3. Try a Different LLM
 
@@ -100,7 +108,7 @@ For a guided walkthrough of both workflows — with demo videos — see the
 Use the Runs station in Studio, or export a self-contained report from the CLI:
 
 ```sh
-uv run silisocs-report outputs/default/<jobname>/<timestamp> \
+uv run silisocs-report outputs/default/N10_T5_independent_run1/default_2026-05-01_12-30-00 \
   --view overview -o report.html
 ```
 
@@ -116,6 +124,18 @@ dataset: `pip install "silisocs[hf]"`):
 ```sh
 uv run silisocs --config-path election
 ```
+
+!!! warning "That is a 500-agent, 15-step run"
+    The election scenario ships at research scale. For a first look, shrink the
+    voter class instead of `num_agents` (which is only the declared total):
+
+    ```sh
+    uv run silisocs --config-path election \
+      agents.persona_pipeline.classes.voter.count=17 num_agents=20 num_steps=3
+    ```
+
+    The [Election Walkthrough](tutorials/election.md) reads the whole scenario
+    back key by key.
 
 `--config-path` accepts a bare scenario name, a repo-style path
 (`scenarios/election/conf`), or a filesystem path to your own scenario config

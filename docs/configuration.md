@@ -154,6 +154,12 @@ Run parameters live in the `world` config group (placed at config root via
 | `scenario_name` | `default` | Scenario identifier (used in output path) |
 | `jobname_format` | *(template)* | Output directory name template |
 | `experiment_name` | `independent` | Experiment label used in `jobname_format` |
+| `output_dir` | `""` | Explicit run output directory. Empty (recommended) means "use Hydra's per-run path"; a non-empty value overrides it — see [Output Configuration](#output-configuration) |
+
+Every scenario's `world/default.yaml` must declare all of these, including
+`output_dir`: a scenario world group **replaces** the base one rather than
+merging with it (Hydra searchpath shadowing), so an omitted key is missing, not
+inherited.
 
 ---
 
@@ -440,42 +446,36 @@ uv run silisocs --config-path scenarios/election/conf --cfg job
 
 **Option 2: Manual**
 
+The step-by-step walkthrough — a worked world file, a worked agents file, and
+the common patterns (multiple classes, broadcast accounts, scripted agents,
+switching backends) — lives in the [Scenario Guide](scenario_guide.md). It is
+the canonical version; this page is the key reference behind it.
+
+The minimum is two files:
+
 ```bash
 mkdir -p scenarios/my_world/conf/world scenarios/my_world/conf/agents
 ```
 
-**`scenarios/my_world/conf/world/default.yaml`**, run parameters and narrative:
 ```yaml
+# scenarios/my_world/conf/world/default.yaml   (run params + narrative)
 # @package _global_
 scenario_name: my_world
 jobname_format: "N${num_agents}_T${num_steps}_${run_name}"
-num_agents: 50
+num_agents: 3
 num_steps: 20
 seed: 42
 run_name: my_world
-
-setting:
-  name: My Setting
-  background:
-    - Background detail 1
-
-event:
-  name: My Event
-  context: |
-    Event description used in agent memories.
-
+output_dir: ""
+setting: { name: My Setting, background: [Background detail 1] }
+event: { name: My Event, context: "Event description used in agent memories." }
 data: {}
 ```
 
-**`scenarios/my_world/conf/agents/default.yaml`**, personas:
 ```yaml
+# scenarios/my_world/conf/agents/default.yaml   (who is in the world)
 # @package agents
 persona_pipeline:
-  defaults:
-    params:
-      world_context: ${event.context}
-    shared_memories:
-      - ${event.context}
   classes:
     user:
       count: ${num_agents}
@@ -484,20 +484,14 @@ persona_pipeline:
       data:
         source: inline
         records:
-          - name: Alex
-            persona: Alex follows local policy and posts practical updates.
-          - name: Blair
-            persona: Blair follows technology news and likes concise debates.
-      field_map:
-        name: name
-        context: persona
-
-shared_memories:
-  - ${event.context}
-
-initial_observations:
-  - "{name} opens their social media feed."
+          - { name: Alex, persona: Alex follows local policy and posts updates. }
+          - { name: Blair, persona: Blair follows tech news and debates concisely. }
+          - { name: Casey, persona: Casey moderates and keeps threads on topic. }
+      field_map: { name: name, context: persona }
 ```
+
+`sim.yaml`, `env.yaml`, and `eval.yaml` are optional partial overrides merged on
+top of the defaults; the sections below document every key they may set.
 
 Every final agent spec must have a unique `name`. For most persona-pipeline
 sources, map it with `field_map.name`. The default builder can derive names for
@@ -507,49 +501,33 @@ still rejects unnamed or duplicate specs before the simulation starts. Agent
 names are the runtime identities used by GMs, backends, flows, probes, logs, and
 checkpoints.
 
-**`scenarios/my_world/conf/env.yaml`**, optional backend/GM overrides:
-```yaml
-gm:
-  components:
-    initialize:
-      params:
-        graph:
-          base_followership_probability: 0.3
-          network_type: barabasi_albert
-          barabasi_albert_m: 10
-```
-
-**`scenarios/my_world/conf/sim.yaml`**, optional sim overrides — activity rates
-are sim-level participation config (see "Participation" below):
-```yaml
-engine:
-  participation:
-    built_in: activity_probability
-    params:
-      activity_transition_rates:
-        user:
-          inactive_to_active: 0.5
-          active_to_inactive: 0.2
-```
-
 ### Output Structure
 
-Simulation outputs go to: `outputs/{scenario_name}/{jobname_format}/`
+With `output_dir: ""` (the recommended value), simulation output goes to
+`outputs/{scenario_name}/{jobname_format}/{scenario_name}_{timestamp}/`:
 
 ```
 outputs/
-└── my_world/
-    └── N50_T20_my_world/
-        ├── my_world_2026-01-01_12-00-00/
-        │   ├── effective_config.yaml      # Full resolved config
+└── default/
+    └── N10_T5_independent_run1/           # hydra.run.dir  ({jobname_format})
+        ├── default_2026-05-01_12-30-00/   # hydra.job.name — the run directory
+        │   ├── run_manifest.json          # Self-describing run index
+        │   ├── effective_config.yaml      # Runtime-resolved config
         │   ├── sim_metrics.json           # Timing and run stats
         │   ├── action_events.jsonl        # Per-step action log
         │   ├── probe_events.jsonl         # Probe outputs
         │   └── checkpoints/               # Step checkpoints (if enabled)
-        └── configs/N50_T20_my_world/
+        ├── default_2026-05-01_12-30-00.log
+        └── configs/N10_T5_independent_run1/   # hydra.output_subdir
             ├── config.yaml                # Hydra-composed config snapshot
+            ├── hydra.yaml
+            ├── overrides.yaml             # CLI overrides for this run
             └── effective_config.yaml      # Runtime-resolved config
 ```
+
+The timestamp is in the leaf, so repeated runs of the same parameters accumulate
+side by side instead of overwriting each other. `hydra.output_subdir` is
+redirected to `configs/{jobname_format}`, so there is no `.hydra/` directory.
 
 ### Preflight validation
 
@@ -1743,8 +1721,28 @@ hydra:
 ```
 
 The simulation writes artifacts into the directory resolved by `hydra.run.dir` +
-`hydra.job.name`. See [Usage Overview: Output](usage.md#output) for the complete
-list of output files.
+`hydra.job.name` — that is,
+`outputs/{scenario_name}/{jobname_format}/{scenario_name}_{timestamp}/`. See
+[Output Structure](#output-structure) for the tree and
+[Usage Overview: Output](usage.md#output) for the complete list of output files.
+
+**`output_dir` takes precedence over all of it.** The runner resolves the run
+directory in this order:
+
+1. An explicit `run_simulation(cfg, output_dir=...)` argument (the Python API).
+2. A **non-empty** `output_dir` run parameter — used verbatim (relative paths
+   are made absolute against the working directory). `jobname_format`,
+   `hydra.job.name`, and the timestamp are all bypassed, so two runs pointed at
+   the same `output_dir` write into the same directory.
+3. Otherwise, Hydra's per-run path above.
+
+This is why every scenario ships `output_dir: ""`: the empty value is what
+selects behavior 3. Set a value only when you want to name the directory
+yourself — which is exactly what `silisocs-study` does for each run in a grid
+(`++output_dir=...`), giving studies their own deterministic, timestamp-free
+layout (see [Study Schema](study_schema.md#directory-layout)). The resolved
+directory is stamped back onto the config as `output_dir` and printed as
+`Output directory: ...` at startup.
 
 ---
 

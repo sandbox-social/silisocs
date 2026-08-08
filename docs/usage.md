@@ -3,6 +3,9 @@
 This guide covers the complete workflow for running SiliSocS simulations:
 from configuration to output analysis.
 
+The terms it leans on — **run**, **step**, **scenario**, **flow**, **game
+master** — are each defined once in the [Glossary](glossary.md).
+
 ## How It Works
 
 The simulation runs in four phases:
@@ -175,13 +178,14 @@ Scenarios can live outside the package in `scenarios/<name>/conf/`:
 ```
 scenarios/election/
 ├── conf/
-│   ├── world/default.yaml # @package _global_
+│   ├── world/default.yaml    # @package _global_
 │   ├── agents/default.yaml   # @package agents
 │   ├── sim.yaml              # Optional partial sim override
 │   ├── env.yaml              # Optional partial env override
-│   └── eval.yaml            # Optional partial eval override
-├── builders.py              # Optional importable custom agent builder
-└── outputs/                 # Simulation output (auto-created)
+│   └── eval.yaml             # Optional partial eval override
+├── input/                    # Optional scenario assets (personas, news data)
+├── builders.py               # Optional importable custom agent builder
+└── README.md                 # Brief description for discoverability
 ```
 
 Run with:
@@ -191,7 +195,13 @@ uv run silisocs --config-path scenarios/election/conf
 ```
 
 The runner reads `scenario_name` from the world config automatically, so you
-usually do not need a manual `world=` override.
+usually do not need a manual `world=` override. Run output does **not** land
+inside the scenario directory; it goes to the Hydra-managed path under
+`outputs/` described in [Output](#output).
+
+Authoring one of these from scratch is covered step by step in the
+[Scenario Guide](scenario_guide.md); the election scenario is read back key by
+key in the [Election Walkthrough](tutorials/election.md).
 
 ---
 
@@ -497,12 +507,22 @@ panels consume.
 Each simulation run produces output under the Hydra-managed directory:
 
 ```
-outputs/<scenario_name>/N<num_agents>_T<num_steps>_<experiment_name>_<run_name>/
+outputs/<scenario_name>/<jobname_format>/<scenario_name>_<timestamp>/
 ```
 
-(for example `outputs/default/N10_T5_independent_run1` — the job name is the
-`jobname_format` template from the world config, with no timestamp component;
-re-running the same parameters reuses the directory).
+For the default scenario that is
+`outputs/default/N10_T5_independent_run1/default_2026-05-01_12-30-00/`. The
+middle level is the `jobname_format` template from the world config
+(`N${num_agents}_T${num_steps}_${experiment_name}_${run_name}`); the leaf is
+Hydra's job name, which carries the timestamp, so **re-running the same
+parameters creates a new directory rather than overwriting the previous run**.
+Hydra's own composed-config snapshot is written next to the run directory, not
+inside it — `<jobname_format>/configs/<jobname_format>/` (there is no `.hydra/`
+directory; `hydra.output_subdir` is redirected).
+
+Setting a non-empty `output_dir` replaces this whole layout with the literal
+path you give — see
+[Output Configuration](configuration.md#output-configuration).
 
 ### Output Files
 
@@ -517,10 +537,14 @@ re-running the same parameters reuses the directory).
 | `run_stats.log` | Text | Per-episode timing, worker counts, retry telemetry, and startup phase durations |
 | `sim_metrics.json` | JSON | Structured metrics summary: system info, per-episode durations, worker limits, resource snapshots (CPU/memory), and aggregate statistics |
 | `<platform>.db` | SQLite | Full social media state (users, posts, replies, likes, follows). Use with the [built-in visualizers](backends.md#built-in-visualizers) to browse |
-| `.hydra/config.yaml` | YAML | Fully resolved Hydra config snapshot |
-| `.hydra/overrides.yaml` | YAML | CLI overrides used for this run |
+| `effective_config.yaml` | YAML | The runtime-resolved config, with every `api_key` masked |
 
-`effective_config.yaml` (and its `configs/` snapshot) is written with every
+One level up, beside the run directory, Hydra writes its own snapshot into
+`configs/<jobname_format>/`: `config.yaml` (composed config), `hydra.yaml`,
+`overrides.yaml` (the CLI overrides for this run), and a copy of
+`effective_config.yaml`.
+
+`effective_config.yaml` (both copies) is written with every
 `api_key` masked as `**redacted**`, so a run directory stays shareable even when a
 key was set in config rather than the environment.
 
@@ -664,7 +688,9 @@ in the visual analysis views.
 
 ## End-to-End Workflow
 
-Here is the complete workflow for creating and running a custom world:
+Here is the complete workflow for creating and running a custom world. The
+config-authoring steps are compressed here — the [Scenario Guide](scenario_guide.md)
+is the canonical step-by-step walkthrough, with worked files and common patterns.
 
 ### 1. Create the Scenario Directory
 
@@ -674,12 +700,21 @@ mkdir -p scenarios/my_world/conf/world scenarios/my_world/conf/agents
 
 ### 2. Write the Scenario Configs
 
+Two files are required — run parameters plus narrative, and the agent
+population. This is the shape; see the
+[Scenario Guide](scenario_guide.md) for the annotated version and
+[Configuration](configuration.md) for every key.
+
 ```yaml
 # scenarios/my_world/conf/world/default.yaml
 # @package _global_
 scenario_name: my_world
-num_agents: 2
-num_steps: 5
+jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
+num_agents: 3
+num_steps: 10
+seed: 42
+run_name: my_world
+output_dir: ""
 
 setting:
   name: My Community
@@ -701,7 +736,6 @@ persona_pipeline:
     params:
       world_context: ${event.context}
     shared_memories:
-      - They are active on a tech discussion forum.
       - ${event.context}
   classes:
     user:
@@ -715,43 +749,20 @@ persona_pipeline:
             persona: Alex follows product launches and asks practical questions.
           - name: Blair
             persona: Blair studies developer tools and compares alternatives.
+          - name: Casey
+            persona: Casey moderates the forum and keeps discussions on topic.
       field_map:
         name: name
         context: persona
 
-shared_memories:
-  - They are active on a tech discussion forum.
-  - ${event.context}
-
 initial_observations:
   - "{name} is browsing the forum."
-  - "{name} sees the latest announcement about the product launch."
 ```
 
-```yaml
-# scenarios/my_world/conf/env.yaml
-gm:
-  components:
-    initialize:
-      params:
-        graph:
-          network_type: barabasi_albert
-          barabasi_albert_m: 10
-          base_followership_probability: 0.3
-```
-
-Activity selection is sim-level participation config (`conf/sim.yaml`):
-
-```yaml
-engine:
-  participation:
-    built_in: activity_probability
-    params:
-      activity_transition_rates:
-        user:
-          inactive_to_active: 0.3
-          active_to_inactive: 0.3
-```
+The optional `conf/env.yaml` (social graph, backend, GM components) and
+`conf/sim.yaml` (per-role participation rates, LLM, engine) are shown with
+worked values under
+[Scenario Guide → Common patterns](scenario_guide.md#common-patterns).
 
 ### 3. Run It
 
@@ -761,7 +772,8 @@ uv run silisocs --config-path scenarios/my_world/conf num_agents=20 num_steps=10
 
 ### 4. Analyze Output
 
-Output appears in `outputs/my_world/`.
+Output appears under `outputs/my_world/<jobname_format>/my_world_<timestamp>/`;
+the CLI prints the exact path at startup. See [Output](#output).
 
 ### 5. (Optional) Add a Custom Builder
 

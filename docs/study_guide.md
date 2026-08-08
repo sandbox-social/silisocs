@@ -120,7 +120,7 @@ Every field, including per-condition `execution` / `reuse` blocks and the
 **Minimal interface:**
 ```bash
 uv run python experiments/studies/my_study/eval.py \
-    --run-dir outputs/neighborhood_forum_experiment/2026-05-01T10-00-00 \
+    --run-dir experiments/studies/my_study/runs/h1_recsys/recsys=on/neighborhood_forum/seed_42/run \
     --output  path/to/eval.json
 ```
 

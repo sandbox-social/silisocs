@@ -6,7 +6,9 @@ description: >-
   agent and rich external persona pipeline.
 scenario_name: election
 jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"
-num_agents: 20
+# Declared total: must equal the sum of the persona-pipeline class counts
+# (voter 497 + candidate 2 + news_account 1), or the runner warns at build time.
+num_agents: 500
 run_name: election
 output_dir: ""
 num_steps: 15

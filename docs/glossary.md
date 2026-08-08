@@ -17,11 +17,15 @@ appear in the wild for the same thing, the **bold** one is the preferred term.
 
 **Run**
 : One execution of a scenario. Everything it produces lives in one output
-  directory under `outputs/`, indexed by its `run_manifest.json`. The
-  `output_dir` run parameter names that directory (it was called
-  `output_rootname` before 0.4.0); `run_simulation(cfg, output_dir=...)` is the
-  same thing programmatically. Studio's job queue manages runs; "job" in API
-  paths is the queue's internal word for the same thing.
+  directory, indexed by its `run_manifest.json`. Left at its default `""`, the
+  `output_dir` run parameter means "use Hydra's per-run path under `outputs/`"
+  (timestamped, so runs never overwrite each other); set it to a path and that
+  path is used verbatim, which is how `silisocs-study` gives each run in a grid
+  a deterministic location. (It was called `output_rootname` before 0.4.0.)
+  `run_simulation(cfg, output_dir=...)` is the same thing programmatically.
+  Full rules: [Output Configuration](configuration.md#output-configuration).
+  Studio's job queue manages runs; "job" in API paths is the queue's internal
+  word for the same thing.
 
 **Step**
 : One tick of the simulation clock (`num_steps` of them per run). Each step,

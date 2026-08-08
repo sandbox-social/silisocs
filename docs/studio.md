@@ -14,7 +14,10 @@ Localhost mutations require no configuration. Binding beyond localhost requires
 
 ## Product workflow
 
-Studio organizes the complete workflow around filesystem-backed objects:
+Studio organizes the complete workflow around filesystem-backed objects. The
+object names below — **scenario**, **run**, **step**, **flow** — mean exactly
+what they mean everywhere else; the [Glossary](glossary.md) defines each once
+(including why Studio's API paths say "job" where the UI says "run").
 
 1. **Scenarios**: edit setting, agents, backend capabilities, probes, and views.
    The form and YAML mirror are bidirectional; the YAML files under

@@ -291,7 +291,11 @@ Install the optional HPC dependencies:
 uv sync --extra hpc --group dev
 ```
 
-Then submit study run groups through the runner:
+Then submit study run groups through the runner. `--array-mode` chooses the
+array granularity — how many of the expanded runs share one HPC task. The
+default is `case`: **one task per `(hypothesis, condition)` pair**, with every
+scenario and seed of that pair executed sequentially inside it. The other modes
+are listed under [Array modes](#array-modes) below.
 
 ```sh
 uv run silisocs-study \
@@ -348,9 +352,14 @@ Both templates support the same optional hook environment variables:
 `--server-command`, `--server-ready-url`, `--server-timeout-seconds`), which it
 exports to the generic template.
 
-Array modes (`--array-mode`):
+### Array modes
 
-- `case` (default): one task per case, all case seeds executed inside that task.
-- `seed`: one task per seed of a case.
+`--array-mode` (accepted by both `submitit` and `slurm-array`) sets how the
+expanded run rows are grouped into HPC array tasks. A **case** is one
+`(hypothesis, condition)` pair — the unit a study compares against its siblings:
+
+- `case` (default): one task per `(hypothesis, condition)` pair; every scenario
+  and seed of that pair runs sequentially inside the task.
+- `seed`: one task per `(hypothesis, condition, seed)`.
 - `hypothesis`: one task per hypothesis.
-- `run`: one task per expanded run row.
+- `run`: one task per expanded run row (`hypothesis × condition × scenario × seed`).

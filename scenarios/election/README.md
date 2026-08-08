@@ -13,7 +13,7 @@ tension between native-born and immigrant communities.
 
 | Role | Count | Default agent class |
 |---|---|---|
-| `voter` | N-3 | `silisocs.agents.native` (external persona pipeline) |
+| `voter` | 497 | `silisocs.agents.native` (external persona pipeline) |
 | `candidate` | 2 | `silisocs.agents.native.NativeAgent` |
 | `news_account` | 1 | `silisocs.agents.native.NativeAgent` with fixed news action plans |
 

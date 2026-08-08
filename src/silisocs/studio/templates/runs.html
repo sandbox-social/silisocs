@@ -2,7 +2,7 @@
 {% block title %}Runs | Silisocs Studio{% endblock %}
 {% block crumb %}Runs{% endblock %}
 {% block content %}
-<section class="page-heading"><div><p class="eyebrow"><span class="eyebrow-signal"></span>Artifact trajectories</p><h1>Runs</h1><p>Open any recorded run and move from overview to event-level analysis.</p></div><span class="count">{{ runs|length }} indexed</span></section>
+<section class="page-heading"><div><p class="eyebrow"><span class="eyebrow-signal"></span>Run archive</p><h1>Runs</h1><p>Open any recorded run and move from overview to event-level analysis.</p></div><span class="count">{{ runs|length }} indexed</span></section>
 <form class="archive-filters" method="get" role="search" aria-label="Filter runs">
   <input type="search" name="q" value="{{ filters.q }}" placeholder="Search scenario, id, status" aria-label="Search runs">
   <label><span class="visually-hidden">Status</span><select name="status" onchange="this.form.submit()"><option value="">All statuses</option>{% for state in statuses %}<option value="{{ state }}" {{ 'selected' if filters.status == state }}>{{ state }}</option>{% endfor %}</select></label>
