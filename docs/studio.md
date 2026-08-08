@@ -230,6 +230,13 @@ dependency changes. A genuinely custom control can use
 `widget="class_path:mypkg.MyWidget"`; it implements
 `render(field, value, files)`. Unknown YAML keys survive round trips.
 
+`Field`, `FormSchema`, and the `register_*` functions live in
+`silisocs.studio.form_schema` (the framework — it imports no engine code); the
+shipped scenario schema and its providers live in `silisocs.studio.form_providers`,
+document read/write in `silisocs.studio.compose`, and validation plus the scale
+estimate in `silisocs.studio.preflight`. `silisocs.studio.forms` re-exports all
+four, so either import path works.
+
 **The components follow the backend.** A composed scenario runs against the
 default (social) env group, whose GM components call `SocialBackendApp`-only
 methods. Selecting a non-social backend therefore writes an explicit generic
@@ -302,10 +309,13 @@ Two pieces of first-launch work used to sit in front of the first page render,
 which is invisible on a local disk and takes a minute or more when the
 workspace or the environment lives on a networked filesystem:
 
-- **The scenario composer's schema layer** (`silisocs.studio.forms`), which
-  imports the engine — roughly 110 modules, the largest block of module loads at
-  startup. The routers now import it inside the handlers that build composer
-  schemas, so binding the server no longer pays for it.
+- **The composer's preflight layer** (`silisocs.studio.preflight`), which imports
+  the engine — roughly 110 modules, the largest block of module loads at startup
+  — because it reads its scale estimate off the real turn/participation
+  policies. Only the one handler that answers `/api/preflight` imports it, so
+  binding the server no longer pays for it. The rest of the composer
+  (`form_schema`, `form_providers`, `compose`) costs nothing to import and is
+  imported by the routers directly.
 - **Extension indexing** (`WorkspaceCatalog.extension_catalog`), which reads
   every project module in every connected repository to classify the
   implementations the composer offers.

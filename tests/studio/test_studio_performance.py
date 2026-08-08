@@ -281,35 +281,44 @@ def test_scenario_page_defers_and_scopes_run_history(tmp_path, monkeypatch):
 
 
 def test_event_growth_reads_a_prediscovered_file_list_incrementally(tmp_path):
-    """The SSE loop globs event files occasionally, then reads them by offset.
+    """The SSE loop resolves event files occasionally, then reads them by offset.
 
-    ``_read_event_growth`` no longer globs itself: it takes the already-resolved
-    path list and only reads the bytes appended since the previous call, so the
-    recursive glob does not run on every 0.4s poll tick.
+    ``_read_event_growth`` no longer discovers files itself: it takes the
+    already-resolved path list and only reads the bytes appended since the
+    previous call, so discovery does not run on every 0.4s poll tick.
+    Discovery itself defers to the canonical resolver in
+    ``evaluations.action_events`` (flat run-root log for a single-GM run, per-GM
+    shards otherwise), so the watch ribbon and the run artifact never disagree
+    about which logs a run has.
     """
     from silisocs.studio.jobs import _event_stream_files, _read_event_growth
 
     root = tmp_path / "run"
-    (root / "social_gm").mkdir(parents=True)
+    root.mkdir(parents=True)
     flat = root / "action_events.jsonl"
-    per_gm = root / "social_gm" / "action_events.jsonl"
     flat.write_text(json.dumps({"episode": 0}) + "\n")
-    per_gm.write_text(json.dumps({"episode": 1}) + "\n")
 
     files = _event_stream_files(root, "action")
-    assert {path.name for path in files} == {"action_events.jsonl"}
-    assert len(files) == 2  # flat + per-GM shard, discovered in one glob
+    assert files == [flat]
 
     positions: dict = {}
-    growth, latest = _read_event_growth(files, positions, root)
     # Growth is keyed by source: "" for the flat root log, gm name per shard.
-    assert (growth, latest) == ({"": 1, "social_gm": 1}, 1)
+    assert _read_event_growth(files, positions, root) == ({"": 1}, 0)
     # A second read over the same list without new bytes returns nothing.
     assert _read_event_growth(files, positions, root) == ({}, -1)
-    # Appending is picked up on the next read, without re-globbing.
+    # Appending is picked up on the next read, without re-discovering.
     with flat.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"episode": 5}) + "\n")
     assert _read_event_growth(files, positions, root) == ({"": 1}, 5)
+
+    # A multi-GM run has no flat log; every per-GM shard is its own source.
+    multi = tmp_path / "multi"
+    for gm, episode in (("social_gm", 1), ("market_gm", 2)):
+        (multi / gm).mkdir(parents=True)
+        (multi / gm / "action_events.jsonl").write_text(json.dumps({"episode": episode}) + "\n")
+    shards = _event_stream_files(multi, "action")
+    assert {path.parent.name for path in shards} == {"social_gm", "market_gm"}
+    assert _read_event_growth(shards, {}, multi) == ({"social_gm": 1, "market_gm": 1}, 2)
 
 
 def test_discovery_finds_runs_in_one_walk_and_skips_per_gm_shards(tmp_path):
@@ -349,7 +358,7 @@ def test_ready_reports_the_warmup_phase_and_then_ready(tmp_path, monkeypatch):
     assert warming["phase"]
 
     release.set()
-    assert client.app.state.warmup.wait(10)
+    assert client.app.state.studio.warmup.wait(10)
     assert client.get("/api/ready").json() == {"ready": True, "phase": "Ready"}
 
 
@@ -370,7 +379,7 @@ def test_page_loads_get_the_warming_screen_only_while_the_workspace_is_indexed(
     assert client.get("/api/scenarios").status_code == 200
 
     release.set()
-    assert client.app.state.warmup.wait(10)
+    assert client.app.state.studio.warmup.wait(10)
     served = client.get("/", headers=browser)
     assert served.status_code == 200
     assert 'data-testid="studio-warming"' not in served.text
@@ -390,11 +399,17 @@ def test_the_warming_screen_stays_behind_the_auth_middleware(tmp_path, monkeypat
 def test_binding_studio_does_not_import_the_composer_engine_tree(tmp_path):
     """Registering the routers must not drag in omegaconf/antlr4 (~110 modules).
 
-    The composer's schema layer imports the engine, which is the single largest
-    block of module loads at startup and matters most exactly where startup is
-    slow (a networked filesystem). It is warmed on a thread instead, so this
-    asserts the bind path itself stays clear of it — in a subprocess, because
-    the rest of the suite has long since imported everything.
+    ``silisocs.studio.preflight`` reads its scale estimate off the real
+    turn/participation policies, so it imports the engine — the single largest
+    block of module loads at startup, and the one that matters most exactly
+    where startup is slow (a networked filesystem). It is warmed on a thread
+    instead (through the ``silisocs.studio.forms`` aggregate), so this asserts
+    the bind path itself stays clear of it — in a subprocess, because the rest
+    of the suite has long since imported everything.
+
+    The rest of the composer (``form_schema``/``form_providers``/``compose``) is
+    deliberately NOT listed: it costs nothing to import, which is why the
+    routers import it directly instead of inside their handlers.
     """
     import subprocess
     import sys
@@ -405,7 +420,8 @@ from silisocs.studio.app import StudioWarmup, create_app
 
 StudioWarmup.start = lambda self: None  # measure the bind path, not the warm-up
 create_app({str(tmp_path)!r}, state_dir={str(tmp_path / "state")!r}, repo_root={str(tmp_path)!r})
-deferred = [name for name in ("silisocs.studio.forms", "omegaconf", "antlr4") if name in sys.modules]
+engine_tree = ("silisocs.studio.forms", "silisocs.studio.preflight", "omegaconf", "antlr4")
+deferred = [name for name in engine_tree if name in sys.modules]
 assert not deferred, deferred
 """
     subprocess.run([sys.executable, "-c", program], check=True)

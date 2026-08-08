@@ -1,4 +1,4 @@
-"""HTML pages (and the cached static assets they load)."""
+"""The shell pages that belong to no single domain, plus the assets they load."""
 # ruff: noqa: D103
 #
 # D103: a route handler's contract is its decorator (method + path) and its
@@ -8,41 +8,30 @@
 # resolves handler annotations at registration time; keeping them real objects
 # is the contract the whole router surface relies on.
 
-from pathlib import Path
-
-import yaml
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 
-from silisocs.analysis.exploration import (
-    ExplorationState,
-    run_capability_document,
-    study_capability_document,
-)
+# Imported for its registration side effects: the shipped scenario schema and
+# its choice/preview providers are declared there, and /settings lists them.
+# It is deliberately cheap to import — the composer's engine-backed half lives
+# in silisocs.studio.preflight, which nothing on the bind path touches.
+import silisocs.studio.form_providers  # noqa: F401
 from silisocs.analysis.panel import list_panels
-from silisocs.analysis.views import BUILTIN_VIEWS, build_view
-from silisocs.evaluations.run_artifact import load_study
-from silisocs.studio.catalog import arrange_runs
-from silisocs.studio.routes.support import (
-    choice_context,
-    compare_run_ids,
-    discover_all_runs,
-    panel_param_overrides,
-    record_or_404,
-    resolve_run_links,
-    scenario_or_404,
-    study_composer_catalog,
-    study_or_404,
-    study_view_or_404,
+from silisocs.analysis.views import BUILTIN_VIEWS
+from silisocs.studio.form_schema import (
+    list_choice_providers,
+    list_form_schemas,
+    list_preview_providers,
 )
-from silisocs.studio.save_conflicts import NEW_DOCUMENT
+from silisocs.studio.routes.lookups import discover_all_runs
+from silisocs.studio.state import studio_state
 
 router = APIRouter()
 
 
 @router.get("/assets/{name}")
 def asset(request: Request, name: str):
-    cached = request.app.state.assets.get(name)
+    cached = studio_state(request).assets.get(name)
     if cached is None:
         raise HTTPException(status_code=404, detail=f"Unknown asset {name!r}")
     status, body, headers = cached.response(request.headers.get("if-none-match"))
@@ -54,13 +43,13 @@ def asset(request: Request, name: str):
 @router.get("/api/ready")
 def ready(request: Request):
     """Warm-up state. The warming screen polls this and reloads when ready."""
-    warmup = request.app.state.warmup
+    warmup = studio_state(request).warmup
     return {"ready": warmup.ready, "phase": warmup.phase}
 
 
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    state = request.app.state
+    state = studio_state(request)
     runs = discover_all_runs(state)
     return state.templates.TemplateResponse(
         request,
@@ -81,15 +70,7 @@ def home(request: Request):
 
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request):
-    # Imported per call, not at module scope: the composer layer pulls the whole
-    # engine import tree, and no other page here needs it.
-    from silisocs.studio.forms import (  # noqa: PLC0415
-        list_choice_providers,
-        list_form_schemas,
-        list_preview_providers,
-    )
-
-    state = request.app.state
+    state = studio_state(request)
     return state.templates.TemplateResponse(
         request,
         "settings.html",
@@ -105,280 +86,4 @@ def settings_page(request: Request):
             "discovery_errors": state.workspace.discovery_errors,
             "active": "settings",
         },
-    )
-
-
-@router.get("/runs", response_class=HTMLResponse)
-def runs_page(request: Request, q: str = "", status: str = "", sort: str = "recent"):
-    state = request.app.state
-    records = discover_all_runs(state)
-    statuses = sorted({record.artifact.status or "unknown" for record in records})
-    return state.templates.TemplateResponse(
-        request,
-        "runs.html",
-        {
-            "runs": arrange_runs(records, query=q, status=status, sort=sort),
-            "statuses": statuses,
-            "filters": {"q": q, "status": status, "sort": sort},
-            "active": "runs",
-        },
-    )
-
-
-@router.get("/live", response_class=HTMLResponse)
-def live_page(request: Request, job: str | None = None):
-    state = request.app.state
-    selected = None
-    if job:
-        try:
-            selected = state.jobs.store.get(job)
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail="Job not found") from exc
-    all_jobs = state.jobs.store.list()
-    run_id = None
-    if selected and selected.output_dir:
-        match = next(
-            (
-                record
-                for record in discover_all_runs(state)
-                if record.path.resolve() == Path(selected.output_dir).resolve()
-            ),
-            None,
-        )
-        run_id = match.id if match else None
-    interactive = bool(selected and selected.to_dict().get("interactive"))
-    return state.templates.TemplateResponse(
-        request,
-        "live.html",
-        {
-            "jobs": all_jobs,
-            "job": selected,
-            "run_id": run_id,
-            "interactive": interactive,
-            "active": "live",
-        },
-    )
-
-
-@router.get("/studies", response_class=HTMLResponse)
-def studies_page(request: Request):
-    state = request.app.state
-    return state.templates.TemplateResponse(
-        request,
-        "studies.html",
-        {"studies": state.studies.list(), "active": "studies"},
-    )
-
-
-@router.get("/studies/new", response_class=HTMLResponse)
-def new_study_page(request: Request, name: str = "new_study"):
-    state = request.app.state
-    studies = state.studies
-    try:
-        study_id = studies.validate_id(name)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    scenario_choices = state.workspace.scenarios()
-    definition = studies.new_definition(
-        study_id,
-        scenario=scenario_choices[0] if scenario_choices else None,
-        working_directory=str(state.repo_root),
-    )
-    study = {
-        "id": study_id,
-        "name": study_id,
-        "question": "",
-        "path": str(studies.root / study_id),
-        "definition": definition,
-        "yaml": yaml.safe_dump(definition, sort_keys=False),
-        "board": [],
-        # Creating: the save conflicts if the study meanwhile came to exist.
-        "fingerprint": NEW_DOCUMENT,
-    }
-    return state.templates.TemplateResponse(
-        request,
-        "study.html",
-        {
-            "study": study,
-            "view": None,
-            "tab": "definition",
-            "job": None,
-            "active": "studies",
-            "notebook_exists": False,
-            **study_composer_catalog(state),
-        },
-    )
-
-
-@router.get("/studies/{study_id}", response_class=HTMLResponse)
-def study_page(request: Request, study_id: str, view: str = "progress", tab: str = "board"):
-    state = request.app.state
-    study = study_or_404(state, study_id)
-    selected_view = {
-        "board": "progress",
-        "compare": "comparison",
-        "hypotheses": "hypotheses",
-    }.get(tab, view)
-    # Validate through the same allowlist the run routes use: an unmapped tab
-    # falls through to the raw ?view= param, which build_view would otherwise
-    # turn into a Path.read_text + class_path import (arbitrary file read +
-    # import-time code execution). A study resolves built-in study views plus
-    # study-scope views shipped by its declared scenarios. ``p.<panel>.
-    # <param>`` query args drive panel params exactly as on the run page, so
-    # study-panel controls and links work symmetrically.
-    built = (
-        resolve_run_links(
-            state,
-            build_view(
-                study_view_or_404(state, selected_view, study),
-                load_study(study["path"]),
-                panel_param_overrides(request.query_params),
-            ),
-        )
-        if tab != "definition"
-        else None
-    )
-    related = next((job for job in state.jobs.store.list() if job.parent_study == study_id), None)
-    return state.templates.TemplateResponse(
-        request,
-        "study.html",
-        {
-            "study": study,
-            "view": built,
-            "tab": tab,
-            "job": related,
-            "active": "studies",
-            "notebook_exists": (Path(study["path"]) / "notebook.ipynb").is_file(),
-            **(study_composer_catalog(state) if tab == "definition" else {}),
-        },
-    )
-
-
-@router.get("/explore/study/{study_id}", response_class=HTMLResponse)
-def explore_study_page(request: Request, study_id: str):
-    state = request.app.state
-    study = study_or_404(state, study_id)
-    try:
-        exploration = ExplorationState.from_query("study", (study_id,), request.query_params)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    artifact = load_study(study["path"])
-    return state.templates.TemplateResponse(
-        request,
-        "explore_study.html",
-        {
-            "study": study,
-            "state": exploration.to_dict(),
-            "capabilities": study_capability_document(artifact, study_id),
-            "active": "studies",
-        },
-    )
-
-
-@router.get("/scenarios", response_class=HTMLResponse)
-def scenarios_page(request: Request):
-    state = request.app.state
-    return state.templates.TemplateResponse(
-        request,
-        "scenarios.html",
-        {"scenarios": state.workspace.scenarios(), "active": "scenarios"},
-    )
-
-
-@router.get("/scenarios/new", response_class=HTMLResponse)
-def new_scenario_page(request: Request, name: str = "new_scenario"):
-    from silisocs.studio.forms import field_values, materialize_form_schema  # noqa: PLC0415
-
-    state = request.app.state
-    scenarios = state.scenarios
-    try:
-        safe_name = scenarios.validate_name(name)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    files = scenarios.default_files(safe_name)
-    scenario = {
-        "name": safe_name,
-        "path": str(scenarios.root / safe_name),
-        "source": "workspace",
-        "source_label": "Workspace",
-        "files": {
-            key: {"text": value, "data": yaml.safe_load(value)} for key, value in files.items()
-        },
-        # Creating: each document's save conflicts if the file meanwhile appeared.
-        "fingerprints": dict.fromkeys(files, NEW_DOCUMENT),
-    }
-    return state.templates.TemplateResponse(
-        request,
-        "scenario.html",
-        {
-            "scenario": scenario,
-            "schema": materialize_form_schema(
-                files,
-                defer_expensive=True,
-                choice_context=choice_context(state),
-            ),
-            "values": field_values(files),
-            "panel_catalog": [],
-            "history": [],
-            "active": "scenarios",
-        },
-    )
-
-
-@router.get("/scenarios/{scenario_name}", response_class=HTMLResponse)
-def scenario_page(request: Request, scenario_name: str, source: str = "workspace"):
-    from silisocs.studio.forms import field_values, materialize_form_schema  # noqa: PLC0415
-
-    state = request.app.state
-    scenario = scenario_or_404(state, scenario_name, source)
-    scenario["source"] = source
-    scenario["source_label"] = state.workspace.source(source).label
-    text_files = {name: item["text"] for name, item in scenario["files"].items()}
-    return state.templates.TemplateResponse(
-        request,
-        "scenario.html",
-        {
-            "scenario": scenario,
-            "schema": materialize_form_schema(
-                text_files,
-                defer_expensive=True,
-                choice_context=choice_context(state, source),
-            ),
-            "values": field_values(text_files),
-            "panel_catalog": [],
-            "active": "scenarios",
-        },
-    )
-
-
-@router.get("/explore/run/{run_id:path}", response_class=HTMLResponse)
-def explore_run_page(request: Request, run_id: str):
-    state = request.app.state
-    record = record_or_404(state, run_id)
-    try:
-        exploration = ExplorationState.from_query("run", (run_id,), request.query_params)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    capabilities = run_capability_document(record.artifact, run_id)
-    return state.templates.TemplateResponse(
-        request,
-        "explore.html",
-        {
-            "record": record,
-            "state": exploration.to_dict(),
-            "capabilities": capabilities,
-            "active": "runs",
-        },
-    )
-
-
-@router.get("/explore/compare", response_class=HTMLResponse)
-def explore_compare_page(request: Request):
-    state = request.app.state
-    # The template guards on <2 records; parsing is shared with the API route.
-    records = [record_or_404(state, run_id) for run_id in compare_run_ids(request)]
-    return state.templates.TemplateResponse(
-        request,
-        "explore_compare.html",
-        {"records": records, "run_ids": [record.id for record in records], "active": "runs"},
     )

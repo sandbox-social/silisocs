@@ -207,11 +207,11 @@ def test_external_launch_uses_project_environment(tmp_path: Path) -> None:
         repo_root=tmp_path / "main",
         scenario_repositories=(project,),
     )
-    workspace = app.state.workspace
+    workspace = app.state.studio.workspace
     source = next(item for item in workspace.sources if not item.primary)
     submitted = Mock()
     submitted.to_dict.return_value = {"id": "queued"}
-    app.state.jobs.submit = Mock(return_value=submitted)
+    app.state.studio.jobs.submit = Mock(return_value=submitted)
     files = {
         name: item["text"]
         for name, item in workspace.scenario_repository(source.id)
@@ -229,6 +229,6 @@ def test_external_launch_uses_project_environment(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 200
-    call = app.state.jobs.submit.call_args.kwargs
+    call = app.state.studio.jobs.submit.call_args.kwargs
     assert call["cwd"] == project
     assert str(project / "src") in call["env"]["PYTHONPATH"].split(":")

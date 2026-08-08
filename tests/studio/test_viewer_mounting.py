@@ -135,7 +135,7 @@ def test_studio_builds_each_viewer_once_and_closes_it_on_shutdown(tmp_path, monk
         c.get("/viewers/demo/run-1/twitter_like/api/stats")
         c.get("/viewers/demo/run-1/twitter_like/api/users")
         assert len(built) == 1  # cached across requests
-        for viewer in app.state.viewers._apps.values():
+        for viewer in app.state.studio.viewers._apps.values():
             viewer.state.close_viewer = lambda: closed.append(True)
     assert closed == [True]  # Studio's lifespan releases mounted connections
 
@@ -173,7 +173,7 @@ def test_start_viewer_negotiates_embedded_mode_without_a_job(tmp_path):
         "url": viewer_mount_path("demo/run-1", "twitter_like"),
     }
     # An in-process viewer needs no process: nothing was queued.
-    assert [job for job in app.state.jobs.store.list() if job.kind == "viewer"] == []
+    assert [job for job in app.state.studio.jobs.store.list() if job.kind == "viewer"] == []
 
 
 def test_start_viewer_falls_back_to_a_subprocess_for_non_asgi_visualizers(tmp_path):
@@ -217,7 +217,7 @@ def test_viewer_status_reports_an_exited_process(tmp_path):
 
     _make_run(tmp_path)
     app = create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path)
-    app.state.jobs.store.insert(
+    app.state.studio.jobs.store.insert(
         Job(
             id="dead-viewer",
             kind="viewer",

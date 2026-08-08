@@ -2,20 +2,38 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
 from silisocs.studio.scenario_repository import ScenarioRepository
 
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from silisocs.studio.state import StudioState
+
 
 class ScenarioNotFoundError(ValueError):
     """Raised when a launch names a scenario absent from the repository."""
+
+
+def project_environment(state: StudioState, source_id: str | None = None) -> dict[str, str]:
+    """Build the PYTHONPATH a launched subprocess needs to import every source."""
+    workspace = state.workspace
+    selected = workspace.source(source_id)
+    ordered = (selected, *(item for item in workspace.sources if item.id != selected.id))
+    paths: list[str] = []
+    for source in ordered:
+        paths.extend(str(path) for path in (source.path / "src", source.path) if path.is_dir())
+    inherited = os.environ.get("PYTHONPATH")
+    if inherited:
+        paths.append(inherited)
+    return {"PYTHONPATH": os.pathsep.join(dict.fromkeys(paths))}
 
 
 @dataclass(frozen=True)

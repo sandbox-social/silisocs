@@ -225,7 +225,7 @@ def test_study_save_is_verbatim_and_conflicts_on_a_stale_fingerprint(tmp_path):
 def test_completed_watch_ribbon_uses_persisted_artifact_counters(tmp_path):
     run = _make_run(tmp_path)
     app = create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path)
-    app.state.jobs.store.insert(
+    app.state.studio.jobs.store.insert(
         Job(
             id="completed-run",
             kind="run",
@@ -740,7 +740,7 @@ def test_interactive_watch_tab_carries_run_controls(tmp_path):
     """
     run = _make_run(tmp_path)
     app = create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path)
-    app.state.jobs.store.insert(
+    app.state.studio.jobs.store.insert(
         Job(
             id="interactive-run",
             kind="run",
@@ -805,7 +805,7 @@ def test_finished_interactive_job_renders_no_run_controls(tmp_path):
     """A dead job's control file is inert — the live page must not offer controls."""
     run = _make_run(tmp_path)
     app = create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path)
-    app.state.jobs.store.insert(_finished_interactive_job(tmp_path, run))
+    app.state.studio.jobs.store.insert(_finished_interactive_job(tmp_path, run))
 
     page = TestClient(app).get("/live?job=finished-interactive")
     assert page.status_code == 200
@@ -817,7 +817,7 @@ def test_run_controls_are_rejected_for_a_terminal_job(tmp_path):
     """POSTing controls to a finished job errors loudly instead of a silent 200."""
     run = _make_run(tmp_path)
     app = create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path)
-    app.state.jobs.store.insert(_finished_interactive_job(tmp_path, run))
+    app.state.studio.jobs.store.insert(_finished_interactive_job(tmp_path, run))
 
     response = TestClient(app).post("/api/jobs/finished-interactive/control", json={"target": 1})
     assert response.status_code == 422

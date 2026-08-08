@@ -1,23 +1,27 @@
-"""Scenario documents, workspace repositories, and the composer form APIs."""
+"""Scenario documents: the editor pages and the API behind them."""
 # ruff: noqa: D103
 #
 # D103: a route handler's contract is its decorator (method + path) and its
 # return shape; the ones with a non-obvious rule carry a docstring.
+#
+# NOTE: no `from __future__ import annotations` in the route modules. FastAPI
+# resolves handler annotations at registration time; keeping them real objects
+# is the contract the whole router surface relies on.
 
-import asyncio
 from typing import Any
 
 import yaml
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse
 
 from silisocs.studio.catalog import discover_runs
-from silisocs.studio.routes.support import (
-    choice_context,
-    require_file_mapping,
-    run_json,
-    scenario_or_404,
-)
-from silisocs.studio.save_conflicts import SaveConflictError
+from silisocs.studio.compose import field_values
+from silisocs.studio.form_providers import materialize_form_schema
+from silisocs.studio.routes.lookups import scenario_or_404
+from silisocs.studio.routes.params import require_file_mapping
+from silisocs.studio.routes.projections import choice_context, run_json
+from silisocs.studio.save_conflicts import NEW_DOCUMENT, SaveConflictError
+from silisocs.studio.state import studio_state
 
 router = APIRouter()
 
@@ -31,77 +35,86 @@ def _string_mapping(value: Any, detail: str) -> dict[str, str]:
     return value
 
 
+@router.get("/scenarios", response_class=HTMLResponse)
+def scenarios_page(request: Request):
+    state = studio_state(request)
+    return state.templates.TemplateResponse(
+        request,
+        "scenarios.html",
+        {"scenarios": state.workspace.scenarios(), "active": "scenarios"},
+    )
+
+
+@router.get("/scenarios/new", response_class=HTMLResponse)
+def new_scenario_page(request: Request, name: str = "new_scenario"):
+    state = studio_state(request)
+    scenarios = state.scenarios
+    try:
+        safe_name = scenarios.validate_name(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    files = scenarios.default_files(safe_name)
+    scenario = {
+        "name": safe_name,
+        "path": str(scenarios.root / safe_name),
+        "source": "workspace",
+        "source_label": "Workspace",
+        "files": {
+            key: {"text": value, "data": yaml.safe_load(value)} for key, value in files.items()
+        },
+        # Creating: each document's save conflicts if the file meanwhile appeared.
+        "fingerprints": dict.fromkeys(files, NEW_DOCUMENT),
+    }
+    return state.templates.TemplateResponse(
+        request,
+        "scenario.html",
+        {
+            "scenario": scenario,
+            "schema": materialize_form_schema(
+                files,
+                defer_expensive=True,
+                choice_context=choice_context(state),
+            ),
+            "values": field_values(files),
+            "panel_catalog": [],
+            "history": [],
+            "active": "scenarios",
+        },
+    )
+
+
+@router.get("/scenarios/{scenario_name}", response_class=HTMLResponse)
+def scenario_page(request: Request, scenario_name: str, source: str = "workspace"):
+    state = studio_state(request)
+    scenario = scenario_or_404(state, scenario_name, source)
+    scenario["source"] = source
+    scenario["source_label"] = state.workspace.source(source).label
+    text_files = {name: item["text"] for name, item in scenario["files"].items()}
+    return state.templates.TemplateResponse(
+        request,
+        "scenario.html",
+        {
+            "scenario": scenario,
+            "schema": materialize_form_schema(
+                text_files,
+                defer_expensive=True,
+                choice_context=choice_context(state, source),
+            ),
+            "values": field_values(text_files),
+            "panel_catalog": [],
+            "active": "scenarios",
+        },
+    )
+
+
 @router.get("/api/scenarios")
 def api_scenarios(request: Request):
-    return {"items": request.app.state.workspace.scenarios()}
-
-
-@router.get("/api/repositories")
-def api_repositories(request: Request):
-    workspace = request.app.state.workspace
-    return {
-        "items": [source.to_dict() for source in workspace.sources],
-        "extensions": workspace.extension_catalog(),
-        "discovery_errors": workspace.discovery_errors,
-    }
-
-
-@router.post("/api/repositories")
-async def api_add_repository(request: Request):
-    workspace = request.app.state.workspace
-    payload = await request.json()
-    try:
-        source = workspace.add(
-            str(payload.get("path") or ""),
-            nickname=str(payload.get("nickname") or ""),
-        )
-    except (OSError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {
-        "source": source.to_dict(),
-        "scenarios": workspace.scenario_repository(source.id).list(),
-        "extensions": workspace.extension_catalog(),
-    }
-
-
-@router.patch("/api/repositories/{source_id}")
-async def api_rename_repository(request: Request, source_id: str):
-    payload = await request.json()
-    try:
-        source = request.app.state.workspace.rename(source_id, str(payload.get("nickname") or ""))
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"source": source.to_dict()}
-
-
-@router.post("/api/repositories/refresh")
-def api_refresh_repositories(request: Request):
-    workspace = request.app.state.workspace
-    workspace.refresh_extensions()
-    return {
-        "extensions": workspace.extension_catalog(),
-        "discovery_errors": workspace.discovery_errors,
-    }
-
-
-@router.delete("/api/repositories/{source_id}")
-def api_remove_repository(request: Request, source_id: str):
-    try:
-        request.app.state.workspace.remove(source_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"removed": source_id}
+    return {"items": studio_state(request).workspace.scenarios()}
 
 
 @router.get("/api/scenarios/{scenario_name}")
 def api_scenario(request: Request, scenario_name: str, source: str = "workspace"):
-    from silisocs.studio.forms import field_values, materialize_form_schema  # noqa: PLC0415
-
-    state = request.app.state
+    state = studio_state(request)
     scenario = scenario_or_404(state, scenario_name, source)
     files = {name: item["text"] for name, item in scenario["files"].items()}
     return {
@@ -118,7 +131,7 @@ def api_scenario(request: Request, scenario_name: str, source: str = "workspace"
 
 @router.get("/api/scenarios/{scenario_name}/runs")
 def api_scenario_runs(request: Request, scenario_name: str, source: str = "workspace"):
-    state = request.app.state
+    state = studio_state(request)
     scenario_or_404(state, scenario_name, source)
     return {
         "items": [
@@ -149,106 +162,12 @@ async def api_save_scenario(request: Request):
         "baselines must map relative names to the YAML text the edit was based on",
     )
     try:
-        return request.app.state.workspace.scenario_repository(source).save(
-            name, files, fingerprints=fingerprints, baselines=baselines
+        return (
+            studio_state(request)
+            .workspace.scenario_repository(source)
+            .save(name, files, fingerprints=fingerprints, baselines=baselines)
         )
     except SaveConflictError as exc:
         raise HTTPException(status_code=409, detail=exc.detail) from exc
     except (KeyError, ValueError, yaml.YAMLError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@router.post("/api/compose")
-async def api_compose(request: Request):
-    from silisocs.studio.forms import (  # noqa: PLC0415
-        compose_files,
-        field_values,
-        materialize_form_schema,
-    )
-
-    state = request.app.state
-    payload = await request.json()
-    try:
-        files = compose_files(dict(payload.get("files") or {}), dict(payload.get("updates") or {}))
-        return {
-            "files": files,
-            "values": field_values(files),
-            "schema": materialize_form_schema(
-                files,
-                defer_expensive=True,
-                choice_context=choice_context(state, str(payload.get("source") or "workspace")),
-            ),
-        }
-    except (ValueError, yaml.YAMLError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@router.post("/api/preflight")
-async def api_preflight(request: Request):
-    from silisocs.studio.forms import preflight_payload  # noqa: PLC0415
-
-    state = request.app.state
-    payload = await request.json()
-    files = payload.get("files")
-    if files is None and payload.get("scenario"):
-        loaded = scenario_or_404(
-            state, str(payload["scenario"]), str(payload.get("source") or "workspace")
-        )
-        files = {name: item["text"] for name, item in loaded["files"].items()}
-    if not isinstance(files, dict):
-        raise HTTPException(status_code=422, detail="files or scenario is required")
-    return preflight_payload(files)
-
-
-@router.post("/api/form-preview")
-async def api_form_preview(request: Request):
-    from silisocs.studio.forms import PreviewContext, run_preview_provider  # noqa: PLC0415
-
-    workspace = request.app.state.workspace
-    payload = await request.json()
-    files = payload.get("files") or {}
-    provider = str(payload.get("provider") or "")
-    item_key = str(payload.get("item_key") or "")
-    require_file_mapping(files)
-    try:
-        return run_preview_provider(
-            provider,
-            files,
-            item_key,
-            PreviewContext(
-                repository_root=workspace.source(str(payload.get("source") or "workspace")).path
-            ),
-        )
-    except (ImportError, KeyError, OSError, TypeError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@router.post("/api/form-choices")
-async def api_form_choices(request: Request):
-    from silisocs.studio.forms import choice_items, run_choice_provider  # noqa: PLC0415
-
-    state = request.app.state
-    payload = await request.json()
-    files = require_file_mapping(payload.get("files") or {})
-    provider = str(payload.get("provider") or "")
-    try:
-        context = choice_context(state, str(payload.get("source") or "workspace"))
-        choices = await asyncio.to_thread(run_choice_provider, provider, files, context)
-    except (ImportError, KeyError, OSError, TypeError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"choices": choices, "items": choice_items(provider, choices, context)}
-
-
-@router.get("/api/forms")
-def api_forms():
-    from silisocs.studio.forms import (  # noqa: PLC0415
-        list_choice_providers,
-        list_form_schemas,
-        list_preview_providers,
-    )
-
-    return {
-        "items": [schema.to_dict() for schema in list_form_schemas()],
-        "choice_providers": list(list_choice_providers()),
-        "preview_providers": list(list_preview_providers()),
-    }

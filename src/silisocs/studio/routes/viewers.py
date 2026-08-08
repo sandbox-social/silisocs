@@ -9,7 +9,8 @@ import socket
 from fastapi import APIRouter, HTTPException, Request
 
 from silisocs.studio.jobs import allocate_port
-from silisocs.studio.routes.support import record_or_404
+from silisocs.studio.routes.lookups import record_or_404
+from silisocs.studio.state import studio_state
 from silisocs.studio.viewers import (
     find_backend_dbs,
     viewer_app_factory,
@@ -29,7 +30,7 @@ def _port_is_serving(port: int, host: str = "127.0.0.1") -> bool:
 
 @router.post("/api/viewers/{run_id:path}/{backend_type}")
 def api_start_viewer(request: Request, run_id: str, backend_type: str):
-    state = request.app.state
+    state = studio_state(request)
     record = record_or_404(state, run_id)
     # A viewer declaring an ASGI factory is mounted in-process and needs no
     # process, port, or readiness wait: it is ready the moment we answer.
@@ -87,7 +88,7 @@ def api_viewer_status(request: Request, run_id: str, backend_type: str):
     while the server only listens once its imports finish. Clients must wait
     on this, not on the job status.
     """
-    state = request.app.state
+    state = studio_state(request)
     record_or_404(state, run_id)
     identity = f"{run_id}:{backend_type}"
     job = next(

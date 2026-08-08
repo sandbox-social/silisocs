@@ -1,7 +1,9 @@
 """API-first FastAPI shell for Silisocs Studio.
 
-Routes live in ``silisocs.studio.routes`` (one module per area) and read the
-shared repositories/managers off ``app.state``, which this module populates.
+Routes live in ``silisocs.studio.routes`` (one module per domain) and read the
+shared repositories/managers off the typed
+:class:`~silisocs.studio.state.StudioState` this module builds and stores as
+``app.state.studio``.
 """
 # ruff: noqa: C901, PLC0415
 
@@ -18,6 +20,7 @@ from silisocs.design.assets import CachedAsset
 from silisocs.design.css import css_variables
 from silisocs.studio.jobs import JobManager
 from silisocs.studio.plugins import load_studio_pages
+from silisocs.studio.state import StudioState
 from silisocs.studio.studies import StudyRepository
 from silisocs.studio.viewers import ViewerDispatch
 from silisocs.studio.workspace import WorkspaceCatalog
@@ -102,7 +105,7 @@ def create_app(
         raise RuntimeError('Silisocs Studio requires: pip install "silisocs[studio]"') from exc
 
     # Imported here, not at module scope: every router module imports FastAPI.
-    from silisocs.studio.routes import analysis, pages, run_page, runs
+    from silisocs.studio.routes import analysis, forms_api, pages, repositories, runs
     from silisocs.studio.routes import jobs as job_routes
     from silisocs.studio.routes import scenarios as scenario_routes
     from silisocs.studio.routes import studies as study_routes
@@ -166,23 +169,10 @@ def create_app(
             status_code=500,
         )
 
-    # Everything the routers need, resolved once. They read it as
-    # `request.app.state.<name>`, so nothing here is a module-level singleton.
-    app.state.output_root = root
-    app.state.repo_root = repository
-    app.state.studio_state = studio_state
-    app.state.jobs = jobs
-    app.state.workspace = workspace
-    app.state.scenarios = workspace.scenario_repository()
-    app.state.studies = StudyRepository(repository / "experiments" / "studies")
-    app.state.plugin_pages = plugin_pages
-    app.state.templates = templates
-    app.state.warmup = warmup
-
     # Read once at startup: these bodies only change when the package does.
     # Brand custom properties (light + dark) come from silisocs.design — Python
     # stays the single source of truth; studio.css holds layout only.
-    app.state.assets = {
+    assets = {
         "tokens.css": CachedAsset.build(
             css_variables() + (package / "static" / "studio.css").read_text(encoding="utf-8"),
             "text/css",
@@ -207,6 +197,24 @@ def create_app(
             "font/woff2",
         ),
     }
+
+    # Everything the routers need, resolved once and typed. They read it through
+    # `studio_state(request)`, so nothing here is a module-level singleton: one
+    # process can host several Studio apps with different roots.
+    app.state.studio = StudioState(
+        output_root=root,
+        repo_root=repository,
+        studio_state=studio_state,
+        jobs=jobs,
+        workspace=workspace,
+        scenarios=workspace.scenario_repository(),
+        studies=StudyRepository(repository / "experiments" / "studies"),
+        plugin_pages=plugin_pages,
+        templates=templates,
+        warmup=warmup,
+        assets=assets,
+        viewers=viewers,
+    )
 
     for page in plugin_pages:
         app.include_router(page.router)
@@ -273,12 +281,13 @@ def create_app(
         return response
 
     # Registration order is the matching order: plugin pages first (a plugin may
-    # own a path Studio also serves), then the areas. `runs` is last because its
-    # /api/runs/{run_id:path} catch-all would otherwise shadow the run-scoped
-    # analysis routes.
+    # own a path Studio also serves), then one router per domain. `runs` is last
+    # because its /api/runs/{run_id:path} catch-all would otherwise shadow the
+    # run-scoped analysis routes.
     app.include_router(pages.router)
-    app.include_router(run_page.router)
     app.include_router(scenario_routes.router)
+    app.include_router(repositories.router)
+    app.include_router(forms_api.router)
     app.include_router(study_routes.router)
     app.include_router(analysis.router)
     app.include_router(job_routes.router)
@@ -289,6 +298,5 @@ def create_app(
     # above. Viewer apps are built on first request, not here — runs are
     # discovered per request.
     app.mount("/viewers", viewers)
-    app.state.viewers = viewers
 
     return app
