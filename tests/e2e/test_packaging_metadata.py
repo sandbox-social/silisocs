@@ -91,4 +91,11 @@ def test_concordia_is_optional_extra_not_default_dependency() -> None:
     optional = data["project"]["optional-dependencies"]
 
     assert not any("concordia" in dependency.lower() for dependency in dependencies)
-    assert optional["concordia"] == ["gdm-concordia>=2.1.0,<2.2.0"]
+    # numpy/pandas live here too: adapters/concordia/memory.py is their only
+    # importer in src/, so a native install carries neither.
+    assert optional["concordia"] == [
+        "gdm-concordia>=2.1.0,<2.2.0",
+        "numpy>=1.26,<3",
+        "pandas>=2.2",
+    ]
+    assert not any(dep.startswith(("numpy", "pandas")) for dep in dependencies)

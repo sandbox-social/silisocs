@@ -24,17 +24,13 @@ classifiers = [
 ]
 
 dependencies = [
-  "coloredlogs>=15.0.1",
   "openai>=1.35.9,<2.0.0",
-  "tqdm>=4.66.4,<5.0.0",
   "termcolor>=2.4.0,<3.0.0",
   "docstring-parser>=0.16,<0.17",
   "networkx>=3.3,<4.0.0",
-  "requests>=2.32.3,<3.0.0",
   "psutil>=7.0,<8.0.0",
-  "numpy>=1.26,<3",
-  "pandas>=2.2",
   "omegaconf>=2.3.0,<3.0.0",
+  "pydantic>=2.2,<3.0.0",
   "pyyaml>=6.0.2,<7.0.0",
   "hydra-core>=1.3.2,<2.0.0",
   "python-dotenv>=1.0.1,<2.0.0",
@@ -44,11 +40,15 @@ dependencies = [
 [project.optional-dependencies]
 concordia = [
   "gdm-concordia>=2.1.0,<2.2.0",
+  # Only `adapters/concordia/memory.py` imports numpy/pandas in `src/`.
+  "numpy>=1.26,<3",
+  "pandas>=2.2",
 ]
 analysis = [
   "ipympl>=0.9.4,<0.10.0",
   "matplotlib>=3.9.1,<4.0.0",
-  "nbformat>=5.10.4,<6.0.0",
+  # `EventFrame.to_pandas()` imports pandas lazily; this extra is what supplies it.
+  "pandas>=2.2",
   "plotly>=5.22.0,<6.0.0",
   "powerlaw>=1.5,<2.0.0",
   "python-louvain>=0.16,<0.17",
@@ -119,13 +119,14 @@ test = [
 ]
 dev = [
   "commitizen>=3.27.0,<4.0.0",
-  "cruft>=2.15.0",
   "cz-conventional-gitmoji>=0.3.2,<0.4.0",
   "import-linter>=2.13",
-  "ipykernel>=6.29.4",
-  "ipywidgets>=8.1.2",
-  "isort>=5.13.2,<6.0.0",
+  # Imported by the test suite (and by the `scenarios/` data-prep scripts), not by
+  # the packaged engine — so they belong here rather than in [project.dependencies].
+  "numpy>=1.26,<3",
+  "pandas>=2.2",
   "poethepoet>=0.25.0",
+  "requests>=2.32.3,<3.0.0",
   "types-pyyaml>=6.0.12.20241230",
   "types-requests>=2.32.0.20241016",
 ]

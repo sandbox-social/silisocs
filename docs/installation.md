@@ -22,12 +22,13 @@ Install optional integrations only when needed:
 
 | Extra | Key packages | When to use |
 |---|---|---|
-| `concordia` | `gdm-concordia` | Legacy Concordia agent compatibility |
+| `concordia` | `gdm-concordia`, numpy, pandas | Legacy Concordia agent compatibility |
 | `studio` | FastAPI, Jinja, uvicorn | Unified workspace, analysis, and platform viewers |
-| `analysis` | matplotlib, plotly, scipy, seaborn, powerlaw | Notebooks and extended analysis utilities |
+| `analysis` | matplotlib, pandas, plotly, scipy, seaborn, powerlaw | Notebooks and extended analysis utilities |
 | `recsys` | scikit-learn, scipy, sentence-transformers | Recommendation system backends |
 | `hf` | `datasets` | Hugging Face persona datasets |
 | `mastodon` | `mastodon.py`, loguru, pyvis | Real Mastodon server integration |
+| `hpc` | submitit, hydra-submitit-launcher | Slurm/HPC study launching |
 | `aws` | `boto3` | AWS storage and services |
 | `docs` | ProperDocs, mkdocstrings, MkDocs plugins | Building the documentation site |
 | `all` | all of the above except `aws` | Full runtime and documentation feature set |

@@ -36,10 +36,20 @@ if [ "$STAGE" = all ] || [ "$STAGE" = studio ]; then
   trap 'kill $STUDIO_PID 2>/dev/null || true' EXIT
   # Poll readiness, not just the socket: the server binds fast and holds page
   # loads on a warming screen until the workspace index finishes.
+  # `set -e` does not fire on a non-final `&&` operand, so exhausting the loop
+  # would silently fall through and record the warming screen into the video.
+  READY=0
   for _ in $(seq 1 120); do
-    curl -sf http://127.0.0.1:8799/api/ready 2>/dev/null | grep -q '"ready": *true' && break
+    if curl -sf http://127.0.0.1:8799/api/ready 2>/dev/null | grep -q '"ready": *true'; then
+      READY=1
+      break
+    fi
     sleep 1
   done
+  if [ "$READY" -ne 1 ]; then
+    echo "studio: /api/ready never reported ready after 120s — refusing to record" >&2
+    exit 1
+  fi
   STUDIO_URL=http://127.0.0.1:8799 node record_studio.mjs
   kill $STUDIO_PID 2>/dev/null || true
 fi

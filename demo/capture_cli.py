@@ -61,8 +61,12 @@ class CastWriter:
                 handle.write(json.dumps([when, "o", data]) + "\n")
 
 
-def run_command(cast: CastWriter, command: str, step: dict) -> None:
-    """Execute a command in a pty, appending its output on the virtual clock."""
+def run_command(cast: CastWriter, command: str, step: dict) -> int:
+    """Execute a command in a pty, appending its output on the virtual clock.
+
+    Returns the command's exit status so a failed step (a simulation that
+    crashed, say) fails the capture instead of being recorded as if it worked.
+    """
     timescale = float(step.get("timescale", 1.0))
     idle_limit = float(step.get("idle_limit", 1.0))
     cwd = step.get("cwd") or os.getcwd()
@@ -104,7 +108,7 @@ def run_command(cast: CastWriter, command: str, step: dict) -> None:
         elif process.poll() is not None:
             break
     os.close(master)
-    process.wait()
+    return process.wait()
 
 
 def main() -> int:
@@ -127,7 +131,13 @@ def main() -> int:
         for char in shown:
             cast.emit(char, advance=TYPE_DELAY)
         cast.emit("\r\n", advance=0.35)
-        run_command(cast, command, step)
+        status = run_command(cast, command, step)
+        if status != 0:
+            # Bail before writing any artifact: a tape whose simulation crashed
+            # must not leave behind a cast that looks like a successful run.
+            print(f"capture_cli: step failed (exit {status}): {command}", file=sys.stderr)
+            # Signal deaths come back negative; report them the way a shell does.
+            return -status + 128 if status < 0 else status
         cast.wait(float(step.get("hold", 1.2)))
 
     cast.wait(float(tape.get("outro_hold", 2.5)))

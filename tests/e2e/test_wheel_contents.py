@@ -17,6 +17,26 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# Every JS file the wheel is expected to carry, asserted explicitly so a
+# packaging change (a new asset, a dropped one, a vendored bundle moved out of
+# the base wheel) has to be made deliberately rather than noticed in production.
+#
+# `plotly.min.js`/`cytoscape.min.js` are vendored third-party bundles and are
+# ~1.7 MB of the wheel, but they stay in the BASE wheel on purpose: package-data
+# cannot be conditioned on an extra, and `analysis/report.py` inlines both into
+# the self-contained static report, which is not behind the `analysis` extra.
+EXPECTED_STUDIO_JS = {
+    "boot.js",
+    "cytoscape.min.js",
+    "explore.js",
+    "panels.js",
+    "plotly.min.js",
+    "runs.js",
+    "scenario.js",
+    "studio.js",
+    "study.js",
+}
+
 
 @pytest.mark.subprocess
 def test_wheel_ships_engine_and_config_but_not_repo_content(tmp_path):
@@ -42,3 +62,13 @@ def test_wheel_ships_engine_and_config_but_not_repo_content(tmp_path):
     assert any(name.endswith("silisocs/conf/sim/base.yaml") for name in names)
     assert any("silisocs/studio/templates/base.html" in name for name in names)
     assert any("silisocs/studio/static/studio.css" in name for name in names)
+
+    prefix = "silisocs/studio/static/"
+    shipped_js = {
+        name.rsplit("/", 1)[1] for name in names if prefix in name and name.endswith(".js")
+    }
+    assert shipped_js == EXPECTED_STUDIO_JS, (
+        "packaged Studio JS changed; update EXPECTED_STUDIO_JS if intended. "
+        f"extra={sorted(shipped_js - EXPECTED_STUDIO_JS)} "
+        f"missing={sorted(EXPECTED_STUDIO_JS - shipped_js)}"
+    )
