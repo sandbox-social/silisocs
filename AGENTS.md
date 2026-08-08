@@ -51,9 +51,13 @@ Core runtime layers:
 ### 4. Engine Layer (Execution Policies)
 - `src/silisocs/simulation_engines/base_engines.py` — `RuntimeEngine`, the single
   strategy-driven engine (startup, per-step GM updates, action concurrency, retry
-  telemetry, probe phases). Scheduling/traversal is owned entirely by the step
-  strategy; `build_engine` selects it from `sim.engine.step.built_in`. Adding a new
-  traversal means writing a step strategy and registering it — no new engine class.
+  telemetry, probe phases). Traversal is *chosen* by the step strategy —
+  `build_engine` selects it from `sim.engine.step.built_in` — but *executed* by the
+  engine's `SchedulingMixin` (`simulation_engines/scheduling.py`), which owns three
+  shapes: `execute_batches`, `execute_chain_groups`, and `execute_staged_groups`.
+  Every shipped step strategy composes those, so adding a traversal usually means a
+  new step strategy and no engine change; a genuinely novel scheduling shape (a new
+  barrier/concurrency discipline) means adding a fourth execution shape to the mixin.
 - `src/silisocs/simulation_engines/policies/` — loop, step, and turn policies:
   - Turn policy: `single_action`, `fixed_count`, `open_ended`
   - Step policy: `base`, `sequential`, `flow`, `multi_gm`, `multi_gm_serial`, `multi_gm_staged`

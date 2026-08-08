@@ -20,9 +20,9 @@ from silisocs.runtime.checkpointing.state import (
     _stage_checkpoint_objects,
     make_checkpoint_data,
 )
+from silisocs.runtime.concurrency import run_tasks
 from silisocs.runtime.construction.assembly import RuntimeObjects
 from silisocs.runtime.construction.specs import RuntimeRole, RuntimeSpec
-from silisocs.runtime.execution.concurrency import run_tasks
 from silisocs.runtime.language_models.openai import OpenAILanguageModel
 from silisocs.simulation_engines.policies.participation import ActivityMarkovParticipation
 

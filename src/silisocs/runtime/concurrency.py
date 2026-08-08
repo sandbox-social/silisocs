@@ -1,4 +1,9 @@
-"""Small concurrency helpers used by native runtime components."""
+"""Small concurrency helpers used by native runtime components.
+
+Kernel module: it imports nothing from silisocs, so any layer may depend on it.
+It lived under ``runtime.execution`` until it became the only reason
+``simulation_engines`` and ``initialization`` imported the orchestration package.
+"""
 
 from __future__ import annotations
 

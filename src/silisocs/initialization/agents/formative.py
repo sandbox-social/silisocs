@@ -12,7 +12,7 @@ from silisocs.initialization.agents.runtime import (
     build_agent_initialization_context,
 )
 from silisocs.initialization.context import InitializationContext
-from silisocs.runtime.execution import concurrency
+from silisocs.runtime import concurrency
 from silisocs.runtime.language_models import LanguageModel
 
 

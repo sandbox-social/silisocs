@@ -6,9 +6,9 @@ by Studio, exported reports, and backend-declared platform viewers.
 
 from __future__ import annotations
 
-from .css import css_variables
-from .plotly import apply_template, template_layout
-from .tokens import (
+from silisocs.design.css import css_variables
+from silisocs.design.plotly import apply_template, template_layout
+from silisocs.design.tokens import (
     ACCENT,
     ACCENT_HOVER,
     ACCENT_LINK,

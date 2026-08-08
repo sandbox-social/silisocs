@@ -115,7 +115,9 @@ def test_native_code_does_not_import_removed_utility_modules() -> None:
         "silisocs.runtime.agent_building",
         "silisocs.runtime.assembly",
         "silisocs.runtime.config",
-        "silisocs.runtime.concurrency",
+        # runtime.concurrency was retired with the flat layout, then deliberately
+        # re-created as the kernel home for EventLoopThread/run_tasks — it is a
+        # legal import again and must not be listed here.
         "silisocs.runtime.dataclasses",
         "silisocs.runtime.factories",
         "silisocs.runtime.models",

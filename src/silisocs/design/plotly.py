@@ -12,7 +12,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from .tokens import BORDER, CATEGORICAL_COLORS, INK, INK_MUTED, SURFACE
+from silisocs.design.tokens import BORDER, CATEGORICAL_COLORS, INK, INK_MUTED, SURFACE
 
 # Sans font used for chart chrome (independent of the CSS FONT_STACK quoting).
 _FONT_FAMILY = "Manrope, Segoe UI Variable, Segoe UI, sans-serif"

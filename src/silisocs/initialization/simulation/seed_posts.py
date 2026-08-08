@@ -12,7 +12,7 @@ from typing import Any
 
 from silisocs.agents.base_agent import Agent
 from silisocs.initialization.context import InitializationContext
-from silisocs.runtime.execution import concurrency
+from silisocs.runtime import concurrency
 from silisocs.runtime.types import ActionOutput, ActionSpec, OutputType, ToolCall
 
 

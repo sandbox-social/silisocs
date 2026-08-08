@@ -16,7 +16,7 @@ import threading
 from collections.abc import Iterator, Mapping
 from typing import Any
 
-from silisocs.runtime.execution.concurrency import EventLoopThread
+from silisocs.runtime.concurrency import EventLoopThread
 from silisocs.runtime.telemetry import resolve_configured_worker_cap
 from silisocs.runtime.types import ActionOutput, ActionSpec
 from silisocs.simulation_engines.policies.factory import build_turn_policy

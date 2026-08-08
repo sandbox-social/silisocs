@@ -8,13 +8,13 @@ from typing import Any
 
 from silisocs.agents.base_agent import Agent
 from silisocs.initialization.context import AgentInitializationContext, InitializationContext
+from silisocs.runtime import concurrency
 from silisocs.runtime.class_loading import (
     instantiate_with_supported_kwargs as _instantiate_with_supported_kwargs,
 )
 from silisocs.runtime.class_loading import (
     load_class as _load_class,
 )
-from silisocs.runtime.execution import concurrency
 from silisocs.runtime.language_models import LanguageModel
 
 

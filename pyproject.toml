@@ -201,6 +201,10 @@ source_modules = [
   "silisocs.runtime.telemetry",
   "silisocs.runtime.class_loading",
   "silisocs.runtime.language_models",
+  "silisocs.runtime.concurrency",
+  "silisocs.runtime.model_fields",
+  "silisocs.runtime.plugins",
+  "silisocs.runtime.provenance",
 ]
 forbidden_modules = [
   "silisocs.adapters",
@@ -215,25 +219,66 @@ forbidden_modules = [
   "silisocs.studio",
 ]
 
-# The layering that actually holds today, highest first. Deliberately partial:
-# `silisocs.runtime` outside the kernel is the assembly/orchestration layer and is
-# mutually recursive with `simulation_engines` (engines reach back for
-# `runtime.configuration.validation` and `runtime.execution.concurrency`), and
-# `initialization`/`adapters` are mutually recursive with `agents`/`environments`, so
-# none of them can be placed in a unidirectional list without real moves. Siblings
-# joined by `|` may not import each other; `:` allows it (the kernel modules do).
+# The layering the whole core is held to, highest first. Every package that
+# participates in a run is listed, so a new wrong-direction import fails here.
+# Siblings joined by `|` may not import each other; `:` allows it. The handful of
+# back-edges that exist today are enumerated in `ignore_imports` with a reason —
+# never left implicit by omitting a package from the stack.
 [[tool.importlinter.contracts]]
 name = "Top-down layers"
 type = "layers"
 layers = [
   "silisocs.studio",
   "silisocs.analysis | silisocs.studies",
+  "silisocs.runtime.execution",
+  "silisocs.runtime.checkpointing | silisocs.runtime.tutorial",
+  "silisocs.runtime.construction",
+  "silisocs.runtime.configuration",
   "silisocs.evaluations",
   "silisocs.simulation_engines",
+  "silisocs.initialization",
   "silisocs.environments",
   "silisocs.agents",
-  "silisocs.runtime.types : silisocs.runtime.io : silisocs.runtime.telemetry : silisocs.runtime.class_loading : silisocs.runtime.language_models",
+  "silisocs.adapters",
+  "silisocs.runtime.types : silisocs.runtime.io : silisocs.runtime.telemetry : silisocs.runtime.class_loading : silisocs.runtime.language_models : silisocs.runtime.concurrency",
   "silisocs.design | silisocs.exceptions",
+]
+ignore_imports = [
+  # Mutual lazy pair, both sides commented in code: validation type-checks persona
+  # classes against the builder's key set, while construction imports validation.
+  "silisocs.runtime.configuration.validation -> silisocs.runtime.construction.agent_builders.persona_pipeline",
+  # Mutual lazy pair, both sides commented in code: `swap_component` reuses the
+  # config-layer slot-shape validator, while validation imports this module to
+  # check intervention schedules.
+  "silisocs.simulation_engines.interventions -> silisocs.runtime.configuration.validation",
+  # Lazy `__getattr__` re-export: `environments.gm` keeps the historical
+  # `GameMasterInitializer` names importable from their old home.
+  "silisocs.environments.gm -> silisocs.initialization",
+  "silisocs.environments.gm -> silisocs.initialization.game_masters",
+  # `NativeAgent.__init__` takes an `AgentInitializationContext`; the type lives
+  # with the initializer that produces it.
+  "silisocs.agents.native -> silisocs.initialization.context",
+  # The Concordia adapter wraps upstream prefabs as `Agent`s, so it must import
+  # the ABC it implements; `agents` reaches back for the adapter only lazily.
+  "silisocs.adapters.concordia -> silisocs.agents.base_agent",
+]
+
+# Scenario authoring/lookup is a CLI-and-content concern layered ON the runtime,
+# not something the runtime may depend on. Only the two dispatch sites below are
+# allowed, and they are one-way.
+[[tool.importlinter.contracts]]
+name = "Runtime does not depend on scenario authoring"
+type = "forbidden"
+source_modules = ["silisocs.runtime"]
+forbidden_modules = [
+  "silisocs.scenario_gen",
+  "silisocs.scenario_library",
+]
+ignore_imports = [
+  # CLI dispatch: `silisocs scenario-gen ...` hands off to the generator's Typer app.
+  "silisocs.runtime.execution.session -> silisocs.scenario_gen.cli",
+  # Resolving a `scenario=<name>` reference to a packaged scenario directory.
+  "silisocs.runtime.configuration.external -> silisocs.scenario_library",
 ]
 
 [tool.mypy]  # https://mypy.readthedocs.io/en/latest/config_file.html
