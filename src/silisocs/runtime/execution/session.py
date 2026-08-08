@@ -18,7 +18,7 @@ import time
 import warnings
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 
 import hydra
 
@@ -84,6 +84,15 @@ from silisocs.simulation_engines.control import build_run_control
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 CONF_DIR = PACKAGE_ROOT / "conf"
 RUNTIME_LAYER_NAME = "silisocs-native"
+
+
+class ConfigValidationError(ValueError):
+    """A scenario config rejected by :func:`validate_scenario_config`.
+
+    Distinct from a plain ``ValueError`` so the CLI can report bad user input as
+    one actionable message instead of a stack trace, while a genuine internal
+    bug still surfaces its full traceback.
+    """
 
 
 def _record_llm_usage_summary(cfg: Any, *, models: Any, metrics: Any) -> None:
@@ -255,8 +264,7 @@ def _resolve_output_directory(
         try:
             validate_scenario_config(cfg, scenario_path)
         except Exception as e:
-            logger.error(f"Configuration validation failed: {e}")
-            raise
+            raise ConfigValidationError(f"Configuration validation failed: {e}") from e
 
     configured_output_dir = str(OmegaConf.select(cfg, "output_dir", default="") or "").strip()
     if explicit_output_dir is not None:
@@ -718,7 +726,16 @@ def compose_config(
 @hydra.main(version_base=None, config_path=str(CONF_DIR), config_name="experiment")
 def main(cfg: DictConfig):
     """Hydra entrypoint for running an experiment (see :func:`run_simulation`)."""
-    run_simulation(cfg)
+    try:
+        run_simulation(cfg)
+    except ConfigValidationError as exc:
+        if os.environ.get("HYDRA_FULL_ERROR") == "1":
+            raise
+        # Rejected user input, not a crash: Hydra would bury the (deliberately
+        # actionable) message under a stack trace. SystemExit passes through
+        # Hydra's error reporting untouched.
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
 
 
 def _inject_external_config_path() -> None:
@@ -731,38 +748,145 @@ def _register_search_path_plugin() -> None:
     register_search_path_plugin()
 
 
-_SUBCOMMAND_HELP = """\
-Subcommands (run as `silisocs <subcommand>`):
-  doctor        environment health checks (no API key needed)
-  tutorial      guided scripted demo run + artifact tour
-  new-scenario  scaffold a scenario config directory
-  new-study     scaffold a study directory
+class _Subcommand(NamedTuple):
+    """One ``silisocs <name>`` subcommand as the help screens describe it."""
 
-Everything else is a Hydra invocation: `silisocs [key=value ...]`.
-Hydra's own flags follow.
-"""
+    usage: str
+    summary: str
+    details: str
+    # Name of the single optional positional argument, "" when the subcommand
+    # takes flags instead (those are parsed by Typer, not here).
+    positional: str = ""
+
+
+_SUBCOMMANDS: dict[str, _Subcommand] = {
+    "doctor": _Subcommand(
+        usage="silisocs doctor [OUTPUT_DIR]",
+        summary="environment health checks (no API key needed)",
+        details=(
+            "Reports Python/silisocs versions, which optional extras are installed,\n"
+            "which provider credentials are set, and whether runs can be written to\n"
+            "disk. OUTPUT_DIR is the directory to test for writability (default: a\n"
+            "temporary directory). Exits non-zero when a required check fails."
+        ),
+        positional="OUTPUT_DIR",
+    ),
+    "tutorial": _Subcommand(
+        usage="silisocs tutorial [OUTPUT_DIR]",
+        summary="guided scripted demo run + artifact tour",
+        details=(
+            "Runs a small deterministic simulation on the scripted model provider (no\n"
+            "API key needed), then walks through the artifacts it produced.\n"
+            "OUTPUT_DIR is where the demo run is written\n"
+            "(default: ./outputs/tutorial/<timestamp>)."
+        ),
+        positional="OUTPUT_DIR",
+    ),
+    "new-scenario": _Subcommand(
+        usage="silisocs new-scenario --from-spec-json JSON [--output-dir DIR]",
+        summary="scaffold a scenario config directory",
+        details="Writes and validates scenarios/<name>/conf/ from a ScenarioSpec JSON blob.",
+    ),
+    "new-study": _Subcommand(
+        usage="silisocs new-study --from-spec-json JSON [--output-dir DIR]",
+        summary="scaffold a study directory",
+        details="Writes and validates a study.yaml plan from a StudySpec JSON blob.",
+    ),
+}
+
+_HELP_FLAGS = ("-h", "--help")
+
+
+def _print_help() -> None:
+    """Print the top-level help screen (subcommands + companion commands)."""
+    subcommands = "\n".join(f"  {name:<13} {spec.summary}" for name, spec in _SUBCOMMANDS.items())
+    print(
+        f"""\
+silisocs — native social simulation framework
+
+Usage:
+  silisocs [key=value ...]        run a simulation (Hydra config overrides)
+  silisocs <subcommand> [args]    run a helper command
+
+First run (no API key needed):
+  silisocs tutorial
+
+Subcommands:
+{subcommands}
+  help          print this screen
+
+Companion commands installed alongside silisocs:
+  silisocs-studio           visual workspace: build, launch, inspect, analyse runs
+  silisocs-study            run and manage multi-run studies
+  silisocs-report           render an analysis report from a finished run
+  silisocs-config-dry-run   compose a config and report problems without running
+
+Seeing the composed config:
+  silisocs --cfg job [key=value ...]        print the fully composed config
+  silisocs --config-path <dir> --cfg job    ...for an external scenario directory
+
+Run `silisocs <subcommand> --help` for one subcommand, or `silisocs --hydra-help`
+for Hydra's own flags (multirun, sweeps, launchers)."""
+    )
+
+
+def _print_subcommand_help(name: str) -> None:
+    """Print usage + description for a single subcommand."""
+    spec = _SUBCOMMANDS[name]
+    headline = spec.summary[:1].upper() + spec.summary[1:]
+    print(f"usage: {spec.usage}\n\n{headline}.\n\n{spec.details}")
+
+
+def _optional_path_argument(name: str, args: Sequence[str]) -> str | None:
+    """Return the lone optional positional for ``name``, rejecting flag-shaped input."""
+    spec = _SUBCOMMANDS[name]
+    if not args:
+        return None
+    if args[0].startswith("-"):
+        raise SystemExit(
+            f"silisocs {name}: unrecognised option {args[0]!r}; this subcommand takes "
+            f"an optional {spec.positional} path.\nusage: {spec.usage}"
+        )
+    if len(args) > 1:
+        raise SystemExit(
+            f"silisocs {name}: unexpected extra argument {args[1]!r}.\nusage: {spec.usage}"
+        )
+    return args[0]
 
 
 def cli_main() -> None:
-    """CLI entry point: preprocess --config-path flags then run Hydra main."""
-    if len(sys.argv) > 1 and sys.argv[1] in ("--help", "-h", "help"):
-        # Hydra owns --help, which would otherwise hide the subcommands below.
-        print(_SUBCOMMAND_HELP)
-        if sys.argv[1] == "help":
-            return
-    if len(sys.argv) > 1 and sys.argv[1] == "doctor":
-        from silisocs.runtime.doctor import run_doctor
+    """CLI entry point: dispatch subcommands, else preprocess flags and run Hydra main."""
+    args = sys.argv[1:]
+    command = args[0] if args else ""
+    rest = args[1:]
 
-        sys.exit(run_doctor(sys.argv[2] if len(sys.argv) > 2 else None))
-    if len(sys.argv) > 1 and sys.argv[1] == "tutorial":
+    # Hydra owns --help, which would otherwise hide everything below it.
+    if command in (*_HELP_FLAGS, "help"):
+        _print_help()
+        return
+
+    if command in ("doctor", "tutorial"):
+        if any(arg in _HELP_FLAGS for arg in rest):
+            _print_subcommand_help(command)
+            return
+        target = _optional_path_argument(command, rest)
+        if command == "doctor":
+            from silisocs.runtime.doctor import run_doctor
+
+            sys.exit(run_doctor(target))
         from silisocs.runtime.tutorial import run_tutorial
 
-        sys.exit(run_tutorial(sys.argv[2] if len(sys.argv) > 2 else None))
-    if len(sys.argv) > 1 and sys.argv[1] in ("new-scenario", "new-study"):
+        sys.exit(run_tutorial(target))
+
+    if command in ("new-scenario", "new-study"):
+        # Typer owns these subcommands' help (it lists their options); only the
+        # short flag it does not accept is normalised here.
+        sys.argv = [sys.argv[0], *("--help" if arg == "-h" else arg for arg in args)]
         from silisocs.scenario_gen.cli import scenario_gen_cli
 
         scenario_gen_cli()
         return
+
     _inject_external_config_path()
     _register_search_path_plugin()
     main()
