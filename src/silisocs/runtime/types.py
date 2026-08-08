@@ -262,8 +262,3 @@ class ResolveReport(str):
         report.committed = committed
         report.attempted = attempted
         return report
-
-
-def skip_this_step_action_spec() -> ActionSpec:
-    """Return the sentinel action spec used to skip agent actions for a step."""
-    return ActionSpec(prompt="", output_type=OutputType.SKIP)

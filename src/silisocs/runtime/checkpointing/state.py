@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import importlib
 import json
 import logging
 import os
@@ -24,6 +23,7 @@ from silisocs.runtime.checkpointing.save import (
     reassemble_sharded_checkpoint,
 )
 from silisocs.runtime.checkpointing.serialization import json_safe
+from silisocs.runtime.class_loading import load_attr
 from silisocs.runtime.construction.assembly import RuntimeObjects, add_agent, add_game_master
 from silisocs.runtime.construction.specs import RuntimeRole, RuntimeSpec
 from silisocs.runtime.io import flush_jsonl_writers
@@ -216,12 +216,11 @@ def _stage_checkpoint_objects(
                     "current configuration; cannot restore it into this runtime."
                 )
             if not spec.compat:
-                module_path, _, attr = spec.class_path.rpartition(".")
-                if not module_path:
+                if not spec.class_path.rpartition(".")[0]:
                     raise ValueError(f"Checkpoint object {name} has invalid class_path.")
                 try:
-                    getattr(importlib.import_module(module_path), attr)
-                except (ImportError, AttributeError) as exc:
+                    load_attr(spec.class_path)
+                except (ImportError, AttributeError, ValueError) as exc:
                     raise ValueError(
                         f"Checkpoint object {name} references unimportable class "
                         f"'{spec.class_path}': {exc}"

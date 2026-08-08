@@ -11,8 +11,8 @@ from typing import Any
 import pytest
 
 from silisocs.studies.cli import _confirm_run_count
-from silisocs.studies.execute import RUN_COMPLETE_MARKER, _partition_completed_runs
-from silisocs.studies.plan import _expand_runs, _planned_run_dir, _preflight_summary
+from silisocs.studies.execute import RUN_COMPLETE_MARKER, partition_completed_runs
+from silisocs.studies.plan import expand_runs, planned_run_dir, preflight_summary
 from silisocs.studies.study_artifacts import (
     _combine_eval_payloads,
     _metric_stats,
@@ -86,7 +86,7 @@ def test_partition_skips_run_with_complete_marker(tmp_path: Path) -> None:
     spec = _make_spec(str(run_dir))
     _write_complete_run_dir(run_dir, spec.run_id)
 
-    pending, skipped = _partition_completed_runs(
+    pending, skipped = partition_completed_runs(
         [spec], tmp_path, tmp_path / "generated", force=False
     )
 
@@ -105,7 +105,7 @@ def test_partition_force_reruns_completed_run(tmp_path: Path) -> None:
     spec = _make_spec(str(run_dir))
     _write_complete_run_dir(run_dir, spec.run_id)
 
-    pending, skipped = _partition_completed_runs(
+    pending, skipped = partition_completed_runs(
         [spec], tmp_path, tmp_path / "generated", force=True
     )
 
@@ -118,7 +118,7 @@ def test_partition_keeps_run_without_marker(tmp_path: Path) -> None:
     run_dir.mkdir(parents=True)
     spec = _make_spec(str(run_dir))
 
-    pending, skipped = _partition_completed_runs(
+    pending, skipped = partition_completed_runs(
         [spec], tmp_path, tmp_path / "generated", force=False
     )
 
@@ -129,7 +129,7 @@ def test_partition_keeps_run_without_marker(tmp_path: Path) -> None:
 def test_partition_never_skips_reuse_existing(tmp_path: Path) -> None:
     spec = _make_spec(None, execution_mode="reuse_existing", reused_source="old/run")
 
-    pending, skipped = _partition_completed_runs(
+    pending, skipped = partition_completed_runs(
         [spec], tmp_path, tmp_path / "generated", force=False
     )
 
@@ -140,10 +140,10 @@ def test_partition_never_skips_reuse_existing(tmp_path: Path) -> None:
 def test_planned_run_dir_resolves_relative_rootname(tmp_path: Path) -> None:
     spec = _make_spec("runs/relative/run")
 
-    planned = _planned_run_dir(spec, tmp_path)
+    planned = planned_run_dir(spec, tmp_path)
 
     assert planned == (tmp_path / "runs" / "relative" / "run").resolve()
-    assert _planned_run_dir(_make_spec(None), tmp_path) is None
+    assert planned_run_dir(_make_spec(None), tmp_path) is None
 
 
 def test_skipped_record_relinks_existing_eval_outputs(tmp_path: Path) -> None:
@@ -158,7 +158,7 @@ def test_skipped_record_relinks_existing_eval_outputs(tmp_path: Path) -> None:
     eval_output.parent.mkdir(parents=True)
     eval_output.write_text("{}", encoding="utf-8")
 
-    _, skipped = _partition_completed_runs([spec], tmp_path, generated_dir, force=False)
+    _, skipped = partition_completed_runs([spec], tmp_path, generated_dir, force=False)
 
     record = skipped[0]
     assert record["eval_paths"] == {"myeval": str(eval_output)}
@@ -186,7 +186,7 @@ def _study_data(run_defaults_extra: dict[str, Any] | None = None) -> dict[str, A
 
 
 def _expanded_overrides(tmp_path: Path, study_data: dict[str, Any]) -> dict[str, Any]:
-    run_specs, _, _ = _expand_runs(tmp_path / "study.yaml", study_data)
+    run_specs, _, _ = expand_runs(tmp_path / "study.yaml", study_data)
     assert len(run_specs) == 1
     return run_specs[0].overrides
 
@@ -198,7 +198,7 @@ def test_checkpoint_cadence_defaults_to_one(tmp_path: Path) -> None:
 
 def test_working_directory_is_projected_into_run_spec(tmp_path: Path) -> None:
     project = tmp_path / "external_project"
-    run_specs, _, _ = _expand_runs(
+    run_specs, _, _ = expand_runs(
         tmp_path / "study.yaml",
         _study_data({"working_directory": str(project)}),
     )
@@ -315,7 +315,7 @@ def test_preflight_summary_estimates_agent_steps() -> None:
         _make_spec(None, run_id="b", overrides={"num_agents": 2, "num_steps": 3}),
     ]
 
-    lines = _preflight_summary(specs)
+    lines = preflight_summary(specs)
 
     assert lines[0] == "Preflight: 2 run(s) planned"
     assert "  - a: num_agents=5 num_steps=10" in lines
@@ -328,12 +328,12 @@ def test_preflight_summary_unknown_scale_falls_back() -> None:
         _make_spec(None, run_id="b", overrides={}),
     ]
 
-    lines = _preflight_summary(specs)
+    lines = preflight_summary(specs)
 
     assert "  - b: num_agents=? num_steps=?" in lines
     assert lines[-1] == "Estimated total agent-steps: >= 50 (1 run(s) with unknown scale)"
 
-    all_unknown = _preflight_summary([_make_spec(None, run_id="c", overrides={})])
+    all_unknown = preflight_summary([_make_spec(None, run_id="c", overrides={})])
     assert all_unknown[-1] == "Estimated total agent-steps: ? (1 run(s) with unknown scale)"
 
 

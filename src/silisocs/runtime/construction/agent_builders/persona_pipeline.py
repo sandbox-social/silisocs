@@ -408,12 +408,12 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
         else:
             params["fixed_action"] = fixed_action
 
-    # Compatibility wrappers for custom builder subclasses/tests that reuse pieces.
+    # Named entry points into the extracted loaders: the documented subclass API
+    # (docs/building_agents.md) plus the aliases this builder itself calls.
+    # Anything a subclass needs beyond these is reachable on `self.records` /
+    # `self.fixed_actions` directly — do not add a forwarder without a caller.
     def _load_fixed_action_sets(self) -> dict[str, list[dict[str, Any]]]:
         return self.fixed_actions.load_fixed_action_sets()
-
-    def _parse_fixed_action_sets(self, data: Any) -> dict[str, list[dict[str, Any]]]:
-        return self.fixed_actions.parse_fixed_action_sets(data)
 
     def _build_fixed_action_config(
         self,
@@ -431,9 +431,6 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
     def _normalize_fixed_action_plan(self, actions: Any) -> dict[int, list[dict[str, Any]]]:
         return self.fixed_actions.normalize_fixed_action_plan(actions)
 
-    def _render_template(self, value: Any, context: Mapping[str, Any]) -> Any:
-        return self.fixed_actions.render_template(value, context)
-
     def _load_records(
         self,
         data_cfg: dict[str, Any],
@@ -441,26 +438,6 @@ class PersonaPipelineAgentBuilder(AgentBuilder):
         max_records: int | None = None,
     ) -> list[dict[str, Any]]:
         return self.records.load_records(data_cfg, max_records=max_records)
-
-    def _load_hf_dataset(
-        self,
-        data_cfg: dict[str, Any],
-        *,
-        max_records: int | None = None,
-    ) -> list[dict[str, Any]]:
-        return self.records.load_hf_dataset(data_cfg, max_records=max_records)
-
-    def _materialize_hf_records(self, ds: Any, *, max_records: int | None) -> list[dict[str, Any]]:
-        return self.records.materialize_hf_records(ds, max_records=max_records)
-
-    def _load_csv(self, path: str, *, max_records: int | None = None) -> list[dict[str, Any]]:
-        return self.records.load_csv(path, max_records=max_records)
-
-    def _load_jsonl(self, path: str, *, max_records: int | None = None) -> list[dict[str, Any]]:
-        return self.records.load_jsonl(path, max_records=max_records)
-
-    def _scenario_paths(self, path_str: str) -> list[Path]:
-        return self.records.scenario_paths(path_str)
 
     def _resolve_file_path(self, path_str: str) -> Path:
         return self.records.resolve_file_path(path_str)

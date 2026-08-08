@@ -225,10 +225,6 @@ class ProbeDeploymentOrchestrator:
         """Return the set of loop anchors any configured probe fires at."""
         return {entry.policy.at for entry in self._resolve_entries()}
 
-    def is_configured(self) -> bool:
-        """Return whether any probes are configured for deployment."""
-        return bool(self._resolve_entries())
-
     @staticmethod
     def _entry_due(policy: ProbeDeploymentPolicy, step: int) -> bool:
         """Return whether a probe on ``policy`` is due at ``step``.

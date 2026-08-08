@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -18,6 +17,7 @@ from silisocs.analysis.panel import (
     validate_panel,
 )
 from silisocs.evaluations.run_artifact import RunArtifact, StudyArtifact
+from silisocs.runtime.class_loading import load_attr
 
 # Requirement names build_view can check against a run (Panel.requires may also
 # carry richer hints — e.g. a vocabulary name — that the shell ignores here).
@@ -115,8 +115,7 @@ class PanelSlot:
             raise ValueError("Panel slot requires exactly one of built_in or class_path")
         if self.built_in:
             return get_panel(self.built_in)
-        module_name, class_name = str(self.class_path).rsplit(".", 1)
-        cls = getattr(importlib.import_module(module_name), class_name)
+        cls = load_attr(str(self.class_path))
         if not isinstance(cls, type) or not issubclass(cls, Panel):
             raise TypeError(f"{self.class_path} is not a Panel class")
         # One-off class_path panels get the same declaration checks registered

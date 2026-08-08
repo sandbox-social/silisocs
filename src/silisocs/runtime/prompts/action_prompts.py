@@ -158,22 +158,3 @@ def build_action_prompt_with_app_instance(
         tool_calling_mode=tool_calling_mode,
         gm_prompt_cfg=gm_prompt_cfg,
     )
-
-
-def _inject_action_count_guidance(base_prompt: str, guidance: str) -> str:
-    """Inject action-count guidance before [OUTPUT STYLE] marker."""
-    prompt = str(base_prompt or "").strip()
-    line = str(guidance or "").strip()
-    if not line:
-        return prompt
-
-    if OUTPUT_STYLE_MARKER not in prompt:
-        return f"{prompt}\n\n{line}" if prompt else line
-
-    head, tail = prompt.split(OUTPUT_STYLE_MARKER, 1)
-    head = head.strip()
-    tail = tail.strip()
-    merged_head = f"{head}\n\n{line}" if head else line
-    if tail:
-        return f"{merged_head}\n\n{OUTPUT_STYLE_MARKER}\n{tail}"
-    return f"{merged_head}\n\n{OUTPUT_STYLE_MARKER}"

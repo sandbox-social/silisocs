@@ -118,9 +118,6 @@ class ListMemoryBank:
         with self._memory_bank_lock:
             return list(self._memory_bank)
 
-    def set_embedder(self, embedder: Callable[[str], np.ndarray]) -> None:
-        self._embedder = embedder
-
     def __len__(self) -> int:
         with self._memory_bank_lock:
             return len(self._memory_bank)

@@ -3,13 +3,14 @@
 Everything with a side effect lives here: spawning the runner subprocess for one
 expanded :class:`~silisocs.studies.study_types.RunSpec` (with output-dir
 sniffing and timeout kill), the resume/skip logic built on ``RUN_COMPLETE.json``
-markers, per-run evaluator invocation, the bounded-concurrency pool that drives
-the pending specs, and the JSON/JSONL/YAML writers for the reproducibility lock
-and study index.
+markers, per-run evaluator invocation, and the bounded-concurrency pool that
+drives the pending specs.
 
 Depends on :mod:`silisocs.studies.plan` for the pure command/path resolution and
 carries no argparse dependency; the CLI verbs live in
-:mod:`silisocs.studies.cli`.
+:mod:`silisocs.studies.cli`. File writing is delegated: study-shaped documents go
+through :mod:`silisocs.studies.study_artifacts`, JSONL lines through
+:mod:`silisocs.runtime.io`.
 """
 
 from __future__ import annotations
@@ -26,11 +27,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from silisocs.runtime.checkpointing import resolve_checkpoint_source
+from silisocs.runtime.io import append_jsonl_line
 from silisocs.runtime.provenance import hash_file as _hash_file
-from silisocs.studies.plan import _build_run_command, _planned_run_dir
+from silisocs.studies.plan import build_run_command, planned_run_dir
+from silisocs.studies.study_artifacts import write_json
 from silisocs.studies.study_types import (
     SCHEMA_VERSION,
     EvalSpec,
@@ -44,28 +45,18 @@ from silisocs.studies.study_types import (
 PROCESS_TIMEOUT_RC = 124
 RUN_COMPLETE_MARKER = "RUN_COMPLETE.json"
 
-
-def _write_yaml(path: Path, data: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, sort_keys=False, allow_unicode=False)
-
-
-def _write_json(path: Path, obj: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(obj, f, indent=2, sort_keys=False)
-
-
-def _write_jsonl_line(path: Path, obj: Any, lock: threading.Lock | None = None) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(obj, sort_keys=False)
-    if lock is None:
-        with path.open("a", encoding="utf-8") as f:
-            f.write(payload + "\n")
-        return
-    with lock, path.open("a", encoding="utf-8") as f:
-        f.write(payload + "\n")
+# The execution surface the CLI drives. Everything else — subprocess plumbing,
+# per-spec record building, evaluator invocation — is internal to this module.
+__all__ = [
+    "PROCESS_TIMEOUT_RC",
+    "RUN_COMPLETE_MARKER",
+    "enrich_study_with_results",
+    "execute_pending_runs",
+    "partition_completed_runs",
+    "resolve_gpu_ids_for_run",
+    "run_command_with_optional_hooks",
+    "write_study_index",
+]
 
 
 def _extract_output_dir_from_line(line: str) -> str | None:
@@ -144,9 +135,10 @@ def _run_subprocess(
     return return_code, list(output_tail), parsed_output_dir
 
 
-def _enrich_study_with_results(
+def enrich_study_with_results(
     study_data: dict[str, Any], records: list[dict[str, Any]]
 ) -> dict[str, Any]:
+    """Return a copy of the study document with a ``generated`` results block."""
     enriched = copy.deepcopy(study_data)
     generated = {
         "generated_at": now_iso(),
@@ -157,9 +149,10 @@ def _enrich_study_with_results(
     return enriched
 
 
-def _write_study_index(
+def write_study_index(
     path: Path, study_data: dict[str, Any], records: list[dict[str, Any]]
 ) -> None:
+    """Write the study index JSON (study identity + every run record)."""
     study = ensure_mapping("study", study_data.get("study"))
     payload = {
         "schema_version": SCHEMA_VERSION,
@@ -173,7 +166,7 @@ def _write_study_index(
         },
         "records": records,
     }
-    _write_json(path, payload)
+    write_json(path, payload)
 
 
 def _resolve_eval_command(
@@ -379,7 +372,7 @@ def _run_new_spec(
 ) -> dict[str, Any]:
     """Execute a fresh simulation run, resolve its output dir, and run evaluations."""
     run_log = generated_dir / "logs" / f"{spec.run_id}.log"
-    cmd = _build_run_command(spec)
+    cmd = build_run_command(spec)
     record["command"] = cmd
     record["log_path"] = str(run_log)
 
@@ -432,7 +425,7 @@ def _run_new_spec(
 
         # Idempotent-resume marker: a later `run` invocation skips this run
         # unless --force is given.
-        _write_json(
+        write_json(
             run_dir_path / RUN_COMPLETE_MARKER,
             {
                 "run_id": spec.run_id,
@@ -541,7 +534,7 @@ def _skipped_complete_record(spec: RunSpec, run_dir: Path, generated_dir: Path) 
     return record
 
 
-def _partition_completed_runs(
+def partition_completed_runs(
     run_specs: list[RunSpec],
     repo_root: Path,
     generated_dir: Path,
@@ -554,7 +547,7 @@ def _partition_completed_runs(
     pending: list[RunSpec] = []
     skipped: list[dict[str, Any]] = []
     for spec in run_specs:
-        run_dir = _planned_run_dir(spec, repo_root)
+        run_dir = planned_run_dir(spec, repo_root)
         if (
             spec.execution_mode == "run"
             and run_dir is not None
@@ -566,7 +559,7 @@ def _partition_completed_runs(
     return pending, skipped
 
 
-def _execute_pending_runs(
+def execute_pending_runs(
     pending_specs: list[RunSpec],
     skipped_records: list[dict[str, Any]],
     repo_root: Path,
@@ -587,7 +580,7 @@ def _execute_pending_runs(
 
     for record in skipped_records:
         records.append(record)
-        _write_jsonl_line(lock_jsonl, record, lock=write_lock)
+        append_jsonl_line(lock_jsonl, record, lock=write_lock)
         print(f"[{record.get('status', 'unknown'):>7}] {record.get('run_id')}")
 
     with ThreadPoolExecutor(max_workers=max_concurrent) as pool:
@@ -621,13 +614,14 @@ def _execute_pending_runs(
                     "finished_at": now_iso(),
                 }
             records.append(record)
-            _write_jsonl_line(lock_jsonl, record, lock=write_lock)
+            append_jsonl_line(lock_jsonl, record, lock=write_lock)
             print(f"[{record.get('status', 'unknown'):>7}] {record.get('run_id')}")
 
     return records
 
 
-def _resolve_gpu_ids_for_run() -> list[str]:
+def resolve_gpu_ids_for_run() -> list[str]:
+    """Return the GPU ids study runs may be distributed across, newest env first."""
     manual = os.environ.get("RUN_STUDY_GPU_IDS", "").strip()
     if manual:
         return [token.strip() for token in manual.split(",") if token.strip()]
@@ -654,7 +648,7 @@ def _wait_for_ready_url(url: str, timeout_seconds: int) -> None:
     raise RuntimeError(f"Server hook did not become ready at {url}{detail}")
 
 
-def _run_command_with_optional_hooks(
+def run_command_with_optional_hooks(
     command: list[str],
     cwd: str,
     setup_command: str | None,

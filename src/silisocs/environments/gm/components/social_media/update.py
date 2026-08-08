@@ -107,20 +107,9 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
         "mastodon": set(),
     }
 
-    _DEFAULT_RECSYS_BY_BACKEND = {
-        "twitter_like": "twitter",
-        "reddit_like": "reddit",
-    }
-
     def _supported_recsys_types(self) -> set[str]:
         """Return the recsys types supported by the current backend."""
         return set(self._SUPPORTED_RECSYS_BY_BACKEND.get(self.backend_type, set()))
-
-    def _effective_default_recsys_type(self) -> str | None:
-        """Return the effective default recsys type for the current backend."""
-        if self.default_recsys_type:
-            return self.default_recsys_type
-        return self._DEFAULT_RECSYS_BY_BACKEND.get(self.backend_type)
 
     def validate_recsys_types(self) -> None:
         """Validate configured recsys types for the current backend."""
@@ -426,10 +415,3 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
         self._recsys_disabled = bool(state.get("recsys_disabled", self._recsys_disabled))
         restored_pending = state.get("pending_scoped_names", [])
         self._pending_scoped_names = {str(v) for v in restored_pending if str(v)}
-
-    def get_output_dict(self) -> dict[str, Any]:
-        """Return component output metadata."""
-        return {
-            "recsys_enabled": True,
-            "recsys_types": list(self._initialized_recsys_types),
-        }

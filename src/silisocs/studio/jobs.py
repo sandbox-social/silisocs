@@ -18,10 +18,43 @@ from typing import Any
 
 import yaml
 
+from silisocs.evaluations.action_events import resolve_event_files
+from silisocs.evaluations.run_artifact import load_run
 from silisocs.runtime.execution.run_events import RUN_EVENTS_FILENAME
 
 TERMINAL_STATUSES = frozenset({"finished", "failed", "killed", "orphaned"})
 EVENT_STREAMS = ("action", "exposure", "probe", "harness")
+
+
+def _tail_jsonl(path: Path, position: int) -> tuple[list[dict[str, Any]], int]:
+    """Read the complete JSONL records appended to ``path`` past byte ``position``.
+
+    The one incremental-tail implementation the SSE loop uses for every live log
+    (per-stream event files and the runner's ``run_events.jsonl``): resume from
+    the recorded byte offset, stop at the first partial line so a half-written
+    record is re-read whole next tick, and restart from zero when the file
+    shrank. Returns the parsed rows plus the offset to resume from; an
+    unreadable file yields no rows and the offset unchanged.
+    """
+    rows: list[dict[str, Any]] = []
+    try:
+        if path.stat().st_size < position:
+            position = 0
+        with path.open("rb") as handle:
+            handle.seek(position)
+            while raw_line := handle.readline():
+                if not raw_line.endswith(b"\n"):
+                    break
+                position = handle.tell()
+                try:
+                    row = json.loads(raw_line)
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    continue
+                if isinstance(row, dict):
+                    rows.append(row)
+    except OSError:
+        pass
+    return rows, position
 
 
 def _read_event_growth(
@@ -38,41 +71,25 @@ def _read_event_growth(
     latest_step = -1
     for path in paths:
         source = "" if path.parent == root else path.parent.name
-        try:
-            position = positions.get(path, 0)
-            if path.stat().st_size < position:
-                position = 0
-            with path.open("rb") as handle:
-                handle.seek(position)
-                while raw_line := handle.readline():
-                    if not raw_line.endswith(b"\n"):
-                        break
-                    positions[path] = handle.tell()
-                    try:
-                        row = json.loads(raw_line)
-                    except (UnicodeDecodeError, json.JSONDecodeError):
-                        continue
-                    if not isinstance(row, dict):
-                        continue
-                    growth[source] = growth.get(source, 0) + 1
-                    episode = row.get("episode")
-                    if isinstance(episode, int):
-                        latest_step = max(latest_step, episode)
-        except OSError:
-            continue
+        rows, positions[path] = _tail_jsonl(path, positions.get(path, 0))
+        for row in rows:
+            growth[source] = growth.get(source, 0) + 1
+            episode = row.get("episode")
+            if isinstance(episode, int):
+                latest_step = max(latest_step, episode)
     return growth, latest_step
 
 
-# How often the SSE loop re-discovers event-log files. The recursive glob for all
-# four streams is far more expensive than the incremental byte reads, so it runs
-# on this cadence (and whenever a stream has not appeared yet) instead of every
-# 0.4s poll tick.
-_EVENT_GLOB_INTERVAL_SECONDS = 3.0
+# How often the SSE loop re-discovers event-log files. Resolving all four streams
+# stats the filesystem far more than the incremental byte reads do, so it runs on
+# this cadence (and whenever a stream has not appeared yet) instead of every 0.4s
+# poll tick.
+_EVENT_DISCOVERY_INTERVAL_SECONDS = 3.0
 
 
 def _event_stream_files(root: Path, stream: str) -> list[Path]:
-    """Discover every ``<stream>_events.jsonl`` under a run dir (flat or per-GM)."""
-    return list(root.glob(f"**/{stream}_events.jsonl"))
+    """Discover a run's ``<stream>_events.jsonl`` logs through the canonical resolver."""
+    return resolve_event_files(root, f"{stream}_events.jsonl")
 
 
 def _checkpoint_finished_step(root: Path) -> int:
@@ -95,48 +112,28 @@ def _read_run_events(path: Path, state: dict[str, int]) -> list[dict[str, Any]]:
 
     The runner's purpose-built live feed (``runtime/execution/run_events.py``):
     when present it replaces episode-boundary inference from action rows and
-    checkpoint filenames. Same incremental-tail discipline as
-    :func:`_read_event_growth` (byte offset, complete lines only, truncation
-    resets).
+    checkpoint filenames.
     """
-    rows: list[dict[str, Any]] = []
-    try:
-        position = state.get("pos", 0)
-        if path.stat().st_size < position:
-            position = 0
-        with path.open("rb") as handle:
-            handle.seek(position)
-            while raw_line := handle.readline():
-                if not raw_line.endswith(b"\n"):
-                    break
-                state["pos"] = handle.tell()
-                try:
-                    row = json.loads(raw_line)
-                except (UnicodeDecodeError, json.JSONDecodeError):
-                    continue
-                if isinstance(row, dict):
-                    rows.append(row)
-    except OSError:
-        pass
+    rows, state["pos"] = _tail_jsonl(path, state.get("pos", 0))
     return rows
 
 
 def _refresh_event_files(
     root: Path,
     stream_files: dict[str, list[Path]],
-    last_glob: float,
+    last_discovery: float,
     now: float,
 ) -> tuple[dict[str, list[Path]], float]:
     """Re-discover the per-stream event logs on a cadence, else keep the memo.
 
-    Globbing is far pricier than the per-tick byte reads, so it runs only every
+    Discovery is far pricier than the per-tick byte reads, so it runs only every
     few seconds — or while a stream's log has not appeared yet.
     """
-    if now - last_glob >= _EVENT_GLOB_INTERVAL_SECONDS or any(
+    if now - last_discovery >= _EVENT_DISCOVERY_INTERVAL_SECONDS or any(
         not stream_files.get(stream) for stream in EVENT_STREAMS
     ):
         return {stream: _event_stream_files(root, stream) for stream in EVENT_STREAMS}, now
-    return stream_files, last_glob
+    return stream_files, last_discovery
 
 
 @dataclass(frozen=True)
@@ -539,17 +536,16 @@ class JobManager:
         """
         if not output_dir:
             return
-        path = Path(output_dir) / "run_manifest.json"
         try:
-            manifest = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(manifest, dict) or manifest.get("status") != "running":
+            artifact = load_run(output_dir)
+            if artifact.status != "running":
                 return
-            manifest["status"] = "failed"
-            manifest["error"] = reason
+            manifest = {**artifact.manifest, "status": "failed", "error": reason}
+            path = Path(output_dir) / "run_manifest.json"
             staged = path.with_name(f".{path.name}.tmp")
             staged.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
             staged.replace(path)
-        except (OSError, json.JSONDecodeError):
+        except (OSError, ValueError):
             return
 
     @staticmethod
@@ -569,16 +565,11 @@ class JobManager:
         root = Path(output_dir)
         if (root / "RUN_COMPLETE.json").is_file():
             return True
-        manifest = root / "run_manifest.json"
-        if not manifest.is_file():
-            return False
         try:
-            status = str(
-                json.loads(manifest.read_text(encoding="utf-8")).get("status") or ""
-            ).lower()
-            return status in {"complete", "finished", "success", "succeeded"}
-        except (OSError, json.JSONDecodeError):
+            status = str(load_run(root).status or "").lower()
+        except (OSError, ValueError):
             return False
+        return status in {"complete", "finished", "success", "succeeded"}
 
     def events(self, job_id: str) -> Iterator[dict[str, Any]]:
         """Yield SSE-ready event records until the job reaches a terminal state."""
@@ -590,7 +581,7 @@ class JobManager:
         artifact_sources: dict[str, dict[str, int]] = {}
         stream_positions: dict[Path, int] = {}
         stream_files: dict[str, list[Path]] = {}
-        last_glob = 0.0
+        last_discovery = 0.0
         started_step = -1
         finished_step = -1
         run_event_state: dict[str, int] = {}
@@ -612,8 +603,8 @@ class JobManager:
                     offset = handle.tell()
             if job.output_dir:
                 root = Path(job.output_dir)
-                stream_files, last_glob = _refresh_event_files(
-                    root, stream_files, last_glob, time.monotonic()
+                stream_files, last_discovery = _refresh_event_files(
+                    root, stream_files, last_discovery, time.monotonic()
                 )
                 latest_step = -1
                 for stream in EVENT_STREAMS:

@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from silisocs.evaluations.action_events import resolve_action_event_files
 from silisocs.evaluations.run_artifact import RunArtifact, load_run
 
 # A run is defined by its manifest: the run root is the one directory that holds
@@ -42,7 +43,7 @@ def _action_events_signature(resolved: Path) -> _ArtifactSignature:
     serving its cached ``running`` record forever.
     """
     signature: list[tuple[str, float, int]] = []
-    paths = sorted(resolved.glob("**/action_events.jsonl"))
+    paths = resolve_action_event_files(resolved)
     paths.append(resolved / "run_manifest.json")
     for path in paths:
         try:

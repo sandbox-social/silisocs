@@ -16,6 +16,7 @@ from typing import Any
 
 import yaml
 
+from silisocs.evaluations.study_matrix import resolve_scenarios, resolve_seeds, string_list
 from silisocs.evaluations.vocabulary import HEALTH_COUNTERS
 
 # NOTE: iterate HEALTH_COUNTERS at use time — it is a live registry
@@ -200,63 +201,6 @@ def load_run(run_dir: str | Path) -> RunArtifact:
     return RunArtifact(run, manifest)
 
 
-def _string_list(value: Any) -> list[str]:
-    """Tolerant twin of the runner's ``ensure_string_list`` for progress projection."""
-    if isinstance(value, str):
-        return [value] if value else []
-    if isinstance(value, list):
-        return [str(item) for item in value if isinstance(item, (str, int)) and str(item)]
-    return []
-
-
-def _resolve_study_seeds(run_defaults: dict[str, Any], node: dict[str, Any]) -> list[int] | None:
-    """Mirror ``studies.plan._resolve_seeds`` tolerantly (None when unresolvable).
-
-    Honors condition ``seeds``/``seed``/``seed_repeats``/``seed_start`` and the
-    run-defaults ``seeds``/``seed``/``seed_repeats``/``seed_start`` fallbacks, so
-    an explicit-seed study is projected the same way the runner enumerates it.
-    """
-
-    def _int_list(values: Any) -> list[int] | None:
-        if isinstance(values, list) and all(isinstance(v, int) for v in values):
-            return list(values)
-        return None
-
-    if "seeds" in node:
-        return _int_list(node["seeds"])
-    if "seed" in node:
-        return [node["seed"]] if isinstance(node["seed"], int) else None
-
-    repeats = node.get("seed_repeats", run_defaults.get("seed_repeats"))
-    if repeats is not None:
-        if not isinstance(repeats, int) or repeats <= 0:
-            return None
-        seed_start = node.get(
-            "seed_start", run_defaults.get("seed_start", run_defaults.get("seed", 1))
-        )
-        if not isinstance(seed_start, int):
-            return None
-        return [seed_start + i for i in range(repeats)]
-
-    if "seeds" in run_defaults:
-        return _int_list(run_defaults["seeds"])
-
-    seed = run_defaults.get("seed", 1)
-    return [seed] if isinstance(seed, int) else None
-
-
-def _resolve_study_scenarios(meta: dict[str, Any], run_defaults: dict[str, Any]) -> list[str]:
-    """Mirror ``studies.plan._resolve_scenarios`` (study.scenarios / base_scenarios / run default)."""
-    scenarios = _string_list(meta.get("scenarios"))
-    if not scenarios:
-        scenarios = _string_list(meta.get("base_scenarios"))
-    if not scenarios:
-        scenario = run_defaults.get("scenario")
-        if isinstance(scenario, str) and scenario:
-            scenarios = [scenario]
-    return scenarios or ["default"]
-
-
 class StudyArtifact:
     """A loaded study: plan + organized summary (see docs/study_schema.md)."""
 
@@ -337,7 +281,7 @@ class StudyArtifact:
         meta = definition.get("study") or {}
         run_defaults = meta.get("run_defaults") or {}
         run_defaults = run_defaults if isinstance(run_defaults, dict) else {}
-        base_scenarios = _resolve_study_scenarios(meta, run_defaults)
+        base_scenarios = resolve_scenarios(meta, run_defaults) or ["default"]
         default_output_override = run_defaults.get("output_root_override")
 
         rows: list[dict[str, Any]] = []
@@ -361,8 +305,10 @@ class StudyArtifact:
                     rows.extend(self._reuse_progress_rows(hypothesis_id, condition_id, condition))
                     continue
 
-                cond_scenarios = _string_list(condition.get("scenarios")) or base_scenarios
-                seeds = _resolve_study_seeds(run_defaults, condition)
+                cond_scenarios = (
+                    string_list("condition.scenarios", condition.get("scenarios")) or base_scenarios
+                )
+                seeds = resolve_seeds(run_defaults, condition)
                 if seeds is None:
                     continue
 

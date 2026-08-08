@@ -10,10 +10,10 @@ import pytest
 import yaml
 
 from silisocs.studies.plan import (
-    _build_run_command,
-    _build_submitit_job_commands,
-    _expand_runs,
-    _submitit_group_filters,
+    build_run_command,
+    build_submitit_job_commands,
+    expand_runs,
+    submitit_group_filters,
     validate_schema,
 )
 from silisocs.studies.study_artifacts import extract_run_metadata, load_study_definition
@@ -63,9 +63,9 @@ def test_active_study_yaml_expands_to_current_runner_commands() -> None:
     offenders: dict[str, list[str]] = {}
     for path in _active_study_files():
         study = load_study_definition(path)
-        runs, _, _ = _expand_runs(path, study)
+        runs, _, _ = expand_runs(path, study)
         for spec in runs[:20]:
-            command_text = " ".join(_build_run_command(spec))
+            command_text = " ".join(build_run_command(spec))
             found = [key for key in REMOVED_OVERRIDE_KEYS if key in command_text]
             if found:
                 offenders[f"{path.relative_to(PROJECT_ROOT)}::{spec.run_id}"] = found
@@ -173,9 +173,9 @@ def test_slurm_array_exports_all_current_filters_and_hooks() -> None:
 def test_submitit_job_commands_use_current_filters() -> None:
     path = STUDY_ROOT / "study_template_v1" / "study.yaml"
     study = load_study_definition(path)
-    runs, _, _ = _expand_runs(path, study)
-    groups = _submitit_group_filters(runs, "run")
-    commands = _build_submitit_job_commands(
+    runs, _, _ = expand_runs(path, study)
+    groups = submitit_group_filters(runs, "run")
+    commands = build_submitit_job_commands(
         study_path=path,
         repo_root=PROJECT_ROOT,
         groups=groups[:2],
@@ -230,10 +230,10 @@ def test_replication_graph_tool_emits_current_seed_override(tmp_path: Path) -> N
 def test_study_template_exact_command_uses_current_runtime_keys() -> None:
     path = STUDY_ROOT / "study_template_v1" / "study.yaml"
     study = load_study_definition(path)
-    runs, _, _ = _expand_runs(path, study)
+    runs, _, _ = expand_runs(path, study)
     exact_run = next(spec for spec in runs if spec.condition_id == "case4_exact_command_mode")
 
-    command = _build_run_command(exact_run)
+    command = build_run_command(exact_run)
 
     assert "seed=11" in command
     assert "num_steps=8" in command
@@ -325,7 +325,7 @@ def test_seed_validation_error_names_the_hypothesis_and_condition(tmp_path: Path
     study_path.write_text(yaml.safe_dump(_study_with_seeds(["one"])), encoding="utf-8")
 
     with pytest.raises(StudyConfigError) as exc:
-        _expand_runs(study_path, yaml.safe_load(study_path.read_text(encoding="utf-8")))
+        expand_runs(study_path, yaml.safe_load(study_path.read_text(encoding="utf-8")))
     assert "hypotheses.h_focus.conditions.c_bad.seeds" in str(exc.value)
 
 
@@ -337,5 +337,5 @@ def test_seed_repeats_error_names_the_condition(tmp_path: Path) -> None:
     study_path.write_text(yaml.safe_dump(study), encoding="utf-8")
 
     with pytest.raises(StudyConfigError) as exc:
-        _expand_runs(study_path, yaml.safe_load(study_path.read_text(encoding="utf-8")))
+        expand_runs(study_path, yaml.safe_load(study_path.read_text(encoding="utf-8")))
     assert "hypotheses.h_focus.conditions.c_bad" in str(exc.value)

@@ -10,6 +10,7 @@ import threading
 import time
 from collections.abc import Mapping, Sequence
 from itertools import count
+from pathlib import Path
 from typing import Any
 
 from silisocs.runtime.io.json_safe import json_safe
@@ -101,6 +102,25 @@ def write_jsonl_item(out_item: Mapping[str, Any], output_filename: str) -> None:
 def flush_jsonl_writers(timeout_s: float = 5.0) -> None:
     """Flush buffered JSONL writes to disk."""
     _JSONL_WRITERS.flush_all(timeout_s=timeout_s)
+
+
+def append_jsonl_line(path: Path, item: Any, lock: threading.Lock | None = None) -> None:
+    """Append one JSONL record synchronously, creating parent directories.
+
+    The durable twin of :func:`write_jsonl_item`: the row is on disk when this
+    returns, at the cost of an open/append/close per call. Use it for low-rate
+    records that must survive an abrupt exit (a study's reproducibility lock,
+    a summary log) rather than for hot event streams. ``lock`` serialises writers
+    that share a path across threads.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(item, sort_keys=False)
+    if lock is None:
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(payload + "\n")
+        return
+    with lock, path.open("a", encoding="utf-8") as handle:
+        handle.write(payload + "\n")
 
 
 class EventLogger:

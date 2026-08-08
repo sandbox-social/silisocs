@@ -7,11 +7,12 @@ import math
 import os
 import shutil
 import statistics
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from silisocs.studies.study_types import resolve_study_id
 
 # Two-tailed 95% critical values of the t-distribution, t(0.975, df).
 # Beyond df=30 the normal approximation (1.96) is used.
@@ -106,19 +107,8 @@ def load_study_definition(path: Path) -> dict[str, Any]:
     return data
 
 
-def _resolve_study_id(study: dict[str, Any]) -> str:
-    study_name = str(study.get("name", "")).strip()
-    study_id = str(study.get("study_id", study_name)).strip()
-    if not study_id:
-        raise ValueError("study.study_id (or study.name) must be a non-empty string")
-    return study_id
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
-
-
-def _write_yaml(path: Path, data: dict[str, Any], *, dry_run: bool = False) -> None:
+def write_yaml(path: Path, data: dict[str, Any], *, dry_run: bool = False) -> None:
+    """Write a study artifact as YAML (``dry_run`` resolves paths without writing)."""
     if dry_run:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -126,7 +116,8 @@ def _write_yaml(path: Path, data: dict[str, Any], *, dry_run: bool = False) -> N
         yaml.safe_dump(data, f, sort_keys=False, allow_unicode=False)
 
 
-def _write_json(path: Path, data: Any, *, dry_run: bool = False) -> None:
+def write_json(path: Path, data: Any, *, dry_run: bool = False) -> None:
+    """Write a study artifact as pretty JSON (``dry_run`` writes nothing)."""
     if dry_run:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -341,7 +332,7 @@ def organize_study_outputs(
     """Build the browsable study tree under experiments/studies/{study_id}/generated/organized."""
     study = study_data["study"]
     study_name = str(study["name"]).strip()
-    study_id = _resolve_study_id(study)
+    study_id = resolve_study_id(study)
     study_root = repo_root / "experiments" / "studies" / study_id
     organized_root = output_root or (study_root / "generated" / "organized")
 
@@ -357,7 +348,7 @@ def organize_study_outputs(
         "scenarios": study.get("scenarios", []),
         "hypotheses": list(study_data.get("hypotheses", {}).keys()),
     }
-    _write_yaml(organized_root / "study_summary.yaml", study_summary, dry_run=dry_run)
+    write_yaml(organized_root / "study_summary.yaml", study_summary, dry_run=dry_run)
 
     all_eval_payloads: list[dict[str, Any]] = []
 
@@ -374,7 +365,7 @@ def organize_study_outputs(
             "status": hyp.get("status", "testing"),
             "conditions": sorted((hyp.get("conditions") or {}).keys()),
         }
-        _write_yaml(hyp_dir / "hypothesis.yaml", hypothesis_summary, dry_run=dry_run)
+        write_yaml(hyp_dir / "hypothesis.yaml", hypothesis_summary, dry_run=dry_run)
 
         hyp_records = [record for record in records if record.get("hypothesis") == hyp_id]
         hyp_rows: list[dict[str, Any]] = []
@@ -414,7 +405,7 @@ def organize_study_outputs(
                 }
                 if run_dir is not None:
                     metadata.update(extract_run_metadata(run_dir))
-                _write_yaml(seed_dir / "config.yaml", metadata, dry_run=dry_run)
+                write_yaml(seed_dir / "config.yaml", metadata, dry_run=dry_run)
 
                 if run_dir is not None and run_dir.exists():
                     create_relative_symlink(run_dir, seed_dir / "run", dry_run=dry_run)
@@ -487,7 +478,7 @@ def organize_study_outputs(
                 if combined.get("aggregated") or combined.get("summary"):
                     all_eval_payloads.append(combined)
 
-        _write_json(hyp_dir / "runs.json", hyp_rows, dry_run=dry_run)
+        write_json(hyp_dir / "runs.json", hyp_rows, dry_run=dry_run)
 
-    _write_json(organized_root / "summary.json", build_summary(all_eval_payloads), dry_run=dry_run)
+    write_json(organized_root / "summary.json", build_summary(all_eval_payloads), dry_run=dry_run)
     return organized_root

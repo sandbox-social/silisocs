@@ -10,6 +10,7 @@ from typing import Any, ClassVar
 
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
+from silisocs.agents.harness.bridge import EVENT_TURN_COMPLETED
 from silisocs.environments.backends.base import ActionResult
 from silisocs.environments.gm.components.base import (
     ComponentState,
@@ -99,7 +100,7 @@ def _record_harness_turn(backend: Any, active_agent: str, payload: dict[str, Any
     if callable(log):
         log(
             {
-                "kind": "turn_completed",
+                "kind": EVENT_TURN_COMPLETED,
                 "agent_name": active_agent,
                 "tool_calls": tool_calls,
                 "failures": failures,

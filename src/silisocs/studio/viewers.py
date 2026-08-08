@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 import importlib.util
 import sys
 import threading
@@ -14,6 +13,7 @@ from urllib.parse import quote
 from silisocs.environments.backends.base import VisualizerSpec
 from silisocs.environments.backends.factory import registered_backend_types, resolve_backend_class
 from silisocs.evaluations.run_artifact import load_run
+from silisocs.runtime.class_loading import load_attr
 
 # A backend's declared visualizer is a ``VisualizerSpec``. The same shape is
 # reconstructable from a run manifest (see ``_manifest_databases``), so a run
@@ -47,7 +47,7 @@ def viewer_app_factory(backend_type: str):
         return None
     module_name, _, attribute = reference.partition(":")
     try:
-        factory = getattr(importlib.import_module(module_name), attribute)
+        factory = load_attr(f"{module_name}.{attribute}")
     except (ImportError, AttributeError):
         return None  # Fall back to the subprocess launch plan.
     return factory if callable(factory) else None

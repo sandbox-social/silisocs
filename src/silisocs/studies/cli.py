@@ -23,34 +23,37 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from silisocs.runtime.io import append_jsonl_line
 from silisocs.runtime.provenance import environment_provenance as _environment_provenance
 from silisocs.studies.execute import (
-    _enrich_study_with_results,
-    _execute_pending_runs,
-    _partition_completed_runs,
-    _resolve_gpu_ids_for_run,
-    _run_command_with_optional_hooks,
-    _write_json,
-    _write_jsonl_line,
-    _write_study_index,
-    _write_yaml,
+    enrich_study_with_results,
+    execute_pending_runs,
+    partition_completed_runs,
+    resolve_gpu_ids_for_run,
+    run_command_with_optional_hooks,
+    write_study_index,
 )
 from silisocs.studies.plan import (
     PLAN_PREVIEW_ROWS,
-    _build_submitit_job_commands,
-    _count_array_tasks,
-    _csv_compact,
-    _expand_runs,
-    _filter_run_specs,
-    _load_yaml,
-    _plan_rows,
-    _preflight_summary,
-    _render_bash_script,
-    _resolve_summary_paths,
-    _study_generated_dir,
-    _submitit_group_filters,
+    build_submitit_job_commands,
+    count_array_tasks,
+    csv_compact,
+    expand_runs,
+    filter_run_specs,
+    load_yaml,
+    plan_rows,
+    preflight_summary,
+    render_bash_script,
+    resolve_summary_paths,
+    study_generated_dir,
+    submitit_group_filters,
 )
-from silisocs.studies.study_artifacts import organize_study_outputs, resolve_study_definition_path
+from silisocs.studies.study_artifacts import (
+    organize_study_outputs,
+    resolve_study_definition_path,
+    write_json,
+    write_yaml,
+)
 from silisocs.studies.study_types import (
     SCHEMA_VERSION,
     StudyConfigError,
@@ -85,9 +88,9 @@ def cmd_summary_append(args: argparse.Namespace) -> int:
     """Append a human/LLM study summary entry to JSONL and markdown files."""
     repo_root = Path(args.repo_root).resolve()
     study_path = Path(args.study).resolve()
-    study_data = _load_yaml(study_path)
+    study_data = load_yaml(study_path)
 
-    summary_md, summary_log = _resolve_summary_paths(repo_root, study_data)
+    summary_md, summary_log = resolve_summary_paths(repo_root, study_data)
     study = ensure_mapping("study", study_data.get("study"))
     entry = {
         "created_at": now_iso(),
@@ -100,7 +103,7 @@ def cmd_summary_append(args: argparse.Namespace) -> int:
         "evidence_paths": list(args.evidence or []),
     }
 
-    _write_jsonl_line(summary_log, entry)
+    append_jsonl_line(summary_log, entry)
 
     summary_md.parent.mkdir(parents=True, exist_ok=True)
     if not summary_md.exists():
@@ -131,9 +134,9 @@ def cmd_summary_append(args: argparse.Namespace) -> int:
 def cmd_plan(args: argparse.Namespace) -> int:
     """Validate and expand a study file into a deterministic run plan."""
     study_path = resolve_study_definition_path(Path(args.study).resolve())
-    study_data = _load_yaml(study_path)
-    run_specs, eval_specs, study = _expand_runs(study_path, study_data)
-    run_specs = _filter_run_specs(
+    study_data = load_yaml(study_path)
+    run_specs, eval_specs, study = expand_runs(study_path, study_data)
+    run_specs = filter_run_specs(
         run_specs,
         args.only_hypothesis,
         args.only_condition,
@@ -146,13 +149,13 @@ def cmd_plan(args: argparse.Namespace) -> int:
     print(f"Schema version: {SCHEMA_VERSION}")
     print(f"Global evaluators: {len(eval_specs)}")
     print(f"Total expanded runs: {len(run_specs)}")
-    for line in _preflight_summary(run_specs):
+    for line in preflight_summary(run_specs):
         print(line)
 
-    rows = _plan_rows(run_specs)
+    rows = plan_rows(run_specs)
     if args.output:
         output = Path(args.output).resolve()
-        _write_json(output, {"schema_version": SCHEMA_VERSION, "plan": rows})
+        write_json(output, {"schema_version": SCHEMA_VERSION, "plan": rows})
         print(f"Wrote plan JSON: {output}")
 
     for row in rows[: min(len(rows), PLAN_PREVIEW_ROWS)]:
@@ -169,9 +172,9 @@ def cmd_generate_bash(args: argparse.Namespace) -> int:
     """Render all runnable study commands into a portable bash script."""
     study_path = resolve_study_definition_path(Path(args.study).resolve())
     repo_root = Path(args.repo_root).resolve()
-    study_data = _load_yaml(study_path)
-    run_specs, _, study = _expand_runs(study_path, study_data)
-    run_specs = _filter_run_specs(
+    study_data = load_yaml(study_path)
+    run_specs, _, study = expand_runs(study_path, study_data)
+    run_specs = filter_run_specs(
         run_specs,
         args.only_hypothesis,
         args.only_condition,
@@ -182,7 +185,7 @@ def cmd_generate_bash(args: argparse.Namespace) -> int:
 
     out = Path(args.output).resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
-    content = _render_bash_script(run_specs, repo_root)
+    content = render_bash_script(run_specs, repo_root)
     out.write_text(content, encoding="utf-8")
     os.chmod(out, 0o755)
 
@@ -196,9 +199,9 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
     study_path = resolve_study_definition_path(Path(args.study).resolve())
     repo_root = Path(args.repo_root).resolve()
 
-    study_data = _load_yaml(study_path)
-    run_specs, eval_specs, study = _expand_runs(study_path, study_data)
-    run_specs = _filter_run_specs(
+    study_data = load_yaml(study_path)
+    run_specs, eval_specs, study = expand_runs(study_path, study_data)
+    run_specs = filter_run_specs(
         run_specs,
         args.only_hypothesis,
         args.only_condition,
@@ -207,7 +210,7 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
         getattr(args, "only_run_id", None),
     )
 
-    generated_dir = _study_generated_dir(repo_root, study)
+    generated_dir = study_generated_dir(repo_root, study)
     generated_dir.mkdir(parents=True, exist_ok=True)
 
     lock_jsonl = generated_dir / "repro_lock.jsonl"
@@ -216,14 +219,14 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
     enriched_yaml = generated_dir / "study_enriched.yaml"
 
     bash_out = generated_dir / "run_study.sh"
-    bash_out.write_text(_render_bash_script(run_specs, repo_root), encoding="utf-8")
+    bash_out.write_text(render_bash_script(run_specs, repo_root), encoding="utf-8")
     os.chmod(bash_out, 0o755)
 
     max_concurrent = int(args.max_concurrent)
     timeout_seconds = int(args.timeout_seconds) if args.timeout_seconds > 0 else None
-    gpu_ids = _resolve_gpu_ids_for_run()
+    gpu_ids = resolve_gpu_ids_for_run()
 
-    pending_specs, skipped_records = _partition_completed_runs(
+    pending_specs, skipped_records = partition_completed_runs(
         run_specs, repo_root, generated_dir, force=bool(args.force)
     )
 
@@ -243,7 +246,7 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
     print(f"Expanded runs: {len(run_specs)}")
     if skipped_records:
         print(f"Already complete (will skip): {len(skipped_records)}")
-    for line in _preflight_summary(pending_specs):
+    for line in preflight_summary(pending_specs):
         print(line)
     print(f"Global evaluators: {[e.eval_id for e in eval_specs]}")
     print(f"Max concurrency: {max_concurrent}")
@@ -259,15 +262,15 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
     print(f"Generated artifacts directory: {generated_dir}")
 
     if args.dry_run:
-        rows = _plan_rows(run_specs)
-        _write_json(generated_dir / "plan.json", {"schema_version": SCHEMA_VERSION, "plan": rows})
+        rows = plan_rows(run_specs)
+        write_json(generated_dir / "plan.json", {"schema_version": SCHEMA_VERSION, "plan": rows})
         print("Dry-run only. Wrote plan and bash script.")
         return 0
 
     if not _confirm_run_count(len(pending_specs), bool(args.yes)):
         return 2
 
-    records = _execute_pending_runs(
+    records = execute_pending_runs(
         pending_specs,
         skipped_records,
         repo_root,
@@ -279,7 +282,7 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
     )
 
     records.sort(key=lambda r: str(r.get("run_id", "")))
-    _write_json(
+    write_json(
         lock_json,
         {
             "schema_version": SCHEMA_VERSION,
@@ -287,8 +290,8 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
             "records": records,
         },
     )
-    _write_study_index(study_index, study_data, records)
-    _write_yaml(enriched_yaml, _enrich_study_with_results(study_data, records))
+    write_study_index(study_index, study_data, records)
+    write_yaml(enriched_yaml, enrich_study_with_results(study_data, records))
 
     success = sum(
         1 for r in records if r.get("status") in {"success", "reused", "skipped_complete"}
@@ -319,10 +322,8 @@ def cmd_organize(args: argparse.Namespace) -> int:
     study_path = resolve_study_definition_path(Path(args.study).resolve())
     repo_root = Path(args.repo_root).resolve()
 
-    study_data = _load_yaml(study_path)
-    generated_dir = _study_generated_dir(
-        repo_root, ensure_mapping("study", study_data.get("study"))
-    )
+    study_data = load_yaml(study_path)
+    generated_dir = study_generated_dir(repo_root, ensure_mapping("study", study_data.get("study")))
     lock_json = generated_dir / "repro_lock.json"
 
     if not lock_json.is_file():
@@ -355,9 +356,9 @@ def cmd_slurm_array(args: argparse.Namespace) -> int:
     if not base_script.is_file():
         raise StudyConfigError(f"Base script not found: {base_script}")
 
-    study_data = _load_yaml(study_path)
-    run_specs, _, _ = _expand_runs(study_path, study_data)
-    run_specs = _filter_run_specs(
+    study_data = load_yaml(study_path)
+    run_specs, _, _ = expand_runs(study_path, study_data)
+    run_specs = filter_run_specs(
         run_specs,
         args.only_hypothesis,
         args.only_condition,
@@ -371,7 +372,7 @@ def cmd_slurm_array(args: argparse.Namespace) -> int:
         return 0
 
     array_mode = str(args.array_mode).strip().lower()
-    total_tasks = _count_array_tasks(run_specs, array_mode)
+    total_tasks = count_array_tasks(run_specs, array_mode)
     array_spec = f"0-{total_tasks - 1}"
 
     study_rel = os.path.relpath(study_path, repo_root)
@@ -379,18 +380,18 @@ def cmd_slurm_array(args: argparse.Namespace) -> int:
         repo_root / "logs" / f"study_plan_{Path(study_rel).stem}_{array_mode}_{now_iso()}.json"
     )
     plan_json.parent.mkdir(parents=True, exist_ok=True)
-    _write_json(plan_json, {"schema_version": SCHEMA_VERSION, "plan": _plan_rows(run_specs)})
+    write_json(plan_json, {"schema_version": SCHEMA_VERSION, "plan": plan_rows(run_specs)})
 
     export_parts = {
         "REPO_ROOT": str(repo_root),
         "STUDY_FILE": study_rel,
         "PLAN_JSON": str(plan_json),
         "ARRAY_MODE": array_mode,
-        "HYPOTHESIS_IDS": _csv_compact(args.only_hypothesis),
-        "CONDITION_IDS": _csv_compact(args.only_condition),
-        "SUB_EXPERIMENT_IDS": _csv_compact(args.only_sub_experiment),
-        "SEED_IDS": _csv_compact(args.only_seed),
-        "RUN_IDS": _csv_compact(args.only_run_id),
+        "HYPOTHESIS_IDS": csv_compact(args.only_hypothesis),
+        "CONDITION_IDS": csv_compact(args.only_condition),
+        "SUB_EXPERIMENT_IDS": csv_compact(args.only_sub_experiment),
+        "SEED_IDS": csv_compact(args.only_seed),
+        "RUN_IDS": csv_compact(args.only_run_id),
         "MAX_CONCURRENT": str(int(args.max_concurrent)),
         "RUNNER_PYTHON": str(args.runner_python),
         "SILISOCS_HPC_SETUP_COMMAND": str(args.setup_command or ""),
@@ -463,9 +464,9 @@ def cmd_submitit(args: argparse.Namespace) -> int:
     """Submit study run groups with Submitit while preserving study-runner semantics."""
     study_path = resolve_study_definition_path(Path(args.study).resolve())
     repo_root = Path(args.repo_root).resolve()
-    study_data = _load_yaml(study_path)
-    run_specs, _, study = _expand_runs(study_path, study_data)
-    run_specs = _filter_run_specs(
+    study_data = load_yaml(study_path)
+    run_specs, _, study = expand_runs(study_path, study_data)
+    run_specs = filter_run_specs(
         run_specs,
         args.only_hypothesis,
         args.only_condition,
@@ -478,8 +479,8 @@ def cmd_submitit(args: argparse.Namespace) -> int:
         return 0
 
     array_mode = str(args.array_mode).strip().lower()
-    groups = _submitit_group_filters(run_specs, array_mode)
-    commands = _build_submitit_job_commands(
+    groups = submitit_group_filters(run_specs, array_mode)
+    commands = build_submitit_job_commands(
         study_path=study_path,
         repo_root=repo_root,
         groups=groups,
@@ -512,7 +513,7 @@ def cmd_submitit(args: argparse.Namespace) -> int:
     executor.update_parameters(**_submitit_parameters(args))
     jobs = [
         executor.submit(
-            _run_command_with_optional_hooks,
+            run_command_with_optional_hooks,
             command,
             str(repo_root),
             args.setup_command,

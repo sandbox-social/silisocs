@@ -269,10 +269,6 @@ class FixedAgent(Agent):
         # Plans are terminal: do not cycle back to earlier episodes.
         return self._finished_action_item("Finished action episode")
 
-    def get_all_actions_for_episode(self, episode: int) -> list[dict[str, Any]]:
-        """Get all actions for a specific episode (for execute_until_done policy)."""
-        return [dict(item) for item in self._actions_by_episode.get(episode, [])]
-
     def _effective_action_output_mode(self, action_spec: Any) -> str:
         """Resolve the output mode, inferring from the action spec when set to auto."""
         mode = str(self._action_output_mode or "auto").strip().lower()

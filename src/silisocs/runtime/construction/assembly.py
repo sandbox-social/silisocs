@@ -246,7 +246,3 @@ def _build_concordia_game_master(
     )
     built = builder.build(model=model, memory_bank=memory_bank)
     return adapter.ConcordiaGameMasterAdapter(built)
-
-
-def _has_native_gm_methods(value: Any) -> bool:
-    return all(callable(getattr(value, method, None)) for method in _GM_METHODS)

@@ -22,6 +22,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from silisocs.evaluations.study_matrix import resolve_scenarios, resolve_seeds
 from silisocs.studies.evaluation_presets import BUILTIN_EVAL_PRESETS
 from silisocs.studies.study_artifacts import load_study_definition
 from silisocs.studies.study_schema import validate_schema
@@ -40,8 +41,31 @@ from silisocs.studies.study_types import (
 DEFAULT_RUNNER_MODULE = "silisocs.runtime.runner"
 PLAN_PREVIEW_ROWS = 10
 
+# The planning surface the CLI, the execution layer, and tests are allowed to
+# call. Everything else in this module is an implementation detail of run
+# expansion and stays underscore-private.
+__all__ = [
+    "DEFAULT_RUNNER_MODULE",
+    "PLAN_PREVIEW_ROWS",
+    "build_run_command",
+    "build_submitit_job_commands",
+    "count_array_tasks",
+    "csv_compact",
+    "expand_runs",
+    "filter_run_specs",
+    "load_yaml",
+    "plan_rows",
+    "planned_run_dir",
+    "preflight_summary",
+    "render_bash_script",
+    "resolve_summary_paths",
+    "study_generated_dir",
+    "submitit_group_filters",
+]
 
-def _load_yaml(path: Path) -> dict[str, Any]:
+
+def load_yaml(path: Path) -> dict[str, Any]:
+    """Load a study definition, re-raising load/parse failures as StudyConfigError."""
     try:
         return load_study_definition(path)
     except (FileNotFoundError, ValueError) as e:
@@ -113,64 +137,6 @@ def _checkpoint_cadence_overrides(run_defaults: dict[str, Any]) -> dict[str, Any
             "or null/0/false to disable checkpoint injection"
         )
     return {"sim.checkpoint.every_n_steps": cadence}
-
-
-def _resolve_scenarios(study: dict[str, Any], run_defaults: dict[str, Any]) -> list[str]:
-    scenarios = ensure_string_list("study.scenarios", study.get("scenarios"))
-    if not scenarios:
-        scenarios = ensure_string_list("study.base_scenarios", study.get("base_scenarios"))
-    if not scenarios:
-        scenario = run_defaults.get("scenario")
-        if isinstance(scenario, str) and scenario:
-            scenarios = [scenario]
-    if not scenarios:
-        raise StudyConfigError("No scenarios found. Set study.scenarios or run_defaults.scenario")
-    return scenarios
-
-
-def _resolve_seeds(  # noqa: C901
-    run_defaults: dict[str, Any], node: dict[str, Any], *, where: str = "condition"
-) -> list[int]:
-    """Resolve a condition's seed list.
-
-    ``where`` is the condition's config location (``hypotheses.<h>.conditions.<c>``),
-    named in every error so a bad seed in one of dozens of conditions is findable
-    without bisecting the study file.
-    """
-    if "seeds" in node:
-        seeds = node["seeds"]
-        if not isinstance(seeds, list) or not all(isinstance(v, int) for v in seeds):
-            raise StudyConfigError(f"{where}.seeds must be a list of ints")
-        return seeds
-
-    if "seed" in node:
-        if not isinstance(node["seed"], int):
-            raise StudyConfigError(f"{where}.seed must be an int")
-        return [node["seed"]]
-
-    repeats = node.get("seed_repeats", run_defaults.get("seed_repeats"))
-    if repeats is not None:
-        if not isinstance(repeats, int) or repeats <= 0:
-            raise StudyConfigError(f"seed_repeats must be a positive int (resolved for {where})")
-        seed_start = node.get(
-            "seed_start", run_defaults.get("seed_start", run_defaults.get("seed", 1))
-        )
-        if not isinstance(seed_start, int):
-            raise StudyConfigError(f"seed_start must be an int (resolved for {where})")
-        return [seed_start + i for i in range(repeats)]
-
-    if "seeds" in run_defaults:
-        seeds = run_defaults["seeds"]
-        if not isinstance(seeds, list) or not all(isinstance(v, int) for v in seeds):
-            raise StudyConfigError(
-                f"run_defaults.seeds must be a list of ints (resolved for {where})"
-            )
-        return seeds
-
-    seed = run_defaults.get("seed", 1)
-    if not isinstance(seed, int):
-        raise StudyConfigError(f"run_defaults.seed must be an int (resolved for {where})")
-    return [seed]
 
 
 def _resolve_eval_spec(  # noqa: C901
@@ -314,16 +280,21 @@ def _resolve_condition_eval_specs(
     return tuple(dedup.values())
 
 
-def _expand_runs(  # noqa: C901, PLR0912, PLR0915
+def expand_runs(  # noqa: C901, PLR0912, PLR0915
     study_path: Path, study_data: dict[str, Any]
 ) -> tuple[list[RunSpec], tuple[EvalSpec, ...], dict[str, Any]]:
+    """Validate a study document and expand it into the concrete run matrix.
+
+    Returns the expanded ``RunSpec`` list, the study-global evaluator specs, and
+    the validated ``study`` mapping.
+    """
     validate_schema(study_data)
 
     study_root = study_path.parent
     study = ensure_mapping("study", study_data["study"])
     hypotheses = ensure_mapping("hypotheses", study_data["hypotheses"])
     run_defaults = ensure_mapping("study.run_defaults", study.get("run_defaults"))
-    base_scenarios = _resolve_scenarios(study, run_defaults)
+    base_scenarios = resolve_scenarios(study, run_defaults, error=StudyConfigError)
 
     global_eval_specs = _resolve_eval_specs(study_root, study_data)
 
@@ -471,8 +442,11 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                     )
                 continue
 
-            seeds = _resolve_seeds(
-                run_defaults, cond_node, where=f"hypotheses.{hyp_id}.conditions.{cond_id}"
+            seeds = resolve_seeds(
+                run_defaults,
+                cond_node,
+                where=f"hypotheses.{hyp_id}.conditions.{cond_id}",
+                error=StudyConfigError,
             )
             merged = _merge_overrides(default_overrides, hyp_overrides, cond_overrides)
 
@@ -541,7 +515,8 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
     return run_specs, global_eval_specs, study
 
 
-def _build_run_command(spec: RunSpec) -> list[str]:
+def build_run_command(spec: RunSpec) -> list[str]:
+    """Render the runner argv for one expanded run (or its ``command`` override)."""
     if spec.command_override:
         return list(spec.command_override)
 
@@ -574,7 +549,8 @@ def _build_run_command(spec: RunSpec) -> list[str]:
     return cmd
 
 
-def _plan_rows(run_specs: list[RunSpec]) -> list[dict[str, Any]]:
+def plan_rows(run_specs: list[RunSpec]) -> list[dict[str, Any]]:
+    """Project the expanded runs into the JSON-serialisable plan rows."""
     return [
         {
             "run_id": spec.run_id,
@@ -591,14 +567,15 @@ def _plan_rows(run_specs: list[RunSpec]) -> list[dict[str, Any]]:
             "reused_source": spec.reused_source,
             "re_evaluate": spec.re_evaluate,
             "overrides": spec.overrides,
-            "command": _build_run_command(spec) if spec.execution_mode == "run" else None,
+            "command": build_run_command(spec) if spec.execution_mode == "run" else None,
             "evaluators": [e.eval_id for e in spec.eval_specs],
         }
         for spec in run_specs
     ]
 
 
-def _render_bash_script(run_specs: list[RunSpec], repo_root: Path) -> str:
+def render_bash_script(run_specs: list[RunSpec], repo_root: Path) -> str:
+    """Render every runnable spec as a portable, self-contained bash script."""
     lines = [
         "#!/usr/bin/env bash",
         "set -euo pipefail",
@@ -611,7 +588,7 @@ def _render_bash_script(run_specs: list[RunSpec], repo_root: Path) -> str:
         if spec.execution_mode == "reuse_existing":
             lines.append(f"# reuse_existing: {spec.run_id} source={spec.reused_source}")
             continue
-        cmd = _build_run_command(spec)
+        cmd = build_run_command(spec)
         rendered = " ".join(shlex.quote(token) for token in cmd)
         if spec.working_directory:
             working_directory = Path(spec.working_directory).expanduser()
@@ -623,7 +600,7 @@ def _render_bash_script(run_specs: list[RunSpec], repo_root: Path) -> str:
     return "\n".join(lines)
 
 
-def _filter_run_specs(
+def filter_run_specs(
     run_specs: list[RunSpec],
     only_hypothesis: str | None,
     only_condition: str | None,
@@ -631,6 +608,7 @@ def _filter_run_specs(
     only_seed: str | None,
     only_run_id: str | None = None,
 ) -> list[RunSpec]:
+    """Narrow the expanded runs by the CLI's comma-separated ``--only-*`` filters."""
     filtered = run_specs
     if only_run_id:
         allowed = {part.strip() for part in only_run_id.split(",") if part.strip()}
@@ -664,7 +642,7 @@ def _spec_scale(spec: RunSpec) -> tuple[int | None, int | None]:
     return _as_int(spec.overrides.get("num_agents")), _as_int(spec.overrides.get("num_steps"))
 
 
-def _preflight_summary(run_specs: list[RunSpec]) -> list[str]:
+def preflight_summary(run_specs: list[RunSpec]) -> list[str]:
     """Render the cost/scale preflight lines for a set of planned runs."""
     lines = [f"Preflight: {len(run_specs)} run(s) planned"]
     total_agent_steps = 0
@@ -696,7 +674,7 @@ def _preflight_summary(run_specs: list[RunSpec]) -> list[str]:
     return lines
 
 
-def _planned_run_dir(spec: RunSpec, repo_root: Path) -> Path | None:
+def planned_run_dir(spec: RunSpec, repo_root: Path) -> Path | None:
     """Resolve the planned output directory the same way _run_one_spec does."""
     if not spec.output_dir:
         return None
@@ -711,11 +689,13 @@ def _study_workspace_dir(repo_root: Path, study: dict[str, Any]) -> Path:
     return repo_root / "experiments" / "studies" / study_id
 
 
-def _study_generated_dir(repo_root: Path, study: dict[str, Any]) -> Path:
+def study_generated_dir(repo_root: Path, study: dict[str, Any]) -> Path:
+    """Return the study's ``generated/`` directory under the repo workspace."""
     return _study_workspace_dir(repo_root, study) / "generated"
 
 
-def _resolve_summary_paths(repo_root: Path, study_data: dict[str, Any]) -> tuple[Path, Path]:
+def resolve_summary_paths(repo_root: Path, study_data: dict[str, Any]) -> tuple[Path, Path]:
+    """Return the study's (SUMMARY.md, summary_log.jsonl) absolute paths."""
     study = ensure_mapping("study", study_data.get("study"))
     study_id = resolve_study_id(study)
 
@@ -740,13 +720,15 @@ def _resolve_summary_paths(repo_root: Path, study_data: dict[str, Any]) -> tuple
     return summary_md, summary_log
 
 
-def _csv_compact(value: str | None) -> str:
+def csv_compact(value: str | None) -> str:
+    """Normalise a comma-separated filter value, dropping empty entries."""
     if not value:
         return ""
     return ",".join(part.strip() for part in value.split(",") if part.strip())
 
 
-def _count_array_tasks(run_specs: list[RunSpec], array_mode: str) -> int:
+def count_array_tasks(run_specs: list[RunSpec], array_mode: str) -> int:
+    """Count the HPC array tasks the expanded runs produce under ``array_mode``."""
     if array_mode == "run":
         return len(run_specs)
     if array_mode == "case":
@@ -761,7 +743,7 @@ def _count_array_tasks(run_specs: list[RunSpec], array_mode: str) -> int:
     raise StudyConfigError(f"Unsupported array mode: {array_mode}")
 
 
-def _submitit_group_filters(run_specs: list[RunSpec], array_mode: str) -> list[dict[str, str]]:
+def submitit_group_filters(run_specs: list[RunSpec], array_mode: str) -> list[dict[str, str]]:
     """Return study-runner filters for each submitted group."""
     groups: list[dict[str, str]] = []
     seen: set[tuple[str, ...]] = set()
@@ -813,7 +795,7 @@ def _filter_args_from_mapping(filters: dict[str, str]) -> list[str]:
     return out
 
 
-def _build_submitit_job_commands(
+def build_submitit_job_commands(
     *,
     study_path: Path,
     repo_root: Path,
@@ -821,6 +803,7 @@ def _build_submitit_job_commands(
     max_concurrent: int,
     timeout_seconds: int,
 ) -> list[list[str]]:
+    """Build one ``silisocs-study run`` command per submitted group."""
     study_arg = os.path.relpath(study_path, repo_root)
     commands: list[list[str]] = []
     for filters in groups:

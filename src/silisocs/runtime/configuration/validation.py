@@ -11,9 +11,7 @@ when checks fail.
 """
 
 import difflib
-import importlib
 from collections.abc import Mapping
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +19,7 @@ from hydra.experimental.callback import Callback
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from omegaconf.errors import InterpolationResolutionError
 
+from silisocs.runtime.class_loading import load_attr
 from silisocs.runtime.model_fields import MODEL_FIELDS
 
 # Shared config-key vocabularies (single source of truth for both the config
@@ -57,50 +56,6 @@ _RENAMED_CONFIG_KEYS: dict[str, tuple[str, str]] = {
         "your scenario's conf/world/*.yaml (the universal run params block)",
     ),
 }
-
-
-@dataclass
-class BaseScenarioSchema:
-    """
-    Base schema that all scenarios must conform to.
-    Semantic world values are supplied by the scenario's ``world`` config.
-    """
-
-    # Scenario identification
-    scenario_name: str
-
-    # Setting information
-    setting: dict[str, Any] = field(
-        default_factory=lambda: {
-            "name": "",
-            "background": [],
-        }
-    )
-
-    # Setting information
-    event: dict[str, Any] = field(
-        default_factory=lambda: {
-            "name": "",
-            "context": "",
-        }
-    )
-
-    # Data sources (optional, world-specific)
-    data: dict[str, Any] = field(default_factory=dict)
-
-    # Agent configuration
-    roles: dict[str, int] = field(default_factory=dict)  # role -> count
-    role_configs: dict[str, Any] = field(default_factory=dict)  # role -> config
-
-    # Shared memories and observations
-    shared_memories: list[str] = field(default_factory=list)
-    initial_observations: list[str] = field(default_factory=list)
-
-    # Probes configuration
-    probes: dict[str, Any] = field(default_factory=dict)
-
-    # Output configuration
-    jobname_format: str = ""
 
 
 def validate_scenario_structure(cfg: DictConfig) -> None:
@@ -871,16 +826,17 @@ def validate_class_paths(cfg: DictConfig) -> None:
     for location, class_path in found:
         if "${" in class_path:
             continue  # interpolation resolved later; cannot check statically
-        module_path, _, attr = class_path.rpartition(".")
-        if not module_path:
+        if not class_path.rpartition(".")[0]:
             errors.append(
                 f"{location}: '{class_path}' is not a fully qualified class path "
                 "(expected 'package.module.ClassName')"
             )
             continue
         try:
-            getattr(importlib.import_module(module_path), attr)
-        except (ImportError, AttributeError) as exc:
+            # The shared loader, so a path retired by a refactor reports its
+            # curated migration hint here rather than a bare ImportError.
+            load_attr(class_path)
+        except (ImportError, AttributeError, ValueError) as exc:
             errors.append(f"{location}: cannot import '{class_path}': {exc}")
     if errors:
         raise ValueError(
