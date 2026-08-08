@@ -16,6 +16,10 @@ from silisocs.runtime.configuration.validation import (
     _validate_engine_slots,
     validate_runtime_structure,
 )
+from silisocs.runtime.language_models.catalog import (
+    BUILT_IN_PROVIDERS,
+    OPENAI_COMPATIBLE_PRESETS,
+)
 
 
 def _engine(cfg: dict) -> None:
@@ -147,6 +151,16 @@ def test_retired_output_rootname_raises_even_when_empty() -> None:
 
 def test_current_output_dir_key_passes() -> None:
     validate_runtime_structure(OmegaConf.create({"output_dir": "outputs", "env": {}, "sim": {}}))
+
+
+def test_every_documented_llm_provider_passes_validation() -> None:
+    # The factory's tables are the source of truth for provider names; validation
+    # must accept everything they accept (a stale hardcoded allowlist once
+    # rejected every OpenAI-compatible preset before the factory saw it).
+    for provider in (*BUILT_IN_PROVIDERS, *OPENAI_COMPATIBLE_PRESETS):
+        validate_runtime_structure(
+            OmegaConf.create({"env": {}, "sim": {"llm": {"provider": provider}}})
+        )
 
 
 def test_backend_action_aliases_valid_on_single_gm() -> None:

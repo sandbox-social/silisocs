@@ -415,16 +415,23 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
     _assert_allowed_keys(cfg, "sim.llm.pricing", {"input_per_1m", "output_per_1m"})
     provider = OmegaConf.select(cfg, "sim.llm.provider")
     if provider is not None:
+        from silisocs.runtime.language_models.catalog import (
+            BUILT_IN_PROVIDERS,
+            OPENAI_COMPATIBLE_PRESETS,
+        )
         from silisocs.runtime.language_models.registry import get_llm_provider
 
         provider_text = str(provider)
-        is_built_in = provider_text in {"openai", "openai_compatible", "scripted", "disabled"}
+        is_built_in = (
+            provider_text in BUILT_IN_PROVIDERS or provider_text in OPENAI_COMPATIBLE_PRESETS
+        )
         is_registered = get_llm_provider(provider_text) is not None
         is_class_path = "." in provider_text
         if not (is_built_in or is_registered or is_class_path):
             raise ValueError(
                 f"Unsupported sim.llm.provider: {provider!r}. Use a built-in "
-                "(openai, openai_compatible, scripted, disabled), a provider "
+                f"({', '.join(BUILT_IN_PROVIDERS)}), an OpenAI-compatible preset "
+                f"({', '.join(sorted(OPENAI_COMPATIBLE_PRESETS))}), a provider "
                 "registered via @register_llm_provider, or a class path."
             )
     _assert_allowed_keys(
