@@ -259,9 +259,16 @@ def build_checkpoint_save_strategy(slot_cfg: Any | None) -> CheckpointSaveStrate
     """
     if slot_cfg is None:
         return MonolithicJsonSaveStrategy()
-    built_in = str(getattr(slot_cfg, "built_in", "") or "").strip()
-    class_path = str(getattr(slot_cfg, "class_path", "") or "").strip()
-    params = getattr(slot_cfg, "params", None)
+
+    def _field(name: str) -> Any:
+        # Accept OmegaConf nodes AND plain mappings (programmatic callers).
+        return (
+            slot_cfg.get(name) if isinstance(slot_cfg, Mapping) else getattr(slot_cfg, name, None)
+        )
+
+    built_in = str(_field("built_in") or "").strip()
+    class_path = str(_field("class_path") or "").strip()
+    params = _field("params")
     if class_path:
         return _load_save_strategy(class_path, params)
     kwargs: dict[str, Any] = {}

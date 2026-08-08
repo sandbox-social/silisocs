@@ -254,3 +254,73 @@ def test_probe_postprocessor_accepts_nonexistent_output_json_context(tmp_path: P
     ext = plots["extensions"]
     assert len(ext) == 1
     assert ext[0]["status"] == "success"
+
+
+def test_probe_scoring_is_registry_driven_for_custom_and_structured_probes(tmp_path: Path) -> None:
+    """A custom ProbeBase subclass declaring analysis_kind is scored by the
+    built-in evaluators (previously only four literal class names were);
+    StructuredProbe responses are no longer invisible.
+    """
+    from silisocs.evaluations.probes.types import ProbeBase
+
+    class SentimentScoreProbe(ProbeBase):
+        analysis_kind = "numeric"
+        name = "SentimentScore"
+
+        def form_question_for_agent(self, agent):
+            return "score?"
+
+        def parse_answer(self, raw):
+            return raw
+
+    run_dir = tmp_path / "run"
+    _write_jsonl(
+        run_dir / "action_events.jsonl",
+        [
+            {
+                "source_user": "Alice",
+                "label": "sentiment",
+                "data": {"probe_return": "4", "probe_mode": "single_structured_lines"},
+                "episode": 0,
+                "event_type": "probe",
+                "event_index": 1,
+            },
+            {
+                "source_user": "Bob",
+                "label": "profile",
+                "data": {
+                    "probe_return": '{"mood": "wary"}',
+                    "probe_mode": "single_structured_lines",
+                },
+                "episode": 0,
+                "event_type": "probe",
+                "event_index": 2,
+            },
+        ],
+    )
+    cfg = {
+        "world": {
+            "probes": {
+                "probes": {
+                    "sentiment": {
+                        "probe_name": "sentiment",
+                        "probe_type": "SentimentScoreProbe",
+                        "probe_data": {"name": "Sentiment"},
+                    },
+                    "profile": {
+                        "probe_name": "profile",
+                        "probe_type": "StructuredProbe",
+                        "probe_data": {"name": "Profile"},
+                    },
+                }
+            }
+        }
+    }
+    (run_dir / "effective_config.yaml").write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+    events = list(_read_jsonl(run_dir / "action_events.jsonl"))
+    payload = _build_payload("probe_metrics", events, run_dir)
+
+    assert payload["per_type"]["SentimentScoreProbe"]["numeric_values_parsed"] == 1
+    assert payload["per_label"]["sentiment"]["numeric_response_stats"]["count"] == 1
+    assert "free_text_char_len_stats" in payload["per_label"]["profile"]

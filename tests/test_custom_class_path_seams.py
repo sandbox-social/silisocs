@@ -161,3 +161,135 @@ def test_custom_engine_via_engine_class_path() -> None:
     assert isinstance(engine, _MarkerEngine)
     assert engine.marker == "custom-engine"
     assert engine.seed == 3
+
+
+# ---------------------------------------------------------------------------
+# Custom Agent via the persona pipeline (the most advertised seam)
+# ---------------------------------------------------------------------------
+
+
+def _marker_agent_class():
+    from silisocs.agents.base_agent import Agent
+    from silisocs.runtime.types import ActionOutput
+
+    class _MarkerAgent(Agent):
+        def __init__(self, *, model, name: str, marker: str, context: str = "") -> None:
+            super().__init__(model)
+            self._name = name
+            self._marker = marker
+            self._seen: list[str] = []
+
+        @property
+        def name(self) -> str:
+            return self._name
+
+        def observe(self, observation: str) -> None:
+            self._seen.append(observation)
+
+        def act(self, action_spec):
+            from pathlib import Path
+
+            Path(self._marker).write_text(f"acted:{self._name}:{len(self._seen)}")
+            return ActionOutput(action="FINISHED")
+
+    return _MarkerAgent
+
+
+def marker_agent_factory(*, model, name: str, marker: str, context: str = "", **persona):
+    """Module-level factory so a class_path can reach the lazily-defined class.
+
+    ``**persona`` absorbs the pipeline's default persona params (bio, goal,
+    style, memories, ...) that a minimal custom agent does not model.
+    """
+    return _marker_agent_class()(model=model, name=name, marker=marker, context=context)
+
+
+def test_custom_agent_class_path_runs_end_to_end(tmp_path):
+    """persona_pipeline.classes.*.class_path builds and runs a user Agent with
+    strict params — in-process, via the programmatic API.
+    """
+    from omegaconf import OmegaConf
+
+    from silisocs import compose_config, load_run, run_simulation
+
+    marker = tmp_path / "acted.txt"
+    # env=messaging: the graph-free backend, so one agent needs no follow network.
+    cfg = compose_config(
+        overrides=["env=messaging", "num_agents=1", "num_steps=1", "sim.llm.provider=scripted"]
+    )
+    OmegaConf.set_struct(cfg, False)
+    cfg.agents.persona_pipeline.classes = {
+        "custom": {
+            "count": 1,
+            "class_path": f"{__name__}.marker_agent_factory",
+            "data": {"source": "inline", "records": [{"name": "Echo", "context": "a tester"}]},
+            "params": {"name": "Echo", "marker": str(marker), "context": "a tester"},
+        }
+    }
+    OmegaConf.set_struct(cfg, True)
+
+    run_dir = run_simulation(cfg, output_dir=tmp_path / "run")
+
+    assert marker.read_text().startswith("acted:Echo:")
+    assert load_run(run_dir).status == "success"
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint SAVE strategy class_path (restore's mirror, previously untested)
+# ---------------------------------------------------------------------------
+
+
+def test_checkpoint_save_class_path_builds_custom_strategy(tmp_path):
+    from silisocs.runtime.checkpointing import CheckpointSaveStrategy
+    from silisocs.runtime.checkpointing.save import build_checkpoint_save_strategy
+
+    strategy = build_checkpoint_save_strategy(
+        {"class_path": f"{__name__}.TinySaveStrategy", "params": {"suffix": "tiny"}}
+    )
+    assert isinstance(strategy, CheckpointSaveStrategy)
+    written = strategy.save({"objects": []}, step=3, checkpoint_path=str(tmp_path))
+    assert written.endswith("step_3_checkpoint.json")
+    assert (tmp_path / "step_3_checkpoint.json.tiny").exists()
+
+    with pytest.raises(TypeError, match="must subclass CheckpointSaveStrategy"):
+        build_checkpoint_save_strategy({"class_path": f"{__name__}._CustomSchedule"})
+
+
+# ---------------------------------------------------------------------------
+# probe_lib_module: bare-name probe resolution from a user module
+# ---------------------------------------------------------------------------
+
+
+def test_probe_lib_module_resolves_custom_probe_class():
+    from silisocs.evaluations.probes.agent_speech import _resolve_probe_class
+    from silisocs.evaluations.probes.types import FreeTextProbe
+
+    cls = _resolve_probe_class("CustomLibProbe", __name__)
+    assert cls is CustomLibProbe
+    # Built-ins keep precedence over same-named user classes.
+    assert _resolve_probe_class("FreeTextProbe", __name__) is FreeTextProbe
+    with pytest.raises(ImportError, match="Unknown probe type"):
+        _resolve_probe_class("NoSuchProbe", None)
+
+
+from silisocs.runtime.checkpointing.save import CheckpointSaveStrategy as _SaveBase
+
+
+class TinySaveStrategy(_SaveBase):
+    """Out-of-tree checkpoint save layout reachable by class_path."""
+
+    def __init__(self, suffix: str = "x") -> None:
+        self._suffix = suffix
+
+    def save(self, checkpoint_data, *, step, checkpoint_path):
+        import json
+        from pathlib import Path
+
+        path = Path(checkpoint_path) / f"step_{step}_checkpoint.json"
+        path.write_text(json.dumps(checkpoint_data))
+        path.with_name(path.name + f".{self._suffix}").write_text("")
+        return str(path)
+
+
+class CustomLibProbe:
+    """A user probe class resolvable through eval.probes.probe_lib_module."""

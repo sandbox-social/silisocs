@@ -28,6 +28,7 @@ import yaml
 
 from silisocs.design.matplotlib import apply_matplotlib_theme
 from silisocs.evaluations.action_events import resolve_action_event_files
+from silisocs.evaluations.probes.types import probe_analysis_kind
 from silisocs.evaluations.run_artifact import iter_jsonl
 
 # matplotlib is an optional (`analysis` extra) dependency used only by the plot
@@ -297,7 +298,11 @@ def _extract_probe_records(
         if probe_type_filter is not None and probe_type != probe_type_filter:
             continue
 
-        if probe_type in {"BinaryProbe", "ChoiceProbe"}:
+        # Scoring is registry-driven (ProbeBase.analysis_kind): any probe class
+        # declaring a kind — including custom ones imported via `plugins:` —
+        # is bucketed here without touching this module.
+        kind = probe_analysis_kind(probe_type)
+        if kind in {"binary", "choice"}:
             normalized = _normalize_binary(response)
             choice_records.append(
                 {
@@ -306,7 +311,7 @@ def _extract_probe_records(
                     "choice": normalized if normalized is not None else str(response).strip(),
                 }
             )
-        elif probe_type == "NumericRatingProbe":
+        elif kind == "numeric":
             numeric = _safe_float(response)
             if numeric is not None:
                 numeric_records.append(
@@ -316,7 +321,7 @@ def _extract_probe_records(
                         "value": numeric,
                     }
                 )
-        elif probe_type == "FreeTextProbe":
+        elif kind == "freetext":
             text = str(response)
             freetext_records.append(
                 {
@@ -706,22 +711,27 @@ def _accumulate_typed_response(
     free_text_word_counts: dict[str, list[float]],
     free_text_tokens: dict[str, Counter[str]],
 ) -> None:
-    """Accumulate one present probe response into the per-type/per-label stats."""
-    if probe_type == "BinaryProbe":
+    """Accumulate one present probe response into the per-type/per-label stats.
+
+    Registry-driven (``ProbeBase.analysis_kind``): custom probe classes join
+    these buckets by declaring a kind, with no edit here.
+    """
+    kind = probe_analysis_kind(probe_type)
+    if kind == "binary":
         normalized = _normalize_binary(response)
         key = normalized if normalized is not None else "Other"
         per_type[probe_type][f"answer_{key}"] += 1
-    elif probe_type == "NumericRatingProbe":
+    elif kind == "numeric":
         num = _safe_float(response)
         if num is not None:
             numeric_values[label].append(num)
             per_type[probe_type]["numeric_values_parsed"] += 1
         else:
             per_type[probe_type]["numeric_values_unparsed"] += 1
-    elif probe_type == "ChoiceProbe":
+    elif kind == "choice":
         value = str(response).strip() or "<empty>"
         choice_values[label][value] += 1
-    elif probe_type == "FreeTextProbe":
+    elif kind == "freetext":
         text = str(response)
         free_text_lengths[label].append(float(len(text)))
         words = text.split()

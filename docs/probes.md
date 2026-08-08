@@ -97,6 +97,10 @@ probes:
 from silisocs.evaluations.probes.types import ProbeBase
 
 class Favorability(ProbeBase):
+    # How the built-in evaluators score responses: one of
+    # "binary" | "numeric" | "choice" | "freetext" (omit for unscored).
+    analysis_kind = "numeric"
+
     def __init__(self, probe_data=None):
         self.name = "Favorability"
         self._candidate = (probe_data or {}).get("candidate", "Candidate A")
@@ -111,7 +115,11 @@ class Favorability(ProbeBase):
 
 Custom types are resolved via `importlib` at runtime. A probe must return a
 question string from `form_question_for_agent(agent)` and a parsed string or
-`None` from `parse_answer(raw_response)`. Probe prompts should contain the
+`None` from `parse_answer(raw_response)`. Declaring `analysis_kind` is what
+makes the built-in evaluators (`builtin.probes_*` presets, probe panels)
+bucket the probe's responses — scoring is registry-driven, so importing your
+module (via `probe_lib_module` or the top-level `plugins:` list) is all it
+takes. Probe prompts should contain the
 measurement question and any answer-format constraint only. Agent identity,
 persona, and recent observations should come from the agent runtime itself.
 This is optional and most worlds can use the built-in generalist probe types

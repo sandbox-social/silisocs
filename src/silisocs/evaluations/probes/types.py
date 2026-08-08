@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, ClassVar
 
 from silisocs.runtime.types import ActionSpec, OutputType
 
@@ -29,15 +29,47 @@ def _get_agent_name(agent: Any) -> str:
     return getattr(agent, "name", "unknown")
 
 
+PROBE_ANALYSIS_KINDS = ("binary", "numeric", "choice", "freetext")
+
+# probe_type name -> analysis kind, filled by ProbeBase.__init_subclass__ from
+# each class's declared ``analysis_kind`` — so importing a custom probe module
+# (e.g. via the ``plugins:`` config list) is all it takes for its responses to
+# be scored by the built-in evaluators instead of silently dropped.
+_PROBE_ANALYSIS_KINDS: dict[str, str] = {}
+
+
+def probe_analysis_kind(probe_type: str) -> str | None:
+    """The registered analysis kind for a probe type name (None = unscored)."""
+    return _PROBE_ANALYSIS_KINDS.get(probe_type)
+
+
 class ProbeBase(ABC):
     """Abstract base for all probe types.
 
     Subclasses must set ``name`` and implement ``form_question_for_agent`` and
     ``parse_answer``.  Everything else (prompt formatting, ask, submit) is
     provided by the base class.
+
+    ``analysis_kind`` declares how the built-in evaluators score this probe's
+    responses — one of :data:`PROBE_ANALYSIS_KINDS` (``binary`` answers are
+    yes/no-normalized, ``numeric`` parsed as floats, ``choice`` counted
+    verbatim, ``freetext`` gets length/token stats). Leave ``None`` for a
+    probe whose responses should not be aggregated.
     """
 
     name: str
+    analysis_kind: ClassVar[str | None] = None
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        kind = cls.__dict__.get("analysis_kind", cls.analysis_kind)
+        if kind is None:
+            return
+        if kind not in PROBE_ANALYSIS_KINDS:
+            raise ValueError(
+                f"{cls.__name__}.analysis_kind {kind!r} is not one of {PROBE_ANALYSIS_KINDS}."
+            )
+        _PROBE_ANALYSIS_KINDS[cls.__name__] = kind
 
     # ------------------------------------------------------------------
     # Prompt rendering
@@ -109,6 +141,8 @@ class NumericRatingProbe(ProbeBase):
             candidate: Candidate A
     """
 
+    analysis_kind = "numeric"
+
     def __init__(self, probe_data: dict[str, Any] | None = None):
         cfg = probe_data or {}
         self.name = cfg.get("name", "NumericRating")
@@ -146,6 +180,8 @@ class BinaryProbe(ProbeBase):
           question: "Will you cast a vote? Reply yes or no."
           context: "{agentname} is asked about voting."
     """
+
+    analysis_kind = "binary"
 
     def __init__(self, probe_data: dict[str, Any] | None = None):
         cfg = probe_data or {}
@@ -190,6 +226,8 @@ class ChoiceProbe(ProbeBase):
             choice2: Candidate B
     """
 
+    analysis_kind = "choice"
+
     def __init__(self, probe_data: dict[str, Any] | None = None):
         cfg = probe_data or {}
         self.name = cfg.get("name", "Choice")
@@ -230,6 +268,8 @@ class FreeTextProbe(ProbeBase):
           context: "{agentname} reflects on the upcoming election."
     """
 
+    analysis_kind = "freetext"
+
     def __init__(self, probe_data: dict[str, Any] | None = None):
         cfg = probe_data or {}
         self.name = cfg.get("name", "FreeText")
@@ -253,6 +293,8 @@ class FreeTextProbe(ProbeBase):
 
 class StructuredProbe(ProbeBase):
     """Probe that asks for one JSON object through structured-response mode."""
+
+    analysis_kind = "freetext"
 
     def __init__(self, probe_data: dict[str, Any] | None = None):
         cfg = probe_data or {}
