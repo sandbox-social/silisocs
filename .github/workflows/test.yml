@@ -9,6 +9,12 @@ on:
      - test-github-actions
  pull_request:
 
+# One in-flight run per ref: a new push supersedes the previous run's jobs
+# (full suite, cross-OS smoke, and wheel install alike).
+concurrency:
+ group: ${{ github.workflow }}-${{ github.ref }}
+ cancel-in-progress: true
+
 jobs:
  test:
    name: test
@@ -75,3 +81,116 @@ jobs:
        run: uv run --group docs properdocs build --strict
        env:
          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+
+ # Cross-OS smoke: NOT the full suite (much of it is POSIX-shaped — Studio's job
+ # runner uses os.killpg, and several tests hardcode /tmp paths). This proves the
+ # parts a non-Linux user hits first: the package imports, config composition for
+ # every bundled scenario, the programmatic run API, and one real end-to-end
+ # scripted-model run through runner -> engine -> backend -> artifacts.
+ smoke:
+   name: smoke (${{ matrix.os }})
+   runs-on: ${{ matrix.os }}
+   timeout-minutes: 10
+
+   strategy:
+     fail-fast: false
+     matrix:
+      os: [macos-latest, windows-latest]
+
+   defaults:
+     run:
+       shell: bash
+
+   env:
+     UV_PYTHON: "3.12"
+     # `silisocs doctor` prints ✓/✗; a Windows pipe defaults to cp1252, which
+     # cannot encode them.
+     PYTHONIOENCODING: utf-8
+     PYTHONUTF8: "1"
+
+   steps:
+     - name: Checkout
+       uses: actions/checkout@v4
+
+     - name: Set up uv
+       uses: astral-sh/setup-uv@v4
+       with:
+         enable-cache: true
+         cache-dependency-glob: uv.lock
+
+     # No `--all-extras` here: the smoke subset needs none of them, and the heavy
+     # extras (recsys/concordia) would dominate the job on Windows.
+     - name: Install dependencies
+       run: uv sync --frozen --group dev
+
+     - name: Engine and config-composition smoke tests
+       run: >
+         uv run pytest -q
+         tests/test_import.py
+         tests/test_doctor.py
+         tests/test_bundled_scenarios_compose.py
+         tests/test_programmatic_api.py
+         tests/test_no_llm_e2e.py
+       env:
+         PYTHONPATH: ${{ github.workspace }}
+
+     - name: Environment health check (offline)
+       run: uv run silisocs doctor .
+
+ # Install-from-wheel: the wheel ships engine + packaged base config only (no
+ # scenarios/), so this runs entirely from default config, outside the checkout,
+ # in a venv that never saw the repo.
+ install-from-wheel:
+   name: install from wheel (ubuntu)
+   runs-on: ubuntu-latest
+   timeout-minutes: 10
+
+   steps:
+     - name: Checkout
+       uses: actions/checkout@v4
+
+     - name: Set up uv
+       uses: astral-sh/setup-uv@v4
+       with:
+         enable-cache: true
+         cache-dependency-glob: uv.lock
+
+     - name: Build wheel
+       run: uv build --wheel
+
+     - name: Install the wheel into a clean venv
+       run: |
+         uv venv --seed --python 3.12 "$RUNNER_TEMP/wheel-venv"
+         "$RUNNER_TEMP/wheel-venv/bin/python" -m pip install dist/*.whl
+
+     - name: Import and console scripts
+       run: |
+         cd "$RUNNER_TEMP"
+         BIN="$RUNNER_TEMP/wheel-venv/bin"
+         "$BIN/python" -c "import silisocs; print(silisocs.__version__)"
+         "$BIN/silisocs" --help
+         "$BIN/silisocs-study" --help
+         "$BIN/silisocs-studio" --help
+         "$BIN/silisocs-config-dry-run" --help
+         "$BIN/silisocs" doctor .
+
+     # `silisocs tutorial` is the offline default-config run (scripted provider,
+     # no API key, no network). Run it from a scratch cwd so a missing packaged
+     # config file cannot be masked by the checkout.
+     - name: Offline scripted run from the installed wheel
+       run: |
+         BIN="$RUNNER_TEMP/wheel-venv/bin"
+         RUN_DIR="$RUNNER_TEMP/wheel-run/tutorial"
+         cd "$RUNNER_TEMP"
+         "$BIN/silisocs" tutorial "$RUN_DIR"
+         "$BIN/python" - "$RUN_DIR" <<'PY'
+         import sys
+
+         from silisocs.evaluations.run_artifact import load_run
+
+         artifact = load_run(sys.argv[1])
+         assert artifact.status == "success", artifact.status
+         labels = sorted({str(row.get("label")) for row in artifact.iter_actions()})
+         assert "post" in labels, labels
+         print("wheel run ok:", artifact.status, labels)
+         PY
