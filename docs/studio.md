@@ -20,7 +20,11 @@ Studio organizes the complete workflow around filesystem-backed objects:
    The form and YAML mirror are bidirectional; the YAML files under
    `scenarios/<name>/conf/` remain the source of truth.
 2. **Preflight**: validate config semantics, provider requirements, action names,
-   and estimated calls/tokens before launching.
+   and estimated calls/tokens before launching. Scale estimates come from the
+   real runtime policies — preflight builds the configured participation and
+   turn policies and asks them (`expected_active_share()` /
+   `expected_actions_per_turn()`), so a custom `class_path` policy can supply
+   its own estimate by implementing the same method.
 3. **Live**: follow queued or running jobs, process logs, artifact growth, steps,
    and usage. Non-interactive runs automatically open in Watch mode; an
    **interactive launch** stays on the live view (its run starts paused) and

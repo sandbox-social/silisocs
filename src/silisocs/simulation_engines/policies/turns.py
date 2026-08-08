@@ -161,6 +161,15 @@ class _DrivenTurnPolicy:
     def _drive(self) -> _PolicyDrive:
         raise NotImplementedError
 
+    def expected_actions_per_turn(self) -> float:
+        """Upper-bound actions one turn takes (estimate hook).
+
+        Studio preflight builds the real policy and asks it, so estimate
+        semantics live beside execution semantics and cannot drift. Custom
+        policies may override; the base answers one action per turn.
+        """
+        return 1.0
+
     def run(
         self,
         *,
@@ -231,6 +240,9 @@ class FixedCountTurnPolicy(_DrivenTurnPolicy):
     max_attempts: int = 0
     name: str = "fixed_count"
 
+    def expected_actions_per_turn(self) -> float:
+        return float(max(1, self.count))
+
     def _drive(self) -> _PolicyDrive:
         last_action = ""
         remaining_actions = max(1, self.count)
@@ -276,6 +288,10 @@ class OpenEndedTurnPolicy(_DrivenTurnPolicy):
     finished_action_signal: str = "FINISHED"
     observe_before_act: str = "first"
     name: str = "open_ended"
+
+    def expected_actions_per_turn(self) -> float:
+        # The cap, not the mean: agents may finish early, so this is a ceiling.
+        return float(max(1, self.max_actions))
 
     def _drive(self) -> _PolicyDrive:
         last_action = ""

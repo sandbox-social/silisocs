@@ -14,6 +14,11 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from silisocs.simulation_engines.policies.factory import (
+    build_participation_policy,
+    build_turn_policy,
+)
+
 if TYPE_CHECKING:  # Type-only: the backend layer stays a lazy import at runtime.
     from silisocs.environments.backends.base import BackendApp
 
@@ -804,39 +809,50 @@ class ScenarioRepository:
         return self.load(name)
 
 
-def _rates_active_share(rates: Any, *, markov: bool) -> float:
-    """Mean active share implied by activity transition rates, per policy.
+def _policy_estimate(
+    builder: Callable[[Any], Any],
+    slot: Any,
+    method_name: str,
+    *,
+    path: str,
+    findings: list[dict[str, str]],
+    default: float = 1.0,
+) -> float:
+    """Build the real runtime policy for a slot and ask it for its estimate.
 
-    Mirrors the runtime (``simulation_engines/policies/participation.py``): a
-    missing rate key mirrors the declared one (symmetric switching);
-    ``activity_probability`` activates each agent independently at
-    ``inactive_to_active`` per step, while ``activity_markov`` settles at the
-    two-state steady state on/(on+off). Entries are averaged (agent counts per
-    role are unknown at this layer). Returns 1.0 — everyone acts — when no
-    usable rates are configured.
+    Estimate semantics live on the policy classes themselves
+    (``expected_active_share`` / ``expected_actions_per_turn``), so preflight
+    can never drift from scheduling behavior. A slot that fails to build is an
+    error for built-ins (the run would fail at startup the same way) but only
+    a warning for a custom ``class_path`` (its import may need the run
+    environment); a policy without the estimate hook contributes the
+    conservative default — one action by every agent.
     """
-    shares = []
-    for entry in (rates or {}).values() if isinstance(rates, dict) else ():
-        if not isinstance(entry, dict):
-            continue
-        try:
-            raw_on, raw_off = entry.get("inactive_to_active"), entry.get("active_to_inactive")
-            on = None if raw_on is None else float(raw_on)
-            off = None if raw_off is None else float(raw_off)
-        except (TypeError, ValueError):
-            continue
-        on = off if on is None else on
-        off = on if off is None else off
-        if on is None or off is None:
-            continue
-        on = min(1.0, max(0.0, on))
-        off = min(1.0, max(0.0, off))
-        if markov:
-            if on + off > 0:
-                shares.append(on / (on + off))
-        else:
-            shares.append(on)
-    return sum(shares) / len(shares) if shares else 1.0
+    try:
+        policy = builder(slot or {})
+    except Exception as exc:
+        findings.append(
+            {
+                "severity": "warning" if (slot or {}).get("class_path") else "error",
+                "path": path,
+                "message": f"Could not build this policy for the estimate: {exc}",
+            }
+        )
+        return default
+    method = getattr(policy, method_name, None)
+    if not callable(method):
+        return default
+    try:
+        return float(method())
+    except Exception as exc:
+        findings.append(
+            {
+                "severity": "warning",
+                "path": path,
+                "message": f"The policy's {method_name}() estimate failed: {exc}",
+            }
+        )
+        return default
 
 
 def preflight_payload(files: dict[str, str]) -> dict[str, Any]:
@@ -940,51 +956,21 @@ def preflight_payload(files: dict[str, str]) -> dict[str, Any]:
                 }
             )
 
-    turn = ((sim.get("engine") or {}).get("turn_policy") or {}).get("built_in") or "single_action"
-    turn_params = ((sim.get("engine") or {}).get("turn_policy") or {}).get("params") or {}
-    if turn == "fixed_count":
-        actions_per_turn = integer(
-            turn_params.get("count", 1), "sim.engine.turn_policy.params.count", 1
-        )
-    elif turn == "open_ended":
-        actions_per_turn = integer(
-            turn_params.get("max_actions", 1),
-            "sim.engine.turn_policy.params.max_actions",
-            1,
-        )
-        if "max_actions" not in turn_params:
-            findings.append(
-                {
-                    "severity": "warning",
-                    "path": "sim.engine.turn_policy.params.max_actions",
-                    "message": "Open-ended estimate uses one action without a configured cap",
-                }
-            )
-    else:
-        actions_per_turn = 1
-    participation_slot = (sim.get("engine") or {}).get("participation") or {}
-    participation = participation_slot.get("params") or {}
-    built_in = participation_slot.get("built_in")
-    raw_active = participation.get("active_probability")
-    if built_in not in ("activity_probability", "activity_markov"):
-        # "all" (or a custom policy this layer cannot model): everyone acts,
-        # regardless of leftover activity params merged from another slot.
-        active_fraction = 1.0
-    elif built_in == "activity_probability" and raw_active is not None:
-        active_fraction = number(
-            raw_active,
-            "sim.engine.participation.params.active_probability",
-            1.0,
-        )
-    else:
-        # An explicit null (or absent key) defers to the per-role
-        # activity_transition_rates; markov ignores active_probability
-        # entirely. Estimate the share those rates imply for the policy,
-        # and assume everyone acts when there are none.
-        active_fraction = _rates_active_share(
-            participation.get("activity_transition_rates"),
-            markov=built_in == "activity_markov",
-        )
+    engine = sim.get("engine") or {}
+    actions_per_turn = _policy_estimate(
+        build_turn_policy,
+        engine.get("turn_policy"),
+        "expected_actions_per_turn",
+        path="sim.engine.turn_policy",
+        findings=findings,
+    )
+    active_fraction = _policy_estimate(
+        build_participation_policy,
+        engine.get("participation"),
+        "expected_active_share",
+        path="sim.engine.participation",
+        findings=findings,
+    )
     active_fraction = min(1.0, max(0.0, active_fraction))
     calls = round(agents * steps * active_fraction * actions_per_turn)
     estimate_cfg = sim.get("preflight") or {}

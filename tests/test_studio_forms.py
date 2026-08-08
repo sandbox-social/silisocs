@@ -10,6 +10,7 @@ import yaml
 from silisocs.environments.gm.components.factory import component_built_ins
 from silisocs.runtime.construction.engines import engine_strategy_built_ins
 from silisocs.simulation_engines.policies.factory import policy_built_ins
+from silisocs.simulation_engines.policies.participation import ParticipationPolicy
 from silisocs.studio.forms import (
     PreviewContext,
     ScenarioRepository,
@@ -359,3 +360,58 @@ def test_composed_scenario_hydra_composes_run_params_at_root(tmp_path: Path, mon
     assert cfg.num_agents == 5, "run params must land at the config root, not under world."
     assert cfg.num_steps == 3
     assert "trader" in cfg.agents.persona_pipeline.classes
+
+
+class _HalfActiveParticipation(ParticipationPolicy):
+    """Out-of-tree policy proving preflight asks the policy for its estimate."""
+
+    def participating_agents(self, *, agent_names, step_index, seed):
+        return list(agent_names)[: len(agent_names) // 2]
+
+    def expected_active_share(self) -> float:
+        return 0.5
+
+
+class _OpaqueParticipation(ParticipationPolicy):
+    """A custom policy without the estimate hook falls back to everyone-acts."""
+
+    def participating_agents(self, *, agent_names, step_index, seed):
+        return list(agent_names)
+
+
+def test_preflight_asks_a_custom_participation_policy_for_its_estimate() -> None:
+    files = _files()
+    files["sim.yaml"] = yaml.safe_dump(
+        {"engine": {"participation": {"class_path": f"{__name__}._HalfActiveParticipation"}}}
+    )
+
+    result = preflight_payload(files)
+
+    assert result["ok"] is True, result["findings"]
+    assert result["estimate"]["agent_steps"] == round(2 * 3 * 0.5)
+
+
+def test_preflight_defaults_custom_policy_without_estimate_hook_to_full_share() -> None:
+    files = _files()
+    files["sim.yaml"] = yaml.safe_dump(
+        {"engine": {"participation": {"class_path": f"{__name__}._OpaqueParticipation"}}}
+    )
+
+    result = preflight_payload(files)
+
+    assert result["ok"] is True, result["findings"]
+    assert result["estimate"]["agent_steps"] == 2 * 3
+
+
+def test_preflight_uses_the_real_fixed_count_default() -> None:
+    """The estimate comes from the built policy, so runtime defaults (count=2)
+    apply instead of a hand-mirrored guess of 1.
+    """
+    files = _files()
+    files["sim.yaml"] = yaml.safe_dump({"engine": {"turn_policy": {"built_in": "fixed_count"}}})
+
+    result = preflight_payload(files)
+
+    assert result["ok"] is True, result["findings"]
+    assert result["estimate"]["agent_steps"] == 2 * 3
+    assert result["estimate"]["llm_calls"] == 2 * 3 * 2

@@ -81,6 +81,29 @@ def _activation_rates(
     )
 
 
+def _entry_activation_rates(entry: Any) -> tuple[float, float] | None:
+    """Lenient ``(inactive_to_active, active_to_inactive)`` for one rates entry.
+
+    Mirrors a missing key like :func:`_activation_rates` (symmetric switching)
+    but returns ``None`` for an unusable entry instead of raising — this feeds
+    the ``expected_active_share`` estimate hooks, which must never fail a
+    preflight the way a real scheduling call fails a run.
+    """
+    if not isinstance(entry, Mapping):
+        return None
+    try:
+        raw_on, raw_off = entry.get("inactive_to_active"), entry.get("active_to_inactive")
+        on = None if raw_on is None else float(raw_on)
+        off = None if raw_off is None else float(raw_off)
+    except (TypeError, ValueError):
+        return None
+    on = off if on is None else on
+    off = on if off is None else off
+    if on is None or off is None:
+        return None
+    return _clamp_probability(on), _clamp_probability(off)
+
+
 def _require_rates(policy: Any, agent_names: Sequence[str]) -> None:
     """Fail the run when any agent matches no activity rate (checked once, on the
     real roster).
@@ -135,6 +158,16 @@ class ParticipationPolicy(ABC):
         self, *, agent_names: Sequence[str], step_index: int, seed: int
     ) -> list[str]:
         """Return the subset of ``agent_names`` that participates this step."""
+
+    def expected_active_share(self) -> float:
+        """Mean fraction of the roster expected to act per step (estimate hook).
+
+        Studio preflight builds the real policy and asks it, so estimate
+        semantics live beside scheduling semantics and cannot drift. Override
+        in policies that gate activity; the default — every agent acts — is
+        right for pass-through policies and a safe ceiling for custom ones.
+        """
+        return 1.0
 
 
 class AllParticipation(ParticipationPolicy):
@@ -194,6 +227,21 @@ class ActivityProbabilityParticipation(ParticipationPolicy):
             activity_transition_rates=self.activity_transition_rates,
             sim_roles=self.sim_roles,
         )[0]
+
+    def expected_active_share(self) -> float:
+        """Per-step activation probability, averaged over the rate entries.
+
+        Entries are averaged because agent counts per role are unknown before a
+        run; ``min_active_agents`` top-ups are ignored (a floor, not a rate).
+        """
+        if self.active_probability is not None:
+            return _clamp_probability(float(self.active_probability))
+        shares = []
+        for entry in self.activity_transition_rates.values():
+            pair = _entry_activation_rates(entry)
+            if pair is not None:
+                shares.append(pair[0])
+        return sum(shares) / len(shares) if shares else 1.0
 
     def participating_agents(
         self, *, agent_names: Sequence[str], step_index: int, seed: int
@@ -267,3 +315,16 @@ class ActivityMarkovParticipation(ParticipationPolicy):
             if str(name).strip() and self._is_active(str(name), step_index, seed)
         ]
         return _top_up(active, agent_names, max(0, int(self.min_active_agents)), seed, step_index)
+
+    def expected_active_share(self) -> float:
+        """Long-run markov active share ``on / (on + off)``, averaged over entries.
+
+        Entries are averaged because agent counts per role are unknown before a
+        run; a never-switching entry (both rates 0) is skipped as unusable.
+        """
+        shares = []
+        for entry in self.activity_transition_rates.values():
+            pair = _entry_activation_rates(entry)
+            if pair is not None and sum(pair) > 0:
+                shares.append(pair[0] / (pair[0] + pair[1]))
+        return sum(shares) / len(shares) if shares else 1.0

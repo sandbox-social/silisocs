@@ -282,3 +282,35 @@ def test_moved_next_acting_built_in_gets_migration_hint() -> None:
     for moved in ("activity_probability", "activity_markov"):
         with pytest.raises(ValueError, match="sim.engine.participation"):
             build_next_acting_component({"built_in": moved}, context=None)  # type: ignore[arg-type]
+
+
+def test_expected_active_share_matches_each_policy_semantics():
+    """The estimate hook lives on the policy so preflight cannot drift."""
+    from silisocs.simulation_engines.policies.participation import (
+        ActivityMarkovParticipation,
+        ActivityProbabilityParticipation,
+        AllParticipation,
+    )
+
+    rates = {"user": {"inactive_to_active": 0.8, "active_to_inactive": 0.1}}
+    assert AllParticipation().expected_active_share() == 1.0
+    # Probability: the per-step activation draw, not the markov steady state.
+    assert ActivityProbabilityParticipation(
+        activity_transition_rates=rates
+    ).expected_active_share() == pytest.approx(0.8)
+    assert ActivityProbabilityParticipation(active_probability=0.25).expected_active_share() == 0.25
+    # Markov: the long-run share on/(on+off).
+    assert ActivityMarkovParticipation(
+        activity_transition_rates=rates
+    ).expected_active_share() == pytest.approx(0.8 / 0.9)
+    # A single declared key mirrors (symmetric switching), like the runtime draw.
+    assert ActivityMarkovParticipation(
+        activity_transition_rates={"user": {"active_to_inactive": 0.2}}
+    ).expected_active_share() == pytest.approx(0.5)
+    # No usable rates -> everyone acts (a never-switching entry is unusable).
+    assert (
+        ActivityMarkovParticipation(
+            activity_transition_rates={"user": {"inactive_to_active": 0.0}}
+        ).expected_active_share()
+        == 1.0
+    )
