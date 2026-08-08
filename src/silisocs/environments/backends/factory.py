@@ -8,13 +8,12 @@ to fully-qualified class path. Custom backends can set
 ``env.gm.backend.class_path`` in config.
 """
 
-import importlib
 import logging
 import os
 from typing import Any, cast
 
 from silisocs.environments.backends.base import BackendApp
-from silisocs.runtime.class_loading import instantiate_with_supported_kwargs
+from silisocs.runtime.class_loading import instantiate_with_supported_kwargs, load_attr
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -90,9 +89,7 @@ def resolve_backend_db_path(
 
 
 def _load_app_class(class_path: str) -> type[BackendApp]:
-    module_path, class_name = class_path.rsplit(".", 1)
-    module = importlib.import_module(module_path)
-    cls = getattr(module, class_name)
+    cls = load_attr(class_path)
     if not issubclass(cls, BackendApp):
         raise TypeError(f"Configured app class is not a BackendApp: {class_path}")
     return cls

@@ -50,175 +50,112 @@ class Post:
 class TwitterLikePlatform(SqliteSocialEngineBase):
     SUPPORTED_RECSYS_TYPES = frozenset({"twitter", "twitter_tfidf", "twhin"})
     default_db_path = "twitter_like.db"
+    # Trending hooks read by SqliteSocialEngineBase.get_trending_posts.
+    _trending_engagement_sql = "(p.likes_count + p.reposts_count)"
+    _trending_post_fields = ("content", "likes_count", "reposts_count")
 
-    def _init_db(self):
-        """Initialize the database schema with optimizations and advanced features."""
-        with sqlite3.connect(self.db_path, timeout=5.0) as conn:
-            # Enable WAL mode for high concurrency
-            conn.execute("PRAGMA journal_mode=WAL;")
-            conn.execute("PRAGMA synchronous=NORMAL;")
-            conn.execute("PRAGMA busy_timeout=5000;")
-            conn.execute("PRAGMA foreign_keys=ON;")
-
-            # Users table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    bio TEXT,
-                    created_at REAL,
-                    followers_count INTEGER DEFAULT 0,
-                    following_count INTEGER DEFAULT 0,
-                    posts_count INTEGER DEFAULT 0
-                )
-            """)
-
-            # Posts table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS posts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    content TEXT,
-                    created_at REAL,
-                    type TEXT DEFAULT 'post',  -- 'post', 'repost', 'quote'
-                    reply_to_id INTEGER,
-                    quote_of_id INTEGER,
-                    likes_count INTEGER DEFAULT 0,
-                    dislikes_count INTEGER DEFAULT 0,
-                    reposts_count INTEGER DEFAULT 0,
-                    reply_count INTEGER DEFAULT 0,
-                    FOREIGN KEY(user_id) REFERENCES users(id),
-                    FOREIGN KEY(reply_to_id) REFERENCES posts(id),
-                    FOREIGN KEY(quote_of_id) REFERENCES posts(id)
-                )
-            """)
-
-            # Indexes for high performance
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_posts_user_created ON posts(user_id, created_at DESC)"
+    def _init_platform_schema(self, conn: sqlite3.Connection) -> None:
+        """Create the Twitter-like tables (the shared ones live on the base)."""
+        # Users table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                bio TEXT,
+                created_at REAL,
+                followers_count INTEGER DEFAULT 0,
+                following_count INTEGER DEFAULT 0,
+                posts_count INTEGER DEFAULT 0
             )
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC)")
-            # Home-feed fan-out reads are `user_id IN (...) ORDER BY id DESC LIMIT k`;
-            # this composite serves both the membership filter and the id ordering.
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_posts_user_id_desc ON posts(user_id, id DESC)"
+        """)
+
+        # Posts table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS posts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                content TEXT,
+                created_at REAL,
+                type TEXT DEFAULT 'post',  -- 'post', 'repost', 'quote'
+                reply_to_id INTEGER,
+                quote_of_id INTEGER,
+                likes_count INTEGER DEFAULT 0,
+                dislikes_count INTEGER DEFAULT 0,
+                reposts_count INTEGER DEFAULT 0,
+                reply_count INTEGER DEFAULT 0,
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(reply_to_id) REFERENCES posts(id),
+                FOREIGN KEY(quote_of_id) REFERENCES posts(id)
             )
-            # FTS-friendly index could be added, but simple glob/like is often fine on local DBs
+        """)
 
-            # Follows table (Many-to-Many)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS follows (
-                    follower_id INTEGER NOT NULL,
-                    followee_id INTEGER NOT NULL,
-                    created_at REAL,
-                    PRIMARY KEY (follower_id, followee_id),
-                    FOREIGN KEY(follower_id) REFERENCES users(id),
-                    FOREIGN KEY(followee_id) REFERENCES users(id)
-                )
-            """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_follows_followee ON follows(followee_id)")
+        # Indexes for high performance
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_posts_user_created ON posts(user_id, created_at DESC)"
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC)")
+        # Home-feed fan-out reads are `user_id IN (...) ORDER BY id DESC LIMIT k`;
+        # this composite serves both the membership filter and the id ordering.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_posts_user_id_desc ON posts(user_id, id DESC)")
+        # FTS-friendly index could be added, but simple glob/like is often fine on local DBs
 
-            # Likes table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS likes (
-                    user_id INTEGER NOT NULL,
-                    post_id INTEGER NOT NULL,
-                    created_at REAL,
-                    PRIMARY KEY (user_id, post_id),
-                    FOREIGN KEY(user_id) REFERENCES users(id),
-                    FOREIGN KEY(post_id) REFERENCES posts(id)
-                )
-            """)
-            # Reverse lookup ("who liked post X"); the PK only covers user-first.
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_likes_post ON likes(post_id)")
-
-            # Blocks table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS blocks (
-                    blocker_id INTEGER NOT NULL,
-                    blocked_id INTEGER NOT NULL,
-                    created_at REAL,
-                    PRIMARY KEY (blocker_id, blocked_id),
-                    FOREIGN KEY(blocker_id) REFERENCES users(id),
-                    FOREIGN KEY(blocked_id) REFERENCES users(id)
-                )
-            """)
-
-            # Direct Messages table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS direct_messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    sender_id INTEGER NOT NULL,
-                    receiver_id INTEGER NOT NULL,
-                    content TEXT,
-                    created_at REAL,
-                    read BOOLEAN DEFAULT FALSE,
-                    FOREIGN KEY(sender_id) REFERENCES users(id),
-                    FOREIGN KEY(receiver_id) REFERENCES users(id)
-                )
-            """)
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_dms ON direct_messages(receiver_id, sender_id)"
+        # Follows table (Many-to-Many)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS follows (
+                follower_id INTEGER NOT NULL,
+                followee_id INTEGER NOT NULL,
+                created_at REAL,
+                PRIMARY KEY (follower_id, followee_id),
+                FOREIGN KEY(follower_id) REFERENCES users(id),
+                FOREIGN KEY(followee_id) REFERENCES users(id)
             )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_follows_followee ON follows(followee_id)")
 
-            # Activities/Notifications table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS activities (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    target_user_id INTEGER NOT NULL,
-                    source_user_id INTEGER NOT NULL,
-                    action_type TEXT NOT NULL, -- 'like', 'repost', 'follow', 'mention', 'reply'
-                    post_id INTEGER,
-                    created_at REAL,
-                    read BOOLEAN DEFAULT FALSE,
-                    FOREIGN KEY(target_user_id) REFERENCES users(id),
-                    FOREIGN KEY(source_user_id) REFERENCES users(id),
-                    FOREIGN KEY(post_id) REFERENCES posts(id)
-                )
-            """)
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_activities_target ON activities(target_user_id, created_at DESC)"
+        # Likes table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS likes (
+                user_id INTEGER NOT NULL,
+                post_id INTEGER NOT NULL,
+                created_at REAL,
+                PRIMARY KEY (user_id, post_id),
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(post_id) REFERENCES posts(id)
             )
+        """)
+        # Reverse lookup ("who liked post X"); the PK only covers user-first.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_likes_post ON likes(post_id)")
 
-            # Dislikes table (negative reactions; mirrors likes)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS dislikes (
-                    user_id INTEGER NOT NULL,
-                    post_id INTEGER NOT NULL,
-                    created_at REAL,
-                    PRIMARY KEY (user_id, post_id),
-                    FOREIGN KEY(user_id) REFERENCES users(id),
-                    FOREIGN KEY(post_id) REFERENCES posts(id)
-                )
-            """)
+        # Activities/Notifications table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS activities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                target_user_id INTEGER NOT NULL,
+                source_user_id INTEGER NOT NULL,
+                action_type TEXT NOT NULL, -- 'like', 'repost', 'follow', 'mention', 'reply'
+                post_id INTEGER,
+                created_at REAL,
+                read BOOLEAN DEFAULT FALSE,
+                FOREIGN KEY(target_user_id) REFERENCES users(id),
+                FOREIGN KEY(source_user_id) REFERENCES users(id),
+                FOREIGN KEY(post_id) REFERENCES posts(id)
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activities_target ON activities(target_user_id, created_at DESC)"
+        )
 
-            # Mutes table (one-directional: muter hides mutee from their feed)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS mutes (
-                    muter_id INTEGER NOT NULL,
-                    mutee_id INTEGER NOT NULL,
-                    created_at REAL,
-                    PRIMARY KEY (muter_id, mutee_id),
-                    FOREIGN KEY(muter_id) REFERENCES users(id),
-                    FOREIGN KEY(mutee_id) REFERENCES users(id)
-                )
-            """)
-
-            # Reports table (moderation reports; multiple allowed per user/post)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS reports (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    post_id INTEGER NOT NULL,
-                    reason TEXT,
-                    created_at REAL,
-                    FOREIGN KEY(user_id) REFERENCES users(id),
-                    FOREIGN KEY(post_id) REFERENCES posts(id)
-                )
-            """)
-
-            # Initialize recommendation schema tables
-            self._init_recommendation_schema(conn)
+        # Dislikes table (negative reactions; mirrors likes)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS dislikes (
+                user_id INTEGER NOT NULL,
+                post_id INTEGER NOT NULL,
+                created_at REAL,
+                PRIMARY KEY (user_id, post_id),
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(post_id) REFERENCES posts(id)
+            )
+        """)
 
     # --- User Management ---
 
@@ -521,40 +458,6 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
         except sqlite3.IntegrityError:
             return False
 
-    # --- Direct Messages ---
-
-    # --- Notifications / Activities ---
-
-    def view_activities(self, username: str, limit: int = 50) -> list[dict[str, Any]]:
-        user_id = self.get_user_id(username)
-        if not user_id:
-            raise ValueError("User not found")
-
-        with self.get_connection() as conn:
-            rows = conn.execute(
-                """
-                SELECT a.*, u.username as source_username, p.content as post_content
-                FROM activities a
-                JOIN users u ON a.source_user_id = u.id
-                LEFT JOIN posts p ON a.post_id = p.id
-                WHERE a.target_user_id = ?
-                ORDER BY a.created_at DESC
-                LIMIT ?
-                """,
-                (user_id, limit),
-            ).fetchall()
-
-            # Mark as read
-            unread_ids = [r["id"] for r in rows if not r["read"]]
-            if unread_ids:
-                placeholders = ",".join(["?"] * len(unread_ids))
-                conn.execute(
-                    f"UPDATE activities SET read = 1 WHERE id IN ({placeholders})", unread_ids
-                )
-                conn.commit()
-
-            return [dict(r) for r in rows]
-
     # --- Timelines and Feeds ---
 
     def _parse_posts(self, rows) -> list[dict]:
@@ -578,23 +481,6 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
             )
             posts.append(post.to_dict())
         return posts
-
-    def get_posts_by_ids(self, post_ids: list[int]) -> dict[int, dict[str, Any]]:
-        """Return a map of post_id -> post dict for the requested IDs."""
-        normalized = sorted({int(pid) for pid in post_ids if pid is not None})
-        if not normalized:
-            return {}
-
-        placeholders = ",".join("?" for _ in normalized)
-        query = f"""
-            SELECT p.*, u.username
-            FROM posts p
-            JOIN users u ON p.user_id = u.id
-            WHERE p.id IN ({placeholders})
-        """
-        with self.get_connection() as conn:
-            rows = conn.execute(query, normalized).fetchall()
-            return {post["id"]: post for post in self._parse_posts(rows)}
 
     # Separation of Feeds using a router pattern!
     def get_feed(
@@ -634,12 +520,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
             ORDER BY p.id DESC
             LIMIT ?
         """
-        with self.get_connection() as conn:
-            rows = conn.execute(
-                query, (user_id, cursor, cursor, user_id, user_id, limit)
-            ).fetchall()
-            posts = self._parse_posts(rows)
-            return {"posts": posts, "next_cursor": posts[-1]["id"] if posts else None}
+        return self._paged_feed(query, (user_id, cursor, cursor, user_id, user_id, limit))
 
     def _feed_profile(
         self, username: str, limit: int = 20, cursor: int | None = None
@@ -658,10 +539,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
             ORDER BY p.id DESC
             LIMIT ?
         """
-        with self.get_connection() as conn:
-            rows = conn.execute(query, (target_id, cursor, cursor, limit)).fetchall()
-            posts = self._parse_posts(rows)
-            return {"posts": posts, "next_cursor": posts[-1]["id"] if posts else None}
+        return self._paged_feed(query, (target_id, cursor, cursor, limit))
 
     def _feed_curated_global(
         self, username: str, limit: int = 20, cursor: int | None = None
@@ -688,12 +566,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
             ORDER BY p.id DESC
             LIMIT ?
         """
-        with self.get_connection() as conn:
-            rows = conn.execute(
-                query, (cursor, cursor, user_id, user_id, user_id, limit)
-            ).fetchall()
-            posts = self._parse_posts(rows)
-            return {"posts": posts, "next_cursor": posts[-1]["id"] if posts else None}
+        return self._paged_feed(query, (cursor, cursor, user_id, user_id, user_id, limit))
 
     def _feed_firehose(self, limit: int = 20, cursor: int | None = None) -> dict[str, Any]:
         """Global firehose: everything."""
@@ -705,10 +578,7 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
             ORDER BY p.id DESC
             LIMIT ?
         """
-        with self.get_connection() as conn:
-            rows = conn.execute(query, (cursor, cursor, limit)).fetchall()
-            posts = self._parse_posts(rows)
-            return {"posts": posts, "next_cursor": posts[-1]["id"] if posts else None}
+        return self._paged_feed(query, (cursor, cursor, limit))
 
     # ================================================================ #
     # Timeline Selection Strategies
@@ -854,45 +724,6 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
         except Exception as e:
             logger.error(f"Error undoing dislike for post {post_id}: {e}")
             return False
-
-    def get_trending_posts(self, limit: int = 10, days: int = 7) -> list[dict]:
-        """Get trending posts based on engagement."""
-        try:
-            with self.get_connection() as conn:
-                cutoff = time.time() - (days * 86400)
-                cursor = conn.execute(
-                    """
-                    SELECT p.*, u.username,
-                           (p.likes_count + p.reposts_count) as engagement
-                    FROM posts p
-                    JOIN users u ON p.user_id = u.id
-                    WHERE p.created_at > ?
-                    ORDER BY engagement DESC, p.created_at DESC
-                    LIMIT ?
-                """,
-                    (cutoff, limit),
-                )
-
-                posts = []
-                for row in cursor.fetchall():
-                    # Named access (sqlite3.Row) so a schema column reorder can't
-                    # silently corrupt the projection.
-                    posts.append(
-                        {
-                            "id": row["id"],
-                            "user_id": row["user_id"],
-                            "content": row["content"],
-                            "created_at": row["created_at"],
-                            "likes_count": row["likes_count"],
-                            "reposts_count": row["reposts_count"],
-                            "username": row["username"],
-                            "engagement_score": row["engagement"],
-                        }
-                    )
-                return posts
-        except Exception as e:
-            logger.error(f"Error getting trending posts: {e}")
-            return []
 
     # ================================================================ #
     # Recommendation system

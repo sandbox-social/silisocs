@@ -10,7 +10,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Any
 
 from silisocs.environments.backends.base import (
@@ -250,66 +250,6 @@ class RedditLikeApp(SocialBackendApp):
         feed = self._platform.get_feed("home", username=username, limit=limit)
         return feed.get("posts", [])
 
-    def get_timeline_mode(
-        self,
-        timeline_mode: str,
-        user_name: str,
-        limit: int = 10,
-        recsys_type: str | None = None,
-        **timeline_config: dict,
-    ) -> list[dict]:
-        """Fetch timeline using a configured timeline mode.
-
-        Args:
-            timeline_mode: Timeline mode (follower_chronological, pure_recsys,
-                hybrid_recsys_follower, etc.)
-            user_name: Display name of the user.
-            limit: Maximum number of posts.
-            recsys_type: Optional recommendation algorithm override.
-            **timeline_config: Mode-specific config (e.g., recsys_ratio).
-
-        Returns
-        -------
-            List of post dicts for the timeline.
-        """
-        username = self._get_username(user_name)
-        try:
-            timeline = self._platform.get_timeline(
-                timeline_mode,
-                username,
-                limit,
-                recsys_type=recsys_type,
-                **timeline_config,
-            )
-            timeline_list = list(timeline or [])
-            self._log_action_event(
-                source_user=str(user_name),
-                label="timeline_retrieval",
-                data={
-                    "timeline_mode": str(timeline_mode),
-                    "recsys_type": str(recsys_type or ""),
-                    "requested_limit": int(limit),
-                    "returned_posts": len(timeline_list),
-                },
-            )
-            return timeline_list
-        except Exception as e:
-            self._log_action_event(
-                source_user=str(user_name),
-                label="timeline_retrieval_error",
-                data={
-                    "timeline_mode": str(timeline_mode),
-                    "recsys_type": str(recsys_type or ""),
-                    "requested_limit": int(limit),
-                    "error": str(e),
-                },
-            )
-            self._print(
-                f"Error fetching timeline with mode '{timeline_mode}' for {username}: {e}",
-                color="red",
-            )
-            return []
-
     def init_recsys(
         self,
         recsys_type: str = "reddit",
@@ -343,54 +283,6 @@ class RedditLikeApp(SocialBackendApp):
     def recsys_active_types(self) -> set[str]:
         """Return recsys types currently live on the platform (empty after restore)."""
         return set(getattr(self._platform, "_recsys_types", {}) or {})
-
-    def update_recommendations(
-        self,
-        active_user_ids: list[int] | None = None,
-        max_posts: int = 10,
-        active_agent_names: Sequence[str] | None = None,
-    ) -> None:
-        """Update recommendation rows via the underlying platform and log counts.
-
-        ``active_agent_names`` scopes the recompute to those agents' users (their
-        rows are replaced; everyone else's are left as-is) — the O(active) path
-        the recommendation-update component uses. ``active_user_ids`` remains for
-        callers that already hold platform ids. Neither set = full recompute.
-        """
-        if active_agent_names is not None and active_user_ids is None:
-            active_user_ids = self._resolve_active_user_ids(active_agent_names)
-            if not active_user_ids:
-                # A scoped update matching no platform users refreshes nothing;
-                # deliberately NOT a fall-through to a full-population recompute.
-                self._log_action_event(
-                    source_user="system",
-                    label="recsys_update",
-                    data={
-                        "active_user_ids_count": 0,
-                        "max_posts": int(max_posts),
-                        "recommendation_rows": 0,
-                        "scoped": True,
-                    },
-                )
-                return
-        # The platform reports rows written this pass — no COUNT(*) scan needed.
-        # (Scoped updates replace only the active users' rows, so this is the
-        # refresh size, not the live table size.)
-        rec_count = int(
-            self._platform.update_recommendations(
-                active_user_ids=active_user_ids, max_posts=max_posts
-            )
-        )
-        self._log_action_event(
-            source_user="system",
-            label="recsys_update",
-            data={
-                "active_user_ids_count": len(active_user_ids or []),
-                "max_posts": int(max_posts),
-                "recommendation_rows": rec_count,
-                "scoped": active_user_ids is not None,
-            },
-        )
 
     def format_timeline_for_observation(self, timeline: list[dict]) -> str:
         """Format timeline posts as a clean text block for the LLM.

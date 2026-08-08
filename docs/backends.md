@@ -398,7 +398,11 @@ and `tool_calling` resolve components.
 
 Subclass `SocialBackendApp` only when your backend needs to satisfy the
 timeline, feed, parsed-social-action, or recommendation hooks used by the
-social-media-oriented GM components.
+social-media-oriented GM components. A subclass that wraps a platform engine
+(assigning it to `self._platform` and implementing `_get_username`) inherits
+working `get_timeline_mode` and `update_recommendations` — including their
+`timeline_retrieval` / `recsys_update` action-log rows — and only needs to
+override them if it talks to something other than a platform engine.
 
 #### Minimal viable custom backend
 

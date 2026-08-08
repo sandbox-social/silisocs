@@ -3,11 +3,12 @@
 ``SqliteSocialEngineBase`` factors out the platform-agnostic machinery shared by
 the twitter-like and reddit-like engines: a thread-local connection pool (WAL +
 busy-timeout), the async write queue + background writer thread, and the common
-operations (users, direct messages, block list, mutes, reports) plus the
-recommendation schema.
+operations (users, direct messages, block list, mutes, reports) plus the schema
+those operations need and the recommendation schema.
 
-Subclasses implement the domain schema (``_init_db``), post parsing, feeds, and
-the recommendation algorithms, and set ``default_db_path``.
+Subclasses implement their own tables (``_init_platform_schema``), post parsing
+(``_parse_posts``), feeds, and the recommendation algorithms, and set
+``default_db_path`` plus the trending hooks.
 """
 
 from __future__ import annotations
@@ -80,8 +81,77 @@ class SqliteSocialEngineBase:
             self._writer_thread.start()
 
     def _init_db(self) -> None:
-        """Create the platform-specific schema. Implemented by each subclass."""
+        """Create the full schema: PRAGMAs, platform tables, shared tables, recsys."""
+        with sqlite3.connect(self.db_path, timeout=5.0) as conn:
+            # Enable WAL mode for high concurrency
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA synchronous=NORMAL;")
+            conn.execute("PRAGMA busy_timeout=5000;")
+            conn.execute("PRAGMA foreign_keys=ON;")
+            self._init_platform_schema(conn)
+            self._init_shared_schema(conn)
+            self._init_recommendation_schema(conn)
+
+    def _init_platform_schema(self, conn: sqlite3.Connection) -> None:
+        """Create the platform's own tables (users, posts, ...). Per subclass."""
         raise NotImplementedError
+
+    def _init_shared_schema(self, conn: sqlite3.Connection) -> None:
+        """Create the tables the shared operations on this class read and write.
+
+        Blocks, direct messages, mutes, and reports back :meth:`send_dm`,
+        :meth:`unblock`, :meth:`mute_user`, and :meth:`report_post`, so their DDL
+        lives with them rather than being restated by each platform schema. Every
+        foreign key here targets a table the platform schema creates first.
+        """
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS blocks (
+                blocker_id INTEGER NOT NULL,
+                blocked_id INTEGER NOT NULL,
+                created_at REAL,
+                PRIMARY KEY (blocker_id, blocked_id),
+                FOREIGN KEY(blocker_id) REFERENCES users(id),
+                FOREIGN KEY(blocked_id) REFERENCES users(id)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS direct_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_id INTEGER NOT NULL,
+                receiver_id INTEGER NOT NULL,
+                content TEXT,
+                created_at REAL,
+                read BOOLEAN DEFAULT FALSE,
+                FOREIGN KEY(sender_id) REFERENCES users(id),
+                FOREIGN KEY(receiver_id) REFERENCES users(id)
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_dms ON direct_messages(receiver_id, sender_id)"
+        )
+        # Mutes table (one-directional: muter hides mutee from their feed)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS mutes (
+                muter_id INTEGER NOT NULL,
+                mutee_id INTEGER NOT NULL,
+                created_at REAL,
+                PRIMARY KEY (muter_id, mutee_id),
+                FOREIGN KEY(muter_id) REFERENCES users(id),
+                FOREIGN KEY(mutee_id) REFERENCES users(id)
+            )
+        """)
+        # Reports table (moderation reports; multiple allowed per user/post)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                post_id INTEGER NOT NULL,
+                reason TEXT,
+                created_at REAL,
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(post_id) REFERENCES posts(id)
+            )
+        """)
 
     @staticmethod
     def _iter_in_chunks(ids: Sequence[Any], size: int = 500) -> Iterator[Sequence[Any]]:
@@ -516,6 +586,60 @@ class SqliteSocialEngineBase:
         except Exception as e:
             logger.error(f"Error reporting post {post_id}: {e}")
             return False
+
+    # Trending hooks. ``_trending_engagement_sql`` is the platform's engagement
+    # expression over ``posts p``; ``_trending_post_fields`` names the extra columns
+    # it projects alongside the shared id/user/created_at/username/score fields.
+    # Declared without defaults: a subclass that forgets them fails loudly.
+    _trending_engagement_sql: ClassVar[str]
+    _trending_post_fields: ClassVar[tuple[str, ...]]
+
+    def get_trending_posts(self, limit: int = 10, days: int = 7) -> list[dict]:
+        """Get trending posts based on engagement."""
+        query = f"""
+            SELECT p.*, u.username,
+                   {self._trending_engagement_sql} as engagement
+            FROM posts p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.created_at > ?
+            ORDER BY engagement DESC, p.created_at DESC
+            LIMIT ?
+        """
+        try:
+            with self.get_connection() as conn:
+                cutoff = time.time() - (days * 86400)
+                rows = conn.execute(query, (cutoff, limit)).fetchall()
+                # Named access (sqlite3.Row) so a schema column reorder can't
+                # silently corrupt the projection.
+                return [
+                    {
+                        "id": row["id"],
+                        "user_id": row["user_id"],
+                        **{name: row[name] for name in self._trending_post_fields},
+                        "created_at": row["created_at"],
+                        "username": row["username"],
+                        "engagement_score": row["engagement"],
+                    }
+                    for row in rows
+                ]
+        except Exception as e:
+            logger.error(f"Error getting trending posts: {e}")
+            return []
+
+    def _parse_posts(self, rows: Sequence[Any]) -> list[dict]:
+        """Project post query rows into post dicts. Implemented by each subclass."""
+        raise NotImplementedError
+
+    def _paged_feed(self, query: str, params: tuple[Any, ...]) -> dict[str, Any]:
+        """Run a cursor-paginated post query, returning ``{posts, next_cursor}``.
+
+        Every feed here pages on the last returned post's id, so the tail is the
+        same regardless of how the query itself filters or orders.
+        """
+        with self.get_connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+            posts = self._parse_posts(rows)
+            return {"posts": posts, "next_cursor": posts[-1]["id"] if posts else None}
 
     def _recommendation_posts(self, rows: list[sqlite3.Row]) -> list[dict]:
         """Project recommendation query rows into post dicts.

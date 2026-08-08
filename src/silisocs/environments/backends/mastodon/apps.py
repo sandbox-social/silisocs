@@ -5,9 +5,8 @@ the ``SocialBackendApp`` interface.  It wraps the Mastodon API via
 ``mastodon_ops`` and exposes ``@app_action`` decorated methods for the
 simulation game master.
 
-The generic ``BackendApp`` base class, ``SocialBackendApp`` ABC, and supporting
-utilities (``app_action``, ``Parameter``, ``ActionDescriptor``, etc.) come
-from ``silisocs.environments.backends.base``.
+The ``SocialBackendApp`` ABC and supporting utilities (``app_action``,
+``ActionResult``, etc.) come from ``silisocs.environments.backends.base``.
 """
 
 import dataclasses
@@ -15,25 +14,19 @@ import json
 import logging
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from html import unescape
 from typing import Any
 
-# Re-export COLOR_TYPE and action descriptors for downstream backend modules.
-from silisocs.environments.backends.base import (  # noqa: F401
+from silisocs.environments.backends.base import (
     COLOR_TYPE,
-    RUNTIME_AGENT_PARAM,
-    ActionArgumentError,
-    ActionDescriptor,
     ActionResult,
-    BackendApp,
-    Parameter,
     SocialBackendApp,
     app_action,
 )
 from silisocs.environments.backends.event_semantics import social_event_semantics
 from silisocs.environments.backends.mastodon.errors import PartialDeletionError
-from silisocs.runtime.types import ActionOutput, ToolCall
+from silisocs.runtime.types import RUNTIME_AGENT_PARAM, ActionOutput, ToolCall
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -539,9 +532,12 @@ class SocialNetworkApp(SocialBackendApp):
         )
 
     def update_recommendations(
-        self, active_user_ids: list[int] | None = None, max_posts: int = 10
+        self,
+        active_user_ids: list[int] | None = None,
+        max_posts: int = 10,
+        active_agent_names: Sequence[str] | None = None,
     ) -> None:
-        del active_user_ids, max_posts
+        del active_user_ids, max_posts, active_agent_names
         raise NotImplementedError("Mastodon backend does not support recommendation updates.")
 
     def get_recommendations(

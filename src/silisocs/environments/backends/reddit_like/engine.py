@@ -78,184 +78,123 @@ class Comment:
 class RedditLikePlatform(SqliteSocialEngineBase):
     SUPPORTED_RECSYS_TYPES = frozenset({"reddit", "twhin"})
     default_db_path = "reddit_like.db"
+    # Trending hooks read by SqliteSocialEngineBase.get_trending_posts.
+    _trending_engagement_sql = "(p.upvotes + p.comment_count)"
+    _trending_post_fields = ("title", "content", "upvotes", "downvotes")
 
-    def _init_db(self):
-        """Initialize the database schema with optimizations and advanced features."""
-        with sqlite3.connect(self.db_path, timeout=5.0) as conn:
-            # Enable WAL mode for high concurrency
-            conn.execute("PRAGMA journal_mode=WAL;")
-            conn.execute("PRAGMA synchronous=NORMAL;")
-            conn.execute("PRAGMA busy_timeout=5000;")
-            conn.execute("PRAGMA foreign_keys=ON;")
-
-            # Users table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    bio TEXT,
-                    created_at REAL,
-                    karma INTEGER DEFAULT 0
-                )
-            """)
-
-            # Subreddits table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS subreddits (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT UNIQUE NOT NULL,
-                    description TEXT,
-                    created_at REAL,
-                    members_count INTEGER DEFAULT 0
-                )
-            """)
-
-            # Subreddit Members
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS subreddit_members (
-                    user_id INTEGER NOT NULL,
-                    subreddit_id INTEGER NOT NULL,
-                    created_at REAL,
-                    PRIMARY KEY (user_id, subreddit_id),
-                    FOREIGN KEY(user_id) REFERENCES users(id),
-                    FOREIGN KEY(subreddit_id) REFERENCES subreddits(id)
-                )
-            """)
-
-            # Posts table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS posts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    subreddit_id INTEGER NOT NULL,
-                    title TEXT NOT NULL,
-                    content TEXT,
-                    created_at REAL,
-                    upvotes INTEGER DEFAULT 0,
-                    downvotes INTEGER DEFAULT 0,
-                    dislikes_count INTEGER DEFAULT 0,
-                    comment_count INTEGER DEFAULT 0,
-                    FOREIGN KEY(user_id) REFERENCES users(id),
-                    FOREIGN KEY(subreddit_id) REFERENCES subreddits(id)
-                )
-            """)
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_posts_sub_created ON posts(subreddit_id, created_at DESC)"
+    def _init_platform_schema(self, conn: sqlite3.Connection) -> None:
+        """Create the Reddit-like tables (the shared ones live on the base)."""
+        # Users table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                bio TEXT,
+                created_at REAL,
+                karma INTEGER DEFAULT 0
             )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_posts_user_created ON posts(user_id, created_at DESC)"
+        """)
+
+        # Subreddits table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS subreddits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                description TEXT,
+                created_at REAL,
+                members_count INTEGER DEFAULT 0
             )
-            # Plain created_at index backs the recsys candidate query
-            # (ORDER BY created_at DESC LIMIT 1000), which the composite
-            # (subreddit_id|user_id, created_at) indexes cannot serve.
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC)")
+        """)
 
-            # Comments table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS comments (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    post_id INTEGER NOT NULL,
-                    parent_id INTEGER,
-                    user_id INTEGER NOT NULL,
-                    content TEXT NOT NULL,
-                    created_at REAL,
-                    upvotes INTEGER DEFAULT 0,
-                    downvotes INTEGER DEFAULT 0,
-                    FOREIGN KEY(post_id) REFERENCES posts(id),
-                    FOREIGN KEY(parent_id) REFERENCES comments(id),
-                    FOREIGN KEY(user_id) REFERENCES users(id)
-                )
-            """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id)")
-
-            # Votes table (Handles both posts and comments)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS votes (
-                    user_id INTEGER NOT NULL,
-                    target_id INTEGER NOT NULL,
-                    target_type TEXT NOT NULL, -- 'post' or 'comment'
-                    vote_value INTEGER NOT NULL, -- 1 for upvote, -1 for downvote
-                    created_at REAL,
-                    PRIMARY KEY (user_id, target_id, target_type),
-                    FOREIGN KEY(user_id) REFERENCES users(id)
-                )
-            """)
-
-            # Blocks table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS blocks (
-                    blocker_id INTEGER NOT NULL,
-                    blocked_id INTEGER NOT NULL,
-                    created_at REAL,
-                    PRIMARY KEY (blocker_id, blocked_id),
-                    FOREIGN KEY(blocker_id) REFERENCES users(id),
-                    FOREIGN KEY(blocked_id) REFERENCES users(id)
-                )
-            """)
-
-            # Direct Messages table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS direct_messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    sender_id INTEGER NOT NULL,
-                    receiver_id INTEGER NOT NULL,
-                    content TEXT,
-                    created_at REAL,
-                    read BOOLEAN DEFAULT FALSE,
-                    FOREIGN KEY(sender_id) REFERENCES users(id),
-                    FOREIGN KEY(receiver_id) REFERENCES users(id)
-                )
-            """)
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_dms ON direct_messages(receiver_id, sender_id)"
+        # Subreddit Members
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS subreddit_members (
+                user_id INTEGER NOT NULL,
+                subreddit_id INTEGER NOT NULL,
+                created_at REAL,
+                PRIMARY KEY (user_id, subreddit_id),
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(subreddit_id) REFERENCES subreddits(id)
             )
+        """)
 
-            # Activities/Notifications table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS activities (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    target_user_id INTEGER NOT NULL,
-                    source_user_id INTEGER NOT NULL,
-                    action_type TEXT NOT NULL, -- 'upvote', 'reply', 'mention'
-                    target_type TEXT NOT NULL, -- 'post' or 'comment'
-                    reference_id INTEGER, -- The post or comment id
-                    created_at REAL,
-                    read BOOLEAN DEFAULT FALSE,
-                    FOREIGN KEY(target_user_id) REFERENCES users(id),
-                    FOREIGN KEY(source_user_id) REFERENCES users(id)
-                )
-            """)
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_activities_target ON activities(target_user_id, created_at DESC)"
+        # Posts table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS posts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                subreddit_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                content TEXT,
+                created_at REAL,
+                upvotes INTEGER DEFAULT 0,
+                downvotes INTEGER DEFAULT 0,
+                dislikes_count INTEGER DEFAULT 0,
+                comment_count INTEGER DEFAULT 0,
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(subreddit_id) REFERENCES subreddits(id)
             )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_posts_sub_created ON posts(subreddit_id, created_at DESC)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_posts_user_created ON posts(user_id, created_at DESC)"
+        )
+        # Plain created_at index backs the recsys candidate query
+        # (ORDER BY created_at DESC LIMIT 1000), which the composite
+        # (subreddit_id|user_id, created_at) indexes cannot serve.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC)")
 
-            # Mutes table (one-directional: muter hides mutee from their feed)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS mutes (
-                    muter_id INTEGER NOT NULL,
-                    mutee_id INTEGER NOT NULL,
-                    created_at REAL,
-                    PRIMARY KEY (muter_id, mutee_id),
-                    FOREIGN KEY(muter_id) REFERENCES users(id),
-                    FOREIGN KEY(mutee_id) REFERENCES users(id)
-                )
-            """)
+        # Comments table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id INTEGER NOT NULL,
+                parent_id INTEGER,
+                user_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                created_at REAL,
+                upvotes INTEGER DEFAULT 0,
+                downvotes INTEGER DEFAULT 0,
+                FOREIGN KEY(post_id) REFERENCES posts(id),
+                FOREIGN KEY(parent_id) REFERENCES comments(id),
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id)")
 
-            # Reports table (moderation reports; multiple allowed per user/post)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS reports (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    post_id INTEGER NOT NULL,
-                    reason TEXT,
-                    created_at REAL,
-                    FOREIGN KEY(user_id) REFERENCES users(id),
-                    FOREIGN KEY(post_id) REFERENCES posts(id)
-                )
-            """)
+        # Votes table (Handles both posts and comments)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS votes (
+                user_id INTEGER NOT NULL,
+                target_id INTEGER NOT NULL,
+                target_type TEXT NOT NULL, -- 'post' or 'comment'
+                vote_value INTEGER NOT NULL, -- 1 for upvote, -1 for downvote
+                created_at REAL,
+                PRIMARY KEY (user_id, target_id, target_type),
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+        """)
 
-            # Initialize recommendation schema tables
-            self._init_recommendation_schema(conn)
+        # Activities/Notifications table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS activities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                target_user_id INTEGER NOT NULL,
+                source_user_id INTEGER NOT NULL,
+                action_type TEXT NOT NULL, -- 'upvote', 'reply', 'mention'
+                target_type TEXT NOT NULL, -- 'post' or 'comment'
+                reference_id INTEGER, -- The post or comment id
+                created_at REAL,
+                read BOOLEAN DEFAULT FALSE,
+                FOREIGN KEY(target_user_id) REFERENCES users(id),
+                FOREIGN KEY(source_user_id) REFERENCES users(id)
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activities_target ON activities(target_user_id, created_at DESC)"
+        )
 
     # --- Read / Helper Operations ---
 
@@ -580,12 +519,7 @@ class RedditLikePlatform(SqliteSocialEngineBase):
             ORDER BY p.id DESC
             LIMIT ?
         """
-        with self.get_connection() as conn:
-            rows = conn.execute(
-                query, (user_id, cursor, cursor, user_id, user_id, limit)
-            ).fetchall()
-            posts = self._parse_posts(rows)
-            return {"posts": posts, "next_cursor": posts[-1]["id"] if posts else None}
+        return self._paged_feed(query, (user_id, cursor, cursor, user_id, user_id, limit))
 
     def get_subreddit_feed(
         self, subreddit_name: str, limit: int = 25, cursor: int | None = None
@@ -607,10 +541,7 @@ class RedditLikePlatform(SqliteSocialEngineBase):
             ORDER BY p.id DESC
             LIMIT ?
         """
-        with self.get_connection() as conn:
-            rows = conn.execute(query, (sub_id, cursor, cursor, limit)).fetchall()
-            posts = self._parse_posts(rows)
-            return {"posts": posts, "next_cursor": posts[-1]["id"] if posts else None}
+        return self._paged_feed(query, (sub_id, cursor, cursor, limit))
 
     def _feed_popular(self, limit: int = 25, cursor: int | None = None) -> dict[str, Any]:
         # Score-based sorting (Upvotes - Downvotes). Pagination with score is harder than ID, so we'll
@@ -625,10 +556,7 @@ class RedditLikePlatform(SqliteSocialEngineBase):
             ORDER BY (p.upvotes - p.downvotes) DESC, p.id DESC
             LIMIT ?
         """
-        with self.get_connection() as conn:
-            rows = conn.execute(query, (cursor, cursor, limit)).fetchall()
-            posts = self._parse_posts(rows)
-            return {"posts": posts, "next_cursor": posts[-1]["id"] if posts else None}
+        return self._paged_feed(query, (cursor, cursor, limit))
 
     def get_user_feed(
         self, username: str, limit: int = 25, cursor: int | None = None
@@ -646,10 +574,7 @@ class RedditLikePlatform(SqliteSocialEngineBase):
             ORDER BY p.id DESC
             LIMIT ?
         """
-        with self.get_connection() as conn:
-            rows = conn.execute(query, (user_id, cursor, cursor, limit)).fetchall()
-            posts = self._parse_posts(rows)
-            return {"posts": posts, "next_cursor": posts[-1]["id"] if posts else None}
+        return self._paged_feed(query, (user_id, cursor, cursor, limit))
 
     def get_post_comments(
         self, post_id: int, limit: int = 100, as_tree: bool = True
@@ -794,46 +719,6 @@ class RedditLikePlatform(SqliteSocialEngineBase):
         except ValueError as e:
             logger.error(f"Error removing downvote for post {post_id}: {e}")
             return False
-
-    def get_trending_posts(self, limit: int = 10, days: int = 7) -> list[dict]:
-        """Get trending posts based on engagement."""
-        try:
-            with self.get_connection() as conn:
-                cutoff = time.time() - (days * 86400)
-                cursor = conn.execute(
-                    """
-                    SELECT p.*, u.username,
-                           (p.upvotes + p.comment_count) as engagement
-                    FROM posts p
-                    JOIN users u ON p.user_id = u.id
-                    WHERE p.created_at > ?
-                    ORDER BY engagement DESC, p.created_at DESC
-                    LIMIT ?
-                """,
-                    (cutoff, limit),
-                )
-
-                posts = []
-                for row in cursor.fetchall():
-                    # Named access (sqlite3.Row) so a schema column reorder can't
-                    # silently corrupt the projection.
-                    posts.append(
-                        {
-                            "id": row["id"],
-                            "user_id": row["user_id"],
-                            "title": row["title"],
-                            "content": row["content"],
-                            "created_at": row["created_at"],
-                            "upvotes": row["upvotes"],
-                            "downvotes": row["downvotes"],
-                            "username": row["username"],
-                            "engagement_score": row["engagement"],
-                        }
-                    )
-                return posts
-        except Exception as e:
-            logger.error(f"Error getting trending posts: {e}")
-            return []
 
     # ================================================================ #
     # Recommendation system

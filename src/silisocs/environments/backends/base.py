@@ -20,6 +20,7 @@ import termcolor
 
 from silisocs.environments.backends.event_semantics import EventSemantics
 from silisocs.exceptions import ActionError, BackendError
+from silisocs.runtime.telemetry.collector import SimMetricsCollector
 from silisocs.runtime.types import RUNTIME_AGENT_PARAM, RUNTIME_OWNED_ACTION_PARAMS
 
 _LOGGER = logging.getLogger(__name__)
@@ -222,8 +223,6 @@ def record_unexpected_action_error(action_name: str, exc: Exception) -> None:
     this and then RE-RAISE, so an unexpected failure is both counted and left to
     the engine's turn isolation instead of being disguised as a friendly message.
     """
-    from silisocs.runtime.telemetry.collector import SimMetricsCollector
-
     _LOGGER.exception("Backend action '%s' raised unexpectedly: %s", action_name, exc)
     SimMetricsCollector.get().increment_counter("backend_action_errors")
 
@@ -232,8 +231,6 @@ def _record_argument_parse_failure(
     action_name: str, parameter_name: str, value: str, exc: Exception
 ) -> None:
     """Log and count an action argument the declared parameter type could not parse."""
-    from silisocs.runtime.telemetry.collector import SimMetricsCollector
-
     _LOGGER.warning(
         "Action '%s' argument '%s'=%r did not parse as its declared type (%s); "
         "passing the raw string through.",
@@ -252,8 +249,6 @@ def record_invalid_action_target(action_type: str, target_id: Any) -> str:
     reported the same way the resolve component reports it (``action_invalid_targets``),
     rather than surfacing as an ``int()`` ValueError disguised as a backend failure.
     """
-    from silisocs.runtime.telemetry.collector import SimMetricsCollector
-
     SimMetricsCollector.get().increment_counter("action_invalid_targets")
     _LOGGER.warning(
         "Action '%s' has invalid TARGET ID %r (numeric id required).", action_type, target_id
@@ -1261,7 +1256,22 @@ class SocialBackendApp(BackendApp):
     Backends that use timeline observation, social state setup, parsed social
     actions, or recommendation update components implement this interface on
     top of the domain-neutral :class:`BackendApp`.
+
+    The concrete ``get_timeline_mode``/``update_recommendations`` below are
+    written against the ``_platform`` + ``_get_username`` pair every
+    platform-backed social app provides (twitter_like, reddit_like). A social
+    backend that talks to a live server instead (mastodon) leaves ``_platform``
+    unset and overrides them.
     """
+
+    # Platform engine backing the shared timeline/recommendation implementations.
+    # Platform-backed apps assign it in their constructor.
+    _platform: Any = None
+
+    def _get_username(self, display_name: str) -> str:
+        """Map an agent display name to this backend's platform username."""
+        del display_name
+        raise NotImplementedError(f"{type(self).__name__} does not map agent names to users.")
 
     def recsys_active_types(self) -> set[str]:
         """Return recsys algorithm types currently live on the backend.
@@ -1283,18 +1293,16 @@ class SocialBackendApp(BackendApp):
         Relies on the concrete app's ``_get_username`` mapping and its platform's
         cached ``get_user_id``.
         """
-        get_username = getattr(self, "_get_username", None)
-        platform = getattr(self, "_platform", None)
-        if not callable(get_username) or platform is None:
+        if self._platform is None:
             return []
         ids: list[int] = []
         seen: set[int] = set()
         for display_name in active_agent_names:
             try:
-                username = get_username(str(display_name))
+                username = self._get_username(str(display_name))
             except ValueError:
                 continue
-            user_id = platform.get_user_id(username)
+            user_id = self._platform.get_user_id(username)
             if isinstance(user_id, int) and user_id not in seen:
                 seen.add(user_id)
                 ids.append(user_id)
@@ -1326,9 +1334,105 @@ class SocialBackendApp(BackendApp):
         recsys_type: str | None = None,
         **timeline_config: dict,
     ) -> list[dict]:
-        """Return timeline data for a specific mode."""
-        del timeline_mode, user_name, limit, recsys_type, timeline_config
-        raise NotImplementedError(f"{type(self).__name__} does not implement timeline modes.")
+        """Fetch timeline using a configured timeline mode.
+
+        Args:
+            timeline_mode: Timeline mode (follower_chronological, pure_recsys,
+                hybrid_recsys_follower, etc.)
+            user_name: Display name of the user.
+            limit: Maximum number of posts.
+            recsys_type: Optional recommendation algorithm override.
+            **timeline_config: Mode-specific config (e.g., recsys_ratio).
+
+        Returns
+        -------
+            List of post dicts for the timeline.
+        """
+        username = self._get_username(user_name)
+        try:
+            timeline = self._platform.get_timeline(
+                timeline_mode,
+                username,
+                limit,
+                recsys_type=recsys_type,
+                **timeline_config,
+            )
+            timeline_list = list(timeline or [])
+            self._log_action_event(
+                source_user=str(user_name),
+                label="timeline_retrieval",
+                data={
+                    "timeline_mode": str(timeline_mode),
+                    "recsys_type": str(recsys_type or ""),
+                    "requested_limit": int(limit),
+                    "returned_posts": len(timeline_list),
+                },
+            )
+            return timeline_list
+        except Exception as e:
+            self._log_action_event(
+                source_user=str(user_name),
+                label="timeline_retrieval_error",
+                data={
+                    "timeline_mode": str(timeline_mode),
+                    "recsys_type": str(recsys_type or ""),
+                    "requested_limit": int(limit),
+                    "error": str(e),
+                },
+            )
+            self._print(
+                f"Error fetching timeline with mode '{timeline_mode}' for {username}: {e}",
+                color="red",
+            )
+            return []
+
+    def update_recommendations(
+        self,
+        active_user_ids: list[int] | None = None,
+        max_posts: int = 10,
+        active_agent_names: Sequence[str] | None = None,
+    ) -> None:
+        """Update recommendation rows via the underlying platform and log counts.
+
+        ``active_agent_names`` scopes the recompute to those agents' users (their
+        rows are replaced; everyone else's are left as-is) — the O(active) path
+        the recommendation-update component uses. ``active_user_ids`` remains for
+        callers that already hold platform ids. Neither set = full recompute.
+        """
+        if active_agent_names is not None and active_user_ids is None:
+            active_user_ids = self._resolve_active_user_ids(active_agent_names)
+            if not active_user_ids:
+                # A scoped update matching no platform users refreshes nothing;
+                # deliberately NOT a fall-through to a full-population recompute.
+                self._log_action_event(
+                    source_user="system",
+                    label="recsys_update",
+                    data={
+                        "active_user_ids_count": 0,
+                        "max_posts": int(max_posts),
+                        "recommendation_rows": 0,
+                        "scoped": True,
+                    },
+                )
+                return
+        # The platform reports rows written this pass — no COUNT(*) scan needed.
+        # (Scoped updates replace only the active users' rows, so this is the
+        # refresh size, not the live table size.)
+        rec_count = int(
+            self._platform.update_recommendations(
+                active_user_ids=active_user_ids, max_posts=max_posts
+            )
+        )
+        self._log_action_event(
+            source_user="system",
+            label="recsys_update",
+            data={
+                "active_user_ids_count": len(active_user_ids or []),
+                "max_posts": int(max_posts),
+                "recommendation_rows": rec_count,
+                "scoped": active_user_ids is not None,
+            },
+        )
 
     def format_timeline_for_observation(self, timeline: list[dict]) -> str:
         """Convert raw timeline data into text for an agent observation."""
