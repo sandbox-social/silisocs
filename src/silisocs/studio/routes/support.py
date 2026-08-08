@@ -24,11 +24,14 @@ from fastapi import HTTPException
 from silisocs.analysis.panel import get_panel
 from silisocs.analysis.views import BUILTIN_VIEWS, load_view, scenario_view_files, view_applies
 from silisocs.studio.catalog import discover_runs, find_run
-from silisocs.studio.forms import ChoiceContext
 from silisocs.studio.studies import evaluation_presets
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from fastapi import Request
+
+    # Runtime-imported inside `choice_context`: the composer layer pulls the
+    # whole engine import tree, which no other helper here needs.
+    from silisocs.studio.forms import ChoiceContext
 
 # Study replicate runs live under the studies root (experiments/studies/
 # <id>/runs/...), which is usually outside the output root. They are runs
@@ -72,6 +75,8 @@ def panel_params(query_params: Any) -> dict[str, Any]:
 
 def choice_context(state: Any, source_id: str | None = None) -> ChoiceContext:
     """Build the choice-provider context bound to one workspace source."""
+    from silisocs.studio.forms import ChoiceContext  # noqa: PLC0415
+
     source = state.workspace.source(source_id)
     return ChoiceContext(
         repository_root=source.path,

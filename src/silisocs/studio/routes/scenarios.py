@@ -10,19 +10,6 @@ import yaml
 from fastapi import APIRouter, HTTPException, Request
 
 from silisocs.studio.catalog import discover_runs
-from silisocs.studio.forms import (
-    PreviewContext,
-    choice_items,
-    compose_files,
-    field_values,
-    list_choice_providers,
-    list_form_schemas,
-    list_preview_providers,
-    materialize_form_schema,
-    preflight_payload,
-    run_choice_provider,
-    run_preview_provider,
-)
 from silisocs.studio.routes.support import (
     choice_context,
     require_file_mapping,
@@ -101,6 +88,8 @@ def api_remove_repository(request: Request, source_id: str):
 
 @router.get("/api/scenarios/{scenario_name}")
 def api_scenario(request: Request, scenario_name: str, source: str = "workspace"):
+    from silisocs.studio.forms import field_values, materialize_form_schema  # noqa: PLC0415
+
     state = request.app.state
     scenario = scenario_or_404(state, scenario_name, source)
     files = {name: item["text"] for name, item in scenario["files"].items()}
@@ -143,6 +132,12 @@ async def api_save_scenario(request: Request):
 
 @router.post("/api/compose")
 async def api_compose(request: Request):
+    from silisocs.studio.forms import (  # noqa: PLC0415
+        compose_files,
+        field_values,
+        materialize_form_schema,
+    )
+
     state = request.app.state
     payload = await request.json()
     try:
@@ -162,6 +157,8 @@ async def api_compose(request: Request):
 
 @router.post("/api/preflight")
 async def api_preflight(request: Request):
+    from silisocs.studio.forms import preflight_payload  # noqa: PLC0415
+
     state = request.app.state
     payload = await request.json()
     files = payload.get("files")
@@ -177,6 +174,8 @@ async def api_preflight(request: Request):
 
 @router.post("/api/form-preview")
 async def api_form_preview(request: Request):
+    from silisocs.studio.forms import PreviewContext, run_preview_provider  # noqa: PLC0415
+
     workspace = request.app.state.workspace
     payload = await request.json()
     files = payload.get("files") or {}
@@ -198,6 +197,8 @@ async def api_form_preview(request: Request):
 
 @router.post("/api/form-choices")
 async def api_form_choices(request: Request):
+    from silisocs.studio.forms import choice_items, run_choice_provider  # noqa: PLC0415
+
     state = request.app.state
     payload = await request.json()
     files = require_file_mapping(payload.get("files") or {})
@@ -212,6 +213,12 @@ async def api_form_choices(request: Request):
 
 @router.get("/api/forms")
 def api_forms():
+    from silisocs.studio.forms import (  # noqa: PLC0415
+        list_choice_providers,
+        list_form_schemas,
+        list_preview_providers,
+    )
+
     return {
         "items": [schema.to_dict() for schema in list_form_schemas()],
         "choice_providers": list(list_choice_providers()),

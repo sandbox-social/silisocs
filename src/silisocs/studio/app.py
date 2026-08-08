@@ -5,6 +5,8 @@ shared repositories/managers off ``app.state``, which this module populates.
 """
 # ruff: noqa: C901, PLC0415
 
+import asyncio
+import importlib
 import os
 import threading
 from contextlib import asynccontextmanager
@@ -18,6 +20,66 @@ from silisocs.studio.plugins import load_studio_pages
 from silisocs.studio.studies import StudyRepository
 from silisocs.studio.viewers import ViewerDispatch
 from silisocs.studio.workspace import WorkspaceCatalog
+
+# How long a browser navigation waits for the warm-up before it is answered with
+# the warming screen instead. A workspace small enough to index inside the grace
+# (a test fixture, a small project) never shows the screen at all.
+_WARMUP_GRACE_SECONDS = 0.5
+
+
+class StudioWarmup:
+    """The first-launch work a page load would otherwise block on.
+
+    Two things are slow exactly once: indexing the workspace's extensions reads
+    every project module, and the scenario composer drags in the engine import
+    tree. Both are sub-second on a local disk and take a minute or more on a
+    networked filesystem, so they run here on a background thread while the
+    server binds and answers.
+    """
+
+    def __init__(self, workspace: WorkspaceCatalog) -> None:
+        self._workspace = workspace
+        self._done = threading.Event()
+        self.phase = "Starting"
+
+    @property
+    def ready(self) -> bool:
+        """Whether the warm-up has finished (successfully or not)."""
+        return self._done.is_set()
+
+    def wait(self, timeout: float) -> bool:
+        """Block up to ``timeout`` seconds; ``True`` once the warm-up finished."""
+        return self._done.wait(timeout)
+
+    def start(self) -> None:
+        """Run the warm-up on a daemon thread."""
+        threading.Thread(target=self._run, daemon=True, name="studio-warmup").start()
+
+    def _run(self) -> None:
+        # Nothing is swallowed: a failure prints the thread's traceback, and the
+        # request that needs the work re-runs it and raises to the caller. The
+        # gate opens either way, so a broken workspace never hangs the server.
+        try:
+            self.phase = "Loading the scenario composer"
+            importlib.import_module("silisocs.studio.forms")
+            self.phase = "Indexing workspace extensions"
+            self._workspace.extension_catalog()
+        finally:
+            self.phase = "Ready"
+            self._done.set()
+
+
+def _is_page_load(request) -> bool:
+    """Whether a request is a browser navigation — the only thing the gate holds.
+
+    API clients and the assets a page pulls in are never held: they either do
+    not need the warm workspace or block on the same lock they always did.
+    """
+    return (
+        request.method == "GET"
+        and not request.url.path.startswith("/api")
+        and "text/html" in request.headers.get("accept", "")
+    )
 
 
 def create_app(
@@ -63,14 +125,13 @@ def create_app(
     templates.env.globals["plugin_pages"] = plugin_pages
 
     viewers = ViewerDispatch(root)
+    # Started here, not in the lifespan: the server must be answering while it
+    # warms, and a plain (lifespan-less) ``TestClient`` gets the same app.
+    warmup = StudioWarmup(workspace)
+    warmup.start()
 
     @asynccontextmanager
     async def lifespan(_app):
-        threading.Thread(
-            target=workspace.extension_catalog,
-            daemon=True,
-            name="studio-extension-discovery",
-        ).start()
         yield
         # Mounted sub-apps never see lifespan events, so their database
         # connections are closed through the dispatcher.
@@ -95,6 +156,7 @@ def create_app(
     app.state.studies = StudyRepository(repository / "experiments" / "studies")
     app.state.plugin_pages = plugin_pages
     app.state.templates = templates
+    app.state.warmup = warmup
 
     # Read once at startup: these bodies only change when the package does.
     # Brand custom properties (light + dark) come from silisocs.design — Python
@@ -112,14 +174,13 @@ def create_app(
             (package / "static" / "cytoscape.min.js").read_text(encoding="utf-8"),
             "text/javascript",
         ),
-        "studio.js": CachedAsset.build(
-            (package / "static" / "studio.js").read_text(encoding="utf-8"),
-            "text/javascript",
-        ),
-        "explore.js": CachedAsset.build(
-            (package / "static" / "explore.js").read_text(encoding="utf-8"),
-            "text/javascript",
-        ),
+        # Studio's own scripts: boot/shell/panels plus one module per page area.
+        # The vendored ``*.min.js`` bundles are served above under stable names.
+        **{
+            path.name: CachedAsset.build(path.read_text(encoding="utf-8"), "text/javascript")
+            for path in sorted((package / "static").glob("*.js"))
+            if not path.name.endswith(".min.js")
+        },
         "manrope.woff2": CachedAsset.build_bytes(
             (package.parent / "design" / "fonts" / "manrope-latin-variable.woff2").read_bytes(),
             "font/woff2",
@@ -128,6 +189,23 @@ def create_app(
 
     for page in plugin_pages:
         app.include_router(page.router)
+
+    # Registered BEFORE the auth middleware on purpose: Starlette runs the
+    # last-registered middleware outermost, so the warming screen is served
+    # behind `protect_control_plane`, never in front of it.
+    @app.middleware("http")
+    async def hold_pages_until_warm(request: Request, call_next):
+        if warmup.ready or not _is_page_load(request):
+            return await call_next(request)
+        if await asyncio.to_thread(warmup.wait, _WARMUP_GRACE_SECONDS):
+            return await call_next(request)
+        return templates.TemplateResponse(
+            request,
+            "warming.html",
+            {"phase": warmup.phase},
+            status_code=503,
+            headers={"Retry-After": "1", "Cache-Control": "no-store"},
+        )
 
     @app.middleware("http")
     async def protect_control_plane(request: Request, call_next):

@@ -23,13 +23,6 @@ from silisocs.analysis.panel import list_panels
 from silisocs.analysis.views import BUILTIN_VIEWS, build_view
 from silisocs.evaluations.run_artifact import load_study
 from silisocs.studio.catalog import arrange_runs
-from silisocs.studio.forms import (
-    field_values,
-    list_choice_providers,
-    list_form_schemas,
-    list_preview_providers,
-    materialize_form_schema,
-)
 from silisocs.studio.routes.support import (
     choice_context,
     compare_run_ids,
@@ -57,6 +50,13 @@ def asset(request: Request, name: str):
     return Response(body, media_type=cached.media_type, headers=headers)
 
 
+@router.get("/api/ready")
+def ready(request: Request):
+    """Warm-up state. The warming screen polls this and reloads when ready."""
+    warmup = request.app.state.warmup
+    return {"ready": warmup.ready, "phase": warmup.phase}
+
+
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
     state = request.app.state
@@ -80,6 +80,14 @@ def home(request: Request):
 
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request):
+    # Imported per call, not at module scope: the composer layer pulls the whole
+    # engine import tree, and no other page here needs it.
+    from silisocs.studio.forms import (  # noqa: PLC0415
+        list_choice_providers,
+        list_form_schemas,
+        list_preview_providers,
+    )
+
     state = request.app.state
     return state.templates.TemplateResponse(
         request,
@@ -276,6 +284,8 @@ def scenarios_page(request: Request):
 
 @router.get("/scenarios/new", response_class=HTMLResponse)
 def new_scenario_page(request: Request, name: str = "new_scenario"):
+    from silisocs.studio.forms import field_values, materialize_form_schema  # noqa: PLC0415
+
     state = request.app.state
     scenarios = state.scenarios
     try:
@@ -312,6 +322,8 @@ def new_scenario_page(request: Request, name: str = "new_scenario"):
 
 @router.get("/scenarios/{scenario_name}", response_class=HTMLResponse)
 def scenario_page(request: Request, scenario_name: str, source: str = "workspace"):
+    from silisocs.studio.forms import field_values, materialize_form_schema  # noqa: PLC0415
+
     state = request.app.state
     scenario = scenario_or_404(state, scenario_name, source)
     scenario["source"] = source

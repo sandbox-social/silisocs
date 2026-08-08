@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Silisocs Studio — warming up</title>
+  <!-- Only the design tokens, which are served from memory. No bundle: this
+       page has to render while everything else is still being read off disk. -->
+  <link rel="stylesheet" href="/assets/tokens.css">
+  <script>document.documentElement.dataset.theme=localStorage.getItem('silisocs-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')</script>
+  <style>
+    body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--canvas);color:var(--ink);font-family:var(--font)}
+    .card{max-width:26rem;padding:var(--space-xl);border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface);box-shadow:var(--shadow-md);text-align:center}
+    h1{margin:0 0 var(--space-xs);font-family:var(--font-display);font-size:1.25rem}
+    p{margin:0;color:var(--muted);font-size:.9rem}
+    .phase{margin-top:var(--space-md);font-variant-numeric:tabular-nums}
+    .bar{margin-top:var(--space-lg);height:.25rem;border-radius:var(--radius-pill);background:var(--surface-2);overflow:hidden}
+    .bar span{display:block;width:35%;height:100%;border-radius:var(--radius-pill);background:var(--accent);animation:slide 1.4s ease-in-out infinite}
+    @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
+    @media (prefers-reduced-motion:reduce){.bar span{animation:none;width:100%}}
+  </style>
+</head>
+<body data-testid="studio-warming">
+  <div class="card">
+    <h1>Warming up</h1>
+    <p>Studio is indexing this workspace. This happens once per launch.</p>
+    <p class="phase" id="phase">{{ phase }}</p>
+    <div class="bar" aria-hidden="true"><span></span></div>
+  </div>
+  <script>
+    const phase=document.getElementById('phase');
+    setInterval(async()=>{
+      try{
+        const state=await (await fetch('/api/ready',{cache:'no-store'})).json();
+        if(state.ready){location.reload();return}
+        phase.textContent=state.phase;
+      }catch(error){/* the server is still binding; the next poll retries */}
+    },500);
+  </script>
+</body>
+</html>

@@ -82,8 +82,10 @@ def test_chart_runtimes_are_loaded_only_when_a_page_needs_them(tmp_path):
     assert page.status_code == 200
     assert '<script src="/assets/plotly.js">' not in page.text
     assert '<script src="/assets/cytoscape.js">' not in page.text
-    assert "loadStudioAsset('plotly.js','Plotly')" in page.text
-    assert "loadStudioAsset('cytoscape.js','cytoscape')" in page.text
+    # The lazy loaders live in the shared panel module, not inline in the page.
+    panels = client.get("/assets/panels.js").text
+    assert 'loadStudioAsset("plotly.js", "Plotly")' in panels
+    assert 'loadStudioAsset("cytoscape.js", "cytoscape")' in panels
 
 
 def test_plotly_bundle_contains_only_the_cartesian_surface(tmp_path):
@@ -268,7 +270,9 @@ def test_scenario_page_defers_and_scopes_run_history(tmp_path, monkeypatch):
     page = client.get("/scenarios/demo")
     assert page.status_code == 200
     assert walked == []
-    assert "loadScenarioHistory()" in page.text
+    # The page loads the composer module, which fetches the history separately.
+    assert '<script src="/assets/scenario.js">' in page.text
+    assert "loadScenarioHistory()" in client.get("/assets/scenario.js").text
 
     history = client.get("/api/scenarios/demo/runs")
     assert history.status_code == 200
@@ -317,3 +321,91 @@ def test_discovery_finds_runs_in_one_walk_and_skips_per_gm_shards(tmp_path):
     from silisocs.studio.catalog import discover_runs
 
     assert [record.id for record in discover_runs(tmp_path, use_cache=False)] == ["demo/multi"]
+
+
+def _slow_workspace_scan(monkeypatch):
+    """Hold the warm-up open until the returned event is set."""
+    import threading
+
+    from silisocs.studio.workspace import WorkspaceCatalog
+
+    release = threading.Event()
+    real = WorkspaceCatalog.extension_catalog
+
+    def scan(self):
+        release.wait(10)
+        return real(self)
+
+    monkeypatch.setattr(WorkspaceCatalog, "extension_catalog", scan)
+    return release
+
+
+def test_ready_reports_the_warmup_phase_and_then_ready(tmp_path, monkeypatch):
+    release = _slow_workspace_scan(monkeypatch)
+    client = TestClient(create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path))
+
+    warming = client.get("/api/ready").json()
+    assert warming == {"ready": False, "phase": warming["phase"]}
+    assert warming["phase"]
+
+    release.set()
+    assert client.app.state.warmup.wait(10)
+    assert client.get("/api/ready").json() == {"ready": True, "phase": "Ready"}
+
+
+def test_page_loads_get_the_warming_screen_only_while_the_workspace_is_indexed(
+    tmp_path, monkeypatch
+):
+    """A slow first index answers browsers immediately instead of stalling them."""
+    release = _slow_workspace_scan(monkeypatch)
+    client = TestClient(create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path))
+    browser = {"accept": "text/html,application/xhtml+xml"}
+
+    warming = client.get("/", headers=browser)
+    assert warming.status_code == 503
+    assert 'data-testid="studio-warming"' in warming.text
+    # Self-contained: the screen cannot depend on a bundle that is still loading.
+    assert "studio.js" not in warming.text
+    # APIs are never held artificially — only browser navigations are.
+    assert client.get("/api/scenarios").status_code == 200
+
+    release.set()
+    assert client.app.state.warmup.wait(10)
+    served = client.get("/", headers=browser)
+    assert served.status_code == 200
+    assert 'data-testid="studio-warming"' not in served.text
+
+
+def test_the_warming_screen_stays_behind_the_auth_middleware(tmp_path, monkeypatch):
+    monkeypatch.setenv("STUDIO_AUTH_TOKEN", "secret")
+    release = _slow_workspace_scan(monkeypatch)
+    app = create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path)
+    remote = TestClient(app, client=("203.0.113.9", 40000))
+
+    assert remote.get("/", headers={"accept": "text/html"}).status_code == 401
+    assert remote.get("/api/ready").status_code == 401
+    release.set()
+
+
+def test_binding_studio_does_not_import_the_composer_engine_tree(tmp_path):
+    """Registering the routers must not drag in omegaconf/antlr4 (~110 modules).
+
+    The composer's schema layer imports the engine, which is the single largest
+    block of module loads at startup and matters most exactly where startup is
+    slow (a networked filesystem). It is warmed on a thread instead, so this
+    asserts the bind path itself stays clear of it — in a subprocess, because
+    the rest of the suite has long since imported everything.
+    """
+    import subprocess
+    import sys
+
+    program = f"""
+import sys
+from silisocs.studio.app import StudioWarmup, create_app
+
+StudioWarmup.start = lambda self: None  # measure the bind path, not the warm-up
+create_app({str(tmp_path)!r}, state_dir={str(tmp_path / "state")!r}, repo_root={str(tmp_path)!r})
+deferred = [name for name in ("silisocs.studio.forms", "omegaconf", "antlr4") if name in sys.modules]
+assert not deferred, deferred
+"""
+    subprocess.run([sys.executable, "-c", program], check=True)

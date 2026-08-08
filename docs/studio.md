@@ -266,6 +266,78 @@ Every workflow object has a stable URL:
 The control plane exposes launch, stop, study, and viewer operations under
 `/api`. Job liveness uses server-sent events at `/api/jobs/<id>/stream`; panel
 refreshes are invalidated by artifact stream rather than backend type.
+`GET /api/ready` reports warm-up state as `{"ready": <bool>, "phase": <text>}`
+(see [Startup](#startup)).
+
+## Startup
+
+Two pieces of first-launch work used to sit in front of the first page render,
+which is invisible on a local disk and takes a minute or more when the
+workspace or the environment lives on a networked filesystem:
+
+- **The scenario composer's schema layer** (`silisocs.studio.forms`), which
+  imports the engine — roughly 110 modules, the largest block of module loads at
+  startup. The routers now import it inside the handlers that build composer
+  schemas, so binding the server no longer pays for it.
+- **Extension indexing** (`WorkspaceCatalog.extension_catalog`), which reads
+  every project module in every connected repository to classify the
+  implementations the composer offers.
+
+Both now run on a background warm-up thread started when the app is created, so
+the server answers as soon as it binds. While the warm-up is in flight, browser
+navigations (`GET` requests that accept `text/html`, outside `/api`) get a
+self-contained warming screen that shows the current phase, polls `/api/ready`,
+and reloads when it turns ready. Everything else is served normally: API
+clients, static assets, and `/api/ready` itself are never held. A workspace
+small enough to index within a short grace period never shows the screen at
+all.
+
+The warming screen is served *behind* the authorization middleware, so a
+token-protected Studio answers an unauthorized request with `401` whether it is
+warm or not.
+
+## Templates and client assets
+
+Studio's pages are Jinja templates under `silisocs/studio/templates/`; its
+client code is plain classic scripts under `silisocs/studio/static/`, served
+(and ETag-cached, read once at startup) from `/assets/<name>`. Every `.js` file
+in `static/` that is not a vendored `*.min.js` bundle is published
+automatically, so adding a module is one file.
+
+A template contains **no JavaScript**. It carries at most two script tags: one
+JSON data island and one module.
+
+```html
+<script type="application/json" id="studio-page-data">{{ {
+  'page': 'run', 'runApi': '/api/runs/' ~ record.id,
+  'paletteCommands': [...],
+}|tojson }}</script>
+<script src="/assets/runs.js"></script>
+```
+
+`|tojson` escapes `<`, `>`, `&` and `'`, so run data can never close the island
+or inject markup; the module reads it with `studioPageData()`. Every URL a
+module calls is built by the server and passed through the island — the client
+never reconstructs a route from an id.
+
+| Asset | Loaded by | Owns |
+|-------|-----------|------|
+| `boot.js` | every page (`<head>`) | theme before first paint, palette-command queue, `studioPageData()` |
+| `panels.js` | every page (`<head>`) | the one **client** panel renderer + hydration of server-rendered figures/networks |
+| `studio.js` | every page (`<head>`) | shell: auth-attaching `fetch`, theme toggle, toasts, command palette, repositories/settings, home observatory |
+| `runs.js` | run archive, run page, live page | platform viewer, process log, Watch stream, interactive run control |
+| `scenario.js` | scenario composer | form ⇄ YAML mirror, deferred choices, preflight, launch, history |
+| `study.js` | study page | study composer, live board refresh |
+| `explore.js` | all three Explore surfaces | run explore, study explore, run comparison |
+
+The three shared assets load blocking in `<head>` and defer all DOM work to
+`DOMContentLoaded`; page modules load where their markup ends. That order is
+what lets a page module's first response already reach `notify()` and
+`renderPanel()`.
+
+Page-level palette entries are declared as `paletteCommands` **data** in the
+island (an `action` names a global on the page's module), so their labels stay
+in the server-rendered HTML.
 
 ## Deployment
 
