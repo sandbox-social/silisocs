@@ -66,6 +66,10 @@ and network graphs up, so the hydration path is shared too. A scope that lays
 stat grids out differently declares it once, as `data-grid-class` on the panel
 grid, which both renderers honour.
 
+Teach only one of them and the other now *says so*: an output type a renderer
+does not know renders a visible note naming the type, never an empty panel that
+reads as "nothing to report".
+
 ### `Html` output must escape untrusted content
 
 `Html` and `Markdown` are emitted **verbatim** by every renderer (Studio, the
@@ -142,6 +146,10 @@ view:
       params: {cumulative: true}
     - class_path: mylab.panels.ContagionCurve
 ```
+
+`layout` is `grid` or `rows`. (`tabs` was accepted for a while with no
+implementation behind it — it rendered as a grid — and is now rejected at load
+with an error saying so.)
 
 Use `build_view(load_view(...), artifact)` in Python. Studio exposes the same
 result at `/api/runs/{id}/views/{view}`, and `silisocs-report` renders it to an

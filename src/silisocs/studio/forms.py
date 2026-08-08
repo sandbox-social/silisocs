@@ -743,6 +743,26 @@ def preflight_payload(files: dict[str, str]) -> dict[str, Any]:
             findings.append({"severity": "error", "path": path, "message": "Must be numeric"})
             return default
 
+    def section(value: Any, path: str) -> dict[str, Any]:
+        """Read a config section as a mapping, reporting a scalar instead of crashing.
+
+        A section typed as a scalar (``llm: gpt-4o-mini``) is the most ordinary
+        YAML typo there is, and preflight exists to report shape mistakes —
+        reading one as an attribute error failed the whole report.
+        """
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return value
+        findings.append(
+            {
+                "severity": "error",
+                "path": path,
+                "message": f"Expected a YAML mapping, got {type(value).__name__}",
+            }
+        )
+        return {}
+
     agents = integer(world.get("num_agents", 0), "world.num_agents")
     steps = integer(world.get("num_steps", 0), "world.num_steps")
     if agents <= 0:
@@ -753,7 +773,7 @@ def preflight_payload(files: dict[str, str]) -> dict[str, Any]:
         findings.append(
             {"severity": "error", "path": "world.num_steps", "message": "Must be positive"}
         )
-    backend = ((env.get("gm") or {}).get("backend") or {}) if isinstance(env, dict) else {}
+    backend = section(section(env.get("gm"), "env.gm").get("backend"), "env.gm.backend")
     if backend:
         from silisocs.environments.backends.factory import resolve_backend_class
 
@@ -785,7 +805,7 @@ def preflight_payload(files: dict[str, str]) -> dict[str, Any]:
                     }
                 )
 
-    llm = sim.get("llm") or {}
+    llm = section(sim.get("llm"), "sim.llm")
     provider = str(llm.get("provider") or "")
     if provider and not llm.get("disabled") and not llm.get("api_key"):
         from silisocs.runtime.language_models.catalog import OPENAI_COMPATIBLE_PRESETS
@@ -804,24 +824,24 @@ def preflight_payload(files: dict[str, str]) -> dict[str, Any]:
                 }
             )
 
-    engine = sim.get("engine") or {}
+    engine = section(sim.get("engine"), "sim.engine")
     actions_per_turn = _policy_estimate(
         build_turn_policy,
-        engine.get("turn_policy"),
+        section(engine.get("turn_policy"), "sim.engine.turn_policy"),
         "expected_actions_per_turn",
         path="sim.engine.turn_policy",
         findings=findings,
     )
     active_fraction = _policy_estimate(
         build_participation_policy,
-        engine.get("participation"),
+        section(engine.get("participation"), "sim.engine.participation"),
         "expected_active_share",
         path="sim.engine.participation",
         findings=findings,
     )
     active_fraction = min(1.0, max(0.0, active_fraction))
     calls = round(agents * steps * active_fraction * actions_per_turn)
-    estimate_cfg = sim.get("preflight") or {}
+    estimate_cfg = section(sim.get("preflight"), "sim.preflight")
     prompt_tokens = integer(
         estimate_cfg.get("prompt_tokens_per_call", 1200),
         "sim.preflight.prompt_tokens_per_call",
@@ -832,7 +852,7 @@ def preflight_payload(files: dict[str, str]) -> dict[str, Any]:
         "sim.preflight.completion_tokens_per_call",
         180,
     )
-    pricing = llm.get("pricing") or {}
+    pricing = section(llm.get("pricing"), "sim.llm.pricing")
     input_price = number(pricing.get("input_per_1m", 0), "sim.llm.pricing.input_per_1m", 0.0)
     output_price = number(pricing.get("output_per_1m", 0), "sim.llm.pricing.output_per_1m", 0.0)
     estimated_cost = (

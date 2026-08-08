@@ -152,10 +152,24 @@ def study_or_404(state: Any, study_id: str, **kwargs: Any) -> dict[str, Any]:
 
 
 def scenario_or_404(state: Any, scenario_name: str, source: str = "workspace") -> dict[str, Any]:
-    """Load a scenario from one workspace source, or raise 404."""
+    """Load a scenario from one workspace source, or raise 404 / 422.
+
+    A scenario whose YAML does not parse (or whose bytes are not UTF-8) EXISTS —
+    answering "not found" would send the author looking for the wrong problem,
+    and letting the error escape 500s the very editor page they would fix it on.
+    So a parse/decode failure is a 422 carrying the parser's own message, which
+    names the file position.
+    """
     try:
         return state.workspace.scenario_repository(source).load(scenario_name)
-    except (KeyError, ValueError) as exc:
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Scenario not found") from exc
+    # UnicodeDecodeError is a ValueError, so it is caught before the name check.
+    except (yaml.YAMLError, UnicodeDecodeError) as exc:
+        raise HTTPException(
+            status_code=422, detail=f"Scenario {scenario_name!r} could not be read: {exc}"
+        ) from exc
+    except ValueError as exc:  # an unsafe scenario name addresses nothing
         raise HTTPException(status_code=404, detail="Scenario not found") from exc
 
 

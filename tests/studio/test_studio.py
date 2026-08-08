@@ -40,7 +40,7 @@ def test_studio_run_browser_and_api(tmp_path):
     _make_run(tmp_path)
     client = TestClient(create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path))
     home = client.get("/").text
-    assert "Simulation workbench" in home
+    assert "Silisocs Studio" in home
     assert "data-observatory" in home
     assert "mobile-dock" in home
     assert 'src="/assets/studio.js"' in home
@@ -86,6 +86,52 @@ def test_scenario_create_save_and_interactive_launch_surface(tmp_path):
     )
     assert saved.status_code == 200
     assert client.get("/scenarios/audit_case").status_code == 200
+
+
+def test_malformed_scenario_reports_the_parse_error_instead_of_500ing(tmp_path):
+    """A scenario whose YAML does not parse EXISTS: every surface that reads it
+    must say what is wrong with it (422 + the parser's message, which carries
+    the file position), not 500, and not claim the scenario is missing.
+    """
+    workspace = tmp_path / "workspace"
+    conf = workspace / "scenarios" / "broken" / "conf" / "world"
+    conf.mkdir(parents=True)
+    (conf / "default.yaml").write_text("num_agents: [1, 2\n", encoding="utf-8")
+    client = TestClient(
+        create_app(tmp_path / "outputs", state_dir=tmp_path / "state", repo_root=workspace),
+        raise_server_exceptions=False,
+    )
+
+    for url in ("/scenarios/broken", "/api/scenarios/broken"):
+        response = client.get(url)
+        assert response.status_code == 422, url
+        detail = response.json()["detail"]
+        assert "broken" in detail
+        # PyYAML names the line/column; that is the whole value of surfacing it.
+        assert "line" in detail
+
+    preflight = client.post("/api/preflight", json={"scenario": "broken"})
+    assert preflight.status_code == 422
+
+    # A scenario that genuinely is not there is still a 404.
+    assert client.get("/api/scenarios/absent").status_code == 404
+
+
+def test_unhandled_error_answers_with_the_error_not_a_blank_wall(tmp_path):
+    """Starlette's default 500 body is the bare string "Internal Server Error".
+    Studio answers the same JSON envelope every other error uses, so the client
+    can show it — and logs the traceback server-side.
+    """
+    app = create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path)
+
+    @app.get("/api/_boom")
+    def boom():
+        raise RuntimeError("the recommender fell over")
+
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/api/_boom")
+    assert response.status_code == 500
+    assert response.json()["detail"] == "RuntimeError: the recommender fell over"
 
 
 def test_scenario_save_conflicts_on_a_stale_fingerprint(tmp_path):
@@ -833,6 +879,97 @@ def test_unknown_control_kind_degrades_to_text_input_not_nothing(tmp_path):
         assert 'type="text"' in page.text
     finally:
         _PANELS.pop("test_threshold_probe", None)
+
+
+def test_unknown_output_type_renders_a_note_not_an_empty_panel(tmp_path):
+    """A PanelOutput type a renderer does not know (a custom panel, or one half
+    of a lockstep change) must SAY so on both surfaces. Rendering nothing is
+    indistinguishable from a panel that had nothing to report.
+    """
+    from dataclasses import dataclass
+
+    from silisocs.analysis import Panel, register_panel
+    from silisocs.analysis.panel import _PANELS
+
+    @dataclass(frozen=True)
+    class Sankey:  # a shape neither renderer knows
+        flows: tuple[str, ...] = ()
+
+    @register_panel
+    class _SankeyProbe(Panel):
+        name = "test_sankey_probe"
+        title = "Sankey probe"
+        scope = "run"
+        requires = frozenset({"action_events"})
+
+        def build(self, artifact, params):
+            return Sankey(("a->b",))
+
+    try:
+        outputs = tmp_path / "artifacts"
+        _make_run(outputs)
+        view_dir = tmp_path / "workspace" / "scenarios" / "demo" / "conf" / "views"
+        view_dir.mkdir(parents=True)
+        (view_dir / "custom.yaml").write_text(
+            "view:\n  name: custom\n  title: Custom\n  scope: run\n  layout: rows\n"
+            "  panels:\n    - built_in: test_sankey_probe\n",
+            encoding="utf-8",
+        )
+        client = TestClient(
+            create_app(outputs, state_dir=tmp_path / "state", repo_root=tmp_path / "workspace")
+        )
+        page = client.get("/runs/demo/run-1?tab=analyze&view=custom")
+        assert page.status_code == 200
+        assert 'data-unknown-output="sankey"' in page.text
+
+        # The client renderer repaints the same panel without a navigation, so
+        # it carries the same fallback — kept in lockstep by hand.
+        assert "unknownOutput" in client.get("/assets/panels.js").text
+    finally:
+        _PANELS.pop("test_sankey_probe", None)
+
+
+def test_empty_states_offer_the_action_they_describe(tmp_path):
+    """An empty page must name the way out of being empty — and must not blame
+    filters the user never set.
+    """
+    client = TestClient(
+        create_app(tmp_path / "outputs", state_dir=tmp_path / "state", repo_root=tmp_path)
+    )
+
+    runs = client.get("/runs").text
+    assert "No runs yet" in runs
+    assert "Adjust the filters" not in runs
+    # With runs indexed, a filter that matches nothing DOES say so.
+    _make_run(tmp_path / "outputs")
+    filtered = client.get("/runs", params={"q": "nothing-matches-this"}).text
+    assert "No runs match these filters" in filtered
+
+    scenarios = client.get("/scenarios").text
+    assert "No scenarios yet" in scenarios
+    assert scenarios.count("New scenario") >= 2  # page action + empty-state CTA
+    studies = client.get("/studies").text
+    assert "No experiments yet" in studies
+    assert studies.count("New study") >= 2
+
+
+def test_client_failures_are_reported_not_swallowed(tmp_path):
+    """The shipped shell scripts must not contain a fetch whose failure ends as
+    a button that quietly did nothing. These are the sites that used to.
+    """
+    client = TestClient(create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path))
+    shell = client.get("/assets/studio.js").text
+    runs_js = client.get("/assets/runs.js").text
+    panels_js = client.get("/assets/panels.js").text
+
+    # One shared helper: non-ok -> danger toast carrying the server's `detail`.
+    assert "window.apiFetch" in shell and "window.apiError" in shell
+    # A danger toast persists until dismissed, so it carries a dismiss control.
+    assert "toast-close" in shell
+    # Step / Play / Pause / End run, plus both Stop buttons, report rejections.
+    assert runs_js.count("apiFetch(") >= 3
+    # A panel that cannot refresh says so instead of leaving a stale render.
+    assert "panel-error" in panels_js
 
 
 def test_lab_token_protects_remote_reads(tmp_path, monkeypatch):

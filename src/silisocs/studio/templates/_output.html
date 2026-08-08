@@ -18,6 +18,11 @@
 {%- elif output.type == 'grid' -%}
 {% set rich = output['items']|rejectattr('type', 'equalto', 'markdown')|list %}
 <div class="{{ grid_class }}{{ ' rich' if rich }}">{% for item in output['items'] %}{{ render_grid_item(item) }}{% endfor %}</div>
+{%- else -%}
+{# An output type no renderer knows (a custom panel, or one half of a
+   lockstep change) must SAY so — rendering nothing looks like a panel that
+   had nothing to report. Mirrors _controls.html's unknown-kind branch. #}
+{% set kind = output.type|default('unknown', true) %}<p class="panel-note muted" data-unknown-output="{{ kind }}">This panel returned a “{{ kind }}” output, which this Studio build cannot render.</p>
 {%- endif -%}
 {%- endmacro %}
 

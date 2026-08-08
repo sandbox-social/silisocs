@@ -351,7 +351,7 @@ never reconstructs a route from an id.
 |-------|-----------|------|
 | `boot.js` | every page (`<head>`) | theme before first paint, palette-command queue, `studioPageData()` |
 | `panels.js` | every page (`<head>`) | the one **client** panel renderer + hydration of server-rendered figures/networks |
-| `studio.js` | every page (`<head>`) | shell: auth-attaching `fetch`, theme toggle, toasts, command palette, repositories/settings, home observatory |
+| `studio.js` | every page (`<head>`) | shell: auth-attaching `fetch`, `apiFetch`/`apiError`/`withBusy`, theme toggle, toasts, command palette, repositories/settings, home observatory |
 | `runs.js` | run archive, run page, live page | platform viewer, process log, Watch stream, interactive run control |
 | `scenario.js` | scenario composer | form ⇄ YAML mirror, deferred choices, preflight, launch, history |
 | `study.js` | study page | study composer, live board refresh |
@@ -361,6 +361,18 @@ The three shared assets load blocking in `<head>` and defer all DOM work to
 `DOMContentLoaded`; page modules load where their markup ends. That order is
 what lets a page module's first response already reach `notify()` and
 `renderPanel()`.
+
+**Nothing fails quietly.** Every call goes through `apiFetch(url, options)`,
+which turns a non-ok response into a danger toast carrying the server's own
+`detail` and returns `null` so the caller stops rather than continuing on a body
+it never received. The API always answers `{"detail": ...}`, unhandled errors
+included — a global handler logs the traceback and returns the exception in that
+same envelope instead of a bare "Internal Server Error". Danger toasts persist
+until dismissed (success toasts still fade), a panel that cannot refresh says so
+in place of its previous render rather than leaving a stale chart looking fresh,
+and Save/Preflight/Launch hold their button (`withBusy`: disabled +
+`aria-busy`) for the round trip. Saves are the one deliberate exception to
+`apiFetch`: a 409 is the conflict dialog, not a toast.
 
 Page-level palette entries are declared as `paletteCommands` **data** in the
 island (an `action` names a global on the page's module), so their labels stay

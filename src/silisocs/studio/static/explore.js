@@ -62,7 +62,7 @@ function initExplore(config) {
     const query = queryParams();
     for (const [key, value] of Object.entries(extra)) if (value != null) query.set(key, value);
     const response = await fetch(`${apiPath(kind)}?${query}`, { signal: controller.signal });
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) throw new Error(await apiError(response));
     return response.json();
   }
   function empty(title, note) {
@@ -266,7 +266,7 @@ function initExplore(config) {
     async function open(backend) {
       setBusy(true);
       const response = await fetch(`/api/viewers/${runSegments}/${encodeURIComponent(backend)}`, { method: "POST" });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await apiError(response));
       const result = await response.json();
       frame.src = result.mode === "embedded" ? result.url : await awaitViewer(result.status_url);
       setBusy(false);
@@ -287,6 +287,7 @@ function initExplore(config) {
       return;
     }
     const response = await fetch(`${scene.renderer}?${queryParams()}`);
+    if (!response.ok) throw new Error(await apiError(response));
     const data = await response.json();
     if (data.output) await renderPanel(sceneHost, data.output);
     else { const pre = document.createElement("pre"); pre.textContent = JSON.stringify(data, null, 2); sceneHost.replaceChildren(pre); }
@@ -593,7 +594,7 @@ function initStudyExplore(config) {
         `/api/studies/${encodeURIComponent(exploreStudy)}/compare${query ? `?${query}` : ""}`,
         { signal: studyFetchSignal() }
       );
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await apiError(response));
       const view = await response.json();
       const grid = document.createElement("div");
       grid.className = "study-scene-panels";
@@ -633,7 +634,7 @@ function initStudyExplore(config) {
       const response = await fetch(`${scene.renderer}${query ? `?${query}` : ""}`, {
         signal: studyFetchSignal(),
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await apiError(response));
       const data = await response.json();
       if (data.output) {
         const host = document.createElement("div");
@@ -717,7 +718,7 @@ function initExploreCompare(config) {
   const url = "/api/explore/compare?" + runs.map((id) => "runs=" + encodeURIComponent(id)).join("&");
   fetch(url)
     .then(async (response) => {
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await apiError(response));
       return response.json();
     })
     .then((data) => {

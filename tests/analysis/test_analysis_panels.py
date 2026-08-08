@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -99,6 +100,26 @@ def test_view_composes_built_in_panels(tmp_path):
     assert [panel["name"] for panel in result["panels"]] == ["action_trends", "agent_inspector"]
     assert result["panels"][0]["output"]["type"] == "figure"
     assert result["panels"][1]["output"]["rows"][0]["agent"] in {"Alice", "Bob"}
+
+
+def test_tabs_layout_is_rejected_because_nothing_implements_it(tmp_path):
+    """`tabs` was accepted, offered in the composer, and had no CSS behind it —
+    it rendered as a grid. A view asking for it now fails loudly instead.
+    """
+    with pytest.raises(ValueError, match="tabs"):
+        parse_view(
+            {
+                "name": "tabbed",
+                "scope": "run",
+                "layout": "tabs",
+                "panels": [{"built_in": "action_trends"}],
+            }
+        )
+    # The composer must not offer what the validator rejects.
+    composer = (
+        Path(__file__).resolve().parents[2] / "src/silisocs/studio/templates/scenario.html"
+    ).read_text(encoding="utf-8")
+    assert "<option>tabs</option>" not in composer
 
 
 def test_builtin_view_and_report_smoke(tmp_path):

@@ -7,6 +7,7 @@ shared repositories/managers off ``app.state``, which this module populates.
 
 import asyncio
 import importlib
+import logging
 import os
 import threading
 from contextlib import asynccontextmanager
@@ -25,6 +26,8 @@ from silisocs.studio.workspace import WorkspaceCatalog
 # the warming screen instead. A workspace small enough to index inside the grace
 # (a test fixture, a small project) never shows the screen at all.
 _WARMUP_GRACE_SECONDS = 0.5
+
+_log = logging.getLogger("silisocs.studio")
 
 
 class StudioWarmup:
@@ -93,7 +96,7 @@ def create_app(
     """Create Studio, keeping FastAPI/Jinja imports inside the optional extra."""
     try:
         from fastapi import FastAPI, Request
-        from fastapi.responses import RedirectResponse, Response
+        from fastapi.responses import JSONResponse, RedirectResponse, Response
         from fastapi.templating import Jinja2Templates
     except ImportError as exc:
         raise RuntimeError('Silisocs Studio requires: pip install "silisocs[studio]"') from exc
@@ -145,6 +148,24 @@ def create_app(
         redoc_url=None,
         lifespan=lifespan,
     )
+
+    @app.exception_handler(Exception)
+    async def unhandled_error(request: Request, exc: Exception) -> Response:
+        """Answer an unhandled failure with the error, not with a blank wall.
+
+        Starlette's default is the bare string "Internal Server Error", which
+        tells a user nothing and a client nothing it can display. This surfaces
+        the exception in the same ``{"detail": ...}`` envelope every deliberate
+        HTTPException uses (so the browser's toast renders it like any other
+        error) and logs the traceback server-side. It classifies nothing and
+        recovers nothing: a 500 stays a 500.
+        """
+        _log.exception("Unhandled Studio error: %s %s", request.method, request.url.path)
+        return JSONResponse(
+            {"detail": f"{type(exc).__name__}: {exc}"},
+            status_code=500,
+        )
+
     # Everything the routers need, resolved once. They read it as
     # `request.app.state.<name>`, so nothing here is a module-level singleton.
     app.state.output_root = root

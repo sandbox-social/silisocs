@@ -235,7 +235,16 @@ window.renderPanel = async (body, output) => {
     if (output.items.some(item => item.type !== "markdown")) grid.classList.add("rich");
     for (const item of output.items) grid.append(renderGridItem(item));
     body.replaceChildren(grid);
+    return;
   }
+  // An output type this renderer does not know (a custom panel, or one half of
+  // a lockstep change) must SAY so — rendering nothing looks like a panel with
+  // nothing to report. Mirrors _output.html's else branch.
+  const note = document.createElement("p");
+  note.className = "panel-note muted";
+  note.dataset.unknownOutput = output?.type ?? "unknown";
+  note.textContent = `This panel returned a “${output?.type ?? "unknown"}” output, which this Studio build cannot render.`;
+  body.replaceChildren(note);
 };
 
 /* ---- in-place panel refresh ---------------------------------------------- */
@@ -260,7 +269,16 @@ window.refreshPanel = async section => {
   body.setAttribute("aria-busy", "true");
   try {
     const response = await fetch(`${base}/panels/${name}?${panelQuery(name)}`);
-    if (!response.ok) return;
+    if (!response.ok) {
+      // Leaving the previous render in place makes a stale chart look freshly
+      // refreshed, so the panel says what happened instead.
+      const note = document.createElement("p");
+      note.className = "panel-note muted";
+      note.dataset.testid = "panel-error";
+      note.textContent = `This panel could not be refreshed: ${await apiError(response)}`;
+      body.replaceChildren(note);
+      return;
+    }
     const data = await response.json();
     await renderPanel(body, data.output);
     for (const control of data.controls || []) {

@@ -71,8 +71,10 @@ function initRunControl({url, initialEpisode = -1}, events) {
   const render = () => {
     if (state) state.textContent = inFlight() ? `running episode ${started}` : `paused · ${done()} done`;
   };
+  // Through apiFetch: a rejected command (401 without a token, 422 on a job
+  // that already ended) used to be a button that simply did nothing.
   const send = body =>
-    fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    apiFetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
   window.ctlStep = () => send({target: done() + 1});
   window.ctlPlay = () => send({target: null});
   window.ctlPause = () => send({target: inFlight() ? started + 1 : done()});
@@ -160,9 +162,8 @@ function initPlatformTab(data) {
     empty.setAttribute("aria-busy", "true");
     const response = await fetch(`${data.viewerApi}/${encodeURIComponent(backend)}`, {method: "POST"});
     if (!response.ok) {
-      empty.classList.remove("skeleton", "loading");
-      empty.removeAttribute("aria-busy");
-      notify(await response.text(), "danger");
+      // Reported in the panel that owns Retry, not as a toast that outlives it.
+      viewerFailed(backend, await apiError(response));
       return;
     }
     const result = await response.json();
@@ -228,7 +229,7 @@ function initWatchStream(data, log) {
     updateUsage();
     events.close();
   });
-  window.stopWatchJob = () => fetch(watch.stopUrl, {method: "POST"});
+  window.stopWatchJob = () => apiFetch(watch.stopUrl, {method: "POST"});
   return events;
 }
 
@@ -278,7 +279,7 @@ function initLivePage(data) {
     attachRun().then(() => setTimeout(() => location.reload(), 700));
   });
   attachRun();
-  window.stopJob = () => fetch(data.stopUrl, {method: "POST"});
+  window.stopJob = () => apiFetch(data.stopUrl, {method: "POST"});
   if (data.control) initRunControl(data.control, events);
 }
 

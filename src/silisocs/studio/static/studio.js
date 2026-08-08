@@ -41,14 +41,96 @@ window.toggleTheme = () => {
   document.getElementById("platform-frame")?.contentWindow?.postMessage({type: "silisocs-theme", theme: next}, "*");
 };
 
-/* ---- toasts -------------------------------------------------------------- */
+/* ---- toasts --------------------------------------------------------------
+ * A success toast is a receipt and may fade. A danger toast is often the ONLY
+ * report of a failure — three seconds is not long enough to read a stack of
+ * YAML positions in — so it stays until the reader dismisses it. Live toasts
+ * are stacked upwards, because a persistent one that lands underneath another
+ * hides exactly what it was raised to show. */
+const TOAST_GAP = 12;
+function restackToasts() {
+  let offset = 0;
+  [...document.querySelectorAll(".toast")].reverse().forEach(el => {
+    el.style.bottom = `calc(var(--space-xl) + ${offset}px)`;
+    offset += el.offsetHeight + TOAST_GAP;
+  });
+}
 window.notify = (message, tone = "neutral") => {
   const el = document.createElement("div");
   el.className = `toast ${tone}`;
   el.dataset.testid = "toast";
-  el.textContent = message;
+  // The toast is built here and nowhere else, so its internal layout is set
+  // here too (in design tokens): the dismiss control must sit beside a message
+  // that wraps, never inside it.
+  el.style.display = "flex";
+  el.style.alignItems = "center";
+  el.style.gap = "var(--space-md)";
+  const text = document.createElement("span");
+  text.textContent = message;
+  el.append(text);
+  const dismiss = () => {
+    el.remove();
+    restackToasts();
+  };
+  if (tone === "danger") {
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "icon-button";
+    close.title = "Dismiss";
+    close.ariaLabel = "Dismiss";
+    close.dataset.testid = "toast-close";
+    close.textContent = "×";
+    close.style.flex = "0 0 auto";
+    close.style.marginLeft = "auto";
+    close.onclick = dismiss;
+    el.append(close);
+  } else setTimeout(dismiss, 3000);
   document.body.append(el);
-  setTimeout(() => el.remove(), 3000);
+  restackToasts();
+  return el;
+};
+
+/* ---- the one fetch --------------------------------------------------------
+ * Every Studio call goes through `apiFetch`, so no failure can end as a button
+ * that just did nothing. A non-ok response becomes a danger toast carrying the
+ * server's own `detail` (the API answers `{"detail": ...}` for both deliberate
+ * errors and unhandled ones), and the caller gets null so it stops instead of
+ * proceeding on a body it never received. Saves stay on raw `fetch`: a 409 is a
+ * conflict dialog, not a toast — they use `apiError` for their message. */
+window.apiError = async response => {
+  const text = await response.text();
+  try {
+    const {detail} = JSON.parse(text);
+    if (detail) return typeof detail === "string" ? detail : JSON.stringify(detail);
+  } catch {
+    /* not JSON: the raw body is the best message there is */
+  }
+  return text.trim() || `${response.status} ${response.statusText}`;
+};
+/* The in-flight contract for an action button: it is visibly out of action
+ * while its work runs, and it comes back however that work ends. */
+window.withBusy = async (button, work) => {
+  if (!button) return work();
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  try {
+    return await work();
+  } finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  }
+};
+window.apiFetch = async (url, options) => {
+  let response;
+  try {
+    response = await fetch(url, options);
+  } catch (error) {
+    notify(`Could not reach ${url}: ${error.message}`, "danger");
+    return null;
+  }
+  if (response.ok) return response;
+  notify(await apiError(response), "danger");
+  return null;
 };
 
 /* ---- save conflicts ------------------------------------------------------
@@ -179,7 +261,6 @@ function flushPaletteCommands() {
 async function hydratePalette() {
   const nav = document.querySelector("#command-palette nav");
   if (nav.dataset.loaded) return;
-  nav.dataset.loaded = "true";
   const sources = [
     ["/api/runs", "Run", item => "/runs/" + item.id.split("/").map(encodeURIComponent).join("/")],
     [
@@ -192,17 +273,29 @@ async function hydratePalette() {
     ],
     ["/api/studies", "Study", item => "/studies/" + encodeURIComponent(item.id)],
   ];
+  // One report, and the palette is only marked loaded after a fully successful
+  // pass: a half-hydrated palette that never retries silently hides everything
+  // the failed source owned. A retry re-adds only what this function fetched,
+  // so the page's own commands survive and nothing is listed twice.
+  nav.querySelectorAll("[data-hydrated]").forEach(item => item.remove());
+  let failure = null;
   for (const [url, kind, href] of sources) {
     try {
-      const data = await (await fetch(url)).json();
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(await apiError(response));
+      const data = await response.json();
       for (const item of data.items || [])
         registerPaletteCommand({
           label: `${kind}: ${item.scenario || item.name || item.id}`,
           href: href(item),
           keywords: `${item.id || ""} ${item.source_label || ""}`,
-        });
-    } catch {}
+        }).dataset.hydrated = "true";
+    } catch (error) {
+      failure ??= `${kind} search is incomplete: ${error.message || error}`;
+    }
   }
+  if (failure) notify(failure, "danger");
+  else nav.dataset.loaded = "true";
 }
 window.openPalette = () => {
   const dialog = document.getElementById("command-palette");
@@ -257,52 +350,30 @@ window.connectRepository = async event => {
   const form = event.currentTarget;
   const path = form.elements.path.value.trim();
   const nickname = form.elements.nickname.value.trim();
-  const submit = form.querySelector('[type="submit"]');
-  submit.disabled = true;
-  try {
-    const response = await fetch("/api/repositories", {
+  return withBusy(form.querySelector('[type="submit"]'), async () => {
+    const response = await apiFetch("/api/repositories", {
       method: "POST",
       headers: {"content-type": "application/json"},
       body: JSON.stringify({path, nickname}),
     });
-    if (!response.ok) {
-      notify(await response.text(), "danger");
-      return;
-    }
-    location.reload();
-  } finally {
-    submit.disabled = false;
-  }
+    if (response) location.reload();
+  });
 };
 
 async function removeRepository(source) {
-  const response = await fetch(`/api/repositories/${encodeURIComponent(source)}`, {method: "DELETE"});
-  if (!response.ok) {
-    notify(await response.text(), "danger");
-    return;
-  }
-  location.reload();
+  if (await apiFetch(`/api/repositories/${encodeURIComponent(source)}`, {method: "DELETE"})) location.reload();
 }
 async function renameRepository(source) {
   const nickname = document.getElementById(`repository-nickname-${source}`).value.trim();
-  const response = await fetch(`/api/repositories/${encodeURIComponent(source)}`, {
+  const response = await apiFetch(`/api/repositories/${encodeURIComponent(source)}`, {
     method: "PATCH",
     headers: {"content-type": "application/json"},
     body: JSON.stringify({nickname}),
   });
-  if (!response.ok) {
-    notify(await response.text(), "danger");
-    return;
-  }
-  notify("Project nickname saved.", "success");
+  if (response) notify("Project nickname saved.", "success");
 }
 async function refreshRepositories() {
-  const response = await fetch("/api/repositories/refresh", {method: "POST"});
-  if (!response.ok) {
-    notify(await response.text(), "danger");
-    return;
-  }
-  location.reload();
+  if (await apiFetch("/api/repositories/refresh", {method: "POST"})) location.reload();
 }
 function storeAuthToken() {
   localStorage.setItem("silisocs-auth-token", document.getElementById("auth-token").value);

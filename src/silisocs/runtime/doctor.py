@@ -121,7 +121,7 @@ def run_doctor(output_dir: str | Path | None = None) -> int:
 
     print("\nNext steps:")
     print("  - validate a config without running: silisocs-config-dry-run")
-    print("  - launch the workbench: silisocs-studio")
+    print("  - launch Studio: silisocs-studio")
 
     if failures:
         print(f"\n{failures} required check(s) failed.")

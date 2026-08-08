@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
 from silisocs.environments.gm.components.factory import component_built_ins
@@ -107,6 +108,37 @@ def test_preflight_reports_bad_numbers_instead_of_raising() -> None:
 
     assert result["ok"] is False
     assert any(item["path"] == "world.num_agents" for item in result["findings"])
+
+
+@pytest.mark.parametrize(
+    ("relative", "text", "path"),
+    [
+        ("sim.yaml", "llm: gpt-4o-mini\n", "sim.llm"),
+        ("sim.yaml", "llm:\n  pricing: cheap\n", "sim.llm.pricing"),
+        ("sim.yaml", "engine: sequential\n", "sim.engine"),
+        ("sim.yaml", "engine:\n  turn_policy: single_action\n", "sim.engine.turn_policy"),
+        ("sim.yaml", "engine:\n  participation: all\n", "sim.engine.participation"),
+        ("sim.yaml", "preflight: fast\n", "sim.preflight"),
+        ("env.yaml", "gm: twitter\n", "env.gm"),
+        ("env.yaml", "gm:\n  backend: twitter_like\n", "env.gm.backend"),
+    ],
+)
+def test_preflight_reports_scalar_sections_instead_of_raising(
+    relative: str, text: str, path: str
+) -> None:
+    """Preflight exists to report shape mistakes. A section a user typed as a
+    scalar is the most ordinary YAML typo there is; reading one as a mapping
+    used to 500 the whole report.
+    """
+    files = _files()
+    files[relative] = text
+
+    result = preflight_payload(files)
+
+    assert result["ok"] is False
+    finding = next(item for item in result["findings"] if item["path"] == path)
+    assert finding["severity"] == "error"
+    assert "mapping" in finding["message"]
 
 
 def _participation_sim_yaml(built_in: str, rates: dict[str, dict[str, float]]) -> str:

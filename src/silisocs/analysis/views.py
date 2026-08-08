@@ -131,7 +131,7 @@ class View:
     name: str
     title: str
     scope: Literal["run", "study"]
-    layout: Literal["grid", "tabs", "rows"]
+    layout: Literal["grid", "rows"]
     panels: tuple[PanelSlot, ...]
 
 
@@ -220,8 +220,13 @@ def parse_view(data: dict[str, Any]) -> View:
     name = str(raw.get("name", "")).strip()
     scope = raw.get("scope")
     layout = raw.get("layout", "grid")
-    if not name or scope not in {"run", "study"} or layout not in {"grid", "tabs", "rows"}:
-        raise ValueError("View requires name, scope run|study, and layout grid|tabs|rows")
+    # 'tabs' was accepted and offered for a long time without a single line of CSS
+    # behind it, so it silently rendered as a grid. Rejecting it is the honest
+    # answer until a tabbed layout actually exists.
+    if layout == "tabs":
+        raise ValueError("View layout 'tabs' is not implemented; use grid or rows")
+    if not name or scope not in {"run", "study"} or layout not in {"grid", "rows"}:
+        raise ValueError("View requires name, scope run|study, and layout grid|rows")
     panels = raw.get("panels", [])
     if not isinstance(panels, list) or not panels:
         raise ValueError(f"View {name!r} requires at least one panel")
