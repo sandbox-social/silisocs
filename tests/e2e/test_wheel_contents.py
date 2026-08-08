@@ -27,6 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # the self-contained static report, which is not behind the `analysis` extra.
 EXPECTED_STUDIO_JS = {
     "boot.js",
+    "composer.js",
     "cytoscape.min.js",
     "explore.js",
     "panels.js",

@@ -4,18 +4,19 @@
  * definition, reusable run choices, board stream) changed, and they now arrive
  * through the page's JSON data island. Functions stay top-level declarations
  * because the template's `onclick="launchStudy()"` handlers resolve them as
- * globals. */
+ * globals.
+ *
+ * The dirty flag, the unload guard, the compose POST and the 409-conflict save
+ * are the scenario composer's too and live in composer.js, which the page loads
+ * first. Only what makes this editor a STUDY editor is below: one YAML
+ * document, the hypothesis/condition/evaluator structure editing, and the live
+ * board refresh. */
 
 const studyPage = studioPageData();
 const studyId = studyPage.id;
 const runChoices = studyPage.runChoices || [];
 let studyDefinition = studyPage.definition || {};
-
-/* ---- dirty state --------------------------------------------------------- */
-let studyDirty=false;
-function markStudyDirty(){studyDirty=true;const state=document.getElementById('study-save-state');if(state){state.textContent='Unsaved changes';state.classList.add('dirty')}}
-function markStudySaved(){studyDirty=false;const state=document.getElementById('study-save-state');if(state){state.textContent='Saved';state.classList.remove('dirty')}}
-window.addEventListener('beforeunload',event=>{if(studyDirty){event.preventDefault();event.returnValue=''}});
+const studyDirty = composerDirtyState('study-save-state');
 
 /* ---- form <-> definition <-> YAML mirror --------------------------------- */
 const yamlEditor=document.getElementById('study-yaml');
@@ -26,7 +27,7 @@ function hydrateStudy(definition){studyDefinition=definition;document.querySelec
 // A form edit re-serializes the document into the mirror; a raw-text edit
 // (no updates) only refreshes the form from it, so the author's own text —
 // comments, ordering, blank lines — is what the save writes.
-async function composeStudy(updates={}){const response=await apiFetch(`/api/studies/${studyId}/compose`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({yaml:yamlEditor.value,updates})});if(!response)return false;const data=await response.json();if(Object.keys(updates).length)yamlEditor.value=data.yaml;hydrateStudy(data.definition);markStudyDirty();return data}
+async function composeStudy(updates={}){const data=await composerPost(`/api/studies/${studyId}/compose`,{yaml:yamlEditor.value,updates});if(!data)return false;if(Object.keys(updates).length)yamlEditor.value=data.yaml;hydrateStudy(data.definition);studyDirty.markDirty();return data}
 document.getElementById('study-form')?.addEventListener('change',async event=>{const input=event.target.closest('[data-study-field]');if(!input)return;const updates={[input.dataset.studyField]:studyFieldValue(input)};if(input.dataset.studyScenarios!==undefined&&event.target.matches('input[type="checkbox"]')&&event.target.checked){input.querySelectorAll('input[type="checkbox"]').forEach(box=>{if(box!==event.target&&box.dataset.scenarioSource!==event.target.dataset.scenarioSource)box.checked=false});updates[input.dataset.studyField]=studyFieldValue(input);updates['study.run_defaults.config_path']=event.target.dataset.configPattern;updates['study.run_defaults.working_directory']=event.target.dataset.projectRoot}await composeStudy(updates)});
 document.querySelector('[data-study-custom-scenarios]')?.addEventListener('change',async event=>{const input=event.target.closest('.form-field').querySelector('[data-study-scenarios]');await composeStudy({[input.dataset.studyField]:studyFieldValue(input)})});
 yamlEditor?.addEventListener('change',()=>composeStudy({}));
@@ -41,13 +42,21 @@ async function addExistingRun(hypothesis,condition){const picker=[...document.qu
 /* ---- save and launch -----------------------------------------------------
  * Save and Launch each hold their own button for the round trip (withBusy,
  * studio.js): Launch saves first, so two requests run behind one click. */
-const studyButton=name=>document.querySelector(`[data-testid="${name}"]`);
-async function launchStudy(){return withBusy(studyButton('launch-study'),async()=>{if(yamlEditor&&!await saveStudy())return;const response=await apiFetch(`/api/studies/${studyId}/launch`,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});if(!response)return;const job=await response.json();location.href='/live?job='+job.id})}
-// Optimistic concurrency: the save carries the fingerprint (and the text) this
-// editor was opened on, so a study.yaml another tab already changed comes back
-// 409 instead of being overwritten.
+async function launchStudy(){return withBusy(composerButton('launch-study'),async()=>{if(yamlEditor&&!await saveStudy())return;const job=await composerPost(`/api/studies/${studyId}/launch`,{});if(!job)return;location.href='/live?job='+job.id})}
+// The save is composerSave (composer.js); what is study-specific is that there
+// is exactly ONE document, so the conflict adopts a single fingerprint. A study
+// page without the Definition tab has no editor and nothing to save.
 let studyFingerprint=studyPage.fingerprint||'',studyBaseline=yamlEditor?yamlEditor.value:'';
-async function saveStudy(){if(!yamlEditor)return true;return withBusy(studyButton('save-study'),async()=>{const response=await fetch(`/api/studies/${studyId}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({yaml:yamlEditor.value,fingerprint:studyFingerprint,baseline:studyBaseline})});const conflict=await saveConflict(response);if(conflict){return await showSaveConflict(conflict,{onReload:()=>{if(!confirm(`Reloading ${conflict.file} discards your unsaved edits to this study.`))return;studyDirty=false;location.reload()},onOverwrite:async()=>{studyFingerprint=conflict.fingerprint;return await saveStudy()}})}if(response.ok){const saved=await response.json();studyFingerprint=saved.fingerprint||'';studyBaseline=yamlEditor.value;markStudySaved()}notify(response.ok?'Saved':await apiError(response),response.ok?'success':'danger');return response.ok})}
+async function saveStudy(){if(!yamlEditor)return true;return composerSave({
+  button:composerButton('save-study'),
+  url:`/api/studies/${studyId}`,
+  body:()=>({yaml:yamlEditor.value,fingerprint:studyFingerprint,baseline:studyBaseline}),
+  noun:'study',
+  dirty:studyDirty,
+  adoptConflict:conflict=>{studyFingerprint=conflict.fingerprint},
+  adopt:saved=>{studyFingerprint=saved.fingerprint||'';studyBaseline=yamlEditor.value},
+  retry:saveStudy,
+})}
 
 /* ---- live board ---------------------------------------------------------- */
 // Every board panel refreshes through the shared refreshPanel (panels.js),

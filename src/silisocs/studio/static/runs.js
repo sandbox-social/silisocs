@@ -120,41 +120,15 @@ function initPlatformTab(data) {
     retry.onclick = () => startViewer(backend);
     empty.append(title, note, retry);
   }
-  // A subprocess viewer is ready when its port accepts connections, not when the
-  // process spawns: the server binds only after its imports finish. The server
-  // owns that distinction; we poll it until ready or the budget runs out.
-  async function awaitViewer(backend, statusUrl) {
-    const started = Date.now();
-    const budgetMs = 180000;
-    for (;;) {
-      let status;
-      try {
-        status = await (await fetch(statusUrl)).json();
-      } catch {
-        status = {state: "starting"};
-      }
-      if (status.state === "ready") {
-        showViewer(status.url);
-        return;
-      }
-      if (status.state === "failed") {
-        viewerFailed(backend, status.detail || "The viewer process stopped.");
-        return;
-      }
-      const seconds = Math.floor((Date.now() - started) / 1000);
-      if (seconds * 1000 > budgetMs) {
-        viewerFailed(backend, `The viewer did not start within ${Math.floor(budgetMs / 1000)}s.`);
-        return;
-      }
-      platformEmpty().replaceChildren(
-        Object.assign(document.createElement("b"), {textContent: "Starting viewer"}),
-        Object.assign(document.createElement("p"), {
-          textContent: `Waiting for the viewer server — ${seconds}s elapsed.`,
-        })
-      );
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-  }
+  // The startup poll itself is the shell's awaitViewerUrl; this panel owns only
+  // how the wait and its failure are shown.
+  const showStartupProgress = seconds =>
+    platformEmpty().replaceChildren(
+      Object.assign(document.createElement("b"), {textContent: "Starting viewer"}),
+      Object.assign(document.createElement("p"), {
+        textContent: `Waiting for the viewer server — ${seconds}s elapsed.`,
+      })
+    );
   window.startViewer = async backend => {
     const empty = platformEmpty();
     empty.classList.remove("hidden");
@@ -172,7 +146,11 @@ function initPlatformTab(data) {
       showViewer(result.url);
       return;
     }
-    await awaitViewer(backend, result.status_url);
+    try {
+      showViewer(await awaitViewerUrl(result.status_url, {onWaiting: showStartupProgress}));
+    } catch (error) {
+      viewerFailed(backend, error.message);
+    }
   };
   if (data.autoStartViewer) startViewer(data.autoStartViewer);
 }

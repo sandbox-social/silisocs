@@ -61,12 +61,18 @@
 </div>
 {% endif %}
 <dialog id="study-entity-dialog" class="command-palette compact-dialog"><form class="form-group" onsubmit="createStudyEntity(event)"><p class="eyebrow">Experiment structure</p><h2 id="study-entity-title">Add item</h2><label class="form-field"><span>Identifier</span><input id="study-entity-id" required pattern="[A-Za-z0-9_-]+"></label><div class="composer-actions"><button class="button quiet" type="button" onclick="document.getElementById('study-entity-dialog').close()">Cancel</button><button class="button primary" type="submit"><svg><use href="#icon-plus"/></svg>Add</button></div></form></dialog>
+{# The reuse picker sends back only what a `reuse.runs` entry is made of, so the
+   island carries those three keys per run rather than every run's full API
+   projection (llm_usage and health dicts included) for the whole workspace. #}
+{% set reusable = namespace(runs=[]) -%}
+{% for run in run_choices|default([], true) -%}
+{% set reusable.runs = reusable.runs + [{'path': run.path, 'scenario': run.scenario, 'seed': run.seed}] -%}
+{% endfor -%}
 <script type="application/json" id="studio-page-data">{{ {
-  'page': 'study',
   'id': study.id,
   'definition': study.definition,
   'fingerprint': study.fingerprint|default('', true),
-  'runChoices': run_choices|default([], true),
+  'runChoices': reusable.runs,
   'boardStream': ('/api/jobs/' ~ job.id ~ '/stream')
     if (tab == 'board' and job and job.status in ('queued', 'running')) else none,
   'paletteCommands': [
@@ -78,5 +84,6 @@
     {'label': 'Study: Definition', 'href': '?tab=definition', 'keywords': 'yaml composer'},
   ],
 }|tojson }}</script>
+<script src="/assets/composer.js"></script>
 <script src="/assets/study.js"></script>
 {% endblock %}

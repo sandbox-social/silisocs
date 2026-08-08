@@ -133,6 +133,38 @@ window.apiFetch = async (url, options) => {
   return null;
 };
 
+/* ---- subprocess viewers --------------------------------------------------
+ * A subprocess viewer is ready when its PORT accepts connections, not when the
+ * process spawns: the server binds only after its imports finish. The server
+ * owns that distinction and reports it on a status URL; this polls that URL
+ * until ready, failed, or the budget runs out, and resolves with the viewer's
+ * URL. The run page and the explorer both start viewers, and each used to poll
+ * with its own copy of this loop.
+ *
+ * A status request that itself fails counts as "still starting" — a viewer
+ * whose port is not listening yet is exactly what this is waiting for, so a
+ * connection refusal must not end the wait. Real failure comes from the server
+ * saying so, or from the budget expiring. `onWaiting(seconds)` is where a
+ * caller renders progress; a caller that shows none omits it. */
+window.awaitViewerUrl = async (statusUrl, {onWaiting, budgetMs = 180000} = {}) => {
+  const started = Date.now();
+  for (;;) {
+    let status;
+    try {
+      status = await (await fetch(statusUrl)).json();
+    } catch {
+      status = {state: "starting"};
+    }
+    if (status.state === "ready") return status.url;
+    if (status.state === "failed") throw new Error(status.detail || "The viewer process stopped.");
+    const seconds = Math.floor((Date.now() - started) / 1000);
+    if (seconds * 1000 > budgetMs)
+      throw new Error(`The viewer did not start within ${Math.floor(budgetMs / 1000)}s.`);
+    onWaiting?.(seconds);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+};
+
 /* ---- save conflicts ------------------------------------------------------
  * Two editors on one document used to overwrite each other in silence. A save
  * whose fingerprint is stale now comes back 409, and this dialog is the whole

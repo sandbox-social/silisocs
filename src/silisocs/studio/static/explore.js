@@ -245,15 +245,6 @@ function initExplore(config) {
     sceneCount.textContent = `${data.total} entities`;
     if (!data.items.length) empty("No matching entities", "This selection contains no attributed events.");
   }
-  async function awaitViewer(statusUrl) {
-    for (let attempt = 0; attempt < 180; attempt++) {
-      const status = await (await fetch(statusUrl)).json();
-      if (status.state === "ready") return status.url;
-      if (status.state === "failed") throw new Error(status.detail);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-    throw new Error("Viewer start timed out");
-  }
   async function renderViewer() {
     const choices = capabilities.viewer_backends || [];
     if (!choices.length) { empty("No spatial scene", "This run did not declare a viewer capability."); return; }
@@ -268,7 +259,10 @@ function initExplore(config) {
       const response = await fetch(`/api/viewers/${runSegments}/${encodeURIComponent(backend)}`, { method: "POST" });
       if (!response.ok) throw new Error(await apiError(response));
       const result = await response.json();
-      frame.src = result.mode === "embedded" ? result.url : await awaitViewer(result.status_url);
+      // An embedded viewer is mounted inside Studio and already serving; a
+      // subprocess one is polled through the shell's awaitViewerUrl. Either
+      // way a failure throws and lands in this caller's showError.
+      frame.src = result.mode === "embedded" ? result.url : await awaitViewerUrl(result.status_url);
       setBusy(false);
     }
     for (const backend of choices) {

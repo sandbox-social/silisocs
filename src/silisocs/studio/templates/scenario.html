@@ -38,7 +38,6 @@
 </section>
 <section id="history" data-workspace-panel="history" class="view-editor" hidden><div class="section-head"><div><p class="eyebrow">Artifacts</p><h2>Run history</h2></div></div><div data-scenario-history class="empty compact skeleton loading" aria-busy="true"><b>Loading run history</b><p>Checking this scenario's artifacts.</p></div></section>
 <script type="application/json" id="studio-page-data">{{ {
-  'page': 'scenario',
   'name': scenario.name,
   'source': scenario.source,
   'fingerprints': scenario.fingerprints|default({}, true),
@@ -51,5 +50,6 @@
     {'label': 'Scenario: History', 'href': '#history', 'keywords': 'runs'},
   ],
 }|tojson }}</script>
+<script src="/assets/composer.js"></script>
 <script src="/assets/scenario.js"></script>
 {% endblock %}
