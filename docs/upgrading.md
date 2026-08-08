@@ -2,6 +2,15 @@
 
 Notes for moving between releases. Each entry lists only user-affecting changes.
 
+## Checkpoint compatibility policy
+
+Checkpoints carry a `schema_version` (and, since 0.4.x, the
+`silisocs_version` that wrote them). A checkpoint loads only into a runtime
+with the **same** schema version — there is no cross-version migration. On a
+mismatch, restore fails with an error naming both versions; either re-run the
+simulation or restore with the release that wrote the checkpoint. Schema
+bumps are listed in the release notes below when they happen.
+
 ## 0.2.x to 0.3.0
 
 - **Study runner is a package CLI.** Use `silisocs-study` (or

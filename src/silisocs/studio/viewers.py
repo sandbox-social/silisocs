@@ -221,8 +221,6 @@ class ViewerDispatch:
 
         for index in range(1, len(segments)):
             backend_type = segments[index]
-            if viewer_app_factory(backend_type) is None:
-                continue
             try:
                 record = find_run(self._root, "/".join(segments[:index]))
             except KeyError:
@@ -232,6 +230,11 @@ class ViewerDispatch:
                 None,
             )
             if db_path is None:
+                continue
+            # AFTER find_backend_dbs: it registers manifest-declared
+            # visualizers for backends this process cannot import, so a
+            # custom-backend deep link survives a cold Studio process.
+            if viewer_app_factory(backend_type) is None:
                 continue
             viewer = self._viewer_for(backend_type, db_path)
             if viewer is not None:

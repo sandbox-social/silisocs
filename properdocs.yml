@@ -103,32 +103,37 @@ nav:
     - Glossary: glossary.md
     - Upgrading: upgrading.md
   - User Guide:
-    - Usage Overview: usage.md
-    - Scenario Guide: scenario_guide.md
-    - Study Guide: study_guide.md
-    - Study Schema: study_schema.md
-    - Experiment Studies: experiments.md
-    - Configuration: configuration.md
-    - Config Reference (Generated): config_reference.md
-    - Documentation Coverage: documentation_coverage.md
-    - Framework Roadmap: framework_roadmap.md
-    - Simulation Extensibility API: simulation_extensibility_api.md
-    - Concordia Bridge: concordia_bridge.md
-    - Concordia Migration Log: concordia_migration_log.md
-    - Environment Layer: environment_layer.md
-    - Multi-GM Architecture: multi_gm_architecture.md
-    - Building Agents: building_agents.md
-    - Harness Agents (experimental): harness_agents.md
-    - Memory Initialization: memory_initialization.md
-    - Environment Backends: backends.md
-    - Evaluation Probes: probes.md
-    - Studio: studio.md
-    - Studio Analysis Panels: analysis_panels.md
+    - Core Workflow:
+      - Usage Overview: usage.md
+      - Scenario Guide: scenario_guide.md
+      - Study Guide: study_guide.md
+      - Study Schema: study_schema.md
+      - Experiment Studies: experiments.md
+    - Configuration:
+      - Configuration: configuration.md
+      - Config Reference (Generated): config_reference.md
+    - Extending:
+      - Simulation Extensibility API: simulation_extensibility_api.md
+      - Environment Layer: environment_layer.md
+      - Multi-GM Architecture: multi_gm_architecture.md
+      - Building Agents: building_agents.md
+      - Harness Agents (experimental): harness_agents.md
+      - Memory Initialization: memory_initialization.md
+      - Environment Backends: backends.md
+      - Evaluation Probes: probes.md
+    - Studio & Analysis:
+      - Studio: studio.md
+      - Studio Analysis Panels: analysis_panels.md
+    - Interop:
+      - Concordia Bridge: concordia_bridge.md
   - Tutorials:
     - End-to-End Demo (CLI + Studio): tutorials/studio_demo.md
     - Election Scenario Walkthrough: tutorials/election.md
   - Development:
     - Contributing: contributing.md
+    - Documentation Coverage: documentation_coverage.md
+    - Framework Roadmap: framework_roadmap.md
+    - Concordia Migration Log: concordia_migration_log.md
     - Architecture Decisions:
       - Native Core and Concordia Boundary: adr/0001-native-core-concordia-compatibility-boundary.md
       - Engine-Owned Initialization: adr/0002-engine-owned-initialization-lifecycle.md

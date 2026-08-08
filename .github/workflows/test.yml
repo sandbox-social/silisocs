@@ -68,3 +68,10 @@ jobs:
 
      - name: Check wheel contents
        run: uv run python -m zipfile -l dist/silisocs-*.whl
+
+     # The docs group is already installed above; building strict on PRs stops
+     # broken links/nav from landing (docs.yml only builds after merge).
+     - name: Build docs (strict)
+       run: uv run --group docs properdocs build --strict
+       env:
+         UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}

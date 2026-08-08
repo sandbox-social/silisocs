@@ -77,12 +77,21 @@ def _resolve_shared_memories_ref(
     return params
 
 
+def _package_version() -> str:
+    from silisocs import __version__
+
+    return __version__
+
+
 def make_checkpoint_data(runtime: RuntimeObjects, *, step: int | None = None) -> dict[str, Any]:
     """Create a JSON-serializable checkpoint payload."""
     objects: dict[str, Any] = {}
     shared_memories_table: dict[str, Any] = {}
     payload: dict[str, Any] = {
         "schema_version": CHECKPOINT_SCHEMA_VERSION,
+        # Which release wrote this checkpoint — read back by the schema
+        # mismatch error so "produced by an older silisocs" is diagnosable.
+        "silisocs_version": _package_version(),
         "step": runtime.checkpoint_counter if step is None else int(step),
         "objects": objects,
         "checkpoint_counter": runtime.checkpoint_counter,
@@ -257,8 +266,14 @@ def load_checkpoint_into_runtime(
     the runtime can no longer be trusted and must be rebuilt.
     """
     if checkpoint.get("schema_version") != CHECKPOINT_SCHEMA_VERSION:
+        writer = checkpoint.get("silisocs_version") or "an older silisocs release"
         raise ValueError(
-            f"Unsupported checkpoint schema version: {checkpoint.get('schema_version')!r}"
+            f"Unsupported checkpoint schema version {checkpoint.get('schema_version')!r} "
+            f"(this runtime writes v{CHECKPOINT_SCHEMA_VERSION}; the checkpoint was "
+            f"written by silisocs {writer}). Checkpoints do not migrate across "
+            "schema versions — re-run the simulation, or restore with the "
+            "silisocs release that wrote it (schema bumps are listed in "
+            "docs/upgrading.md)."
         )
     staged = _stage_checkpoint_objects(
         runtime, checkpoint, models=models, object_to_model=object_to_model
