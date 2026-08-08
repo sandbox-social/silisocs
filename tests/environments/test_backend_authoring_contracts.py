@@ -328,3 +328,42 @@ def test_a_backend_that_commits_is_not_reported(tmp_path, caplog):
 
     _warn_silent_backends([_GameMaster(backend)], logging.getLogger("test"))
     assert "committed no structured action events" not in caplog.text
+
+
+# --------------------------------------------------------------------------- #
+# An unannotated action parameter is rejected where it is written
+# --------------------------------------------------------------------------- #
+
+
+def test_unannotated_action_parameter_fails_at_class_definition():
+    """Without an annotation the parameter degrades to ``Any``/"string" in the
+    generated tool schema and cannot be coerced in generic mode — so it is a
+    class-definition error naming the action and the parameter.
+    """
+    with pytest.raises(TypeError, match="unannotated parameter"):
+
+        class _Sloppy(BackendApp):
+            def name(self) -> str:
+                return "sloppy"
+
+            def description(self) -> str:
+                return "sloppy"
+
+            @app_action
+            def shout(self, agent_name: str, volume) -> str:
+                return f"{agent_name}:{volume}"
+
+
+def test_annotated_action_parameters_are_accepted():
+    class _Tidy(BackendApp):
+        def name(self) -> str:
+            return "tidy"
+
+        def description(self) -> str:
+            return "tidy"
+
+        @app_action
+        def shout(self, agent_name: str, volume: int = 1) -> str:
+            return f"{agent_name}:{volume}"
+
+    assert "shout" in [action.name for action in _Tidy().actions()]

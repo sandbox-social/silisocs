@@ -37,7 +37,9 @@ _HEALTH_COUNTER_REGISTRY: dict[str, str] = {
     "action_parse_failures": "agent actions were dropped as unparseable",
     "action_invalid_targets": "agent actions referenced invalid target ids",
     "backend_action_errors": "backend actions raised unexpected exceptions",
+    "exposure_log_failures": "exposure rows could not be written to exposure_events.jsonl",
     "harness_tool_failures": "harness tool calls failed",
+    "recsys_update_failures": "scheduled recommendation updates failed",
     "routing_fallbacks": "branch routing calls fell back to a default choice",
 }
 # A LIVE read-only view: registrations made before a run's end are visible to

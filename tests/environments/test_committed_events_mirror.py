@@ -150,17 +150,30 @@ def test_reddit_subreddit_actions_mirror_only_on_commit(tmp_path: Any) -> None:
     before = app.count_committed_events(labels=labels)
     before_rows = len(logger.rows)
 
-    # A failing create_subreddit writes NO action event and is absent from the mirror.
-    def _boom(*_a: Any, **_k: Any) -> None:
-        raise RuntimeError("subreddit already exists")
+    # A rejected create_subreddit (the platform's ValueError language) writes NO
+    # action event and is absent from the mirror.
+    def _reject(*_a: Any, **_k: Any) -> None:
+        raise ValueError("subreddit already exists")
 
     original = app._platform.create_subreddit
-    app._platform.create_subreddit = _boom  # type: ignore[method-assign]
+    app._platform.create_subreddit = _reject  # type: ignore[method-assign]
     fail_msg = _rejected(app.create_subreddit("Alice", "general", "dupe"))
-    app._platform.create_subreddit = original  # type: ignore[method-assign]
     assert "Error creating subreddit" in fail_msg
     assert app.count_committed_events(labels=["create_subreddit"]) == 0
     assert len(logger.rows) == before_rows  # no action_events.jsonl row for the failure
+
+    # An UNEXPECTED exception is not a rejection: it propagates to the counted
+    # invoke boundary instead of being disguised as a friendly message — and it
+    # still leaves no committed row.
+    def _boom(*_a: Any, **_k: Any) -> None:
+        raise RuntimeError("db down")
+
+    app._platform.create_subreddit = _boom  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="db down"):
+        app.create_subreddit("Alice", "general", "dupe")
+    app._platform.create_subreddit = original  # type: ignore[method-assign]
+    assert app.count_committed_events(labels=["create_subreddit"]) == 0
+    assert len(logger.rows) == before_rows
 
     # A successful create + join appear in the mirror.
     app.create_subreddit("Alice", "books", "book lovers")

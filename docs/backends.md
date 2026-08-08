@@ -407,8 +407,11 @@ by Python itself; the rest are enforced by the runtime (each raises or warns
 where the mistake is, rather than showing up as missing output later).
 
 1. **Implement `name()` and `description()`** — the only abstract methods.
-2. **Expose actions with `@app_action`.** Tool schemas and generic prompts are
-   derived from them; you never write either by hand.
+2. **Expose actions with `@app_action`, and annotate every parameter.** Tool
+   schemas and generic prompts are derived from them; you never write either by
+   hand. An unannotated parameter would silently degrade to an untyped "string"
+   in the schema, so the decorator raises at class-definition time, naming the
+   action and the parameter.
 3. **Name the actor parameter `agent_name`** if you want the runtime to inject
    the acting agent. Any other name is treated as an ordinary argument the agent
    must supply itself.
@@ -513,7 +516,7 @@ to a single action:
 
 | Declaration | Type | Effect |
 |---|---|---|
-| `provides_checkpoint_state` | `bool` | `get_state`/`set_state` are authoritative for restore |
+| `provides_checkpoint_state` | `ClassVar[bool]` | `get_state`/`set_state` are authoritative for restore. Declared on `BackendApp` with a `False` default, so every reader accesses it directly — you override it, you never have to define it |
 | `visualizer` | `VisualizerSpec` | publishes a read-only platform viewer (Studio's Platform tab) |
 | `event_semantics` | `{"roles": ..., "fields": ..., "labels": ...}` | explicit aggregate semantics when decorator-local declarations are not suitable |
 

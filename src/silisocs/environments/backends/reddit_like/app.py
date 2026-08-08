@@ -8,6 +8,7 @@ replacement for the Mastodon app in the simulation.
 from __future__ import annotations
 
 import dataclasses
+import logging
 import os
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -17,6 +18,8 @@ from silisocs.environments.backends.base import (
     SocialBackendApp,
     VisualizerSpec,
     app_action,
+    record_invalid_action_target,
+    record_unexpected_action_error,
 )
 from silisocs.environments.backends.event_semantics import social_event_semantics
 from silisocs.environments.backends.reddit_like.engine import RedditLikePlatform
@@ -24,6 +27,48 @@ from silisocs.environments.backends.sqlite_state import (
     restore_sqlite_database,
     snapshot_sqlite_database,
 )
+
+_LOGGER = logging.getLogger(__name__)
+
+# Custom-mode verbs whose TARGET ID must be a numeric post/comment id.
+_TARGET_REQUIRED_ACTIONS = frozenset(
+    {
+        "comment",
+        "create_comment",
+        "reply",
+        "upvote",
+        "downvote",
+        "upvote_comment",
+        "downvote_comment",
+    }
+)
+
+
+def _coerce_target_id(target_id: Any) -> int | None:
+    """Parse a custom-mode TARGET ID, or None when it is not a numeric id."""
+    try:
+        return int(str(target_id).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _subreddit_name(sub_cfg: Any) -> str:
+    """Return a configured subreddit's name, refusing to invent one.
+
+    A mistyped key (``names:``) previously fell back to ``"general"``, quietly
+    creating and subscribing everyone to the wrong community — a scenario that
+    never runs what it declares. Config errors raise at setup.
+    """
+    if not isinstance(sub_cfg, dict):
+        name = str(sub_cfg).strip()
+    else:
+        name = str(sub_cfg.get("name", "")).strip()
+    if not name:
+        raise ValueError(
+            "Each entry of env.graph_config.subreddits must declare a non-empty 'name'; "
+            f"got {sub_cfg!r}."
+        )
+    return name
 
 
 @dataclasses.dataclass
@@ -129,7 +174,7 @@ class RedditLikeApp(SocialBackendApp):
 
         # Create subreddits.
         for sub_cfg in subreddit_configs:
-            sub_name = sub_cfg.get("name", "general") if isinstance(sub_cfg, dict) else str(sub_cfg)
+            sub_name = _subreddit_name(sub_cfg)
             sub_desc = sub_cfg.get("description", "") if isinstance(sub_cfg, dict) else ""
             self._platform.create_subreddit(sub_name, sub_desc)
             self._log_action_event(
@@ -162,18 +207,18 @@ class RedditLikeApp(SocialBackendApp):
         for sub_cfg in subreddit_configs:
             if not isinstance(sub_cfg, dict):
                 sub_cfg = {"name": str(sub_cfg), "roles": "all"}
-            sub_name = sub_cfg.get("name", "general")
+            sub_name = _subreddit_name(sub_cfg)
             allowed_roles = sub_cfg.get("roles", "all")
 
             for display_name in agent_names:
                 agent_role = sim_roles.get(display_name, "")
                 if allowed_roles == "all" or agent_role in allowed_roles:
                     username = self._get_username(display_name)
-                    try:
-                        self._platform.join_subreddit(username, sub_name)
-                        sub_count += 1
-                    except Exception as e:
-                        self._print(f"Join error ({username}->{sub_name}): {e}", color="red")
+                    # Setup, not a turn: a failed subscription means the scenario
+                    # runs with a subreddit nobody is in, so it fails loudly here
+                    # rather than producing a silently empty world.
+                    self._platform.join_subreddit(username, sub_name)
+                    sub_count += 1
 
         self._last_initialization_stats = {
             "platform": "reddit_like",
@@ -199,12 +244,11 @@ class RedditLikeApp(SocialBackendApp):
             List of post dicts from the platform engine.
         """
         username = self._get_username(user_name)
-        try:
-            feed = self._platform.get_feed("home", username=username, limit=limit)
-            return feed.get("posts", [])
-        except Exception as e:
-            self._print(f"Error fetching feed for {username}: {e}", color="red")
-            return []
+        # A failed read PROPAGATES: swallowing it here would turn a transient DB
+        # error into a legitimately-empty feed, and get_home_feed would log a
+        # committed ``num_posts_retrieved: 0`` row for a read that never happened.
+        feed = self._platform.get_feed("home", username=username, limit=limit)
+        return feed.get("posts", [])
 
     def get_timeline_mode(
         self,
@@ -394,6 +438,11 @@ class RedditLikeApp(SocialBackendApp):
         target_id = action_data.get("target_id", "0")
         content = action_data.get("content", "")
 
+        numeric_target = _coerce_target_id(target_id)
+        if action_type in _TARGET_REQUIRED_ACTIONS and numeric_target is None:
+            return record_invalid_action_target(action_type, target_id)
+        numeric_target = int(numeric_target or 0)
+
         try:
             if action_type in {"finished", "finish", "finish_action_episode"}:
                 return self.finish_action_episode()
@@ -404,27 +453,35 @@ class RedditLikeApp(SocialBackendApp):
                 # Explicit action name for post creation
                 return self.create_reddit_post(user_name, "general", content[:100], content)
             if action_type == "comment":
-                return self.create_comment(user_name, int(target_id), content)
+                return self.create_comment(user_name, numeric_target, content)
             if action_type == "create_comment":
                 # Explicit action name for comment creation
-                return self.create_comment(user_name, int(target_id), content)
+                return self.create_comment(user_name, numeric_target, content)
             if action_type == "upvote":
-                return self.upvote(user_name, int(target_id), "post")
+                return self.upvote(user_name, numeric_target, "post")
             if action_type == "downvote":
-                return self.downvote(user_name, int(target_id), "post")
+                return self.downvote(user_name, numeric_target, "post")
             if action_type == "upvote_comment":
                 # Upvote a comment (data-driven voting)
-                return self.upvote(user_name, int(target_id), "comment")
+                return self.upvote(user_name, numeric_target, "comment")
             if action_type == "downvote_comment":
                 # Downvote a comment (data-driven voting)
-                return self.downvote(user_name, int(target_id), "comment")
+                return self.downvote(user_name, numeric_target, "comment")
             if action_type == "reply":
                 # Treat reply as a comment on a post
-                return self.create_comment(user_name, int(target_id), content)
+                return self.create_comment(user_name, numeric_target, content)
             return f"Unknown action type: {action_type}"
-        except Exception as e:
+        except ValueError as e:
+            # The platform's language for a legitimate rejection (unknown user,
+            # missing post/comment): the agent sees the message, nothing is counted.
             self._print(f"Error resolving action {action_type}: {e}", color="red")
             return f"Error performing {action_type}: {e}"
+        except Exception as e:
+            # Anything else (a DB error, a refactor's AttributeError) is a real
+            # failure: count it at the boundary, then let the engine's turn
+            # isolation handle it instead of disguising it as an observation.
+            record_unexpected_action_error(action_type, e)
+            raise
 
     # ------------------------------------------------------------------ #
     # Helper methods
@@ -481,17 +538,30 @@ class RedditLikeApp(SocialBackendApp):
         self._restore_committed_events(state.get("committed_events"))
 
     def _close_platform_for_restore(self) -> None:
+        # Best-effort: the DB file is replaced right after this, so a failed close
+        # must not abort the restore — but it must be visible, because a connection
+        # left open is exactly what corrupts the replacement.
         try:
             local_conn = getattr(getattr(self._platform, "_local", None), "conn", None)
             if local_conn is not None:
                 local_conn.close()
                 self._platform._local.conn = None
         except Exception:
-            pass
+            _LOGGER.warning(
+                "Failed to close the thread-local reddit_like connection before checkpoint "
+                "restore of %s.",
+                self.db_path,
+                exc_info=True,
+            )
         try:
             self._platform.shutdown()
         except Exception:
-            pass
+            _LOGGER.warning(
+                "Failed to shut down the reddit_like platform before checkpoint restore of %s; "
+                "open connections may interfere with the database replacement.",
+                self.db_path,
+                exc_info=True,
+            )
 
     # ------------------------------------------------------------------ #
     # @app_action methods — Core actions
@@ -576,7 +646,7 @@ class RedditLikeApp(SocialBackendApp):
                 if committed
                 else f"{actor_display_name} had already upvoted {target_type} {target_id}."
             )
-        except Exception as e:
+        except ValueError as e:
             result_msg = f"Error upvoting {target_type} {target_id}: {e}"
             committed = False
         self._print(result_msg, emoji="⬆️")
@@ -610,7 +680,7 @@ class RedditLikeApp(SocialBackendApp):
                 if committed
                 else f"{actor_display_name} had already downvoted {target_type} {target_id}."
             )
-        except Exception as e:
+        except ValueError as e:
             result_msg = f"Error downvoting {target_type} {target_id}: {e}"
             committed = False
         self._print(result_msg, emoji="⬇️")
@@ -656,7 +726,7 @@ class RedditLikeApp(SocialBackendApp):
             self._platform.update_profile(username, bio)
             msg = f'Profile updated for {actor_display_name}: "{bio}"'
             committed = True
-        except Exception as e:
+        except ValueError as e:
             msg = f"Error updating profile: {e}"
             committed = False
         self._print(msg, emoji="✏️")
@@ -691,7 +761,7 @@ class RedditLikeApp(SocialBackendApp):
             else:
                 self._print(f"Profile not found for {target_user_full}.", emoji="👤")
                 return ActionResult(f"Profile not found for {target_user_full}.", committed=False)
-        except Exception as e:
+        except ValueError as e:
             msg = f"Error viewing profile for {target_user_full}: {e}"
             self._print(msg, emoji="👤")
             return ActionResult(msg, committed=False)
@@ -725,7 +795,7 @@ class RedditLikeApp(SocialBackendApp):
             else:
                 msg = f"No comments on post {post_id}."
             committed = True
-        except Exception as e:
+        except ValueError as e:
             msg = f"Error fetching comments for post {post_id}: {e}"
             committed = False
         self._print(msg, emoji="💬")
@@ -755,7 +825,7 @@ class RedditLikeApp(SocialBackendApp):
                     msg += f"  r/{sub['name']}: {sub.get('description', '')}\n"
             else:
                 msg = f"No subreddits found matching '{query}'."
-        except Exception as e:
+        except ValueError as e:
             msg = f"Error searching subreddits: {e}"
             self._print(msg, emoji="🔍")
             return ActionResult(msg, committed=False)
@@ -930,7 +1000,7 @@ class RedditLikeApp(SocialBackendApp):
             else:
                 msg = "No trending posts found."
             committed = True
-        except Exception as e:
+        except ValueError as e:
             msg = f"Error getting trending posts: {e}"
             committed = False
         self._print(msg, emoji="🔥")
@@ -979,7 +1049,7 @@ class RedditLikeApp(SocialBackendApp):
             sub_id = self._platform.create_subreddit(subreddit_name, description)
             msg = f"{actor_display_name} created subreddit r/{subreddit_name} (ID: {sub_id})."
             committed = True
-        except Exception as e:
+        except ValueError as e:
             msg = f"Error creating subreddit: {e}"
             committed = False
         self._print(msg, emoji="🏠")
@@ -1006,7 +1076,7 @@ class RedditLikeApp(SocialBackendApp):
             self._platform.join_subreddit(username, subreddit_name)
             msg = f"{actor_display_name} joined r/{subreddit_name}."
             committed = True
-        except Exception as e:
+        except ValueError as e:
             msg = f"Error joining subreddit: {e}"
             committed = False
         self._print(msg, emoji="📌")
@@ -1033,7 +1103,7 @@ class RedditLikeApp(SocialBackendApp):
             self._platform.leave_subreddit(username, subreddit_name)
             msg = f"{actor_display_name} left r/{subreddit_name}."
             committed = True
-        except Exception as e:
+        except ValueError as e:
             msg = f"Error leaving subreddit: {e}"
             committed = False
         self._print(msg, emoji="🚪")
@@ -1064,7 +1134,7 @@ class RedditLikeApp(SocialBackendApp):
             str_feed = self.format_timeline_for_observation(posts)
             msg = f"r/{subreddit_name} Feed for {actor_display_name}:\n{str_feed}"
             committed = True
-        except Exception as e:
+        except ValueError as e:
             msg = f"Error fetching subreddit feed: {e}"
             committed = False
         self._print(msg, emoji="📰")

@@ -192,3 +192,37 @@ def test_exposure_action_join(tmp_path) -> None:
     # new id 77 is not an exposed post so it does not count.
     assert summary["alice"]["engaged_post_ids"] == ["2", "3"]
     assert summary["alice"]["engagement_rate"] == 0.5
+
+
+# --------------------------------------------------------------- failure is counted
+
+
+def test_exposure_log_failure_is_counted_not_swallowed(tmp_path) -> None:
+    """A row that cannot be written is COUNTED; the observe still succeeds.
+
+    exposure_events.jsonl is a first-class analysis input, so a dropped row used
+    to be the one recovery path in the codebase with neither log nor counter.
+    """
+    from silisocs.evaluations.vocabulary import HEALTH_COUNTERS
+    from silisocs.runtime.telemetry.collector import SimMetricsCollector
+
+    assert "exposure_log_failures" in HEALTH_COUNTERS
+
+    platform = _seed_platform(tmp_path)
+    app = _app_with_exposure(tmp_path, platform)
+
+    class _BrokenLogger:
+        def log(self, _payload: Any) -> None:
+            raise RuntimeError("disk full")
+
+    app.exposure_logger = _BrokenLogger()
+    component = TimelineMakeObservation(
+        model=None, agent_names=["alice"], backend=app, log_exposures=True
+    )
+
+    SimMetricsCollector.reset()
+    observation = component.make_observation("alice")
+
+    assert "hello from bob" in observation  # the turn is unaffected
+    assert SimMetricsCollector.get().counter("exposure_log_failures") == 1
+    platform.shutdown()

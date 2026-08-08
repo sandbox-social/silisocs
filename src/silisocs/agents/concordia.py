@@ -61,7 +61,9 @@ class ConcordiaAgent(prefab_lib.Prefab):
             self.params.get("roleplaying_instructions", DEFAULT_ROLEPLAYING_INSTRUCTIONS)
             or DEFAULT_ROLEPLAYING_INSTRUCTIONS
         )
-        observation_history = int(self.params.get("observation_history", 100) or 100)
+        # No ``or 100``: an explicitly configured 0 must stay 0, not silently
+        # become the default 100.
+        observation_history = int(self.params.get("observation_history", 100))
 
         role_instructions = instructions.Instructions(agent_name=agent_name)
         role_instructions._state = roleplaying.format(name=agent_name)

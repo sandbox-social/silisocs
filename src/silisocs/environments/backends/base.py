@@ -138,6 +138,30 @@ _ARGUMENT_PARSERS: dict[str, ParserFunc | type] = {
 # --------------------------------------------------------------------------- #
 
 
+def _require_annotated_parameters(fn: Callable[..., Any], signature: inspect.Signature) -> None:
+    """Reject an ``@app_action`` parameter with no type annotation.
+
+    ``ActionDescriptor.from_method`` falls back to ``Any`` for an unannotated
+    parameter, which silently degrades to a bare "string" in the generated tool
+    schema and to an unparseable argument in generic mode. That is a defect in
+    the backend, not something a run can legitimately continue past, so it fails
+    at class-definition time where the mistake is.
+    """
+    unannotated = [
+        name
+        for name, param in signature.parameters.items()
+        if name != "self"
+        and param.annotation is inspect.Parameter.empty
+        and param.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+    ]
+    if unannotated:
+        raise TypeError(
+            f"@app_action '{fn.__qualname__}' has unannotated parameter(s): "
+            f"{', '.join(unannotated)}. Every action parameter needs a type annotation — "
+            "tool schemas and generic-mode argument parsing are derived from it."
+        )
+
+
 def app_action(
     method: Callable[..., Any] | None = None,
     *,
@@ -156,6 +180,7 @@ def app_action(
 
     def _decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
         signature = inspect.signature(fn)
+        _require_annotated_parameters(fn, signature)
         required_params = [
             name
             for name, param in signature.parameters.items()
@@ -189,12 +214,54 @@ class ActionArgumentError(ActionError):
     """An error that is raised when argument parsing fails."""
 
 
-def _record_unexpected_action_error(action_name: str, exc: Exception) -> None:
-    """Log and count a non-ActionError escaping a backend action."""
+def record_unexpected_action_error(action_name: str, exc: Exception) -> None:
+    """Log and count a non-ActionError escaping a backend action.
+
+    The counted boundary for ``backend_action_errors``. Backends whose own
+    dispatchers (``parse_and_resolve_action``) sit outside the invoke layer call
+    this and then RE-RAISE, so an unexpected failure is both counted and left to
+    the engine's turn isolation instead of being disguised as a friendly message.
+    """
     from silisocs.runtime.telemetry.collector import SimMetricsCollector
 
     _LOGGER.exception("Backend action '%s' raised unexpectedly: %s", action_name, exc)
     SimMetricsCollector.get().increment_counter("backend_action_errors")
+
+
+def _record_argument_parse_failure(
+    action_name: str, parameter_name: str, value: str, exc: Exception
+) -> None:
+    """Log and count an action argument the declared parameter type could not parse."""
+    from silisocs.runtime.telemetry.collector import SimMetricsCollector
+
+    _LOGGER.warning(
+        "Action '%s' argument '%s'=%r did not parse as its declared type (%s); "
+        "passing the raw string through.",
+        action_name,
+        parameter_name,
+        value,
+        exc,
+    )
+    SimMetricsCollector.get().increment_counter("action_parse_failures")
+
+
+def record_invalid_action_target(action_type: str, target_id: Any) -> str:
+    """Count an unparseable target id and return the agent-facing rejection message.
+
+    Shared by the backends' custom-mode dispatchers so a non-numeric TARGET ID is
+    reported the same way the resolve component reports it (``action_invalid_targets``),
+    rather than surfacing as an ``int()`` ValueError disguised as a backend failure.
+    """
+    from silisocs.runtime.telemetry.collector import SimMetricsCollector
+
+    SimMetricsCollector.get().increment_counter("action_invalid_targets")
+    _LOGGER.warning(
+        "Action '%s' has invalid TARGET ID %r (numeric id required).", action_type, target_id
+    )
+    return (
+        f"Could not perform '{action_type}': TARGET ID {target_id!r} is not a valid "
+        "numeric id. Use an id from the timeline."
+    )
 
 
 def is_runtime_owned_parameter(name: str) -> bool:
@@ -355,7 +422,9 @@ class BackendApp(metaclass=abc.ABCMeta):
     # is one such strategy; it owns its per-backend event->action mapping in a
     # registry (runtime/checkpointing/replay_mappers.py) keyed by backend_type, so
     # backends themselves carry no replay-specific method.
-    provides_checkpoint_state: bool = False
+    # Declared on the base (not left to each subclass), so every read is a plain
+    # attribute access: `backend.provides_checkpoint_state`, never a getattr default.
+    provides_checkpoint_state: typing.ClassVar[bool] = False
     visualizer: typing.ClassVar[VisualizerSpec | None] = None
     # Optional aggregate semantics for shared or externally declared event
     # shapes: an EventSemantics instance or the portable {roles, fields, labels}
@@ -605,10 +674,11 @@ class BackendApp(metaclass=abc.ABCMeta):
     def actions(self) -> Sequence[ActionDescriptor]:
         """Return this app's callable actions."""
         actions = self._all_actions()
-        enabled_actions = getattr(self, "_enabled_actions", None)
-        if enabled_actions is not None:
+        if self._enabled_actions is not None:
             actions = [
-                action for action in actions if self._action_matches_filter(action, enabled_actions)
+                action
+                for action in actions
+                if self._action_matches_filter(action, self._enabled_actions)
             ]
         if self._excluded_actions:
             actions = [
@@ -864,7 +934,7 @@ class BackendApp(metaclass=abc.ABCMeta):
     ) -> str:
         """Format, print, and (optionally) record an action invocation error."""
         if record_unexpected:
-            _record_unexpected_action_error(action_name, exc)
+            record_unexpected_action_error(action_name, exc)
         message = f"Error invoking action {action_name}: {exc}"
         self._print(message, color="red")
         return message
@@ -991,7 +1061,11 @@ class BackendApp(metaclass=abc.ABCMeta):
             if isinstance(value, str):
                 try:
                     processed[name] = param.value_from_text(value)
-                except Exception:
+                except Exception as exc:
+                    # The raw string still goes through (an action may accept it),
+                    # but a coercion the declared type rejected is a real parse
+                    # failure — counted, never silent.
+                    _record_argument_parse_failure(action.name, name, value, exc)
                     processed[name] = value
             else:
                 processed[name] = value

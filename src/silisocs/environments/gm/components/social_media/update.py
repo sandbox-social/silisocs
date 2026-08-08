@@ -21,8 +21,12 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from silisocs.environments.gm.components.base import UpdateComponent
+from silisocs.runtime.telemetry.collector import SimMetricsCollector
 
 logger = logging.getLogger(__name__)
+
+# One scheduled refresh failed; the run continues on the previous rows.
+RECSYS_UPDATE_FAILURE_COUNTER = "recsys_update_failures"
 
 
 class SocialRecommendationUpdateComponent(UpdateComponent):
@@ -204,132 +208,115 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
         if schedule_index % update_interval != 0:
             return
 
+        if not self.backend:
+            logger.warning("SocialRecommendationUpdateComponent has no backend; skipping update")
+            self._log_recsys_event(
+                "recsys_update_skipped",
+                {"reason": "no_backend"},
+            )
+            return
+
+        if active_agent_names is not None and not self._pending_scoped_names:
+            # Nobody has acted since the last refresh; existing rows stay
+            # as-is (deliberately NOT a full-population recompute).
+            self._log_recsys_event(
+                "recsys_update_skipped",
+                {"reason": "no_active_agents", "backend_type": self.backend_type},
+            )
+            return
+
+        backend = self.backend
+
+        # Reconcile configured recsys types against what the backend reports as
+        # live (not our own flag): after a checkpoint restore the backend is
+        # rebuilt empty, so any configured-but-missing type is re-initialized here
+        # as a lazy self-heal. Otherwise a stale flag would suppress re-init and
+        # update_recommendations would silently no-op.
+        recsys_types = self._extract_unique_recsys_types()
+        if not recsys_types:
+            logger.debug(
+                "No recommendation algorithms configured/supported for backend '%s'; "
+                "skipping recommendation updates.",
+                self.backend_type,
+            )
+            self._initialized_recsys_types = set()
+            self._recsys_disabled = True
+            self._log_recsys_event(
+                "recsys_update_skipped",
+                {
+                    "reason": "no_recsys_types",
+                    "backend_type": self.backend_type,
+                },
+            )
+            return
+        active_types = self._backend_active_recsys_types(backend)
+        missing_types = recsys_types - active_types
+        if missing_types and hasattr(backend, "init_recsys"):
+            # NOT guarded: a recsys the scenario explicitly configured that cannot
+            # be initialized (unsupported type, missing embedding dependency) is a
+            # config error. Swallowing it ran the whole scenario with no
+            # recommender at all — the one thing it asked for.
+            for recsys_type in sorted(missing_types):
+                backend.init_recsys(
+                    recsys_type=recsys_type,
+                    user_context_recent_posts=self.user_context_recent_posts,
+                    include_like_trace=self.include_like_trace,
+                    like_trace_window=self.like_trace_window,
+                    like_trace_weight=self.like_trace_weight,
+                    include_like_trace_in_context=self.include_like_trace_in_context,
+                )
+                logger.info("Initialized recsys type: %s", recsys_type)
+            if active_types or self._initialized_recsys_types:
+                self._log_recsys_event(
+                    "recsys_reinit_after_restore",
+                    {
+                        "backend_type": self.backend_type,
+                        "reinitialized_types": sorted(missing_types),
+                    },
+                )
+        self._initialized_recsys_types = recsys_types
+
+        if not hasattr(backend, "update_recommendations"):
+            logger.warning("Backend does not support recommendations")
+            self._log_recsys_event(
+                "recsys_update_skipped",
+                {
+                    "reason": "backend_missing_update_recommendations",
+                    "backend_type": self.backend_type,
+                    "backend_class": backend.__class__.__name__,
+                },
+            )
+            return
+
+        scoped = active_agent_names is not None and self._backend_supports_active_scoping(backend)
+        self._log_recsys_event(
+            "recsys_update_attempt",
+            {
+                "backend_type": self.backend_type,
+                "recsys_types": sorted(self._initialized_recsys_types),
+                "max_posts": int(self.max_posts),
+                "episode_idx": current_episode,
+                "active_agents": len(self._pending_scoped_names) if scoped else None,
+            },
+        )
         try:
-            if not self.backend:
-                logger.warning(
-                    "SocialRecommendationUpdateComponent has no backend; skipping update"
-                )
-                self._log_recsys_event(
-                    "recsys_update_skipped",
-                    {"reason": "no_backend"},
-                )
-                return
-
-            if active_agent_names is not None and not self._pending_scoped_names:
-                # Nobody has acted since the last refresh; existing rows stay
-                # as-is (deliberately NOT a full-population recompute).
-                self._log_recsys_event(
-                    "recsys_update_skipped",
-                    {"reason": "no_active_agents", "backend_type": self.backend_type},
-                )
-                return
-
-            backend = self.backend
-
-            # Reconcile configured recsys types against what the backend reports as
-            # live (not our own flag): after a checkpoint restore the backend is
-            # rebuilt empty, so any configured-but-missing type is re-initialized here
-            # as a lazy self-heal. Otherwise a stale flag would suppress re-init and
-            # update_recommendations would silently no-op.
-            recsys_types = self._extract_unique_recsys_types()
-            if not recsys_types:
-                logger.debug(
-                    "No recommendation algorithms configured/supported for backend '%s'; "
-                    "skipping recommendation updates.",
-                    self.backend_type,
-                )
-                self._initialized_recsys_types = set()
-                self._recsys_disabled = True
-                self._log_recsys_event(
-                    "recsys_update_skipped",
-                    {
-                        "reason": "no_recsys_types",
-                        "backend_type": self.backend_type,
-                    },
-                )
-                return
-            active_types = self._backend_active_recsys_types(backend)
-            missing_types = recsys_types - active_types
-            if missing_types and hasattr(backend, "init_recsys"):
-                for recsys_type in sorted(missing_types):
-                    backend.init_recsys(
-                        recsys_type=recsys_type,
-                        user_context_recent_posts=self.user_context_recent_posts,
-                        include_like_trace=self.include_like_trace,
-                        like_trace_window=self.like_trace_window,
-                        like_trace_weight=self.like_trace_weight,
-                        include_like_trace_in_context=self.include_like_trace_in_context,
-                    )
-                    logger.info("Initialized recsys type: %s", recsys_type)
-                if active_types or self._initialized_recsys_types:
-                    self._log_recsys_event(
-                        "recsys_reinit_after_restore",
-                        {
-                            "backend_type": self.backend_type,
-                            "reinitialized_types": sorted(missing_types),
-                        },
-                    )
-            self._initialized_recsys_types = recsys_types
-
-            # Update recommendations via backend
-            if hasattr(backend, "update_recommendations"):
-                scoped = active_agent_names is not None and self._backend_supports_active_scoping(
-                    backend
-                )
-                self._log_recsys_event(
-                    "recsys_update_attempt",
-                    {
-                        "backend_type": self.backend_type,
-                        "recsys_types": sorted(self._initialized_recsys_types),
-                        "max_posts": int(self.max_posts),
-                        "episode_idx": current_episode,
-                        "active_agents": len(self._pending_scoped_names) if scoped else None,
-                    },
-                )
-                if scoped:
-                    # Refresh everyone active since the last refresh (this
-                    # step's roster plus any skipped steps' rosters).
-                    backend.update_recommendations(
-                        active_agent_names=sorted(self._pending_scoped_names),
-                        max_posts=self.max_posts,
-                    )
-                else:
-                    backend.update_recommendations(
-                        active_user_ids=None,
-                        max_posts=self.max_posts,
-                    )
-                # Either branch covered every pending agent (a full recompute
-                # trivially so); start accumulating fresh for the next window.
-                self._pending_scoped_names.clear()
-
-                if current_episode is not None:
-                    self._last_update_episode = current_episode
-
-                logger.debug(
-                    f"Updated recommendations (step {self._step_count}, "
-                    f"algorithms: {self._initialized_recsys_types})"
-                )
-                self._log_recsys_event(
-                    "recsys_update_complete",
-                    {
-                        "backend_type": self.backend_type,
-                        "recsys_types": sorted(self._initialized_recsys_types),
-                        "max_posts": int(self.max_posts),
-                        "episode_idx": current_episode,
-                    },
+            if scoped:
+                # Refresh everyone active since the last refresh (this
+                # step's roster plus any skipped steps' rosters).
+                backend.update_recommendations(
+                    active_agent_names=sorted(self._pending_scoped_names),
+                    max_posts=self.max_posts,
                 )
             else:
-                logger.warning("Backend does not support recommendations")
-                self._log_recsys_event(
-                    "recsys_update_skipped",
-                    {
-                        "reason": "backend_missing_update_recommendations",
-                        "backend_type": self.backend_type,
-                        "backend_class": backend.__class__.__name__,
-                    },
+                backend.update_recommendations(
+                    active_user_ids=None,
+                    max_posts=self.max_posts,
                 )
-
         except Exception as e:
+            # ONE scheduled refresh failed; the run continues on the previous
+            # recommendation rows, so this is COUNTED, not raised. The pending
+            # roster is deliberately kept so the next due refresh retries it.
+            SimMetricsCollector.get().increment_counter(RECSYS_UPDATE_FAILURE_COUNTER)
             logger.error(f"Error updating recommendations: {e}", exc_info=True)
             self._log_recsys_event(
                 "recsys_update_error",
@@ -339,8 +326,28 @@ class SocialRecommendationUpdateComponent(UpdateComponent):
                     "recsys_types": sorted(self._initialized_recsys_types),
                 },
             )
+            return
 
-        return
+        # Either branch covered every pending agent (a full recompute
+        # trivially so); start accumulating fresh for the next window.
+        self._pending_scoped_names.clear()
+
+        if current_episode is not None:
+            self._last_update_episode = current_episode
+
+        logger.debug(
+            f"Updated recommendations (step {self._step_count}, "
+            f"algorithms: {self._initialized_recsys_types})"
+        )
+        self._log_recsys_event(
+            "recsys_update_complete",
+            {
+                "backend_type": self.backend_type,
+                "recsys_types": sorted(self._initialized_recsys_types),
+                "max_posts": int(self.max_posts),
+                "episode_idx": current_episode,
+            },
+        )
 
     def set_recsys_type(self, recsys_type: str) -> None:
         """Swap the recommender that is COMPUTED (mid-run ``set_recsys`` intervention).

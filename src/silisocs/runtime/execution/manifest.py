@@ -116,10 +116,9 @@ def backend_committed_nothing(game_master: Any) -> bool:
     counter = getattr(backend, "count_committed_events", None)
     if backend is None or not callable(counter):
         return False
-    try:
-        return not counter()
-    except Exception:
-        return False
+    # No guard: swallowing a failure here would suppress the very NO-ACTION-EVENTS
+    # warning this function computes, reporting a silent backend as healthy.
+    return not counter()
 
 
 def _silent_backend_names(game_masters: Collection[Any]) -> list[str]:

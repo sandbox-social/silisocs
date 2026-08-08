@@ -8,6 +8,7 @@ replacement for the Mastodon app in the simulation.
 from __future__ import annotations
 
 import dataclasses
+import logging
 import os
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -17,6 +18,8 @@ from silisocs.environments.backends.base import (
     SocialBackendApp,
     VisualizerSpec,
     app_action,
+    record_invalid_action_target,
+    record_unexpected_action_error,
 )
 from silisocs.environments.backends.event_semantics import social_event_semantics
 from silisocs.environments.backends.sqlite_state import (
@@ -24,6 +27,19 @@ from silisocs.environments.backends.sqlite_state import (
     snapshot_sqlite_database,
 )
 from silisocs.environments.backends.twitter_like.engine import TwitterLikePlatform
+
+_LOGGER = logging.getLogger(__name__)
+
+# Custom-mode verbs whose TARGET ID must be a numeric post id.
+_TARGET_REQUIRED_ACTIONS = frozenset({"reply", "like", "repost", "retweet", "boost"})
+
+
+def _coerce_post_id(target_id: Any) -> int | None:
+    """Parse a custom-mode TARGET ID, or None when it is not a numeric id."""
+    try:
+        return int(str(target_id).strip())
+    except (TypeError, ValueError):
+        return None
 
 
 @dataclasses.dataclass
@@ -152,12 +168,11 @@ class TwitterLikeApp(SocialBackendApp):
             List of post dicts from the platform engine.
         """
         username = self._get_username(user_name)
-        try:
-            feed = self._platform.get_feed("chronological_home", username, limit=limit)
-            return feed.get("posts", [])
-        except Exception as e:
-            self._print(f"Error fetching timeline for {username}: {e}", color="red")
-            return []
+        # A failed read PROPAGATES: swallowing it here would turn a transient DB
+        # error into a legitimately-empty timeline, and get_own_timeline would log
+        # a committed ``num_posts_retrieved: 0`` row for a read that never happened.
+        feed = self._platform.get_feed("chronological_home", username, limit=limit)
+        return feed.get("posts", [])
 
     def get_timeline_mode(
         self,
@@ -348,21 +363,33 @@ class TwitterLikeApp(SocialBackendApp):
         target_id = action_data.get("target_id", "0")
         content = action_data.get("content", "")
 
+        post_id = _coerce_post_id(target_id)
+        if action_type in _TARGET_REQUIRED_ACTIONS and post_id is None:
+            return record_invalid_action_target(action_type, target_id)
+
         try:
             if action_type in {"finished", "finish", "finish_action_episode"}:
                 return self.finish_action_episode()
             if action_type in {"post", "create_tweet"}:
                 return self.create_tweet(user_name, content)
             if action_type == "reply":
-                return self.reply_to_tweet(user_name, content, int(target_id))
+                return self.reply_to_tweet(user_name, content, int(post_id or 0))
             if action_type == "like":
-                return self.like_tweet(user_name, int(target_id))
+                return self.like_tweet(user_name, int(post_id or 0))
             if action_type in ("repost", "retweet", "boost"):
-                return self.repost_tweet(user_name, int(target_id))
+                return self.repost_tweet(user_name, int(post_id or 0))
             return f"Unknown action type: {action_type}"
-        except Exception as e:
+        except ValueError as e:
+            # The platform's language for a legitimate rejection (unknown user,
+            # missing post): the agent sees the message, nothing is counted.
             self._print(f"Error resolving action {action_type}: {e}", color="red")
             return f"Error performing {action_type}: {e}"
+        except Exception as e:
+            # Anything else (a DB error, a refactor's AttributeError) is a real
+            # failure: count it at the boundary, then let the engine's turn
+            # isolation handle it instead of disguising it as an observation.
+            record_unexpected_action_error(action_type, e)
+            raise
 
     # ------------------------------------------------------------------ #
     # Helper methods
@@ -422,10 +449,18 @@ class TwitterLikeApp(SocialBackendApp):
         self._restore_committed_events(state.get("committed_events"))
 
     def _close_platform_for_restore(self) -> None:
+        # Best-effort: the DB file is replaced right after this, so a failed
+        # shutdown must not abort the restore — but it must be visible, because
+        # a connection left open is exactly what corrupts the replacement.
         try:
             self._platform.shutdown()
         except Exception:
-            pass
+            _LOGGER.warning(
+                "Failed to shut down the twitter_like platform before checkpoint restore "
+                "of %s; open connections may interfere with the database replacement.",
+                self.db_path,
+                exc_info=True,
+            )
 
     # ------------------------------------------------------------------ #
     # @app_action methods
@@ -493,7 +528,7 @@ class TwitterLikeApp(SocialBackendApp):
                 like_msg = f"{actor_display_name} liked tweet {post_id}."
             else:
                 like_msg = f"{actor_display_name} has already liked tweet {post_id}."
-        except Exception as e:
+        except ValueError as e:
             committed = False
             like_msg = f"Error liking tweet {post_id}: {e}"
         self._print(like_msg, emoji="❤️")
@@ -522,7 +557,7 @@ class TwitterLikeApp(SocialBackendApp):
             repost_id = self._platform.repost(username, post_id)
             repost_msg = f"{actor_display_name} reposted tweet {post_id} (new ID: {repost_id})."
             committed = True
-        except Exception as e:
+        except ValueError as e:
             repost_msg = f"Error reposting tweet {post_id}: {e}"
             committed = False
         self._print(repost_msg, emoji="🔁")
@@ -555,7 +590,7 @@ class TwitterLikeApp(SocialBackendApp):
                 if committed
                 else f"{actor_display_name} already follows {target_user_full}."
             )
-        except Exception as e:
+        except ValueError as e:
             follow_msg = f"Error following {target_user_full}: {e}"
             committed = False
         self._print(follow_msg, emoji="➕")
@@ -584,7 +619,7 @@ class TwitterLikeApp(SocialBackendApp):
             self._platform.unfollow(src_username, tgt_username)
             msg = f"{actor_display_name} unfollowed {target_user_full}."
             committed = True
-        except Exception as e:
+        except ValueError as e:
             msg = f"Error unfollowing {target_user_full}: {e}"
             committed = False
         self._print(msg, emoji="➖")
@@ -626,19 +661,18 @@ class TwitterLikeApp(SocialBackendApp):
         """
         actor_display_name = str(agent_name)
         username = self._get_username(agent_name)
-        # TwitterLikePlatform doesn't have update_profile, use raw SQL
-        try:
-            with self._platform.get_connection() as conn:
-                conn.execute("UPDATE users SET bio = ? WHERE username = ?", (bio, username))
-                conn.commit()
-            msg = f'Profile updated for {actor_display_name}: "{bio}"'
-            committed = True
-        except Exception as e:
-            msg = f"Error updating profile: {e}"
-            committed = False
-        self._print(msg, emoji="✏️")
-        if not committed:
+        # TwitterLikePlatform doesn't have update_profile, use raw SQL. A DB error
+        # propagates to the counted invoke boundary; only a genuinely unmatched
+        # username is an (uncommitted) rejection.
+        with self._platform.get_connection() as conn:
+            cursor = conn.execute("UPDATE users SET bio = ? WHERE username = ?", (bio, username))
+            conn.commit()
+        if not cursor.rowcount:
+            msg = f"Profile not updated: no user matching {actor_display_name}."
+            self._print(msg, emoji="✏️")
             return ActionResult(msg, committed=False)
+        msg = f'Profile updated for {actor_display_name}: "{bio}"'
+        self._print(msg, emoji="✏️")
         self._log_action_event(
             source_user=actor_display_name,
             label="update_profile",
@@ -669,7 +703,7 @@ class TwitterLikeApp(SocialBackendApp):
             else:
                 self._print(f"Profile not found for {target_user_full}.", emoji="👤")
                 return ActionResult(f"Profile not found for {target_user_full}.", committed=False)
-        except Exception as e:
+        except ValueError as e:
             msg = f"Error viewing profile for {target_user_full}: {e}"
             self._print(msg, emoji="👤")
             return ActionResult(msg, committed=False)
@@ -694,7 +728,7 @@ class TwitterLikeApp(SocialBackendApp):
                 if committed
                 else f"{actor_display_name} had not liked tweet {post_id}."
             )
-        except Exception as e:
+        except ValueError as e:
             msg = f"Error unliking tweet {post_id}: {e}"
             committed = False
         self._print(msg, emoji="💔")
@@ -722,7 +756,7 @@ class TwitterLikeApp(SocialBackendApp):
             new_id = self._platform.quote_repost(username, post_id, status)
             msg = f'{actor_display_name} quote-reposted tweet {post_id} (new ID: {new_id}): "{status}"'
             committed = True
-        except Exception as e:
+        except ValueError as e:
             msg = f"Error quote-reposting tweet {post_id}: {e}"
             committed = False
         self._print(msg, emoji="🔁💬")
@@ -755,7 +789,7 @@ class TwitterLikeApp(SocialBackendApp):
                     )
             else:
                 msg = f"No results found for '{query}'."
-        except Exception as e:
+        except ValueError as e:
             msg = f"Error searching posts: {e}"
             self._print(msg, emoji="🔍")
             return ActionResult(msg, committed=False)
@@ -932,7 +966,7 @@ class TwitterLikeApp(SocialBackendApp):
             else:
                 msg = "No trending posts found."
             committed = True
-        except Exception as e:
+        except ValueError as e:
             msg = f"Error getting trending posts: {e}"
             committed = False
         self._print(msg, emoji="🔥")

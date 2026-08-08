@@ -50,7 +50,9 @@ class NativeAgent(Agent):
         self.sim_role = dict(sim_role or {})
         self.flow_tag = flow_tag
         self.extra_params = dict(extra_params)
-        self._observation_history = max(1, int(observation_history or 100))
+        # No ``or 100``: an explicitly configured 0 must clamp to 1, not silently
+        # become the default 100.
+        self._observation_history = max(1, int(observation_history))
         self._memory_history = max(1, int(memory_history or 1000))
         self._observations: list[str] = []
         # Memory is delegated to a MemoryPolicy (sim.memory). None = the default

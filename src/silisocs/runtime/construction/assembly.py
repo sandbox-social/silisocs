@@ -44,10 +44,9 @@ class RuntimeObjects:
             spec = self.object_specs.get(game_master.name)
             if not spec:
                 return 0
-            try:
-                return int(spec.params.get("sequence", 0))
-            except (TypeError, ValueError):
-                return 0
+            # Already coerced to int when the GM specs were built
+            # (construction/game_masters.py), so there is nothing to guard against.
+            return int(spec.params.get("sequence", 0))
 
         return sorted(self.game_masters, key=lambda gm: (_gm_sequence(gm), gm.name))
 

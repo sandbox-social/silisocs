@@ -1242,32 +1242,31 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
         self,
         model_name: str,
         recsys_type: str,
-    ) -> Any | None:
+    ) -> Any:
+        """Load the embedding model for an explicitly configured recsys type.
+
+        A missing dependency or a failed load is a CONFIG error, not a degraded
+        run: silently returning None left a scenario that asked for
+        ``recsys_type: twitter`` running with no recommender at all. Mirrors the
+        strict twhin loader.
+        """
         try:
             from sentence_transformers import SentenceTransformer
-        except ImportError:
-            logger.warning(
-                "sentence-transformers not available for %s; embeddings disabled",
-                recsys_type,
-            )
-            return None
+        except ImportError as err:
+            raise RuntimeError(
+                f"recsys_type '{recsys_type}' requires the optional 'sentence-transformers' "
+                "package, which is not installed. Install it, or configure a recsys type "
+                "that needs no embedding model (e.g. 'twitter_tfidf')."
+            ) from err
 
         try:
             loaded_model = SentenceTransformer(model_name)
-            logger.info(
-                "Loaded %s recsys model '%s'",
-                recsys_type,
-                model_name,
-            )
-            return loaded_model
         except Exception as err:
-            logger.warning(
-                "Failed loading %s recsys model '%s': %s",
-                recsys_type,
-                model_name,
-                err,
-            )
-            return None
+            raise RuntimeError(
+                f"Failed loading the '{recsys_type}' recsys model '{model_name}': {err}"
+            ) from err
+        logger.info("Loaded %s recsys model '%s'", recsys_type, model_name)
+        return loaded_model
 
     def _load_twhin_transformers_model(self) -> tuple[Any, Any]:
         try:
@@ -1310,8 +1309,9 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
         in the database with the algorithm type tagged. With ``active_user_ids``
         only those users' rows are replaced (everyone else's stay as-is) — the
         O(active) path; without it the whole table is cleared and recomputed.
-        Returns the number of recommendation rows written this pass, or -1 on
-        error.
+        Returns the number of recommendation rows written this pass. A failure
+        PROPAGATES: the scheduling component counts it as ``recsys_update_failures``
+        rather than the caller logging a -1 sentinel into the action log.
         """
         if not hasattr(self, "_recsys_types") or not self._recsys_types:
             logger.warning(
@@ -1321,128 +1321,122 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
             )
             return 0
 
-        try:
-            with self.get_connection() as conn:
-                # Get users
-                user_rows: list[Any] = []
-                if active_user_ids:
-                    for chunk in self._iter_in_chunks(active_user_ids):
-                        placeholders = ",".join("?" * len(chunk))
-                        user_rows.extend(
-                            conn.execute(
-                                f"SELECT id, username, bio FROM users WHERE id IN ({placeholders})",
-                                chunk,
-                            ).fetchall()
-                        )
-                else:
-                    user_rows = conn.execute("SELECT id, username, bio FROM users").fetchall()
-
-                users = [{"id": r[0], "username": r[1], "bio": r[2]} for r in user_rows]
-                user_ids = [int(user["id"]) for user in users]
-
-                # Get recent posts
-                cursor = conn.execute(
-                    "SELECT id, user_id, content, created_at, likes_count FROM posts WHERE type != 'repost' ORDER BY created_at DESC LIMIT 1000"
-                )
-                posts = [
-                    {
-                        "id": r[0],
-                        "user_id": r[1],
-                        "content": r[2],
-                        "created_at": r[3],
-                        "likes": r[4],
-                    }
-                    for r in cursor.fetchall()
-                ]
-
-                if not users or not posts:
-                    logger.debug("No users or posts found; skipping recommendations update")
-                    return 0
-
-                max_recent_posts = max(
-                    int(state.get("user_context_recent_posts", 0) or 0)
-                    for state in self._recsys_types.values()
-                )
-                max_like_window = max(
-                    (
-                        int(state.get("like_trace_window", 0) or 0)
-                        for state in self._recsys_types.values()
-                        if bool(state.get("include_like_trace", False))
-                    ),
-                    default=0,
-                )
-
-                recent_posts_by_user = self._fetch_recent_posts_by_user(
-                    conn,
-                    user_ids,
-                    max_recent_posts,
-                )
-                liked_posts_by_user = self._fetch_liked_posts_by_user(
-                    conn,
-                    user_ids,
-                    max_like_window,
-                )
-                for user in users:
-                    uid = int(user["id"])
-                    user["recent_posts"] = recent_posts_by_user.get(uid, [])
-                    user["liked_posts"] = liked_posts_by_user.get(uid, [])
-
-                # Replace only the scoped users' rows (every live recsys type is
-                # recomputed for them below); a full update clears the table.
-                if active_user_ids:
-                    for chunk in self._iter_in_chunks(active_user_ids):
-                        delete_placeholders = ",".join("?" * len(chunk))
+        with self.get_connection() as conn:
+            # Get users
+            user_rows: list[Any] = []
+            if active_user_ids:
+                for chunk in self._iter_in_chunks(active_user_ids):
+                    placeholders = ",".join("?" * len(chunk))
+                    user_rows.extend(
                         conn.execute(
-                            f"DELETE FROM recommendations WHERE user_id IN ({delete_placeholders})",
+                            f"SELECT id, username, bio FROM users WHERE id IN ({placeholders})",
                             chunk,
-                        )
+                        ).fetchall()
+                    )
+            else:
+                user_rows = conn.execute("SELECT id, username, bio FROM users").fetchall()
+
+            users = [{"id": r[0], "username": r[1], "bio": r[2]} for r in user_rows]
+            user_ids = [int(user["id"]) for user in users]
+
+            # Get recent posts
+            cursor = conn.execute(
+                "SELECT id, user_id, content, created_at, likes_count FROM posts WHERE type != 'repost' ORDER BY created_at DESC LIMIT 1000"
+            )
+            posts = [
+                {
+                    "id": r[0],
+                    "user_id": r[1],
+                    "content": r[2],
+                    "created_at": r[3],
+                    "likes": r[4],
+                }
+                for r in cursor.fetchall()
+            ]
+
+            if not users or not posts:
+                logger.debug("No users or posts found; skipping recommendations update")
+                return 0
+
+            max_recent_posts = max(
+                int(state.get("user_context_recent_posts", 0) or 0)
+                for state in self._recsys_types.values()
+            )
+            max_like_window = max(
+                (
+                    int(state.get("like_trace_window", 0) or 0)
+                    for state in self._recsys_types.values()
+                    if bool(state.get("include_like_trace", False))
+                ),
+                default=0,
+            )
+
+            recent_posts_by_user = self._fetch_recent_posts_by_user(
+                conn,
+                user_ids,
+                max_recent_posts,
+            )
+            liked_posts_by_user = self._fetch_liked_posts_by_user(
+                conn,
+                user_ids,
+                max_like_window,
+            )
+            for user in users:
+                uid = int(user["id"])
+                user["recent_posts"] = recent_posts_by_user.get(uid, [])
+                user["liked_posts"] = liked_posts_by_user.get(uid, [])
+
+            # Replace only the scoped users' rows (every live recsys type is
+            # recomputed for them below); a full update clears the table.
+            if active_user_ids:
+                for chunk in self._iter_in_chunks(active_user_ids):
+                    delete_placeholders = ",".join("?" * len(chunk))
+                    conn.execute(
+                        f"DELETE FROM recommendations WHERE user_id IN ({delete_placeholders})",
+                        chunk,
+                    )
+            else:
+                conn.execute("DELETE FROM recommendations")
+            rows_written = 0
+
+            # Generate recommendations for each algorithm type
+            for recsys_type, state in self._recsys_types.items():
+                logger.debug(f"Computing {recsys_type} recommendations for {len(users)} users")
+
+                if recsys_type in ("twitter", "twhin", "twitter_tfidf"):
+                    rec_matrix = self._rec_embedding(
+                        users,
+                        posts,
+                        max_posts,
+                        state,
+                        # A scoped pass sees only the active users; cache
+                        # eviction must stay scoped to them or every inactive
+                        # user's cached context would be dropped each step.
+                        scoped_user_ids=set(user_ids) if active_user_ids else None,
+                    )
                 else:
-                    conn.execute("DELETE FROM recommendations")
-                rows_written = 0
+                    logger.warning(f"Unknown recsys_type '{recsys_type}'; skipping")
+                    continue
 
-                # Generate recommendations for each algorithm type
-                for recsys_type, state in self._recsys_types.items():
-                    logger.debug(f"Computing {recsys_type} recommendations for {len(users)} users")
-
-                    if recsys_type in ("twitter", "twhin", "twitter_tfidf"):
-                        rec_matrix = self._rec_embedding(
-                            users,
-                            posts,
-                            max_posts,
-                            state,
-                            # A scoped pass sees only the active users; cache
-                            # eviction must stay scoped to them or every inactive
-                            # user's cached context would be dropped each step.
-                            scoped_user_ids=set(user_ids) if active_user_ids else None,
-                        )
-                    else:
-                        logger.warning(f"Unknown recsys_type '{recsys_type}'; skipping")
-                        continue
-
-                    # Store recommendations with algorithm type (one executemany,
-                    # not N*max_posts single-row round-trips)
-                    cursor = conn.executemany(
-                        "INSERT OR IGNORE INTO recommendations (user_id, post_id, recsys_type) VALUES (?, ?, ?)",
-                        [
-                            (user_id, post_id, recsys_type)
-                            for user_id, post_ids in rec_matrix.items()
-                            for post_id in post_ids
-                        ],
-                    )
-                    rows_written += max(int(cursor.rowcount or 0), 0)
-
-                    logger.info(
-                        f"Updated {recsys_type} recommendations for {len(rec_matrix)} users"
-                    )
-
-                conn.commit()
-                logger.info(
-                    f"Recommendations update complete for {len(self._recsys_types)} algorithm types"
+                # Store recommendations with algorithm type (one executemany,
+                # not N*max_posts single-row round-trips)
+                cursor = conn.executemany(
+                    "INSERT OR IGNORE INTO recommendations (user_id, post_id, recsys_type) VALUES (?, ?, ?)",
+                    [
+                        (user_id, post_id, recsys_type)
+                        for user_id, post_ids in rec_matrix.items()
+                        for post_id in post_ids
+                    ],
                 )
-                return rows_written
-        except Exception as e:
-            logger.error(f"Error updating recommendations: {e}", exc_info=True)
-        return -1
+                rows_written += max(int(cursor.rowcount or 0), 0)
+
+                logger.info(f"Updated {recsys_type} recommendations for {len(rec_matrix)} users")
+
+        conn.commit()
+        logger.info(
+            f"Recommendations update complete for {len(self._recsys_types)} algorithm types"
+        )
+        return rows_written
 
     def _rec_embedding(
         self,
@@ -1466,7 +1460,9 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
         if recsys_state is None:
             raise ValueError("Embedding recommendations require initialized recsys_state.")
 
-        model = recsys_state.get("model")
+        # Direct index: init_recsys always installs "model" for an embedding
+        # backend, so a missing key is a broken state dict, not a "no model" case.
+        model = recsys_state["model"]
         embeddings_cache = recsys_state.get("embeddings_cache", {})
         backend = str(recsys_state.get("backend") or "sentence_transformer").strip()
 
@@ -1505,9 +1501,6 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
                 include_like_trace_in_context=include_like_trace_in_context,
                 scoped_user_ids=scoped_user_ids,
             )
-
-        if model is None:
-            return {}
 
         try:
             import torch
@@ -1662,9 +1655,6 @@ class TwitterLikePlatform(SqliteSocialEngineBase):
         scoped_user_ids: set[int] | None = None,
     ) -> dict:
         """TWHIN-BERT recommendations via transformers tokenizer/model."""
-        if tokenizer is None or model is None:
-            return {}
-
         try:
             import torch
 

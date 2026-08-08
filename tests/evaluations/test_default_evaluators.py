@@ -298,8 +298,12 @@ def test_probe_scoring_is_registry_driven_for_custom_and_structured_probes(tmp_p
             },
         ],
     )
+    # The composed config puts probes under the ``eval`` group (@package eval),
+    # which is where _load_probe_type_map reads them; a config written anywhere
+    # else yields NO type map and every probe silently falls back to heuristic
+    # inference — the failure mode this test exists to catch.
     cfg = {
-        "world": {
+        "eval": {
             "probes": {
                 "probes": {
                     "sentiment": {
@@ -324,3 +328,22 @@ def test_probe_scoring_is_registry_driven_for_custom_and_structured_probes(tmp_p
     assert payload["per_type"]["SentimentScoreProbe"]["numeric_values_parsed"] == 1
     assert payload["per_label"]["sentiment"]["numeric_response_stats"]["count"] == 1
     assert "free_text_char_len_stats" in payload["per_label"]["profile"]
+
+
+def test_probe_lib_module_import_failure_raises(tmp_path: Path) -> None:
+    """A configured probe library that cannot be imported is not best-effort.
+
+    Falling back silently flipped every probe to heuristic type inference —
+    different numbers, no trace in the output. The runtime side raises too.
+    """
+    from silisocs.evaluations.default_evaluators import _load_probe_type_map
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "effective_config.yaml").write_text(
+        yaml.safe_dump({"eval": {"probes": {"probe_lib_module": "definitely.not.a.module"}}}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ImportError, match="definitely.not.a.module"):
+        _load_probe_type_map(run_dir)

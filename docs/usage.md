@@ -535,10 +535,12 @@ raises and fails the run instead of being counted.
 | Counter | Meaning |
 |---------|---------|
 | `agent_turn_failures` | Agent turns that raised an exception (isolated: the step continued) |
-| `action_parse_failures` | Agent actions dropped as unparseable |
+| `action_parse_failures` | Agent actions dropped as unparseable (and action arguments a declared parameter type could not coerce) |
 | `action_invalid_targets` | Agent actions that referenced invalid target ids |
 | `backend_action_errors` | Backend actions that raised unexpectedly |
+| `exposure_log_failures` | Exposure rows that could not be written to `exposure_events.jsonl` |
 | `harness_tool_failures` | Harness tool calls that failed inside a harness turn |
+| `recsys_update_failures` | Scheduled recommendation refreshes that failed (the run continued on the previous rows) |
 | `routing_fallbacks` | Branch routing calls that fell back to a default choice |
 | `silent_backends` | Backends that committed no action events (names in the manifest) |
 
@@ -546,6 +548,12 @@ Zero on every counter is the only clean run; a non-zero count means results are
 partial in a specific, named way. The counter set lives in one registry
 (`silisocs.evaluations.vocabulary.HEALTH_COUNTERS`), so a new counter reaches the
 warning, the manifest, and the artifact loader together.
+
+Note the split for recommendations: a recsys type you configured that cannot be
+*initialized* (unsupported name, missing embedding dependency) is a config error
+and **fails the run** — the alternative was running the whole scenario with no
+recommender at all. Only a failed per-step *refresh* is survivable, and that is
+what `recsys_update_failures` counts.
 
 ### Action Events Format
 

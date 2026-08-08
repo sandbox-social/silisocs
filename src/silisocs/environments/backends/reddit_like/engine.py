@@ -864,20 +864,22 @@ class RedditLikePlatform(SqliteSocialEngineBase):
             "model": None,
         }
 
-        # Load embedding model if needed
+        # Load the embedding model if needed. A missing dependency is a CONFIG
+        # error, not a degraded run: silently disabling embeddings left a scenario
+        # that asked for recsys_type 'twhin' running with no recommender at all.
         if recsys_type == "twhin":
             try:
                 from sentence_transformers import SentenceTransformer
+            except ImportError as err:
+                raise RuntimeError(
+                    f"recsys_type '{recsys_type}' requires the optional 'sentence-transformers' "
+                    "package, which is not installed. Install it, or configure a recsys type "
+                    "that needs no embedding model (e.g. 'reddit')."
+                ) from err
 
-                model_name = "sentence-transformers/Twitter-roBERTa-base"
-                model = SentenceTransformer(model_name)
-                self._recsys_types[recsys_type]["model"] = model
-                logger.info(f"Loaded {recsys_type} recsys model")
-            except ImportError:
-                logger.warning(
-                    f"sentence-transformers not available for {recsys_type}, embeddings disabled for this type"
-                )
-                self._recsys_types[recsys_type]["model"] = None
+            model_name = "sentence-transformers/Twitter-roBERTa-base"
+            self._recsys_types[recsys_type]["model"] = SentenceTransformer(model_name)
+            logger.info(f"Loaded {recsys_type} recsys model")
 
         logger.info(
             f"Initialized recsys type '{recsys_type}'. Active types: {list(self._recsys_types.keys())}"
@@ -909,8 +911,9 @@ class RedditLikePlatform(SqliteSocialEngineBase):
         in the database with the algorithm type tagged. With ``active_user_ids``
         only those users' rows are replaced (everyone else's stay as-is) — the
         O(active) path; without it the whole table is cleared and recomputed.
-        Returns the number of recommendation rows written this pass, or -1 on
-        error.
+        Returns the number of recommendation rows written this pass. A failure
+        PROPAGATES: the scheduling component counts it as ``recsys_update_failures``
+        rather than the caller logging a -1 sentinel into the action log.
         """
         if not hasattr(self, "_recsys_types") or not self._recsys_types:
             logger.warning(
@@ -920,94 +923,88 @@ class RedditLikePlatform(SqliteSocialEngineBase):
             )
             return 0
 
-        try:
-            with self.get_connection() as conn:
-                # Get users
-                user_rows: list[Any] = []
-                if active_user_ids:
-                    for chunk in self._iter_in_chunks(active_user_ids):
-                        placeholders = ",".join("?" * len(chunk))
-                        user_rows.extend(
-                            conn.execute(
-                                f"SELECT id, username, bio FROM users WHERE id IN ({placeholders})",
-                                chunk,
-                            ).fetchall()
-                        )
-                else:
-                    user_rows = conn.execute("SELECT id, username, bio FROM users").fetchall()
-
-                users = [{"id": r[0], "username": r[1], "bio": r[2] or ""} for r in user_rows]
-
-                # Get recent posts
-                cursor = conn.execute(
-                    "SELECT id, user_id, content, created_at, upvotes, downvotes FROM posts ORDER BY created_at DESC LIMIT 1000"
-                )
-                posts = [
-                    {
-                        "id": r[0],
-                        "user_id": r[1],
-                        "content": r[2],
-                        "created_at": r[3],
-                        "upvotes": r[4],
-                        "downvotes": r[5],
-                    }
-                    for r in cursor.fetchall()
-                ]
-
-                if not users or not posts:
-                    logger.debug("No users or posts found; skipping recommendations update")
-                    return 0
-
-                # Replace only the scoped users' rows (every live recsys type is
-                # recomputed for them below); a full update clears the table.
-                if active_user_ids:
-                    for chunk in self._iter_in_chunks(active_user_ids):
-                        delete_placeholders = ",".join("?" * len(chunk))
+        with self.get_connection() as conn:
+            # Get users
+            user_rows: list[Any] = []
+            if active_user_ids:
+                for chunk in self._iter_in_chunks(active_user_ids):
+                    placeholders = ",".join("?" * len(chunk))
+                    user_rows.extend(
                         conn.execute(
-                            f"DELETE FROM recommendations WHERE user_id IN ({delete_placeholders})",
+                            f"SELECT id, username, bio FROM users WHERE id IN ({placeholders})",
                             chunk,
-                        )
+                        ).fetchall()
+                    )
+            else:
+                user_rows = conn.execute("SELECT id, username, bio FROM users").fetchall()
+
+            users = [{"id": r[0], "username": r[1], "bio": r[2] or ""} for r in user_rows]
+
+            # Get recent posts
+            cursor = conn.execute(
+                "SELECT id, user_id, content, created_at, upvotes, downvotes FROM posts ORDER BY created_at DESC LIMIT 1000"
+            )
+            posts = [
+                {
+                    "id": r[0],
+                    "user_id": r[1],
+                    "content": r[2],
+                    "created_at": r[3],
+                    "upvotes": r[4],
+                    "downvotes": r[5],
+                }
+                for r in cursor.fetchall()
+            ]
+
+            if not users or not posts:
+                logger.debug("No users or posts found; skipping recommendations update")
+                return 0
+
+            # Replace only the scoped users' rows (every live recsys type is
+            # recomputed for them below); a full update clears the table.
+            if active_user_ids:
+                for chunk in self._iter_in_chunks(active_user_ids):
+                    delete_placeholders = ",".join("?" * len(chunk))
+                    conn.execute(
+                        f"DELETE FROM recommendations WHERE user_id IN ({delete_placeholders})",
+                        chunk,
+                    )
+            else:
+                conn.execute("DELETE FROM recommendations")
+            rows_written = 0
+
+            # Generate recommendations for each algorithm type
+            for recsys_type, state in self._recsys_types.items():
+                logger.debug(f"Computing {recsys_type} recommendations for {len(users)} users")
+
+                if recsys_type == "reddit":
+                    rec_matrix = self._rec_reddit(users, posts, max_posts)
+                elif recsys_type == "twhin":
+                    # Pass the model state for this algorithm type
+                    rec_matrix = self._rec_embedding(users, posts, max_posts, state)
                 else:
-                    conn.execute("DELETE FROM recommendations")
-                rows_written = 0
+                    logger.warning(f"Unknown recsys_type '{recsys_type}'; skipping")
+                    continue
 
-                # Generate recommendations for each algorithm type
-                for recsys_type, state in self._recsys_types.items():
-                    logger.debug(f"Computing {recsys_type} recommendations for {len(users)} users")
-
-                    if recsys_type == "reddit":
-                        rec_matrix = self._rec_reddit(users, posts, max_posts)
-                    elif recsys_type == "twhin":
-                        # Pass the model state for this algorithm type
-                        rec_matrix = self._rec_embedding(users, posts, max_posts, state)
-                    else:
-                        logger.warning(f"Unknown recsys_type '{recsys_type}'; skipping")
-                        continue
-
-                    # Store recommendations with algorithm type (one executemany,
-                    # not N*max_posts single-row round-trips)
-                    cursor = conn.executemany(
-                        "INSERT OR IGNORE INTO recommendations (user_id, post_id, recsys_type) VALUES (?, ?, ?)",
-                        [
-                            (user_id, post_id, recsys_type)
-                            for user_id, post_ids in rec_matrix.items()
-                            for post_id in post_ids
-                        ],
-                    )
-                    rows_written += max(int(cursor.rowcount or 0), 0)
-
-                    logger.info(
-                        f"Updated {recsys_type} recommendations for {len(rec_matrix)} users"
-                    )
-
-                conn.commit()
-                logger.info(
-                    f"Recommendations update complete for {len(self._recsys_types)} algorithm types"
+                # Store recommendations with algorithm type (one executemany,
+                # not N*max_posts single-row round-trips)
+                cursor = conn.executemany(
+                    "INSERT OR IGNORE INTO recommendations (user_id, post_id, recsys_type) VALUES (?, ?, ?)",
+                    [
+                        (user_id, post_id, recsys_type)
+                        for user_id, post_ids in rec_matrix.items()
+                        for post_id in post_ids
+                    ],
                 )
-                return rows_written
-        except Exception as e:
-            logger.error(f"Error updating recommendations: {e}", exc_info=True)
-        return -1
+                rows_written += max(int(cursor.rowcount or 0), 0)
+
+                logger.info(f"Updated {recsys_type} recommendations for {len(rec_matrix)} users")
+
+            conn.commit()
+            logger.info(
+                f"Recommendations update complete for {len(self._recsys_types)} algorithm types"
+            )
+            return rows_written
 
     def _rec_reddit(self, users: list, posts: list, max_posts: int) -> dict:
         """Reddit hot-score recommendations."""
@@ -1042,11 +1039,10 @@ class RedditLikePlatform(SqliteSocialEngineBase):
         if recsys_state is None:
             raise ValueError("Embedding recommendations require initialized recsys_state.")
 
-        model = recsys_state.get("model")
+        # Direct index: init_recsys always installs "model" for an embedding
+        # backend, so a missing key is a broken state dict, not a "no model" case.
+        model = recsys_state["model"]
         embeddings_cache = recsys_state.get("embeddings_cache", {})
-
-        if model is None:
-            return {}
 
         try:
             import torch

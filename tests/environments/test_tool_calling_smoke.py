@@ -240,7 +240,10 @@ def test_tool_calling_resolve_falls_back_when_backend_lacks_detailed_seam() -> N
         def action_aliases(self) -> list[Any]:
             return []
 
-        def _action_has_parameter(self, name: str, param: str) -> bool:
+        # The BackendApp contract method resolve calls directly (it used to name
+        # the COMPONENT's private helper, which overrode nothing and only worked
+        # because resolve getattr-guarded the real one).
+        def action_accepts_param(self, name: str, param: str) -> bool:
             return False
 
         def invoke_action_with_kwargs(self, name: str, payload: dict[str, Any]) -> str:

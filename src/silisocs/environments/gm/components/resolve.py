@@ -386,8 +386,10 @@ class _BaseResolveComponent(ResolveComponent):
 
     def _action_has_parameter(self, action_name: str, parameter_name: str) -> bool:
         """Return whether an app action accepts the named parameter."""
-        accepts = getattr(self.backend, "action_accepts_param", None)
-        return bool(accepts(action_name, parameter_name)) if callable(accepts) else False
+        # Declared on BackendApp and enforced by the backend factory, so this is a
+        # direct call (matching the harness Tool Bridge): a missing method is a
+        # broken backend, not a "no such parameter" answer.
+        return bool(self.backend.action_accepts_param(action_name, parameter_name))
 
     def resolve(self, *, active_agent: str, action: ActionOutput | str) -> str:
         """Resolve raw action text into backend operation result."""
@@ -436,7 +438,7 @@ class ParsedActionResolveComponent(_BaseResolveComponent):
         # Normalize a renamed/aliased token to the canonical method name so the
         # backend's own parser (which knows only its built-in vocabulary) accepts
         # config-defined action aliases.
-        canonical = getattr(self.backend, "canonical_action_name", lambda _name: None)(action_type)
+        canonical = self.backend.canonical_action_name(action_type)
         if canonical and canonical != action_type:
             action_data = {**action_data, "action_type": canonical}
         result = self.backend.parse_and_resolve_action(active_agent, action_data)

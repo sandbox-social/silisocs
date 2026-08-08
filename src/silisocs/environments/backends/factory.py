@@ -124,7 +124,7 @@ def _validate_checkpoint_contract(cls: type[BackendApp]) -> None:
     strategy and trust this backend's snapshot, so inheriting the base no-ops would
     silently restore nothing.
     """
-    if not getattr(cls, "provides_checkpoint_state", False):
+    if not cls.provides_checkpoint_state:
         return
     inherited = [
         name

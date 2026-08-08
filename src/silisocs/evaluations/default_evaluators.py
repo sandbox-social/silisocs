@@ -136,9 +136,11 @@ def _normalize_binary(value: Any) -> str | None:
 def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
     """Load a mapping of probe label to probe type from the run's config.
 
-    Also best-effort imports the run's ``probe_lib_module`` so custom probe
-    classes register their ``analysis_kind`` in THIS process — evaluators run
-    in the study/Studio process, not the runner that loaded ``plugins:``.
+    Also imports the run's ``probe_lib_module`` so custom probe classes register
+    their ``analysis_kind`` in THIS process — evaluators run in the study/Studio
+    process, not the runner that loaded ``plugins:``. A configured module that
+    cannot be imported raises: scoring would otherwise silently switch to
+    heuristic inference and report different numbers.
     """
     cfg_path = run_dir / "effective_config.yaml"
     if not cfg_path.is_file():
@@ -159,10 +161,18 @@ def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
 
     probe_lib_module = str(probes.get("probe_lib_module") or "").strip()
     if probe_lib_module:
+        # NOT best-effort: without this module's registrations every probe silently
+        # falls back to heuristic type inference, which scores DIFFERENT numbers
+        # with no trace in the output. The runtime side raises here too.
         try:
             importlib.import_module(probe_lib_module)
-        except Exception:
-            pass  # scoring falls back to inference; probes still count
+        except Exception as exc:
+            raise ImportError(
+                f"Could not import the run's probe_lib_module {probe_lib_module!r} "
+                f"({exc}). Evaluators need it to score probes by their declared type; "
+                "install/expose the module (it must be importable in the evaluating "
+                "process, not only in the runner)."
+            ) from exc
 
     raw_probes = probes.get("probes", {})
     if isinstance(raw_probes, dict):

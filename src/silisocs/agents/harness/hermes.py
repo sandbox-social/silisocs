@@ -20,8 +20,10 @@ runs to completion, bounded by ``max_iterations``). This adapter maps that onto 
 
 The live wiring to the ``run_agent`` module is isolated behind the injectable
 ``aiagent_factory`` seam (the default imports Hermes lazily; tests inject a fake), so
-this module imports and is contract-tested without the optional ``hermes`` extra. A real
-``hermes-agent`` integration test is opt-in behind ``HERMES_LIVE=1``.
+this module imports and is contract-tested without Hermes installed. There is no
+silisocs extra for it: install the ``hermes-agent`` package yourself (it supplies the
+``run_agent`` and ``tools`` modules imported below). A real integration test is opt-in
+behind ``HERMES_LIVE=1``.
 
 Dependency note: ``hermes-agent`` pins ``openai==2.24.0`` which conflicts with the
 silisocs ``openai<2.0.0`` pin; install it in an isolated environment (or after the
@@ -99,22 +101,20 @@ def _default_aiagent_factory(**kwargs: Any) -> Any:
     registry. Kept isolated so the rest of the adapter is testable without the extra.
     """
     from run_agent import AIAgent  # type: ignore[import-not-found]
+    from tools import registry  # type: ignore[import-not-found]
 
-    try:  # register the tool once; ignore if the running Hermes already has it
-        from tools import registry  # type: ignore[import-not-found]
-
-        registry.register(
-            name="silisocs_action",
-            description=(
-                "Perform one action in the silisocs social environment. "
-                "Pass the action name and its arguments."
-            ),
-            handler=_execute_current_surface,
-            toolset="silisocs",
-            override=True,
-        )
-    except Exception:  # pragma: no cover - depends on the installed Hermes surface
-        pass
+    # ``override=True`` already makes re-registration idempotent, so a failure here
+    # is a real one — and a swallowed one leaves the agent with no tools at all.
+    registry.register(
+        name="silisocs_action",
+        description=(
+            "Perform one action in the silisocs social environment. "
+            "Pass the action name and its arguments."
+        ),
+        handler=_execute_current_surface,
+        toolset="silisocs",
+        override=True,
+    )
 
     return AIAgent(
         model=kwargs["model_name"],

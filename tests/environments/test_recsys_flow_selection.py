@@ -276,3 +276,87 @@ def test_social_recommendation_has_no_native_owner_binding() -> None:
 
     assert not hasattr(component, "set_entity")
     assert not hasattr(component, "get_entity")
+
+
+# --------------------------------------------------------------------------- #
+# Loud recsys: config errors raise, per-step update failures are counted
+# --------------------------------------------------------------------------- #
+
+
+class _RecsysBackend:
+    """Minimal backend exposing the recsys hooks the update component reconciles."""
+
+    def __init__(
+        self, *, init_error: Exception | None = None, update_error: Exception | None = None
+    ):
+        self._init_error = init_error
+        self._update_error = update_error
+        self.action_logger = None
+        self.live: set[str] = set()
+        self.updates = 0
+
+    def recsys_active_types(self) -> set[str]:
+        return set(self.live)
+
+    def init_recsys(self, recsys_type: str, **_: object) -> None:
+        if self._init_error is not None:
+            raise self._init_error
+        self.live.add(recsys_type)
+
+    def update_recommendations(self, active_user_ids=None, max_posts: int = 10) -> int:
+        del active_user_ids, max_posts
+        if self._update_error is not None:
+            raise self._update_error
+        self.updates += 1
+        return 0
+
+
+def test_recsys_init_failure_for_configured_type_raises() -> None:
+    """An explicitly configured recsys that cannot be initialized is a CONFIG error.
+
+    It used to be swallowed by a blanket handler, so the whole scenario ran with
+    no recommender at all — the one thing it asked for.
+    """
+    backend = _RecsysBackend(init_error=RuntimeError("sentence-transformers not installed"))
+    component = SocialRecommendationUpdateComponent(
+        backend=backend,
+        backend_type="twitter_like",
+        default_recsys_type="twitter",
+    )
+
+    with pytest.raises(RuntimeError, match="sentence-transformers"):
+        component.update_recommendations()
+
+
+def test_recsys_update_failure_increments_health_counter() -> None:
+    """ONE failed scheduled refresh is survivable — so it is COUNTED, not raised."""
+    from silisocs.evaluations.vocabulary import HEALTH_COUNTERS
+    from silisocs.runtime.telemetry.collector import SimMetricsCollector
+
+    assert "recsys_update_failures" in HEALTH_COUNTERS
+
+    backend = _RecsysBackend(update_error=RuntimeError("db locked"))
+    component = SocialRecommendationUpdateComponent(
+        backend=backend,
+        backend_type="twitter_like",
+        default_recsys_type="twitter",
+    )
+
+    SimMetricsCollector.reset()
+    component.update_recommendations()  # survives
+    assert SimMetricsCollector.get().counter("recsys_update_failures") == 1
+
+
+def test_twitter_engine_update_recommendations_propagates(tmp_path) -> None:
+    """No -1 sentinel: a failed update raises so the component can count it."""
+    platform = TwitterLikePlatform(db_path=str(tmp_path / "tw_fail.db"), use_queue=False)
+    platform.create_users([("alice", "a"), ("bob", "b")])
+    platform.create_post("bob", "hello")
+    platform.init_recsys("twitter_tfidf")
+
+    def _boom(*_a: object, **_k: object) -> dict:
+        raise RuntimeError("recsys exploded")
+
+    platform._rec_tfidf = _boom  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="recsys exploded"):
+        platform.update_recommendations(max_posts=1)

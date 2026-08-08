@@ -42,6 +42,20 @@ class _FakeBackend:
     def actions(self) -> list[_Descriptor]:
         return self._all_actions()
 
+    # The two BackendApp methods resolve now calls directly (they are declared on
+    # BackendApp and enforced by the factory, so resolve no longer getattr-guards
+    # them). Like the shipped social backends, this stub configures no action
+    # aliases: its own parser accepts the domain verbs as-is, so nothing needs
+    # canonicalizing, and its descriptors declare no parameters.
+
+    def canonical_action_name(self, action_name: str) -> str | None:
+        del action_name
+        return None
+
+    def action_accepts_param(self, action_name: str, parameter_name: str) -> bool:
+        del action_name, parameter_name
+        return False
+
     def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str:
         self.parse_calls.append((user_name, action_data))
         return f"did:{action_data['action_type']}"

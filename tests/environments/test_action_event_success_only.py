@@ -21,6 +21,7 @@ from silisocs.environments.backends.base import ActionResult
 from silisocs.environments.backends.reddit_like.app import RedditLikeApp
 from silisocs.environments.backends.twitter_like.app import TwitterLikeApp
 from silisocs.runtime.checkpointing.replay_mappers import microblog_event_to_replay_action
+from silisocs.runtime.telemetry.collector import SimMetricsCollector
 
 
 def _rejected(result: Any) -> str:
@@ -127,6 +128,13 @@ def test_twitter_idempotent_noops_log_no_event(twitter: Any) -> None:
 
 
 def test_twitter_failed_read_logs_no_event(tmp_path: Any) -> None:
+    """An UNEXPECTED read failure escapes the action; only ValueError is a rejection.
+
+    A ``RuntimeError`` from the platform is not a legitimate rejection: swallowing
+    it into a friendly ``ActionResult`` disguised real breakage (a DB error, a
+    refactor's AttributeError) as an ordinary agent-visible outcome. It now
+    propagates to the counted invoke boundary, and still logs no committed row.
+    """
     logger = _RecordingLogger()
     app = TwitterLikeApp(db_path=str(tmp_path / "tw.db"), action_logger=logger)
     app.setup_social_state(agent_names=["Alice"], following_graph={})
@@ -137,7 +145,17 @@ def test_twitter_failed_read_logs_no_event(tmp_path: Any) -> None:
             raise RuntimeError("db down")
 
     app._platform = _Boom()  # type: ignore[assignment]  # simulate a read-path failure
-    assert "Error" in _rejected(app.get_trending_posts("Alice"))
+    with pytest.raises(RuntimeError, match="db down"):
+        app.get_trending_posts("Alice")
+    assert logger.rows == []
+
+    # Through the invocation layer the same failure is COUNTED, reported to the
+    # agent as a message, and still leaves no committed row.
+    SimMetricsCollector.reset()
+    committed, message = app.invoke_action_detailed("get_trending_posts", {"agent_name": "Alice"})
+    assert committed is False
+    assert "db down" in message
+    assert SimMetricsCollector.get().counter("backend_action_errors") == 1
     assert logger.rows == []
 
 
@@ -260,3 +278,100 @@ def test_microblog_mapper_covers_state_changing_labels(
 def test_microblog_mapper_still_rejects_unknown_labels() -> None:
     with pytest.raises(ValueError, match="Unknown microblog action event label"):
         microblog_event_to_replay_action("definitely_not_a_label", {})
+
+
+# --------------------------------------------------------------------------- #
+# Loud failures: a failed READ is never a legitimately-empty timeline
+# --------------------------------------------------------------------------- #
+
+
+def test_twitter_timeline_read_failure_logs_no_committed_row(twitter: Any) -> None:
+    """A failed timeline read must not become a committed ``0 posts`` event.
+
+    ``get_timeline`` used to swallow the error and return ``[]``, so
+    ``get_own_timeline`` logged ``num_posts_retrieved: 0`` — a transient DB error
+    recorded as a legitimately empty timeline, falsifying exposure data.
+    """
+    app, logger = twitter
+
+    def _boom(*_a: Any, **_k: Any) -> dict:
+        raise RuntimeError("db down")
+
+    app._platform.get_feed = _boom  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="db down"):
+        app.get_own_timeline("Alice", 10)
+    assert logger.rows == []
+
+
+def test_reddit_feed_read_failure_logs_no_committed_row(reddit: Any) -> None:
+    app, logger = reddit
+
+    def _boom(*_a: Any, **_k: Any) -> dict:
+        raise RuntimeError("db down")
+
+    app._platform.get_feed = _boom  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="db down"):
+        app.get_home_feed("Alice", 10)
+    assert logger.rows == []
+
+
+def test_twitter_update_profile_reports_an_unmatched_user_as_uncommitted(twitter: Any) -> None:
+    """``rowcount`` was never checked, so a no-op UPDATE reported success."""
+    app, logger = twitter
+    app._user_mapping["Ghost"] = "ghost"  # mapped, but no such row in the DB
+    assert "not updated" in _rejected(app.update_profile("Ghost", "spooky"))
+    assert logger.rows == []
+
+    app.update_profile("Alice", "real bio")
+    assert logger.labels() == ["update_profile"]
+
+
+def test_custom_mode_non_numeric_target_is_counted_not_an_error(twitter: Any) -> None:
+    """A bad TARGET ID is an invalid target, not a backend failure."""
+    app, logger = twitter
+    SimMetricsCollector.reset()
+    result = app.parse_and_resolve_action("Alice", {"action_type": "like", "target_id": "abc"})
+    assert "not a valid" in str(result)
+    assert SimMetricsCollector.get().counter("action_invalid_targets") == 1
+    assert SimMetricsCollector.get().counter("backend_action_errors") == 0
+    assert logger.rows == []
+
+
+def test_custom_mode_unexpected_error_is_counted_and_reraised(twitter: Any) -> None:
+    """``parse_and_resolve_action`` sits outside the invoke layer, so it counts
+    an unexpected failure itself and re-raises for the engine's turn isolation.
+    """
+    app, logger = twitter
+
+    def _boom(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("db down")
+
+    app._platform.create_post = _boom  # type: ignore[method-assign]
+    SimMetricsCollector.reset()
+    with pytest.raises(RuntimeError, match="db down"):
+        app.parse_and_resolve_action("Alice", {"action_type": "post", "content": "hi"})
+    assert SimMetricsCollector.get().counter("backend_action_errors") == 1
+    assert logger.rows == []
+
+
+def test_custom_mode_value_error_is_a_plain_rejection(twitter: Any) -> None:
+    """A ValueError is the platform's rejection language: reported, never counted."""
+    app, logger = twitter
+    SimMetricsCollector.reset()
+    # An unknown display name raises out of _get_username (outside the action's
+    # own try), so the dispatcher's rejection branch handles it.
+    result = app.parse_and_resolve_action("Nobody", {"action_type": "like", "target_id": "1"})
+    assert "Error performing like" in str(result)
+    assert SimMetricsCollector.get().counter("backend_action_errors") == 0
+    assert logger.rows == []
+
+
+def test_reddit_setup_rejects_a_subreddit_entry_without_a_name(tmp_path: Any) -> None:
+    """A mistyped key used to invent an ``r/general`` nobody asked for."""
+    app = RedditLikeApp(db_path=str(tmp_path / "rd_bad.db"))
+    with pytest.raises(ValueError, match="non-empty 'name'"):
+        app.setup_social_state(
+            agent_names=["Alice"],
+            graph_config={"subreddits": [{"names": "politics", "roles": "all"}]},
+        )
+    app.shutdown()

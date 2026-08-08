@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from typing import Any
 
 from silisocs.environments.gm.components.observe import ObservationComponent
+from silisocs.runtime.telemetry.collector import SimMetricsCollector
+
+_LOGGER = logging.getLogger(__name__)
+
+# An exposure row could not be written; exposure_events.jsonl is incomplete for
+# that turn, so analysis built on it is partial in a named way.
+EXPOSURE_LOG_FAILURE_COUNTER = "exposure_log_failures"
 
 
 class TimelineMakeObservation(ObservationComponent):
@@ -89,7 +97,9 @@ class TimelineMakeObservation(ObservationComponent):
 
         Records what was SHOWN (the post-dedup, post-limit timeline). Best-effort:
         exposure logging must never fail an observe, and it no-ops for backends
-        whose timeline isn't a list of post dicts (e.g. Mastodon).
+        whose timeline isn't a list of post dicts (e.g. Mastodon). A row that
+        could not be written is COUNTED (``exposure_log_failures``), never
+        silently dropped — ``exposure_events.jsonl`` is a first-class analysis input.
         """
         exposure_logger = getattr(self._backend, "exposure_logger", None)
         if exposure_logger is None or not isinstance(timeline, list):
@@ -113,5 +123,11 @@ class TimelineMakeObservation(ObservationComponent):
                     "posts": posts,
                 }
             )
-        except Exception:  # pragma: no cover - logging must never break an observe
-            pass
+        except Exception:
+            SimMetricsCollector.get().increment_counter(EXPOSURE_LOG_FAILURE_COUNTER)
+            _LOGGER.warning(
+                "Failed to record an exposure row for agent '%s'; exposure_events.jsonl "
+                "is incomplete for this turn.",
+                agent_name,
+                exc_info=True,
+            )
