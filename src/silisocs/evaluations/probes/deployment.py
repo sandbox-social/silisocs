@@ -421,11 +421,9 @@ class ProbeDeploymentOrchestrator:
 class DefaultProbeRunner:
     """Evaluation-owned probe runner for in-loop deployment."""
 
-    def __init__(
-        self, probes_config: Mapping[str, Any] | None, output_rootname: str, seed: int = 0
-    ):
+    def __init__(self, probes_config: Mapping[str, Any] | None, output_dir: str, seed: int = 0):
         config = dict(probes_config or {})
-        self._logger = EventLogger("probe", os.path.join(output_rootname, "probe_events.jsonl"))
+        self._logger = EventLogger("probe", os.path.join(output_dir, "probe_events.jsonl"))
         self._orchestrator = ProbeDeploymentOrchestrator(config, self._logger, seed=seed)
         schedule_cfg = dict(config.get("schedule", {}) or {})
         self._schedule_policy: ProbeSchedulePolicy = build_probe_schedule_policy(schedule_cfg)

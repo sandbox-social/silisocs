@@ -138,7 +138,7 @@ def _backend_config(
     backend_params = _plain_mapping(raw_backend.get("params") or {})
     return {
         "backend_type": backend_type,
-        "output_rootname": str(OmegaConf.select(cfg, "output_rootname", default="") or ""),
+        "output_dir": str(OmegaConf.select(cfg, "output_dir", default="") or ""),
         "perform_operations": bool(backend_params.pop("perform_operations", False)),
         "app_description": str(backend_params.pop("app_description", "") or ""),
         "class_path": raw_backend.get("class_path"),
@@ -156,7 +156,7 @@ def _isolate_backend_paths(entries: list[tuple[str, dict[str, Any]]]) -> None:
     """Give each game master a distinct backend output path; reject collisions.
 
     ``entries`` is a list of ``(gm_name, backend_config)``. With more than one GM
-    each backend's ``output_rootname`` is nested under a per-GM subdirectory so
+    each backend's ``output_dir`` is nested under a per-GM subdirectory so
     same-type GMs do not share one ``<backend_type>.db`` / ``action_events.jsonl``
     and clobber one another on checkpoint restore. Single-GM runs keep the flat
     layout. Mutates each ``backend_config`` in place. Raises ``ValueError`` if two
@@ -166,15 +166,15 @@ def _isolate_backend_paths(entries: list[tuple[str, dict[str, Any]]]) -> None:
     seen: dict[str, str] = {}
     for gm_name, backend_config in entries:
         if isolate:
-            backend_config["output_rootname"] = os.path.join(
-                str(backend_config.get("output_rootname") or ""), gm_name
+            backend_config["output_dir"] = os.path.join(
+                str(backend_config.get("output_dir") or ""), gm_name
             )
         # Resolve the db path through the same helper ``create_backend_app`` uses
         # so the guard checks the exact path that will be opened, including any
         # configured ``params.db_path`` override.
         configured_params = backend_config.get("params") or {}
         db_key = resolve_backend_db_path(
-            str(backend_config.get("output_rootname") or ""),
+            str(backend_config.get("output_dir") or ""),
             str(backend_config["backend_type"]),
             db_path=configured_params.get("db_path"),
         )

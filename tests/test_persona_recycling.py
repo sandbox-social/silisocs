@@ -157,7 +157,7 @@ def test_default_experiment_config_scales_past_ten_agents() -> None:
                 overrides=[
                     f"num_agents={_OVERSUBSCRIBED_COUNT}",
                     "num_steps=1",
-                    "output_rootname=/tmp/persona_scale_check",
+                    "output_dir=/tmp/persona_scale_check",
                 ],
             )
     finally:

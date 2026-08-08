@@ -2,7 +2,7 @@
 
 Regression net for the config-composition contract: scenario `world/` files
 REPLACE the base world group (Hydra searchpath shadowing), so each scenario
-must re-declare the universal run params (num_steps, seed, output_rootname,
+must re-declare the universal run params (num_steps, seed, output_dir,
 ...) or documented invocations like
 
     silisocs --config-path scenarios/election/conf num_steps=15
@@ -30,7 +30,7 @@ STANDARD_OVERRIDES = [
     "num_steps=1",
     "seed=2",
     "run_name=compose_check",
-    "output_rootname=/tmp/compose_check",
+    "output_dir=/tmp/compose_check",
 ]
 
 
@@ -77,4 +77,4 @@ def test_bundled_scenario_composes_with_standard_overrides(
     assert cfg.num_steps == 1, f"{scenario}: num_steps override not applied"
     assert cfg.num_agents == 3, f"{scenario}: num_agents override not applied"
     assert cfg.seed == 2, f"{scenario}: seed override not applied"
-    assert cfg.output_rootname == "/tmp/compose_check"
+    assert cfg.output_dir == "/tmp/compose_check"

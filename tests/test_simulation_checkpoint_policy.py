@@ -111,14 +111,14 @@ def test_checkpoint_runtime_metadata_records_every_game_master() -> None:
             "backend_type": "twitter_like",
             "sequence": 0,
             "action_events_file": "/tmp/run/action_events.jsonl",
-            "output_rootname": "/tmp/run",
+            "output_dir": "/tmp/run",
         },
         {
             "name": "later_gm",
             "backend_type": "reddit_like",
             "sequence": 1,
             "action_events_file": "/tmp/run/action_events.jsonl",
-            "output_rootname": "/tmp/run",
+            "output_dir": "/tmp/run",
         },
     ]
 

@@ -438,7 +438,7 @@ def test_multiflow_gm_resolve_action_enforces_per_flow_filter(tmp_path, monkeypa
         agents=[_Entity("Bob")],
         name="gm",
         agent_flow_tags={"Bob": "lurker"},
-        backend_config={"backend_type": "twitter_like", "output_rootname": str(tmp_path)},
+        backend_config={"backend_type": "twitter_like", "output_dir": str(tmp_path)},
         # Only the resolve slot is under test; the rest are the generic built-ins
         # because _GmApp is a stub rather than a real SocialBackendApp, and the GM
         # refuses social components on a backend that cannot serve them.

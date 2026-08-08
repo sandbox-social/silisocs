@@ -20,7 +20,7 @@ steps:
     hold: 3.5
 
   - caption: "Now a real run: 6 LLM agents, 10 steps, a false claim spreading on a small network."
-    cmd: 'silisocs --config-path scenarios/misinformation/conf "++output_rootname=$PWD/outputs/misinformation/quickstart"'
+    cmd: 'silisocs --config-path scenarios/misinformation/conf "++output_dir=$PWD/outputs/misinformation/quickstart"'
     display: "uv run silisocs --config-path scenarios/misinformation/conf"
     prompt_delay: 1.4
     timescale: 14

@@ -281,7 +281,7 @@ def _run_scripted(
         "sim.tool_calling.mode=multi",
         "sim.engine.participation.built_in=all",
         "env.gm.components.resolve.built_in=tool_calling",
-        f"output_rootname={output_dir}",
+        f"output_dir={output_dir}",
         f"hydra.run.dir={hydra_dir}",
         "hydra.output_subdir=configs",
         *(extra_overrides or []),

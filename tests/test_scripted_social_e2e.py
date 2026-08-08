@@ -129,7 +129,7 @@ def test_scripted_social_posts_and_likes_with_timeline_context(tmp_path: Path) -
             "env.gm.components.initialize.params.graph.fully_connected_targets=[user]",
             "env.gm.components.resolve.built_in=tool_calling",
             "env.gm.components.update.built_in=disabled",
-            f"output_rootname={output_dir}",
+            f"output_dir={output_dir}",
             f"hydra.run.dir={hydra_dir}",
             "hydra.output_subdir=configs",
         ],
@@ -220,7 +220,7 @@ def test_scripted_social_checkpoint_restore_uses_backend_state(tmp_path: Path) -
         "hydra.output_subdir=configs",
     ]
     first = subprocess.run(
-        [*common, f"output_rootname={first_output}", f"hydra.run.dir={first_hydra}"],
+        [*common, f"output_dir={first_output}", f"hydra.run.dir={first_hydra}"],
         cwd=Path(__file__).resolve().parents[1],
         check=False,
         text=True,
@@ -240,7 +240,7 @@ def test_scripted_social_checkpoint_restore_uses_backend_state(tmp_path: Path) -
     second = subprocess.run(
         [
             *common,
-            f"output_rootname={second_output}",
+            f"output_dir={second_output}",
             f"hydra.run.dir={second_hydra}",
             f"sim.checkpoint.source_run={first_output}",
             "sim.checkpoint.restore.built_in=social_action_event_replay",

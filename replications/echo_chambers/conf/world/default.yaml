@@ -9,7 +9,7 @@ replication_days: 30
 num_steps: 31
 run_name: scale_free_similarity_seed50
 seed: 50
-output_rootname: ""
+output_dir: ""
 echo_network_type: scale_free
 echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
 echo_recommendation: similarity

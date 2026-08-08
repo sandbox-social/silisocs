@@ -485,7 +485,7 @@ def _runtime_metadata(runtime: RuntimeObjects) -> dict[str, Any]:
         backend = getattr(game_master, "backend", None)
         action_logger = getattr(backend, "action_logger", None)
         action_events_file = str(getattr(action_logger, "output_filename", "") or "")
-        output_rootname = str(os.path.dirname(action_events_file)) if action_events_file else ""
+        output_dir = str(os.path.dirname(action_events_file)) if action_events_file else ""
         spec = runtime.object_specs.get(str(getattr(game_master, "name", "")))
         sequence = 0
         if spec is not None:
@@ -499,7 +499,7 @@ def _runtime_metadata(runtime: RuntimeObjects) -> dict[str, Any]:
                 "backend_type": str(getattr(game_master, "backend_type", "") or ""),
                 "sequence": sequence,
                 "action_events_file": action_events_file,
-                "output_rootname": output_rootname,
+                "output_dir": output_dir,
             }
         )
 

@@ -260,7 +260,7 @@ def test_turn_policy_rejects_unknown_observe_before_act_mode() -> None:
 def test_engine_runs_three_initialization_phases_once_before_loop(tmp_path) -> None:
     cfg = OmegaConf.create(
         {
-            "output_rootname": str(tmp_path),
+            "output_dir": str(tmp_path),
             "sim": {
                 "engine": {
                     "turn_policy": {"built_in": "single_action"},

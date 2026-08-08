@@ -94,7 +94,7 @@ def _demo_overrides(output_dir: Path, hydra_dir: Path) -> list[str]:
         "env.gm.components.update.built_in=disabled",
         "env.gm.components.observe.params.timeline_mode=follower_chronological",
         "env.gm.components.initialize.params.graph.base_followership_probability=1.0",
-        f"output_rootname={output_dir}",
+        f"output_dir={output_dir}",
         f"hydra.run.dir={hydra_dir}",
         "hydra.output_subdir=configs",
     ]

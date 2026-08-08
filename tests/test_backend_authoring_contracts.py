@@ -98,7 +98,7 @@ def _build(cls: type, tmp_path, **cfg: Any) -> Any:
         {
             "backend_type": "custom_demo",
             "class_path": _path(cls),
-            "output_rootname": str(tmp_path),
+            "output_dir": str(tmp_path),
             **cfg,
         },
         gm_name="gm",

@@ -353,7 +353,7 @@ def collect_usage_summary(
 
 
 def append_episode_run_stats(
-    output_rootname: str,
+    output_dir: str,
     episode: int,
     duration_s: float,
     requested_workers: int,
@@ -368,7 +368,7 @@ def append_episode_run_stats(
     action_phase: Mapping[str, Any],
 ) -> None:
     """Append structured per-episode lines to run_stats.log."""
-    stats_path = os.path.join(output_rootname, "run_stats.log")
+    stats_path = os.path.join(output_dir, "run_stats.log")
     with open(stats_path, "a", encoding="utf-8") as f:
         f.write(f"Episode {episode} duration: {duration_s:.2f}s\n")
         f.write(

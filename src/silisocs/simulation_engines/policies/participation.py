@@ -206,8 +206,12 @@ class ActivityProbabilityParticipation(ParticipationPolicy):
 
     ``active_probability`` (when set) applies globally; otherwise each agent's
     probability comes from ``activity_transition_rates`` keyed by agent name or
-    sim role (``inactive_to_active``, falling back to ``active_to_inactive``). An
-    agent matching no entry is a config error, not a default.
+    sim role. This policy reads ONE rate: ``inactive_to_active`` IS the per-step
+    probability that the agent acts at all (there is no chain to transition), and
+    ``active_to_inactive`` is read only as the mirror value when
+    ``inactive_to_active`` is absent — configure the Markov chain's second rate
+    here and it is inert. An agent matching no entry is a config error, not a
+    default.
     ``min_active_agents`` tops up a too-small draw with a deterministic shuffle of
     the remaining agents.
     """

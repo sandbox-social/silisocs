@@ -84,7 +84,7 @@ def _make_gm(tmp_path: Any, monkeypatch: Any, **component_overrides: Any) -> Com
         agent_flow_tags={"Alice": "default", "Bob": "default"},
         backend_config={
             "backend_type": "resource_market",
-            "output_rootname": str(tmp_path),
+            "output_dir": str(tmp_path),
             "enabled_actions": ["ACT"],
             "turn_policy_built_in": "single_action",
         },
@@ -195,7 +195,7 @@ def test_rebuild_component_targets_default_flow_key_on_multiflow(tmp_path, monke
         agent_flow_tags={"Alice": "default", "Bob": "default"},
         backend_config={
             "backend_type": "resource_market",
-            "output_rootname": str(tmp_path),
+            "output_dir": str(tmp_path),
             "enabled_actions": ["ACT"],
             "turn_policy_built_in": "single_action",
         },

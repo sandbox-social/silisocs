@@ -7,7 +7,7 @@ num_agents: 10
 num_steps: 5
 run_name: run1
 seed: 1
-output_rootname: ""
+output_dir: ""
 
 setting:
   name: Generic Community

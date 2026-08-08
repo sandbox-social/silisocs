@@ -66,7 +66,7 @@ def _run(tmp_path: Path, extra: list[str]) -> subprocess.CompletedProcess:
             "num_steps=2",
             "agents.persona_pipeline.classes.user.class_path=silisocs.agents.harness.fake.FakeHarnessAgent",
             "env.gm.components.update.built_in=disabled",
-            f"output_rootname={output_dir}",
+            f"output_dir={output_dir}",
             f"hydra.run.dir={hydra_dir}",
             "hydra.output_subdir=configs",
             *extra,

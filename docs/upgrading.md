@@ -128,6 +128,40 @@ bumps are listed in the release notes below when they happen.
   `sim.engine.participation.built_in: all`. Runs whose rates already covered their
   roles — including every bundled scenario — are unaffected.
 
+### Config keys
+
+- **`output_rootname` was renamed to `output_dir` (BREAKING).** The key never named
+  a *root* under which run directories were created — it named the run's output
+  directory itself, and the runtime stamps the resolved path straight back onto it.
+  The new spelling matches the programmatic API it has always mirrored
+  (`run_simulation(cfg, output_dir=...)`) and the `output_dir=` line the runner
+  prints. Rename the key in every scenario's `conf/world/*.yaml` (it is one of the
+  universal run params a scenario world file must re-declare) and in any override
+  you pass — `output_rootname=./run` becomes `output_dir=./run`, and Studio /
+  `silisocs-study` emit `++output_dir=...`. A composed config still carrying
+  `output_rootname` fails validation with a message naming both spellings; it is
+  never silently aliased. The study plan/run records follow the key: their
+  `planned_output_rootname` field is now `planned_output_dir`. Recorded run
+  artifacts under `outputs/` and
+  `experiments/studies/*/generated/` keep the old key in their
+  `effective_config.yaml` — they are historical records of what those runs were
+  configured with, and nothing reads the key back out of them.
+- **`activity_transition_rates` entry shape is validated at config time.** The
+  canonical (and only) entry shape is unchanged — a mapping naming both rates,
+  `{inactive_to_active: <p>, active_to_inactive: <p>}` — but a positional pair
+  (`user: [0.8, 0.1]`), a scalar, an out-of-range probability, or an entry
+  declaring neither rate now fails during config validation instead of at the
+  first step. Also note which rate each policy actually reads: under
+  `activity_probability`, `inactive_to_active` *is* the per-step probability that
+  an agent acts and `active_to_inactive` is inert (see
+  [Configuration](configuration.md#social-setup-and-participation)); under
+  `activity_markov` both rates drive the chain. No config change is required for
+  rates that were already well-formed, including every bundled scenario's.
+- **The stale `env.gm.components.next_acting.params.activity_transition_rates`
+  cross-reference check was removed.** Activity rates moved to
+  `sim.engine.participation.params` in this release, so the check validated a
+  location nothing reads and could never fire.
+
 ### Backends and run artifacts
 
 - **`action_events.jsonl` records committed actions only (BREAKING for downstream

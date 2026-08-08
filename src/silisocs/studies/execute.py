@@ -302,7 +302,7 @@ def _initialize_run_record(spec: RunSpec, assigned_gpu: str | None, started: str
         "resolved_overrides": spec.overrides,
         "study_id": spec.study_id,
         "run_name": spec.run_name,
-        "planned_output_rootname": spec.output_rootname,
+        "planned_output_dir": spec.output_dir,
         "command": None,
         "log_path": None,
         "run_dir": None,
@@ -401,8 +401,8 @@ def _run_new_spec(
         run_dir_path = Path(run_dir)
         if not run_dir_path.is_absolute():
             run_dir_path = (repo_root / run_dir_path).resolve()
-    elif spec.output_rootname:
-        fallback = Path(spec.output_rootname)
+    elif spec.output_dir:
+        fallback = Path(spec.output_dir)
         if not fallback.is_absolute():
             fallback = (repo_root / fallback).resolve()
         if fallback.exists():
@@ -494,7 +494,7 @@ def _skipped_complete_record(spec: RunSpec, run_dir: Path, generated_dir: Path) 
         "resolved_overrides": spec.overrides,
         "study_id": spec.study_id,
         "run_name": spec.run_name,
-        "planned_output_rootname": spec.output_rootname,
+        "planned_output_dir": spec.output_dir,
         "command": None,
         "log_path": None,
         "run_dir": str(run_dir),

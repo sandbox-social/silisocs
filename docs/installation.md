@@ -49,7 +49,7 @@ from any directory, no `--config-path` required:
 ```sh
 silisocs num_agents=6 num_steps=5 \
   sim.llm.provider=openai sim.llm.name=gpt-4o-mini \
-  output_rootname=./base_run
+  output_dir=./base_run
 ```
 
 The named example scenarios (`election`, `misinformation`, ...) are example

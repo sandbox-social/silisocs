@@ -75,7 +75,7 @@ def test_base_environment_gm_builds_without_social_config(tmp_path, monkeypatch)
         agent_flow_tags={"Alice": "default", "Bob": "default"},
         backend_config={
             "backend_type": "resource_market",
-            "output_rootname": str(tmp_path),
+            "output_dir": str(tmp_path),
             "enabled_actions": ["ACT"],
             "turn_policy_built_in": "single_action",
             "app_description": "Generic app",
@@ -136,7 +136,7 @@ def test_base_environment_gm_rejects_unknown_component_params(tmp_path, monkeypa
             agent_flow_tags={"Alice": "default"},
             backend_config={
                 "backend_type": "resource_market",
-                "output_rootname": str(tmp_path),
+                "output_dir": str(tmp_path),
                 "enabled_actions": ["ACT"],
                 "turn_policy_built_in": "single_action",
                 "app_description": "Generic app",
@@ -166,7 +166,7 @@ def test_base_environment_gm_rejects_unknown_excluded_actions(tmp_path, monkeypa
             agent_flow_tags={"Alice": "default"},
             backend_config={
                 "backend_type": "resource_market",
-                "output_rootname": str(tmp_path),
+                "output_dir": str(tmp_path),
                 "enabled_actions": None,
                 "excluded_actions": ["NOT_REAL"],
                 "turn_policy_built_in": "single_action",
@@ -197,7 +197,7 @@ def test_base_environment_gm_rejects_action_filter_conflicts(tmp_path, monkeypat
             agent_flow_tags={"Alice": "default"},
             backend_config={
                 "backend_type": "resource_market",
-                "output_rootname": str(tmp_path),
+                "output_dir": str(tmp_path),
                 "enabled_actions": ["ACT"],
                 "excluded_actions": ["act"],
                 "turn_policy_built_in": "single_action",
@@ -246,7 +246,7 @@ def test_social_components_are_refused_at_build_on_a_generic_backend(
             agent_flow_tags={"Alice": "default"},
             backend_config={
                 "backend_type": "resource_market",
-                "output_rootname": str(tmp_path),
+                "output_dir": str(tmp_path),
                 "turn_policy_built_in": "single_action",
                 "app_description": "Generic app",
             },
@@ -271,7 +271,7 @@ def test_a_custom_component_can_declare_the_same_requirement(tmp_path, monkeypat
             agent_flow_tags={"Alice": "default"},
             backend_config={
                 "backend_type": "resource_market",
-                "output_rootname": str(tmp_path),
+                "output_dir": str(tmp_path),
                 "turn_policy_built_in": "single_action",
                 "app_description": "Generic app",
             },
@@ -302,7 +302,7 @@ def _build_generic_gm(tmp_path: Any) -> ComponentGameMaster:
         agent_flow_tags={"Alice": "default"},
         backend_config={
             "backend_type": "resource_market",
-            "output_rootname": str(tmp_path),
+            "output_dir": str(tmp_path),
             "turn_policy_built_in": "single_action",
             "app_description": "Generic app",
         },

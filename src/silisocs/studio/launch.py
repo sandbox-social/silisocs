@@ -72,17 +72,17 @@ def _output_directory(
     output_overrides = [
         item.split("=", 1)[1]
         for item in overrides
-        if item.lstrip("+").startswith("output_rootname=") and "=" in item
+        if item.lstrip("+").startswith("output_dir=") and "=" in item
     ]
     if len(output_overrides) > 1 or any(not value.strip() for value in output_overrides):
-        raise ValueError("Provide one non-empty output_rootname")
+        raise ValueError("Provide one non-empty output_dir override")
 
     explicit_output = output_overrides[0] if output_overrides else None
     requested_output = payload.get("output_dir")
     if requested_output is not None and not isinstance(requested_output, str):
         raise ValueError("output_dir must be a path string")
     if explicit_output and requested_output:
-        raise ValueError("Use output_dir or an output_rootname override, not both")
+        raise ValueError("Use the output_dir payload field or an output_dir override, not both")
 
     selected = explicit_output or requested_output
     output_dir = (
@@ -93,7 +93,7 @@ def _output_directory(
     if not output_dir.is_absolute():
         output_dir = repository / output_dir
     if not explicit_output:
-        overrides = [*overrides, f"++output_rootname={output_dir.resolve()}"]
+        overrides = [*overrides, f"++output_dir={output_dir.resolve()}"]
     return output_dir.resolve(), overrides
 
 

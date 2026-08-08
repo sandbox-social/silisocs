@@ -9,7 +9,7 @@ num_agents: 6
 num_steps: 10
 seed: 7
 run_name: misinformation
-output_rootname: ""
+output_dir: ""
 
 setting:
   name: Social Media Platform

@@ -89,7 +89,7 @@ def test_scripted_model_runs_real_runner_engine_backend_path(tmp_path: Path) -> 
             "sim.llm.name=scripted",
             "env.gm.components.observe.params.timeline_mode=follower_chronological",
             "env.gm.components.update.built_in=disabled",
-            f"output_rootname={output_dir}",
+            f"output_dir={output_dir}",
             f"hydra.run.dir={hydra_dir}",
             "hydra.output_subdir=configs",
         ],

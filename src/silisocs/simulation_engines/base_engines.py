@@ -94,16 +94,16 @@ class RuntimeEngine(SchedulingMixin, RuntimeEngineBase):
         self.interventions = interventions
         self.seed = int(seed)
         self.probe_runner = probe_runner
-        output_rootname = ""
+        output_dir = ""
         record_active_agent_names = False
         if config is not None:
-            output_rootname = str(getattr(config, "output_rootname", "") or "")
+            output_dir = str(getattr(config, "output_dir", "") or "")
             telemetry_cfg = getattr(getattr(config, "sim", None), "telemetry", None)
             record_active_agent_names = bool(
                 getattr(telemetry_cfg, "record_active_agent_names", False)
             )
         self.recorder = recorder or DefaultEngineRecorder(
-            output_rootname=output_rootname,
+            output_dir=output_dir,
             record_active_agent_names=record_active_agent_names,
         )
         self._configured_worker_cap = (

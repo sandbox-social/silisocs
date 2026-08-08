@@ -698,11 +698,11 @@ def _backend_type(backend_config: Mapping[str, Any]) -> str:
 def _create_backend(backend_config: Mapping[str, Any], *, gm_name: str) -> Any:
     cfg = dict(backend_config or {})
     backend_type = _backend_type(cfg)
-    output_rootname = str(cfg.get("output_rootname") or "")
+    output_dir = str(cfg.get("output_dir") or "")
     static_fields = {"gm_name": gm_name, "backend_type": backend_type}
     action_logger = EventLogger(
         "action",
-        os.path.join(output_rootname, "action_events.jsonl"),
+        os.path.join(output_dir, "action_events.jsonl"),
         static_fields=static_fields,
     )
     action_logger.episode_idx = 0
@@ -711,7 +711,7 @@ def _create_backend(backend_config: Mapping[str, Any], *, gm_name: str) -> Any:
         action_logger=action_logger,
         perform_operations=bool(cfg.get("perform_operations", False)),
         app_description=str(cfg.get("app_description") or ""),
-        db_path=os.path.join(output_rootname, f"{backend_type}.db"),
+        db_path=os.path.join(output_dir, f"{backend_type}.db"),
         class_path=cfg.get("class_path"),
         params=dict(cfg.get("params") or {}),
     )
@@ -728,7 +728,7 @@ def _create_backend(backend_config: Mapping[str, Any], *, gm_name: str) -> Any:
     # it, so the file/writer-thread never materialize for runs that don't.
     exposure_logger = EventLogger(
         "exposure",
-        os.path.join(output_rootname, "exposure_events.jsonl"),
+        os.path.join(output_dir, "exposure_events.jsonl"),
         static_fields=static_fields,
     )
     exposure_logger.episode_idx = 0
@@ -738,7 +738,7 @@ def _create_backend(backend_config: Mapping[str, Any], *, gm_name: str) -> Any:
     # agent's Tool Bridge logs to it, so the file/writer never materialize otherwise.
     harness_logger = EventLogger(
         "harness",
-        os.path.join(output_rootname, "harness_events.jsonl"),
+        os.path.join(output_dir, "harness_events.jsonl"),
         static_fields=static_fields,
     )
     harness_logger.episode_idx = 0

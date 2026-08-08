@@ -92,6 +92,63 @@ def test_known_gm_names_and_valid_params_pass() -> None:
     )
 
 
+def _rates(entries: object) -> dict:
+    return {
+        "env": {"gm": {"name": "g"}},
+        "sim": {
+            "engine": {
+                "participation": {
+                    "built_in": "activity_markov",
+                    "params": {"activity_transition_rates": entries},
+                }
+            }
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("entries", "message"),
+    [
+        # The audit case: a positional pair leaves "what are a and b?" unanswerable.
+        ({"user": [0.8, 0.1]}, "Positional pairs are not supported"),
+        ({"user": 0.8}, "Positional pairs are not supported"),
+        ({"user": {"activation": 0.8}}, "declares neither"),
+        ({"user": {"inactive_to_active": 1.5}}, "between 0 and 1"),
+        ({"user": {"inactive_to_active": "often"}}, "must be a number"),
+    ],
+)
+def test_malformed_activity_rate_entry_raises_at_config_time(entries: dict, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        _engine(_rates(entries))
+
+
+def test_named_activity_rate_entries_pass() -> None:
+    _engine(_rates({"user": {"inactive_to_active": 0.8, "active_to_inactive": 0.1}}))
+    # Either rate alone is valid: the missing one mirrors the declared one.
+    _engine(_rates({"lurker": {"active_to_inactive": 0.6}}))
+
+
+def test_retired_output_rootname_key_gets_migration_error() -> None:
+    with pytest.raises(ValueError, match="'output_rootname' was renamed to 'output_dir'"):
+        validate_runtime_structure(
+            OmegaConf.create({"output_rootname": "outputs", "env": {}, "sim": {}})
+        )
+
+
+def test_retired_output_rootname_raises_even_when_empty() -> None:
+    # An empty/null value is still the retired key: the run would otherwise fall
+    # back to Hydra's job dir while the config looks like it set an output path.
+    for value in ("", None):
+        with pytest.raises(ValueError, match="no longer read by the runtime"):
+            validate_runtime_structure(
+                OmegaConf.create({"output_rootname": value, "env": {}, "sim": {}})
+            )
+
+
+def test_current_output_dir_key_passes() -> None:
+    validate_runtime_structure(OmegaConf.create({"output_dir": "outputs", "env": {}, "sim": {}}))
+
+
 def test_backend_action_aliases_valid_on_single_gm() -> None:
     # action_aliases was accepted for multi-GM backends but rejected for single-GM.
     validate_runtime_structure(

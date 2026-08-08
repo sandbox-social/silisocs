@@ -72,7 +72,7 @@ def test_shared_flow_gm_uses_base_initialization_contracts(tmp_path, monkeypatch
         owned_flows=["default"],
         backend_config={
             "backend_type": "twitter_like",
-            "output_rootname": str(tmp_path),
+            "output_dir": str(tmp_path),
             "enabled_actions": ["POST"],
             "turn_policy_built_in": "open_ended",
             "app_description": "desc",

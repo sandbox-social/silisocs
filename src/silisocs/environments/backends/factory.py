@@ -68,7 +68,7 @@ def default_backend_db_filename(backend_type: str) -> str:
 
 
 def resolve_backend_db_path(
-    output_rootname: str,
+    output_dir: str,
     backend_type: str,
     db_path: str | None = None,
 ) -> str:
@@ -77,16 +77,16 @@ def resolve_backend_db_path(
     Single source of truth for the db path so the multi-GM collision guard and
     the actual app instantiation never diverge. An explicit ``db_path`` (e.g. a
     configured ``params.db_path``) is honored: an absolute path is used as-is,
-    while a relative one is nested under ``output_rootname``. Otherwise the
-    default ``<output_rootname>/<backend_type>.db`` convention is used.
+    while a relative one is nested under ``output_dir``. Otherwise the
+    default ``<output_dir>/<backend_type>.db`` convention is used.
     """
-    rootname = str(output_rootname or "")
+    root = str(output_dir or "")
     explicit = str(db_path or "").strip()
     if explicit:
         if os.path.isabs(explicit):
             return explicit
-        return os.path.join(rootname, explicit)
-    return os.path.join(rootname, default_backend_db_filename(backend_type))
+        return os.path.join(root, explicit)
+    return os.path.join(root, default_backend_db_filename(backend_type))
 
 
 def _load_app_class(class_path: str) -> type[BackendApp]:
@@ -175,10 +175,10 @@ def create_backend_app(backend_type: str, **kwargs: Any) -> BackendApp:
     # ``params.db_path`` override is nested under that same root rather than
     # silently clobbering it with an un-rooted path.
     base_db_path = str(kwargs.get("db_path") or default_backend_db_filename(backend_type))
-    output_rootname = os.path.dirname(base_db_path)
+    output_dir = os.path.dirname(base_db_path)
     params_db_path = backend_params.pop("db_path", None)
     if params_db_path is not None:
-        db_path = resolve_backend_db_path(output_rootname, backend_type, db_path=params_db_path)
+        db_path = resolve_backend_db_path(output_dir, backend_type, db_path=params_db_path)
     else:
         db_path = base_db_path
 

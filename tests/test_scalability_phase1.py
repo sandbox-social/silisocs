@@ -656,14 +656,14 @@ def test_recorder_keeps_counts_and_gates_name_lists(tmp_path) -> None:
     result = StepResult(active_agent_names=("Bob", "Alice"))
 
     metrics = SimMetricsCollector.reset()
-    recorder = DefaultEngineRecorder(output_rootname=str(tmp_path))
+    recorder = DefaultEngineRecorder(output_dir=str(tmp_path))
     recorder.record_episode(episode=0, duration_s=0.1, total_agents=5, step_result=result)
     episode = metrics.to_dict()["episode_metrics"][0]
     assert episode["active_agents"] == 2
     assert "active_agent_names" not in episode
 
     metrics = SimMetricsCollector.reset()
-    recorder = DefaultEngineRecorder(output_rootname=str(tmp_path), record_active_agent_names=True)
+    recorder = DefaultEngineRecorder(output_dir=str(tmp_path), record_active_agent_names=True)
     recorder.record_episode(episode=0, duration_s=0.1, total_agents=5, step_result=result)
     episode = metrics.to_dict()["episode_metrics"][0]
     assert episode["active_agent_names"] == ["Alice", "Bob"]

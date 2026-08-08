@@ -479,11 +479,9 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                     }
                     run_name = format_template_token(run_name_template, template_context)
                     if output_root_override:
-                        output_rootname = format_template_token(
-                            output_root_override, template_context
-                        )
+                        output_dir = format_template_token(output_root_override, template_context)
                     else:
-                        output_rootname = (
+                        output_dir = (
                             f"experiments/studies/{study_id}/runs/"
                             f"{hyp_id}/{cond_id}/{scenario}/seed_{seed}/run"
                         )
@@ -522,7 +520,7 @@ def _expand_runs(  # noqa: C901, PLR0912, PLR0915
                             runner_module=runner_module,
                             re_evaluate=re_evaluate,
                             working_directory=resolved_working_directory,
-                            output_rootname=output_rootname,
+                            output_dir=output_dir,
                             command_override=command_override,
                             eval_specs=merged_eval_specs,
                         )
@@ -545,15 +543,15 @@ def _build_run_command(spec: RunSpec) -> list[str]:
 
     cmd.append(f"seed={spec.seed}")
     cmd.append(f"run_name={_normalize_override_value(spec.run_name)}")
-    if spec.output_rootname:
-        cmd.append(f"output_rootname={_normalize_override_value(spec.output_rootname)}")
+    if spec.output_dir:
+        cmd.append(f"output_dir={_normalize_override_value(spec.output_dir)}")
     cmd.append(f"experiment_name={spec.study_name}")
 
     for key in sorted(spec.overrides):
         if key in {
             "seed",
             "run_name",
-            "output_rootname",
+            "output_dir",
             "experiment_name",
         }:
             continue
@@ -573,7 +571,7 @@ def _plan_rows(run_specs: list[RunSpec]) -> list[dict[str, Any]]:
             "scenario": spec.scenario,
             "seed": spec.seed,
             "run_name": spec.run_name,
-            "planned_output_rootname": spec.output_rootname,
+            "planned_output_dir": spec.output_dir,
             "working_directory": spec.working_directory,
             "mode": spec.execution_mode,
             "reused_source": spec.reused_source,
@@ -686,9 +684,9 @@ def _preflight_summary(run_specs: list[RunSpec]) -> list[str]:
 
 def _planned_run_dir(spec: RunSpec, repo_root: Path) -> Path | None:
     """Resolve the planned output directory the same way _run_one_spec does."""
-    if not spec.output_rootname:
+    if not spec.output_dir:
         return None
-    planned = Path(spec.output_rootname)
+    planned = Path(spec.output_dir)
     if not planned.is_absolute():
         planned = (repo_root / planned).resolve()
     return planned

@@ -20,7 +20,7 @@ def test_named_scenario_launch_uses_unique_managed_output(tmp_path: Path) -> Non
     assert spec.scenario == "world"
     assert spec.output_dir.parent == tmp_path / "outputs" / "world"
     assert spec.command[-2] == "num_steps=2"
-    assert spec.command[-1] == f"++output_rootname={spec.output_dir}"
+    assert spec.command[-1] == f"++output_dir={spec.output_dir}"
 
 
 def test_interactive_launch_injects_control_overrides(tmp_path: Path) -> None:
@@ -118,7 +118,7 @@ def test_launch_validation_rejects_unsafe_names_and_output_conflicts(tmp_path: P
             {
                 "scenario": "world",
                 "output_dir": "one",
-                "overrides": ["output_rootname=two"],
+                "overrides": ["output_dir=two"],
             },
             **common,
         )

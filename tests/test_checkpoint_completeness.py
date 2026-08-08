@@ -495,11 +495,11 @@ def test_reddit_init_recsys_accepts_component_kwargs():
 def test_multi_gm_isolates_backend_paths():
     """Multiple GMs get distinct per-GM backend output paths."""
     entries = [
-        ("alpha", {"backend_type": "twitter_like", "output_rootname": "/tmp/run"}),
-        ("beta", {"backend_type": "twitter_like", "output_rootname": "/tmp/run"}),
+        ("alpha", {"backend_type": "twitter_like", "output_dir": "/tmp/run"}),
+        ("beta", {"backend_type": "twitter_like", "output_dir": "/tmp/run"}),
     ]
     _isolate_backend_paths(entries)
-    roots = [cfg["output_rootname"] for _, cfg in entries]
+    roots = [cfg["output_dir"] for _, cfg in entries]
     assert roots[0].endswith("/alpha")
     assert roots[1].endswith("/beta")
     assert roots[0] != roots[1]
@@ -507,16 +507,16 @@ def test_multi_gm_isolates_backend_paths():
 
 def test_single_gm_keeps_flat_layout():
     """A single GM keeps the flat output layout for backward compatibility."""
-    entries = [("solo", {"backend_type": "twitter_like", "output_rootname": "/tmp/run"})]
+    entries = [("solo", {"backend_type": "twitter_like", "output_dir": "/tmp/run"})]
     _isolate_backend_paths(entries)
-    assert entries[0][1]["output_rootname"] == "/tmp/run"
+    assert entries[0][1]["output_dir"] == "/tmp/run"
 
 
 def test_multi_gm_db_path_collision_raises():
     """Two GMs resolving to the same backend DB path fail loudly."""
     entries = [
-        ("dup", {"backend_type": "twitter_like", "output_rootname": "/tmp/a"}),
-        ("dup", {"backend_type": "twitter_like", "output_rootname": "/tmp/a"}),
+        ("dup", {"backend_type": "twitter_like", "output_dir": "/tmp/a"}),
+        ("dup", {"backend_type": "twitter_like", "output_dir": "/tmp/a"}),
     ]
     with pytest.raises(ValueError, match="same backend database path"):
         _isolate_backend_paths(entries)
@@ -683,18 +683,18 @@ def test_per_gm_log_writer_layout_matches_reader(tmp_path):
 
     Closes the writer/reader contract: ``_isolate_backend_paths`` nests each
     backend under ``<run>/<gm_name>/``, the GM writes
-    ``<output_rootname>/action_events.jsonl`` there, and
+    ``<output_dir>/action_events.jsonl`` there, and
     ``resolve_action_event_files`` must rediscover those exact files.
     """
     entries = [
-        ("gm_a", {"backend_type": "twitter_like", "output_rootname": str(tmp_path)}),
-        ("gm_b", {"backend_type": "reddit_like", "output_rootname": str(tmp_path)}),
+        ("gm_a", {"backend_type": "twitter_like", "output_dir": str(tmp_path)}),
+        ("gm_b", {"backend_type": "reddit_like", "output_dir": str(tmp_path)}),
     ]
     _isolate_backend_paths(entries)
     written = []
     for _, backend_config in entries:
-        # Mirror game_master.py: <output_rootname>/action_events.jsonl.
-        log = Path(backend_config["output_rootname"]) / "action_events.jsonl"
+        # Mirror game_master.py: <output_dir>/action_events.jsonl.
+        log = Path(backend_config["output_dir"]) / "action_events.jsonl"
         log.parent.mkdir(parents=True, exist_ok=True)
         log.write_text("{}", encoding="utf-8")
         written.append(log)

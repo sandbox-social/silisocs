@@ -22,7 +22,7 @@ from silisocs.studies.study_artifacts import (
 from silisocs.studies.study_types import EvalSpec, RunSpec, StudyConfigError
 
 
-def _make_spec(output_rootname: str | None, **kwargs: Any) -> RunSpec:
+def _make_spec(output_dir: str | None, **kwargs: Any) -> RunSpec:
     defaults: dict[str, Any] = {
         "run_id": "h1__c1__default__seed1",
         "study_name": "resume_test",
@@ -38,7 +38,7 @@ def _make_spec(output_rootname: str | None, **kwargs: Any) -> RunSpec:
         "config_path": None,
         "runner_module": "silisocs.runtime.runner",
         "re_evaluate": False,
-        "output_rootname": output_rootname,
+        "output_dir": output_dir,
     }
     defaults.update(kwargs)
     return RunSpec(**defaults)

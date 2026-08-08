@@ -19,7 +19,7 @@ files override these defaults via Hydra composition (see `AGENTS.md`).
 | `num_steps` | `5` | int |
 | `run_name` | `"run1"` | str |
 | `seed` | `1` | int |
-| `output_rootname` | `""` | str |
+| `output_dir` | `""` | str |
 | `setting.name` | `"Generic Community"` | str |
 | `setting.background` | `["A general-purpose social media community where people discuss everyday topi...` | list |
 | `event.name` | `"Daily discussion"` | str |

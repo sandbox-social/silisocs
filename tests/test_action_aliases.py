@@ -113,7 +113,7 @@ def test_backend_config_accepts_action_aliases():
 
     cfg = OmegaConf.create(
         {
-            "output_rootname": "/tmp/x",
+            "output_dir": "/tmp/x",
             "sim": {"engine": {"turn_policy": {"built_in": "single_action"}}},
         }
     )

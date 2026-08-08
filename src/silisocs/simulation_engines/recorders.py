@@ -36,8 +36,8 @@ def probe_empty(total_agents: int) -> dict[str, Any]:
 class DefaultEngineRecorder(EngineRecorder):
     """Small metrics/log writer used by the runtime loop."""
 
-    def __init__(self, *, output_rootname: str, record_active_agent_names: bool = False) -> None:
-        self._output_rootname = output_rootname
+    def __init__(self, *, output_dir: str, record_active_agent_names: bool = False) -> None:
+        self._output_dir = output_dir
         # Per-episode active-agent NAME lists are O(active x steps) memory held
         # for the whole run (and dumped into sim_metrics.json); counts are always
         # recorded, names only when sim.telemetry.record_active_agent_names asks.
@@ -58,7 +58,7 @@ class DefaultEngineRecorder(EngineRecorder):
         phase_timings = dict(step_result.phase_timings or {})
 
         append_episode_run_stats(
-            output_rootname=self._output_rootname,
+            output_dir=self._output_dir,
             episode=episode,
             duration_s=duration_s,
             requested_workers=int(step_result.requested_workers),

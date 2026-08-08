@@ -65,20 +65,20 @@ def register_recording_backend(monkeypatch):
 def test_distinct_db_paths_do_not_raise_false_collision():
     """Same backend_type GMs that resolve to different db paths must not collide."""
     entries = [
-        ("alpha", {"backend_type": "twitter_like", "output_rootname": "/tmp/run"}),
-        ("beta", {"backend_type": "twitter_like", "output_rootname": "/tmp/run"}),
+        ("alpha", {"backend_type": "twitter_like", "output_dir": "/tmp/run"}),
+        ("beta", {"backend_type": "twitter_like", "output_dir": "/tmp/run"}),
     ]
-    # More than one GM => per-GM isolation nests output_rootname; no collision.
+    # More than one GM => per-GM isolation nests output_dir; no collision.
     _isolate_backend_paths(entries)
-    roots = [cfg["output_rootname"] for _, cfg in entries]
+    roots = [cfg["output_dir"] for _, cfg in entries]
     assert roots[0] != roots[1]
 
 
 def test_same_db_path_raises_collision():
     """Two GMs that resolve to the SAME db path must raise the collision error."""
     entries = [
-        ("dup", {"backend_type": "twitter_like", "output_rootname": "/tmp/a"}),
-        ("dup", {"backend_type": "twitter_like", "output_rootname": "/tmp/a"}),
+        ("dup", {"backend_type": "twitter_like", "output_dir": "/tmp/a"}),
+        ("dup", {"backend_type": "twitter_like", "output_dir": "/tmp/a"}),
     ]
     with pytest.raises(ValueError, match="same backend database path"):
         _isolate_backend_paths(entries)
@@ -96,7 +96,7 @@ def test_custom_db_path_override_distinct_does_not_collide():
             "alpha",
             {
                 "backend_type": "twitter_like",
-                "output_rootname": "/tmp/run",
+                "output_dir": "/tmp/run",
                 "params": {"db_path": "alpha_store.db"},
             },
         ),
@@ -104,7 +104,7 @@ def test_custom_db_path_override_distinct_does_not_collide():
             "beta",
             {
                 "backend_type": "twitter_like",
-                "output_rootname": "/tmp/run",
+                "output_dir": "/tmp/run",
                 "params": {"db_path": "beta_store.db"},
             },
         ),
@@ -120,7 +120,7 @@ def test_custom_db_path_override_same_raises_collision():
             "alpha",
             {
                 "backend_type": "twitter_like",
-                "output_rootname": "/tmp/run",
+                "output_dir": "/tmp/run",
                 "params": {"db_path": shared},
             },
         ),
@@ -128,7 +128,7 @@ def test_custom_db_path_override_same_raises_collision():
             "beta",
             {
                 "backend_type": "twitter_like",
-                "output_rootname": "/tmp/run",
+                "output_dir": "/tmp/run",
                 "params": {"db_path": shared},
             },
         ),
@@ -145,40 +145,40 @@ def test_custom_db_path_override_same_raises_collision():
 def test_guard_key_matches_create_backend_app_default(register_recording_backend, tmp_path):
     """The guard's resolved key equals the db_path the factory actually opens.
 
-    Default convention: no params.db_path => ``<output_rootname>/<type>.db``.
+    Default convention: no params.db_path => ``<output_dir>/<type>.db``.
     """
     backend_type = register_recording_backend
-    output_rootname = str(tmp_path)
+    output_dir = str(tmp_path)
 
-    guard_path = resolve_backend_db_path(output_rootname, backend_type)
+    guard_path = resolve_backend_db_path(output_dir, backend_type)
 
     app = create_backend_app(
         backend_type=backend_type,
-        db_path=os.path.join(output_rootname, default_backend_db_filename(backend_type)),
+        db_path=os.path.join(output_dir, default_backend_db_filename(backend_type)),
         params={},
     )
     assert isinstance(app, _RecordingApp)
     assert app.db_path == guard_path
-    assert guard_path == os.path.join(output_rootname, f"{backend_type}.db")
+    assert guard_path == os.path.join(output_dir, f"{backend_type}.db")
 
 
 def test_guard_key_matches_create_backend_app_override(register_recording_backend, tmp_path):
     """With a configured params.db_path the guard key still equals the real path."""
     backend_type = register_recording_backend
-    output_rootname = str(tmp_path)
+    output_dir = str(tmp_path)
     override = "custom_store.db"
 
-    guard_path = resolve_backend_db_path(output_rootname, backend_type, db_path=override)
+    guard_path = resolve_backend_db_path(output_dir, backend_type, db_path=override)
 
     app = create_backend_app(
         backend_type=backend_type,
-        db_path=os.path.join(output_rootname, default_backend_db_filename(backend_type)),
+        db_path=os.path.join(output_dir, default_backend_db_filename(backend_type)),
         params={"db_path": override},
     )
     assert isinstance(app, _RecordingApp)
     assert app.db_path == guard_path
     # A relative override is nested under the run output dir, not left un-rooted.
-    assert guard_path == os.path.join(output_rootname, override)
+    assert guard_path == os.path.join(output_dir, override)
 
 
 def test_guard_key_matches_create_backend_app_absolute_override(
@@ -186,14 +186,14 @@ def test_guard_key_matches_create_backend_app_absolute_override(
 ):
     """An absolute params.db_path override is honored verbatim by both sides."""
     backend_type = register_recording_backend
-    output_rootname = str(tmp_path)
+    output_dir = str(tmp_path)
     override = str(tmp_path / "abs" / "explicit.db")
 
-    guard_path = resolve_backend_db_path(output_rootname, backend_type, db_path=override)
+    guard_path = resolve_backend_db_path(output_dir, backend_type, db_path=override)
 
     app = create_backend_app(
         backend_type=backend_type,
-        db_path=os.path.join(output_rootname, default_backend_db_filename(backend_type)),
+        db_path=os.path.join(output_dir, default_backend_db_filename(backend_type)),
         params={"db_path": override},
     )
     assert isinstance(app, _RecordingApp)

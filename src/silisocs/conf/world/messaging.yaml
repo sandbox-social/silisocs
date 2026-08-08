@@ -6,7 +6,7 @@ num_agents: 4
 num_steps: 5
 run_name: run1
 seed: 1
-output_rootname: ""
+output_dir: ""
 
 setting:
   name: Group messaging channel

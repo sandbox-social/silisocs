@@ -394,7 +394,7 @@ scenario defaults.
 **A scenario's config-group files REPLACE their group; its flat files are
 MERGED.** A scenario `world/default.yaml` shadows the base `world` group entirely
 rather than layering onto it, so it must re-declare every universal run param the
-base provided — `jobname_format`, `scenario_name`, `run_name`, `output_rootname`,
+base provided — `jobname_format`, `scenario_name`, `run_name`, `output_dir`,
 `num_agents`, `num_steps`, `seed` — under a `# @package _global_` directive. The
 same applies to `agents/default.yaml` (`# @package agents`) and to any `env/`,
 `sim/`, or `eval/` group file. Flat `env.yaml`/`sim.yaml`/`eval.yaml` merge into
@@ -1121,6 +1121,26 @@ default. The ways out are all explicit — add rates for those agent names or si
 roles, set `active_probability` for one global rate (`activity_probability` only),
 or use `built_in: all` so every agent acts every step.
 
+**Each rate is named, never positional.** An entry is always a mapping —
+`{inactive_to_active: 0.8, active_to_inactive: 0.1}` — so neither number's meaning
+depends on its order; a bare pair (`user: [0.8, 0.1]`) or a scalar is rejected at
+config validation, not at the first step. What each rate means depends on the
+policy reading it:
+
+| Policy | `inactive_to_active` | `active_to_inactive` |
+|--------|----------------------|----------------------|
+| `activity_probability` | **the per-step probability that this agent acts at all** (draws are independent per step) | **not read** — it only serves as the mirror value when `inactive_to_active` is omitted |
+| `activity_markov` | probability an *inactive* agent switches to active this step | probability an *active* agent switches to inactive this step |
+
+So under `activity_probability`, `{inactive_to_active: 0.8, active_to_inactive: 0.1}`
+means "each agent acts with p = 0.8 every step" — the `0.1` is inert. Under
+`activity_markov` the same entry means "bursty: quick to wake, slow to go quiet",
+with a long-run active share of `0.8 / (0.8 + 0.1) ≈ 0.89`. The preflight estimate
+Studio shows (`expected_active_share()`) uses exactly these definitions: the mean
+`inactive_to_active` for `activity_probability`, and the mean
+`inactive_to_active / (inactive_to_active + active_to_inactive)` for
+`activity_markov`.
+
 ### Timeline Observation
 
 ```yaml
@@ -1162,6 +1182,19 @@ small, and it no-ops for backends without a SQLite timeline (e.g. Mastodon).
 ```yaml
 probes: {}              # See Probes section below
 ```
+
+!!! note "`eval`, `evaluations:`, and `silisocs.evaluations` are three different things"
+
+    | Name | What it is | Where it lives |
+    |------|-----------|----------------|
+    | the `eval` **config group** (`eval.probes.*`) | *in-run* measurement: probes the engine fires at loop boundaries during a simulation, writing `probe_events.jsonl` | `src/silisocs/conf/eval/base.yaml`, a scenario's `conf/eval.yaml`, or `eval.probes.*` overrides |
+    | the `evaluations:` **study key** | *post-run* analysis: evaluator specs a study runs over finished run directories, writing study metrics | `study.yaml` (see [study_schema.md](study_schema.md)) — never a scenario config |
+    | the `silisocs.evaluations` **Python package** | the code implementing both of the above, plus the `load_run`/`load_study` artifact loaders | `src/silisocs/evaluations/` |
+
+    A scenario config has no `evaluations:` key, and a study's `evaluations:`
+    list is not merged into the `eval` group. If you want a scenario to measure
+    something *while it runs*, you want `eval.probes`; if you want to score runs
+    *after* they finish, you want a study's `evaluations:`.
 
 ### Probes
 

@@ -242,7 +242,7 @@ def _resolve_output_directory(
     """Validate the scenario config and resolve/persist the run output directory.
 
     Runs schema validation, resolves the output directory (explicit argument,
-    ``output_rootname``, or Hydra's job dir, in that order), stamps it back
+    ``output_dir``, or Hydra's job dir, in that order), stamps it back
     onto ``cfg``, and writes the runtime-effective config (plus a snapshot next
     to Hydra's when running under Hydra). Returns the resolved directory.
     """
@@ -258,13 +258,11 @@ def _resolve_output_directory(
             logger.error(f"Configuration validation failed: {e}")
             raise
 
-    configured_output_rootname = str(
-        OmegaConf.select(cfg, "output_rootname", default="") or ""
-    ).strip()
+    configured_output_dir = str(OmegaConf.select(cfg, "output_dir", default="") or "").strip()
     if explicit_output_dir is not None:
         output_dir = os.path.abspath(os.fspath(explicit_output_dir))
-    elif configured_output_rootname:
-        output_dir = configured_output_rootname
+    elif configured_output_dir:
+        output_dir = configured_output_dir
         if not os.path.isabs(output_dir):
             output_dir = os.path.abspath(output_dir)
     else:
@@ -272,14 +270,14 @@ def _resolve_output_directory(
         if hydra_dir is None:
             raise ValueError(
                 "No output directory: outside a Hydra invocation, pass "
-                "run_simulation(cfg, output_dir=...) or set 'output_rootname' "
+                "run_simulation(cfg, output_dir=...) or set 'output_dir' "
                 "in the config."
             )
         output_dir = os.path.join(hydra_dir, HydraConfig.get().job.name)
 
     # Disable struct mode to allow setting new keys, then re-enable.
     OmegaConf.set_struct(cfg, False)
-    cfg.output_rootname = output_dir
+    cfg.output_dir = output_dir
     cfg.scenario_name = str(getattr(cfg, "scenario_name", "default") or "default")
     OmegaConf.set_struct(cfg, True)
 
@@ -351,7 +349,7 @@ def run_simulation(cfg: DictConfig, *, output_dir: str | os.PathLike[str] | None
 
     ``cfg`` is any composed experiment config (see :func:`compose_config`).
     Outside a Hydra invocation, pass ``output_dir`` explicitly or set
-    ``output_rootname`` in the config. Returns the resolved output directory
+    ``output_dir`` in the config. Returns the resolved output directory
     holding the run's artifacts (``run_manifest.json``, event logs,
     checkpoints, ...); load them with
     :func:`silisocs.evaluations.run_artifact.load_run`.

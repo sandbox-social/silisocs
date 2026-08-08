@@ -728,7 +728,8 @@ Use one of these patterns:
 
 Condition-level path controls:
 - `run_name_template`: Optional placeholder template for top-level `run_name`.
-- `output_root_override`: Optional placeholder template for `sim.output_rootname`.
+- `output_root_override`: Optional placeholder template for the run's top-level
+  `output_dir`.
 - `sub_experiment`: Optional label to group/run subsets of conditions.
 - `config_path`: Optional per-condition override for Hydra `--config-path`.
 

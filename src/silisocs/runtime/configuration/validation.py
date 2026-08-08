@@ -45,6 +45,18 @@ ENGINE_STEP_PARAM_KEYS: frozenset[str] = frozenset(
 # The uniform policy-slot shape ({built_in|class_path, params}) used by every
 # sim.engine sub-slot.
 _POLICY_SLOT_KEYS: frozenset[str] = frozenset({"built_in", "class_path", "params"})
+# The two named rates every ``activity_transition_rates`` entry may declare. They
+# are named, never positional, so neither number's meaning depends on its order.
+_ACTIVITY_RATE_KEYS: tuple[str, ...] = ("inactive_to_active", "active_to_inactive")
+# Retired config keys -> (current spelling, where the user changes it). A renamed
+# key is never silently aliased: carrying the old spelling fails the run with a
+# message naming both spellings (see ``_reject_renamed_keys``).
+_RENAMED_CONFIG_KEYS: dict[str, tuple[str, str]] = {
+    "output_rootname": (
+        "output_dir",
+        "your scenario's conf/world/*.yaml (the universal run params block)",
+    ),
+}
 
 
 @dataclass
@@ -213,14 +225,6 @@ def validate_cross_references(cfg: DictConfig) -> None:
 
     roles_cfg = OmegaConf.select(world_cfg, "roles") or {}
     roles = set(roles_cfg.keys()) if isinstance(roles_cfg, dict) else set()
-    activity_rates = OmegaConf.select(
-        world_cfg,
-        "env.gm.components.next_acting.params.activity_transition_rates",
-    )
-    if activity_rates and roles:
-        for role in activity_rates.keys():
-            if role not in roles:
-                errors.append(f"Next-acting activity rates reference unknown role: {role}")
 
     graph_cfg = OmegaConf.select(world_cfg, "env.gm.components.initialize.params.graph")
     fully_connected_targets = (
@@ -355,6 +359,7 @@ def validate_data_files(cfg: DictConfig, scenario_path: Path) -> None:
 
 def validate_runtime_structure(cfg: DictConfig) -> None:
     """Validate framework-owned config sections while leaving params open."""
+    _reject_renamed_keys(cfg)
     _assert_allowed_keys(cfg, "agents.builder", {"class_path", "params"})
     _assert_allowed_keys(cfg, "agents.persona_pipeline", {"defaults", "classes"})
     _validate_persona_classes(cfg)
@@ -453,6 +458,27 @@ _PERSONA_BUILDER_CLASS_PATH = (
 )
 
 
+def _reject_renamed_keys(cfg: DictConfig) -> None:
+    """Fail loudly on config keys that were renamed, never silently alias them.
+
+    A renamed key that merely stopped being read is the worst failure mode this
+    codebase has: the composed config still carries it, nothing complains, and
+    the run silently uses the default instead. Each entry names the old key, the
+    new key, and the file the user has to edit.
+    """
+    absent = object()
+    for old_key, (new_key, where) in _RENAMED_CONFIG_KEYS.items():
+        # A sentinel default, not None: an explicit ``output_rootname:`` with an
+        # empty/null value is still the retired key and must still fail.
+        if OmegaConf.select(cfg, old_key, default=absent) is absent:
+            continue
+        raise ValueError(
+            f"'{old_key}' was renamed to '{new_key}'. Rename the key in {where} "
+            f"(and in any override you pass, e.g. '++{new_key}=<path>'). "
+            f"'{old_key}' is no longer read by the runtime."
+        )
+
+
 def _validate_persona_classes(cfg: DictConfig) -> None:
     """Reject unknown sub-keys under ``agents.persona_pipeline.classes.<class>``.
 
@@ -534,6 +560,8 @@ def _validate_engine_slots(cfg: DictConfig) -> None:
     for slot in ("step", "loop", "turn_policy", "participation"):
         _assert_allowed_keys(cfg, f"sim.engine.{slot}", set(_POLICY_SLOT_KEYS))
 
+    _validate_activity_transition_rates(cfg)
+
     # step.params keys are framework-defined for built-in step strategies; a custom
     # class_path step strategy may carry its own params, so only enforce for built-ins.
     step_class_path = OmegaConf.select(cfg, "sim.engine.step.class_path")
@@ -551,6 +579,46 @@ def _validate_engine_slots(cfg: DictConfig) -> None:
         _assert_allowed_keys(cfg, "sim.engine.step.params", set(ENGINE_STEP_PARAM_KEYS))
 
     _validate_gm_scoped_maps(cfg)
+
+
+def _validate_activity_transition_rates(cfg: DictConfig) -> None:
+    """Validate the shape of every ``activity_transition_rates`` entry.
+
+    The canonical (and only) entry shape is a mapping naming its two rates
+    explicitly — ``{inactive_to_active: <p>, active_to_inactive: <p>}`` — so the
+    numbers are never positional. A bare pair (``user: [0.8, 0.1]``) or a scalar
+    would otherwise survive composition and only surface at the first step, as
+    "no entry matches agent X"; here it fails at validation, naming the shape.
+    """
+    path = "sim.engine.participation.params.activity_transition_rates"
+    rates = OmegaConf.select(cfg, path)
+    if rates is None:
+        return
+    if not isinstance(rates, (Mapping, DictConfig)):
+        raise ValueError(f"{path} must be a mapping of agent name or sim role -> rates.")
+    for key, entry in rates.items():
+        where = f"{path}.{key}"
+        if not isinstance(entry, (Mapping, DictConfig)):
+            raise ValueError(
+                f"{where} must be a mapping naming its rates explicitly, e.g. "
+                "{inactive_to_active: 0.8, active_to_inactive: 0.1}; got "
+                f"{type(entry).__name__}. Positional pairs are not supported."
+            )
+        declared = [name for name in _ACTIVITY_RATE_KEYS if entry.get(name) is not None]
+        if not declared:
+            raise ValueError(
+                f"{where} declares neither 'inactive_to_active' nor 'active_to_inactive'. "
+                "Declare at least one (the missing one mirrors it)."
+            )
+        for name in declared:
+            try:
+                value = float(entry[name])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{where}.{name} must be a number between 0 and 1.") from exc
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(
+                    f"{where}.{name} must be a probability between 0 and 1; got {value}."
+                )
 
 
 def _declared_gm_names(cfg: DictConfig) -> set[str]:
@@ -755,7 +823,7 @@ _UNIVERSAL_WORLD_PARAMS = (
     'jobname_format: "N${num_agents}_T${num_steps}_${experiment_name}_${run_name}"',
     "scenario_name: my_scenario",
     "run_name: baseline",
-    "output_rootname: outputs",
+    "output_dir: outputs",
     "num_agents: 10",
     "num_steps: 5",
     "seed: 1",

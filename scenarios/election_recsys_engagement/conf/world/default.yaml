@@ -9,7 +9,7 @@ num_agents: 20
 num_steps: 15
 seed: 11
 run_name: election_recsys_engagement
-output_rootname: ""
+output_dir: ""
 
 setting:
   name: Storhampton

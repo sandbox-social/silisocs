@@ -485,9 +485,10 @@ artifact = load_run(run_dir)
 print(artifact.status, sum(1 for _ in artifact.iter_actions()))
 ```
 
-Outside a Hydra invocation, pass `output_dir=` explicitly (or set
-`output_rootname` in the config). `load_run`/`load_study` return the same
-typed artifacts Studio and the analysis panels consume.
+Outside a Hydra invocation, pass the `output_dir=` argument explicitly (or set
+the config key of the same name, `output_dir`, in your `world` group).
+`load_run`/`load_study` return the same typed artifacts Studio and the analysis
+panels consume.
 
 ---
 

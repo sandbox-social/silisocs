@@ -17,9 +17,11 @@ appear in the wild for the same thing, the **bold** one is the preferred term.
 
 **Run**
 : One execution of a scenario. Everything it produces lives in one output
-  directory under `outputs/`, indexed by its `run_manifest.json`. Studio's
-  job queue manages runs; "job" in API paths is the queue's internal word for
-  the same thing.
+  directory under `outputs/`, indexed by its `run_manifest.json`. The
+  `output_dir` run parameter names that directory (it was called
+  `output_rootname` before 0.4.0); `run_simulation(cfg, output_dir=...)` is the
+  same thing programmatically. Studio's job queue manages runs; "job" in API
+  paths is the queue's internal word for the same thing.
 
 **Step**
 : One tick of the simulation clock (`num_steps` of them per run). Each step,
@@ -51,6 +53,25 @@ appear in the wild for the same thing, the **bold** one is the preferred term.
 : An in-simulation survey question put to agents on a schedule (e.g. "Do you
   believe the claim?"). Results land in `probe_events.jsonl` and feed the
   analysis panels. Older docs sometimes say "survey" or "questionnaire".
+
+**Evaluation** (`eval` vs `evaluations`)
+: Three similarly-named things. The **`eval` config group** (`eval.probes.*`)
+  configures *in-run* measurement — the probes an engine fires during a
+  simulation. The **`evaluations:` study key** configures *post-run* analysis —
+  evaluators a study runs over finished run directories. The
+  **`silisocs.evaluations` package** is the code implementing both, plus the
+  `load_run`/`load_study` artifact loaders. A scenario config never has an
+  `evaluations:` key; a `study.yaml` never has an `eval:` group.
+
+**Participation**
+: The sim-level filter deciding which agents are in a step's roster at all
+  (`sim.engine.participation`), applied before any GM's `next_acting`. The
+  default `all` puts everyone in every step. The activity models
+  (`activity_probability`, `activity_markov`) read `activity_transition_rates`,
+  keyed by agent name or sim role, whose two rates are always **named**
+  (`inactive_to_active`, `active_to_inactive`) rather than positional — and mean
+  different things per policy (see
+  [Configuration](configuration.md#social-setup-and-participation)).
 
 **Flow**
 : A named group of agents that the engine schedules together (`flow_tag` on a

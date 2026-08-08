@@ -187,7 +187,7 @@ def _build_gm(tmp_path: Any, monkeypatch: Any, *, flow_tags: dict[str, str]) -> 
         owned_flows=("default",),
         backend_config={
             "backend_type": "resource_market",
-            "output_rootname": str(tmp_path),
+            "output_dir": str(tmp_path),
             "enabled_actions": ["ACT"],
             "turn_policy_built_in": "single_action",
             "app_description": "Generic app",
