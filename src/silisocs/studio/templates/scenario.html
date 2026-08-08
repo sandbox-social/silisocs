@@ -41,6 +41,7 @@
   'page': 'scenario',
   'name': scenario.name,
   'source': scenario.source,
+  'fingerprints': scenario.fingerprints|default({}, true),
   'values': values,
   'paletteCommands': [
     {'label': 'Launch scenario', 'keywords': 'run start preflight', 'action': 'launchScenario'},

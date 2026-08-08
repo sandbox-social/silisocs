@@ -51,6 +51,82 @@ window.notify = (message, tone = "neutral") => {
   setTimeout(() => el.remove(), 3000);
 };
 
+/* ---- save conflicts ------------------------------------------------------
+ * Two editors on one document used to overwrite each other in silence. A save
+ * whose fingerprint is stale now comes back 409, and this dialog is the whole
+ * UX: it names the file, shows what the other editor changed, and offers the
+ * two honest ways out. Nothing is discarded without the user saying so. */
+window.saveConflict = async response => {
+  if (response.status !== 409) return null;
+  try {
+    const detail = (await response.clone().json()).detail;
+    return detail && detail.error === "conflict" ? detail : null;
+  } catch {
+    return null;
+  }
+};
+
+function diffLineClass(line) {
+  if (line.startsWith("+++") || line.startsWith("---")) return "diff-header";
+  if (line.startsWith("@@")) return "diff-hunk";
+  if (line.startsWith("+")) return "diff-addition";
+  if (line.startsWith("-")) return "diff-removal";
+  return "diff-context";
+}
+
+window.showSaveConflict = (detail, {onReload, onOverwrite}) => {
+  document.querySelector('[data-testid="save-conflict"]')?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.className = "command-palette compact-dialog";
+  dialog.dataset.testid = "save-conflict";
+  const form = document.createElement("form");
+  form.className = "form-group";
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Conflicting edit";
+  const title = document.createElement("h2");
+  title.textContent = detail.file;
+  const message = document.createElement("p");
+  message.textContent = `${detail.message} Your save was not written — nothing on disk changed.`;
+  const diff = document.createElement("pre");
+  diff.className = "config-diff";
+  diff.style.height = "220px";
+  diff.replaceChildren(
+    ...(detail.diff || "").split("\n").map(line => {
+      const span = document.createElement("span");
+      span.className = diffLineClass(line);
+      span.textContent = line;
+      return span;
+    }),
+  );
+  const actions = document.createElement("div");
+  actions.className = "composer-actions";
+  const button = (label, className, handler) => {
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = className;
+    el.textContent = label;
+    el.onclick = () => {
+      dialog.close();
+      dialog.remove();
+      handler?.();
+    };
+    return el;
+  };
+  actions.append(
+    button("Keep editing", "button quiet"),
+    button("Reload their version", "button", onReload),
+    button("Overwrite", "button primary", onOverwrite),
+  );
+  form.append(eyebrow, title, message, diff, actions);
+  dialog.append(form);
+  // Dismissing with Escape means "keep editing": the dialog goes, the unsaved
+  // edits stay exactly where they are.
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+};
+
 /* ---- command palette -----------------------------------------------------
  * The dialog only exists once the body is parsed, so the real registration
  * function replaces boot.js's queueing stub at DOMContentLoaded. */

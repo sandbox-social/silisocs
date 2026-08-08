@@ -60,6 +60,7 @@
   'page': 'study',
   'id': study.id,
   'definition': study.definition,
+  'fingerprint': study.fingerprint|default('', true),
   'runChoices': run_choices|default([], true),
   'boardStream': ('/api/jobs/' ~ job.id ~ '/stream')
     if (tab == 'board' and job and job.status in ('queued', 'running')) else none,

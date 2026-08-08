@@ -5,6 +5,7 @@
 # return shape; the ones with a non-obvious rule carry a docstring.
 
 import asyncio
+from typing import Any
 
 import yaml
 from fastapi import APIRouter, HTTPException, Request
@@ -16,8 +17,18 @@ from silisocs.studio.routes.support import (
     run_json,
     scenario_or_404,
 )
+from silisocs.studio.save_conflicts import SaveConflictError
 
 router = APIRouter()
+
+
+def _string_mapping(value: Any, detail: str) -> dict[str, str]:
+    """Return an optional ``{name: text}`` payload field, or raise 422."""
+    if not isinstance(value, dict) or not all(
+        isinstance(key, str) and isinstance(item, str) for key, item in value.items()
+    ):
+        raise HTTPException(status_code=422, detail=detail)
+    return value
 
 
 @router.get("/api/scenarios")
@@ -120,12 +131,29 @@ def api_scenario_runs(request: Request, scenario_name: str, source: str = "works
 
 @router.post("/api/scenarios")
 async def api_save_scenario(request: Request):
+    """Write a scenario's documents, refusing a save built on stale bytes.
+
+    ``fingerprints`` (and the optional ``baselines`` the conflict diff reads)
+    are opt-in: a payload without them overwrites, as it always did.
+    """
     payload = await request.json()
     name = str(payload.get("name") or "")
     source = str(payload.get("source") or "workspace")
     files = require_file_mapping(payload.get("files") or {})
+    fingerprints = _string_mapping(
+        payload.get("fingerprints") or {},
+        "fingerprints must map relative names to the fingerprint the edit was based on",
+    )
+    baselines = _string_mapping(
+        payload.get("baselines") or {},
+        "baselines must map relative names to the YAML text the edit was based on",
+    )
     try:
-        return request.app.state.workspace.scenario_repository(source).save(name, files)
+        return request.app.state.workspace.scenario_repository(source).save(
+            name, files, fingerprints=fingerprints, baselines=baselines
+        )
+    except SaveConflictError as exc:
+        raise HTTPException(status_code=409, detail=exc.detail) from exc
     except (KeyError, ValueError, yaml.YAMLError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

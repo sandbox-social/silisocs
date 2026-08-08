@@ -269,6 +269,33 @@ refreshes are invalidated by artifact stream rather than backend type.
 `GET /api/ready` reports warm-up state as `{"ready": <bool>, "phase": <text>}`
 (see [Startup](#startup)).
 
+### Concurrent editing
+
+Scenario documents and `study.yaml` carry a **fingerprint** — the sha256 of
+their raw bytes on disk — returned with every load (`fingerprints` per scenario
+file, `fingerprint` for a study). `POST /api/scenarios` and
+`POST /api/studies/<id>` echo the fingerprint the edit was based on; the server
+recomputes it before writing and answers `409` when it no longer matches, with
+`{"error", "file", "fingerprint", "diff"}` — the current fingerprint plus a
+compact unified diff against the client's `baselines`/`baseline` text when it
+sends one, or against the submitted text otherwise. Nothing is written on a
+conflict, not even the documents that did not diverge. The Studio editors always
+send the fingerprint and offer the two honest ways out (reload their version, or
+overwrite with the fingerprint the conflict reported); a request that omits it
+— an older client, a script, `curl` — keeps the plain overwrite behaviour. This
+is a conflict *check*, not a lock: it reports divergence, it does not serialize
+writers.
+
+**Comment preservation.** A raw-text edit is written byte for byte: the YAML
+mirror's documents and `study.yaml` keep their comments, key order, and blank
+lines exactly as authored (a scenario document missing its `# @package`
+directive gains one, and that is the only change a save makes). A **form** edit
+is composed by re-serializing the document, which keeps every key — including
+ones Studio does not model — but not the comments inside it; only the leading
+comment block (where the Hydra directives live) is carried over. Edit a
+commented document through its YAML mirror, not the form, when the comments
+matter.
+
 ## Startup
 
 Two pieces of first-launch work used to sit in front of the first page render,
@@ -338,6 +365,15 @@ what lets a page module's first response already reach `notify()` and
 Page-level palette entries are declared as `paletteCommands` **data** in the
 island (an `action` names a global on the page's module), so their labels stay
 in the server-rendered HTML.
+
+Because none of that executes during an HTTP test, a dropped script tag or a
+syntax error in one module would leave the API suite green. `tests/test_studio_browser_smoke.py`
+is the guard: it serves Studio over a throwaway offline workspace and drives a
+real Chromium from home through the scenario editor, a launched run, and the
+run page's tabs, failing on any `console.error` or uncaught page error. It
+**skips** unless `SILISOCS_SMOKE_CHROME`/`CHROME` (or `demo/chrome-wrapper.sh`)
+names a working browser — see [demo/README.md](../demo/README.md) for how to run
+it locally.
 
 ## Deployment
 

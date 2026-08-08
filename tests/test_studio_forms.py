@@ -20,6 +20,7 @@ from silisocs.studio.forms import (
     run_choice_provider,
     run_preview_provider,
 )
+from silisocs.studio.save_conflicts import SaveConflictError
 
 
 def _files(*, backend_type: str = "resource_market") -> dict[str, str]:
@@ -236,6 +237,57 @@ def test_save_preserves_package_directives_and_comments(tmp_path: Path) -> None:
     assert world_text.startswith("# @package _global_\n")
     assert "# tuned for the demo" in world_text
     assert saved["files"]["agents/default.yaml"]["text"].startswith("# @package agents\n")
+
+
+def test_raw_text_save_writes_the_authors_bytes(tmp_path: Path) -> None:
+    """A document that already carries its directive is written byte-for-byte."""
+    repository = ScenarioRepository(tmp_path)
+    files = _files()
+    authored = (
+        "# @package _global_\n"
+        "\n"
+        "# The demo world, tuned by hand.\n"
+        "scenario_name: demo   # keep this trailing note\n"
+        "num_agents: 2\n"
+        "\n"
+        "num_steps: 3\n"
+        "seed: 1\n"
+    )
+    files["world/default.yaml"] = authored
+
+    repository.save("demo", files)
+
+    on_disk = (tmp_path / "demo" / "conf" / "world" / "default.yaml").read_text(encoding="utf-8")
+    assert on_disk == authored
+
+
+def test_scenario_save_refuses_a_stale_fingerprint(tmp_path: Path) -> None:
+    """A save built on bytes another editor already replaced is refused whole."""
+    repository = ScenarioRepository(tmp_path)
+    files = _files()
+    repository.save("demo", files)
+    fingerprints = repository.load("demo")["fingerprints"]
+
+    ahead = {**files, "sim.yaml": "# another tab wrote this\nllm:\n  provider: disabled\n"}
+    repository.save("demo", ahead, fingerprints=fingerprints)
+    stale = {**files, "sim.yaml": "llm:\n  provider: scripted\n"}
+
+    try:
+        repository.save("demo", stale, fingerprints=fingerprints, baselines=files)
+    except SaveConflictError as exc:
+        assert exc.detail["file"] == "sim.yaml"
+        assert exc.detail["fingerprint"] == repository.load("demo")["fingerprints"]["sim.yaml"]
+        assert "another tab wrote this" in exc.detail["diff"]
+    else:
+        raise AssertionError("a stale scenario save was accepted")
+
+    # Nothing was written: a conflict never half-applies the other documents.
+    assert "another tab wrote this" in (tmp_path / "demo" / "conf" / "sim.yaml").read_text(
+        encoding="utf-8"
+    )
+    # No fingerprint at all keeps the plain overwrite behaviour scripts rely on.
+    repository.save("demo", stale)
+    assert "scripted" in (tmp_path / "demo" / "conf" / "sim.yaml").read_text(encoding="utf-8")
 
 
 def test_save_restores_missing_package_directives(tmp_path: Path) -> None:

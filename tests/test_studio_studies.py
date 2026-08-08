@@ -6,6 +6,7 @@ from pathlib import Path
 
 import yaml
 
+from silisocs.studio.save_conflicts import SaveConflictError
 from silisocs.studio.studies import (
     StudyRepository,
     compose_study,
@@ -64,6 +65,48 @@ def test_study_repository_validates_and_projects_board(tmp_path: Path) -> None:
 
     refreshed = repository.load("general_experiment")
     assert sum(cell["status"] == "complete" for cell in refreshed["board"]) == 1
+
+
+def test_study_save_writes_the_authors_text_verbatim(tmp_path: Path) -> None:
+    """The definition is the author's file: comments and ordering survive a save."""
+    repository = StudyRepository(tmp_path)
+    authored = "# lab notebook: why this study exists\n" + yaml.safe_dump(
+        _definition(), sort_keys=False
+    )
+
+    saved = repository.save("general_experiment", authored)
+
+    on_disk = (tmp_path / "general_experiment" / "study.yaml").read_text(encoding="utf-8")
+    assert on_disk == authored
+    assert saved["yaml"] == authored
+    assert saved["fingerprint"] == repository.load("general_experiment")["fingerprint"]
+
+
+def test_study_save_refuses_a_stale_fingerprint(tmp_path: Path) -> None:
+    """A second editor's save is refused rather than silently overwriting the first."""
+    repository = StudyRepository(tmp_path)
+    original = yaml.safe_dump(_definition(), sort_keys=False)
+    repository.save("general_experiment", original)
+    fingerprint = repository.load("general_experiment")["fingerprint"]
+
+    ahead = "# another tab wrote this\n" + original
+    repository.save("general_experiment", ahead, fingerprint=fingerprint)
+    mine = original.replace("General experiment", "My experiment")
+
+    try:
+        repository.save("general_experiment", mine, fingerprint=fingerprint, baseline=original)
+    except SaveConflictError as exc:
+        assert exc.detail["file"] == "study.yaml"
+        assert exc.detail["fingerprint"] == repository.load("general_experiment")["fingerprint"]
+        assert "another tab wrote this" in exc.detail["diff"]
+    else:
+        raise AssertionError("a stale study save was accepted")
+
+    path = tmp_path / "general_experiment" / "study.yaml"
+    assert path.read_text(encoding="utf-8") == ahead
+    # No fingerprint at all keeps the plain overwrite behaviour scripts rely on.
+    repository.save("general_experiment", mine)
+    assert path.read_text(encoding="utf-8") == mine
 
 
 def test_study_repository_rejects_unsafe_ids(tmp_path: Path) -> None:

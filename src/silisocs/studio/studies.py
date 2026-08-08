@@ -9,6 +9,8 @@ import yaml
 
 from silisocs.evaluations.run_artifact import StudyArtifact
 from silisocs.studies.study_schema import validate_schema
+from silisocs.studio.save_conflicts import check_fingerprint, path_fingerprint
+from silisocs.studio.scenario_repository import leading_comment_block
 
 
 def evaluation_presets() -> tuple[str, ...]:
@@ -66,6 +68,17 @@ class StudyRepository:
             },
         }
 
+    def definition_path(self, study_id: str) -> Path:
+        """Return the study's definition file: the one on disk, else the default name.
+
+        Reads and writes resolve the same path, so a ``study.yml`` study is
+        edited in place rather than shadowed by a second ``study.yaml``.
+        """
+        directory = self.root / self.validate_id(study_id)
+        legacy = directory / "study.yml"
+        default = directory / "study.yaml"
+        return legacy if legacy.is_file() and not default.is_file() else default
+
     def list(self) -> list[dict[str, Any]]:
         if not self.root.is_dir():
             return []
@@ -106,9 +119,7 @@ class StudyRepository:
     ) -> dict[str, Any]:
         study_id = self.validate_id(study_id)
         directory = self.root / study_id
-        path = directory / "study.yaml"
-        if not path.is_file():
-            path = directory / "study.yml"
+        path = self.definition_path(study_id)
         if not path.is_file():
             raise KeyError(study_id)
         definition = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -124,22 +135,38 @@ class StudyRepository:
         if include_definition:
             result["definition"] = definition
             result["yaml"] = path.read_text(encoding="utf-8")
+            result["fingerprint"] = path_fingerprint(path)
         return result
 
-    def save(self, study_id: str, text: str) -> dict[str, Any]:
+    def save(
+        self,
+        study_id: str,
+        text: str,
+        *,
+        fingerprint: str | None = None,
+        baseline: str | None = None,
+    ) -> dict[str, Any]:
         study_id = self.validate_id(study_id)
         data = yaml.safe_load(text)
         if not isinstance(data, dict):
             raise ValueError("study.yaml must contain a mapping")
         validate_schema(data)
-        path = self.root / study_id / "study.yaml"
+        path = self.definition_path(study_id)
+        check_fingerprint(path.name, path, fingerprint, submitted=text, baseline=baseline)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+        # Write the author's text verbatim: re-dumping the parsed document would
+        # strip every comment and blank-line grouping the author wrote.
+        path.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
         return self.load(study_id)
 
 
 def compose_study(text: str, updates: dict[str, Any]) -> dict[str, Any]:
-    """Apply dotted form updates to a study document without losing unknown keys."""
+    """Apply dotted form updates to a study document without losing unknown keys.
+
+    A form edit re-serializes the document, which keeps every key but not the
+    comments inside it; the leading comment block is carried over, as the
+    scenario composer does. A raw-text edit never goes through this path.
+    """
     definition = yaml.safe_load(text) or {}
     if not isinstance(definition, dict):
         raise ValueError("study.yaml must contain a mapping")
@@ -156,7 +183,8 @@ def compose_study(text: str, updates: dict[str, Any]) -> dict[str, Any]:
         cursor[parts[-1]] = value
     return {
         "definition": definition,
-        "yaml": yaml.safe_dump(definition, sort_keys=False, allow_unicode=True),
+        "yaml": leading_comment_block(text)
+        + yaml.safe_dump(definition, sort_keys=False, allow_unicode=True),
     }
 
 

@@ -88,6 +88,94 @@ def test_scenario_create_save_and_interactive_launch_surface(tmp_path):
     assert client.get("/scenarios/audit_case").status_code == 200
 
 
+def test_scenario_save_conflicts_on_a_stale_fingerprint(tmp_path):
+    """Two composer tabs no longer clobber each other: the stale save 409s."""
+    workspace = tmp_path / "workspace"
+    client = TestClient(
+        create_app(tmp_path / "outputs", state_dir=tmp_path / "state", repo_root=workspace)
+    )
+    files = ScenarioRepository.default_files("audit_case")
+    body = {"name": "audit_case", "source": "workspace", "files": files}
+    assert client.post("/api/scenarios", json=body).status_code == 200
+
+    loaded = client.get("/api/scenarios/audit_case").json()
+    fingerprints = loaded["fingerprints"]
+    assert set(fingerprints) == set(loaded["files"])
+
+    # Another tab, holding the same fingerprints, saves first.
+    ahead = {**files, "sim.yaml": "# another tab wrote this\n{}\n"}
+    assert (
+        client.post("/api/scenarios", json={**body, "files": ahead, "fingerprints": fingerprints})
+    ).status_code == 200
+
+    stale = {**files, "sim.yaml": "max_concurrent_actions: 9\n"}
+    conflict = client.post(
+        "/api/scenarios",
+        json={**body, "files": stale, "fingerprints": fingerprints, "baselines": files},
+    )
+    assert conflict.status_code == 409
+    detail = conflict.json()["detail"]
+    assert detail["error"] == "conflict"
+    assert detail["file"] == "sim.yaml"
+    assert "another tab wrote this" in detail["diff"]
+    saved_path = workspace / "scenarios" / "audit_case" / "conf" / "sim.yaml"
+    assert "another tab wrote this" in saved_path.read_text(encoding="utf-8")
+
+    # "Overwrite" resends with the fingerprint the 409 reported.
+    retry = client.post(
+        "/api/scenarios",
+        json={
+            **body,
+            "files": stale,
+            "fingerprints": {**fingerprints, "sim.yaml": detail["fingerprint"]},
+        },
+    )
+    assert retry.status_code == 200
+    assert retry.json()["fingerprints"]["sim.yaml"] != detail["fingerprint"]
+    assert saved_path.read_text(encoding="utf-8") == "max_concurrent_actions: 9\n"
+
+    # A payload without fingerprints (old clients, curl) still overwrites.
+    assert client.post("/api/scenarios", json={**body, "files": files}).status_code == 200
+
+    # The conflict UX lives in the shared shell, under a stable test id.
+    assert '"save-conflict"' in client.get("/assets/studio.js").text
+
+
+def test_study_save_is_verbatim_and_conflicts_on_a_stale_fingerprint(tmp_path):
+    """study.yaml keeps the author's comments, and a stale save 409s."""
+    workspace = tmp_path / "workspace"
+    _make_study(workspace)
+    client = TestClient(create_app(tmp_path, state_dir=tmp_path / "state", repo_root=workspace))
+
+    loaded = client.get("/api/studies/exp1").json()
+    authored = "# lab notebook: keep this comment\n" + loaded["yaml"]
+    saved = client.post(
+        "/api/studies/exp1",
+        json={"yaml": authored, "fingerprint": loaded["fingerprint"], "baseline": loaded["yaml"]},
+    )
+    assert saved.status_code == 200
+    definition_path = workspace / "experiments" / "studies" / "exp1" / "study.yaml"
+    assert definition_path.read_text(encoding="utf-8") == authored
+
+    conflict = client.post(
+        "/api/studies/exp1",
+        json={
+            "yaml": loaded["yaml"],
+            "fingerprint": loaded["fingerprint"],
+            "baseline": loaded["yaml"],
+        },
+    )
+    assert conflict.status_code == 409
+    detail = conflict.json()["detail"]
+    assert detail["file"] == "study.yaml"
+    assert "keep this comment" in detail["diff"]
+    assert definition_path.read_text(encoding="utf-8") == authored
+
+    # No fingerprint keeps the plain overwrite behaviour.
+    assert client.post("/api/studies/exp1", json={"yaml": loaded["yaml"]}).status_code == 200
+    assert definition_path.read_text(encoding="utf-8") == loaded["yaml"]
+
+
 def test_completed_watch_ribbon_uses_persisted_artifact_counters(tmp_path):
     run = _make_run(tmp_path)
     app = create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path)

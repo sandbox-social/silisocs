@@ -7,6 +7,8 @@ from typing import Any
 
 import yaml
 
+from silisocs.studio.save_conflicts import check_fingerprint, path_fingerprint
+
 SCENARIO_FILES = (
     "world/default.yaml",
     "agents/default.yaml",
@@ -147,10 +149,24 @@ class ScenarioRepository:
             files[relative] = {
                 "text": text,
                 "data": yaml.safe_load(text) if parse else None,
+                "fingerprint": path_fingerprint(path),
             }
-        return {"name": name, "path": str(scenario_dir), "files": files}
+        return {
+            "name": name,
+            "path": str(scenario_dir),
+            "files": files,
+            # The set an editor sends back on save; see save_conflicts.py.
+            "fingerprints": {relative: item["fingerprint"] for relative, item in files.items()},
+        }
 
-    def save(self, name: str, files: dict[str, str]) -> dict[str, Any]:
+    def save(
+        self,
+        name: str,
+        files: dict[str, str],
+        *,
+        fingerprints: dict[str, str] | None = None,
+        baselines: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         name = self.validate_name(name)
         unknown = sorted(relative for relative in files if not supported_scenario_file(relative))
         if unknown:
@@ -163,6 +179,16 @@ class ScenarioRepository:
             # Write the author's text verbatim: re-dumping parsed YAML would
             # strip comments — including the # @package directives Hydra needs.
             validated[relative] = ensure_package_directive(relative, text)
+        # Check every document before writing any: a conflicting save leaves the
+        # scenario exactly as it was, never half-applied.
+        for relative in validated:
+            check_fingerprint(
+                relative,
+                self.root / name / "conf" / relative,
+                (fingerprints or {}).get(relative),
+                submitted=files[relative],
+                baseline=(baselines or {}).get(relative),
+            )
         for relative, text in validated.items():
             path = self.root / name / "conf" / relative
             path.parent.mkdir(parents=True, exist_ok=True)

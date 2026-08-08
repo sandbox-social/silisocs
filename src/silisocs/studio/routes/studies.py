@@ -24,6 +24,7 @@ from silisocs.studio.routes.support import (
     study_scenario_names,
     study_view_or_404,
 )
+from silisocs.studio.save_conflicts import SaveConflictError
 from silisocs.studio.studies import compose_study
 
 router = APIRouter()
@@ -115,9 +116,22 @@ def api_study_notebook(request: Request, study_id: str):
 
 @router.post("/api/studies/{study_id}")
 async def api_save_study(request: Request, study_id: str):
+    """Write study.yaml verbatim, refusing a save built on stale bytes.
+
+    ``fingerprint`` (and the optional ``baseline`` the conflict diff reads) are
+    opt-in: a payload without them overwrites, as it always did.
+    """
     payload = await request.json()
+    baseline = payload.get("baseline")
     try:
-        return request.app.state.studies.save(study_id, str(payload.get("yaml") or ""))
+        return request.app.state.studies.save(
+            study_id,
+            str(payload.get("yaml") or ""),
+            fingerprint=str(payload.get("fingerprint") or ""),
+            baseline=baseline if isinstance(baseline, str) else None,
+        )
+    except SaveConflictError as exc:
+        raise HTTPException(status_code=409, detail=exc.detail) from exc
     except (KeyError, ValueError, yaml.YAMLError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
