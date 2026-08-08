@@ -239,6 +239,13 @@ function initRunPage(data) {
   let events = null;
   if (data.watch) events = initWatchStream(data, log);
   if (data.control && events) initRunControl(data.control, events);
+  // The Logs tab of a running job tails process output live (the Watch tab's
+  // stream carries much more; this one wires only log lines).
+  if (data.logStream && !events) {
+    const tail = new EventSource(data.logStream);
+    tail.addEventListener("log_line", event => log.append(JSON.parse(event.data).line || ""));
+    tail.addEventListener("done", () => tail.close());
+  }
 }
 
 /* ---- live job page ------------------------------------------------------- */

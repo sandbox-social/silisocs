@@ -372,7 +372,7 @@ is the guard: it serves Studio over a throwaway offline workspace and drives a
 real Chromium from home through the scenario editor, a launched run, and the
 run page's tabs, failing on any `console.error` or uncaught page error. It
 **skips** unless `SILISOCS_SMOKE_CHROME`/`CHROME` (or `demo/chrome-wrapper.sh`)
-names a working browser — see [demo/README.md](../demo/README.md) for how to run
+names a working browser — `demo/README.md` in the repository covers how to run
 it locally.
 
 ## Deployment

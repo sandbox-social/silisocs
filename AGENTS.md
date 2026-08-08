@@ -402,7 +402,8 @@ their per-GM compatibility validation are in
 Three routes, **none of which require a core edit**: a named preset
 (`OPENAI_COMPATIBLE_PRESETS` in `runtime/language_models/factory.py`), the
 `@register_llm_provider("name")` registry decorator on a `LanguageModel`
-subclass (import the module before the run starts — see §3 `plugins`), or a
+subclass (import the module before the run starts — the top-level `plugins:`
+config list, see docs/configuration.md → Plugins), or a
 fully-qualified `sim.llm.provider: mypkg.models.MyModel`. Providers speaking an
 OpenAI-compatible HTTP API should subclass `OpenAICompatibleLanguageModel` to
 inherit retry/backoff and telemetry. Adding a preset must not change behavior for

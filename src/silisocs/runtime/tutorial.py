@@ -103,7 +103,9 @@ def _demo_overrides(output_dir: Path, hydra_dir: Path) -> list[str]:
 def _run_demo(output_dir: Path) -> int:
     """Run the scripted demo simulation as a subprocess; return its exit code."""
     with tempfile.TemporaryDirectory(prefix="silisocs-tutorial-") as overlay_root:
-        overlay = Path(overlay_root) / "conf"
+        # resolve() expands Windows 8.3 short names (RUNNER~1): Hydra's override
+        # lexer rejects a literal '~' in the value.
+        overlay = Path(overlay_root).resolve() / "conf"
         overlay.mkdir()
         (overlay / "sim.yaml").write_text(
             yaml.safe_dump(_demo_overlay_sim(), sort_keys=False), encoding="utf-8"
@@ -114,7 +116,7 @@ def _run_demo(output_dir: Path) -> int:
             "silisocs.runtime.runner",
             "--overlay-config-path",
             str(overlay),
-            *_demo_overrides(output_dir, Path(overlay_root) / "hydra"),
+            *_demo_overrides(output_dir, Path(overlay_root).resolve() / "hydra"),
         ]
         result = subprocess.run(command, check=False, text=True, capture_output=True)
     if result.returncode != 0:
@@ -163,7 +165,7 @@ def _print_next_steps(output_dir: Path) -> None:
 
 def run_tutorial(output_dir: str | Path | None = None) -> int:
     """Run the guided demo; return 0 on success."""
-    target = Path(output_dir) if output_dir else Path.cwd() / "outputs" / "tutorial"
+    target = Path(output_dir).resolve() if output_dir else Path.cwd() / "outputs" / "tutorial"
     target = target if output_dir else target / time.strftime("%Y-%m-%d_%H-%M-%S")
 
     print("silisocs tutorial\n")

@@ -66,13 +66,16 @@ def available_llm_providers() -> list[str]:
     return sorted(_PROVIDERS)
 
 
-# ``sim.llm`` fields whose silent loss would change where a request goes, which
-# model answers it, or what the request body contains. A provider that cannot accept
-# one of these while it is actually set is a config error, not a filtered framework
-# kwarg. ``log_file``/``debug``/``temperature`` stay filterable: they are supplied by
-# the framework on every call (with defaults), so a provider may legitimately ignore
-# them.
-STRICT_PROVIDER_FIELDS: tuple[str, ...] = ("model_name", "api_base", "api_key", "extra_kwargs")
+# ``sim.llm`` fields whose silent loss would change where a request goes or what
+# the request body contains. A provider that cannot accept one of these while it
+# is actually set is a config error, not a filtered framework kwarg. These fields
+# default to unset (null / {}), so truthiness distinguishes "the user authored
+# this" from the framework default. ``model_name`` cannot join them: it always
+# carries a default (``sim.llm.name``), so a fixed-model custom provider that
+# declares no ``model_name`` parameter must keep building — it is filtered like
+# ``log_file``/``debug``/``temperature``, which the framework supplies on every
+# call and a provider may legitimately ignore.
+STRICT_PROVIDER_FIELDS: tuple[str, ...] = ("api_base", "api_key", "extra_kwargs")
 
 
 def instantiate_provider(

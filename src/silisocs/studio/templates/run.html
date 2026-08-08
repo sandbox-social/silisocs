@@ -26,7 +26,7 @@
 {% for panel in view.panels %}<section class="panel {{ 'wide' if panel.output.type in ('grid', 'html') }}" data-panel="{{ panel.name }}" data-requires="{{ panel.requires|join(',') }}"><header><div><h3>{{ panel.title }}</h3><small>{{ panel.name|replace('_',' ') }}</small></div><div class="panel-controls">{{ pc.render_controls(panel, facets) }}</div></header><div class="panel-body">{{ out.render_output(panel.output) }}</div></section>{% endfor %}
 {# Live placeholders: a panel skipped only because an event stream is not yet
    recorded gets a stand-in section the SSE artifact_grown handler can match on
-   data-requires and refresh into once that stream grows (see base.html). #}
+   data-requires and refresh into once that stream grows (see static/runs.js). #}
 {% for item in live_skipped %}<section class="panel" data-panel="{{ item.name }}" data-requires="{{ item.missing|join(',') }}"><header><div><h3>{{ item.title }}</h3><small>{{ item.name|replace('_',' ') }}</small></div></header><div class="panel-body"><p class="panel-note">Awaiting {{ item.missing|join(', ')|replace('_',' ') }} — this panel appears once the run records that data.</p></div></section>{% endfor %}
 </div>
 {% if not view.panels and not live_skipped %}<div class="empty"><b>Nothing to show here</b><p>No panel in this view applies to this run's backend.</p></div>{% endif %}
@@ -52,6 +52,7 @@
   'viewerApi': '/api/viewers/' ~ record.id,
   'autoStartViewer': viewer_backends[0] if viewer_backends|length == 1 else none,
   'wireLog': tab not in ('overview', 'platform', 'config'),
+  'logStream': ('/api/jobs/' ~ job.id ~ '/stream') if (tab == 'logs' and job and job.status in ('queued', 'running')) else none,
   'watch': {
     'stream': '/api/jobs/' ~ job.id ~ '/stream',
     'started': job.started_at or job.created_at,

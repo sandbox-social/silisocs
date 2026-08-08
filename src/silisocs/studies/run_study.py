@@ -18,8 +18,20 @@ scenario generator shell out to.
 from __future__ import annotations
 
 from silisocs.studies.cli import build_parser, main
+from silisocs.studies.execute import PROCESS_TIMEOUT_RC, RUN_COMPLETE_MARKER
+from silisocs.studies.plan import DEFAULT_RUNNER_MODULE
+from silisocs.studies.study_types import EvalSpec, RunSpec, StudyConfigError
 
-__all__ = ["build_parser", "main"]
+__all__ = [
+    "DEFAULT_RUNNER_MODULE",
+    "PROCESS_TIMEOUT_RC",
+    "RUN_COMPLETE_MARKER",
+    "EvalSpec",
+    "RunSpec",
+    "StudyConfigError",
+    "build_parser",
+    "main",
+]
 
 
 if __name__ == "__main__":

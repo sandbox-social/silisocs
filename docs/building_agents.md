@@ -372,12 +372,14 @@ Providers that speak an OpenAI-compatible HTTP API should subclass
 `OpenAICompatibleLanguageModel` to inherit retry/backoff and telemetry support.
 The factory calls a provider with the standard kwargs (`model_name`, `log_file`,
 `debug`, `api_base`, `api_key`, `temperature`, `extra_kwargs`). Kwargs the
-provider does not declare are dropped — *except* `model_name`, `api_base`,
-`api_key`, and `extra_kwargs`: if one of those is actually set in `sim.llm` and
-the provider cannot accept it, the run fails at build naming the provider and the
-field, instead of quietly ignoring the configured endpoint, credential, or request
-body (see [Configuration](configuration.md#llm)). Declare the ones your provider
-honors; declare `**kwargs` to opt out of the check entirely.
+provider does not declare are dropped — *except* `api_base`, `api_key`, and
+`extra_kwargs`: if one of those is actually set in `sim.llm` (their defaults are
+unset) and the provider cannot accept it, the run fails at build naming the
+provider and the field, instead of quietly ignoring the configured endpoint,
+credential, or request body (see [Configuration](configuration.md#llm)).
+`model_name` always carries a default (`sim.llm.name`), so a fixed-model provider
+that does not declare it still builds. Declare the ones your provider honors;
+declare `**kwargs` to opt out of the check entirely.
 
 ---
 

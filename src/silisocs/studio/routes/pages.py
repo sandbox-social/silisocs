@@ -35,6 +35,7 @@ from silisocs.studio.routes.support import (
     study_or_404,
     study_view_or_404,
 )
+from silisocs.studio.save_conflicts import NEW_DOCUMENT
 
 router = APIRouter()
 
@@ -191,6 +192,8 @@ def new_study_page(request: Request, name: str = "new_study"):
         "definition": definition,
         "yaml": yaml.safe_dump(definition, sort_keys=False),
         "board": [],
+        # Creating: the save conflicts if the study meanwhile came to exist.
+        "fingerprint": NEW_DOCUMENT,
     }
     return state.templates.TemplateResponse(
         request,
@@ -301,6 +304,8 @@ def new_scenario_page(request: Request, name: str = "new_scenario"):
         "files": {
             key: {"text": value, "data": yaml.safe_load(value)} for key, value in files.items()
         },
+        # Creating: each document's save conflicts if the file meanwhile appeared.
+        "fingerprints": dict.fromkeys(files, NEW_DOCUMENT),
     }
     return state.templates.TemplateResponse(
         request,

@@ -544,7 +544,9 @@ def _build_run_command(spec: RunSpec) -> list[str]:
     cmd.append(f"seed={spec.seed}")
     cmd.append(f"run_name={_normalize_override_value(spec.run_name)}")
     if spec.output_dir:
-        cmd.append(f"output_dir={_normalize_override_value(spec.output_dir)}")
+        # ++ adds-or-overrides: scenario worlds REPLACE the base world group, so a
+        # scenario that does not re-declare output_dir would reject a bare override.
+        cmd.append(f"++output_dir={_normalize_override_value(spec.output_dir)}")
     cmd.append(f"experiment_name={spec.study_name}")
 
     for key in sorted(spec.overrides):

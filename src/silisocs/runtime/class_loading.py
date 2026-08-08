@@ -136,7 +136,10 @@ def instantiate_with_supported_kwargs(
 
     A ``TypeError`` raised while *binding* the arguments (missing required param,
     keyword rejected by a ``**kwargs``-free C callable) is re-raised as the same kind
-    of config error; a ``TypeError`` raised *inside* the target propagates untouched.
+    of config error; a ``TypeError`` raised *inside* a Python target propagates
+    untouched. Caveat: a C-implemented target that raises ``TypeError`` in its body
+    pushes no Python frame, so it is indistinguishable from a binding failure and is
+    reported as the config error (the original message is preserved inside it).
     """
     supported = supported_kwargs(target)
     if supported is not None:

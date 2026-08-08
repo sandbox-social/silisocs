@@ -74,8 +74,21 @@ function diffLineClass(line) {
   return "diff-context";
 }
 
-window.showSaveConflict = (detail, {onReload, onOverwrite}) => {
+// Resolves with the outcome of the user's choice so callers can await the
+// conflict like any other save result: Overwrite resolves with the retried
+// save's own result (a caller mid-action — Launch, add-evaluator — then
+// continues that action instead of silently abandoning it); Keep editing,
+// Reload, and Escape resolve false.
+window.showSaveConflict = (detail, {onReload, onOverwrite}) => new Promise(resolve => {
   document.querySelector('[data-testid="save-conflict"]')?.remove();
+  let settled = false;
+  let chosen = false;
+  const settle = value => {
+    if (!settled) {
+      settled = true;
+      resolve(value);
+    }
+  };
   const dialog = document.createElement("dialog");
   dialog.className = "command-palette compact-dialog";
   dialog.dataset.testid = "save-conflict";
@@ -106,26 +119,33 @@ window.showSaveConflict = (detail, {onReload, onOverwrite}) => {
     el.type = "button";
     el.className = className;
     el.textContent = label;
-    el.onclick = () => {
+    el.onclick = async () => {
+      chosen = true; // the queued close event must not settle before the handler
       dialog.close();
       dialog.remove();
-      handler?.();
+      settle(handler ? await handler() : false);
     };
     return el;
   };
   actions.append(
     button("Keep editing", "button quiet"),
-    button("Reload their version", "button", onReload),
+    button("Reload their version", "button", async () => {
+      onReload?.();
+      return false;
+    }),
     button("Overwrite", "button primary", onOverwrite),
   );
   form.append(eyebrow, title, message, diff, actions);
   dialog.append(form);
   // Dismissing with Escape means "keep editing": the dialog goes, the unsaved
   // edits stay exactly where they are.
-  dialog.addEventListener("close", () => dialog.remove());
+  dialog.addEventListener("close", () => {
+    dialog.remove();
+    if (!chosen) settle(false);
+  });
   document.body.append(dialog);
   dialog.showModal();
-};
+});
 
 /* ---- command palette -----------------------------------------------------
  * The dialog only exists once the body is parsed, so the real registration

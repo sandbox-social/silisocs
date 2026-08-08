@@ -9,7 +9,7 @@ import yaml
 
 from silisocs.evaluations.run_artifact import StudyArtifact
 from silisocs.studies.study_schema import validate_schema
-from silisocs.studio.save_conflicts import check_fingerprint, path_fingerprint
+from silisocs.studio.save_conflicts import check_fingerprint, fingerprint_text
 from silisocs.studio.scenario_repository import leading_comment_block
 
 
@@ -122,7 +122,10 @@ class StudyRepository:
         path = self.definition_path(study_id)
         if not path.is_file():
             raise KeyError(study_id)
-        definition = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        # One read serves parse, mirror text, and fingerprint (UTF-8 en/decoding
+        # round-trips, so hashing the decoded text equals hashing the raw bytes).
+        text = path.read_bytes().decode("utf-8")
+        definition = yaml.safe_load(text) or {}
         meta = definition.get("study") or {}
         result = {
             "id": study_id,
@@ -134,8 +137,8 @@ class StudyRepository:
         }
         if include_definition:
             result["definition"] = definition
-            result["yaml"] = path.read_text(encoding="utf-8")
-            result["fingerprint"] = path_fingerprint(path)
+            result["yaml"] = text
+            result["fingerprint"] = fingerprint_text(text)
         return result
 
     def save(

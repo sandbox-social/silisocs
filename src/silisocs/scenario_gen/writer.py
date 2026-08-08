@@ -76,6 +76,9 @@ def _write_scenario_yaml(spec: ScenarioSpec, conf: Path) -> None:
         "num_steps": spec.num_steps,
         "seed": spec.seed,
         "run_name": spec.run_name,
+        # Declared like every bundled scenario: world files replace the base
+        # group, so omitting it would reject a bare output_dir=... override.
+        "output_dir": "",
         "setting": {
             "name": spec.setting.name,
             "background": spec.setting.background,

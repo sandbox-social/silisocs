@@ -501,9 +501,11 @@ def test_probe_sample_fraction_and_validation() -> None:
 
 
 def _checkpoint_payload() -> dict[str, Any]:
+    from silisocs.runtime.checkpointing.policy import CHECKPOINT_SCHEMA_VERSION
+
     db_bytes = b"sqlite-bytes-" * 64
     return {
-        "schema_version": 6,
+        "schema_version": CHECKPOINT_SCHEMA_VERSION,
         "step": 3,
         "checkpoint_counter": 3,
         "runtime_metadata": {"game_masters": []},

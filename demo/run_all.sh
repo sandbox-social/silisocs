@@ -34,8 +34,10 @@ if [ "$STAGE" = all ] || [ "$STAGE" = studio ]; then
     && exec silisocs-studio --output-root outputs --port 8799 --state-dir "$REPO/demo/build/studio-state") &
   STUDIO_PID=$!
   trap 'kill $STUDIO_PID 2>/dev/null || true' EXIT
+  # Poll readiness, not just the socket: the server binds fast and holds page
+  # loads on a warming screen until the workspace index finishes.
   for _ in $(seq 1 120); do
-    curl -sf -o /dev/null http://127.0.0.1:8799/ && break
+    curl -sf http://127.0.0.1:8799/api/ready 2>/dev/null | grep -q '"ready": *true' && break
     sleep 1
   done
   STUDIO_URL=http://127.0.0.1:8799 node record_studio.mjs

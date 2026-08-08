@@ -4,7 +4,10 @@ from typing import Any
 
 # v6: per-object identity reconciliation, flow-scheduling fingerprint,
 # recsys config in backend state, explicit backend checkpoint capability.
-CHECKPOINT_SCHEMA_VERSION = 6
+# v7: GM spec params persist backend_config.output_dir (was output_rootname);
+# a v6 checkpoint restored here would rebuild its backend against an empty
+# output dir and write logs/db relative to the CWD, so it must refuse loudly.
+CHECKPOINT_SCHEMA_VERSION = 7
 
 
 def should_save_checkpoint(step: int, checkpoint_cfg: Any | None = None) -> bool:

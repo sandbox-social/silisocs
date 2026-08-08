@@ -53,7 +53,7 @@ def merge_external_group_overrides(
 
     OmegaConf.set_struct(cfg, False)
     merged_cfg: DictConfig = cfg
-    for raw_dir in [p for p in paths_csv.split(":") if p]:
+    for raw_dir in [p for p in paths_csv.split(os.pathsep) if p]:
         conf_dir = Path(raw_dir)
 
         for group in ("agents", "env", "eval", "sim"):
@@ -146,7 +146,7 @@ def set_external_config_dirs(dirs: Sequence[str | Path]) -> None:
                 f"scenario. Available scenarios: {available}"
             )
         resolved.append(directory)
-    os.environ["SILISOCS_EXTERNAL_CONFIG_DIRS"] = ":".join(str(path) for path in resolved)
+    os.environ["SILISOCS_EXTERNAL_CONFIG_DIRS"] = os.pathsep.join(str(path) for path in resolved)
 
 
 def inject_external_config_path() -> None:
@@ -198,7 +198,7 @@ def inject_external_config_path() -> None:
     if external_dir is not None:
         merge_dirs.append(external_dir)
     merge_dirs.extend(overlay_dirs)
-    os.environ["SILISOCS_EXTERNAL_CONFIG_DIRS"] = ":".join(str(path) for path in merge_dirs)
+    os.environ["SILISOCS_EXTERNAL_CONFIG_DIRS"] = os.pathsep.join(str(path) for path in merge_dirs)
 
 
 _SEARCH_PATH_PLUGIN_REGISTERED = False
@@ -221,7 +221,7 @@ def register_search_path_plugin() -> None:
             paths_csv = _os.environ.get("SILISOCS_EXTERNAL_CONFIG_DIRS", "").strip()
             if not paths_csv:
                 return
-            for raw_dir in [p for p in paths_csv.split(":") if p]:
+            for raw_dir in [p for p in paths_csv.split(os.pathsep) if p]:
                 search_path.prepend("file", raw_dir)
 
     Plugins.instance().register(_ScenarioSearchPathPlugin)

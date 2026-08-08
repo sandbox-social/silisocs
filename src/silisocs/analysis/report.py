@@ -42,8 +42,15 @@ _STUDIO_STATIC = Path(__file__).parents[1] / "studio" / "static"
 
 
 def _inline_script(name: str) -> str:
-    """Inline one of Studio's vendored/static scripts into the export."""
-    return f"<script>{(_STUDIO_STATIC / name).read_text(encoding='utf-8')}</script>"
+    r"""Inline one of Studio's vendored/static scripts into the export.
+
+    A literal ``</script`` anywhere in the source (a comment, a template string)
+    would end the tag and silently truncate the report, so it is escaped — the
+    JS parser treats ``<\/script`` identically inside strings and comments.
+    """
+    source = (_STUDIO_STATIC / name).read_text(encoding="utf-8")
+    escaped = source.replace("</script", "<\\/script")
+    return f"<script>{escaped}</script>"
 
 
 def _hydration_script() -> str:

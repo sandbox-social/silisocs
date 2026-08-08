@@ -29,10 +29,10 @@
   </div>
   <script>
     const phase=document.getElementById('phase');
-    setInterval(async()=>{
+    const timer=setInterval(async()=>{
       try{
         const state=await (await fetch('/api/ready',{cache:'no-store'})).json();
-        if(state.ready){location.reload();return}
+        if(state.ready){clearInterval(timer);location.reload();return}
         phase.textContent=state.phase;
       }catch(error){/* the server is still binding; the next poll retries */}
     },500);

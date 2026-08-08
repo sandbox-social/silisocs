@@ -38,7 +38,7 @@ uv run silisocs-study --study experiments/studies/study_template_v1 summary-appe
 | Command | Does |
 |---|---|
 | `plan` | Expand the study into concrete runs and print the plan (plus the preflight summary) without executing anything |
-| `generate-bash` | Write `generated/run_study.sh` so the same plan can be executed outside the runner |
+| `generate-bash` | Write a bash script of the plan to the required `--output` path, so the same runs can be executed outside the runner (`run` itself also records its plan as `generated/run_study.sh`) |
 | `run` | Execute runs, run evaluators, write reproducibility artifacts, and rebuild the organized tree |
 | `organize` | Rebuild only `generated/organized/` from an existing `repro_lock.json` (idempotent; safe after editing `study.yaml`) |
 | `summary-append` | Append a dated finding to the study's summary log and `SUMMARY.md` |

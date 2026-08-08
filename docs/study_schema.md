@@ -20,8 +20,8 @@ experiments/
       notebook.ipynb                    # Results notebook (authored, version-controlled)
       SUMMARY.md                        # Human-readable notes and findings
       generated/                        # Reproducibility locks, eval copies, organized views
-        plan.json                       # Expanded run plan
-        run_study.sh                    # Emitted by `generate-bash`
+        plan.json                       # Expanded run plan (written by `run`)
+        run_study.sh                    # The plan as a bash script (written by `run`)
         repro_lock.jsonl
         repro_lock.json
         study_index.json
@@ -71,7 +71,8 @@ What matters for the schema is which files each stage writes:
 
 | Stage | Writes |
 |---|---|
-| `plan` | `generated/plan.json` |
+| `plan` | nothing by default (prints the plan; `--output` writes it as JSON) |
+| `run` (start) | `generated/plan.json`, `generated/run_study.sh` |
 | `run` | run directories (plus a `RUN_COMPLETE.json` marker per finished run), `generated/logs/` |
 | evaluate | `generated/eval/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/{eval_id}/` |
 | record | `generated/repro_lock.jsonl`, `repro_lock.json`, `study_index.json`, `study_enriched.yaml` |
@@ -90,6 +91,11 @@ from arbitrary directories.
 ### study.yaml
 
 The study definition file. This is the single source of truth: it defines the scientific hierarchy and maps each condition to concrete simulation output and eval paths. It is authored by the user and version-controlled.
+
+Execution-behavior keys (`run_name_template`, `output_root_override`,
+`sub_experiment`, `execution.command`, `working_directory`, `runner_module`,
+`seed_start`/`seed_repeats`) are documented where the runner is:
+[Study Runner Reference](experiments.md).
 
 ```yaml
 schema_version: 1

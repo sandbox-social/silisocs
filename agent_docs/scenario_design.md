@@ -631,7 +631,8 @@ uv run silisocs-study --study experiments/studies/study_template_v1 run
 ```
 
 Code placement:
-- Canonical runner implementation is in the package at `silisocs.studies.run_study`.
+- Canonical runner implementation is the `silisocs.studies` subpackage
+  (`plan.py` / `execute.py` / `cli.py`; `run_study` remains the entry-point shim).
 - Console command: `uv run silisocs-study ...` (equivalent: `uv run python -m silisocs.studies.run_study ...`).
 
 ### Why use study orchestration?

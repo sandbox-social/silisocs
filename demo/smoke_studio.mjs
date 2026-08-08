@@ -36,7 +36,10 @@ if (!EXECUTABLE) {
 //   - net::ERR_ABORTED: a navigation cancels the previous page's in-flight
 //     requests (the SSE job stream, most of all). That is the navigation
 //     working, not the page failing.
-const IGNORED = [/favicon\.ico/, /net::ERR_ABORTED/];
+// ERR_ABORTED is only benign for page-level navigations (a new navigation
+// cancelling the old page's SSE stream); an aborted /assets/ fetch means a
+// script bundle failed to load and must fail the smoke.
+const IGNORED = [/favicon\.ico/, /^(?!.*\/assets\/).*net::ERR_ABORTED/];
 
 const t0 = Date.now();
 const since = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
@@ -137,8 +140,12 @@ async function main() {
     if (await page.locator('[data-testid="studio-warming"]').count()) {
       throw new Error("still on the warming screen — /api/ready lied");
     }
-    // studio.js replaces boot.js's palette stub; its dialog proves the shell ran.
-    await page.waitForSelector('[data-testid="palette"]', { state: "attached" });
+    // The palette dialog itself is server-rendered, so waiting for it proves
+    // nothing about the client. boot.js stamps the theme before first paint and
+    // studio.js defines openPalette at parse — both must have executed.
+    await page.waitForFunction(
+      () => typeof window.openPalette === "function" && !!document.documentElement.dataset.theme
+    );
   });
 
   await step("scenarios list renders", async () => {
@@ -205,6 +212,11 @@ async function main() {
   await step("run overview tab renders", async () => {
     await page.goto(`${runUrl}?tab=overview`, { waitUntil: "load" });
     await page.waitForSelector('[data-testid="run-tabs"]');
+    // The tabs are server-rendered; prove the client modules parsed and ran too.
+    const modulesUp = await page.evaluate(
+      () => typeof renderPanel === "function" && typeof initRunPage === "function"
+    );
+    if (!modulesUp) throw new Error("panels.js/runs.js did not load on the run page");
     await page.waitForSelector('[data-testid="run-status"]');
     if (await page.locator('[data-testid="run-error"]').count()) {
       throw new Error("the run page reports a failed run");

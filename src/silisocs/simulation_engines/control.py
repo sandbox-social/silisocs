@@ -177,9 +177,18 @@ class ControlFileController:
         this run and must survive, not be silently discarded.
         """
         try:
-            started = psutil.Process().create_time()
-            if self._path.exists() and self._path.stat().st_mtime < started - 1.0:
-                self._path.unlink(missing_ok=True)
+            if self._path.exists():
+                try:
+                    started = psutil.Process().create_time()
+                    stale = self._path.stat().st_mtime < started - 1.0
+                except psutil.Error:
+                    stale = True  # masked /proc: cannot date the file, treat as stale
+                # A stop command is never preserved across startup regardless of
+                # age: losing a raced end-run press is benign (press again), while
+                # a leftover ``{"stopped": true}`` surviving clock skew would end
+                # the new run before episode 0.
+                if stale or bool((self._read() or {}).get("stopped")):
+                    self._path.unlink(missing_ok=True)
         except OSError:
             pass  # unwritable path: the poller below will simply read nothing
         self._thread = threading.Thread(target=self._run, daemon=True, name="run-control-file")

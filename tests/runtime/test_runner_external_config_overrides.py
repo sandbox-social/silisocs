@@ -46,7 +46,7 @@ def test_overlay_config_paths_precede_primary_in_env_var(tmp_path, monkeypatch) 
 
     assert "--config-path" not in sys.argv
     assert "--overlay-config-path" not in sys.argv
-    env_dirs = os.environ.get("SILISOCS_EXTERNAL_CONFIG_DIRS", "").split(":")
+    env_dirs = os.environ.get("SILISOCS_EXTERNAL_CONFIG_DIRS", "").split(os.pathsep)
     assert env_dirs[0] == str(primary.resolve())
     assert env_dirs[1] == str(overlay.resolve())
 

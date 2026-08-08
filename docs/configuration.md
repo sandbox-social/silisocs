@@ -215,12 +215,13 @@ live in `sim.llm`, and they have opposite rules:
   `temperature`, `disabled`, `extra_kwargs` (plus telemetry-only `pricing`) — is
   **closed**. An unknown key under `sim.llm` (or under a per-class `model` block)
   fails validation naming the key. Building the model is strict too: if
-  `api_base`, `api_key`, `extra_kwargs`, or the model name is *set* and the
-  selected provider's constructor cannot accept it, the run fails at build naming
-  the provider and the offending field(s) rather than silently sending requests to
-  the wrong endpoint. Only relevant to custom providers — every built-in and preset
-  accepts all four. `log_file`, `debug`, and `temperature` are framework-supplied
-  with defaults, so a custom provider may ignore them.
+  `api_base`, `api_key`, or `extra_kwargs` is *set* (their defaults are unset) and
+  the selected provider's constructor cannot accept it, the run fails at build
+  naming the provider and the offending field(s) rather than silently sending
+  requests to the wrong endpoint. Only relevant to custom providers — every
+  built-in and preset accepts all of them. `model_name`, `log_file`, `debug`, and
+  `temperature` are framework-supplied with defaults, so a fixed-model or custom
+  provider may ignore them.
 - **`extra_kwargs` contents** are **open** for API-backed providers (`openai`,
   `openai_compatible`, every preset): the mapping is merged into the chat-completion
   request body, so its keys are the provider API's vocabulary, not the framework's.

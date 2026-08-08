@@ -26,6 +26,12 @@ _DIFF_CONTEXT = 2
 _DIFF_MAX_LINES = 120
 
 
+# What a client sends for a document it believes does not exist yet (the /new
+# pages): the save then conflicts if the file meanwhile appeared, closing the
+# create-vs-create race that a hash of existing bytes cannot express.
+NEW_DOCUMENT = "new"
+
+
 def fingerprint_text(text: str) -> str:
     """Fingerprint a document from its UTF-8 bytes."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -95,9 +101,14 @@ def check_fingerprint(
     """Refuse a save whose baseline fingerprint no longer matches the file on disk.
 
     ``expected`` empty/absent means the client opted out (old clients, scripts),
-    which keeps the plain overwrite behaviour.
+    which keeps the plain overwrite behaviour. :data:`NEW_DOCUMENT` asserts the
+    client is creating the document, so an existing file is a conflict.
     """
     if not expected:
+        return
+    if expected == NEW_DOCUMENT:
+        if path.is_file():
+            raise SaveConflictError(label, path, submitted=submitted, baseline=baseline)
         return
     if path_fingerprint(path) != expected:
         raise SaveConflictError(label, path, submitted=submitted, baseline=baseline)

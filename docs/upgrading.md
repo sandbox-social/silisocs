@@ -130,6 +130,20 @@ bumps are listed in the release notes below when they happen.
 
 ### Config keys
 
+- **Checkpoint schema v7.** Checkpoints persist the game master's backend config,
+  which now carries `output_dir` (formerly `output_rootname`), so the schema
+  version was bumped: a pre-rename (v6) checkpoint refuses to restore with a
+  version error instead of silently rebuilding its backend against an empty
+  output directory. Per the compatibility policy above, re-run rather than
+  migrate.
+- **`silisocs.studies.run_study` is now an entry-point shim.** The study runner
+  lives in `silisocs.studies.plan` (pure planning), `silisocs.studies.execute`,
+  and `silisocs.studies.cli`. The shim keeps `silisocs-study`,
+  `python -m silisocs.studies.run_study`, and the public names (`RunSpec`,
+  `EvalSpec`, `StudyConfigError`, `RUN_COMPLETE_MARKER`, ...) importable; code
+  importing private `_helpers` from `run_study` must import them from their new
+  module.
+
 - **`output_rootname` was renamed to `output_dir` (BREAKING).** The key never named
   a *root* under which run directories were created — it named the run's output
   directory itself, and the runtime stamps the resolved path straight back onto it.

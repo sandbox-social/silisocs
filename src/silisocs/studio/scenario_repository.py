@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from silisocs.studio.save_conflicts import check_fingerprint, path_fingerprint
+from silisocs.studio.save_conflicts import check_fingerprint, fingerprint_text
 
 SCENARIO_FILES = (
     "world/default.yaml",
@@ -145,11 +145,13 @@ class ScenarioRepository:
             path = scenario_dir / "conf" / relative
             if not path.is_file():
                 continue
-            text = path.read_text(encoding="utf-8")
+            # One read serves text and fingerprint (UTF-8 en/decoding round-trips,
+            # so hashing the decoded text equals hashing the raw bytes).
+            text = path.read_bytes().decode("utf-8")
             files[relative] = {
                 "text": text,
                 "data": yaml.safe_load(text) if parse else None,
-                "fingerprint": path_fingerprint(path),
+                "fingerprint": fingerprint_text(text),
             }
         return {
             "name": name,
