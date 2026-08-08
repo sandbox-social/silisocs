@@ -16,12 +16,15 @@ Usage: python capture_cli.py <tape.yaml> <output-basename>
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import pty
 import select
+import struct
 import subprocess
 import sys
+import termios
 import time
 from pathlib import Path
 
@@ -64,6 +67,10 @@ def run_command(cast: CastWriter, command: str, step: dict) -> None:
     idle_limit = float(step.get("idle_limit", 1.0))
     cwd = step.get("cwd") or os.getcwd()
     master, slave = pty.openpty()
+    # Set the real pty window size: programs that ioctl the terminal (rather
+    # than reading COLUMNS/LINES) must wrap for the cast's width, not 80x24.
+    winsize = struct.pack("HHHH", cast.header["height"], cast.header["width"], 0, 0)
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, winsize)
     env = {
         **os.environ,
         "TERM": "xterm-256color",

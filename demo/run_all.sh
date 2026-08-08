@@ -29,8 +29,9 @@ fi
 
 if [ "$STAGE" = all ] || [ "$STAGE" = studio ]; then
   # A warm Studio server; --state-dir keeps demo jobs out of your workspace state.
+  # exec so $! is the server itself, not a wrapper subshell kill would miss.
   (cd "$REPO" && set -a && . ./.env && set +a \
-    && silisocs-studio --output-root outputs --port 8799 --state-dir "$REPO/demo/build/studio-state") &
+    && exec silisocs-studio --output-root outputs --port 8799 --state-dir "$REPO/demo/build/studio-state") &
   STUDIO_PID=$!
   trap 'kill $STUDIO_PID 2>/dev/null || true' EXIT
   for _ in $(seq 1 120); do

@@ -68,8 +68,9 @@ def test_scenario_is_discovered_and_preflight_estimates(demo):
     ).json()
     assert result["ok"] is True, result["findings"]
     estimate = result["estimate"]
-    # 6 agents x 10 steps, gated by the markov activity steady state 0.8/0.9.
-    assert estimate["agent_steps"] == round(6 * 10 * (0.8 / 0.9))
+    # 6 agents x 10 steps, gated by activity_probability's per-step
+    # inactive_to_active rate of 0.8 (an independent draw, not a markov chain).
+    assert estimate["agent_steps"] == round(6 * 10 * 0.8)
     assert estimate["llm_calls"] > 0
 
 

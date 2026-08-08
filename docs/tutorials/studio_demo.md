@@ -8,7 +8,7 @@ commands below.
 <video controls preload="metadata" style="max-width: 100%;"
        src="../../assets/videos/silisocs-cli-quickstart.mp4"></video>
 
-*CLI quickstart (72s): doctor → tutorial → a real run → the artifacts → a study plan.*
+*CLI quickstart (69s): doctor → tutorial → a real run → the artifacts → a study plan.*
 
 <video controls preload="metadata" style="max-width: 100%;"
        src="../../assets/videos/silisocs-studio-tour.mp4"></video>
@@ -72,7 +72,7 @@ Open `http://127.0.0.1:8765` and follow the tour:
    second format.
 2. **Preflight.** Validates the composed config and estimates agent-steps,
    LLM calls, and tokens before anything runs. (The estimate accounts for the
-   scenario's activity gating — agents here are active ~89% of steps.)
+   scenario's activity gating — agents here are active ~80% of steps.)
 3. **Launch → Interactive.** The run starts paused before episode 0 with
    Step / Play / Pause / End-run controls at episode boundaries. Step twice,
    watching the live log and artifact counters; then Play and let it finish.

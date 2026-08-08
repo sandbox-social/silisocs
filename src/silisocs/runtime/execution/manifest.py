@@ -9,6 +9,7 @@ than duplicating them — ``effective_config.yaml`` stays the config record and
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from collections.abc import Collection, Mapping
@@ -205,11 +206,20 @@ def write_run_manifest(**kwargs: Any) -> Path | None:
     that already completed (or mask the real error of one that failed).
     """
     output_dir = Path(kwargs["output_dir"])
+    tmp: Path | None = None
     try:
         manifest = build_run_manifest(**kwargs)
         path = output_dir / MANIFEST_FILENAME
-        path.write_text(json.dumps(manifest, indent=2, default=str) + "\n", encoding="utf-8")
+        # Temp file + atomic rename: readers (Studio's catalog re-loads the
+        # run the moment this file's stat changes) must never see a
+        # half-written manifest, especially at the provisional->final rewrite.
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(manifest, indent=2, default=str) + "\n", encoding="utf-8")
+        tmp.replace(path)
     except Exception:
         logger.warning("failed to write %s", MANIFEST_FILENAME, exc_info=True)
+        if tmp is not None:
+            with contextlib.suppress(OSError):
+                tmp.unlink(missing_ok=True)
         return None
     return path

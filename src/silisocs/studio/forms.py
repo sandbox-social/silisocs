@@ -804,24 +804,38 @@ class ScenarioRepository:
         return self.load(name)
 
 
-def _steady_state_active_share(rates: Any) -> float:
-    """Mean steady-state active probability implied by activity transition rates.
+def _rates_active_share(rates: Any, *, markov: bool) -> float:
+    """Mean active share implied by activity transition rates, per policy.
 
-    Each role's two-state markov chain settles at on/(on+off); the estimate
-    averages the roles (agent counts per role are unknown at this layer).
-    Returns 1.0 — everyone acts — when no usable rates are configured.
+    Mirrors the runtime (``simulation_engines/policies/participation.py``): a
+    missing rate key mirrors the declared one (symmetric switching);
+    ``activity_probability`` activates each agent independently at
+    ``inactive_to_active`` per step, while ``activity_markov`` settles at the
+    two-state steady state on/(on+off). Entries are averaged (agent counts per
+    role are unknown at this layer). Returns 1.0 — everyone acts — when no
+    usable rates are configured.
     """
     shares = []
     for entry in (rates or {}).values() if isinstance(rates, dict) else ():
         if not isinstance(entry, dict):
             continue
         try:
-            on = float(entry.get("inactive_to_active") or 0.0)
-            off = float(entry.get("active_to_inactive") or 0.0)
+            raw_on, raw_off = entry.get("inactive_to_active"), entry.get("active_to_inactive")
+            on = None if raw_on is None else float(raw_on)
+            off = None if raw_off is None else float(raw_off)
         except (TypeError, ValueError):
             continue
-        if on + off > 0:
-            shares.append(on / (on + off))
+        on = off if on is None else on
+        off = on if off is None else off
+        if on is None or off is None:
+            continue
+        on = min(1.0, max(0.0, on))
+        off = min(1.0, max(0.0, off))
+        if markov:
+            if on + off > 0:
+                shares.append(on / (on + off))
+        else:
+            shares.append(on)
     return sum(shares) / len(shares) if shares else 1.0
 
 
@@ -948,18 +962,28 @@ def preflight_payload(files: dict[str, str]) -> dict[str, Any]:
             )
     else:
         actions_per_turn = 1
-    participation = ((sim.get("engine") or {}).get("participation") or {}).get("params") or {}
+    participation_slot = (sim.get("engine") or {}).get("participation") or {}
+    participation = participation_slot.get("params") or {}
+    built_in = participation_slot.get("built_in")
     raw_active = participation.get("active_probability")
-    if raw_active is None:
-        # An explicit null (or absent key) defers to the per-role
-        # activity_transition_rates; estimate the steady-state active share
-        # those rates imply, and assume everyone acts when there are none.
-        active_fraction = _steady_state_active_share(participation.get("activity_transition_rates"))
-    else:
+    if built_in not in ("activity_probability", "activity_markov"):
+        # "all" (or a custom policy this layer cannot model): everyone acts,
+        # regardless of leftover activity params merged from another slot.
+        active_fraction = 1.0
+    elif built_in == "activity_probability" and raw_active is not None:
         active_fraction = number(
             raw_active,
             "sim.engine.participation.params.active_probability",
             1.0,
+        )
+    else:
+        # An explicit null (or absent key) defers to the per-role
+        # activity_transition_rates; markov ignores active_probability
+        # entirely. Estimate the share those rates imply for the policy,
+        # and assume everyone acts when there are none.
+        active_fraction = _rates_active_share(
+            participation.get("activity_transition_rates"),
+            markov=built_in == "activity_markov",
         )
     active_fraction = min(1.0, max(0.0, active_fraction))
     calls = round(agents * steps * active_fraction * actions_per_turn)

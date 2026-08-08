@@ -107,23 +107,44 @@ def test_preflight_reports_bad_numbers_instead_of_raising() -> None:
     assert any(item["path"] == "world.num_agents" for item in result["findings"])
 
 
-def test_preflight_null_active_probability_uses_transition_rate_steady_state() -> None:
-    """An explicit null defers to per-role markov rates — never an error."""
-    files = _files()
-    files["sim.yaml"] = yaml.safe_dump(
+def _participation_sim_yaml(built_in: str, rates: dict[str, dict[str, float]]) -> str:
+    return yaml.safe_dump(
         {
             "engine": {
                 "participation": {
-                    "built_in": "activity_probability",
+                    "built_in": built_in,
                     "params": {
                         "active_probability": None,
-                        "activity_transition_rates": {
-                            "user": {"inactive_to_active": 0.8, "active_to_inactive": 0.1}
-                        },
+                        "activity_transition_rates": rates,
                     },
                 }
             }
         }
+    )
+
+
+def test_preflight_null_active_probability_uses_activation_rate() -> None:
+    """An explicit null defers to per-role rates — never an error.
+
+    activity_probability draws each agent independently at inactive_to_active
+    per step (participation.py), NOT at the markov steady state.
+    """
+    files = _files()
+    files["sim.yaml"] = _participation_sim_yaml(
+        "activity_probability", {"user": {"inactive_to_active": 0.8, "active_to_inactive": 0.1}}
+    )
+
+    result = preflight_payload(files)
+
+    assert result["ok"] is True, result["findings"]
+    # 2 agents x 3 steps x per-step activation rate 0.8
+    assert result["estimate"]["agent_steps"] == round(2 * 3 * 0.8)
+
+
+def test_preflight_markov_participation_uses_steady_state() -> None:
+    files = _files()
+    files["sim.yaml"] = _participation_sim_yaml(
+        "activity_markov", {"user": {"inactive_to_active": 0.8, "active_to_inactive": 0.1}}
     )
 
     result = preflight_payload(files)
@@ -131,6 +152,33 @@ def test_preflight_null_active_probability_uses_transition_rate_steady_state() -
     assert result["ok"] is True, result["findings"]
     # 2 agents x 3 steps x steady state 0.8/(0.8+0.1)
     assert result["estimate"]["agent_steps"] == round(2 * 3 * (0.8 / 0.9))
+
+
+def test_preflight_single_key_rates_mirror_like_the_runtime() -> None:
+    """A rates entry declaring one key mirrors it (symmetric switching)."""
+    files = _files()
+    files["sim.yaml"] = _participation_sim_yaml(
+        "activity_markov", {"user": {"active_to_inactive": 0.2}}
+    )
+
+    result = preflight_payload(files)
+
+    assert result["ok"] is True, result["findings"]
+    # Mirrored 0.2/0.2 markov chain -> steady state 0.5, never 0.0.
+    assert result["estimate"]["agent_steps"] == round(2 * 3 * 0.5)
+
+
+def test_preflight_participation_all_ignores_leftover_activity_rates() -> None:
+    """built_in: all means everyone acts even with stale rates in params."""
+    files = _files()
+    files["sim.yaml"] = _participation_sim_yaml(
+        "all", {"user": {"inactive_to_active": 0.1, "active_to_inactive": 0.9}}
+    )
+
+    result = preflight_payload(files)
+
+    assert result["ok"] is True, result["findings"]
+    assert result["estimate"]["agent_steps"] == 2 * 3
 
 
 def test_persona_preview_uses_registered_provider(tmp_path: Path) -> None:
