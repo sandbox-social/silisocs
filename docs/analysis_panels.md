@@ -199,7 +199,9 @@ figures and tables can be built with `line_figure`, `bar_figure`, and `table`.
 
 For a semantic shape shared across backend implementations, or a third-party
 class you cannot decorate, call
-`register_event_semantics(backend_type, EventSemantics(...))`, or set a
+`register_event_semantics(backend_type, EventSemantics(...))` (importable from
+`silisocs.environments.backends.event_semantics`, the declaring layer, or via
+the `silisocs.evaluations.vocabulary` re-export — one shared registry), or set a
 class-level `event_semantics` declaration on the backend (an `EventSemantics`
 or the portable `{roles, fields, labels}` mapping — the shipped social backends
 declare theirs this way via `social_event_semantics(...)`). Resolution MERGES:

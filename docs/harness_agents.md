@@ -187,4 +187,4 @@ over the gateway's WebSocket API. `silisocs doctor` reports Node + `openclaw` pr
 
 ## Writing your own harness adapter
 
-See [Building Agents → Wrapping your own harness](building_agents.md#wrapping-your-own-harness).
+See [Building Agents → Wrapping your own harness](building_agents.md#wrapping-your-own-harness-experimental).

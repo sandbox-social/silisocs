@@ -46,7 +46,8 @@ head outputs/<run-dir>/action_events.jsonl
 ```
 
 The scenario ships with a small study — two call-to-action framings × two
-seeds (see [Study Schema](../study_schema.md) for the YAML):
+seeds (see [Study Schema](../study_schema.md) for the YAML, and the
+[Study Runner Reference](../experiments.md) for the commands):
 
 ```sh
 uv run silisocs-study --study experiments/studies/misinformation_cta_demo plan

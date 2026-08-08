@@ -39,7 +39,9 @@ Thank you for considering contributing to this project! We appreciate your effor
 The contributor lint contract is the configured pre-commit workflow:
 `uv run --group dev poe lint`. That workflow runs Ruff in the same mode as
 `.pre-commit-config.yaml`, including auto-fix-only Ruff checks, Ruff format,
-lock-file validation, and mypy.
+lock-file validation, mypy, and `lint-imports` (import-linter enforcing the
+layering contracts declared in `pyproject.toml`: the runtime kernel imports no
+upper layer, and the package layers stay one-directional).
 
 Poe commands require the dev dependency group because `poethepoet` lives there.
 For example, use `uv run --group dev poe docs` for the docs task rather than

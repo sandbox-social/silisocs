@@ -65,7 +65,8 @@ appear in the wild for the same thing, the **bold** one is the preferred term.
 : The `{built_in: <preset> | class_path: <your.Class>, params: {...}}` shape
   every pluggable config knob uses. `built_in` picks a shipped implementation;
   `class_path` loads yours; `params` are passed to its constructor and
-  validated strictly.
+  validated strictly. Full rules and the list of slots:
+  [Slots](configuration.md#slots).
 
 **Study**
 : A grid of runs (hypotheses × conditions × seeds) declared in a

@@ -1,21 +1,16 @@
 # Study Schema
 
-A study is a self-contained investigation of a research question using simulation experiments. This document defines the directory layout, file formats, analysis pipeline, and notebook structure that all studies should follow.
+A study is a self-contained investigation of a research question using simulation
+experiments. This page is the **reference** for the directory layout, every file
+format, and the notebook structure that studies follow.
 
-> **Runner location.** The study runner lives in the package at
-> `silisocs.studies.run_study` and is exposed as the `silisocs-study` console
-> command. The invocations below use `silisocs-study`; the equivalent module
-> form is `python -m silisocs.studies.run_study ...`.
+For what a study *is* and how to design one, read the
+[Study Guide](study_guide.md). For the commands that produce these files, read
+the [Study Runner Reference](experiments.md).
 
 ## Directory Layout
 
 ```
-src/silisocs/studies/
-  run_study.py                           # Study planner/runner/evaluator orchestrator
-  study_types.py                         # Shared leaf types/helpers (specs, validators, formatters)
-  study_schema.py                        # schema_version validation for study.yaml
-  study_artifacts.py                     # Artifact organization helpers
-  templates.py                           # Locates study templates in a repo checkout
 experiments/
   studies/
     study_template_v1/                   # Canonical study template (repository content)
@@ -25,10 +20,13 @@ experiments/
       notebook.ipynb                    # Results notebook (authored, version-controlled)
       SUMMARY.md                        # Human-readable notes and findings
       generated/                        # Reproducibility locks, eval copies, organized views
+        plan.json                       # Expanded run plan
+        run_study.sh                    # Emitted by `generate-bash`
         repro_lock.jsonl
         repro_lock.json
         study_index.json
         study_enriched.yaml
+        logs/                           # Per-run stdout/stderr
         eval/                           # Stable evaluator output copies
         organized/
           study_summary.yaml
@@ -46,11 +44,13 @@ experiments/
 outputs/                                # Default simulation output root (gitignored)
 ```
 
-`study.yaml` is the single source of truth: it defines the scientific hierarchy *and* maps conditions to concrete run/eval paths. It is authored by the user and checked into version control. The study runner writes generated reproducibility and evaluation artifacts under `experiments/studies/{study_id}/generated/`.
-
-Raw simulation outputs usually live under `outputs/` or a study-specific
-`output_root_override`. The study runner writes reproducibility locks and stable
-evaluation copies under `experiments/studies/{study_id}/generated/`.
+`study.yaml` is the single source of truth: it defines the scientific hierarchy
+*and* maps conditions to concrete run/eval paths. It is authored by the user and
+checked into version control. Everything under
+`experiments/studies/{study_id}/generated/` is written by the study runner —
+reproducibility locks, stable evaluator copies, and the organized view. Raw
+simulation outputs usually live under `outputs/`, the study-owned `runs/` root,
+or a study-specific `output_root_override`.
 
 ### Naming conventions
 
@@ -63,6 +63,27 @@ evaluation copies under `experiments/studies/{study_id}/generated/`.
 | Notebook file | `notebook.ipynb` (inside study dir) | `experiments/studies/style_diversity/notebook.ipynb` |
 
 The `{iv}={value}` convention (inspired by Hive-style partitioning) makes the independent variable and its level readable from the path alone.
+
+## Producing These Files
+
+The [Study Runner Reference](experiments.md) documents every command and flag.
+What matters for the schema is which files each stage writes:
+
+| Stage | Writes |
+|---|---|
+| `plan` | `generated/plan.json` |
+| `run` | run directories (plus a `RUN_COMPLETE.json` marker per finished run), `generated/logs/` |
+| evaluate | `generated/eval/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/{eval_id}/` |
+| record | `generated/repro_lock.jsonl`, `repro_lock.json`, `study_index.json`, `study_enriched.yaml` |
+| `organize` | `generated/organized/` (idempotent — rebuildable from `repro_lock.json` alone) |
+
+Before a study can run: `study.yaml` declares `study.run_defaults`,
+`hypotheses`, and condition `overrides`; `eval.py` exists if any evaluation uses
+`builtin.study_eval`; and conditions that should reuse prior outputs declare
+`execution.mode: reuse_existing` with those outputs under `reuse.runs`.
+Re-running a study is safe when run output paths are deterministic or when
+conditions intentionally use `reuse_existing` — the runner never infers old runs
+from arbitrary directories.
 
 ## File Formats
 
@@ -360,12 +381,14 @@ A parallel `metrics_stats_by_condition` section reports cross-replicate statisti
 
 ## The eval.py Contract
 
-Every study that needs style-diversity metrics ships `experiments/studies/{study_name}/eval.py`. `run_study.py` discovers and invokes it automatically via the `builtin.study_eval` preset.
+A study that needs metrics the builtin presets don't cover ships
+`experiments/studies/{study_name}/eval.py`. The study runner discovers and
+invokes it automatically via the `builtin.study_eval` preset.
 
 ### Required CLI interface
 
 ```bash
-# Primary: called by run_study.py for each run:
+# Primary: called by the study runner for each run:
 uv run python experiments/studies/{study_name}/eval.py \
     --run-dir <path/to/run_dir> \
     --output  <path/to/eval.json>
@@ -427,7 +450,7 @@ evaluations:
     preset: builtin.study_eval
 ```
 
-`run_study.py` resolves `./eval.py` relative to the study directory and raises a clear error if the file doesn't exist.
+The runner resolves `./eval.py` relative to the study directory and raises a clear error if the file doesn't exist.
 
 ### Writing eval.py for a new study
 
@@ -436,101 +459,9 @@ evaluations:
 3. Compute metrics; write output as `eval.json` in the schema format above.
 4. Return exit code 0 on success, non-zero on error.
 
-Studies that don't need custom metrics can omit `eval.py` and use only the `builtin.*` presets (`builtin.action_metrics_detailed`, `builtin.probe_*`).
-
-## Running a Study
-
-To run a new study from scratch:
-
-```bash
-# Run all conditions × scenarios, evaluate, register, and organize in one command:
-uv run silisocs-study --study experiments/studies/{study_name} run
-
-# Run only a specific hypothesis:
-uv run silisocs-study --study experiments/studies/{study_name} run \
-    --only-hypothesis h1_model_capacity
-
-# Preview without executing:
-uv run silisocs-study --study experiments/studies/{study_name} run \
-    --dry-run
-```
-
-`run_study.py` reads `study.yaml`, expands concrete runs, executes fresh runs or
-declared `reuse_existing` records, runs the configured evaluators, writes
-reproducibility artifacts, and rebuilds the organized view. Re-running a study is
-safe when run output paths are deterministic or when conditions intentionally use
-`execution.mode: reuse_existing`; the runner does not infer old runs from
-arbitrary directories.
-
-### Idempotent resume (RUN_COMPLETE markers)
-
-After every successful run the runner writes a `RUN_COMPLETE.json` marker into
-the run directory containing `run_id`, `finished_at`, `effective_config_sha256`,
-and `return_code`. On the next `run` invocation, any run whose planned output
-directory already contains this marker is skipped instead of re-executed: it is
-recorded with `status: skipped_complete` (counted as a success in the summary),
-the existing `effective_config.yaml` is re-hashed into the repro lock, and any
-prior evaluator outputs under `generated/eval/` are re-linked. The runner prints
-`Skipped N already-complete runs (use --force to re-run)` at the end.
-
-```bash
-# Resume a partially completed study (only failed/missing runs execute):
-uv run silisocs-study --study experiments/studies/{study_name} run
-
-# Ignore markers and re-run everything:
-uv run silisocs-study --study experiments/studies/{study_name} run --force
-```
-
-Resume applies only to runs with a deterministic planned output directory (the
-default `experiments/studies/{study_id}/runs/...` layout or an explicit
-`output_root_override`). Failed or timed-out runs never write a marker, so they
-re-run automatically.
-
-### Cost/scale preflight
-
-Before launching (and in `plan` output), the runner prints a preflight summary:
-the number of planned runs, per-run `num_agents`/`num_steps` when derivable from
-the resolved overrides (`?` otherwise), and the estimated total agent-steps.
-When more than 50 runs would actually execute, the runner asks for confirmation
-on a TTY and aborts in non-interactive sessions unless `--yes` is passed:
-
-```bash
-uv run silisocs-study --study experiments/studies/{study_name} run --yes
-```
-
-Already-complete (skipped) runs do not count toward the confirmation threshold.
-
-**Prerequisites before running:**
-1. `study.yaml` exists with `study.run_defaults`, `hypotheses`, and condition `overrides`
-2. `eval.py` exists in the study directory
-3. Conditions that should reuse prior outputs declare `execution.mode: reuse_existing`
-   and list those outputs under `reuse.runs`
-
-To re-organize without re-running simulations (e.g. after editing `study.yaml`):
-
-```bash
-uv run silisocs-study \
-    --study experiments/studies/{study_name} organize
-```
-
-## Analysis Pipeline
-
-The study runner owns planning, simulation execution, evaluation hooks, and
-artifact organization. Generated study artifacts are written under
-`experiments/studies/{study_id}/generated/`; raw simulation output goes wherever
-the expanded Hydra overrides place it, commonly `outputs/` or a study-specific
-`output_root_override`.
-
-```
-1. plan       expand hypotheses, conditions, scenarios, seeds, and overrides
-2. run        call silisocs.runtime.runner for each runnable expanded run
-3. evaluate   run configured builtin or study-local evaluator hooks
-4. record     write repro_lock.jsonl, repro_lock.json, and study_index.json
-5. organize   build generated/organized/ for notebook-friendly browsing
-```
-
-`organize` is idempotent and can be re-run from `repro_lock.json` after a
-completed or partially completed study.
+Studies that don't need custom metrics can omit `eval.py` and use only the
+`builtin.*` presets — see
+[Evaluator presets](experiments.md#evaluator-presets) for the full list.
 
 ## Notebook Structure
 
@@ -588,17 +519,26 @@ The results notebook (`experiments/studies/{name}/notebook.ipynb`) follows a fix
 
 ## Extending the Schema
 
-### Adding a new hypothesis to an existing study
+The authoring workflow for a new study, a new hypothesis, and a follow-up
+hypothesis is the [Study Guide](study_guide.md). This section covers only the
+schema-level rules those workflows depend on.
 
-1. Add the hypothesis entry to `study.yaml` (the source of truth). Include `statement`, `independent_variable`, `prediction`, `status: testing`, and an empty `conditions` map. The `hypothesis.yaml` files under `experiments/` are generated by the organizer; do not create them by hand.
-2. Run simulations for each condition x scenario combination using `study.run_defaults` as the base, adding per-condition overrides.
-3. Evaluate each run to produce `eval.json`.
-4. Re-run `uv run silisocs-study --study experiments/studies/{study_name} organize`
-   when you want to rebuild only the notebook-friendly organized tree from an
-   existing `repro_lock.json`.
-5. For baseline reuse, add `execution.mode: reuse_existing` plus `reuse.runs`
-   under the relevant condition instead of duplicating simulation work.
-6. Add hypothesis-specific sections to the notebook or create a separate notebook.
+**`study.yaml` is the only file you hand-write.** The `hypothesis.yaml` files
+under `generated/organized/` are produced by the organizer — creating one by hand
+is always wrong; add the hypothesis entry to `study.yaml` and re-`organize`
+instead. A new hypothesis entry needs `statement`, `independent_variable`,
+`prediction`, `status: testing`, and a `conditions` map.
+
+**Studies without an eval script.** If the simulation already writes the numbers
+you need (e.g. `probe_events.jsonl`) or the metrics come from a separate
+post-processing step (e.g. an LLM-judge pass over probe results), skip `eval.py`,
+use the `builtin.probe_*` presets, and document the deviation in `study.yaml`
+under a top-level `analysis.notes` key.
+
+**Extending the notebook for a follow-up.** Add a new section after the parent's,
+opening with a "Motivation" cell that references the parent's `finding` before
+presenting new results. Section 9 Takeaways should reflect the full hypothesis
+chain.
 
 ### Reusing a baseline condition across hypotheses
 
@@ -634,47 +574,27 @@ hypotheses:
           sim.llm.temperature: 1.0
 ```
 
-### Adding a followup hypothesis
+### Follow-up hypothesis fields
 
-A followup hypothesis is motivated by the result of a completed hypothesis. The workflow is:
+A follow-up hypothesis carries two extra keys, and closing its parent adds a
+third. Nothing else about the entry differs from a first-round hypothesis.
 
-1. **Close the parent.** Update its `status` in `study.yaml` to `supported`, `refuted`, or `inconclusive`. Record the key finding in a `finding` field (optional but recommended):
-   ```yaml
-   h1_model_capacity:
-     status: supported
-     finding: >-
-       gpt4o produced 3× higher inter-agent distinctiveness than gpt4o-mini
-       across both scenarios.
-   ```
+```yaml
+hypotheses:
+  h1_model_capacity:
+    status: supported            # testing | supported | refuted | inconclusive
+    finding: >-                  # optional, recommended once status is closed
+      gpt4o produced 3× higher inter-agent distinctiveness than gpt4o-mini
+      across both scenarios.
 
-2. **Add the followup entry** to `study.yaml` with `follows_from` and `motivation`:
-   ```yaml
-   h2_temperature_effect:
-     follows_from: h1_model_capacity
-     motivation: >-
-       H1 finding raises the question of whether temperature, not model size,
-       is the true driver of diversity.
-     statement: ...
-     independent_variable: temperature
-     ...
-   ```
-
-3. **Run, evaluate, and organize** as for any new hypothesis (steps 2 to 4 above).
-
-4. **Extend the notebook.** Add a new section after the parent's section. Open with a "Motivation" cell that references the parent finding before presenting the new results. The Section 9 Takeaways should reflect the full hypothesis chain.
-
-### Adding a new study
-
-1. Create `experiments/studies/{study_name}/study.yaml` with the full study definition (see format above).
-2. Preview the expanded runs with `uv run silisocs-study --study experiments/studies/{study_name} plan`.
-3. Write `experiments/studies/{study_name}/eval.py` to produce per-run evaluation output when the builtin evaluator presets are not enough.
-   - **Note:** not all studies need a standalone eval script. If the simulation already writes probe
-     results (e.g. `probe_events.jsonl`) or requires a post-processing step (e.g.
-     `scripts/judge_probe_results.py` for LLM-judged probes), adapt stage 2 accordingly and
-     document the deviation in `study.yaml` under a top-level `analysis.notes` key.
-4. Run `uv run silisocs-study --study experiments/studies/{study_name} run` to execute simulations, evaluators, reproducibility logging, and organization.
-5. Use `organize` later to rebuild only `generated/organized/` from an existing `repro_lock.json`.
-6. Create `experiments/studies/{study_name}/notebook.ipynb` following the notebook structure above.
+  h2_temperature_effect:
+    follows_from: h1_model_capacity
+    motivation: >-
+      H1 finding raises the question of whether temperature, not model size,
+      is the true driver of diversity.
+    statement: ...
+    independent_variable: temperature
+```
 
 ### Adding replicate runs
 

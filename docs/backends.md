@@ -519,7 +519,11 @@ to a single action:
 
 Use `register_event_semantics` when several backend implementations share one
 shape or when declaring capabilities for a class you do not own. Registration
-takes precedence over class and decorator declarations. See
+takes precedence over class and decorator declarations. `EventSemantics`,
+`register_event_semantics`, and `social_event_semantics` live in
+`silisocs.environments.backends.event_semantics` (the declaring layer);
+`silisocs.evaluations.vocabulary` re-exports them for analysis-side readers,
+and both paths share one registry. See
 [Analysis panels](analysis_panels.md) for `EventFrame` and panel capability
 gates, and `resource_market` for a worked non-social example.
 
@@ -712,8 +716,8 @@ To implement a new generic environment:
           some_setting: 1
     ```
 
-    `params` are strict constructor arguments. Unknown keys fail early unless
-    the app constructor accepts `**kwargs`.
+    The backend is a [slot](configuration.md#slots): `params` are strict
+    constructor arguments and unknown keys fail early.
 
 4. **Optionally register as a built-in** in the factory if it should be
    selectable by `env.gm.backend.type` alone:

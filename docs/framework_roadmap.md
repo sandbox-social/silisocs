@@ -14,7 +14,7 @@ SiliSocS should make each simulator layer replaceable through a defined shape:
 | Environment app | `BackendApp` plus `@app_action` methods | Built-in `env.gm.backend.type` or `env.gm.backend.class_path` |
 | Timeline/recsys capability | `SocialBackendApp` optional timeline/recsys interface | Twitter-like, Reddit-like, Mastodon, or custom backend using those components |
 | GM | Component-slotted game master | Override component slots before replacing the full GM |
-| GM component | Slot config with `built_in`, `class_path`, `params`, optional `flows` | Custom initialize, next-acting, action_prompt, observe, resolve, update |
+| GM component | [Slot](configuration.md#slots) config, plus optional `flows` | Custom initialize, next-acting, action_prompt, observe, resolve, update |
 | Engine | Runtime loop plus policy objects | Custom turn-policy or probe-schedule policy first; custom engine only when needed |
 | Evaluation | Probe deployment plus postprocessors/evaluators | Custom probe types and study evaluators |
 

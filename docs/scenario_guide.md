@@ -258,7 +258,7 @@ gm:
 ## Where to look next
 
 - **Existing scenarios:** `scenarios/election/`, `scenarios/ai_conference/`: working examples
-- **Full config reference:** `docs/configuration.md`
-- **Study design:** `docs/study_guide.md`: how to run multi-condition experiments on your scenario
-- **Probes (survey questions):** `docs/probes.md`
+- **Full config reference:** [Configuration Reference](configuration.md)
+- **Study design:** [Study Guide](study_guide.md): how to run multi-condition experiments on your scenario
+- **Probes (survey questions):** [Evaluation Probes](probes.md)
 - **Advanced config:** `agent_docs/scenario_design.md`: complete field reference

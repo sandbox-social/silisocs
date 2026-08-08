@@ -120,8 +120,8 @@ SQLite backend database for local platforms.
 
 ## Studies and Experiments
 
-Study orchestration ships in the package as `silisocs.studies.run_study`, exposed
-as the `silisocs-study` console command (equivalent: `python -m
+Study orchestration ships in the package as the `silisocs.studies` subpackage,
+exposed as the `silisocs-study` console command (equivalent: `python -m
 silisocs.studies.run_study`). It expands hypotheses, conditions, scenarios, and
 seeds into reproducible simulation runs, then executes the configured evaluators
 and writes organized artifacts under the study's `generated/` directory.
@@ -134,9 +134,10 @@ uv run silisocs-study --study experiments/studies/study_template_v1 summary-appe
 
 Custom commands plug in through `conditions.<id>.execution.command`, evaluator
 commands through the `evaluations` list, and optional HPC setup through the
-study runner's `submitit` or `slurm-array` commands. See
-[docs/experiments.md](docs/experiments.md) and
-[docs/study_schema.md](docs/study_schema.md).
+study runner's `submitit` or `slurm-array` commands. Start with
+[docs/study_guide.md](docs/study_guide.md) to design a study, then
+[docs/experiments.md](docs/experiments.md) for the runner reference and
+[docs/study_schema.md](docs/study_schema.md) for the file formats.
 
 ## Architecture
 

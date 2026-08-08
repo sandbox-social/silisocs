@@ -17,11 +17,11 @@ Last reviewed: 2026-07-29.
 | GM component slots | `environments/gm/components/` | [Environment Layer](environment_layer.md), [Simulation Extensibility API](simulation_extensibility_api.md) | Covered; strict `params` behavior must be called out |
 | Flow and multi-GM routing | `gm/game_master.py`, `simulation_engines/policies/steps.py` | [Multi-GM Architecture](multi_gm_architecture.md), `agent_docs/architecture.md` | Covered but duplicated; public docs should be canonical |
 | Engine policies | `src/silisocs/simulation_engines/policies/` | [Environment Layer](environment_layer.md), [Simulation Extensibility API](simulation_extensibility_api.md) | Covered after path correction |
-| Evaluation probes and studies | `evaluations/probes/`, study docs | [Probes](probes.md), [Study Guide](study_guide.md), [Study Schema](study_schema.md) | Covered; update when evaluator APIs change |
+| Evaluation probes and studies | `evaluations/probes/`, study docs | [Probes](probes.md), [Study Guide](study_guide.md), [Study Runner Reference](experiments.md), [Study Schema](study_schema.md) | Covered; guide = workflow, experiments = runner CLI, schema = file formats |
 | Studio | `src/silisocs/studio/` | [Studio](studio.md) | Covered; forms and panels are declarative extension surfaces |
 | Studio analysis panels and views | `src/silisocs/analysis/` | [Analysis Panels](analysis_panels.md), [Studio](studio.md) | Covered; panels bind to semantic roles, never backend names |
 | Interactive run control | `simulation_engines/control.py` | [Configuration](configuration.md), [Studio](studio.md) | Covered; controls act at episode boundaries only |
-| Run artifacts and run health | `runtime/execution/manifest.py`, `evaluations/run_artifact.py`, `evaluations/vocabulary.py` | [Usage](usage.md) | Covered; the health-counter registry is the single source |
+| Run artifacts and run health | `runtime/execution/manifest.py`, `evaluations/run_artifact.py`, `evaluations/vocabulary.py` | [Usage](usage.md) | Covered; the health-counter registry is the single source (event semantics declare in `environments/backends/event_semantics.py`; `vocabulary` re-exports) |
 | Harness agents (experimental) | `src/silisocs/agents/harness/` | [Harness Agents](harness_agents.md) | Experimental; config surface and internals may change |
 | Extension API docs | Public extension contracts | [Simulation Extensibility API](simulation_extensibility_api.md) | Curated API reference; generated internal pages are not shipped |
 | Coding-agent guidance | `AGENTS.md`, `agent_docs/` | `AGENTS.md`, `agent_docs/README.md` | Covered; keep tool-neutral and synced with runtime paths |

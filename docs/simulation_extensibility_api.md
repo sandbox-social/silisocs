@@ -125,8 +125,8 @@ env:
         initial_cash: 20
 ```
 
-`params` are strict constructor arguments. Unknown keys fail before simulation
-startup unless the target class accepts `**kwargs`.
+The backend is a [slot](configuration.md#slots) (selected by `type` rather than
+`built_in`).
 
 ## 3) Game Master API
 
@@ -181,9 +181,8 @@ Config schema pattern:
   flow_map: {}    # optional, maps flow names to instance keys
 ```
 
-`params` are strict constructor arguments. Unknown keys fail early unless the
-target component accepts `**kwargs`. Runtime-injected values such as `model`,
-`agent_names`, and app handles may still be filtered when a constructor does
+Each role is a [slot](configuration.md#slots). Runtime-injected values such as
+`model`, `agent_names`, and app handles are filtered out when a constructor does
 not accept them. Observe components that explicitly accept `observation_params`
 may use `params` as a forwarded observation-settings bag.
 
@@ -362,7 +361,7 @@ Branch routers decide which GM each of a flow's agents acts on at a
 `{branch: {router, choices}}` node in a `flow_to_gms` chain (see
 [Multi-GM Architecture](multi_gm_architecture.md#branch-routing)). The built-ins
 live in `src/silisocs/simulation_engines/policies/routers.py` and are built by
-`build_router` from a `{built_in|class_path, params}` slot. A router is **any
+`build_router` from a [slot](configuration.md#slots). A router is **any
 callable** — no base class, no registration; the signature is formalized by the
 structural `Router` Protocol in `routers.py` (its parameters are positional-only,
 so your function may name them freely):
@@ -401,8 +400,7 @@ Built-ins:
 
 Turn policy params include `observe_before_act: first | always | never`.
 `first` is the default and preserves existing behavior for repeated actions.
-Policy factories support `built_in`, optional `class_path`, and strict
-constructor validation for configured `params`.
+Every policy factory reads the standard [slot](configuration.md#slots) shape.
 
 ## 7) Extension Recipes
 

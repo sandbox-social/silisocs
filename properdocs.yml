@@ -107,8 +107,8 @@ nav:
       - Usage Overview: usage.md
       - Scenario Guide: scenario_guide.md
       - Study Guide: study_guide.md
+      - Study Runner Reference: experiments.md
       - Study Schema: study_schema.md
-      - Experiment Studies: experiments.md
     - Configuration:
       - Configuration: configuration.md
       - Config Reference (Generated): config_reference.md

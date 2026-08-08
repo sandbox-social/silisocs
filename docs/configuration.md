@@ -22,6 +22,73 @@ Configuration is split across named groups, each with a base preset in
 
 ---
 
+## Slots (`built_in` / `class_path` / `params`) {#slots}
+
+Every pluggable piece of the framework — engines, policies, GM components,
+backends, checkpoint strategies, memory, routers, intervention handlers — is
+configured with the same three-key **slot**:
+
+```yaml
+some:
+  slot:
+    built_in: shipped_name   # pick one of the shipped implementations
+    class_path: null         # ...or a fully-qualified path to your own class
+    params: {}               # constructor arguments for whichever was chosen
+```
+
+The rules below hold for *every* slot in this document, so the per-knob sections
+only list that slot's built-ins, its base type, and its params:
+
+- **`class_path` wins** when both keys are set. It is imported at build time and
+  must satisfy that slot's contract (usually a subclass of the slot's base
+  class; routers are plain callables instead).
+- **`params` are strict constructor arguments.** An unknown key fails before the
+  simulation starts rather than silently running with defaults — a typo'd param
+  is a config error, not a surprise at step 40. The exception is a target class
+  that accepts `**kwargs`. Values the runtime injects itself (`model`,
+  `agent_names`, `sim_roles`, app handles) are filtered out when the constructor
+  does not accept them, so you never declare them in `params`.
+- **`params: null` clears** a params block a merged config group supplied. Hydra
+  merging cannot remove sibling keys, so `params: {}` leaves the group's params
+  in place; `params: null` is the way to reset them.
+- Slots override from the CLI like any other key:
+  `sim.engine.turn_policy.built_in=open_ended sim.engine.turn_policy.params.count=3`.
+- A slot is where you extend the framework without editing it. Writing a custom
+  implementation and pointing `class_path` at it is the supported path for all of
+  them; see [Simulation Extensibility API](simulation_extensibility_api.md).
+
+The slots, and where each is documented:
+
+| Slot | Base type | Reference |
+|---|---|---|
+| `env.gm.backend` (`type` \| `class_path`) | `BackendApp` | [Backends](#backends), [Environment Backends](backends.md) |
+| `env.gm.components.{initialize,next_acting,observe,resolve,update,action_prompt}` | `Component` | [GM Components](#gm-components) |
+| `env.gm_orchestration.gms[*].components.*` | `Component` | [Multi-GM Orchestration](#advanced-multi-gm-orchestration) |
+| `env.gm_orchestration.flow_bindings.flow_to_gms.<flow>[*].branch.router` | callable | [Branch routing](#advanced-multi-gm-orchestration) |
+| `env.gm_orchestration.gms[*].restore` | `CheckpointRestoreStrategy` | [Multi-GM layout](#multi-gm-layout) |
+| `sim.memory` | `MemoryPolicy` | [Agent Memory](#agent-memory-simmemory) |
+| `sim.initialization.{agents,game_masters,simulation}` | initializer | [Memory Initialization](memory_initialization.md), [Seed Posts](#seed-posts) |
+| `sim.engine.loop` | `LoopStrategy` | [Interactive Stepping](#interactive-stepping) |
+| `sim.engine.step` | `StepStrategy` | [Engine and Runtime](#engine-and-runtime) |
+| `sim.engine.turn_policy` (+ `flow_turn_policies`, `gm_turn_policies`) | `TurnPolicy` | [Engine Turn Policies](#engine-turn-policies) |
+| `sim.engine.participation` | `ParticipationPolicy` | [Social Setup and Participation](#social-setup-and-participation) |
+| `sim.engine.control` | controller | [Interactive Stepping](#interactive-stepping) |
+| `sim.checkpoint.save` | `CheckpointSaveStrategy` | [Engine and Runtime](#engine-and-runtime) |
+| `sim.checkpoint.restore` | `CheckpointRestoreStrategy` | [Checkpoint Restore](#checkpoint-restore) |
+| `eval.probes.schedule` | probe schedule | [Probes](#probes) |
+| `interventions[*]` with `kind: custom` | `InterventionHandler` | [Mid-Run Interventions](#mid-run-interventions) |
+| `agents.persona_pipeline.classes.<class>` (`class_path` + `params`) | `Agent` | [Persona Pipeline](#persona-pipeline), [Building Agents](building_agents.md) |
+| `agents.builder` (custom agent builder) | `AgentBuilder` | [Building Agents](building_agents.md) |
+
+Two near-slots differ in shape: `sim.engine.class_path` / `sim.engine.params`
+replaces the whole engine and has no `built_in` (there is one built-in engine),
+and `sim.engine.control` carries sibling scalars (`start_paused`,
+`control_file`, `poll_interval`) alongside its `built_in` instead of putting them
+in `params`. `env.gm.backend` selects a shipped backend with `type` rather than
+`built_in`.
+
+---
+
 ## Top-Level Config (`experiment.yaml`)
 
 ```yaml
@@ -157,7 +224,7 @@ custom provider (see [Building Agents](building_agents.md)).
 | `sim.checkpoint.restore.built_in` | `social_action_event_replay` | Checkpoint restore strategy when `source_run` is set |
 | `sim.telemetry.record_active_agent_names` | `false` | Retain each episode's active-agent *name list* in `sim_metrics.json` (kept in memory for the whole run — O(active × steps)). Counts (`active_agents`) are always recorded |
 | `sim.engine.step.built_in` | `base` | Engine step policy: `base`, `sequential`, `flow`, `multi_gm`, `multi_gm_serial`, or `multi_gm_staged`. The three `multi_gm*` strategies select the flow-chain traversal mode: `multi_gm` (concurrent, default — flows advance as independent pipelines, serializing only when two flows touch the same GM), `multi_gm_serial` (legacy row-major — each flow runs its full GM chain to completion before the next), `multi_gm_staged` (column-major with a global per-stage barrier — all flows advance one stage at a time) |
-| `sim.engine.step.params.gm_turn_policies` | `{}` | Per-GM turn policy overrides keyed by GM name, each value using the same slot shape as `sim.engine.turn_policy` (`{built_in\|class_path, params}`); applies under any step mode and is resolved per batch by GM name |
+| `sim.engine.step.params.gm_turn_policies` | `{}` | Per-GM turn policy overrides keyed by GM name, each value a turn-policy [slot](#slots); applies under any step mode and is resolved per batch by GM name |
 | `sim.engine.step.params.gm_concurrency_caps` | `{}` | Per-GM concurrency caps (`{gm_name: int}`); caps how many of that GM's agent turns run at once via a per-GM semaphore. Effective per-GM limit = `min(cap, sim.max_concurrent_actions)`; empty map = the global cap governs every GM. Applies under any step mode |
 | `sim.engine.turn_policy.built_in` | `single_action` | Global turn policy — how many actions an agent takes per step: `single_action`, `fixed_count`, or `open_ended` |
 | `sim.engine.executor` | `threads` | Turn executor: `threads` (one pool worker per in-flight turn) or `asyncio` (turns run as coroutines on one background event loop — thousands of LLM calls in flight on a handful of threads). Agents/models that provide `act_async` / `sample_*_async` (the shipped `NativeAgent`, `FixedAgent`, and OpenAI-compatible providers do) run loop-native; sync-only custom agents, models, and turn policies automatically run on helper threads, and both kinds mix freely in one step. `sim.max_concurrent_actions` keeps its meaning — max in-flight turns — under either executor; scheduling semantics (flow chains, barriers, per-GM caps and locks) are identical |
@@ -716,8 +783,8 @@ gm:
       custom_setting: value
 ```
 
-`gm.backend.params` are strict constructor arguments. Unknown keys fail before the
-simulation starts unless the app constructor accepts `**kwargs`.
+`gm.backend` is a [slot](#slots), except that it selects a shipped backend with
+`type` rather than `built_in`.
 
 ### Enabled Actions
 
@@ -909,10 +976,10 @@ sim:
 | `retrieval` | A recency window PLUS relevance recall: always render the last `window_count` memories verbatim, and prepend the `retrieved_count` OLDER memories most relevant to the current observation by deterministic lexical overlap (recency tiebreak) — replay-stable, no embedding API. `window_count: 0` recovers pure retrieval; `retrieved_count: 0` is a plain window. | `window_count` (40), `retrieved_count` (10) |
 | `summarizing` | Three tiers: all rolling summaries, then the `retrieved_count` most relevant OLDER memories, then the recent `render_count` window. When memory exceeds `max_memories`, the oldest `chunk_size` are compressed into one summary via a model call. | `max_memories` (200), `chunk_size` (50), `max_summaries` (20), `render_count` (40), `retrieved_count` (10), `prompt` |
 
-A custom policy is `class_path` to a `MemoryPolicy` subclass (built with
-`params`). Unknown `params` keys fail loudly before the run starts (a typo'd
-param must not silently run with defaults); the built-in framework kwargs
-(`model`, `memory_history`) are the only silently-filtered names. Determinism:
+A custom policy is `class_path` to a `MemoryPolicy` subclass (an ordinary
+[slot](#slots); `model` and `memory_history` are the framework kwargs the
+runtime injects, so they are the only names filtered out of `params`).
+Determinism:
 `window`/`retrieval` are deterministic; `summarizing` is only as reproducible as
 the model it calls (summarization runs at record/observe time, so its tokens are
 counted under the caller's phase in [token usage](#llm): `action` inside a turn,
@@ -940,12 +1007,10 @@ env:
         built_in: app_update            # app_update | social_recommendation | disabled | none
 ```
 
-Component `params` are strict constructor arguments. Unknown keys fail before
-the simulation starts unless the target component accepts `**kwargs`. Observe
-components that explicitly accept `observation_params` can use `params` as
-forwarded observation settings. Set `params: null` (not `{}`) to clear a params
-block a merged config group supplied — merging cannot remove sibling keys, so an
-empty mapping leaves the group's params in place.
+Each component role is a [slot](#slots): `class_path` swaps in your own
+implementation, `params` are strict constructor arguments, and `params: null`
+clears an inherited params block. Observe components that explicitly accept
+`observation_params` can use `params` as forwarded observation settings.
 
 `initialize: social_media`, `observe: timeline_every_turn`, and
 `update: social_recommendation` call `SocialBackendApp`-only methods; naming one
@@ -1189,8 +1254,7 @@ sim:
         max_attempts: 0             # 0 -> 2*count (only used when count_committed)
 ```
 
-Policy `params` are strict constructor arguments. Unknown keys fail before the
-simulation starts unless the target policy accepts `**kwargs`.
+Loop, step, and turn policies are [slots](#slots).
 `observe_before_act` controls whether repeated-action policies refresh the GM
 observation only before the first action, before every action, or never.
 Omit it to preserve the default `first` behavior.
@@ -1217,9 +1281,8 @@ sim:
       params:
         flow_order: [fixed_pre, default]
         agent_to_flow: {}
-        # Optional per-flow turn policy overrides. Each value mirrors the
-        # sim.engine.turn_policy slot shape ({built_in|class_path, params}).
-        # Flows not listed here use the global sim.engine.turn_policy below.
+        # Optional per-flow turn policy overrides; each value is a turn-policy
+        # slot. Flows not listed here use the global sim.engine.turn_policy.
         flow_turn_policies:
           fixed_pre:
             built_in: single_action
@@ -1233,7 +1296,7 @@ sim:
 `sim.engine.turn_policy` is the global default applied to every agent. With
 `flow` or `multi_gm` scheduling you may additionally override the policy per
 flow via `sim.engine.step.params.flow_turn_policies`, keyed by flow tag, each
-value uses the same slot shape as `turn_policy`. Flows absent from the map fall
+value a turn-policy [slot](#slots). Flows absent from the map fall
 back to the global policy, so omitting the key reproduces current behavior
 exactly. Per-flow overrides are ignored under `base`/`sequential` scheduling
 (which do not group agents by flow). For a multi-GM flow chain the same per-flow
@@ -1245,9 +1308,8 @@ two flows touch the same GM; select `multi_gm_serial` or `multi_gm_staged` via
 [Advanced: Multi-GM Orchestration](#advanced-multi-gm-orchestration)).
 
 You may also override the turn policy per GM via
-`sim.engine.step.params.gm_turn_policies`, a `{gm_name: turn_policy_slot}` map
-where each value uses the same slot shape as `turn_policy` and
-`flow_turn_policies` (`{built_in|class_path, params}`). This lets a GM/backend
+`sim.engine.step.params.gm_turn_policies`, a `{gm_name: turn_policy_slot}` map.
+This lets a GM/backend
 set its own per-step action cadence — e.g. `single_action` in a "world" GM but
 `open_ended` in a social GM, or a different cadence at each hop of a multi-GM
 flow chain. The per-GM key disambiguates hops that share one flow, which
@@ -1364,7 +1426,7 @@ sim:
       params: {}
 ```
 
-`class_path` takes precedence over `built_in`. The class must subclass
+This is an ordinary [slot](#slots); the class must subclass
 `silisocs.runtime.checkpointing.restore.CheckpointRestoreStrategy`.
 
 ### Restore robustness
@@ -1650,7 +1712,7 @@ env:
           - wrapup_gm        # shared tail — both branches re-converge here
 ```
 
-The router is a `{built_in | class_path, params}` slot, like a turn policy. Built-ins:
+The router is a [slot](#slots), like a turn policy. Built-ins:
 
 - `random` (`RandomChoiceRouter`): a weighted random pick, deterministic per
   `(seed, flow, step, agent)` — so a run reproduces and replays identically.

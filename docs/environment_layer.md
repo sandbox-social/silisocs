@@ -69,8 +69,7 @@ env:
         params: {}
 ```
 
-Configured `params` are strict constructor arguments. Unknown keys fail before
-the simulation starts unless the target class accepts `**kwargs`. Observe
+This is the standard [slot](configuration.md#slots) shape. Observe
 components that explicitly accept `observation_params` may use `params` as a
 forwarded observation-settings bag.
 
@@ -337,8 +336,7 @@ brackets the probe retry-telemetry bucket for you) at whatever boundaries you wa
 probes to fire, or a loop that never calls it simply runs without probes. Deciding
 *which steps* run a probe phase is the separate `ProbeSchedulePolicy` seam above.
 
-Policy `params` are strict constructor arguments, matching the GM component
-contract.
+Policies use the same [slot](configuration.md#slots) shape as GM components.
 
 Engine remains separate from GM component routing by design.
 
@@ -390,7 +388,7 @@ traversal mode.
 
 A chain entry may also be a **branch node** — `{branch: {router, choices}}` — that
 routes each of the flow's agents to one of `choices` (alternative GMs) at that
-stage. The router is a `{built_in | class_path, params}` slot built by the engine
+stage. The router is a [slot](configuration.md#slots) built by the engine
 (`build_router`) into a **plain callable**
 `route(agents, gms, ctx) -> {agent name: gm name}` — no base class. Built-ins are
 `random` (weighted, deterministic per `(seed, flow, step, agent)`) and `agent_choice`

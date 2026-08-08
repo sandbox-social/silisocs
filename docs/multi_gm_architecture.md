@@ -342,7 +342,7 @@ Rules: at most one branch per chain; at least two distinct, known choices whose
 `multi_gm*` step mode only; and never inside a `flow_order` prefix flow. For
 restore and per-GM `owned_flows`, a branch counts as any of its choices.
 
-**Router.** The `router` is a `{built_in|class_path, params}` slot, built by
+**Router.** The `router` is a [slot](configuration.md#slots), built by
 `build_router` (`simulation_engines/policies/routers.py`,
 `simulation_engines/policies/factory.py`) into a **plain callable** — there is no
 base class and nothing to subclass (the shape is formalized by the structural

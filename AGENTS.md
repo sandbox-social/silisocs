@@ -76,13 +76,11 @@ Core runtime layers:
 - To add custom backend: subclass `SocialBackendApp`, implement action methods, register in app factory
 
 ### 6. Runtime Orchestration
-- `src/silisocs/runtime/execution/session.py` — CLI entrypoint, Hydra config composition
+- `src/silisocs/runtime/execution/session.py` — CLI entrypoint, Hydra config
+  composition, runtime assembly, model creation, initialization, simulation
+  execution, checkpoint save/resume, and artifact writing
 - `src/silisocs/runtime/configuration/` — Config projection, external config
   loading, and validation
-- `src/silisocs/runtime/execution/session.py` — Runtime assembly, simulation
-  execution, checkpoint save/resume, and artifact writing
-- Handles: model creation, direct runtime construction, initialization,
-  simulation execution, checkpoint save/resume
 - **Failure policy**: prefer failing loudly. A condition the run cannot
   legitimately continue past raises (config errors raise at build/first use, not
   behind an invented default); what a run genuinely survives — one isolated agent
@@ -97,56 +95,33 @@ Core runtime layers:
 
 ## 3) Configuration Model
 
-Top-level config composition (`src/silisocs/conf/experiment.yaml`):
+**[docs/configuration.md](docs/configuration.md) is the canonical reference for
+every config key, its default, and its semantics — do not restate its tables
+here.** A generated key-by-key dump of the packaged defaults (drift-tested in CI)
+lives in [docs/config_reference.md](docs/config_reference.md). This section
+records only what a contributor needs that the reference does not cover.
 
-- Defaults: `world: default`, `agents: default`, `sim: base`, `env: twitter_like`, `eval: base`
+Top-level composition (`src/silisocs/conf/experiment.yaml`) defaults to
+`world: default`, `agents: default`, `sim: base`, `env: twitter_like`,
+`eval: base`. Each group's base file and `@package` directive:
 
-Config groups and their base files:
+| Group | Base file | `@package` |
+|-------|-----------|------------|
+| `world` | `world/default.yaml` | `_global_` (keys land at config root) |
+| `agents` | `agents/default.yaml` | `agents` |
+| `sim` | `sim/base.yaml` | `sim` |
+| `env` | `env/twitter_like.yaml` | `env` |
+| `eval` | `eval/base.yaml` | `eval` |
 
-| Group | Base file | Controls |
-|-------|-----------|----------|
-| `world` | `world/default.yaml` (`@package _global_`) | Run params, setting, event, data |
-| `agents` | `agents/default.yaml` (`@package agents`) | Persona pipeline, shared memories |
-| `sim` | `sim/base.yaml` (`@package sim`) | LLM, engine, tool-calling, memory, checkpoint |
-| `env` | `env/twitter_like.yaml` (`@package env`) | Backend, GM components, initialization |
-| `eval` | `eval/base.yaml` (`@package eval`) | Probe configuration |
-
-Key sim knobs (`src/silisocs/conf/sim/base.yaml`):
-
-| Parameter | Value | Notes |
-|-----------|-------|-------|
-| `sim.llm.name` | gpt-4o-mini | Default LLM model |
-| `sim.llm.temperature` | 0.5 | Sampling temperature |
-| `sim.llm.disabled` | false | No-op model for testing |
-| `sim.action_mode` | custom | Prompt style (`custom` or `generic`) |
-| `sim.tool_calling.mode` | single | `none` \| `single` \| `multi` |
-| `sim.engine.step.built_in` | base | `base`, `sequential`, `flow`, `multi_gm`, `multi_gm_serial`, or `multi_gm_staged` (the three `multi_gm*` strategies select the flow-chain traversal mode; see below) |
-| `sim.engine.turn_policy.built_in` | single_action | `single_action` \| `fixed_count` \| `open_ended`. `fixed_count` params: `count`; optional `count_committed: true` counts only actions that COMMITTED a backend change (a failed-resolve tool call no longer burns the budget), bounded by `max_attempts` (default `2*count`) |
-| `sim.engine.executor` | threads | Turn executor: `threads` (one pool worker per in-flight turn) \| `asyncio` (turns are coroutines on one background event loop — thousands of LLM calls in flight on a handful of threads). Sync `act`/`sample_text` stay the REQUIRED contracts; `act_async` / `sample_*_async` / turn-policy `run_async` are OPTIONAL loop-native overrides (shipped: NativeAgent, FixedAgent, OpenAI-compatible providers, all built-in turn policies), and sync-only agents/models/policies automatically run on helper threads via `asyncio.to_thread` — both kinds mix freely in one step. `max_concurrent_actions` keeps its meaning (max in-flight turns, enforced as an asyncio semaphore); all scheduling semantics (flow chains, barriers, per-GM caps/locks, failure isolation, retry telemetry) are identical across executors |
-| `sim.engine.control.built_in` | none | Interactive run control (play / pause / step one episode): `none` (default — no gate attached, loop runs uninterrupted, zero cost) \| `stdin` (terminal REPL: `n`/next `[k]`, `c`/continue, `p`/pause, `s`/stop between episodes) \| `control_file` (obeys a JSON file another process writes: `{"target": <int\|null>, "stopped": <bool>}` — `target` = first episode index to hold before, `null` = run freely). Implemented as a thread-safe `StepGate` (`simulation_engines/control.py`) the loop consults at each episode boundary, exactly like `probe_runner`/`interventions`; controllers only call the gate's primitives so it is input-agnostic. A custom `LoopStrategy` owns interactive control the same way it owns probe timing: call `loops.await_step_permission(engine, step)` at its episode boundary and `break` when it returns `False` — it returns `True` immediately when no gate is attached, so a replacement loop inherits play/pause/step/stop for free and costs nothing when control is off. `start_paused` holds before episode 0; `control_file` defaults to `<output>/run.control`; `poll_interval` (0.3s) is the file poll cadence. Control acts at episode boundaries and every paused loop still checkpoints per step, so a paused/stopped run is resume-stable. Studio exposes it as Step/Play/Pause/End-run on the live view (interactive launch → `control_file` overrides + `POST /api/jobs/{id}/control`) |
-| `sim.engine.participation.built_in` | all | Sim-level per-step roster filter: `all` \| `activity_probability` \| `activity_markov` (or `class_path` to a custom `ParticipationPolicy`). Filters who is in the step's roster BEFORE scheduling, every GM's next_acting (effective acting = participation ∩ next_acting), AND per-step GM `update`s — so per-step backend work (e.g. recsys refresh) is O(active); an update component that needs the population declares `requires_full_roster = True`. Stateless/seed-derived, so replay- and resume-stable. The GM `next_acting` slot keeps only env-derived built-ins (`all_agents`, `fixed_order`); a config naming the moved built-ins there gets a migration error. Default `all` = everyone acts every step (deterministic, turn-based); activity gating is opt-in via `activity_probability`/`activity_markov` — rates are keyed by agent name or sim role, and an agent matching NO entry fails the run at its first step (naming the unmatched agents/roles) rather than falling back to an invented probability; the explicit ways out are per-role rates, a global `active_probability`, or `built_in: all` |
-| `sim.engine.step.params.gm_turn_policies` | {} | Per-GM turn policy map (`gm_name -> {built_in\|class_path, params}`); applies under any step mode |
-| `sim.engine.step.params.gm_concurrency_caps` | {} | Per-GM concurrency caps (`gm_name -> int`); effective per-GM = `min(cap, sim.max_concurrent_actions)` via a per-GM semaphore; empty = global cap everywhere; applies under any step mode |
-| `sim.checkpoint.every_n_steps` | null | Checkpoint frequency (run_study.py sets 1 by default) |
-| `sim.checkpoint.save.built_in` | monolithic_json | On-disk checkpoint layout: `monolithic_json` (one JSON per step) \| `sharded` (manifest + NDJSON object shards + raw SQLite sidecar files; `params.objects_per_shard`). Restore reads both transparently; `class_path` accepts a custom `CheckpointSaveStrategy` (mirrors the restore slot) |
-| `sim.telemetry.record_active_agent_names` | false | Retain per-episode active-agent NAME lists in sim_metrics.json (O(active×steps)); counts are always recorded |
-| `eval.probes.deployment.sample_k` / `sample_fraction` | null | Cap probe targets per due step AFTER the include/exclude filters (hash-ranked per `(seed, step, agent)` — replay/resume stable); unset probes every filtered agent |
-| `eval.probes.probes.<name>.deployment` | (inherits global) | Optional per-probe deployment block overriding `eval.probes.deployment` per field (schedule/filters/`sample_k`/`sample_fraction`/`at`); unset fields fall back to global, validated with the same rules (per-probe errors name the probe). Probes sharing a resolved target set still batch into one questionnaire call. Per-probe `sample_k` draws an independent subset (ranking additionally keyed by probe name) |
-| `eval.probes.deployment.at` (+ per-probe) | pre_step | Loop anchor a probe fires at: `pre_step` (before a step) \| `post_step` (after a step) \| `run_end` (once after the run — the terminal measurement; ignores `start_step`/`every_n_steps`). Each `probe_events.jsonl` row records its `anchor`. A custom `LoopStrategy` owns probe timing by calling `loops.run_probe_phase(...)` at the boundaries it wants |
-
-`agents.persona_pipeline.classes.<class>.model` accepts a scalar model name OR a
-full `{name, temperature, provider, api_base, api_key, extra_kwargs, disabled}`
-block overriding `sim.llm` per-field (unset fields fall back to global;
-`extra_kwargs` replaces, not deep-merges); models are deduped by effective config.
-
-Key run params live in `world/default.yaml` (at config root via `@package _global_`):
-
-| Parameter | Default | Notes |
-|-----------|---------|-------|
-| `num_agents` | 10 | Number of agents |
-| `num_steps` | 5 | Simulation episodes |
-| `scenario_name` | default | Used in output path |
-| `seed` | 1 | Random seed |
+**The slot idiom.** Every pluggable piece — engines, loop/step/turn/participation
+policies, GM components, backends, memory, checkpoint save/restore, routers,
+intervention handlers — is configured as
+`{built_in: <shipped> | class_path: <yours>, params: {...}}`. `class_path` wins
+over `built_in`; `params` are strict constructor arguments that fail at build on
+an unknown key; `params: null` clears an inherited block. The rules are written
+once in [docs/configuration.md → Slots](docs/configuration.md#slots), and adding
+a slot means documenting it in that table. Anything you add that a user selects
+by name should be a slot, not a new config shape.
 
 Note: scenario `world/default.yaml` files REPLACE the base world group (Hydra
 searchpath shadowing), so every scenario must re-declare the universal run
@@ -176,174 +151,105 @@ Scenario content lives under:
 
 ## 4) Defining New Agent Behaviors Cleanly
 
-Use class-level behavior flows instead of adding custom manager branches:
+Use class-level behavior **flows** plus component/policy slots instead of adding
+custom branches to the game master or engine. The knobs, in the order you
+usually reach for them:
 
-1. Assign class flow:
-- `persona_pipeline.classes.<class>.flow_tag`
+| # | Knob | Purpose |
+|---|------|---------|
+| 1 | `agents.persona_pipeline.classes.<class>.flow_tag` | Assign a class to a flow |
+| 2 | `sim.engine.step.params.flow_order` | Flows that run as a strict serial prefix |
+| 3 | `sim.engine.step.params.agent_to_flow` | Per-entity override of the class mapping |
+| 4 | `env.gm.components.observe.params.episode_observation_flows` | Observe specialization per flow |
+| 5 | `sim.engine.step.params.flow_turn_policies` | Actions per step, per flow (`flow`/`multi_gm` only) |
+| 5b | `sim.engine.step.params.gm_turn_policies` | Actions per step, per GM (any step mode) |
+| 5c | `sim.engine.step.params.gm_concurrency_caps` | How many of a GM's turns run at once |
+| 6 | `env.gm.components.resolve.params.flow_action_filters` | Which catalog actions a flow may execute |
+| 7 | `eval.probes.deployment.include_flows` / `exclude_flows` | Probe only certain flows |
+| 8 | `env.gm_orchestration.gms` + `flow_bindings.flow_to_gms` | Multi-GM chains, empty slots, branch routers |
 
-2. Define flow order:
-- `sim.engine.step.params.flow_order`
+Semantics for all of the above — precedence rules, which step modes each takes
+effect under, validation errors, and the `multi_gm` / `multi_gm_serial` /
+`multi_gm_staged` traversal differences — live in
+[docs/configuration.md](docs/configuration.md) (§Engine Turn Policies,
+§Advanced: Multi-GM Orchestration) and
+[docs/multi_gm_architecture.md](docs/multi_gm_architecture.md). Do not duplicate
+them here.
 
-3. Optional per-entity override:
-- `sim.engine.step.params.agent_to_flow`
+What a contributor needs to know beyond the config reference:
 
-4. Optional observe specialization for selected flows:
-- `env.gm.components.observe.params.episode_observation_flows`
+- **Every one of these keys is additive.** Each falls back to the global/default
+  behavior when omitted; a change that makes one of them load-bearing for
+  existing configs is a breaking change and needs a migration error.
+- **The agent→flow mapping is materialized once.** Scheduling, component routing,
+  probe targeting, and checkpoint reconciliation all read the same
+  `agent_flow_tags`; derive from it rather than re-deriving flows.
+- **New traversal = new step strategy.** Adding a scheduling shape means writing
+  a `StepStrategy` and registering it, not adding a branch to an engine class.
+- **A branch router is a plain callable**, not a subclass:
+  `route(agents, gms, ctx) -> {agent name: chosen gm name}` (structural `Router`
+  Protocol in `simulation_engines/policies/routers.py`, positional-only
+  parameters, so your function may name them freely). The engine owns only *when*
+  it runs, locking (the router call runs UNLOCKED; the follow-up per-chosen-GM
+  turn selection runs under that GM's lock), and validating the returned
+  assignment. Everything else — reading `gms[...].backend`, calling
+  `agent.act(...)`, deciding from `ctx.seed` — the router does itself.
+- **Router fallbacks are counted, never silent.** `agent_choice`'s `on_invalid`
+  path (including a routing call that RAISES) increments the `routing_fallbacks`
+  run-health counter, so it surfaces in the degraded-run warning,
+  `sim_metrics.json`, and the manifest. Any new "we recovered" path must do the
+  same (see §2 failure policy).
+- **Replay caveat to preserve:** under concurrent `multi_gm`, branch hops into a
+  shared GM with a STATEFUL `next_acting` (e.g. `fixed_order`) are not
+  replay-stable — driver timing orders them. `multi_gm_serial` /
+  `multi_gm_staged` are the exact-replay answers.
 
-5. Optional per-flow turn policy (how many actions a flow takes per step):
-- `sim.engine.step.params.flow_turn_policies` (map flow_tag ->
-  `{built_in|class_path, params}`; unlisted flows use `sim.engine.turn_policy`).
-  Only effective under `engine.step.built_in` of `flow`/`multi_gm`.
-- Optional per-GM turn policy (per-backend action cadence):
-  `sim.engine.step.params.gm_turn_policies` (map gm_name -> turn policy slot, same
-  `{built_in|class_path, params}` shape; precedence per-flow > per-GM > global;
-  resolved per batch by GM name, so it applies under ANY step mode). Lets a
-  GM/backend set its own cadence — e.g. `single_action` in a "world" GM but
-  `open_ended` in a social GM — and disambiguates multi-GM-chain hops that share
-  one flow (which `flow_turn_policies`, being flow-keyed, cannot). Unset/empty =
-  the global turn policy applies everywhere (unchanged behavior).
-- Optional per-GM concurrency cap (how many of a GM's turns run AT ONCE):
-  `sim.engine.step.params.gm_concurrency_caps` (map gm_name -> int) caps that GM's
-  concurrent agent turns via a per-GM semaphore; effective per-GM =
-  `min(cap, sim.max_concurrent_actions)` (the global stays the overall ceiling and
-  per-GM default). Orthogonal to `gm_turn_policies` (turn policy = how MANY actions
-  a turn takes; this = how many turns run AT ONCE). Empty = global cap everywhere;
-  applies under ANY step mode. Use to throttle a rate-limited backend below the
-  global limit while other GMs keep running concurrently.
-
-6. Optional per-flow action enforcement (which actions a flow may execute):
-- `env.gm.components.resolve.params.flow_action_filters` (map flow_tag ->
-  `{enabled_actions, excluded_actions}`; further-restricts the backend filter,
-  enforced at resolve time, never blocks `FINISHED`). Works on the default GM.
-  A filter name matching no backend action raises at build for the
-  catalog-bound resolvers (`generic_action`/`tool_calling`); `parsed_action`
-  keeps literal matching with a warning (custom-mode verbs are world-defined).
-
-7. Optional per-flow probe/eval targeting:
-- `eval.probes.deployment.include_flows` / `exclude_flows` (deploy probes only to
-  agents in the named flow(s); empty = all agents).
-
-8. Advanced multi-GM orchestration (optional):
-- `env.gm_orchestration.gms` (each `gms[*]` — and the single default `env.gm` —
-  accepts optional per-GM `action_mode` and `tool_calling` (a scalar mode string,
-  `none`/`single`/`multi`, sibling to the scalar `action_mode`) overrides; unset
-  falls back to the global `sim.action_mode` / `sim.tool_calling.mode`. The retired
-  `tool_calling_mode` key and the `tool_calling: {mode: ...}` block form each raise a
-  migration error pointing at the scalar spelling. Resolve compatibility is validated
-  PER-GM against each GM's effective mode: an effective `single`/`multi` GM must use
-  `components.resolve.built_in: tool_calling`, a `none` GM must not.)
-- `env.gm_orchestration.flow_bindings.flow_to_gms` (maps a flow to a GM or a
-  strictly-increasing-`sequence` GM chain; the only supported flow binding key).
-  A chain entry may be `null` (an **empty slot**) — meaningful only under
-  `multi_gm_staged` — meaning the flow IDLES at that stage and resumes at its
-  next non-null hop. Trailing empty slots are trimmed (no effect); an all-empty
-  chain is rejected ("cannot be empty"); the strictly-increasing-`sequence` rule
-  applies to the real (non-null) GMs only. Under `multi_gm` / `multi_gm_serial`
-  null hops are simply dropped.
-  A chain entry may also be a **branch node** — `{branch: {router, choices}}` —
-  that routes each of the flow's agents to one of `choices` (alternative GMs) at
-  that one stage. The `router` is a `{built_in|class_path, params}` slot built by
-  the engine (`policies/routers.py` + `build_router`) into a **plain callable** —
-  there is no base class to subclass (the signature is formalized by the structural
-  `Router` Protocol, positional-only parameters):
-  `route(agents, gms, ctx) -> {agent name: chosen gm name}`, where `agents` is the
-  flow's agent objects (call `agent.act(...)` freely), `gms` is `{gm name: game
-  master}` (one per choice, in config order; read `gm.backend` freely), and `ctx`
-  is `RouteInfo(flow, step, seed)` for replay-stable decisions. A `class_path` may
-  point at a class (built with `params`) or a plain function (`params` bound as
-  kwargs) — the "a custom function chooses" seam. The engine runs the router when
-  the flow's chain reaches the branch stage — after the flow's earlier hops have
-  drained, so the router sees live backend state; under `multi_gm_staged`, after the
-  prior stage's barrier — in **all three `multi_gm*` traversals**. The router call
-  runs UNLOCKED; the follow-up per-chosen-GM turn selection runs under that GM's
-  lock; and the engine validates the returned assignment (every agent covered, every
-  GM a real choice). Shared hops before/after the branch still run once on every
-  agent (not split per choice). Built-ins: `random` (`RandomChoiceRouter`, weighted,
-  deterministic per `(seed, flow, step, agent)`) and `agent_choice`
-  (`AgentChoiceRouter` — asks each agent to pick a GM via a CHOICE probe; params
-  `prompt` template + `on_invalid: random|first|raise`; `on_invalid` also covers a
-  routing call that RAISES — provider outage/retry exhaustion — so one agent's
-  transient model failure only aborts the run under `raise`. Every fallback is
-  TRACKED, not silent: it increments the `routing_fallbacks` run-health counter, so
-  it surfaces in the degraded-run warning, `sim_metrics.json`, and the manifest).
-  An LLM-driven router is
-  only as reproducible as the model it calls. Routing calls run serially on the
-  chain-driver thread, outside `max_concurrent_actions`/`gm_concurrency_caps` — keep
-  LLM-routed branches to modest flows. Under concurrent `multi_gm`, branch hops into
-  a shared GM with a STATEFUL `next_acting` (e.g. `fixed_order`) are not
-  replay-stable (driver timing orders them); use `multi_gm_serial`/`multi_gm_staged`
-  when exact replay matters there. Rules: ≤1 branch/chain, ≥2 distinct known
-  choices whose `sequence`s sit strictly between the branch's neighbours, `multi_gm*`
-  mode only, not inside a `flow_order` flow. Restore + per-GM `owned_flows` treat a
-  branch as any of its choices via `collapse_flow_chains` / `flow_chain_gm_names`.
-- The multi-GM flow-chain traversal mode is selected by `sim.engine.step.built_in`
-  (`multi_gm` / `multi_gm_serial` / `multi_gm_staged`); the former
-  `sim.engine.step.params.chain_execution` knob has been removed (a config that
-  still sets it raises a `ValueError` with a migration hint):
-  - `multi_gm` (concurrent, **default** — unchanged behavior): runs flows as
-    independent pipelines through their GM chains. Distinct flows advance
-    concurrently and serialize only on shared-GM overlap (the per-GM lock), with
-    `flow_order` flows running first as a strict serial prefix.
-  - `multi_gm_serial` (legacy row-major): each flow runs its full GM chain to
-    completion before the next flow starts, one batch at a time, in deterministic
-    flow-order.
-  - `multi_gm_staged` (column-major with a global per-stage barrier): `flow_order`
-    flows run first as a serial prefix (same as concurrent); then every remaining
-    flow advances ONE STAGE AT A TIME — all flows' stage-N hops run concurrently
-    and stage N+1 does not begin until ALL of stage N's turns finish. Empty slots
-    (`null` chain entries) let flows with different chain shapes stay stage-aligned.
-    Tradeoff: the barrier can leave the worker pool idle at stage tails (a fast
-    flow waits for slow flows); use `multi_gm` when you don't need stage alignment.
+Fixed agents (`silisocs.agents.fixed.FixedAgent`) are the reference example.
 
 Default UX rule:
 - Keep users on the default `ComponentGameMaster`, with advanced Studio controls off.
 - Only expose flow tags and multi-GM controls behind advanced mode.
 
-All per-flow keys above are additive and backward compatible: each falls back to
-the global/default behavior when omitted, and the agent->flow mapping is the same
-materialized `agent_flow_tags` used by scheduling and component routing.
-
-Fixed agents (`silisocs.agents.fixed.FixedAgent`) are the reference example.
-
 ## 4.5) Mid-Run Interventions
 
-An optional top-level `interventions` schedule (see
-`docs/configuration.md` → "Mid-Run Interventions") fires actions at step
-boundaries: `set_participation`, `ban_agents`/`unban_agents`,
-`set_component_params`, `set_recsys`, `set_turn_policy`, `swap_component`
-(persistent state-setters, replayed on resume for `at_step < start_step`),
-`inject_action`, `inject_post`,
-`broadcast_observation` (one-shot events, never replayed), or `custom`
-(`class_path` to an `InterventionHandler` subclass). `inject_action` is the
-generic injection language (any backend catalog action as a typed tool call
-through the GM's resolve component); `inject_post` is sugar over it. Dispatch lives in
-`simulation_engines/interventions.py` and runs at the single-threaded loop
-boundary in `FixedStepsLoopStrategy`, so handlers mutate engine/GM/backend state
-without locks. Fired-ness is a pure function of `(schedule, step)` — no
-checkpoint-schema change. A ban is a `BanFilterParticipation` wrapper over the
-active participation policy (soft ban), not a roster mutation.
-`set_component_params` is the generic component-retuning language: a component
-lists mid-run-safe parameter names in its class-level `runtime_tunable`
-frozenset (`BaseComponent.set_params` routes each through `set_<name>()` or the
-same-named attribute), and `set_recsys` is sugar over it. `set_turn_policy`
-rebuilds a turn policy (global / per-`gm` / per-`flow`) into the maps the
-scheduler reads each batch; `set_router` re-points a flow's branch `router` (a
-stateless plain callable) in the step strategy's flow chain (`multi_gm*` only);
-`flow` targets on both are preflight-validated against the flows statically
-declared in config (deferred to fire time when none are declared);
-`swap_component` hot-swaps a STATELESS `observe` /
-`next_acting` / `update` component via the GM's `rebuild_component` seam (refused
-if the outgoing or incoming component has non-empty `get_state()` — retune
-stateful components with `set_component_params` instead; `resolve`/`action_prompt`
-and `initialize` are out of scope). To add a kind,
-subclass `InterventionHandler` (declare `kind`, `persistent`, `validate`,
-`apply`) and reference it via `kind: custom`. Interventions fire BEFORE `run_step`
-stamps the episode index, so a custom handler that logs backend events must stamp
-first via the `InterventionContext` helpers: `ctx.stamp_episode(gm)` (stamps the
-GM's action/exposure/harness loggers with `ctx.step`) or
-`ctx.resolve_action(gm, agent_name, output)` (stamps, then resolves an injected
-action through the GM's resolve pipeline — the seam the built-in `inject_action`/
-`inject_post` handlers use).
+An optional top-level `interventions` schedule fires actions at step boundaries,
+turning a controlled experiment (swap the recommender at the midpoint, ban an
+agent, inject breaking news) into config instead of a checkpoint / edit / resume
+cycle. The kinds, their fields, and validation rules are documented in
+[docs/configuration.md](docs/configuration.md) → "Mid-Run Interventions".
+
+The invariants a contributor must preserve:
+
+- **Dispatch runs at the single-threaded loop boundary** (`simulation_engines/
+  interventions.py`, called from `FixedStepsLoopStrategy`), so handlers mutate
+  engine/GM/backend state without locks. Do not move dispatch into a concurrent
+  phase.
+- **Fired-ness is a pure function of `(schedule, step)`** — no checkpoint-schema
+  change, and persistent state-setters replay on resume for
+  `at_step < start_step`. One-shot event kinds (`inject_*`,
+  `broadcast_observation`) are never replayed.
+- **Bans are a participation wrapper, not a roster mutation.**
+  `BanFilterParticipation` wraps the active policy (soft ban), so a banned agent
+  still exists in the world.
+- **Generic languages, not per-feature kinds.** `inject_action` is the injection
+  language (any catalog action as a typed tool call through the GM's resolve
+  component) and `inject_post` is sugar over it; `set_component_params` is the
+  retuning language (a component opts a parameter in via its class-level
+  `runtime_tunable` frozenset, and `BaseComponent.set_params` routes each name
+  through `set_<name>()` or the same-named attribute) and `set_recsys` is sugar
+  over it. Prefer sugar over a new kind.
+- **`swap_component` only accepts stateless components** — refused when the
+  outgoing OR incoming component has non-empty `get_state()`. `resolve` /
+  `action_prompt` / `initialize` are out of scope.
+- **Adding a kind:** subclass `InterventionHandler` (declare `kind`,
+  `persistent`, `validate`, `apply`) and reference it via `kind: custom`.
+- **Stamp the episode before logging.** Interventions fire BEFORE `run_step`
+  stamps the episode index, so a custom handler that logs backend events must use
+  the `InterventionContext` helpers first: `ctx.stamp_episode(gm)` (stamps the
+  GM's action/exposure/harness loggers with `ctx.step`) or
+  `ctx.resolve_action(gm, agent_name, output)` (stamps, then resolves an injected
+  action through the GM's resolve pipeline — the seam the built-in
+  `inject_action` / `inject_post` handlers use).
 
 ## 5) Agent Interface: Concordia vs Custom
 
@@ -378,82 +284,42 @@ Agents should not be concerned with prescribing action format—that is a platfo
 
 ### Optional Async Path (`sim.engine.executor: asyncio`)
 
-Sync `act()` is and remains the required contract. Additively, every agent MAY
-override `act_async(action_spec)` (the base `Agent` default runs the sync `act`
-on a helper thread via `asyncio.to_thread`), and every `LanguageModel` has
-`sample_text_async` / `sample_choice_async` / `sample_tool_calls_async` /
-`sample_structured_async` / `sample_float_async` twins (default: the sync method
-on a helper thread; OpenAI-compatible providers implement text/choice/tool-calls
-natively on an `AsyncOpenAI` client).
+Sync `act()` is and remains the required contract; the async path is purely
+additive. Every agent MAY override `act_async(action_spec)` (base default: the
+sync `act` on a helper thread via `asyncio.to_thread`) and route through
+`_call_model_async(context, action_spec)`; every `LanguageModel` has
+`sample_{text,choice,tool_calls,structured,float}_async` twins (default: the sync
+method on a helper thread; OpenAI-compatible providers implement
+text/choice/tool-calls natively). Custom `TurnPolicy` classes may likewise
+provide an optional `run_async` (awaiting `engine.run_agent_step_async`).
 
-Under the asyncio executor each turn is a coroutine on one background event
-loop: an agent with `act_async` acts loop-native (thousands in flight at once),
-a sync-only agent's `act` runs on a bounded helper thread — blocking-safe, and
-unable to stall the loop — and both kinds mix freely in the same step. To make a
-custom agent loop-native, override `act_async` and route through the base
-helper `_call_model_async(context, action_spec)` (same dispatch as
-`_call_model`, awaiting the model's `*_async` twins):
+Invariants to preserve when touching this path:
 
-```python
-class MyAgent(Agent):
-    def act(self, action_spec):                    # required, sync floor
-        return self._call_model(self._context(), action_spec)
+- Loop-native and sync-only agents/models/policies **mix freely in one step** — a
+  sync-only implementation must never be able to stall the event loop, which is
+  why it runs on a bounded helper thread.
+- Everything that calls `agent.act(...)` synchronously (probes, seed-post
+  initialization, the `agent_choice` router) stays synchronous.
+- Scheduling semantics (flow chains, barriers, per-GM caps/locks, failure
+  isolation, retry telemetry, `max_concurrent_actions`) are **identical across
+  executors**. A change that makes them diverge is a bug.
 
-    async def act_async(self, action_spec):        # optional fast path
-        return await self._call_model_async(self._context(), action_spec)
-```
-
-Everything that calls `agent.act(...)` synchronously (probes, seed-post
-initialization, the `agent_choice` router) is unchanged. Custom `TurnPolicy`
-classes may likewise provide an optional `run_async` (awaiting
-`engine.run_agent_step_async`); a sync-only policy runs whole-turn on a helper
-thread under the asyncio executor.
+Worked example: [docs/building_agents.md](docs/building_agents.md) →
+"Optional async fast path".
 
 ### Reference Implementation: FixedAgent
 
-`silisocs.agents.fixed.FixedAgent` is a concrete example of a non-LLM agent:
-
-```python
-# src/silisocs/agents/fixed.py
-class FixedAgent(Agent):
-    """Deterministic agent executing pre-defined actions by episode."""
-    
-    def observe(self, observation: str) -> None:
-        # Extract episode number from observation
-        self._current_episode = extract_episode(observation)
-    
-    def act(self, action_spec) -> str:
-        # Look up action for current episode and return as string
-        action = self._next_action_item()
-        return format_action(action)
-```
+`silisocs.agents.fixed.FixedAgent` is the concrete non-LLM example: it extracts
+the episode index in `observe()` and returns the episode's pre-defined action
+from `act()`. Read it before writing a new agent runtime.
 
 ### How Custom Agents Are Loaded
 
-1. Create a native runtime class:
-   ```python
-   # my_agents.py
-   from silisocs.agents.base_agent import Agent
-   from silisocs.runtime.types import ActionOutput
-   
-   class MyCustomAgent(Agent):
-       def __init__(self, *, model, name: str, context: str = ""):
-           super().__init__(model)
-           self._name = name
-           self._context = context
-
-       @property
-       def name(self) -> str:
-           return self._name
-
-       def observe(self, observation: str) -> None:
-           self._context += f"\n{observation}"
-
-       def act(self, action_spec):
-           return self._call_model(self._context, action_spec)
-   ```
-
-2. Reference in world config:
+1. Write an `Agent` subclass whose `__init__` takes `model` plus keyword-only
+   params (see the walkthrough in
+   [docs/building_agents.md](docs/building_agents.md) → "Custom Agent Runtime
+   Shape").
+2. Reference it from the persona pipeline:
    ```yaml
    persona_pipeline:
      classes:
@@ -464,9 +330,9 @@ class FixedAgent(Agent):
            name: Alice
            context: Initial persona text.
    ```
-
 3. The runner imports the class path directly and instantiates it with `model`
-   plus the configured `params`.
+   plus the configured `params` (a standard slot — unknown `params` fail at
+   build).
 
 ### Concordia Integration Points
 
@@ -506,46 +372,43 @@ actions as tools and the language model selects which action(s) to invoke.
 
 ### Enabling Tool-Calling
 
-To enable tool-calling at the game-master layer, configure resolve as `tool_calling`.
-This keeps prompt generation mode (`custom` or `generic`) independent from parsing mode.
+Prompt generation mode (`sim.action_mode`: `custom` | `generic`) and parsing mode
+(`sim.tool_calling.mode`: `none` | `single` | `multi`) are independent. Enabling
+tool-calling means pairing the mode with the `tool_calling` resolve component:
 
-Example custom-cta + tool-calling:
-
-```python
+```yaml
 sim:
-    action_mode: custom      # custom prompt text still used
-    tool_calling:
-        mode: single
+  action_mode: custom          # custom prompt text still used
+  tool_calling:
+    mode: single
+env:
+  gm:
     components:
-        game_master:
-            resolve:
-                built_in: tool_calling
+      resolve:
+        built_in: tool_calling
 ```
 
-When tool-calling is active, the native `ActionSpec` carries tool schemas in
-`extra_args`; `Agent._call_model()` routes the request to `sample_tool_calls`.
+Design contract to preserve: the **action format is a platform concern, never an
+agent concern**. Agents return strings (or typed `ActionOutput`); the resolve
+component and world config decide how that is interpreted. Tool-calling dispatch
+lives in the entity/act layer — `Agent._call_model()` routes a
+`TOOL_CALLS` spec to `sample_tool_calls` — not in resolve, which only validates
+and executes what came back. Per-GM `action_mode` / `tool_calling` overrides and
+their per-GM compatibility validation are in
+[docs/configuration.md](docs/configuration.md).
 
 ### Adding a Custom LLM Provider
 
-Common providers that expose an OpenAI-compatible API ship as built-in presets
-(`anthropic`, `gemini`, `openrouter`, `groq`, `together`, `deepseek`, `mistral`,
-`fireworks`, `xai`, `ollama`); set `sim.llm.provider` to the name and supply the
-key via the provider's env var (see `OPENAI_COMPATIBLE_PRESETS` in
-`runtime/language_models/factory.py`). For anything else, two paths exist, with no
-core edits required:
-
-1. Register a provider name (import the module before the run starts):
-   ```python
-   from silisocs.runtime.language_models.registry import register_llm_provider
-
-   @register_llm_provider("my_provider")
-   class MyModel(LanguageModel): ...
-   ```
-   then set `sim.llm.provider: my_provider`.
-2. Or set `sim.llm.provider: mypkg.models.MyModel` (fully qualified class path).
-
-Providers that speak an OpenAI-compatible HTTP API should subclass
-`OpenAICompatibleLanguageModel` to inherit retry/backoff and telemetry support.
+Three routes, **none of which require a core edit**: a named preset
+(`OPENAI_COMPATIBLE_PRESETS` in `runtime/language_models/factory.py`), the
+`@register_llm_provider("name")` registry decorator on a `LanguageModel`
+subclass (import the module before the run starts — see §3 `plugins`), or a
+fully-qualified `sim.llm.provider: mypkg.models.MyModel`. Providers speaking an
+OpenAI-compatible HTTP API should subclass `OpenAICompatibleLanguageModel` to
+inherit retry/backoff and telemetry. Adding a preset must not change behavior for
+an existing `provider` value. Full walkthrough:
+[docs/building_agents.md](docs/building_agents.md) → "Registering a Custom LLM
+Provider".
 
 ### Validation & Error Handling
 
@@ -628,28 +491,6 @@ To add a new harness: implement a `HarnessAdapter` and a thin `HarnessAgent` sub
 See `docs/harness_agents.md`. Non-goals of the current pass: no event-driven engine, no
 MoltBook facade, no live-internet tools (surfaces expose only backend catalogs).
 
-## 5.5) Action Modes and Platform Configuration
-
-The platform supports different action modes configured via `sim.action_mode`:
-
-```yaml
-sim:
-    action_mode: custom  # custom | generic
-    tool_calling:
-        mode: none         # none | single | multi
-```
-
-Each mode corresponds to how the agent's responses are interpreted and executed:
-
-- **custom**: Custom parsing format determined by the world
-- **generic**: Generic action name + parameters format
-
-Tool-calling is configured separately via `sim.tool_calling.mode`.
-
-The specific action format and response interpretation is determined by the resolve component and world configuration, not by the agent. Agents simply return strings; the platform interprets them according to the active mode.
-
-For **tool-calling mode** specifically: The entity layer is responsible for calling `sample_tool_call()` when the action_spec indicates tool-calling is needed. The resolve component then processes the result. This architecture keeps tool-calling logic in the entity/act layer, not in resolve.
-
 ## 6) Checkpoints and Replay
 
 - Checkpoints are saved as JSON under run output `checkpoints/step_{N}_checkpoint.json`.
@@ -682,7 +523,13 @@ custom backend types and persisted in the run manifest. A class-level
 `EventSemantics` or the portable `{roles, fields, labels}` mapping — the shipped
 social backends declare theirs this way); resolution MERGES the declaration with
 decorator-derived tags (declaration wins per entry), so decorating a new action
-always reaches analysis, and a malformed class declaration raises.
+always reaches analysis, and a malformed class declaration raises. Event
+semantics live in `environments/backends/event_semantics.py` (the declaring
+layer); `evaluations/vocabulary.py` re-exports them for analysis-side readers
+over the same registry. Layering is machine-enforced: import-linter contracts in
+`pyproject.toml` (pre-commit hook `lint-imports`) keep the runtime kernel
+(`runtime/{types,io,telemetry,class_loading,language_models}`) free of
+upper-layer imports and the package layers one-directional.
 
 **Committed-only action log** (backend authors): `action_events.jsonl` is the
 canonical log of actions that committed a state change or performed a deliberate
@@ -704,50 +551,44 @@ backends round-trip it via the `_committed_events_state()`/`_restore_committed_e
 helpers, replay-restored ones rebuild it for free).
 
 **Backend restore contract** (backend authors): a backend supports either (or both)
-of two restore paths. (1) Authoritative snapshot — set the class flag
-`provides_checkpoint_state = True` and make get_state/set_state round-trip the full
-state; restore applies it directly. (2) Action-event replay — this is a *mechanism*
-that lives entirely in the pluggable `sim.checkpoint.restore` strategy, not on the
-backend. The built-in `social_action_event_replay` strategy owns its per-backend
-event→action mappings in a registry keyed by `backend_type`
-(`runtime/checkpointing/replay_mappers.py`): a backend "supports replay" exactly
-when a mapper is registered for its `backend_type`. Backends themselves carry **no**
-replay method — they implement only `get_state`/`set_state`. The shipped registry
-maps `twitter_like` to the stateless `microblog_event_to_replay_action`; `reddit_like`
-has none (no valid microblog mapping) and self-restores via snapshot. A custom
-backend opts into the built-in strategy with
-`register_replay_mapper(backend_type, mapper)` (mirrors `register_llm_provider`) — no
-core edit, no backend method; a bespoke restore that a stateless mapper can't express
-is a custom `sim.checkpoint.restore.class_path` strategy instead. Every shipped
-backend self-restores via `set_state` (`provides_checkpoint_state=True`); Mastodon —
-which can't snapshot its live server — does so by embedding its action history in
-`get_state` and replaying it (with old→new toot-id remapping) in `set_state` through
-its own private mapper, so it is not driven by the replay strategy at all. The
-authoritative-vs-replay decision is **per game master**: snapshot GMs restore from
-their block, the rest go to the strategy (which requires a registered mapper).
-Multi-GM runs isolate each GM's backend db + `action_events.jsonl` under
+of two restore paths, and **a backend implements only `get_state`/`set_state`** —
+there is no backend-level replay method.
+
+1. *Authoritative snapshot.* Set the class flag `provides_checkpoint_state = True`
+   and make `get_state`/`set_state` round-trip the full state; restore applies it
+   directly. Every shipped backend does this.
+2. *Action-event replay.* A **mechanism owned by the pluggable
+   `sim.checkpoint.restore` strategy**, not by the backend. The built-in
+   `social_action_event_replay` strategy keeps per-backend event→action mappings in
+   a registry keyed by `backend_type` (`runtime/checkpointing/replay_mappers.py`);
+   a backend "supports replay" exactly when a mapper is registered for its
+   `backend_type`. Opt in with `register_replay_mapper(backend_type, mapper)`
+   (mirrors `register_llm_provider`) — no core edit. A bespoke restore that a
+   stateless mapper cannot express is a custom
+   `sim.checkpoint.restore.class_path` strategy instead.
+
+The authoritative-vs-replay decision is **per game master**: snapshot GMs restore
+from their own block, the rest go to the strategy (which requires a registered
+mapper). Multi-GM runs isolate each GM's backend db + `action_events.jsonl` under
 `<output>/<gm_name>/`; both restore and eval discover these via
-`silisocs.evaluations.action_events.resolve_action_event_files` (restore passes
-all per-GM logs to the strategy as `action_events_files`). A GM may override the
-global `sim.checkpoint.restore` with its own strategy via
-`env.gm_orchestration.gms[*].restore` (same schema; absent → global default).
+`silisocs.evaluations.action_events.resolve_action_event_files` — use that helper
+rather than rediscovering the layout. Which built-ins are registered, the Mastodon
+embed-and-replay exception, per-GM `restore` overrides, and restore-robustness
+guarantees are documented in
+[docs/configuration.md](docs/configuration.md) → "Checkpoint Restore".
 
-**Save layout** (`sim.checkpoint.save`, mirroring the restore slot): `monolithic_json`
-(default — one JSON per step, the long-standing format) or `sharded` (a
-`step_N_checkpoint.json` manifest plus NDJSON object shards and raw SQLite sidecar
-`.db` files verified by sha256; `params.objects_per_shard`, default 500). The payload
-always comes from `make_checkpoint_data`; only the on-disk layout differs, and
-`load_checkpoint_file` reassembles a sharded checkpoint transparently, so restore
-strategies and `eval.py` never see the difference. A custom layout is a
+**Save layout** (`sim.checkpoint.save`, mirroring the restore slot): the payload
+always comes from `make_checkpoint_data` and `load_checkpoint_file` reassembles a
+sharded checkpoint transparently, so **restore strategies and evaluators must
+never depend on the on-disk layout**. A custom layout is a
 `sim.checkpoint.save.class_path` subclassing `CheckpointSaveStrategy`
-(`runtime/checkpointing/save.py`).
+(`runtime/checkpointing/save.py`). The shipped layouts and their params are in
+[docs/configuration.md](docs/configuration.md).
 
-**Saving policy**: checkpoint saving is disabled by default when running directly
-with the `silisocs` CLI unless `every_n_steps` or `explicit_steps` is configured.
-When running via `silisocs-study`, checkpointing is enabled automatically
-(`every_n_steps=1`) so that evaluators can access the final checkpoint for
-action-type metrics. Studies can change the frequency via
-`run_defaults.overrides: {sim.checkpoint.every_n_steps: N}`.
+**Saving policy**: checkpoint saving is off by default under the `silisocs` CLI
+unless `every_n_steps` or `explicit_steps` is set; `silisocs-study` injects
+`every_n_steps=1` so evaluators can read the final checkpoint (tunable per study —
+see [docs/study_schema.md](docs/study_schema.md)).
 
 **For custom agents**: Checkpointing is duck-typed — every agent and game master is
 checkpointed by reading its `get_state()` and applying its `set_state()` (there is no
@@ -828,28 +669,42 @@ agent-facing guides and guided workflows
 → [agent_docs/skills/new-scenario.md](agent_docs/skills/new-scenario.md) — Step-by-step scenario design assistant
 → [agent_docs/skills/new-study.md](agent_docs/skills/new-study.md) — Step-by-step study design assistant
 
-**Public documentation** (for end users):
-- `docs/index.md` — Hub for all documentation
-- `docs/configuration.md` — Config reference (all knobs explained)
-- `docs/usage.md` — End-to-end workflow
-- `docs/study_schema.md` — Study YAML schema, directory layout, and analysis conventions
-- `docs/environment_layer.md` — Engine/GM/component extensibility patterns
-- `docs/backends.md` — Backend plugin patterns
-- `docs/building_agents.md` — Agent builder patterns
-- `docs/studio.md` — Studio usage
-- `docs/contributing.md` — Code standards
+**Public documentation** (for end users) — one canonical home per topic:
 
-When adding features, update docs in:
+| Topic | Canonical page |
+|---|---|
+| Documentation hub | `docs/index.md` |
+| Every config key, default, and semantics | `docs/configuration.md` |
+| The `built_in`/`class_path`/`params` slot idiom | `docs/configuration.md` → "Slots" |
+| Generated dump of packaged defaults (CI drift-tested) | `docs/config_reference.md` |
+| End-to-end workflow, output files, run health | `docs/usage.md` |
+| Designing a study (concepts + workflow) | `docs/study_guide.md` |
+| `silisocs-study` commands, filters, presets, HPC | `docs/experiments.md` |
+| `study.yaml` + generated file formats, notebooks | `docs/study_schema.md` |
+| Engine/GM/component extensibility patterns | `docs/environment_layer.md` |
+| Code-level extension API reference | `docs/simulation_extensibility_api.md` |
+| Backend plugin patterns | `docs/backends.md` |
+| Agent builder patterns | `docs/building_agents.md` |
+| Studio usage / analysis panels | `docs/studio.md`, `docs/analysis_panels.md` |
+| Code standards | `docs/contributing.md` |
 
-- Config schema and fields (docs/configuration.md)
-- Runtime behavior and extension guidance (this file + docs/environment_layer.md)
-- User-facing usage examples (docs/usage.md)
-- Studio behavior (`docs/studio.md` if applicable)
+When adding a feature, update the canonical page for it — do not restate its
+tables or defaults in AGENTS.md. This file carries the architecture map,
+contracts, invariants, and workflows that the user docs do not cover.
+
+- New/changed config key → `docs/configuration.md` (+ the Slots table if it is a
+  slot), and `docs/config_reference.md` regenerates
+- New runtime behavior or extension seam → `docs/environment_layer.md` /
+  `docs/simulation_extensibility_api.md`, plus a contract note here
+- User-visible workflow change → `docs/usage.md`
+- Studio behavior → `docs/studio.md`
 
 ## 10) Common Pitfalls
 
 - Adding GM/engine bloat instead of using flow routing + component hooks
+- Inventing a new config shape where a slot (§3) would do
 - Breaking the action text format consumed by resolve
+- Restating `docs/configuration.md` values here instead of linking (they drift)
 - Forgetting to keep docs aligned with runtime defaults
 - Assuming Studio run-artifact loading equals checkpoint state replay
 - Relying on non-uv environment when reproducing tests

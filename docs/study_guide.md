@@ -9,6 +9,14 @@ A **study** is a research question asked on top of one or more scenarios. It def
 Studies live in `experiments/studies/<study_name>/` and are version-controlled.
 The scenario is the stage; the study is the experiment.
 
+This page is the walkthrough. Two companion pages hold the details it links to:
+
+| Page | Answers |
+|---|---|
+| **This page** | What a study is and how to design one, step by step |
+| [Study Runner Reference](experiments.md) | Every `silisocs-study` command, filter, execution mode, evaluator preset, and cluster dispatch option |
+| [Study Schema](study_schema.md) | The exact shape of `study.yaml` and every generated file |
+
 **Shortcut:** If you are using a repo-aware coding agent such as Codex, Claude
 Code, Cursor, or another agent that can read `AGENTS.md`, ask it to follow
 `agent_docs/skills/new-study.md` for an interactive `/new-study`-style workflow.
@@ -99,6 +107,10 @@ hypotheses:
 The `overrides` values are passed directly to `uv run silisocs` as CLI overrides
 (e.g. `agents=thin` → `--config-path ... agents=thin`).
 
+Every field, including per-condition `execution` / `reuse` blocks and the
+`{scenario}`-style path placeholders, is listed in
+[Study Schema → study.yaml](study_schema.md#studyyaml).
+
 ---
 
 ## Step 3: Write `eval.py` (or use built-in presets)
@@ -123,7 +135,9 @@ evaluations:
 ```
 
 If you need custom metrics (e.g. lexical diversity, inter-agent distinctiveness),
-write `eval.py`. See `docs/study_schema.md` for the required output format.
+write `eval.py`; its CLI, input files, and required output format are the
+[eval.py contract](study_schema.md#the-evalpy-contract). The full preset list is
+in the [Study Runner Reference](experiments.md#evaluator-presets).
 
 ---
 
@@ -154,40 +168,29 @@ Outputs land in:
 experiments/studies/my_study/runs/h1_persona_richness/persona=rich/neighborhood_forum/seed_42/run/
 ```
 
-**Resuming an interrupted study.** Each successful run leaves a
-`RUN_COMPLETE.json` marker in its run directory. Re-running the same `run`
-command skips runs that already completed (reported as `skipped_complete` and
-counted as successes) and only executes the missing or failed ones. The runner
-prints `Skipped N already-complete runs (use --force to re-run)`; pass `--force`
-to ignore the markers and re-run everything.
+Three runner behaviors are worth knowing before you launch a large grid:
 
-**Preflight check.** Before launching, the runner prints how many runs will
-execute, their `num_agents`/`num_steps` (when derivable from overrides), and the
-estimated total agent-steps. If more than 50 runs would launch, it asks for
-confirmation: pass `--yes` to skip the prompt (required in non-interactive
-sessions such as CI or batch jobs).
+- **Resume is automatic.** A completed run leaves a `RUN_COMPLETE.json` marker;
+  re-running the same `run` command executes only the missing or failed runs.
+  `--force` ignores the markers.
+- **A preflight prompts above 50 runs.** The runner prints the run count and
+  estimated agent-steps first; pass `--yes` in non-interactive sessions.
+- **Checkpoints are on.** Every run gets `sim.checkpoint.every_n_steps=1` so
+  evaluators can read the final checkpoint.
 
-**Checkpoint cadence.** By default every run is launched with
-`sim.checkpoint.every_n_steps=1` so evaluators can read the final checkpoint.
-Set `run_defaults.checkpoint_every_n_steps` to a larger integer for sparser
-checkpoints, or to `null`/`0`/`false` to disable the injection.
+All three, plus every other flag and cluster dispatch, are in the
+[Study Runner Reference](experiments.md#runner-behavior).
 
 ---
 
 ## Step 5: Analyse results
 
 After runs complete, open or create `experiments/studies/my_study/notebook.ipynb`.
-
-The standard notebook structure has 9 sections:
-1. Title + setup (load `study.yaml` and all `eval.json` files)
-2. Study overview (hypothesis table, condition summary)
-3. Key metrics explained
-4. Headline comparison (grouped bar chart)
-5. Full metric profile (radar chart)
-6. Scenario consistency (faceted by scenario)
-7. Per-agent distributions (strip plots)
-8. Behavioral breakdown (action type counts)
-9. Takeaways (key findings, limitations, next steps)
+Studies in this repo follow a fixed 9-section notebook narrative (setup →
+overview → metric definitions → headline comparison → full profile → scenario
+consistency → per-agent distributions → behavioral breakdown → takeaways),
+specified section by section in
+[Study Schema → Notebook Structure](study_schema.md#notebook-structure).
 
 Cross-replicate statistics (`n`, `mean`, `stdev`, and a t-distribution 95%
 confidence interval as `ci95_low`/`ci95_high`) are generated automatically:
@@ -195,7 +198,8 @@ per condition in `generated/organized/summary.json` under
 `metrics_stats_by_condition`, and per run in each hypothesis `runs.json` under
 `aggregated_stats`.
 
-See `docs/study_schema.md` for the full notebook conventions.
+Studio can also read the organized tree directly — see
+[Studio Analysis Panels](analysis_panels.md).
 
 ---
 
@@ -229,19 +233,29 @@ h2_model_capacity:
       overrides: {llm.name: gpt-4o}
 ```
 
+Then run only the new hypothesis and record the finding against the evidence
+lock — the command sequence is in the
+[Study Runner Reference](experiments.md#iterative-workflow-h1-analyze-h2).
+
 ---
 
 ## Reusing runs across hypotheses
 
 If a condition from an earlier hypothesis serves as the control for a later one,
 reference the same run paths in both condition entries. The organizer handles
-duplicate paths: the run is not re-executed, just re-linked.
+duplicate paths: the run is not re-executed, just re-linked. The
+`execution.mode: reuse_existing` / `reuse.runs` shape is in
+[Study Schema](study_schema.md#reusing-a-baseline-condition-across-hypotheses).
 
 ---
 
 ## Where to look next
 
-- **Full study.yaml schema:** `docs/study_schema.md`: all fields, file formats, eval.json spec
-- **Scenario design:** `docs/scenario_guide.md`: how to build the scenario you study
+- **Runner reference:** [Study Runner Reference](experiments.md): every command,
+  filter, execution mode, evaluator preset, and cluster dispatch option
+- **Full `study.yaml` schema:** [Study Schema](study_schema.md): all fields, file
+  formats, `eval.json` spec, notebook conventions
+- **Scenario design:** [Scenario Guide](scenario_guide.md): how to build the
+  scenario you study
 - **Existing studies:** `experiments/studies/style_diversity/`: a working example
-- **Run study CLI help:** `uv run silisocs-study --help`
+- **CLI help:** `uv run silisocs-study --help`

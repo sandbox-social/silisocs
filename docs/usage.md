@@ -50,7 +50,8 @@ Probes are deployed on schedule.
 
 ## Running a Simulation
 
-For multi-condition research orchestration (hypothesis trees, seed sweeps, and built-in evaluators), use [Experiment Studies](experiments.md).
+For multi-condition research orchestration (hypothesis trees, seed sweeps, and
+built-in evaluators), start with the [Study Guide](study_guide.md).
 
 ### CLI (Recommended)
 
@@ -159,7 +160,10 @@ src/silisocs/conf/
     └── base.yaml            # Probe and logging defaults
 ```
 
-See [Configuration Reference](configuration.md) for all options.
+See [Configuration Reference](configuration.md) for all options. Every
+pluggable piece — engines, policies, GM components, backends, checkpoint
+strategies — shares one `{built_in | class_path, params}` shape, described once
+under [Slots](configuration.md#slots).
 
 For environment-level customization (Engine + GM components + backends), see
 [Environment Layer](environment_layer.md).
@@ -950,5 +954,6 @@ optional timeline semantics, and storage/query behavior.
 - [Memory Initialization](memory_initialization.md): Raw, formative, and custom modes
 - [Environment Backends](backends.md): Generic apps, Twitter-like, Reddit-like, Mastodon
 - [Evaluation Probes](probes.md): Probe types and deployment
+- [Study Guide](study_guide.md): Multi-condition studies, seed grids, evaluators
 - [Studio](studio.md): unified visual workflow and extension guide
 - [Election Walkthrough](tutorials/election.md): Complex real-world example

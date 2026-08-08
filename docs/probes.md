@@ -179,7 +179,7 @@ probes (vote preference, favorability, intent): see the
 
 ### Default Detailed Probe Evaluators
 
-When running studies with `run_study.py`, you can use built-in probe evaluator presets:
+When running studies with `silisocs-study`, you can use built-in probe evaluator presets:
 
 - `builtin.probe_metrics_detailed` (all probe events)
 - `builtin.probe_binary_detailed`
@@ -197,7 +197,8 @@ These evaluators:
 - aggregate per probe label and per inferred/configured probe type
 - use `effective_config.yaml` to map labels to configured probe types when available
 
-For orchestration details and preset usage, see [Experiment Studies](experiments.md).
+For orchestration details and preset usage, see the
+[Study Runner Reference](experiments.md#evaluator-presets).
 
 ---
 
