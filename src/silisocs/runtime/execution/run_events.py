@@ -14,6 +14,7 @@ never fail a run.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import time
 from pathlib import Path
@@ -24,10 +25,19 @@ RUN_EVENTS_SCHEMA_VERSION = 1
 
 
 class RunEventLog:
-    """Append-only JSONL feed of run lifecycle events (never raises)."""
+    """Append-only JSONL feed of run lifecycle events (never raises).
 
-    def __init__(self, output_dir: str | Path) -> None:
+    ``fresh_start=True`` truncates any previous run's feed (the default job
+    directory has no timestamp, so re-running the same parameters reuses it):
+    stale step rows would otherwise replay into observers whose monotonic
+    guards then suppress the new run's real events. A resumed run appends.
+    """
+
+    def __init__(self, output_dir: str | Path, *, fresh_start: bool = False) -> None:
         self._path = Path(output_dir) / RUN_EVENTS_FILENAME
+        if fresh_start:
+            with contextlib.suppress(OSError):
+                self._path.unlink(missing_ok=True)
 
     @property
     def path(self) -> Path:

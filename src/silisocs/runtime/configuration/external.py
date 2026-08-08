@@ -27,12 +27,24 @@ def _hydra_task_overrides() -> list[str]:
     return [str(item) for item in hydra_cfg.overrides.task]
 
 
-def merge_external_group_overrides(cfg: DictConfig) -> DictConfig:
+def merge_external_group_overrides(
+    cfg: DictConfig, *, value_overrides: Sequence[str] | None = None
+) -> DictConfig:
+    """Merge scenario flat group files, then re-apply the user's value overrides.
+
+    ``value_overrides`` defaults to the Hydra invocation's CLI overrides; the
+    programmatic path (:func:`compose_config`) passes its own list explicitly —
+    outside a Hydra app there are no task overrides to recover, and without
+    re-application a scenario's flat ``sim.yaml``/``env.yaml`` would silently
+    clobber the caller's overrides.
+    """
     paths_csv = os.environ.get("SILISOCS_EXTERNAL_CONFIG_DIRS", "").strip()
     if not paths_csv:
         return cfg
 
-    task_overrides = _hydra_task_overrides()
+    task_overrides = (
+        list(value_overrides) if value_overrides is not None else _hydra_task_overrides()
+    )
     world_variant = ""
     for item in task_overrides:
         if item.startswith("world="):
@@ -189,7 +201,16 @@ def inject_external_config_path() -> None:
     os.environ["SILISOCS_EXTERNAL_CONFIG_DIRS"] = ":".join(str(path) for path in merge_dirs)
 
 
+_SEARCH_PATH_PLUGIN_REGISTERED = False
+
+
 def register_search_path_plugin() -> None:
+    # Idempotent: Hydra dedups plugin classes by identity, and this function
+    # defines a fresh class per call — without the guard, every compose_config
+    # call would stack another copy onto Hydra's plugin list.
+    global _SEARCH_PATH_PLUGIN_REGISTERED
+    if _SEARCH_PATH_PLUGIN_REGISTERED:
+        return
     import os as _os
 
     from hydra.core.plugins import Plugins
@@ -204,3 +225,4 @@ def register_search_path_plugin() -> None:
                 search_path.prepend("file", raw_dir)
 
     Plugins.instance().register(_ScenarioSearchPathPlugin)
+    _SEARCH_PATH_PLUGIN_REGISTERED = True

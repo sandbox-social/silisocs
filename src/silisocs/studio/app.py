@@ -18,7 +18,7 @@ from dataclasses import replace
 from difflib import unified_diff
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 import yaml
 
@@ -274,7 +274,12 @@ def create_app(
     """Create Studio, keeping FastAPI/Jinja imports inside the optional extra."""
     try:
         from fastapi import FastAPI, HTTPException, Request
-        from fastapi.responses import HTMLResponse, Response, StreamingResponse
+        from fastapi.responses import (
+            HTMLResponse,
+            RedirectResponse,
+            Response,
+            StreamingResponse,
+        )
         from fastapi.templating import Jinja2Templates
     except ImportError as exc:
         raise RuntimeError('Silisocs Studio requires: pip install "silisocs[studio]"') from exc
@@ -377,6 +382,17 @@ def create_app(
             # Reads leak run configs and logs; beyond localhost they need the
             # same token as mutations (localhost reads stay open by design).
             return Response("Studio authorization required", status_code=401)
+        if token and via_query == token and request.method == "GET":
+            # Set the session cookie, then redirect to the same URL WITHOUT the
+            # token so the secret never lands in access logs, history, or
+            # copied links.
+            stripped = urlencode(
+                [(k, v) for k, v in request.query_params.multi_items() if k != "token"]
+            )
+            target = request.url.path + (f"?{stripped}" if stripped else "")
+            response: Response = RedirectResponse(target, status_code=303)
+            response.set_cookie("studio_token", token, httponly=True, samesite="lax")
+            return response
         response = await call_next(request)
         if token and via_query == token:
             response.set_cookie("studio_token", token, httponly=True, samesite="lax")

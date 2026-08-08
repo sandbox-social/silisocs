@@ -134,7 +134,12 @@ def _normalize_binary(value: Any) -> str | None:
 
 
 def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
-    """Load a mapping of probe label to probe type from the run's config."""
+    """Load a mapping of probe label to probe type from the run's config.
+
+    Also best-effort imports the run's ``probe_lib_module`` so custom probe
+    classes register their ``analysis_kind`` in THIS process — evaluators run
+    in the study/Studio process, not the runner that loaded ``plugins:``.
+    """
     cfg_path = run_dir / "effective_config.yaml"
     if not cfg_path.is_file():
         return {}
@@ -151,6 +156,13 @@ def _load_probe_type_map(run_dir: Path) -> dict[str, str]:  # noqa: C901
     probes = evaluations.get("probes", {})
     if not isinstance(probes, dict):
         return {}
+
+    probe_lib_module = str(probes.get("probe_lib_module") or "").strip()
+    if probe_lib_module:
+        try:
+            importlib.import_module(probe_lib_module)
+        except Exception:
+            pass  # scoring falls back to inference; probes still count
 
     raw_probes = probes.get("probes", {})
     if isinstance(raw_probes, dict):

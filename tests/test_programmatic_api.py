@@ -45,3 +45,25 @@ def test_run_simulation_without_output_dir_outside_hydra_is_a_clear_error(tmp_pa
 
     with pytest.raises(ValueError, match="output_dir"):
         run_simulation(cfg)
+
+
+def test_compose_config_overrides_beat_scenario_flat_files():
+    """A caller's override must survive the scenario's flat sim.yaml merge —
+    and the scenario selection must not leak into later composes/runs.
+    """
+    import os
+
+    from silisocs.runtime.configuration.external import merge_external_group_overrides
+
+    cfg = compose_config(
+        scenario="misinformation", overrides=["sim.tool_calling.mode=none", "num_steps=1"]
+    )
+    assert cfg.sim.tool_calling.mode == "none"
+    assert cfg.scenario_name == "misinformation"
+
+    # The run-time merge is a no-op now (selection cleared after compose), so
+    # run_simulation cannot revert the override...
+    assert merge_external_group_overrides(cfg).sim.tool_calling.mode == "none"
+    assert os.environ.get("SILISOCS_EXTERNAL_CONFIG_DIRS", "") == ""
+    # ...and a later compose without a scenario is untouched by the earlier one.
+    assert compose_config(overrides=["num_steps=1"]).scenario_name == "default"

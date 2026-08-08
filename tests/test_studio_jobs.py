@@ -309,3 +309,28 @@ def test_event_stream_prefers_the_runner_feed_over_inference(tmp_path):
     finished = [item["data"]["step"] for item in events if item["event"] == "step_finished"]
     assert started == [0, 1]
     assert finished == [0, 1]
+
+
+def test_status_only_runner_feed_keeps_legacy_step_inference(tmp_path):
+    """A custom LoopStrategy emits no step rows — the session's status rows
+    alone must NOT disable the action-row/checkpoint inference.
+    """
+    manager = JobManager(tmp_path / "state", output_root=tmp_path / "outputs")
+    run = tmp_path / "outputs" / "run"
+    run.mkdir(parents=True)
+    (run / "run_events.jsonl").write_text(
+        json.dumps({"v": 1, "ts": 1.0, "kind": "status", "status": "running"}) + "\n",
+        encoding="utf-8",
+    )
+    (run / "action_events.jsonl").write_text(json.dumps({"episode": 0}) + "\n", encoding="utf-8")
+
+    job = manager.submit(
+        kind="run",
+        command=[sys.executable, "-c", "import time; time.sleep(.3)"],
+        cwd=tmp_path,
+        output_dir=run,
+    )
+    events = list(manager.events(job.id))
+
+    started = [item["data"]["step"] for item in events if item["event"] == "step_started"]
+    assert started == [0]

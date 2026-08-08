@@ -219,29 +219,39 @@ class ViewerDispatch:
         if cached is not None:
             return cached
 
-        for index in range(1, len(segments)):
-            backend_type = segments[index]
-            try:
-                record = find_run(self._root, "/".join(segments[:index]))
-            except KeyError:
-                continue
-            db_path = next(
-                (path for found, path in find_backend_dbs(record.path) if found == backend_type),
-                None,
-            )
-            if db_path is None:
-                continue
-            # AFTER find_backend_dbs: it registers manifest-declared
-            # visualizers for backends this process cannot import, so a
-            # custom-backend deep link survives a cold Studio process.
-            if viewer_app_factory(backend_type) is None:
-                continue
-            viewer = self._viewer_for(backend_type, db_path)
-            if viewer is not None:
-                resolved = (viewer, index + 1)
-                with self._resolve_lock:
-                    self._resolutions[key] = resolved
-                return resolved
+        # Two passes: the first short-circuits on the cheap factory check (the
+        # common case, and what keeps unresolvable asset paths from paying
+        # catalog scans per segment); the second drops that pre-check so
+        # find_backend_dbs can register a MANIFEST-declared visualizer for a
+        # backend this process cannot import — the cold-process deep link.
+        for factory_first in (True, False):
+            for index in range(1, len(segments)):
+                backend_type = segments[index]
+                if factory_first and viewer_app_factory(backend_type) is None:
+                    continue
+                try:
+                    record = find_run(self._root, "/".join(segments[:index]))
+                except (KeyError, FileNotFoundError, ValueError):
+                    # Not a run at this prefix: unknown id, a directory with no
+                    # manifest (reachable now that this pass runs for segments
+                    # that are not known backend names), or a malformed one.
+                    continue
+                db_path = next(
+                    (
+                        path
+                        for found, path in find_backend_dbs(record.path)
+                        if found == backend_type
+                    ),
+                    None,
+                )
+                if db_path is None or viewer_app_factory(backend_type) is None:
+                    continue
+                viewer = self._viewer_for(backend_type, db_path)
+                if viewer is not None:
+                    resolved = (viewer, index + 1)
+                    with self._resolve_lock:
+                        self._resolutions[key] = resolved
+                    return resolved
         return None
 
     def close(self) -> None:

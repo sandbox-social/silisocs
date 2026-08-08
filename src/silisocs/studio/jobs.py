@@ -371,15 +371,22 @@ class JobManager:
         exit_code = int(process.returncode or 0)
         log_handle.close()
         current = self.store.get(job_id)
+        # A killed run may still read "running" here (stop() flips the status
+        # only after wait()); discovery may also still be pending. Re-attempt
+        # discovery once so the manifest patch has a directory to fix.
+        self._discover_run_output(current)
+        current = self.store.get(job_id)
         status = "finished" if exit_code == 0 else "failed"
         if current.status == "killed":
             status = "killed"
         if status != "finished":
-            reason = (
-                "stopped from Studio"
-                if status == "killed"
-                else f"process exited with code {exit_code} without finalizing the run"
-            )
+            if status == "killed" or exit_code < 0:
+                # Negative return code = terminated by a signal; whether the
+                # stop() bookkeeping won the race or not, "exited with code
+                # -15" would misattribute a deliberate stop as a crash.
+                reason = f"stopped (terminated by signal {abs(exit_code)})"
+            else:
+                reason = f"process exited with code {exit_code} without finalizing the run"
             self._finalize_run_manifest(current.output_dir, reason)
         self.store.update(job_id, status=status, ended_at=time.time(), exit_code=exit_code)
         self._processes.pop(job_id, None)
@@ -632,7 +639,12 @@ class JobManager:
                 # Prefer the runner's own live feed for step boundaries; the
                 # inference below stays only for runs predating it.
                 runner_rows = _read_run_events(root / RUN_EVENTS_FILENAME, run_event_state)
-                has_runner_events = has_runner_events or bool(runner_rows)
+                # Gate on STEP rows, not any row: a custom LoopStrategy that
+                # never emits step boundaries still gets status rows from the
+                # session, and must keep the legacy inference below working.
+                has_runner_events = has_runner_events or any(
+                    row.get("kind") in ("step_started", "step_finished") for row in runner_rows
+                )
                 for row in runner_rows:
                     step = row.get("step")
                     if not isinstance(step, int):

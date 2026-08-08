@@ -404,12 +404,20 @@ def latest_checkpoint_step(output_dir: str | Path) -> int:
 
     The canonical answer to "how far did this run checkpoint?" — a
     ``step_N_checkpoint.json`` means episodes ``0..N-1`` completed. Never
-    raises, so observers (Studio's live view) can poll it on a cadence.
+    raises and skips malformed filenames (observers poll this on a cadence;
+    one stray file must not hide every valid checkpoint — restore's
+    :func:`resolve_checkpoint_source` stays strict by design).
     """
+    steps = []
     try:
-        return _checkpoint_step_from_name(resolve_checkpoint_source(output_dir).name)
-    except (FileNotFoundError, ValueError):
+        for path in (Path(output_dir) / "checkpoints").glob("step_*_checkpoint.json"):
+            try:
+                steps.append(_checkpoint_step_from_name(path.name))
+            except ValueError:
+                continue
+    except OSError:
         return -1
+    return max(steps, default=-1)
 
 
 def has_checkpoints(output_dir: str | Path) -> bool:

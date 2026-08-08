@@ -537,7 +537,8 @@ def run_simulation(cfg: DictConfig, *, output_dir: str | os.PathLike[str] | None
 
         # Purpose-built live signal: the loop emits step boundaries here and
         # observers tail this one file (see runtime/execution/run_events.py).
-        run_events = RunEventLog(output_dir)
+        # A fresh (non-resumed) run truncates a previous run's stale feed.
+        run_events = RunEventLog(output_dir, fresh_start=start_step <= 0)
         sim_engine.run_event_log = run_events
         run_events.emit("status", status="running")
 
@@ -691,13 +692,29 @@ def compose_config(
     :func:`run_simulation`.
     """
     from hydra import compose, initialize_config_dir
+    from hydra.core.global_hydra import GlobalHydra
 
     from silisocs.runtime.configuration.external import set_external_config_dirs
 
+    if GlobalHydra.instance().is_initialized():
+        raise RuntimeError(
+            "compose_config cannot run inside an active Hydra app — there the "
+            "composed cfg already exists; pass it to run_simulation directly."
+        )
     set_external_config_dirs([scenario] if scenario is not None else [])
     register_search_path_plugin()
-    with initialize_config_dir(config_dir=str(CONF_DIR), version_base=None):
-        return compose(config_name="experiment", overrides=list(overrides))
+    try:
+        with initialize_config_dir(config_dir=str(CONF_DIR), version_base=None):
+            cfg = compose(config_name="experiment", overrides=list(overrides))
+        # Merge the scenario's flat group files NOW, re-applying the caller's
+        # overrides on top (outside Hydra there are no task overrides for the
+        # run-time merge to recover)...
+        return merge_external_group_overrides(cfg, value_overrides=list(overrides))
+    finally:
+        # ...and clear the process-global selection either way, so a later
+        # run_simulation (or another compose_config) can never merge THIS
+        # call's scenario files into a different config.
+        set_external_config_dirs([])
 
 
 @hydra.main(version_base=None, config_path=str(CONF_DIR), config_name="experiment")

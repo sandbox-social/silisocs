@@ -70,7 +70,15 @@ class RecordLoader:
             # callable seam as branch routers, no base class to subclass.
             from silisocs.runtime.class_loading import load_attr
 
-            records = load_attr(str(source))(data_cfg, max_records=max_records)
+            try:
+                loader = load_attr(str(source))
+            except (ImportError, AttributeError) as exc:
+                raise ValueError(
+                    f"Persona data source {source!r} was interpreted as a dotted "
+                    f"import path but did not resolve ({exc}). For a data FILE, "
+                    "use source: local_json/csv/jsonl with a `path` field."
+                ) from exc
+            records = loader(data_cfg, max_records=max_records)
         else:
             raise ValueError(
                 f"Unknown persona data source {source!r}. Built-ins: inline, "

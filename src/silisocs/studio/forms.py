@@ -845,9 +845,12 @@ def _policy_estimate(
     try:
         return float(method())
     except Exception as exc:
+        # A built-in whose estimate blows up (e.g. count: "abc" — dataclasses
+        # don't validate) would crash the run at its first scheduling call the
+        # same way, so it is an error; only a custom class_path degrades.
         findings.append(
             {
-                "severity": "warning",
+                "severity": "warning" if (slot or {}).get("class_path") else "error",
                 "path": path,
                 "message": f"The policy's {method_name}() estimate failed: {exc}",
             }

@@ -715,9 +715,12 @@ def test_lab_token_protects_remote_reads(tmp_path, monkeypatch):
 
     assert remote.get("/runs").status_code == 401
     opened = remote.get("/runs", params={"token": "secret"})
+    # The token is traded for an httponly cookie and stripped from the URL via
+    # redirect, so the secret never lands in access logs or history.
     assert opened.status_code == 200
-    assert opened.cookies.get("studio_token") == "secret"
-    # The cookie now authorizes plain requests (httpx.Client persists it).
+    assert "token" not in str(opened.url)
+    assert remote.cookies.get("studio_token") == "secret"
+    # The cookie now authorizes plain requests (the client jar persists it).
     assert remote.get("/runs").status_code == 200
 
     # Localhost reads stay open by design, token or not.
