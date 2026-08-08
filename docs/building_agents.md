@@ -431,7 +431,7 @@ Reference it via `persona_pipeline.classes.<class>.class_path` — no game-maste
 needed (the default GM binds the Tool Bridge and records the self-describing harness
 turn). `FakeHarnessAdapter` / `FakeHarnessAgent` are the dependency-free reference
 implementation and the subject of the contract tests
-(`tests/test_harness_agent_contract.py`) — the tests are the public spec.
+(`tests/agents/test_harness_agent_contract.py`) — the tests are the public spec.
 
 ## Related
 

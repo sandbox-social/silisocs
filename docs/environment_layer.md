@@ -462,4 +462,4 @@ The action prompt pipeline is implemented across three layers:
 
 ### Testing
 
-Integration tests validate the complete prompt pipeline in `tests/test_prompt_pipeline_integration.py`.
+Integration tests validate the complete prompt pipeline in `tests/environments/test_prompt_pipeline_integration.py`.

@@ -56,7 +56,7 @@ rung becomes more capable / reasoning-heavy.
   `sim.llm.disabled=true` run validates config composition only — the no-op
   model emits no tool calls, so agent turns degrade and nothing is committed.
   The full structural gate (real engine, committed contributions, evaluator
-  output) is `uv run pytest tests/test_scripted_backend_matrix.py -k public_goods`.
+  output) is `uv run pytest tests/e2e/test_scripted_backend_matrix.py -k public_goods`.
 - The evaluator excludes an all-silent replicate (`None`) unless the run's
   manifest shows a healthy run, in which case total silence scores as full
   defection (0.0) — see `eval.py`'s docstring for the exact rule.

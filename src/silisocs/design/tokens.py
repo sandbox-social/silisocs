@@ -19,7 +19,7 @@ import hashlib
 # dashboard palette: teal identifies interaction, while coral, violet, sky, and
 # amber give simulations enough visual energy to express distinct states. Both
 # themes use the same roles, and every foreground/background pair is validated
-# for WCAG contrast in tests/test_design.py.
+# for WCAG contrast in tests/analysis/test_design.py.
 # ---------------------------------------------------------------------------
 THEMES: dict[str, dict[str, str]] = {
     "light": {

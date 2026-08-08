@@ -98,7 +98,7 @@ Open `http://127.0.0.1:8765` and follow the tour:
 | Probes (binary / rating / free-text) | `conf/eval.yaml` |
 | Study fan-out + custom evaluator | `experiments/studies/misinformation_cta_demo/` |
 | Interactive run control | `sim.engine.control` (injected by Studio) |
-| HTTP control plane | `tests/test_studio_e2e_demo.py` drives the same flow headlessly |
+| HTTP control plane | `tests/e2e/test_studio_e2e_demo.py` drives the same flow headlessly |
 
 The e2e test is the executable form of this page: it launches the scenario
 through `POST /api/launch` with the offline `scripted` model provider, follows

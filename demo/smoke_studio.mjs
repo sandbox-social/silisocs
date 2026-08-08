@@ -4,7 +4,7 @@
 //   STUDIO_URL=http://127.0.0.1:8765 CHROME=/path/to/chromium \
 //   SMOKE_SCENARIO=misinformation node smoke_studio.mjs
 //
-// This is the browser half of `tests/test_studio_browser_smoke.py` — that test
+// This is the browser half of `tests/e2e/test_studio_browser_smoke.py` — that test
 // owns the server (offline scripted provider, temp workspace, random port) and
 // shells out to this script so the smoke can reuse demo's pinned
 // `playwright-core` without adding a Python browser dependency.

@@ -1,7 +1,7 @@
 """Generate ``docs/config_reference.md`` from the packaged default configs.
 
 The reference is derived from the actual YAML defaults shipped in
-``silisocs/conf``, so it cannot drift silently: ``tests/test_config_reference.py``
+``silisocs/conf``, so it cannot drift silently: ``tests/runtime/test_config_reference.py``
 regenerates it and fails when the checked-in file no longer matches. Regenerate
 with ``python -m silisocs.runtime.configuration.config_reference``.
 """
@@ -30,7 +30,7 @@ _HEADER = """\
 Default values for every key in the packaged base config groups, generated
 from the YAML files under `src/silisocs/conf/`. Do not edit by hand:
 regenerate with `python -m silisocs.runtime.configuration.config_reference`;
-`tests/test_config_reference.py` fails when this file drifts from the
+`tests/runtime/test_config_reference.py` fails when this file drifts from the
 packaged defaults.
 
 For what the knobs mean, see [configuration.md](configuration.md). Scenario

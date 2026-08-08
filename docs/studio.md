@@ -367,7 +367,7 @@ island (an `action` names a global on the page's module), so their labels stay
 in the server-rendered HTML.
 
 Because none of that executes during an HTTP test, a dropped script tag or a
-syntax error in one module would leave the API suite green. `tests/test_studio_browser_smoke.py`
+syntax error in one module would leave the API suite green. `tests/e2e/test_studio_browser_smoke.py`
 is the guard: it serves Studio over a throwaway offline workspace and drives a
 real Chromium from home through the scenario editor, a launched run, and the
 run page's tabs, failing on any `console.error` or uncaught page error. It

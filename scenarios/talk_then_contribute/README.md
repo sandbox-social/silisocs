@@ -41,5 +41,5 @@ uv run silisocs --config-path scenarios/talk_then_contribute/conf \
   (`engine.step.built_in: multi_gm`) and a deterministic roster
   (`participation: all`).
 - The end-to-end contract is pinned by
-  `tests/test_scripted_backend_matrix.py::test_multi_gm_talk_then_contribute_chain`,
+  `tests/e2e/test_scripted_backend_matrix.py::test_multi_gm_talk_then_contribute_chain`,
   which runs this scenario with a scripted model.

@@ -126,11 +126,11 @@ jobs:
      - name: Engine and config-composition smoke tests
        run: >
          uv run pytest -q
-         tests/test_import.py
-         tests/test_doctor.py
-         tests/test_bundled_scenarios_compose.py
-         tests/test_programmatic_api.py
-         tests/test_no_llm_e2e.py
+         tests/e2e/test_import.py
+         tests/e2e/test_doctor.py
+         tests/scenarios/test_bundled_scenarios_compose.py
+         tests/runtime/test_programmatic_api.py
+         tests/e2e/test_no_llm_e2e.py
        env:
          PYTHONPATH: ${{ github.workspace }}
 

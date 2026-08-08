@@ -3,7 +3,7 @@
 Default values for every key in the packaged base config groups, generated
 from the YAML files under `src/silisocs/conf/`. Do not edit by hand:
 regenerate with `python -m silisocs.runtime.configuration.config_reference`;
-`tests/test_config_reference.py` fails when this file drifts from the
+`tests/runtime/test_config_reference.py` fails when this file drifts from the
 packaged defaults.
 
 For what the knobs mean, see [configuration.md](configuration.md). Scenario

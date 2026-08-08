@@ -65,7 +65,7 @@ resolution, and the study evaluator scoring the run output — is the scripted
 end-to-end test:
 
 ```bash
-uv run pytest tests/test_scripted_backend_matrix.py -k public_goods
+uv run pytest tests/e2e/test_scripted_backend_matrix.py -k public_goods
 ```
 
 ## Framing variants

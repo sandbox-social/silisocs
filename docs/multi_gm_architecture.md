@@ -538,9 +538,9 @@ the same as the single-flow APIs; routing is a GM responsibility.
 ## Testing
 
 ```bash
-uv run pytest tests/test_multi_gm_runtime_engine.py -v
-uv run pytest tests/test_runner_processing_mode.py::test_multi_gm_specs_can_use_distinct_backends -v
-uv run pytest tests/test_initializer_bootstrap.py::test_checkpoint_restore_routes_replay_to_matching_gm_backend -v
+uv run pytest tests/engines/test_multi_gm_runtime_engine.py -v
+uv run pytest tests/runtime/test_runner_processing_mode.py::test_multi_gm_specs_can_use_distinct_backends -v
+uv run pytest tests/runtime/test_initializer_bootstrap.py::test_checkpoint_restore_routes_replay_to_matching_gm_backend -v
 ```
 
 ## Performance Considerations
@@ -598,4 +598,4 @@ methods.
 
 - [Environment Layer](environment_layer.md): GM and engine extensibility
 - [Configuration Reference](configuration.md#gm-components): Full config schema
-- Test files: `tests/test_*.py` for examples
+- Test files: `tests/<domain>/test_*.py` for examples

@@ -191,7 +191,7 @@ auction rounds) subclasses it and implements only:
 
 Hidden buffering, resolve-at-the-round-boundary, cumulative payoffs,
 `round_resolved` logging, and the checkpoint round-trip (including a mid-buffer
-round) are inherited and already covered by `tests/test_round_game_base.py`.
+round) are inherited and already covered by `tests/environments/test_round_game_base.py`.
 
 ---
 

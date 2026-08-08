@@ -23,7 +23,7 @@ re-produced — by a person or a coding agent — whenever the product changes.
 | `assemble.py` | ffmpeg: title card + wait-segment speed-up + 720p H.264 |
 | `run_all.sh` | Orchestrates all of the above |
 | `chrome-wrapper.sh` | Optional launch shim for hosts that need a custom loader |
-| `smoke_studio.mjs` | Headless browser smoke of a live Studio (no recording) — the driver behind `tests/test_studio_browser_smoke.py` |
+| `smoke_studio.mjs` | Headless browser smoke of a live Studio (no recording) — the driver behind `tests/e2e/test_studio_browser_smoke.py` |
 
 ## Prerequisites
 
@@ -64,7 +64,7 @@ of the browser and pass that copy as `CHROME` (child processes re-exec
 ## Browser smoke (not a video)
 
 The same `playwright-core` install doubles as the repo's only browser-level
-test. `tests/test_studio_browser_smoke.py` starts a Studio server over a
+test. `tests/e2e/test_studio_browser_smoke.py` starts a Studio server over a
 throwaway workspace (a copy of `scenarios/misinformation` pinned to the offline
 `scripted` provider and `num_steps: 2`, random port, temp state dir), then runs
 `smoke_studio.mjs` through home → scenarios → scenario editor → preflight → the
@@ -73,7 +73,7 @@ Overview/Watch/Analyze tabs, failing on any `console.error` or uncaught page
 error on any of them. No API key, ~12 s.
 
 ```sh
-CHROME=/path/to/chromium uv run pytest tests/test_studio_browser_smoke.py -q
+CHROME=/path/to/chromium uv run pytest tests/e2e/test_studio_browser_smoke.py -q
 ```
 
 The browser is resolved from `SILISOCS_SMOKE_CHROME`, then `CHROME`, then

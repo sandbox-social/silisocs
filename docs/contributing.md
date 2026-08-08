@@ -63,7 +63,7 @@ marker. These tests launch short simulation runs and validate runtime artifacts.
 
     ```sh
     LLM_SERVER_URL=http://localhost:30000/v1 \
-    uv run pytest -m llm_e2e tests/test_e2e_multi_gm_llm.py -v -s
+    uv run pytest -m llm_e2e tests/e2e/test_e2e_multi_gm_llm.py -v -s
     ```
 
 - Note: `uv run --group dev poe test` excludes the `llm_e2e` marker by default.
@@ -71,7 +71,7 @@ marker. These tests launch short simulation runs and validate runtime artifacts.
 - Run deterministic simulation-contract mirrors (default CI-safe set):
 
     ```sh
-    uv run pytest tests/test_fixed_runtime.py tests/test_backend_feed_contracts.py -v
+    uv run pytest tests/agents/test_fixed_entity_runtime.py tests/environments/test_backend_feed_contracts.py -v
     ```
 
 ### Required Artifact Checks
