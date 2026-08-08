@@ -234,3 +234,41 @@ def test_event_stream_reads_only_appended_records(tmp_path):
     assert counts == [1, 2]
     assert [item["data"]["step"] for item in events if item["event"] == "step_started"] == [0, 1]
     assert [item["data"]["step"] for item in events if item["event"] == "step_finished"] == [0, 1]
+
+
+def test_restart_reconciliation_marks_dead_run_manifest_failed(tmp_path):
+    """A dead PID with a still-running manifest must not list as running forever."""
+    state = tmp_path / "state"
+    run = tmp_path / "outputs" / "run"
+    run.mkdir(parents=True)
+    (run / "run_manifest.json").write_text(
+        json.dumps({"status": "running", "scenario": "demo"}), encoding="utf-8"
+    )
+    store = JobStore(state / "studio.db")
+    store.insert(
+        Job(
+            id="dead-run",
+            kind="run",
+            status="running",
+            pid=999_999_999,
+            created_at=time.time(),
+            started_at=time.time(),
+            ended_at=None,
+            exit_code=None,
+            scenario="demo",
+            config_snapshot_path=None,
+            output_dir=str(run),
+            log_path=str(state / "dead-run.log"),
+            parent_study=None,
+            port=None,
+            command_json=json.dumps({"argv": [], "cwd": str(tmp_path), "env": {}}),
+        )
+    )
+
+    manager = JobManager(state, output_root=tmp_path / "outputs")
+
+    assert manager.store.get("dead-run").status == "orphaned"
+    manifest = json.loads((run / "run_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["status"] == "failed"
+    assert "disappeared" in manifest["error"]
+    assert manifest["scenario"] == "demo"

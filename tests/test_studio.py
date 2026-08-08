@@ -703,3 +703,23 @@ def test_unknown_control_kind_degrades_to_text_input_not_nothing(tmp_path):
         assert 'type="text"' in page.text
     finally:
         _PANELS.pop("test_threshold_probe", None)
+
+
+def test_lab_token_protects_remote_reads(tmp_path, monkeypatch):
+    """With a token configured, non-localhost GETs need it too (reads leak
+    run configs and logs); ?token= once sets the session cookie.
+    """
+    monkeypatch.setenv("STUDIO_AUTH_TOKEN", "secret")
+    app = create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path)
+    remote = TestClient(app, client=("203.0.113.9", 40000))
+
+    assert remote.get("/runs").status_code == 401
+    opened = remote.get("/runs", params={"token": "secret"})
+    assert opened.status_code == 200
+    assert opened.cookies.get("studio_token") == "secret"
+    # The cookie now authorizes plain requests (httpx.Client persists it).
+    assert remote.get("/runs").status_code == 200
+
+    # Localhost reads stay open by design, token or not.
+    local = TestClient(app)
+    assert local.get("/runs").status_code == 200

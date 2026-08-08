@@ -350,22 +350,37 @@ def create_app(
         app.include_router(page.router)
 
     @app.middleware("http")
-    async def protect_mutations(request: Request, call_next):
-        if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
-            return await call_next(request)
-        # CSRF: a browser attaches Origin to every cross-origin POST, so a
-        # cross-site page cannot forge a control-plane call at localhost. Same-
-        # origin Studio fetches and header-less clients (curl, the CLI) pass.
-        origin = request.headers.get("origin")
-        if origin and urlsplit(origin).netloc != request.headers.get("host", ""):
-            return Response("Cross-site control-plane request rejected", status_code=403)
+    async def protect_control_plane(request: Request, call_next):
         token = os.environ.get("STUDIO_AUTH_TOKEN", "")
         client_host = request.client.host if request.client else ""
         local = client_host in {"127.0.0.1", "::1", "localhost", "testclient"}
+        # A browser cannot attach the Bearer header on page loads, so the token
+        # may also arrive once as ?token=<value> (set as a cookie below) or via
+        # that cookie on subsequent requests.
         supplied = request.headers.get("authorization", "").removeprefix("Bearer ")
-        if (token and supplied != token) or (not token and not local):
-            return Response("Studio control-plane authorization required", status_code=401)
-        return await call_next(request)
+        via_query = request.query_params.get("token", "")
+        authorized = bool(token) and token in (
+            supplied,
+            request.cookies.get("studio_token", ""),
+            via_query,
+        )
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            # CSRF: a browser attaches Origin to every cross-origin POST, so a
+            # cross-site page cannot forge a control-plane call at localhost.
+            # Same-origin Studio fetches and header-less clients (curl) pass.
+            origin = request.headers.get("origin")
+            if origin and urlsplit(origin).netloc != request.headers.get("host", ""):
+                return Response("Cross-site control-plane request rejected", status_code=403)
+            if (token and not authorized) or (not token and not local):
+                return Response("Studio control-plane authorization required", status_code=401)
+        elif token and not local and not authorized:
+            # Reads leak run configs and logs; beyond localhost they need the
+            # same token as mutations (localhost reads stay open by design).
+            return Response("Studio authorization required", status_code=401)
+        response = await call_next(request)
+        if token and via_query == token:
+            response.set_cookie("studio_token", token, httponly=True, samesite="lax")
+        return response
 
     # Study replicate runs live under the studies root (experiments/studies/
     # <id>/runs/...), which is usually outside the output root. They are runs

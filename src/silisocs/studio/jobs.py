@@ -345,6 +345,13 @@ class JobManager:
         status = "finished" if exit_code == 0 else "failed"
         if current.status == "killed":
             status = "killed"
+        if status != "finished":
+            reason = (
+                "stopped from Studio"
+                if status == "killed"
+                else f"process exited with code {exit_code} without finalizing the run"
+            )
+            self._finalize_run_manifest(current.output_dir, reason)
         self.store.update(job_id, status=status, ended_at=time.time(), exit_code=exit_code)
         self._processes.pop(job_id, None)
         with self._condition:
@@ -369,6 +376,10 @@ class JobManager:
             if job.status != "running":
                 return
             complete = self._output_complete(job.output_dir)
+            if not complete:
+                self._finalize_run_manifest(
+                    job.output_dir, "process disappeared before the run finalized"
+                )
             self.store.update(
                 job.id,
                 status="finished" if complete else "orphaned",
@@ -470,12 +481,40 @@ class JobManager:
                 ).start()
                 continue
             complete = self._output_complete(job.output_dir)
+            if not complete:
+                self._finalize_run_manifest(
+                    job.output_dir, "process disappeared before the run finalized"
+                )
             self.store.update(
                 job.id,
                 status="finished" if complete else "orphaned",
                 ended_at=time.time(),
                 exit_code=0 if complete else job.exit_code,
             )
+
+    @staticmethod
+    def _finalize_run_manifest(output_dir: str | None, reason: str) -> None:
+        """Mark a dead job's still-``running`` manifest as failed, with the reason.
+
+        The manifest is the archive's source of truth: without this, a run whose
+        process died (crash, kill, host reboot) lists as running forever in every
+        consumer. Best-effort — a manifest that is missing, unreadable, or already
+        terminal is left alone.
+        """
+        if not output_dir:
+            return
+        path = Path(output_dir) / "run_manifest.json"
+        try:
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(manifest, dict) or manifest.get("status") != "running":
+                return
+            manifest["status"] = "failed"
+            manifest["error"] = reason
+            staged = path.with_name(f".{path.name}.tmp")
+            staged.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+            staged.replace(path)
+        except (OSError, json.JSONDecodeError):
+            return
 
     @staticmethod
     def _pid_alive(pid: int | None) -> bool:
