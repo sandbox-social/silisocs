@@ -56,6 +56,20 @@ def await_step_permission(engine: Any, step: int) -> bool:
     return True if gate is None else bool(gate.await_turn(step))
 
 
+def emit_run_event(engine: Any, kind: str, **fields: Any) -> None:
+    """Emit to the engine's attached run-event log; no-op when none is attached.
+
+    Same seam pattern as :func:`await_step_permission`: the session attaches a
+    ``run_event_log`` to the engine, and a custom ``LoopStrategy`` keeps live
+    observers (Studio's watch view) working by calling this at its own step
+    boundaries — ``step_started`` before an episode, ``step_finished`` after
+    its checkpoint chance.
+    """
+    log = getattr(engine, "run_event_log", None)
+    if log is not None:
+        log.emit(kind, **fields)
+
+
 def run_probe_phase(
     engine: Any,
     *,
@@ -163,6 +177,7 @@ class FixedStepsLoopStrategy(LoopStrategy):
             # Interactive run control (no-op unless sim.engine.control attached a gate).
             if not await_step_permission(engine, step):
                 break  # stop requested at the episode boundary
+            emit_run_event(engine, "step_started", step=step)
             t0 = time.time()
             # pre_step: measure the pre-intervention world before the step runs.
             probe_phase = run_probe_phase(
@@ -208,6 +223,9 @@ class FixedStepsLoopStrategy(LoopStrategy):
             )
             if checkpoint_callback is not None:
                 checkpoint_callback(step + 1)
+            # After the checkpoint chance: an observer reacting to this row can
+            # rely on the episode's checkpoint already being on disk.
+            emit_run_event(engine, "step_finished", step=step)
             if verbose:
                 print(f"Episode {step} finished in {duration:.2f}s")
             executed_last_step = step

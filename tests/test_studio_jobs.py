@@ -272,3 +272,40 @@ def test_restart_reconciliation_marks_dead_run_manifest_failed(tmp_path):
     assert manifest["status"] == "failed"
     assert "disappeared" in manifest["error"]
     assert manifest["scenario"] == "demo"
+
+
+def test_event_stream_prefers_the_runner_feed_over_inference(tmp_path):
+    """With run_events.jsonl present, step boundaries come from the runner's
+    own feed — action-row episodes and checkpoint filenames are ignored.
+    """
+    manager = JobManager(tmp_path / "state", output_root=tmp_path / "outputs")
+    run = tmp_path / "outputs" / "run"
+    run.mkdir(parents=True)
+    feed = [
+        {"v": 1, "ts": 1.0, "kind": "status", "status": "running"},
+        {"v": 1, "ts": 2.0, "kind": "step_started", "step": 0},
+        {"v": 1, "ts": 3.0, "kind": "step_finished", "step": 0},
+        {"v": 1, "ts": 4.0, "kind": "step_started", "step": 1},
+        {"v": 1, "ts": 5.0, "kind": "step_finished", "step": 1},
+    ]
+    (run / "run_events.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in feed), encoding="utf-8"
+    )
+    # Inference bait: an action row claiming episode 5 and a checkpoint that
+    # would legacy-infer "episode 8 complete". Neither may win.
+    (run / "action_events.jsonl").write_text(json.dumps({"episode": 5}) + "\n", encoding="utf-8")
+    (run / "checkpoints").mkdir()
+    (run / "checkpoints" / "step_9_checkpoint.json").write_text("{}", encoding="utf-8")
+
+    job = manager.submit(
+        kind="run",
+        command=[sys.executable, "-c", "import time; time.sleep(.3)"],
+        cwd=tmp_path,
+        output_dir=run,
+    )
+    events = list(manager.events(job.id))
+
+    started = [item["data"]["step"] for item in events if item["event"] == "step_started"]
+    finished = [item["data"]["step"] for item in events if item["event"] == "step_finished"]
+    assert started == [0, 1]
+    assert finished == [0, 1]

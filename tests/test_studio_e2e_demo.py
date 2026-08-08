@@ -116,3 +116,22 @@ def test_platform_viewer_mounts_in_process(demo):
     client, _job_id, run_id = demo
     started = client.post(f"/api/viewers/{run_id}/twitter_like")
     assert started.status_code == 200
+
+
+def test_runner_emits_the_live_event_feed(demo):
+    """The run writes run_events.jsonl — status transitions + step boundaries."""
+    import json
+
+    client, job_id, _run_id = demo
+    output_dir = client.get(f"/api/jobs/{job_id}").json()["output_dir"]
+    rows = [
+        json.loads(line)
+        for line in (Path(output_dir) / "run_events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert all(row["v"] == 1 for row in rows)
+    assert rows[0] == {**rows[0], "kind": "status", "status": "running"}
+    assert rows[-1]["kind"] == "status"
+    assert rows[-1]["status"] == "success"
+    assert [row["step"] for row in rows if row["kind"] == "step_started"] == [0, 1]
+    assert [row["step"] for row in rows if row["kind"] == "step_finished"] == [0, 1]

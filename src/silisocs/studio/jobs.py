@@ -18,6 +18,8 @@ from typing import Any
 
 import yaml
 
+from silisocs.runtime.execution.run_events import RUN_EVENTS_FILENAME
+
 TERMINAL_STATUSES = frozenset({"finished", "failed", "killed", "orphaned"})
 EVENT_STREAMS = ("action", "exposure", "probe", "harness")
 
@@ -76,20 +78,47 @@ def _event_stream_files(root: Path, stream: str) -> list[Path]:
 def _checkpoint_finished_step(root: Path) -> int:
     """Highest episode index proven complete by a saved per-step checkpoint.
 
-    ``checkpoints/step_{N}_checkpoint.json`` is written after episode ``N-1``
-    finishes, so it is the authoritative completion signal for a run that is
-    HOLDING at an episode boundary (interactive Step/Pause): the event streams
-    alone cannot distinguish "episode N still running" from "episode N done,
-    paused before N+1" until the next episode's rows appear. Returns ``-1``
-    when no checkpoint exists (or checkpointing is off — callers keep the
-    stream-derived signal as the fallback).
+    Legacy fallback for runs predating ``run_events.jsonl``: a saved
+    ``step_N_checkpoint.json`` proves episode ``N-1`` finished, which the event
+    streams alone cannot show for a run HOLDING at an episode boundary
+    (interactive Step/Pause). Returns ``-1`` when no checkpoint exists.
+    Delegates the layout knowledge to the canonical runtime resolver.
     """
-    latest = -1
-    for path in root.glob("checkpoints/step_*_checkpoint.json"):
-        digits = path.name.removeprefix("step_").removesuffix("_checkpoint.json")
-        if digits.isdigit():
-            latest = max(latest, int(digits) - 1)
-    return latest
+    from silisocs.runtime.checkpointing import latest_checkpoint_step
+
+    latest = latest_checkpoint_step(root)
+    return latest - 1 if latest >= 0 else -1
+
+
+def _read_run_events(path: Path, state: dict[str, int]) -> list[dict[str, Any]]:
+    """Complete rows appended to ``run_events.jsonl`` since the previous call.
+
+    The runner's purpose-built live feed (``runtime/execution/run_events.py``):
+    when present it replaces episode-boundary inference from action rows and
+    checkpoint filenames. Same incremental-tail discipline as
+    :func:`_read_event_growth` (byte offset, complete lines only, truncation
+    resets).
+    """
+    rows: list[dict[str, Any]] = []
+    try:
+        position = state.get("pos", 0)
+        if path.stat().st_size < position:
+            position = 0
+        with path.open("rb") as handle:
+            handle.seek(position)
+            while raw_line := handle.readline():
+                if not raw_line.endswith(b"\n"):
+                    break
+                state["pos"] = handle.tell()
+                try:
+                    row = json.loads(raw_line)
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    continue
+                if isinstance(row, dict):
+                    rows.append(row)
+    except OSError:
+        pass
+    return rows
 
 
 def _refresh_event_files(
@@ -557,6 +586,8 @@ class JobManager:
         last_glob = 0.0
         started_step = -1
         finished_step = -1
+        run_event_state: dict[str, int] = {}
+        has_runner_events = False
         while True:
             job = self.store.get(job_id)
             if job.status != previous_status:
@@ -598,21 +629,37 @@ class JobManager:
                             },
                         }
                     latest_step = max(latest_step, stream_step)
-                if latest_step > started_step:
-                    if started_step >= 0 and finished_step < started_step:
-                        finished_step = started_step
+                # Prefer the runner's own live feed for step boundaries; the
+                # inference below stays only for runs predating it.
+                runner_rows = _read_run_events(root / RUN_EVENTS_FILENAME, run_event_state)
+                has_runner_events = has_runner_events or bool(runner_rows)
+                for row in runner_rows:
+                    step = row.get("step")
+                    if not isinstance(step, int):
+                        continue
+                    if row.get("kind") == "step_started" and step > started_step:
+                        started_step = step
+                        yield {"event": "step_started", "data": {"step": step}}
+                    elif row.get("kind") == "step_finished" and step > finished_step:
+                        finished_step = step
+                        started_step = max(started_step, step)
+                        yield {"event": "step_finished", "data": {"step": step}}
+                if not has_runner_events:
+                    if latest_step > started_step:
+                        if started_step >= 0 and finished_step < started_step:
+                            finished_step = started_step
+                            yield {"event": "step_finished", "data": {"step": finished_step}}
+                        started_step = latest_step
+                        yield {"event": "step_started", "data": {"step": started_step}}
+                    # A saved per-step checkpoint completes an episode even when
+                    # no later episode has started — the case for an interactive
+                    # run holding at the boundary, whose control bar must flip
+                    # from "running episode N" to "paused · N+1 done" on hold.
+                    completed = _checkpoint_finished_step(root)
+                    if completed > finished_step:
+                        finished_step = completed
+                        started_step = max(started_step, completed)
                         yield {"event": "step_finished", "data": {"step": finished_step}}
-                    started_step = latest_step
-                    yield {"event": "step_started", "data": {"step": started_step}}
-                # A saved per-step checkpoint completes an episode even when no
-                # later episode has started — the case for an interactive run
-                # holding at the boundary, whose control bar must flip from
-                # "running episode N" to "paused · N+1 done" on the hold.
-                completed = _checkpoint_finished_step(root)
-                if completed > finished_step:
-                    finished_step = completed
-                    started_step = max(started_step, completed)
-                    yield {"event": "step_finished", "data": {"step": finished_step}}
             if job.status in TERMINAL_STATUSES:
                 if started_step >= 0 and finished_step < started_step:
                     yield {"event": "step_finished", "data": {"step": started_step}}

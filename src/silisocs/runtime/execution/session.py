@@ -71,6 +71,7 @@ from silisocs.runtime.construction.initialization_context import (
 from silisocs.runtime.construction.models import build_deduped_models, build_global_llm_config
 from silisocs.runtime.execution.manifest import backend_committed_nothing, write_run_manifest
 from silisocs.runtime.execution.resume import plan_checkpoint_resume
+from silisocs.runtime.execution.run_events import RunEventLog
 from silisocs.runtime.io import configure_logging
 from silisocs.runtime.telemetry import (
     SimMetricsCollector,
@@ -450,6 +451,7 @@ def main(cfg: DictConfig):
     # `finally` that stops them — and marks the run failed instead of vanishing.
     harness_proxy = None
     run_controller = None
+    run_events: RunEventLog | None = None
     try:
         # Harness Model Proxy: one telemetry plane for harness + native model calls. Starts
         # only when the run has harness agents; binds each to a per-agent routing token; its
@@ -503,6 +505,12 @@ def main(cfg: DictConfig):
             sim_engine.step_gate = step_gate
         if run_controller is not None:
             run_controller.start()
+
+        # Purpose-built live signal: the loop emits step boundaries here and
+        # observers tail this one file (see runtime/execution/run_events.py).
+        run_events = RunEventLog(output_dir)
+        sim_engine.run_event_log = run_events
+        run_events.emit("status", status="running")
 
         t0 = time.time()
         with metrics.phase("engine_initialize"):
@@ -622,6 +630,8 @@ def main(cfg: DictConfig):
         with open(run_stats_path, "a", encoding="utf-8") as f:
             f.write(completion_line + "\n")
 
+        if run_events is not None:
+            run_events.emit("status", status=completion_status, error=completion_error or None)
         # Self-describing run index (never raises; see manifest module docstring).
         snapshot = metrics.to_dict()
         manifest_path = write_run_manifest(

@@ -481,6 +481,7 @@ re-running the same parameters reuses the directory).
 | File | Format | Description |
 |------|--------|-------------|
 | `run_manifest.json` | JSON | Self-describing run index: status, run params, GM/backend layout, health counters, LLM usage, artifact paths (including per-GM event logs), and provenance (git commit, package version, `uv.lock` hash). Load a run through this instead of guessing the file layout |
+| `run_events.jsonl` | JSONL | The runner's live feed: versioned rows for status transitions and step boundaries (`step_started`/`step_finished`), appended as the run progresses. Tail this to observe a run — Studio's watch view does |
 | `action_events.jsonl` | JSONL | Every backend action that COMMITTED a state change (or performed a deliberate logged read), with episode index, Game Master name, backend type, source user, and action data. Rejected, failed, and idempotent calls are not recorded |
 | `exposure_events.jsonl` | JSONL | What each agent SAW per turn: post ids + per-post source (`follower`/`recsys:<type>`). On by default; disable via `env.gm.components.observe.params.log_exposures: false` |
 | `probe_events.jsonl` | JSONL | Probe/survey responses per agent per deployment step |
