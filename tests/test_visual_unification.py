@@ -93,20 +93,28 @@ def test_study_explore_lens_nav_is_wired_not_decorative() -> None:
     for template in (study, run):
         assert 'class="active"' not in template  # active state must be conditional
         assert "data-scene" in template
-    # The study page owns its scene dispatch (the run page delegates to explore.js).
-    assert "renderStudyScene" in study
-    assert "addEventListener('click'" in study
+        assert 'src="/assets/explore.js"' in template
     assert "aria-pressed" in study
-    assert "initExplore" in run
+    # Both scopes now dispatch from the one exploration module: the study lens
+    # strip is wired by initStudyExplore, the run one by initExplore.
+    explore_js = (ROOT / "src/silisocs/studio/static/explore.js").read_text(encoding="utf-8")
+    assert "renderStudyScene" in explore_js
+    assert (
+        'button.addEventListener("click", () => renderStudyScene(button.dataset.scene))'
+        in explore_js
+    )
+    assert "initExplore" in explore_js
+    assert '"page": "explore_study"' in study.replace("'", '"')
+    assert '"page": "explore_run"' in run.replace("'", '"')
 
 
 def test_every_registered_scene_has_a_studio_renderer() -> None:
     """A scene registered in Python must resolve to a real client-side renderer.
 
     explore.js dispatches run scenes through its RENDERERS map (or an API-path
-    extension); explore_study.html dispatches study scenes through the built-in
-    'comparison' renderer (or an API path). A renderer rename on either side
-    would otherwise break a scene silently in the browser with all tests green.
+    extension) and study scenes through the built-in 'comparison' renderer (or
+    an API path). A renderer rename on either side would otherwise break a
+    scene silently in the browser with all tests green.
     """
     import re
 

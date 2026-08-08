@@ -1,7 +1,18 @@
-/* Unified exploration client. One shared query state drives every scene, the
- * inspector, the evidence rail, the run story, and playback — so a selection in
- * one surface reloads the others without a page change. Backend-neutral: scenes
- * and lenses come entirely from the capability document, never a backend name. */
+/* Unified exploration client — every Explore surface: one run (initExplore), one
+ * study (initStudyExplore), and several runs side by side (initExploreCompare).
+ *
+ * One shared query state drives every scene, the inspector, the evidence rail,
+ * the run story, and playback — so a selection in one surface reloads the
+ * others without a page change. Backend-neutral: scenes and lenses come
+ * entirely from the capability document, never a backend name. Panels rendered
+ * from server JSON go through the shared client renderer in panels.js. */
+
+function svgNode(name, attrs = {}) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", name);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  return node;
+}
+
 function initExplore(config) {
   const { run, capabilities } = config;
   const $ = (sel) => document.querySelector(sel);
@@ -69,11 +80,7 @@ function initExplore(config) {
     empty("Scene unavailable", error.message || String(error));
     notify(error.message || String(error), "danger");
   }
-  function svg(name, attrs = {}) {
-    const node = document.createElementNS("http://www.w3.org/2000/svg", name);
-    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
-    return node;
-  }
+  const svg = svgNode;
 
   /* ---- selection + linked cross-filtering ---- */
   function inspect(kind, item) {
@@ -531,3 +538,243 @@ function initExplore(config) {
   loadStory();
   setupLive();
 }
+
+/* ==== study scope ==========================================================
+ * The same lens strip over a study: scenes are either the built-in condition
+ * comparison or an extension renderer at an API path. Panels come back as
+ * PanelOutput JSON and go through renderPanel — the one client renderer. */
+function initStudyExplore(config) {
+  const exploreStudy = config.study;
+  const studyScenes = config.scenes || [];
+  const studyScene = document.querySelector("[data-study-scene]");
+  const studyCount = document.querySelector("[data-study-count]");
+  let activeStudyScene = null;
+  let studyAbort = null;
+
+  function studyUrlState() {
+    const url = new URL(location);
+    document.querySelectorAll("[data-study-query]").forEach((input) => {
+      url.searchParams.delete(input.dataset.studyQuery);
+      if (input.value) url.searchParams.set(input.dataset.studyQuery, input.value);
+    });
+    if (activeStudyScene) {
+      url.searchParams.set("scene", activeStudyScene.id);
+      url.searchParams.set("lens", activeStudyScene.lens);
+    }
+    history.replaceState(null, "", url);
+  }
+  function studyQuery() {
+    const params = new URLSearchParams();
+    document.querySelectorAll("[data-study-query]").forEach((input) => {
+      if (input.value) params.set(input.dataset.studyQuery, input.value);
+    });
+    return params.toString();
+  }
+  function studyFetchSignal() {
+    studyAbort?.abort();
+    studyAbort = new AbortController();
+    return studyAbort.signal;
+  }
+  function studySceneBusy(on) {
+    studyScene.classList.toggle("loading", on);
+    if (on) studyScene.setAttribute("aria-busy", "true");
+    else studyScene.removeAttribute("aria-busy");
+  }
+  function studySceneError(title, message) {
+    studyScene.innerHTML = `<div class="empty"><b>${title}</b><p></p></div>`;
+    studyScene.querySelector("p").textContent = message;
+    notify(message, "danger");
+  }
+  async function renderStudyExplore() {
+    studySceneBusy(true);
+    try {
+      const query = studyQuery();
+      const response = await fetch(
+        `/api/studies/${encodeURIComponent(exploreStudy)}/compare${query ? `?${query}` : ""}`,
+        { signal: studyFetchSignal() }
+      );
+      if (!response.ok) throw new Error(await response.text());
+      const view = await response.json();
+      const grid = document.createElement("div");
+      grid.className = "study-scene-panels";
+      for (const panel of view.panels || []) {
+        const section = document.createElement("section");
+        const header = document.createElement("header");
+        const title = document.createElement("h3");
+        const body = document.createElement("div");
+        section.className = "panel";
+        title.textContent = panel.title;
+        body.className = "panel-body";
+        header.append(title);
+        section.append(header, body);
+        grid.append(section);
+        await renderPanel(body, panel.output);
+      }
+      studyScene.replaceChildren(grid);
+      studyCount.textContent = `${(view.panels || []).length} analyses`;
+      if (!(view.panels || []).length)
+        studyScene.innerHTML =
+          '<div class="empty"><b>No comparison output yet</b><p>Run or attach study conditions to populate this scene.</p></div>';
+    } catch (error) {
+      if (error.name === "AbortError") return;
+      studySceneError("Comparison unavailable", error.message);
+    } finally {
+      studySceneBusy(false);
+    }
+  }
+  async function renderStudyExtension(scene) {
+    studySceneBusy(true);
+    try {
+      if (!scene.renderer.startsWith("/"))
+        throw new Error(
+          `Scene "${scene.title}" is registered, but its renderer "${scene.renderer}" has no Studio implementation.`
+        );
+      const query = studyQuery();
+      const response = await fetch(`${scene.renderer}${query ? `?${query}` : ""}`, {
+        signal: studyFetchSignal(),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const data = await response.json();
+      if (data.output) {
+        const host = document.createElement("div");
+        host.className = "study-scene-panels";
+        const body = document.createElement("div");
+        body.className = "panel-body";
+        host.append(body);
+        studyScene.replaceChildren(host);
+        await renderPanel(body, data.output);
+      } else {
+        const pre = document.createElement("pre");
+        pre.textContent = JSON.stringify(data, null, 2);
+        studyScene.replaceChildren(pre);
+      }
+      studyCount.textContent = "";
+    } catch (error) {
+      if (error.name === "AbortError") return;
+      studySceneError("Lens unavailable", error.message);
+    } finally {
+      studySceneBusy(false);
+    }
+  }
+  function renderStudyScene(id) {
+    const lens = new URL(location).searchParams.get("lens");
+    const scene =
+      studyScenes.find((item) => item.id === id) ||
+      studyScenes.find((item) => !id && item.lens === lens) ||
+      studyScenes[0];
+    if (!scene) return renderStudyExplore();
+    activeStudyScene = scene;
+    document.querySelectorAll("[data-scene]").forEach((button) => {
+      const on = button.dataset.scene === scene.id;
+      button.classList.toggle("active", on);
+      button.setAttribute("aria-pressed", String(on));
+    });
+    const title = document.querySelector("[data-study-scene-title]");
+    const kicker = document.querySelector("[data-study-scene-kicker]");
+    if (title) title.textContent = scene.title;
+    if (kicker) kicker.textContent = `${scene.lens} lens`;
+    studyUrlState();
+    return scene.renderer === "comparison" ? renderStudyExplore() : renderStudyExtension(scene);
+  }
+
+  const studyLensButtons = [...document.querySelectorAll("[data-scene]")];
+  studyLensButtons.forEach((button, index) => {
+    button.addEventListener("click", () => renderStudyScene(button.dataset.scene));
+    // Keyboard-operable lens strip, matching the run-scope one.
+    button.addEventListener("keydown", (event) => {
+      const delta = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+      if (delta == null) return;
+      event.preventDefault();
+      const next = studyLensButtons[(index + delta + studyLensButtons.length) % studyLensButtons.length];
+      next.focus();
+      renderStudyScene(next.dataset.scene);
+    });
+  });
+  document.querySelectorAll("[data-study-query]").forEach((input) =>
+    input.addEventListener("change", () => {
+      studyUrlState();
+      renderStudyScene(activeStudyScene && activeStudyScene.id);
+    })
+  );
+  renderStudyScene(new URL(location).searchParams.get("scene"));
+  studyScenes.forEach((scene) =>
+    registerPaletteCommand({
+      label: `Explore study: ${scene.title}`,
+      href: `?lens=${encodeURIComponent(scene.lens)}&scene=${encodeURIComponent(scene.id)}`,
+      keywords: "study conditions seeds compare",
+    })
+  );
+}
+
+/* ==== several runs, one axis ===============================================
+ * Events per episode overlaid across runs. Deliberately server-data-only: no
+ * selection state, so it needs none of the machinery above. */
+function initExploreCompare(config) {
+  const runs = config.runs || [];
+  const chart = document.querySelector("[data-compare-chart]");
+  const totals = document.querySelector("[data-compare-totals]");
+  const count = document.querySelector("[data-compare-count]");
+  const url = "/api/explore/compare?" + runs.map((id) => "runs=" + encodeURIComponent(id)).join("&");
+  fetch(url)
+    .then(async (response) => {
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    })
+    .then((data) => {
+      const W = 960, H = 430, pad = 48;
+      const eps = data.episodes;
+      const max = Math.max(1, ...data.runs.flatMap((run) => run.values));
+      const step = eps.length > 1 ? (W - pad * 2) / (eps.length - 1) : 0;
+      const svg = svgNode("svg", {
+        viewBox: `0 0 ${W} ${H}`,
+        role: "img",
+        "aria-label": "Events per episode by run",
+      });
+      svg.classList.add("pulse-chart");
+      for (let line = 0; line <= 4; line++) {
+        const y = pad + ((H - pad * 2) * line) / 4;
+        svg.append(svgNode("line", { x1: pad, y1: y, x2: W - pad, y2: y, class: "chart-grid" }));
+      }
+      data.runs.forEach((run, index) => {
+        const points = run.values.map((value, x) => `${pad + x * step},${H - pad - (value / max) * (H - pad * 2)}`);
+        svg.append(svgNode("polyline", { points: points.join(" "), class: `pulse-line tone-${index % 6}` }));
+      });
+      // Accessible text equivalent of the overlaid lines.
+      const summary = document.createElement("p");
+      summary.className = "visually-hidden";
+      summary.textContent =
+        "Total events per run — " + data.runs.map((run) => `${run.id}: ${run.events}`).join("; ") + ".";
+      chart.replaceChildren(svg, summary);
+      chart.classList.remove("loading");
+      chart.removeAttribute("aria-busy");
+      count.textContent = `${eps.length} episodes`;
+      totals.replaceChildren(
+        ...data.runs.map((run, index) => {
+          const row = document.createElement("div");
+          row.className = "evidence-item";
+          const mark = document.createElement("span");
+          mark.className = `signal-mark tone-${index % 6}`;
+          const body = document.createElement("span");
+          const name = document.createElement("b");
+          const detail = document.createElement("small");
+          name.textContent = run.id;
+          detail.textContent = `${run.events} events`;
+          body.append(name, detail);
+          row.append(mark, body);
+          return row;
+        })
+      );
+    })
+    .catch((error) => {
+      chart.classList.remove("loading");
+      chart.innerHTML = '<div class="empty"><b>Comparison unavailable</b><p></p></div>';
+      chart.querySelector("p").textContent = error.message;
+      notify(error.message, "danger");
+    });
+}
+
+const explorePageData = studioPageData();
+if (explorePageData.page === "explore_run") initExplore(explorePageData);
+if (explorePageData.page === "explore_study") initStudyExplore(explorePageData);
+if (explorePageData.page === "explore_compare") initExploreCompare(explorePageData);
+

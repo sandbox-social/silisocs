@@ -1,31 +1,8 @@
 {# Interactive run control (Step / Play / Pause / End run), shared by the live
    job page and the run page's Watch tab so the controls survive the live ->
-   watch handoff. ``script`` wires the buttons to an already-declared
-   EventSource variable (named by ``events_var``); ``initial_episode`` seeds the
-   episode counters from persisted artifacts when the page attaches mid-run. #}
+   watch handoff. The buttons are wired by ``initRunControl`` in
+   /assets/runs.js, which both pages call with their own SSE stream and the
+   control URL from their data island. #}
 {% macro bar() -%}
 <div class="live-ribbon control-bar" data-testid="run-control"><span class="control-state" id="control-state">paused</span><button class="button quiet" type="button" onclick="ctlStep()" data-testid="ctl-step"><svg><use href="#icon-arrow"/></svg>Step</button><button class="button quiet" type="button" onclick="ctlPlay()" data-testid="ctl-play">Play</button><button class="button quiet" type="button" onclick="ctlPause()" data-testid="ctl-pause">Pause</button><button class="button quiet" type="button" onclick="ctlStop()" data-testid="ctl-end" title="Stops cleanly at the next episode boundary">End run</button></div>
-{%- endmacro %}
-
-{% macro script(job_id, events_var, initial_episode=-1) -%}
-<script>
-// Episode-boundary run control. The SSE stream already reports step boundaries;
-// the client tracks them to translate Step/Play/Pause into an absolute target
-// (first episode to hold before) the server writes to the run's control file.
-const ctlJobId={{ job_id|tojson }};
-let ctlStarted={{ initial_episode }},ctlFinished={{ initial_episode }};const ctlState=document.getElementById('control-state');
-const ctlDone=()=>ctlFinished+1,ctlInFlight=()=>ctlStarted>ctlFinished;
-function ctlRender(){if(ctlState)ctlState.textContent=ctlInFlight()?`running episode ${ctlStarted}`:`paused · ${ctlDone()} done`}
-async function ctlSend(body){await fetch(`/api/jobs/${ctlJobId}/control`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})}
-function ctlStep(){ctlSend({target:ctlDone()+1})}
-function ctlPlay(){ctlSend({target:null})}
-function ctlPause(){ctlSend({target:ctlInFlight()?ctlStarted+1:ctlDone()})}
-function ctlStop(){ctlSend({stopped:true})}
-{{ events_var }}.addEventListener('step_started',e=>{ctlStarted=Math.max(ctlStarted,JSON.parse(e.data).step);ctlRender()});
-{{ events_var }}.addEventListener('step_finished',e=>{ctlFinished=Math.max(ctlFinished,JSON.parse(e.data).step);ctlRender()});
-// A finished job's control file is dead — remove the bar rather than leave
-// clickable controls that silently do nothing.
-{{ events_var }}.addEventListener('done',()=>document.querySelector('.control-bar')?.remove());
-ctlRender();
-</script>
 {%- endmacro %}

@@ -12,26 +12,7 @@
 {% if record.artifact.manifest.error %}<section class="panel" data-testid="run-error"><header><div><h3>Why this run failed</h3><small>from run_manifest.json</small></div></header><div class="panel-body"><p><code>{{ record.artifact.manifest.error }}</code></p>{% if job and job.exit_code is not none %}<p class="panel-note">Process exit code {{ job.exit_code }} — the <a href="?tab=logs">Logs tab</a> has the full output.</p>{% endif %}</div></section>{% endif %}
 <div class="stats-band run-stats"><div><small>Agents</small><strong>{{ record.artifact.num_agents or '—' }}</strong><span>configured participants</span></div><div><small>Steps</small><strong>{{ record.artifact.num_steps or '—' }}</strong><span>simulation episodes</span></div><div><small>Tokens</small><strong>{{ record.artifact.llm_usage.totals.total_tokens if record.artifact.llm_usage and record.artifact.llm_usage.totals else '—' }}</strong><span>reported model usage</span></div><div><small>Game masters</small><strong>{{ record.artifact.manifest.game_masters|length if record.artifact.manifest and record.artifact.manifest.game_masters else 0 }}</strong><span>backend coordinators</span></div></div>
 <div class="overview-grid"><section class="panel"><header><div><h3>Run health</h3><small>runtime signals</small></div></header><div class="panel-body health-signals">{% for name, value in (record.artifact.health or {}).items() %}<div><span class="health-pip {{ 'ok' if value == 0 else 'error' }}"></span><span><b>{{ name|replace('_',' ') }}</b><small>{{ 'clear' if value == 0 else value }}</small></span></div>{% else %}<p class="panel-note">No health counters were recorded.</p>{% endfor %}</div></section><section class="panel"><header><div><h3>World topology</h3><small>game-master field</small></div></header><div class="panel-body topology-field"><span class="topology-core"><svg><use href="#icon-mark"/></svg></span>{% for gm in record.artifact.manifest.game_masters|default([], true) %}<span class="topology-node"><i></i><b>{{ gm.name }}</b><small>{{ gm.backend_type or 'custom backend' }}</small></span>{% else %}<p class="panel-note">No game-master metadata was recorded.</p>{% endfor %}</div></section><section class="panel wide"><header><div><h3>Provenance</h3><small>reproducibility</small></div></header><div class="panel-body provenance-grid">{% for name, value in record.artifact.manifest.provenance|default({}, true)|dictsort %}<div><small>{{ name|replace('_',' ') }}</small><code>{{ value }}</code></div>{% else %}<p class="panel-note">No provenance metadata was recorded.</p>{% endfor %}</div></section></div>
-{% elif tab == 'platform' %}<div class="viewbar"><div><p class="eyebrow">Read-only platform</p><h2>Platform view</h2></div><div class="segmented">{% for backend in viewer_backends %}<button type="button" onclick='startViewer({{ backend|tojson }})'>{{ backend }}</button>{% endfor %}</div></div><div id="platform-empty" class="empty"><b>{{ 'Select a backend' if viewer_backends else 'No platform viewer available' }}</b><p>{{ 'Open its run database in the platform viewer.' if viewer_backends else 'This backend did not publish a visualizer capability for the run.' }}</p></div><iframe id="platform-frame" class="platform-frame hidden" title="Platform viewer"></iframe><script>
-const platformEmpty=()=>document.getElementById('platform-empty');
-function showViewer(url){const frame=document.getElementById('platform-frame'),target=new URL(url,location.origin);target.searchParams.set('theme',document.documentElement.dataset.theme);platformEmpty().classList.add('hidden');frame.src=target;frame.classList.remove('hidden')}
-function viewerFailed(backend,detail){const empty=platformEmpty();empty.classList.remove('skeleton','loading','hidden');empty.removeAttribute('aria-busy');empty.replaceChildren();const title=document.createElement('b');title.textContent='Viewer did not start';const note=document.createElement('p');note.textContent=detail;const retry=document.createElement('button');retry.type='button';retry.className='button';retry.textContent='Retry';retry.onclick=()=>startViewer(backend);empty.append(title,note,retry)}
-// A subprocess viewer is ready when its port accepts connections, not when the
-// process spawns: the server binds only after its imports finish. The server
-// owns that distinction; we poll it until ready or the budget runs out.
-async function awaitViewer(backend,statusUrl){const started=Date.now(),budgetMs=180000;for(;;){let status;try{status=await (await fetch(statusUrl)).json()}catch{status={state:'starting'}}
-  if(status.state==='ready'){showViewer(status.url);return}
-  if(status.state==='failed'){viewerFailed(backend,status.detail||'The viewer process stopped.');return}
-  const seconds=Math.floor((Date.now()-started)/1000);
-  if(seconds*1000>budgetMs){viewerFailed(backend,`The viewer did not start within ${Math.floor(budgetMs/1000)}s.`);return}
-  platformEmpty().replaceChildren(Object.assign(document.createElement('b'),{textContent:'Starting viewer'}),Object.assign(document.createElement('p'),{textContent:`Waiting for the viewer server — ${seconds}s elapsed.`}));
-  await new Promise(resolve=>setTimeout(resolve,1000))}}
-async function startViewer(backend){const empty=platformEmpty();empty.classList.remove('hidden');empty.classList.add('skeleton','loading');empty.setAttribute('aria-busy','true');const response=await fetch(`/api/viewers/{{ record.id }}/${encodeURIComponent(backend)}`,{method:'POST'});if(!response.ok){empty.classList.remove('skeleton','loading');empty.removeAttribute('aria-busy');notify(await response.text(),'danger');return}const data=await response.json();
-  // Embedded viewers are mounted inside Studio — already serving, nothing to await.
-  if(data.mode==='embedded'){showViewer(data.url);return}
-  await awaitViewer(backend,data.status_url)}
-{% if viewer_backends|length == 1 %}startViewer({{ viewer_backends[0]|tojson }});{% endif %}
-</script>
+{% elif tab == 'platform' %}<div class="viewbar"><div><p class="eyebrow">Read-only platform</p><h2>Platform view</h2></div><div class="segmented">{% for backend in viewer_backends %}<button type="button" onclick='startViewer({{ backend|tojson }})'>{{ backend }}</button>{% endfor %}</div></div><div id="platform-empty" class="empty"><b>{{ 'Select a backend' if viewer_backends else 'No platform viewer available' }}</b><p>{{ 'Open its run database in the platform viewer.' if viewer_backends else 'This backend did not publish a visualizer capability for the run.' }}</p></div><iframe id="platform-frame" class="platform-frame hidden" title="Platform viewer"></iframe>
 {% elif tab == 'config' %}<div class="viewbar"><div><p class="eyebrow">Reproducibility</p><h2>Effective configuration</h2></div></div><section class="config-columns"><div><h3>Changes from scenario baseline</h3>{% if config_diff %}<pre class="config-diff">{% for line in config_diff %}<span class="diff-{{ line.kind }}">{{ line.text }}</span>
 {% endfor %}</pre>{% elif not baseline_available %}<div class="empty compact"><b>Scenario baseline unavailable</b><p>The authored scenario is not present in this workspace; use the effective YAML as the reproducible record.</p></div>{% else %}<div class="empty compact"><b>No configuration changes</b><p>The effective configuration matches its authored scenario source.</p></div>{% endif %}</div><div><h3>Effective YAML</h3><pre class="live-log">{{ effective_config or 'No effective_config.yaml was recorded for this run.' }}</pre></div></section><details class="behind-curtain"><summary>Show run manifest</summary><pre class="live-log">{{ manifest_text }}</pre></details>
 {% elif tab == 'logs' %}<div class="viewbar"><div><p class="eyebrow">Process output</p><h2>Captured logs</h2></div><label class="follow-toggle"><input id="logs-follow" type="checkbox" checked> Follow</label></div><div id="run-log" class="live-log log-lines" role="log" aria-live="polite">{% if log_text %}{% for line in log_text.splitlines() %}<span>{{ line }}</span>{% endfor %}{% else %}<span class="muted">No Studio-managed process log is associated with this run.</span>{% endif %}</div>
@@ -51,25 +32,36 @@ async function startViewer(backend){const empty=platformEmpty();empty.classList.
 {% if not view.panels and not live_skipped %}<div class="empty"><b>Nothing to show here</b><p>No panel in this view applies to this run's backend.</p></div>{% endif %}
 {% if static_skipped %}<p class="panel-note skipped-note">Not shown: {% for item in static_skipped %}{{ item.title }} ({{ item.reason }}){{ '; ' if not loop.last }}{% endfor %}.</p>{% endif %}
 {% if tab == 'watch' %}<details class="log-drawer" open><summary>Live process log <label class="follow-toggle" onclick="event.stopPropagation()"><input id="logs-follow" type="checkbox" checked> Follow</label></summary><div id="run-log" class="live-log log-lines" role="log" aria-live="polite">{% if log_text %}{% for line in log_text.splitlines()[-100:] %}<span>{{ line }}</span>{% endfor %}{% else %}<span class="muted">Waiting for process output.</span>{% endif %}</div></details>{% endif %}
-<script>
-function logSeverity(line){if(/\b(error|exception|traceback|critical|fatal)\b/i.test(line))return'error';if(/\b(warn|warning)\b/i.test(line))return'warning';if(/\b(debug|trace)\b/i.test(line))return'debug';return'info'}
-function appendRunLog(line){const root=document.getElementById('run-log');if(!root)return;root.querySelector('.muted')?.remove();const row=document.createElement('span');row.className=`log-${logSeverity(line)}`;row.textContent=line;root.append(row);if(document.getElementById('logs-follow')?.checked)root.scrollTop=root.scrollHeight}
-document.querySelectorAll('#run-log>span:not(.muted)').forEach(row=>row.className=`log-${logSeverity(row.textContent)}`);
-if(document.getElementById('logs-follow')?.checked){const root=document.getElementById('run-log');if(root)root.scrollTop=root.scrollHeight}
-</script>
-{% if tab == 'watch' and job and job.status in ('queued','running') %}<script>
-const watchEvents=new EventSource('/api/jobs/{{ job.id }}/stream');
-const watchStarted={{ (job.started_at or job.created_at)|tojson }};
-function updateElapsed(){const seconds=Math.max(0,Math.floor(Date.now()/1000-watchStarted));document.getElementById('watch-elapsed').textContent=`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')} elapsed`}
-async function updateUsage(){const response=await fetch('/api/runs/{{ record.id }}');if(!response.ok)return;const usage=(await response.json()).llm_usage||{},tokens=usage.totals?.total_tokens,cost=usage.estimated_cost_usd;document.getElementById('watch-usage').textContent=cost!=null?`$${Number(cost).toFixed(4)} estimated`:tokens!=null?`${Number(tokens).toLocaleString()} tokens`:'Usage pending'}
-updateElapsed();const watchClock=setInterval(updateElapsed,1000);
-watchEvents.addEventListener('log_line',event=>appendRunLog(JSON.parse(event.data).line||''));watchEvents.addEventListener('artifact_grown',event=>{const data=JSON.parse(event.data);if(data.stream==='action'){const sources=Object.entries(data.sources||{}).filter(([name])=>name);const detail=sources.length>1?` (${sources.map(([name,count])=>`${name} ${count}`).join(' · ')})`:'';document.getElementById('watch-actions').textContent=`${data.new_count} actions${detail}`}document.querySelectorAll(`[data-requires*="${data.stream}_events"]`).forEach(refreshPanel);updateUsage()});
-watchEvents.addEventListener('step_started',event=>{document.getElementById('watch-step').textContent=`Episode ${JSON.parse(event.data).step} running`});watchEvents.addEventListener('step_finished',event=>{document.getElementById('watch-step').textContent=`Episode ${JSON.parse(event.data).step} complete`});watchEvents.addEventListener('status_changed',event=>{document.getElementById('watch-status').textContent=JSON.parse(event.data).status});watchEvents.addEventListener('done',()=>{clearInterval(watchClock);updateElapsed();updateUsage();watchEvents.close()});async function stopWatchJob(){await fetch('/api/jobs/{{ job.id }}/stop',{method:'POST'})}
-</script>
-{% if interactive %}{{ runctl.script(job.id, 'watchEvents', facets.max_episode if facets else -1) }}{% endif %}{% endif %}
-{% if tab == 'logs' and job and job.status in ('queued','running') %}<script>const logEvents=new EventSource('/api/jobs/{{ job.id }}/stream');logEvents.addEventListener('log_line',event=>appendRunLog(JSON.parse(event.data).line||''));logEvents.addEventListener('done',()=>logEvents.close())</script>{% endif %}
 {% endif %}
-<script>
-registerPaletteCommand({label:'Run: Overview',href:'?tab=overview',keywords:'switch view manifest health'});registerPaletteCommand({label:'Run: Watch',href:'?tab=watch&view=overview',keywords:'switch view live'});registerPaletteCommand({label:'Run: Platform',href:'?tab=platform',keywords:'switch view backend inspect'});registerPaletteCommand({label:'Run: Analyze',href:'?tab=analyze&view={{ view_name }}',keywords:'switch view panels'});registerPaletteCommand({label:'Run: Config',href:'?tab=config',keywords:'switch view yaml diff'});registerPaletteCommand({label:'Run: Logs',href:'?tab=logs',keywords:'switch view process'});{% for name in views %}registerPaletteCommand({label:'Analysis view: {{ name|replace("'", "") }}',href:'?tab=analyze&view={{ name|urlencode }}',keywords:'panel analysis'});{% endfor %}
-</script>
+{#- The page's data island: every URL runs.js calls is built here, by the
+    server, so the client never reconstructs a route from an id. -#}
+{% set ns = namespace(palette=[
+  {'label': 'Run: Overview', 'href': '?tab=overview', 'keywords': 'switch view manifest health'},
+  {'label': 'Run: Watch', 'href': '?tab=watch&view=overview', 'keywords': 'switch view live'},
+  {'label': 'Run: Platform', 'href': '?tab=platform', 'keywords': 'switch view backend inspect'},
+  {'label': 'Run: Analyze', 'href': '?tab=analyze&view=' ~ view_name, 'keywords': 'switch view panels'},
+  {'label': 'Run: Config', 'href': '?tab=config', 'keywords': 'switch view yaml diff'},
+  {'label': 'Run: Logs', 'href': '?tab=logs', 'keywords': 'switch view process'},
+]) %}
+{% for name in views %}{% set ns.palette = ns.palette + [{'label': 'Analysis view: ' ~ name, 'href': '?tab=analyze&view=' ~ name|urlencode, 'keywords': 'panel analysis'}] %}{% endfor %}
+{% set watching = tab == 'watch' and job and job.status in ('queued', 'running') %}
+<script type="application/json" id="studio-page-data">{{ {
+  'page': 'run',
+  'tab': tab,
+  'runApi': '/api/runs/' ~ record.id,
+  'viewerApi': '/api/viewers/' ~ record.id,
+  'autoStartViewer': viewer_backends[0] if viewer_backends|length == 1 else none,
+  'wireLog': tab not in ('overview', 'platform', 'config'),
+  'watch': {
+    'stream': '/api/jobs/' ~ job.id ~ '/stream',
+    'started': job.started_at or job.created_at,
+    'stopUrl': '/api/jobs/' ~ job.id ~ '/stop',
+  } if watching else none,
+  'control': {
+    'url': '/api/jobs/' ~ job.id ~ '/control',
+    'initialEpisode': facets.max_episode if facets else -1,
+  } if watching and interactive else none,
+  'paletteCommands': ns.palette,
+}|tojson }}</script>
+<script src="/assets/runs.js"></script>
 {% endblock %}

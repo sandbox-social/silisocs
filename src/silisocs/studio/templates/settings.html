@@ -7,7 +7,7 @@
   <section class="settings-primary">
     <div class="settings-section">
       <div class="settings-heading"><span class="entity-glyph"><svg><use href="#icon-settings"/></svg></span><div><h2>Lab authorization</h2><p>Stored only in this browser and attached to control-plane mutations.</p></div></div>
-      <label class="form-field settings-token"><span>Control-plane token</span><span class="inline-control"><input id="auth-token" type="password"><button class="button primary" type="button" onclick="localStorage.setItem('silisocs-auth-token',document.getElementById('auth-token').value);notify('Token stored for this browser.','success')"><svg><use href="#icon-save"/></svg>Store</button></span></label>
+      <label class="form-field settings-token"><span>Control-plane token</span><span class="inline-control"><input id="auth-token" type="password"><button class="button primary" type="button" onclick="storeAuthToken()"><svg><use href="#icon-save"/></svg>Store</button></span></label>
     </div>
     <div class="settings-section">
       <div class="settings-heading"><span class="entity-glyph"><svg><use href="#icon-scenarios"/></svg></span><div><h2>Project repositories</h2><p>Explicitly trusted projects contribute scenarios and implementations discovered from their runtime class contracts.</p></div><div class="page-actions"><button class="button quiet" type="button" onclick="refreshRepositories()">Refresh</button><button class="button primary" type="button" onclick="openRepositoryDialog()"><svg><use href="#icon-plus"/></svg>Connect</button></div></div>
@@ -31,10 +31,4 @@
   </aside>
 </div>
 {% include "_repository_connect.html" %}
-<script>
-document.getElementById('auth-token').value=localStorage.getItem('silisocs-auth-token')||'';
-async function removeRepository(source){const response=await fetch(`/api/repositories/${encodeURIComponent(source)}`,{method:'DELETE'});if(!response.ok){notify(await response.text(),'danger');return}location.reload()}
-async function renameRepository(source){const nickname=document.getElementById(`repository-nickname-${source}`).value.trim();const response=await fetch(`/api/repositories/${encodeURIComponent(source)}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({nickname})});if(!response.ok){notify(await response.text(),'danger');return}notify('Project nickname saved.','success')}
-async function refreshRepositories(){const response=await fetch('/api/repositories/refresh',{method:'POST'});if(!response.ok){notify(await response.text(),'danger');return}location.reload()}
-</script>
 {% endblock %}

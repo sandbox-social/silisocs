@@ -38,16 +38,27 @@ def _render_output(output: dict[str, Any]) -> str:
     return str(_output_macros().render_output(output))
 
 
-def _plotly_script() -> str:
-    """Inline the Plotly bundle vendored with Studio."""
-    bundle = Path(__file__).parents[1] / "studio" / "static" / "plotly.min.js"
-    return f"<script>{bundle.read_text(encoding='utf-8')}</script>"
+_STUDIO_STATIC = Path(__file__).parents[1] / "studio" / "static"
 
 
-def _cytoscape_script() -> str:
-    """Inline the Cytoscape bundle vendored with Studio."""
-    bundle = Path(__file__).parents[1] / "studio" / "static" / "cytoscape.min.js"
-    return f"<script>{bundle.read_text(encoding='utf-8')}</script>"
+def _inline_script(name: str) -> str:
+    """Inline one of Studio's vendored/static scripts into the export."""
+    return f"<script>{(_STUDIO_STATIC / name).read_text(encoding='utf-8')}</script>"
+
+
+def _hydration_script() -> str:
+    """Bring up the report's figures/networks through Studio's own panel module.
+
+    ``panels.js`` is the single client-side panel implementation (see its
+    header); the export reuses its ``initFigures``/``initNetwork`` rather than
+    keeping a third hand-rolled copy that drifts. ``theme: false`` preserves the
+    export's long-standing look: a static report has no theme toggle and has
+    never re-coloured a figure's layout against the CSS variables.
+    """
+    return (
+        _inline_script("panels.js")
+        + "<script>initFigures(document,{theme:false});initNetwork(document)</script>"
+    )
 
 
 @lru_cache(maxsize=1)
@@ -74,7 +85,9 @@ def render_report(
     cards += _skipped_caption(built)
     artifact_path = html.escape(str(Path(artifact_dir)))
     title = html.escape(built["title"])
-    return f"""<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>{title} | Silisocs Studio</title>{_plotly_script()}{_cytoscape_script()}<style>{_REPORT_CSS}</style></head><body><main><header class=report-top><div class=brand><span class=brand-mark aria-hidden=true><i></i><i></i><i></i></span><span><b>Silisocs</b><small>Analysis artifact</small></span></div><div class=report-signals aria-hidden=true><i></i><i></i><i></i><i></i></div></header><section class=heading><p>SIMULATION VIEW</p><h1>{title}</h1><small>{artifact_path}</small></section><div class=grid>{cards}</div></main><script>document.querySelectorAll('.plot').forEach(el=>{{const f=JSON.parse(el.dataset.figure);Plotly.newPlot(el,f.data||[],f.layout||{{}},{{responsive:true,displaylogo:false,modeBarButtonsToRemove:['lasso2d','select2d']}})}});const cssVar=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();const resolveCyStyle=s=>(s||[]).map(r=>({{...r,style:Object.fromEntries(Object.entries(r.style||{{}}).map(([k,v])=>[k,typeof v==='string'&&v.startsWith('var(')?(cssVar(v.slice(4,-1))||v):v]))}}));document.querySelectorAll('[data-cy-graph]').forEach(el=>{{const g=JSON.parse(el.dataset.cyGraph);cytoscape({{container:el,elements:g.elements||[],style:resolveCyStyle(g.style||[]),layout:{{name:'preset'}}}})}})</script></body></html>"""
+    plotly = _inline_script("plotly.min.js")
+    cytoscape = _inline_script("cytoscape.min.js")
+    return f"""<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>{title} | Silisocs Studio</title>{plotly}{cytoscape}<style>{_REPORT_CSS}</style></head><body><main><header class=report-top><div class=brand><span class=brand-mark aria-hidden=true><i></i><i></i><i></i></span><span><b>Silisocs</b><small>Analysis artifact</small></span></div><div class=report-signals aria-hidden=true><i></i><i></i><i></i><i></i></div></header><section class=heading><p>SIMULATION VIEW</p><h1>{title}</h1><small>{artifact_path}</small></section><div class=grid>{cards}</div></main>{_hydration_script()}</body></html>"""
 
 
 def _skipped_caption(built: dict[str, Any]) -> str:

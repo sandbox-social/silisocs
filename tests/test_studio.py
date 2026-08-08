@@ -71,7 +71,10 @@ def test_scenario_create_save_and_interactive_launch_surface(tmp_path):
     assert draft.status_code == 200
     assert 'id="launch-mode"' in draft.text
     assert '<option value="interactive">Interactive</option>' in draft.text
-    assert "interactive,start_paused:interactive" in draft.text
+    assert '<script src="/assets/scenario.js">' in draft.text
+    # An interactive launch starts the run paused; the payload lives in the
+    # composer module the page above loads.
+    assert "interactive,start_paused:interactive" in client.get("/assets/scenario.js").text
 
     saved = client.post(
         "/api/scenarios",
@@ -248,6 +251,45 @@ def test_studio_tokens_css_comes_from_design_package(tmp_path):
     assert body.startswith("@font-face{")
     assert "NaNs" not in body
     assert client.get("/assets/manrope.woff2").headers["content-type"].startswith("font/woff2")
+
+
+def test_templates_only_load_scripts_studio_serves(tmp_path):
+    """Every ``<script src>`` a template names must resolve, and nothing else.
+
+    Studio's client code lives in ``static/*.js`` served through ``/assets``;
+    a template carries only its JSON data island plus script tags. A typo'd
+    ``src`` is a page that silently loses all of its behaviour (no error, no
+    failing assertion anywhere else), and a re-inlined block is code that
+    escapes linting and reuse — so both are checked here.
+    """
+    import re
+    from pathlib import Path
+
+    import silisocs.studio
+
+    # Rendered before the workspace index exists, so it deliberately loads
+    # nothing at all — it is the one page that cannot depend on an asset.
+    standalone = {"warming.html"}
+    templates = Path(silisocs.studio.__file__).resolve().parent / "templates"
+    client = TestClient(create_app(tmp_path, state_dir=tmp_path / "state", repo_root=tmp_path))
+
+    referenced: set[str] = set()
+    for path in sorted(templates.glob("*.html")):
+        text = path.read_text(encoding="utf-8")
+        for attributes, body in re.findall(r"<script([^>]*)>(.*?)</script>", text, re.DOTALL):
+            if "src=" in attributes:
+                assert not body.strip(), f"{path.name}: a sourced script must have no body"
+                continue
+            assert path.name in standalone or 'type="application/json"' in attributes, (
+                f"{path.name} carries an inline script; it belongs in static/*.js"
+            )
+        referenced.update(re.findall(r'<script[^>]*\ssrc="([^"]+)"', text))
+
+    assert "/assets/studio.js" in referenced
+    assert "/assets/panels.js" in referenced
+    for url in sorted(referenced):
+        assert url.startswith("/assets/"), f"{url} is not served by Studio"
+        assert client.get(url).status_code == 200, f"{url} does not resolve"
 
 
 def test_scenario_shipped_view_uses_configured_repository_root(tmp_path):

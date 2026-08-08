@@ -58,6 +58,10 @@
     </aside>
   </div>
 </div>
+<script type="application/json" id="studio-page-data">{{ {
+  'page': 'explore_run',
+  'run': record.id,
+  'capabilities': capabilities,
+}|tojson }}</script>
 <script src="/assets/explore.js"></script>
-<script>initExplore({run: {{ record.id|tojson }}, capabilities: {{ capabilities|tojson }}});</script>
 {% endblock %}

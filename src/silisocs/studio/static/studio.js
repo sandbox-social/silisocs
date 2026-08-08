@@ -1,131 +1,302 @@
-(() => {
-  "use strict";
+/* The Studio shell: everything every page gets, and nothing page-specific.
+ *
+ * Loaded blocking in <head>, after boot.js and panels.js and BEFORE any page
+ * module, so `notify`, `renderPanel` and the auth-attaching `fetch` wrapper are
+ * defined by the time a page module's first response comes back. (When this
+ * code lived inline at the end of <body> that was true by accident — an inline
+ * script costs no round trip — and it stopped being true the moment it became a
+ * fetched asset.) Everything that needs the DOM therefore waits for
+ * DOMContentLoaded, including the palette: page modules register commands into
+ * the boot.js queue while the document parses, and the flush below is what
+ * turns them into dialog entries.
+ *
+ * Depends on: boot.js (theme, palette queue, studioPageData) and panels.js
+ * (chartTheme, initFigures, initNetwork, themeCyInstances). */
 
-  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
-  window.openRepositoryDialog = () => {
-    const dialog = document.getElementById("connect-project");
-    dialog?.showModal();
-    dialog?.querySelector('[name="nickname"]')?.focus();
-  };
+/* ---- control-plane auth --------------------------------------------------
+ * A browser cannot attach a header to a page load, so the token is stored in
+ * this browser and attached to every mutating fetch instead. */
+const nativeFetch = window.fetch.bind(window);
+window.fetch = (input, options = {}) => {
+  const method = (options.method || "GET").toUpperCase();
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    const token = localStorage.getItem("silisocs-auth-token");
+    if (token) {
+      options.headers = new Headers(options.headers || {});
+      options.headers.set("authorization", `Bearer ${token}`);
+    }
+  }
+  return nativeFetch(input, options);
+};
 
-  window.connectRepository = async event => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const path = form.elements.path.value.trim();
-    const nickname = form.elements.nickname.value.trim();
-    const submit = form.querySelector('[type="submit"]');
-    submit.disabled = true;
+/* ---- theme --------------------------------------------------------------- */
+window.toggleTheme = () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem("silisocs-theme", next);
+  document.querySelectorAll("[data-figure]").forEach(el => window.Plotly?.relayout(el, chartTheme()));
+  themeCyInstances();
+  document.getElementById("platform-frame")?.contentWindow?.postMessage({type: "silisocs-theme", theme: next}, "*");
+};
+
+/* ---- toasts -------------------------------------------------------------- */
+window.notify = (message, tone = "neutral") => {
+  const el = document.createElement("div");
+  el.className = `toast ${tone}`;
+  el.dataset.testid = "toast";
+  el.textContent = message;
+  document.body.append(el);
+  setTimeout(() => el.remove(), 3000);
+};
+
+/* ---- command palette -----------------------------------------------------
+ * The dialog only exists once the body is parsed, so the real registration
+ * function replaces boot.js's queueing stub at DOMContentLoaded. */
+function appendPaletteCommand({label, href, keywords = "", action}) {
+  const nav = document.querySelector("#command-palette nav");
+  const item = document.createElement(href ? "a" : "button");
+  if (href) item.href = href;
+  else item.type = "button";
+  item.textContent = label;
+  item.dataset.keywords = keywords;
+  if (action)
+    item.addEventListener("click", () => {
+      document.getElementById("command-palette").close();
+      action();
+    });
+  nav.append(item);
+  return item;
+}
+function flushPaletteCommands() {
+  const pending = window.paletteCommands;
+  window.registerPaletteCommand = appendPaletteCommand;
+  pending.forEach(appendPaletteCommand);
+  // Pages declare their palette commands as DATA in the page island, so the
+  // labels stay in the server-rendered HTML (searchable, testable) while the
+  // wiring lives here. `action` names a global on this page's module.
+  for (const command of studioPageData().paletteCommands || [])
+    appendPaletteCommand({...command, action: command.action ? window[command.action] : undefined});
+}
+
+async function hydratePalette() {
+  const nav = document.querySelector("#command-palette nav");
+  if (nav.dataset.loaded) return;
+  nav.dataset.loaded = "true";
+  const sources = [
+    ["/api/runs", "Run", item => "/runs/" + item.id.split("/").map(encodeURIComponent).join("/")],
+    [
+      "/api/scenarios",
+      "Scenario",
+      item =>
+        "/scenarios/" +
+        encodeURIComponent(item.name) +
+        (item.source && item.source !== "workspace" ? `?source=${encodeURIComponent(item.source)}` : ""),
+    ],
+    ["/api/studies", "Study", item => "/studies/" + encodeURIComponent(item.id)],
+  ];
+  for (const [url, kind, href] of sources) {
     try {
-      const response = await fetch("/api/repositories", {
-        method: "POST",
-        headers: {"content-type": "application/json"},
-        body: JSON.stringify({path, nickname}),
-      });
-      if (!response.ok) {
-        notify(await response.text(), "danger");
-        return;
-      }
-      location.reload();
-    } finally {
-      submit.disabled = false;
+      const data = await (await fetch(url)).json();
+      for (const item of data.items || [])
+        registerPaletteCommand({
+          label: `${kind}: ${item.scenario || item.name || item.id}`,
+          href: href(item),
+          keywords: `${item.id || ""} ${item.source_label || ""}`,
+        });
+    } catch {}
+  }
+}
+window.openPalette = () => {
+  const dialog = document.getElementById("command-palette");
+  dialog.showModal();
+  document.getElementById("command-search").focus();
+  hydratePalette();
+};
+document.addEventListener("keydown", event => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    openPalette();
+  }
+  if (event.key === "Escape") document.getElementById("command-palette").close();
+});
+
+function initCommandPalette() {
+  const dialog = document.getElementById("command-palette");
+  const search = document.getElementById("command-search");
+  if (!dialog || !search) return;
+  search.addEventListener("input", event => {
+    const value = event.target.value.toLowerCase();
+    document.querySelectorAll("#command-palette nav>a,#command-palette nav>button").forEach(item => {
+      item.hidden = !`${item.textContent} ${item.dataset.keywords || ""}`.toLowerCase().includes(value);
+    });
+  });
+  dialog.addEventListener("click", event => {
+    if (event.target === dialog) dialog.close();
+  });
+  search.addEventListener("keydown", event => {
+    const items = [...dialog.querySelectorAll("nav > a:not([hidden]), nav > button:not([hidden])")];
+    const active = document.activeElement;
+    const index = items.indexOf(active);
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      items[index < items.length - 1 ? index + 1 : 0]?.focus();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      items[index > 0 ? index - 1 : items.length - 1]?.focus();
     }
+  });
+}
+
+/* ---- project repositories (the connect dialog and the settings page) ------ */
+window.openRepositoryDialog = () => {
+  const dialog = document.getElementById("connect-project");
+  dialog?.showModal();
+  dialog?.querySelector('[name="nickname"]')?.focus();
+};
+
+window.connectRepository = async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const path = form.elements.path.value.trim();
+  const nickname = form.elements.nickname.value.trim();
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true;
+  try {
+    const response = await fetch("/api/repositories", {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: JSON.stringify({path, nickname}),
+    });
+    if (!response.ok) {
+      notify(await response.text(), "danger");
+      return;
+    }
+    location.reload();
+  } finally {
+    submit.disabled = false;
+  }
+};
+
+async function removeRepository(source) {
+  const response = await fetch(`/api/repositories/${encodeURIComponent(source)}`, {method: "DELETE"});
+  if (!response.ok) {
+    notify(await response.text(), "danger");
+    return;
+  }
+  location.reload();
+}
+async function renameRepository(source) {
+  const nickname = document.getElementById(`repository-nickname-${source}`).value.trim();
+  const response = await fetch(`/api/repositories/${encodeURIComponent(source)}`, {
+    method: "PATCH",
+    headers: {"content-type": "application/json"},
+    body: JSON.stringify({nickname}),
+  });
+  if (!response.ok) {
+    notify(await response.text(), "danger");
+    return;
+  }
+  notify("Project nickname saved.", "success");
+}
+async function refreshRepositories() {
+  const response = await fetch("/api/repositories/refresh", {method: "POST"});
+  if (!response.ok) {
+    notify(await response.text(), "danger");
+    return;
+  }
+  location.reload();
+}
+function storeAuthToken() {
+  localStorage.setItem("silisocs-auth-token", document.getElementById("auth-token").value);
+  notify("Token stored for this browser.", "success");
+}
+function initSettings() {
+  const field = document.getElementById("auth-token");
+  if (field) field.value = localStorage.getItem("silisocs-auth-token") || "";
+}
+
+/* ---- home observatory ---------------------------------------------------- */
+function initObservatory(root) {
+  const stage = root.querySelector(".observatory-stage");
+  const lines = root.querySelector(".field-lines");
+  const nodes = [...root.querySelectorAll("[data-field-node]")];
+  const title = root.querySelector("[data-readout-title]");
+  const meta = root.querySelector("[data-readout-meta]");
+  if (!stage || !lines || !nodes.length) return;
+
+  const ns = "http://www.w3.org/2000/svg";
+  const draw = () => {
+    const bounds = stage.getBoundingClientRect();
+    const center = {x: bounds.width / 2, y: bounds.height / 2};
+    lines.replaceChildren();
+    nodes.forEach((node, index) => {
+      const box = node.querySelector(".node-core").getBoundingClientRect();
+      const point = {
+        x: box.left + box.width / 2 - bounds.left,
+        y: box.top + box.height / 2 - bounds.top,
+      };
+      const line = document.createElementNS(ns, "path");
+      const bend = index % 2 ? -22 : 22;
+      const midX = (center.x + point.x) / 2 + bend;
+      const midY = (center.y + point.y) / 2 - bend;
+      line.setAttribute("d", `M${center.x} ${center.y} Q${midX} ${midY} ${point.x} ${point.y}`);
+      line.classList.add("field-line", `signal-${index % 4}`);
+      line.style.setProperty("--delay", `${index * -0.37}s`);
+      lines.append(line);
+    });
   };
 
-  function initObservatory(root) {
-    const stage = root.querySelector(".observatory-stage");
-    const lines = root.querySelector(".field-lines");
-    const nodes = [...root.querySelectorAll("[data-field-node]")];
-    const title = root.querySelector("[data-readout-title]");
-    const meta = root.querySelector("[data-readout-meta]");
-    if (!stage || !lines || !nodes.length) return;
-
-    const ns = "http://www.w3.org/2000/svg";
-    const draw = () => {
-      const bounds = stage.getBoundingClientRect();
-      const center = {x: bounds.width / 2, y: bounds.height / 2};
-      lines.replaceChildren();
-      nodes.forEach((node, index) => {
-        const box = node.querySelector(".node-core").getBoundingClientRect();
-        const point = {
-          x: box.left + box.width / 2 - bounds.left,
-          y: box.top + box.height / 2 - bounds.top,
-        };
-        const line = document.createElementNS(ns, "path");
-        const bend = index % 2 ? -22 : 22;
-        const midX = (center.x + point.x) / 2 + bend;
-        const midY = (center.y + point.y) / 2 - bend;
-        line.setAttribute("d", `M${center.x} ${center.y} Q${midX} ${midY} ${point.x} ${point.y}`);
-        line.classList.add("field-line", `signal-${index % 4}`);
-        line.style.setProperty("--delay", `${index * -0.37}s`);
-        lines.append(line);
-      });
-    };
-
-    const focus = node => {
-      nodes.forEach(item => item.classList.toggle("is-muted", item !== node));
-      title.textContent = node.dataset.title;
-      meta.textContent = node.dataset.meta;
-      node.classList.add("is-focused");
-    };
-    const reset = () => nodes.forEach(item => item.classList.remove("is-muted", "is-focused"));
-    nodes.forEach(node => {
-      node.addEventListener("pointerenter", () => focus(node));
-      node.addEventListener("focus", () => focus(node));
-      node.addEventListener("pointerleave", reset);
-      node.addEventListener("blur", reset);
-    });
-
-    let frame = 0;
-    stage.addEventListener("pointermove", event => {
-      if (reducedMotion.matches) return;
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const box = stage.getBoundingClientRect();
-        stage.style.setProperty("--field-x", `${((event.clientX - box.left) / box.width - 0.5) * 8}px`);
-        stage.style.setProperty("--field-y", `${((event.clientY - box.top) / box.height - 0.5) * 8}px`);
-      });
-    });
-    stage.addEventListener("pointerleave", () => {
-      stage.style.setProperty("--field-x", "0px");
-      stage.style.setProperty("--field-y", "0px");
-    });
-
-    const resize = new ResizeObserver(draw);
-    resize.observe(stage);
-    draw();
-    if (!reducedMotion.matches) {
-      let index = 0;
-      setInterval(() => {
-        nodes.forEach(node => node.classList.remove("has-signal"));
-        nodes[index++ % nodes.length].classList.add("has-signal");
-      }, 1800);
-    }
-  }
-
-  function initCommandPalette() {
-    const dialog = document.getElementById("command-palette");
-    const search = document.getElementById("command-search");
-    if (!dialog || !search) return;
-    dialog.addEventListener("click", event => {
-      if (event.target === dialog) dialog.close();
-    });
-    search.addEventListener("keydown", event => {
-      const items = [...dialog.querySelectorAll("nav > a:not([hidden]), nav > button:not([hidden])")];
-      const active = document.activeElement;
-      const index = items.indexOf(active);
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        items[index < items.length - 1 ? index + 1 : 0]?.focus();
-      } else if (event.key === "ArrowUp") {
-        event.preventDefault();
-        items[index > 0 ? index - 1 : items.length - 1]?.focus();
-      }
-    });
-  }
-
-  addEventListener("DOMContentLoaded", () => {
-    document.querySelectorAll("[data-observatory]").forEach(initObservatory);
-    initCommandPalette();
+  const focus = node => {
+    nodes.forEach(item => item.classList.toggle("is-muted", item !== node));
+    title.textContent = node.dataset.title;
+    meta.textContent = node.dataset.meta;
+    node.classList.add("is-focused");
+  };
+  const reset = () => nodes.forEach(item => item.classList.remove("is-muted", "is-focused"));
+  nodes.forEach(node => {
+    node.addEventListener("pointerenter", () => focus(node));
+    node.addEventListener("focus", () => focus(node));
+    node.addEventListener("pointerleave", reset);
+    node.addEventListener("blur", reset);
   });
-})();
+
+  let frame = 0;
+  stage.addEventListener("pointermove", event => {
+    if (reducedMotion.matches) return;
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => {
+      const box = stage.getBoundingClientRect();
+      stage.style.setProperty("--field-x", `${((event.clientX - box.left) / box.width - 0.5) * 8}px`);
+      stage.style.setProperty("--field-y", `${((event.clientY - box.top) / box.height - 0.5) * 8}px`);
+    });
+  });
+  stage.addEventListener("pointerleave", () => {
+    stage.style.setProperty("--field-x", "0px");
+    stage.style.setProperty("--field-y", "0px");
+  });
+
+  const resize = new ResizeObserver(draw);
+  resize.observe(stage);
+  draw();
+  if (!reducedMotion.matches) {
+    let index = 0;
+    setInterval(() => {
+      nodes.forEach(node => node.classList.remove("has-signal"));
+      nodes[index++ % nodes.length].classList.add("has-signal");
+    }, 1800);
+  }
+}
+
+/* ---- boot ----------------------------------------------------------------
+ * Everything below touches the DOM, so it waits for the parser. Page modules
+ * have already run by then; their queued palette commands flush first. */
+addEventListener("DOMContentLoaded", () => {
+  flushPaletteCommands();
+  initCommandPalette();
+  initFigures(document);
+  initNetwork(document);
+  initSettings();
+  document.querySelectorAll("[data-observatory]").forEach(initObservatory);
+});

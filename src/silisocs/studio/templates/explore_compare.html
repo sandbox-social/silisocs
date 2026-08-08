@@ -16,32 +16,7 @@
   {% endif %}
 </div>
 {% if run_ids|length >= 2 %}
-<script>
-(function(){
-  const runs={{ run_ids|tojson }};
-  const chart=document.querySelector('[data-compare-chart]'),totals=document.querySelector('[data-compare-totals]'),count=document.querySelector('[data-compare-count]');
-  const url='/api/explore/compare?'+runs.map(id=>'runs='+encodeURIComponent(id)).join('&');
-  const svgNode=(name,attrs)=>{const n=document.createElementNS('http://www.w3.org/2000/svg',name);for(const[k,v]of Object.entries(attrs))n.setAttribute(k,v);return n};
-  fetch(url).then(async r=>{if(!r.ok)throw new Error(await r.text());return r.json()}).then(data=>{
-    const W=960,H=430,pad=48,eps=data.episodes,max=Math.max(1,...data.runs.flatMap(run=>run.values));
-    const step=eps.length>1?(W-pad*2)/(eps.length-1):0;
-    const svg=svgNode('svg',{viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':'Events per episode by run'});
-    svg.classList.add('pulse-chart');
-    for(let l=0;l<=4;l++){const y=pad+(H-pad*2)*l/4;svg.append(svgNode('line',{x1:pad,y1:y,x2:W-pad,y2:y,class:'chart-grid'}))}
-    data.runs.forEach((run,i)=>{const pts=run.values.map((v,x)=>`${pad+x*step},${H-pad-v/max*(H-pad*2)}`);svg.append(svgNode('polyline',{points:pts.join(' '),class:`pulse-line tone-${i%6}`}))});
-    // Accessible text equivalent of the overlaid lines.
-    const summary=document.createElement('p');summary.className='visually-hidden';
-    summary.textContent='Total events per run — '+data.runs.map(run=>`${run.id}: ${run.events}`).join('; ')+'.';
-    chart.replaceChildren(svg,summary);chart.classList.remove('loading');chart.removeAttribute('aria-busy');
-    count.textContent=`${eps.length} episodes`;
-    totals.replaceChildren(...data.runs.map((run,i)=>{
-      const row=document.createElement('div');row.className='evidence-item';
-      const mark=document.createElement('span');mark.className=`signal-mark tone-${i%6}`;
-      const body=document.createElement('span');const b=document.createElement('b'),s=document.createElement('small');
-      b.textContent=run.id;s.textContent=`${run.events} events`;body.append(b,s);row.append(mark,body);return row;
-    }));
-  }).catch(err=>{chart.classList.remove('loading');chart.innerHTML='<div class="empty"><b>Comparison unavailable</b><p></p></div>';chart.querySelector('p').textContent=err.message;notify(err.message,'danger')});
-})();
-</script>
+<script type="application/json" id="studio-page-data">{{ {'page': 'explore_compare', 'runs': run_ids}|tojson }}</script>
+<script src="/assets/explore.js"></script>
 {% endif %}
 {% endblock %}

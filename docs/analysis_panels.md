@@ -45,6 +45,27 @@ read a **run's** manifest, so declaring any of them on a `scope="study"` panel
 is a registration-time `ValueError` (they would otherwise be silently ignored).
 Study panels gate with `applicable(artifact)` instead.
 
+### There are exactly two renderers
+
+A `PanelOutput` is turned into HTML in two places, and adding a new output type
+means teaching **both** (or neither):
+
+1. **Server** — the Jinja macro `render_output` in
+   `silisocs/studio/templates/_output.html`. It paints the run and study pages
+   on first load, and the static report exporter
+   (`silisocs.analysis.report`) renders through the same macro rather than a
+   third copy.
+2. **Client** — `silisocs/studio/static/panels.js` (`renderPanel`). It repaints
+   a panel *without* a navigation: panel controls (`setPanelParam`), the Watch
+   tab's live refresh, the study board, and both Explore surfaces, which build
+   panels from the JSON the panel API returns.
+
+Two are needed because one surface has no DOM to patch and the other must not
+re-navigate. The report exporter also reuses `panels.js` to bring its figures
+and network graphs up, so the hydration path is shared too. A scope that lays
+stat grids out differently declares it once, as `data-grid-class` on the panel
+grid, which both renderers honour.
+
 ### `Html` output must escape untrusted content
 
 `Html` and `Markdown` are emitted **verbatim** by every renderer (Studio, the
@@ -269,8 +290,9 @@ network and never a ledger. `virtual_space` is neither social nor a market, yet
 by declaring `interaction.directed` (its agents talk to each other by name) it
 lights up the interaction network — no panel code knows any backend's name.
 
-Reports are self-contained: the vendored Plotly and Cytoscape bundles are
-inlined, so exported HTML has no CDN or server dependency.
+Reports are self-contained: the vendored Plotly and Cytoscape bundles plus
+Studio's `panels.js` are inlined, so exported HTML has no CDN or server
+dependency — and no private copy of the rendering code.
 
 ## Studio
 

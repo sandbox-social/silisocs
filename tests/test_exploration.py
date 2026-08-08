@@ -406,7 +406,10 @@ def test_explore_page_serves_module_and_selection_regions(tmp_path) -> None:
     page = client.get("/explore/run/net/run")
 
     assert page.status_code == 200
-    assert 'src="/assets/explore.js"' in page.text and "initExplore(" in page.text
+    # The page ships a data island plus the module; the module owns the boot.
+    assert 'src="/assets/explore.js"' in page.text
+    assert '"page": "explore_run"' in page.text
+    assert "initExplore(" in client.get("/assets/explore.js").text
     assert "data-transport" in page.text and "data-evidence" in page.text
     assert 'href="#main-content"' in page.text  # skip link is present
     assert client.get("/assets/explore.js").status_code == 200
