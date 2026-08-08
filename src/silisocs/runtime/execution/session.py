@@ -647,8 +647,25 @@ def _register_search_path_plugin() -> None:
     register_search_path_plugin()
 
 
+_SUBCOMMAND_HELP = """\
+Subcommands (run as `silisocs <subcommand>`):
+  doctor        environment health checks (no API key needed)
+  tutorial      guided scripted demo run + artifact tour
+  new-scenario  scaffold a scenario config directory
+  new-study     scaffold a study directory
+
+Everything else is a Hydra invocation: `silisocs [key=value ...]`.
+Hydra's own flags follow.
+"""
+
+
 def cli_main() -> None:
     """CLI entry point: preprocess --config-path flags then run Hydra main."""
+    if len(sys.argv) > 1 and sys.argv[1] in ("--help", "-h", "help"):
+        # Hydra owns --help, which would otherwise hide the subcommands below.
+        print(_SUBCOMMAND_HELP)
+        if sys.argv[1] == "help":
+            return
     if len(sys.argv) > 1 and sys.argv[1] == "doctor":
         from silisocs.runtime.doctor import run_doctor
 

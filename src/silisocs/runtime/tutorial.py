@@ -158,7 +158,7 @@ def _print_next_steps(output_dir: Path) -> None:
     print("  - run with a real model:    silisocs sim.llm.provider=openai sim.llm.name=gpt-4o-mini")
     print("  - check your environment:   silisocs doctor")
     print("  - load runs in Python:      from silisocs.evaluations.run_artifact import load_run")
-    print("\nDocs: docs/usage.md (workflow) and docs/configuration.md (all knobs).")
+    print("\nDocs: https://sandbox-social.github.io/silisocs/ (usage, configuration, glossary).")
 
 
 def run_tutorial(output_dir: str | Path | None = None) -> int:
