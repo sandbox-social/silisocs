@@ -15,7 +15,7 @@ from typing import Any
 
 from silisocs.environments.backends.base import (
     ActionResult,
-    SocialBackendApp,
+    PlatformBackedSocialApp,
     VisualizerSpec,
     app_action,
     record_invalid_action_target,
@@ -43,7 +43,7 @@ def _coerce_post_id(target_id: Any) -> int | None:
 
 
 @dataclasses.dataclass
-class TwitterLikeApp(SocialBackendApp):
+class TwitterLikeApp(PlatformBackedSocialApp):
     """Twitter-like social media app.
 
     A microblogging platform where users post tweets, reply, like, repost,
@@ -204,10 +204,6 @@ class TwitterLikeApp(SocialBackendApp):
                 "include_like_trace_in_context": bool(include_like_trace_in_context),
             },
         )
-
-    def recsys_active_types(self) -> set[str]:
-        """Return recsys types currently live on the platform (empty after restore)."""
-        return set(getattr(self._platform, "_recsys_types", {}) or {})
 
     def format_timeline_for_observation(self, timeline: list[dict]) -> str:
         """Format timeline posts as a clean text block for the LLM.

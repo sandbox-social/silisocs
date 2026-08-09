@@ -40,6 +40,10 @@ def __getattr__(name: str):
         # Backends
         "ActionResult": ("silisocs.environments.backends.base", "ActionResult"),
         "BackendApp": ("silisocs.environments.backends.base", "BackendApp"),
+        "PlatformBackedSocialApp": (
+            "silisocs.environments.backends.base",
+            "PlatformBackedSocialApp",
+        ),
         "SocialBackendApp": ("silisocs.environments.backends.base", "SocialBackendApp"),
         "app_action": ("silisocs.environments.backends.base", "app_action"),
         # Engines
@@ -94,6 +98,7 @@ __all__ = [
     # Backends
     "ActionResult",
     "BackendApp",
+    "PlatformBackedSocialApp",
     "SocialBackendApp",
     "app_action",
     # Engines

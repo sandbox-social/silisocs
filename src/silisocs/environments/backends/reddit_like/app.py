@@ -15,7 +15,7 @@ from typing import Any
 
 from silisocs.environments.backends.base import (
     ActionResult,
-    SocialBackendApp,
+    PlatformBackedSocialApp,
     VisualizerSpec,
     app_action,
     record_invalid_action_target,
@@ -79,7 +79,7 @@ def _subreddit_name(sub_cfg: Any) -> str:
 
 
 @dataclasses.dataclass
-class RedditLikeApp(SocialBackendApp):
+class RedditLikeApp(PlatformBackedSocialApp):
     """Reddit-like social media app.
 
     A forum-style platform where users create posts in subreddits, comment
@@ -286,10 +286,6 @@ class RedditLikeApp(SocialBackendApp):
             label="recsys_init",
             data={"recsys_type": str(recsys_type)},
         )
-
-    def recsys_active_types(self) -> set[str]:
-        """Return recsys types currently live on the platform (empty after restore)."""
-        return set(getattr(self._platform, "_recsys_types", {}) or {})
 
     def format_timeline_for_observation(self, timeline: list[dict]) -> str:
         """Format timeline posts as a clean text block for the LLM.

@@ -1263,16 +1263,13 @@ class SocialBackendApp(BackendApp):
     actions, or recommendation update components implement this interface on
     top of the domain-neutral :class:`BackendApp`.
 
-    The concrete ``get_timeline_mode``/``update_recommendations`` below are
-    written against the ``_platform`` + ``_get_username`` pair every
-    platform-backed social app provides (twitter_like, reddit_like). A social
-    backend that talks to a live server instead (mastodon) leaves ``_platform``
-    unset and overrides them.
+    This class is a pure interface: every capability method raises until the
+    concrete backend implements it, so each backend owns its timeline and
+    recommendation behavior outright (mastodon implements them against a live
+    server). Backends built on a local SQLite platform engine can opt into the
+    shared plumbing in :class:`PlatformBackedSocialApp` instead of re-writing
+    it (twitter_like, reddit_like).
     """
-
-    # Platform engine backing the shared timeline/recommendation implementations.
-    # Platform-backed apps assign it in their constructor.
-    _platform: Any = None
 
     def _get_username(self, display_name: str) -> str:
         """Map an agent display name to this backend's platform username."""
@@ -1288,31 +1285,6 @@ class SocialBackendApp(BackendApp):
         default has no live recsys state.
         """
         return set()
-
-    def _resolve_active_user_ids(self, active_agent_names: Sequence[str]) -> list[int]:
-        """Translate agent display names to backend user ids (unknowns skipped).
-
-        Used by scoped recommendation updates: the update component knows agents
-        by display name while the platform recsys keys on numeric user ids. Names
-        with no platform user (e.g. agents owned by another GM's backend) are
-        dropped silently — a scoped update simply has nothing to refresh for them.
-        Relies on the concrete app's ``_get_username`` mapping and its platform's
-        cached ``get_user_id``.
-        """
-        if self._platform is None:
-            return []
-        ids: list[int] = []
-        seen: set[int] = set()
-        for display_name in active_agent_names:
-            try:
-                username = self._get_username(str(display_name))
-            except ValueError:
-                continue
-            user_id = self._platform.get_user_id(username)
-            if isinstance(user_id, int) and user_id not in seen:
-                seen.add(user_id)
-                ids.append(user_id)
-        return ids
 
     def setup_social_state(
         self,
@@ -1354,6 +1326,88 @@ class SocialBackendApp(BackendApp):
         -------
             List of post dicts for the timeline.
         """
+        del timeline_mode, user_name, limit, recsys_type, timeline_config
+        raise NotImplementedError(f"{type(self).__name__} does not implement timeline modes.")
+
+    def update_recommendations(
+        self,
+        active_user_ids: list[int] | None = None,
+        max_posts: int = 10,
+        active_agent_names: Sequence[str] | None = None,
+    ) -> None:
+        """Recompute recommendation state for the given users (or everyone)."""
+        del active_user_ids, max_posts, active_agent_names
+        raise NotImplementedError(f"{type(self).__name__} does not implement recommendations.")
+
+    def format_timeline_for_observation(self, timeline: list[dict]) -> str:
+        """Convert raw timeline data into text for an agent observation."""
+        del timeline
+        raise NotImplementedError(f"{type(self).__name__} does not format social timelines.")
+
+    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str | ActionResult:
+        """Dispatch a parsed social action to the correct backend method.
+
+        A failure/no-op branch may return ``ActionResult(committed=False)``; the
+        parsed-action resolve component unwraps it to its message text.
+        """
+        del user_name, action_data
+        raise NotImplementedError(f"{type(self).__name__} does not resolve social actions.")
+
+
+class PlatformBackedSocialApp(SocialBackendApp):
+    """Shared :class:`SocialBackendApp` plumbing for local platform engines.
+
+    Opt-in base for backends whose social state lives in a local platform
+    engine (``self._platform``, e.g. a :class:`SqliteSocialEngineBase`
+    subclass): the timeline-mode fetch, the recommendation update, and the
+    recsys liveness probe below are pure name-mapping/logging plumbing around
+    ``_platform`` calls, byte-identical across such backends. Backends with
+    their own social substrate (mastodon's live server) subclass
+    :class:`SocialBackendApp` directly and keep independent implementations.
+    """
+
+    # Platform engine backing the shared implementations below.
+    # Concrete apps assign it in their constructor.
+    _platform: Any = None
+
+    def recsys_active_types(self) -> set[str]:
+        """Return recsys types currently live on the platform (empty after restore)."""
+        return set(getattr(self._platform, "_recsys_types", {}) or {})
+
+    def _resolve_active_user_ids(self, active_agent_names: Sequence[str]) -> list[int]:
+        """Translate agent display names to backend user ids (unknowns skipped).
+
+        Used by scoped recommendation updates: the update component knows agents
+        by display name while the platform recsys keys on numeric user ids. Names
+        with no platform user (e.g. agents owned by another GM's backend) are
+        dropped silently — a scoped update simply has nothing to refresh for them.
+        Relies on the concrete app's ``_get_username`` mapping and its platform's
+        cached ``get_user_id``.
+        """
+        if self._platform is None:
+            return []
+        ids: list[int] = []
+        seen: set[int] = set()
+        for display_name in active_agent_names:
+            try:
+                username = self._get_username(str(display_name))
+            except ValueError:
+                continue
+            user_id = self._platform.get_user_id(username)
+            if isinstance(user_id, int) and user_id not in seen:
+                seen.add(user_id)
+                ids.append(user_id)
+        return ids
+
+    def get_timeline_mode(
+        self,
+        timeline_mode: str,
+        user_name: str,
+        limit: int = 10,
+        recsys_type: str | None = None,
+        **timeline_config: dict,
+    ) -> list[dict]:
+        """Fetch a timeline via the platform engine and log the retrieval."""
         username = self._get_username(user_name)
         try:
             timeline = self._platform.get_timeline(
@@ -1439,17 +1493,3 @@ class SocialBackendApp(BackendApp):
                 "scoped": active_user_ids is not None,
             },
         )
-
-    def format_timeline_for_observation(self, timeline: list[dict]) -> str:
-        """Convert raw timeline data into text for an agent observation."""
-        del timeline
-        raise NotImplementedError(f"{type(self).__name__} does not format social timelines.")
-
-    def parse_and_resolve_action(self, user_name: str, action_data: dict) -> str | ActionResult:
-        """Dispatch a parsed social action to the correct backend method.
-
-        A failure/no-op branch may return ``ActionResult(committed=False)``; the
-        parsed-action resolve component unwraps it to its message text.
-        """
-        del user_name, action_data
-        raise NotImplementedError(f"{type(self).__name__} does not resolve social actions.")
