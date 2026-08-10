@@ -95,6 +95,15 @@ Run a bundled external scenario:
 uv run silisocs --config-path scenarios/election/conf
 ```
 
+> **Heads up — that command is a research-scale, paid run.** The election
+> scenario ships at 500 agents x 15 steps of *live* LLM calls, and its voter
+> class is built from a Hugging Face dataset, so it also needs the `hf` extra
+> (`uv sync --extra hf`, or `pip install "silisocs[hf]"`). For a first look,
+> shrink the voter class instead of `num_agents` (which is only the declared
+> total), or add `sim.llm.provider=scripted` for a no-API-call smoke test — see
+> the safe smaller variant in
+> [docs/quickstart.md](docs/quickstart.md#6-run-an-example-scenario).
+
 Run the packaged resource-market preset:
 
 ```sh
@@ -117,7 +126,8 @@ uv run silisocs --config-path scenarios/virtual_space/conf world=virtual_space a
 Outputs are written under
 `outputs/<scenario_name>/<jobname_format>/<scenario_name>_<timestamp>/` (for
 example `outputs/default/N10_T5_independent_run1/default_2026-05-01_12-30-00/`)
-and include `run_manifest.json`, `action_events.jsonl`, `probe_events.jsonl`,
+and include `run_manifest.json`, `run_events.jsonl`, `action_events.jsonl`,
+`exposure_events.jsonl`, `probe_events.jsonl` (if probes are configured),
 `prompts_and_responses.jsonl`, `sim_metrics.json`, `effective_config.yaml`, and
 a local SQLite backend database for local platforms. The timestamped leaf means
 re-running the same parameters never overwrites a previous run. See
@@ -193,7 +203,7 @@ Common commands:
 uv run pytest
 uv run silisocs-config-dry-run --project-root .
 uv run --group dev poe lint
-uv run --group dev poe docs
+uv run --group dev --group docs poe docs
 uv build --sdist --wheel
 uv run --group docs properdocs build --strict
 ```
@@ -203,7 +213,9 @@ uv run --group docs properdocs build --strict
   and replication configs without running LLM calls.
 - `uv run --group dev poe lint` runs the configured formatting, static checks, and type
   checks.
-- `uv run --group dev poe docs` runs the configured documentation build task.
+- `uv run --group dev --group docs poe docs` runs the configured documentation
+  build task. It needs **both** groups: `poethepoet` lives in `dev` and the
+  ProperDocs/MkDocs toolchain the task invokes lives in `docs`.
 - `uv build --sdist --wheel` builds release artifacts in `dist/`.
 - `uv run --group docs properdocs build --strict` builds the documentation site
   and fails on broken links or stale navigation.

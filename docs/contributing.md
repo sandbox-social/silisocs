@@ -15,9 +15,9 @@ Thank you for considering contributing to this project! We appreciate your effor
 ## Dependency Groups
 
 - `test` is the default uv group for this repository. A plain `uv sync` installs the project plus the test, lint, and type-checking tools used in CI.
-- `dev` adds local contributor tooling on top of the default environment, including `poethepoet`, `commitizen`, notebooks, and documentation generation helpers.
-- `docs` is optional and only needed when building the documentation site (ProperDocs).
-- `hpc` is optional and only needed when testing Submitit/Slurm submission helpers.
+- `dev` adds local contributor tooling on top of the default environment: the `poethepoet` task runner, `commitizen` plus `cz-conventional-gitmoji`, `import-linter`, type stubs, and `numpy`/`pandas`/`requests` for tests that need them. It does **not** include notebook or documentation tooling — use the `docs` group for those.
+- `docs` is optional and only needed when building the documentation site (ProperDocs/MkDocs). The `poe docs` task lives in `dev` but the toolchain it runs lives here, so building docs through Poe needs both groups.
+- `hpc` is an optional **extra** (not a dependency group) and is only needed when testing Submitit/Slurm submission helpers: `uv sync --extra hpc`.
 - Full release validation assumes all optional library extras are installed. Tests
   that need a real external service or LLM endpoint remain explicitly skipped or
   opt-in, but pure optional-library coverage is expected in contributor
@@ -29,7 +29,7 @@ Thank you for considering contributing to this project! We appreciate your effor
 - Sync the full release-test environment: `uv sync --all-extras --group dev --group docs`
 - Run the pre-commit suite: `uv run --group dev poe lint`
 - Run tests with coverage (defaults to non-LLM tests): `uv run --group dev poe test`
-- Build the documentation site via Poe: `uv run --group dev poe docs`
+- Build the documentation site via Poe: `uv run --group dev --group docs poe docs`
 - Build the documentation site directly: `uv run --group docs properdocs build --strict`
 - Install git hooks: `uv run pre-commit install`
 - Create a commit with Commitizen: `uv run cz c`
@@ -43,9 +43,10 @@ lock-file validation, mypy, and `lint-imports` (import-linter enforcing the
 layering contracts declared in `pyproject.toml`: the runtime kernel imports no
 upper layer, and the package layers stay one-directional).
 
-Poe commands require the dev dependency group because `poethepoet` lives there.
-For example, use `uv run --group dev poe docs` for the docs task rather than
-plain `uv run poe docs`.
+Poe commands require the dev dependency group because `poethepoet` lives there,
+so use `uv run --group dev poe lint` rather than plain `uv run poe lint`. The
+`docs` task additionally needs the `docs` group, which is where the ProperDocs
+toolchain it shells out to lives: `uv run --group dev --group docs poe docs`.
 
 Do not treat an ad hoc `uv run ruff check --no-fix .` run as the release gate
 unless the project first scopes or cleans the historical Ruff backlog. It is a

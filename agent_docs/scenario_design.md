@@ -23,8 +23,14 @@ scenarios/{scenario_name}/conf/
 ├── agents/
 │   └── default.yaml                (Required: @package agents)
 ├── sim.yaml                        (Optional: partial sim overrides)
-└── env.yaml                        (Optional: partial env overrides)
+├── env.yaml                        (Optional: partial env overrides)
+└── eval.yaml                       (Optional: probes — merged under `eval`)
 ```
+
+`sim.yaml`, `env.yaml`, and `eval.yaml` are **flat** files: no `@package`
+header, and their top-level keys are merged into the `sim` / `env` / `eval`
+groups respectively. `world/default.yaml` and `agents/default.yaml` are group
+files that **replace** the packaged group of the same name.
 
 ### File 1: world/default.yaml
 
@@ -192,11 +198,23 @@ initial_observations:
   - "{name} notices the upcoming election"
 ```
 
-### File 6: Probes (Evaluation)
+### File 6: Probes (Evaluation) — `conf/eval.yaml`
+
+Probes live in `scenarios/{scenario_name}/conf/eval.yaml`, a **flat** scenario
+file with **no `@package` header**. Its top-level keys are merged under `eval`,
+so the top-level `probes:` key below lands at `eval.probes` — which is exactly
+where the probe deployer reads them.
+
+> **Do not put `probes:` in `world/default.yaml`.** That file carries
+> `# @package _global_`, so a `probes:` block there lands at the **config root**,
+> where nothing reads it — the run would finish normally and emit zero probe
+> events. The runtime therefore **fails at build time** on a root-level
+> `probes:` block, with an error telling you to move it into `conf/eval.yaml`.
 
 Define questions to ask agents during/after simulation:
 
 ```yaml
+# scenarios/{scenario_name}/conf/eval.yaml   (no @package header)
 probes:
   deployment:
     enabled: true
@@ -232,6 +250,13 @@ probes:
         name: WillVote
         question: "Will you cast a vote?"
 ```
+
+Schedule notes: steps are **0-indexed**, so the default `start_step: 1` never
+probes step 0 (no pre-simulation baseline — set `start_step: 0` if you want
+one). Any probe entry may carry its own `deployment:` block overriding the
+global one field by field; use `deployment: {at: run_end}` for a single terminal
+measurement after the loop finishes. See
+[../docs/probes.md](../docs/probes.md).
 
 ### File 7: Scenario-Specific Agent Data (Optional)
 
@@ -486,6 +511,19 @@ fixed_action_sets:
 
 ## 4) Running Your Scenario
 
+**Validate first (no tokens spent):**
+```bash
+uv run silisocs-config-dry-run --config-path scenarios/my_world
+```
+
+This builds the real runtime for zero steps against your config, so composition
+errors, unknown component params, and bad slots surface before you pay for a
+run. `--config-path` takes either the scenario root (`scenarios/my_world`) or
+its config directory (`scenarios/my_world/conf`), and checks every
+`world/*.yaml` variant it finds (plus each `env/*.yaml` variant, if the scenario
+has an `env/` group directory); omit it to sweep every scenario and replication
+in the checkout. Full reference: [../docs/usage.md](../docs/usage.md).
+
 **From CLI:**
 ```bash
 uv run silisocs --config-path scenarios/my_world/conf
@@ -569,24 +607,23 @@ This means your scenario files only need to specify what's **different** from de
 
 ## 7) Reference: Default Values
 
-**From `src/silisocs/conf/world/default.yaml`** (at config root):
-- `num_agents`: 100
-- `num_steps`: 50
-- `seed`: 1
-- `run_name`: run1
+**Do not read defaults from this guide — read them from
+[../docs/config_reference.md](../docs/config_reference.md).** That page is a
+generated, key-by-key dump of every packaged default under
+`src/silisocs/conf/`, and a CI drift test fails if it stops matching the
+shipped YAML. Any table copied here would go stale silently; that is exactly
+what happened to the one this section used to contain.
 
-**From `src/silisocs/conf/sim/base.yaml`:**
-- `sim.llm.name`: gpt-4o-mini
-- `sim.llm.provider`: openai
-- `sim.action_mode`: custom
-- `sim.tool_calling.mode`: single
-- `sim.engine.step.built_in`: base
-- `sim.engine.turn_policy.built_in`: single_action
-- `sim.engine.executor`: threads (or `asyncio`; see docs/configuration.md)
+For what each knob *means* (rather than its value), see
+[../docs/configuration.md](../docs/configuration.md).
 
-**From `src/silisocs/conf/env/twitter_like.yaml`:**
-- `env.gm.backend.type`: twitter_like
-- Supports: `create_tweet`, `like_tweet`, `repost_tweet`, `reply_to_tweet`, `follow_user`
+Two headline values worth knowing before you read anything else, because they
+are much smaller than people assume — the packaged world is a *tiny smoke
+world*, and every real scenario overrides both in its own
+`world/default.yaml`:
+
+- `num_agents`: **10**
+- `num_steps`: **5**
 
 ---
 

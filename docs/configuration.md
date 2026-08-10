@@ -75,7 +75,7 @@ The slots, and where each is documented:
 | `sim.engine.control` | controller | [Interactive Stepping](#interactive-stepping) |
 | `sim.checkpoint.save` | `CheckpointSaveStrategy` | [Engine and Runtime](#engine-and-runtime) |
 | `sim.checkpoint.restore` | `CheckpointRestoreStrategy` | [Checkpoint Restore](#checkpoint-restore) |
-| `eval.probes.schedule` | probe schedule | [Probes](#probes) |
+| `eval.probes.schedule` | `ProbeSchedulePolicy` | [Probe schedule](#probe-schedule) |
 | `interventions[*]` with `kind: custom` | `InterventionHandler` | [Mid-Run Interventions](#mid-run-interventions) |
 | `agents.persona_pipeline.classes.<class>` (`class_path` + `params`) | `Agent` | [Persona Pipeline](#persona-pipeline), [Building Agents](building_agents.md) |
 | `agents.builder` (custom agent builder) | `AgentBuilder` | [Building Agents](building_agents.md) |
@@ -174,9 +174,33 @@ inherited.
 | `sim.llm.api_base` | `null` | Required base URL when `provider: openai_compatible`; also overrides the base URL of a built-in preset |
 | `sim.llm.api_key` | `null` | API key (or set via the provider's environment variable) |
 | `sim.llm.temperature` | `0.5` | Sampling temperature |
-| `sim.llm.disabled` | `false` | Use a no-op model (for testing without API calls) |
+| `sim.llm.disabled` | `false` | Use a no-op model (no API calls). **Incompatible with tool-call parsing** — see the note below; for an offline smoke run use `sim.llm.provider=scripted` instead |
 | `sim.llm.extra_kwargs` | `{}` | Provider request kwargs such as OpenAI-compatible `extra_body` settings |
 | `sim.llm.pricing` | `null` | Optional `{input_per_1m, output_per_1m}` USD rate for cost reporting |
+
+**The no-op model cannot be combined with tool-call parsing.**
+`sim.llm.disabled: true` (equivalently `sim.llm.provider: disabled`) builds a
+no-op model whose tool-call sampling returns an **empty** list, which the agent
+layer rejects — so every agent turn would fail and the run would commit no
+actions. Because the packaged default is `sim.tool_calling.mode: single`,
+`sim.llm.disabled=true` **on its own now fails at build**, before any agent is
+constructed:
+
+```text
+Config error: sim.llm.disabled=true cannot be combined with sim.tool_calling.mode='single'.
+```
+
+The error names the two ways out:
+
+- **`sim.llm.provider=scripted`** (and drop `sim.llm.disabled`) — a deterministic
+  offline model that *does* answer tool calls. This is the smoke-run option, and
+  what every "dry run with no LLM calls" example in this page uses.
+- **`sim.tool_calling.mode=none`** — keep the no-op model; agents then emit plain
+  text read by the `parsed_action` / `generic_action` resolve components.
+
+The check reads the **top-level** `sim.tool_calling.mode` only: a per-GM
+`env.gm.tool_calling` / `env.gm_orchestration.gms.<name>.tool_calling` override
+does not exempt a run from it.
 
 **Token usage & cost.** OpenAI-compatible providers record `response.usage`
 per call, split by phase — `probe` (evaluation spend; the loop brackets probe
@@ -243,6 +267,7 @@ live in `sim.llm`, and they have opposite rules:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `sim.max_concurrent_actions` | `1000` | Max parallel LLM calls per step |
+| `sim.engine.loop.built_in` | `fixed_steps` | Episode-loop strategy. `fixed_steps` (the only built-in) runs steps from `start_step` up to `num_steps`, firing probe anchors, interventions, and checkpoints at each boundary; `class_path` swaps in a custom `LoopStrategy` (see [Interactive Stepping](#interactive-stepping)) |
 | `sim.action_mode` | `custom` | Prompt style: `custom` (world prompt) or `generic` (backend-generated) |
 | `sim.tool_calling.mode` | `single` | Tool dispatch mode: `none`, `single`, or `multi` |
 | `sim.prompt_additions.action_count_guidance` | `true` | Add `[ActNum]` marker and action count guidance to prompt |
@@ -370,8 +395,9 @@ scenarios/
         ├── agents/
         │   ├── default.yaml             # Persona pipeline, shared memories
         │   └── thin.yaml                # Lightweight variant (optional)
+        ├── agents.yaml                  # Partial persona-pipeline overrides (optional)
         ├── env.yaml                     # Platform/GM overrides (optional)
-        ├── eval.yaml                   # Probe config overrides (optional)
+        ├── eval.yaml                    # Probe config overrides (optional)
         └── sim.yaml                     # LLM + engine overrides (optional)
 ```
 
@@ -385,10 +411,32 @@ the scenario conf dir to Hydra's search path before composition. This gives
 higher priority than the package defaults, so they replace the package
 `world/default.yaml` and `agents/default.yaml` entirely.
 
-**Layer 2, Manual merge** (runs inside `main()` after Hydra composes): handles
-partial-override flat files that don't replace their group wholesale:
+**Layer 2, Manual merge** (runs inside `main()` after Hydra composes,
+`runtime/configuration/external.py`): handles partial-override files that don't
+replace their group wholesale. Two families, merged in this order:
 
-- `env.yaml`, `eval.yaml`, `sim.yaml` → merged into their named groups
+- **Four flat files**, merged into the group named by the filename, in the fixed
+  order `agents.yaml` → `env.yaml` → `eval.yaml` → `sim.yaml`. Each must contain
+  a YAML mapping (anything else fails naming the file), and each carries **no**
+  `@package` directive — its top-level keys are placed under the group named by
+  the file. So `sim.yaml`'s `engine:` key becomes `sim.engine`, and `eval.yaml`'s
+  `probes:` key becomes `eval.probes`.
+- **World-variant overlay files**, merged only when the run passes a
+  `world=<variant>` override: `env/<variant>.yaml`, `sim/<variant>.yaml`, and
+  `eval/<variant>.yaml` (in that order) are read from the scenario conf dir and
+  merged into the `env` / `sim` / `eval` groups. This lets one scenario directory
+  carry several paired worlds under matching filenames — running
+  `world=public_goods_game` also pulls in
+  `scenarios/public_goods_game/conf/env/public_goods_game.yaml`. Missing variant
+  files are simply skipped.
+
+  These are the same files Hydra would treat as **group options**, and the two
+  routes differ: `env=<variant>` *replaces* the `env` group, while the
+  world-variant overlay only *merges* on top of whatever `env` group is already
+  composed (`env/twitter_like.yaml` by default). Merging cannot remove the base
+  group's sibling keys, so a variant that swaps to a different backend should also
+  be selected as a group — which is why the non-social scenarios document
+  `world=X agents=X env=X` together.
 
 **Priority order** (highest → lowest):
 
@@ -397,17 +445,80 @@ partial-override flat files that don't replace their group wholesale:
 3. Scenario `world/default.yaml` and `agents/default.yaml` (via plugin searchpath)
 4. Package defaults in `src/silisocs/conf/`
 
-CLI overrides are re-applied after the merge so they always win over
-scenario defaults.
+CLI overrides are re-applied after the Layer-2 merge, so a key they set wins over
+the scenario's flat files.
+
+#### When a CLI override needs `++` {#cli-override-plus-plus}
+
+A CLI override is **struct-validated by Hydra at compose time**, against the
+config as it exists at the end of Layer 1 — the packaged defaults plus the
+scenario's `world/` and `agents/` *group* files, but **not** its flat `sim.yaml` /
+`env.yaml` / `eval.yaml` / `agents.yaml`, which are merged afterwards in Layer 2.
+So a plain `key=value` override can only target a key that already exists in the
+packaged config (or in a scenario group file). Most slot `params:` blocks in the
+packaged config are empty (`params: {}`), which means **every key inside them is
+"new"** as far as compose-time validation is concerned — even when the scenario
+you are running fills that block in from a flat file.
+
+Concretely, `src/silisocs/conf/sim/base.yaml` ships
+`sim.engine.turn_policy.params: {}`, while `scenarios/misinformation/conf/sim.yaml`
+sets `max_actions: 5` under it. Overriding it from the CLI fails:
+
+```bash
+# ✗ fails at compose time
+uv run silisocs --config-path scenarios/misinformation/conf \
+    sim.llm.provider=scripted num_steps=0 \
+    sim.engine.turn_policy.params.max_actions=3
+```
+
+```text
+Could not override 'sim.engine.turn_policy.params.max_actions'.
+To append to your config use +sim.engine.turn_policy.params.max_actions=3
+Key 'max_actions' is not in struct
+    full_key: sim.engine.turn_policy.params.max_actions
+    object_type=dict
+```
+
+Prefix with `++` (force-add-or-override) and it works — the value is re-applied
+after Layer 2, so it lands on top of the scenario's `max_actions: 5`:
+
+```bash
+# ✓
+uv run silisocs --config-path scenarios/misinformation/conf \
+    sim.llm.provider=scripted num_steps=0 \
+    ++sim.engine.turn_policy.params.max_actions=3
+```
+
+The rule is "does the **composed** config already declare this exact key?", not
+"does my scenario's flat file set it?". Keys the packaged defaults declare —
+`num_steps`, `sim.llm.provider`, `sim.engine.turn_policy.built_in`,
+`env.gm.backend.type`, `env.gm.components.observe.params.timeline_posts`
+(declared in `env/twitter_like.yaml`), … — take a plain `=`. Keys inside a
+`params: {}` block the packaged defaults leave empty need `++`:
+`sim.engine.{loop,step,turn_policy,participation}.params.*`,
+`sim.memory.params.*`, `sim.checkpoint.{save,restore}.params.*`,
+`eval.probes.schedule.params.*`, `env.gm.components.resolve.params.*`, and any
+backend/component param a non-default `env=` preset introduces. `++` is
+force-add-or-override and is always safe, so when in doubt use it; plain `+` is
+add-only and errors when the key already exists after composition.
 
 **A scenario's config-group files REPLACE their group; its flat files are
 MERGED.** A scenario `world/default.yaml` shadows the base `world` group entirely
 rather than layering onto it, so it must re-declare every universal run param the
 base provided — `jobname_format`, `scenario_name`, `run_name`, `output_dir`,
 `num_agents`, `num_steps`, `seed` — under a `# @package _global_` directive. The
-same applies to `agents/default.yaml` (`# @package agents`) and to any `env/`,
-`sim/`, or `eval/` group file. Flat `env.yaml`/`sim.yaml`/`eval.yaml` merge into
-their groups and need no re-declaration.
+same whole-group replacement applies to `agents/default.yaml` and to any `env/`,
+`sim/`, or `eval/` group file. Flat `agents.yaml`/`env.yaml`/`sim.yaml`/`eval.yaml`
+merge into their groups and need no re-declaration.
+
+Only `world` files *need* a `@package` line, because they are the ones that
+deviate from the default: `# @package _global_` puts their keys at the config
+root instead of under a `world` key. Every other group file lands in the package
+Hydra derives from its group directory, so the directive is optional there —
+the packaged `agents/default.yaml`, `sim/base.yaml`, and `eval/base.yaml` write
+it explicitly for readability, while **none of the packaged `env/*.yaml` files
+carry one at all** (nor do the scenario `env/` group files); they rely on the
+implicit `env` package, with the same net result.
 
 Missing a param that `hydra.run.dir` interpolates (typically `jobname_format`)
 fails before the run starts; the error names the key and this rule.
@@ -555,6 +666,10 @@ it):
 
 An unresolved interpolation in the agents config (e.g. `${event.contxt}`) is also
 an error rather than a literal `${...}` pasted into every affected persona.
+
+To run these checks **without launching a run**, use the `silisocs-config-dry-run`
+CLI; `--config-path <dir>` (accepting either `scenarios/x` or `scenarios/x/conf`)
+restricts it to one scenario. See [Usage](usage.md).
 
 ---
 
@@ -765,13 +880,25 @@ uv run silisocs --config-path scenarios/ai_conference/conf \
 
 ### Backends
 
+Seven backend types are registered by name in
+`silisocs.environments.backends.factory`: `twitter_like`, `reddit_like`,
+`mastodon`, `messaging`, `public_goods`, `resource_market`, and `virtual_space`.
+Six of them ship a packaged `env` preset you can select with `env=<name>`
+(`twitter_like`, `reddit_like`, `mastodon`, `messaging`, `resource_market`,
+`virtual_space`); `public_goods` has no packaged preset and is configured by the
+bundled `scenarios/public_goods_game`. Full descriptions of each backend's
+actions and mechanics are in [Environment Backends](backends.md).
+
 **Twitter-like (default)**
 ```yaml
 gm:
   backend:
     type: twitter_like
     class_path: null
-    params: {}
+    params:
+      perform_operations: false
+      app_description: |
+        Twitter-like social backend. Agents can create posts, reply, like, ...
 ```
 
 **Reddit-like**
@@ -800,7 +927,54 @@ server URL/API credentials, and an explicit
 separately gated by `env.gm.backend.params.reset_server_on_setup=true`.
 See [Installation](installation.md) for `.env` setup.
 
-**Resource market**
+**Messaging** (`env=messaging`) — the default agent-to-agent direct-message /
+broadcast channel. In-memory, no database; compose it with a game backend through
+a multi-GM flow chain ("talk, then move"), or run it standalone.
+
+```yaml
+gm:
+  backend:
+    type: messaging
+    class_path: null
+    params:
+      history_window: 20          # delivered messages an observation shows (most recent kept)
+      max_message_length: 2000    # longer submissions are REJECTED, not truncated
+      app_description: |
+        You are in a group of participants who communicate by direct message.
+        You can send a private message to any named participant, or broadcast a
+        message that everyone will see.
+    enabled_actions: null
+    excluded_actions: null
+```
+
+Actions are `SEND_MESSAGE` (private, to one named participant) and `BROADCAST`
+(everyone sees it). Delivery is observational — a message appears in the
+recipient's next observation, so ordering stays deterministic under any executor —
+and privacy is a rendering rule: everything is stored once and the committed log
+records all traffic, but `observe` shows an agent only what they sent, what was
+sent to them, and broadcasts. The packaged preset pairs it with `app_initialize` /
+`all_agents` / `app_observation` / `tool_calling` / `app_update` components and
+names the GM `messaging_gm`.
+
+**Public goods** — the reference game-theoretic backend (a repeated linear
+public-goods game). It has no packaged `env` preset; the shipped configuration
+lives in `scenarios/public_goods_game/conf/env/public_goods_game.yaml`.
+
+```yaml
+gm:
+  backend:
+    type: public_goods
+    class_path: null
+    params:
+      endowment: 20            # tokens per player per round
+      multiplier: 1.6          # pool multiplier (keep 1 < multiplier < N)
+      num_rounds: ${num_steps}
+      history_window: 0        # resolved rounds shown in the observation (0 = all)
+      app_description: |
+        You are playing a repeated public-goods game. ...
+```
+
+**Resource market** (`env=resource_market`)
 ```yaml
 gm:
   backend:
@@ -812,18 +986,33 @@ gm:
         food: 1
         wood: 0
         ore: 0
-      production_capabilities:
+      production_capabilities:      # what each sim role can produce per production action
         farmer: {food: 2}
         woodworker: {wood: 2}
         miner: {ore: 2}
-      role_needs:
+        merchant: {food: 1, wood: 1, ore: 1}
+      role_needs:                   # what each role must consume each upkeep interval
         farmer: {wood: 1}
         woodworker: {food: 1}
         miner: {food: 1}
-      upkeep_interval: 2
+        merchant: {food: 1}
+      upkeep_interval: 2            # steps between upkeep rounds (0 disables upkeep)
+      initial_satisfaction: 0       # starting satisfaction score per agent
+      fulfilled_need_reward: 1      # satisfaction added per need met at upkeep
+      shortage_penalty: 1           # satisfaction removed per need unmet at upkeep
+      resources: [food, wood, ore]  # the tradable resource vocabulary
+      perform_operations: false
+      app_description: |
+        You are operating in a resource market environment. ...
 ```
 
-**Virtual space**
+The packaged preset declares **four** roles — `farmer`, `woodworker`, `miner`,
+and `merchant` — in both `production_capabilities` and `role_needs`. Both maps are
+looked up by agent **name** first, then by sim **role**; `production_capabilities`
+also accepts a `default` key as a catch-all, and an agent matching no `role_needs`
+entry simply has no upkeep needs.
+
+**Virtual space** (`env=virtual_space`)
 ```yaml
 gm:
   backend:
@@ -837,13 +1026,38 @@ gm:
         garden: A quiet garden for private conversations.
         workshop: A practical room filled with tools and shared projects.
       connections: null          # null = fully connected; or a map of room -> [reachable rooms]
-      room_tasks:
+      room_tasks:                # the packaged preset ships all three
         - task_id: welcome_board
           room: atrium
-          description: Prepare a shared welcome board.
+          description: Prepare a shared welcome board for later arrivals.
           required_effort: 2
-          completion_message: The welcome board summarizes the group's first impressions.
+          completion_message: The welcome board now summarizes the group's first impressions.
+        - task_id: garden_map
+          room: garden
+          description: Sketch a map of quiet places in the garden.
+          required_effort: 2
+          completion_message: The garden map now helps visitors find calm corners.
+        - task_id: repair_bench
+          room: workshop
+          description: Repair the central workbench for future collaboration.
+          required_effort: 3
+          completion_message: The repaired workbench is ready for group projects.
+      perform_operations: false
+      app_description: |
+        You are operating in a virtual space. ...
 ```
+
+`resource_market`, `virtual_space`, `messaging`, and `public_goods` are in-memory
+references with **no database** — `db_path` belongs to the SQLite social backends
+only.
+
+**`app_description`** is a param every shipped backend accepts (it backs the
+backend's `description()`). It is the human-readable blurb the auto-generated
+action catalog puts at the top of the prompt under `sim.action_mode: generic`, so
+editing it is the no-code way to reframe what the platform *is* for the agents
+without touching the per-action descriptions. Under `action_mode: custom` the
+world's own `action_prompt` supplies that framing instead, and
+`app_description` is only surfaced where a backend chooses to use it.
 
 Custom backend apps can be loaded without editing the factory:
 
@@ -1024,10 +1238,12 @@ env:
   gm:
     components:
       initialize:
-        built_in: social_media   # social_media | app_initialize | none
+        built_in: social_media   # social_media | app_initialize | none | disabled
         class_path: null
         params: {}
 ```
+
+(`none` and `disabled` are aliases for the same no-op initializer.)
 
 ### Agent Memory (`sim.memory`)
 
@@ -1047,7 +1263,16 @@ sim:
 |----------|----------|--------|
 | `window` (default) | Keep the last N memories, render the last `render_count`. Byte-identical to the pre-slot behavior. | `render_count` (10); store cap defaults to the agent's `memory_history` |
 | `retrieval` | A recency window PLUS relevance recall: always render the last `window_count` memories verbatim, and prepend the `retrieved_count` OLDER memories most relevant to the current observation by deterministic lexical overlap (recency tiebreak) — replay-stable, no embedding API. `window_count: 0` recovers pure retrieval; `retrieved_count: 0` is a plain window. | `window_count` (40), `retrieved_count` (10) |
-| `summarizing` | Three tiers: all rolling summaries, then the `retrieved_count` most relevant OLDER memories, then the recent `render_count` window. When memory exceeds `max_memories`, the oldest `chunk_size` are compressed into one summary via a model call. | `max_memories` (200), `chunk_size` (50), `max_summaries` (20), `render_count` (40), `retrieved_count` (10), `prompt` |
+| `summarizing` | Three tiers: all rolling summaries, then the `retrieved_count` most relevant OLDER memories, then the recent `render_count` window. When memory exceeds `max_memories`, the oldest `chunk_size` are compressed into one summary via a model call. | `max_memories` (200), `chunk_size` (50), `max_summaries` (20), `render_count` (40), `retrieved_count` (10), `prompt`, `summary_max_tokens` (256) |
+
+`summary_max_tokens` (default `256`) is the `max_tokens` passed to the
+summarization call, i.e. the length budget for **one** rolling summary — raise it
+when a `chunk_size` of dense observations is being compressed too aggressively,
+lower it to cut summarization spend. Only `summarizing` reads it. Summaries are
+capped at `max_summaries`, so the summary tier's contribution to every later
+prompt is bounded by roughly `max_summaries * summary_max_tokens`. If the
+summarization call fails, the policy falls back to truncating the chunk and warns
+once, so a run never silently reinterprets itself as a `window` memory.
 
 A custom policy is `class_path` to a `MemoryPolicy` subclass (an ordinary
 [slot](#slots); `model` and `memory_history` are the framework kwargs the
@@ -1073,7 +1298,7 @@ env:
       observe:
         built_in: timeline_every_turn   # app_observation | timeline_every_turn | episode_only
         params:
-          episode_observation_flow: fixed_pre
+          episode_observation_flows: [fixed_pre]
       resolve:
         built_in: tool_calling          # parsed_action | generic_action | tool_calling
       update:
@@ -1084,6 +1309,22 @@ Each component role is a [slot](#slots): `class_path` swaps in your own
 implementation, `params` are strict constructor arguments, and `params: null`
 clears an inherited params block. Observe components that explicitly accept
 `observation_params` can use `params` as forwarded observation settings.
+
+!!! warning "`episode_observation_flows` (plural) vs `episode_observation_flow` (singular)"
+
+    The two observe built-ins spell this param differently, and `params` are
+    strict — the wrong spelling fails at build:
+
+    | Built-in | Param | Type |
+    |---|---|---|
+    | `timeline_every_turn` | `episode_observation_flows` | list of flow tags |
+    | `episode_only` | `episode_observation_flow` | a single flow tag (string) |
+
+    In both cases a matched agent receives the bare `EPISODE: <n>` observation —
+    under `timeline_every_turn` that replaces the timeline it would otherwise
+    get, and under `episode_only` an unmatched agent gets an empty observation.
+    This is how the `fixed_pre` broadcast flows in the bundled social scenarios
+    are wired (see `scenarios/*/conf/env.yaml`).
 
 `initialize: social_media`, `observe: timeline_every_turn`, and
 `update: social_recommendation` call `SocialBackendApp`-only methods; naming one
@@ -1178,6 +1419,49 @@ Studio shows (`expected_active_share()`) uses exactly these definitions: the mea
 `inactive_to_active / (inactive_to_active + active_to_inactive)` for
 `activity_markov`.
 
+### Recommendation Updates (`update: social_recommendation`) {#recommendation-updates}
+
+The `social_recommendation` update component recomputes each user's recommended
+posts between steps. The packaged `env/twitter_like.yaml` sets it up like this:
+
+```yaml
+env:
+  gm:
+    components:
+      update:
+        built_in: social_recommendation
+        params:
+          default_recsys_type: null
+          update_every_n_steps: 1
+          lazy: true
+          max_posts: 10
+          user_context_recent_posts: 10
+          include_like_trace: true
+          like_trace_window: 10
+          like_trace_weight: 0.5
+          include_like_trace_in_context: false
+```
+
+| Param | Default (preset) | Meaning |
+|---|---|---|
+| `default_recsys_type` | `null` | Which recommender to **compute**. `twitter_like` supports `twitter` (sentence-transformer embeddings), `twitter_tfidf` (TF-IDF, no model download), and `twhin`; `reddit_like` supports `reddit` and `twhin`; an unsupported name fails at init. `null` means *no recommender is configured* — the component logs a `recsys_update_skipped` / `no_recsys_types` event and does nothing, so feeds fall back to follower-based content. Swappable mid-run via the `set_recsys` intervention. |
+| `update_every_n_steps` | `1` | Steps between recommendation refreshes. |
+| `lazy` | `true` | Scope each refresh to agents that have acted since the last one, instead of the whole population. With `update_every_n_steps > 1` the scoped set accumulates across skipped steps, so nobody active is missed. Backends whose `update_recommendations` does not accept `active_agent_names` fall back to a full recompute. |
+| `max_posts` | `10` | Maximum recommended posts stored per user per refresh. |
+| `user_context_recent_posts` | `10` | How many of a user's own recent authored posts are folded into the textual user profile the recommender embeds (`0` = none). |
+| `include_like_trace` | `true` | Use the user's recent **likes** as an additional ranking signal. |
+| `like_trace_window` | `10` | How many recent liked posts form that trace. |
+| `like_trace_weight` | `0.5` | Blend weight in `[0, 1]` between the like-trace similarity and the profile similarity (clamped). |
+| `include_like_trace_in_context` | `false` | Whether the liked posts' text is also appended to the textual user context (as opposed to only being used as a similarity signal). |
+
+The last five are forwarded verbatim to the backend's `init_recsys(...)`, so they
+configure the recommender itself; `update_every_n_steps` / `lazy` / `max_posts`
+govern the refresh cadence. `recsys_type`, `update_every_n_steps`, `lazy`, and
+`max_posts` are `runtime_tunable`, so a `set_component_params` intervention can
+retune them mid-run. A refresh that raises is **counted**, not fatal: the run
+continues on the previous recommendation rows and the failure surfaces as a
+run-health counter.
+
 ### Timeline Observation
 
 ```yaml
@@ -1185,8 +1469,14 @@ env:
   gm:
     components:
       observe:
+        built_in: timeline_every_turn
         params:
-          timeline_mode: follower_chronological
+          timeline_mode: hybrid_recsys_follower   # packaged twitter_like default
+          recsys_type: null
+          timeline_posts: 10
+          timeline_config:
+            recsys_ratio: 0.6
+            follower_ratio: 0.4
 ```
 
 | Mode | Backends | Description |
@@ -1195,6 +1485,12 @@ env:
 | `pure_recsys` | Twitter, Reddit | Algorithm-selected posts only |
 | `hybrid_recsys_follower` | Twitter, Reddit | Blend of recommendations + followed posts |
 | `curated_global` | Twitter only | Trending posts + personalized recommendations |
+
+| Param | Default (preset) | Meaning |
+|---|---|---|
+| `recsys_type` | `null` | Which recommender's rows an agent **sees**. Distinct from the update component's `default_recsys_type`, which controls what is *computed* — a run that computes several can show one. `null` falls back to the backend's default. The `set_recsys` intervention swaps both. |
+| `timeline_posts` | `10` | How many posts one observation shows (the `limit` passed to `get_timeline_mode`). |
+| `timeline_config` | `{recsys_ratio: 0.6, follower_ratio: 0.4}` | Free-form mode-specific settings, splatted as keyword arguments into the backend's timeline builder. Under `hybrid_recsys_follower` the two ratios size the two sub-feeds (`limit * ratio`, at least 1 each); recommended posts come first, the follower feed is appended, duplicates are dropped by post id, and the result is truncated to `timeline_posts` — so the ratios are a priority split, not an exact quota. Modes that take no extra settings ignore it. |
 
 #### Exposure logging
 
@@ -1216,9 +1512,27 @@ small, and it no-ops for backends without a SQLite timeline (e.g. Mastodon).
 
 ## Evals Config (`eval/base.yaml`)
 
+The packaged `src/silisocs/conf/eval/base.yaml` in full:
+
 ```yaml
-probes: {}              # See Probes section below
+# @package eval
+
+probes:
+  schedule:
+    built_in: step_schedule
+    class_path: null
+    params: {}
+  # deployment also accepts sampling caps applied AFTER the include/exclude
+  # filters (seed-derived per (seed, step, agent), replay/resume stable):
+  #   deployment:
+  #     sample_k: 50          # probe at most 50 filtered agents per due step
+  #     sample_fraction: 0.1  # or a fraction (ceil), in (0, 1]; not both
+  # Unset (the default) probes every filtered agent.
 ```
+
+So out of the box a run declares only the probe **schedule** slot and no probes:
+`eval.probes.deployment` and `eval.probes.probes` are supplied by the scenario
+(its flat `conf/eval.yaml`) or by CLI overrides. See [Probes](#probes) below.
 
 !!! note "`eval`, `evaluations:`, and `silisocs.evaluations` are three different things"
 
@@ -1235,7 +1549,24 @@ probes: {}              # See Probes section below
 
 ### Probes
 
+**Probes live at `eval.probes` — never at the config root.** In a scenario that
+means the flat `conf/eval.yaml`, whose top-level keys are merged under `eval`, so
+the file's `probes:` key becomes `eval.probes`. Writing a `probes:` block into
+`conf/world/default.yaml` does **not** work: that file carries
+`# @package _global_`, so the block lands at the config *root*, where nothing
+reads it. That used to produce a run that completed normally and emitted zero
+probe events; it now **fails at build**:
+
+```text
+Config error: a root-level `probes:` block is not read by anything.
+Probes are configured at `eval.probes`, never at the config root.
+```
+
+The error shows the flat-`conf/eval.yaml` shape to move the block into. The
+snippet below is written as that file:
+
 ```yaml
+# <scenario>/conf/eval.yaml   (no @package directive — merged under `eval`)
 probes:
   probe_lib_module: null   # Optional custom probe type module
 
@@ -1314,6 +1645,43 @@ reproducible subset. Use this to keep probe cost bounded as populations grow
 `sample_k` draw **independent** subsets (the ranking is additionally keyed by the
 probe name); probes sharing the global cap draw the same subset.
 
+#### Probe schedule (`eval.probes.schedule`) {#probe-schedule}
+
+`eval.probes.schedule` is an ordinary [slot](#slots) holding an **engine-level
+coarse gate** in front of the deployment rules above. It answers one question per
+step — "run the probe phase at all?" — *before* the deployment block's
+`enabled` / `start_step` / `every_n_steps` / filters are consulted. It is the only
+part of probe configuration that lives in the packaged `eval/base.yaml`.
+
+```yaml
+eval:
+  probes:
+    schedule:
+      built_in: step_schedule   # step_schedule | fixed_interval | disabled
+      class_path: null
+      params: {}
+```
+
+| Built-in | Params | Behavior |
+|---|---|---|
+| `step_schedule` (default) | *(none)* | Always run the probe phase; the deployment rules alone decide cadence. Byte-identical to having no gate. |
+| `fixed_interval` | `start_step` (`0`), `every_n_steps` (`1`) | Run the phase only when `step >= start_step` and `(step - start_step) % max(1, every_n_steps) == 0`. An engine-level cadence that applies to *every* probe at once, on top of each probe's own deployment schedule. |
+| `disabled` | *(none)* | Never run the per-step probe phase. |
+
+The gate applies to the per-step anchors (`pre_step`, `post_step`) only:
+`run_end` is a one-shot terminal measurement with no step cadence and bypasses it
+(disable a `run_end` probe with its own `deployment.enabled: false`). Because both
+the gate and the deployment block must agree, the effective cadence is their
+intersection — a probe with `every_n_steps: 1` under a `fixed_interval` gate of
+`every_n_steps: 5` fires every 5 steps.
+
+`class_path` accepts any object implementing
+`should_run_probe_phase(*, step, orchestrator) -> bool`
+(`silisocs.simulation_engines.runtime_base.ProbeSchedulePolicy`); its `params` are
+strict constructor arguments like any other slot. Note that per the rule in
+[When a CLI override needs `++`](#cli-override-plus-plus), `params` keys need
+the `++` prefix from the CLI (`++eval.probes.schedule.params.every_n_steps=5`).
+
 ---
 
 ## Action Prompt Configuration
@@ -1323,6 +1691,45 @@ probe name); probes sharing the global cap draw the same subset.
 | Flag | Default | Effect |
 |------|---------|--------|
 | `sim.prompt_additions.action_count_guidance` | `true` | Add `[ActNum]` marker and action count guidance |
+
+### The `action_prompt` component's `output_style`
+
+Every packaged `env/*.yaml` configures its GM's `action_prompt` component with two
+params:
+
+```yaml
+env:
+  gm:
+    components:
+      action_prompt:
+        built_in: default
+        params:
+          action_prompt: |
+            You are operating on a Twitter-like social backend.
+            ...
+            [OUTPUT STYLE]
+          output_style: |
+            ## OUTPUT FORMAT
+            Answer: {name}
+            ...
+```
+
+- `action_prompt` is the world-facing instruction text. `{name}` is substituted
+  with the acting agent's name.
+- `output_style` is the **response-format** half, kept separate so it can be
+  dropped whole. The compiler splits `action_prompt` at the literal
+  `[OUTPUT STYLE]` marker: everything before it is the prompt head, and anything
+  after it is a *fallback* style used only when `output_style` is unset. The
+  chosen style is then appended at the end of the compiled prompt, after the
+  `[ActNum]` action-count guidance, re-prefixed with the marker.
+- Under `sim.tool_calling.mode: single | multi` the output-style section is
+  **dropped entirely** — the tool schemas define the response format, and
+  free-text formatting instructions would only conflict with them. This is why the
+  packaged presets can ship both a rich `output_style` and a `tool_calling`
+  resolve component: the style text only appears in the non-tool-calling modes.
+- The whole compilation applies to `sim.action_mode: custom`. Under `generic`
+  these params are unused: the prompt is generated from the backend's action
+  catalog (headed by `app_description`) instead.
 
 ### How Action Prompts Are Constructed
 

@@ -11,9 +11,14 @@ quantitative data for analysis.
 
 ## Overview
 
-Probes are configured under `eval.probes` in your scenario YAML. The system
-supports multiple probe types, configurable deployment schedules, and concurrent
-execution across large agent populations.
+Probes are configured under `eval.probes`. In a scenario that means the flat
+`scenarios/<name>/conf/eval.yaml` file, whose top-level keys are merged under
+`eval` — so the top-level `probes:` key in the examples below lands at
+`eval.probes`. (Do **not** put `probes:` in `world/default.yaml`: that file
+carries `# @package _global_`, so the block would land at the config root where
+nothing reads it, and the runtime rejects it at build time.) The system supports
+multiple probe types, configurable deployment schedules, and concurrent execution
+across large agent populations.
 
 ---
 
@@ -68,12 +73,46 @@ Control when and to whom probes are deployed:
 probes:
   deployment:
     enabled: true
-    start_step: 1             # First step to deploy probes
+    start_step: 1             # First step to deploy probes (steps are 0-indexed)
     every_n_steps: 5          # Deploy every N steps
     include_agents: []      # Empty = all agents
     exclude_agents:         # Skip specific agents
       - "Storhampton Gazette"
 ```
+
+### Step indices are 0-indexed
+
+A run's steps are numbered `0, 1, 2, ... num_steps - 1`. A probe is due on step
+`s` when `s >= start_step` and `(s - start_step) % every_n_steps == 0`.
+
+!!! warning "The default `start_step: 1` skips step 0"
+    Because steps start at 0, the default `start_step: 1` means **step 0 is never
+    probed** — you get no baseline measurement before the first round of agent
+    behavior. Set `start_step: 0` if you want a pre-simulation baseline. A
+    `num_steps: 1` run left on the default runs step 0 only and therefore writes
+    no `probe_events.jsonl` at all.
+
+!!! tip "For a terminal measurement, anchor with `at: run_end`"
+    `start_step`/`every_n_steps` cannot reliably express "ask this once at the
+    end": `num_steps - 1` changes whenever the run length changes, and the last
+    step's `pre_step` probe still runs *before* that step's actions. Give the
+    probe its own `deployment: {at: run_end}` block instead — a `run_end` probe
+    fires exactly once after the loop finishes and ignores the step cadence
+    entirely. See [Per-Probe Deployment and Loop Anchors](#per-probe-deployment-and-loop-anchors)
+    below.
+
+    ```yaml
+    probes:
+      probes:
+        closing_view:
+          probe_name: closing_view
+          probe_type: FreeTextProbe
+          probe_data:
+            name: ClosingView
+            question: "What is your final view on the proposal?"
+          deployment:
+            at: run_end
+    ```
 
 ### Targeting
 

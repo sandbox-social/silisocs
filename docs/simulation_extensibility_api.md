@@ -97,10 +97,18 @@ Common optional hooks:
 Timeline/recommendation capability methods live on `SocialBackendApp`, not on
 plain `BackendApp`:
 
+- `setup_social_state(*, agent_names: list[str], sim_roles=None, graph_config=None, following_graph=None, agent_bios=None) -> None`
 - `get_timeline(user_name: str, limit: int = 10) -> list[dict]`
-- `get_timeline_mode(...) -> list[dict]`
+- `get_timeline_mode(timeline_mode: str, user_name: str, limit: int = 10, recsys_type: str | None = None, **timeline_config) -> list[dict]`
 - `format_timeline_for_observation(timeline: list[dict]) -> str`
-- `parse_and_resolve_action(user_name: str, action_data: dict) -> str`
+- `parse_and_resolve_action(user_name: str, action_data: dict) -> str | ActionResult`
+  (a failure/no-op branch may return `ActionResult(committed=False)`; the
+  parsed-action resolve component unwraps it to its message text)
+- `update_recommendations(active_user_ids: list[int] | None = None, max_posts: int = 10, active_agent_names: Sequence[str] | None = None) -> None`
+- `recsys_active_types() -> set[str]` — recsys algorithm types currently live on
+  the backend, so the recommendation-update component can detect a recsys that
+  was rebuilt empty by checkpoint restore. Unlike the others this one does not
+  raise by default; it returns an empty `set()`.
 
 Expose executable actions with `@app_action`. `generic_action` and
 `tool_calling` resolve modes discover those actions automatically.
@@ -109,9 +117,19 @@ the resolver injects it from the active Agent Name and omits it from
 agent-facing prompts/tool schemas. Target parameters such as `target_user`
 remain agent-visible.
 
-`SocialBackendApp` subclasses `BackendApp` for backends that use the
-timeline/recommendation GM components. Backends that do not need those
-components should subclass `BackendApp` directly.
+Three bases, in order of how much they give you:
+
+- `BackendApp` — the plain, domain-neutral base. Backends that do not use the
+  timeline/recommendation GM components subclass this directly.
+- `SocialBackendApp` — a pure capability interface over `BackendApp` declaring
+  the methods above. Its methods raise until you implement them (except
+  `recsys_active_types()`, which defaults to an empty set), so your backend owns
+  its social behavior outright. The mastodon backend takes this route.
+- `PlatformBackedSocialApp` — a `SocialBackendApp` subclass for backends whose
+  social state lives in a local platform engine. Assign it to `self._platform`
+  and implement `_get_username`; you inherit working `get_timeline_mode`,
+  `update_recommendations`, and `recsys_active_types`. `twitter_like` and
+  `reddit_like` take this route.
 
 Custom app config:
 
@@ -212,7 +230,9 @@ Subcomponent interfaces in `components/base.py`:
 
 Default baselines are available for backends that only need `BackendApp`:
 
-- `AppInitializeComponent` calls a backend's `initialize(...)`.
+- `AppInitializeGameMasterInitializer` (built-in `app_initialize`, in
+  `silisocs.initialization.game_masters.runtime`) calls a backend's
+  `initialize(...)`.
 - `AllAgentsNextActing` and `FixedOrderNextActing` select agents without social
   timeline logic; activity models live in
   `silisocs.simulation_engines.policies.participation`.
@@ -313,11 +333,17 @@ def run(
 ) -> StepResult: ...
 ```
 
-Most custom step policies should call `engine._execute_batches(...)` with a
-sequence of `StepBatch(flow_name, game_master, turns)`. Each `turns` entry is
-`(agent, action_spec)`. Calling `_execute_batches(...)` keeps standard action
-logging, retry telemetry, concurrency limits, and `StepResult` shape. A custom
-step policy may bypass it, but then it owns those responsibilities.
+Most custom step policies should call `engine.execute_batches(batches=...)` with
+a sequence of `StepBatch(flow_name, game_master, turns)`. Each `turns` entry is
+`(agent, action_spec)`. That method is one of the three public execution shapes
+the engine's `SchedulingMixin` provides — `execute_batches(batches=...)`
+(serial), `execute_chain_groups(ordered_batches=..., rest_chains=...)`
+(concurrent per-flow pipelines), and
+`execute_staged_groups(ordered_batches=..., rest_chains=...)` (column-major with
+a per-stage barrier) — and every shipped step strategy composes them. Calling
+one keeps standard action logging, retry telemetry, concurrency limits, and
+`StepResult` shape. A custom step policy may bypass them, but then it owns those
+responsibilities.
 
 The `multi_gm` step policy emits its chain batches for concurrent execution:
 flows run as independent pipelines through their GM chains, gated only by
@@ -446,13 +472,13 @@ class MySequentialStepPolicy:
     def run(self, *, engine, step_index, game_masters, agents, verbose) -> StepResult:
         del step_index, verbose
         gm = game_masters[0]
-        turns = engine._selected_turns(game_master=gm, candidate_agents=agents)
+        turns = engine.selected_turns(game_master=gm, candidate_agents=agents)
         batches = [
             StepBatch(flow_name=f"agent:{agent.name}", game_master=gm, turns=[turn])
             for turn in turns
             for agent, _spec in [turn]
         ]
-        return engine._execute_batches(step_index=0, batches=batches, verbose=False)
+        return engine.execute_batches(batches=batches)
 ```
 
 Add a custom branch router:

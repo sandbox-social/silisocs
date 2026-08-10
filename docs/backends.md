@@ -398,9 +398,11 @@ and `tool_calling` resolve components.
 
 Subclass `SocialBackendApp` only when your backend needs to satisfy the
 timeline, feed, parsed-social-action, or recommendation hooks used by the
-social-media-oriented GM components. It is a pure interface: your backend owns
-its timeline and recommendation implementations outright (the mastodon backend
-implements them against a live server). If your backend instead wraps a local
+social-media-oriented GM components. It is a pure interface: its capability
+methods raise (or return an empty default — `recsys_active_types()` returns an
+empty `set()`) until you implement them, so your backend owns its timeline and
+recommendation implementations outright (the mastodon backend implements them
+against a live server). If your backend instead wraps a local
 platform engine, subclass `PlatformBackedSocialApp` — assign the engine to
 `self._platform` and implement `_get_username` — to inherit working
 `get_timeline_mode` and `update_recommendations`, including their
@@ -604,8 +606,11 @@ automatic row, so an existing manual action still records exactly once.
 
 **Committed-events mirror (runtime read path).** Every `_log_action_event` call
 also appends one record — `{label, source_user, episode, data}` — to an in-memory
-mirror on `SocialBackendApp`, so scenario code (branch routers, intervention
-conditions, state-dependent policies) can query committed history at runtime
+mirror on `BackendApp` (every backend, social or not — `count_committed_events`,
+`iter_committed_events`, and the `_committed_events_state` /
+`_restore_committed_events` checkpoint helpers all live there), so scenario code
+(branch routers, intervention conditions, state-dependent policies) can query
+committed history at runtime
 instead of scraping `action_events.jsonl` and reaching into logger internals:
 
 ```python
@@ -712,7 +717,11 @@ To implement a new generic environment:
 
     Use `SocialBackendApp` instead if your backend needs the timeline, feed,
     parsed-social-action, or recommendation capability methods used by the
-    social-media-oriented GM components.
+    social-media-oriented GM components — it is a pure capability interface, so
+    you implement each method yourself. If those methods would wrap a local
+    platform engine, subclass `PlatformBackedSocialApp` (a `SocialBackendApp`
+    subclass) instead and inherit the shared `get_timeline_mode` /
+    `update_recommendations` / `recsys_active_types` plumbing.
 
 3. **Configure the class path and params**:
 

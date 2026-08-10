@@ -20,16 +20,29 @@ also call it directly with a hand-written spec (`silisocs new-scenario --help`).
 ```
 scenarios/<name>/
   conf/
-    world/default.yaml   # Setting, event, probes, run defaults
-    agents/default.yaml     # Agent classes, personas, data sources
+    world/default.yaml      # Setting, event, run defaults (@package _global_)
+    agents/default.yaml     # Agent classes, personas, data sources (@package agents)
     env.yaml                # Backend/GM overrides (optional)
     sim.yaml                # Simulation parameter overrides (optional)
+    eval.yaml               # Probes and their deployment schedule (optional)
   README.md                 # Brief description for discoverability
 ```
 
-You write the first two files. The last two are only needed when you want to
-change something from the defaults (e.g. switch to a Reddit-like backend or
-adjust the LLM).
+You write the first two files. The rest are only needed when you want to change
+something from the defaults (e.g. switch to a Reddit-like backend, adjust the
+LLM, or ask agents survey questions).
+
+!!! warning "Probes go in `conf/eval.yaml`, never in `world/default.yaml`"
+    `world/default.yaml` carries `# @package _global_`, so every key in it lands
+    at the **config root**. A `probes:` block written there lands at the root,
+    where nothing reads it — the run would finish normally and emit zero probe
+    events. The runtime therefore **rejects a root-level `probes:` block at build
+    time** with an error telling you to move it.
+
+    `conf/eval.yaml` is a *flat* scenario file (no `@package` header): its
+    top-level keys are merged under `eval`, so a top-level `probes:` key there
+    lands at `eval.probes`, which is what the probe deployer reads. See
+    [Evaluation Probes](probes.md).
 
 ---
 
@@ -161,8 +174,21 @@ initial_observations:
 | `style` | One-line posting voice description, shapes how they write |
 | `goal` | What they are trying to achieve in this simulation |
 | `seed_post` | Their first post (leave blank `''` to let the LLM decide) |
-| `inactive_to_active` | Probability of acting on any given step (configured in `env.yaml`) |
-| `fully_connected_targets` | Roles that everyone follows (configured in `env.yaml`) |
+| `inactive_to_active` | How readily an agent becomes active. Configured in `conf/sim.yaml` under `engine.participation.params.activity_transition_rates`, keyed by `sim_role_name` (or agent name) — **not** in `env.yaml` |
+| `active_to_inactive` | The mirror rate, same block. Only the `activity_markov` policy uses it as a real transition rate; under `activity_probability` it is inert |
+| `fully_connected_targets` | Roles that everyone follows (configured in `env.yaml`, under `gm.components.initialize.params.graph`) |
+
+!!! note "What `inactive_to_active` means depends on the participation policy"
+    Under `sim.engine.participation.built_in: activity_probability`,
+    `inactive_to_active` **is** the independent per-step probability that the
+    agent acts at all (there is no chain to transition), and `active_to_inactive`
+    is read only as a fallback when `inactive_to_active` is absent. Under
+    `activity_markov`, the two values are genuine active/inactive Markov
+    **transition rates**, so the long-run active share is
+    `inactive_to_active / (inactive_to_active + active_to_inactive)`, not
+    `inactive_to_active` itself. Participation is opt-in: the packaged default is
+    `built_in: all` (everyone acts every step), and an agent matched by no rate
+    entry is a config error rather than a default.
 
 **Data sources:** The examples above use `source: inline` (records embedded directly
 in the YAML). For larger casts you can use `source: local_json` (a JSON file) or
@@ -191,7 +217,20 @@ uv run silisocs-studio --output-root outputs --port 8765
 
 ## Step 4: Validate and add a README
 
-Check that the config loads without error:
+Validate the scenario without spending tokens — this builds the real runtime for
+zero steps, so composition errors, unknown component params, and bad slots all
+surface here:
+```bash
+uv run silisocs-config-dry-run --config-path scenarios/my_world
+```
+
+`--config-path` accepts either the scenario root (`scenarios/my_world`) or its
+config directory (`scenarios/my_world/conf`), and checks every `world/*.yaml`
+variant it finds (plus each `env/*.yaml` variant, if the scenario has an `env/`
+group directory). Omit it to sweep every scenario and replication in the
+checkout. See [Usage](usage.md) for the full reference.
+
+To also exercise the engine loop with a deterministic offline model:
 ```bash
 uv run silisocs --config-path scenarios/my_world/conf num_steps=1 sim.llm.provider=scripted
 ```

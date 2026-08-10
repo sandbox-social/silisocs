@@ -104,8 +104,46 @@ hypotheses:
 | `hypotheses.<id>.conditions.<name>.overrides` | Hydra CLI overrides for this condition |
 | `hypotheses.<id>.status` | `testing` → `supported` / `refuted` / `inconclusive` |
 
-The `overrides` values are passed directly to `uv run silisocs` as CLI overrides
-(e.g. `agents=thin` → `--config-path ... agents=thin`).
+The `overrides` values become Hydra CLI override tokens on the run command the
+runner builds — `<python> -m silisocs.runtime.runner --config-path <config_path>
+seed=... run_name=... ++output_dir=... agents=thin` — where `<python>` is the
+interpreter running `silisocs-study` (or `RUN_STUDY_PYTHON`). Nothing hard-codes
+`uv run`, so a plain `pip install silisocs` works.
+
+### Overrides of slot `params` need `++`
+
+Hydra struct-validates CLI overrides against the base config **before** a
+scenario's flat `sim.yaml` / `env.yaml` is merged in, and every
+[slot](configuration.md#slots) — turn/step/loop policies, GM components, memory,
+backends, checkpoint save/restore — defaults to an **empty** `params` map there.
+So overriding a key inside one of those blocks fails unless you prefix it with
+`++` (add-or-override):
+
+```sh
+# FAILS: Could not override 'sim.engine.turn_policy.params.max_actions'.
+#        Key 'max_actions' is not in struct
+uv run silisocs --config-path scenarios/misinformation/conf \
+  'sim.engine.turn_policy.params.max_actions=3'
+
+# WORKS
+uv run silisocs --config-path scenarios/misinformation/conf \
+  '++sim.engine.turn_policy.params.max_actions=3'
+```
+
+In `study.yaml` the override keys are YAML mapping keys, so quote them to keep
+the `++`:
+
+```yaml
+conditions:
+  many_actions:
+    overrides:
+      "++sim.engine.turn_policy.params.max_actions": 3
+```
+
+Keys that already exist in the base config (`num_steps`, `sim.llm.name`, …) need
+no prefix. `silisocs-study ... plan` composes every condition and reports this
+error before any run starts — see
+[Plan-time config check](experiments.md#plan-time-config-check).
 
 Every field, including per-condition `execution` / `reuse` blocks and the
 `{scenario}`-style path placeholders, is listed in
@@ -134,6 +172,29 @@ evaluations:
     preset: builtin.probe_metrics_detailed
 ```
 
+**Pick at least one preset that produces comparable metrics.** Only the flat
+numeric `aggregated` block an evaluator writes reaches the cross-condition
+comparison surface (`metrics_by_condition` and `metrics_stats_by_condition` in
+`generated/organized/summary.json`, which the notebooks and Studio's comparison
+panel read):
+
+| Preset | Fills `metrics_by_condition`? |
+|---|---|
+| `builtin.action_metrics_detailed` | yes |
+| `builtin.probe_metrics_detailed` | yes |
+| `builtin.probe_binary_detailed` / `_numeric_` / `_choice_` / `_freetext_detailed` | yes |
+| `builtin.study_eval` (your `eval.py`) | yes, if it emits `aggregated` |
+| `builtin.activity_summary` | **no** |
+| `builtin.probe_summary` | **no** |
+
+`builtin.activity_summary` and `builtin.probe_summary` are lightweight per-run
+coverage summaries (label counts, unique users, episodes seen, probe response
+counts). They emit no `aggregated` block, so a study configured with only those
+two finishes successfully and writes per-run artifacts while its
+`metrics_by_condition` comes out **empty** — nothing to compare conditions with.
+Treat them as sanity checks alongside a `*_detailed` preset, not as the
+measurement.
+
 If you need custom metrics (e.g. lexical diversity, inter-agent distinctiveness),
 write `eval.py`; its CLI, input files, and required output format are the
 [eval.py contract](study_schema.md#the-evalpy-contract). The full preset list is
@@ -143,8 +204,31 @@ in the [Study Runner Reference](experiments.md#evaluator-presets).
 
 ## Step 4: Run the study
 
+### Validate the grid offline first
+
+Before paying for a single LLM call, smoke the whole grid with the scripted
+provider by adding it to `run_defaults.overrides`:
+
+```yaml
+study:
+  run_defaults:
+    overrides:
+      sim.llm.provider: scripted
+      num_steps: 2
+```
+
+Then `plan` (which composes every condition config and exits 1 if any fails) and
+a full `run` exercise composition, agent construction, the engine loop, every
+backend action path, the evaluators, and the organized tree — in seconds, for
+free. Delete the two lines once it is green.
+
+The caveat: **scripted validates plumbing, not content.** Probe answers come back
+`null`, and `open_ended` agents repeat one canned action, so any metric that
+depends on what agents actually said will be degenerate. A green scripted pass
+means "the grid runs end to end", not "the results are meaningful".
+
 ```bash
-# Plan: preview what will be run without executing
+# Plan: preview what will be run, compose every condition config, execute nothing
 uv run silisocs-study \
     --study experiments/studies/my_study plan
 
@@ -228,9 +312,9 @@ h2_model_capacity:
   status: testing
   conditions:
     gpt4o-mini:
-      overrides: {llm.name: gpt-4o-mini}
+      overrides: {sim.llm.name: gpt-4o-mini}
     gpt4o:
-      overrides: {llm.name: gpt-4o}
+      overrides: {sim.llm.name: gpt-4o}
 ```
 
 Then run only the new hypothesis and record the finding against the evidence

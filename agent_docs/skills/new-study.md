@@ -92,6 +92,34 @@ Common patterns:
 - Graph: `env.gm.components.initialize.params.graph.base_followership_probability: 0.8`
 - Scale: `num_steps: 20`, `num_agents: 100`
 
+**Slot `params` keys need a `++` prefix.** Hydra struct-validates CLI overrides
+against the BASE config before the scenario's flat `sim.yaml`/`env.yaml` is
+merged, and every slot (`turn_policy`, `step`, GM components, memory, backend,
+checkpoint save/restore) defaults to an EMPTY `params: {}` there. A bare
+override of a key inside such a block is rejected even when the scenario sets
+it:
+
+```sh
+# FAILS: Could not override 'sim.engine.turn_policy.params.max_actions'.
+#        Key 'max_actions' is not in struct
+sim.engine.turn_policy.params.max_actions=3
+# WORKS
+++sim.engine.turn_policy.params.max_actions=3
+```
+
+In `study.yaml` the override keys are YAML mapping keys, so quote them:
+
+```yaml
+overrides:
+  "++sim.engine.turn_policy.params.max_actions": 3
+```
+
+Keys that already exist in the base config (`num_steps`, `num_agents`,
+`sim.llm.name`, `env.gm.components.observe.params.timeline_mode` where the
+component declares it) need no prefix. When unsure, write it and let the Step 8
+`plan` check tell you — see [docs/configuration.md](../../docs/configuration.md)
+for how composition layers.
+
 For each condition also ask:
 - Does it need a `sub_experiment` label for grouping/filtering?
 - Should any conditions **reuse runs from a previous hypothesis** as a baseline?
@@ -111,6 +139,13 @@ Ask:
 - `builtin.probe_metrics_detailed` — probe responses over time (if probes are configured)
 - `builtin.probe_binary_detailed`, `builtin.probe_numeric_detailed`,
   `builtin.probe_choice_detailed`, `builtin.probe_freetext_detailed` — type-specific
+
+Always include at least one `*_detailed` preset (or a `builtin.study_eval`
+script that emits an `aggregated` block). Only `aggregated` reaches
+`summary.json`'s `metrics_by_condition` / `metrics_stats_by_condition`, the
+cross-condition comparison surface. `builtin.activity_summary` and
+`builtin.probe_summary` emit NO `aggregated` block — a study using only those
+runs fine but produces empty cross-condition metrics.
 
 Condition-local evaluators are supported — if a particular condition needs extra
 measurement, add an `evaluations:` block under that condition with
@@ -141,10 +176,16 @@ notes:
   constraints: ""  # time/cost/API limits affecting design choices
 ```
 
-Suggest paths:
+Suggest paths (all three are already the defaults the runner derives from
+`study_id`, so they can be omitted entirely — declare them only to be explicit,
+and keep them inside `experiments/studies/<study_id>/` or the runner warns that
+the study's artifacts are split across two trees):
 - `study_summary_path`: `experiments/studies/<study_id>/SUMMARY.md`
 - `summary_log_path`: `experiments/studies/<study_id>/generated/summary_log.jsonl`
 - `output_root_override`: `experiments/studies/<study_id>/runs/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/run`
+
+The workspace is derived from `study_id`, not from the directory name — keep
+them identical.
 
 ---
 
@@ -188,7 +229,29 @@ Then validate the study plan expands correctly:
 uv run silisocs-study --study experiments/studies/<study_id> plan
 ```
 
-Report the expanded plan to the user. Fix any config key errors before finishing.
+(`--study` and `--repo-root` are top-level args and go BEFORE the subcommand.)
+
+`plan` does two things: it expands the grid, and it composes every unique
+`(config_path, override set)` combination through Hydra. Read the last line:
+
+```text
+Condition config check: 5/5 unique condition config(s) compose
+```
+
+If any condition fails, `plan` prints a per-condition block on stderr with the
+Hydra error and **exits 1** — every run of that condition would die at startup.
+The usual cause is a missing `++` on a slot `params.*` key (Step 4). Fix and
+re-run `plan` until it is clean; do not report a study as ready while `plan`
+exits non-zero. (`--skip-config-check` opts out, but only use it if composing is
+genuinely impossible here.)
+
+Report the expanded plan and the config-check line to the user.
+
+Optionally, smoke the whole grid for free before any LLM spend by temporarily
+adding `sim.llm.provider: scripted` (and a small `num_steps`) to
+`run_defaults.overrides` and running `run`. Caveat: scripted validates PLUMBING
+only — probe answers come back `null` and `open_ended` agents repeat one canned
+action, so no metric is meaningful. Remove the override afterwards.
 
 ---
 

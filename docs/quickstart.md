@@ -35,6 +35,14 @@ For a smoke test without model API calls, use the scripted model provider:
 uv run silisocs sim.llm.provider=scripted
 ```
 
+The `scripted` provider validates **plumbing, not content**: every agent gets
+the same canned model response, so probe answers are unusable (they either fail
+to parse and land as `"probe_return": null` or echo the placeholder text) and an
+`open_ended` turn policy just repeats one canned action over and over. Use it to
+confirm a scenario runs end to end and writes the artifacts you expect — never
+to look at results. To check a config without running any steps at all, see
+[Validate Before You Run](usage.md#validate-before-you-run).
+
 This uses the built-in `default` preset with 10 agents for 5 steps. Override the
 scale when you want a larger run:
 
@@ -67,16 +75,22 @@ prints the exact path as `Output directory: ...` when it starts.
 | File | Content |
 |------|---------|
 | `run_manifest.json` | Self-describing run index: status, health, artifact paths |
+| `run_events.jsonl` | Live progress feed: status transitions and step boundaries |
 | `action_events.jsonl` | All agent actions (posts, replies, likes, reposts) |
-| `probe_events.jsonl` | Probe/survey results (if probes are configured) |
+| `exposure_events.jsonl` | What each agent saw per turn: post ids and their source |
+| `probe_events.jsonl` | Probe/survey results (only if probes are configured) |
 | `prompts_and_responses.jsonl` | Raw LLM prompts and responses |
 | `run_stats.log` | Per-episode timing and worker telemetry |
 | `sim_metrics.json` | Structured metrics summary (durations, resource usage) |
 | `twitter_like.db` | SQLite database with full social media state |
 | `effective_config.yaml` | Runtime-resolved config, API keys masked |
 
-Hydra's composed-config snapshot is written one level up, beside the run
-directory, in `configs/<jobname_format>/`. See
+Two more files land one level up, in Hydra's own run directory
+`outputs/<scenario_name>/<jobname_format>/` — the parent of the run directory:
+the composed-config snapshot in `configs/<jobname_format>/` (so the full path is
+`outputs/default/N10_T5_independent_run1/configs/N10_T5_independent_run1/`), and
+Hydra's per-job log `<scenario_name>_<timestamp>.log`. Both stay put even when
+you override `output_dir`. See
 [Usage Overview: Output](usage.md#output) for the complete list.
 
 ## 3. Try a Different LLM
@@ -105,9 +119,13 @@ For a guided walkthrough of both workflows — with demo videos — see the
 
 ## 5. Analyze a Completed Run
 
-Use the Runs station in Studio, or export a self-contained report from the CLI:
+Use the Runs station in Studio, or export a self-contained report from the CLI.
+`silisocs-report` needs the `analysis` extra — on a lean install it prints
+`silisocs-report requires: pip install "silisocs[analysis]"` and exits 1:
 
 ```sh
+uv sync --extra analysis   # or: pip install "silisocs[analysis]"
+
 uv run silisocs-report outputs/default/N10_T5_independent_run1/default_2026-05-01_12-30-00 \
   --view overview -o report.html
 ```

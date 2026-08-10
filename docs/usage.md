@@ -128,6 +128,60 @@ See [Studio](studio.md) for details.
 
 ---
 
+## Validate Before You Run
+
+`silisocs-config-dry-run` builds the *real* runtime from a config and then runs
+**zero steps**. It is the cheap way to find out that a scenario is wired
+correctly before you spend an hour of API budget on it — `silisocs doctor`
+points at it for exactly this reason.
+
+```sh
+# Validate ONE scenario you are authoring
+uv run silisocs-config-dry-run --config-path scenarios/misinformation
+
+# Validate every scenario and replication in a checkout
+uv run silisocs-config-dry-run --project-root .
+```
+
+| Flag | Default | What it checks |
+|------|---------|----------------|
+| `--config-path <dir>` | unset | Exactly one scenario config directory. Accepts either the config dir (`scenarios/election/conf`) or the scenario root that contains it (`scenarios/election`) |
+| `--project-root <dir>` | `.` | Every config discovered under the checkout: the packaged defaults in `src/silisocs/conf/`, plus `scenarios/**/conf/` and `replications/**/conf/` |
+
+Each config directory expands into one target per `world/*.yaml` variant plus
+one per `env/*.yaml` variant, so `--config-path scenarios/misinformation`
+(one world, three env variants) checks four combinations. A matching
+`agents/<variant>.yaml` or `env/<variant>.yaml` is selected automatically.
+
+Every target is forced onto the `scripted` provider (`sim.llm.provider`,
+`sim.llm.name`, and `sim.llm.extra_kwargs` are overridden), so **no API key is
+needed and no model is called**. Output goes to a temporary directory that is
+deleted afterwards.
+
+**Output and exit codes.** Whenever it finds targets, it prints a
+`Dry-run summary: N passed, N skipped, N failed (total=N)` line, then the
+command, exit code, and error tail of each failure.
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | Every target built, or only failed on a missing optional dependency (`datasets`/`hf`, `concordia`), which is reported as *skipped* rather than failed |
+| `1` | At least one target failed, or no targets were discovered (nothing under `--project-root`, or a `--config-path` with no `world/*.yaml`), or `--config-path` is not a directory |
+
+**What it catches**: config composition and Hydra group errors, unresolvable
+interpolations, [config validation](configuration.md) errors, bad `class_path`
+values and unknown [slot](configuration.md#slots) `params`, agent-builder and
+persona-pipeline failures (including missing data files), and backend/GM/engine
+construction plus runtime initialization — everything up to the first step.
+
+**What it does not catch**: anything that only happens once agents act — action
+prompt/parse behavior, [probe](probes.md) deployment and parsing, per-step
+recsys refreshes, checkpointing, and of course the quality of real model output.
+For that, run the scenario for a couple of steps with
+`sim.llm.provider=scripted` (see the caveat in the
+[Quick Start](quickstart.md#1-run-the-default-scenario)).
+
+---
+
 ## Configuration System
 
 The project uses [Hydra](https://hydra.cc/) for hierarchical YAML configuration
@@ -532,21 +586,54 @@ path you give — see
 | `run_events.jsonl` | JSONL | The runner's live feed: versioned rows for status transitions and step boundaries (`step_started`/`step_finished`), appended as the run progresses. Tail this to observe a run — Studio's watch view does |
 | `action_events.jsonl` | JSONL | Every backend action that COMMITTED a state change (or performed a deliberate logged read), with episode index, Game Master name, backend type, source user, and action data. Rejected, failed, and idempotent calls are not recorded |
 | `exposure_events.jsonl` | JSONL | What each agent SAW per turn: post ids + per-post source (`follower`/`recsys:<type>`). On by default; disable via `env.gm.components.observe.params.log_exposures: false` |
-| `probe_events.jsonl` | JSONL | Probe/survey responses per agent per deployment step |
+| `probe_events.jsonl` | JSONL | Probe/survey responses per agent per deployment step. Written only when probes are configured and deployed |
 | `prompts_and_responses.jsonl` | JSONL | Every LLM call: prompt, response, episode index, and agent name |
 | `run_stats.log` | Text | Per-episode timing, worker counts, retry telemetry, and startup phase durations |
 | `sim_metrics.json` | JSON | Structured metrics summary: system info, per-episode durations, worker limits, resource snapshots (CPU/memory), and aggregate statistics |
 | `<platform>.db` | SQLite | Full social media state (users, posts, replies, likes, follows). Use with the [built-in visualizers](backends.md#built-in-visualizers) to browse |
 | `effective_config.yaml` | YAML | The runtime-resolved config, with every `api_key` masked |
 
-One level up, beside the run directory, Hydra writes its own snapshot into
-`configs/<jobname_format>/`: `config.yaml` (composed config), `hydra.yaml`,
-`overrides.yaml` (the CLI overrides for this run), and a copy of
-`effective_config.yaml`.
+Two more files land in Hydra's own run directory,
+`outputs/<scenario_name>/<jobname_format>/`, which is the **parent** of the run
+directory above:
+
+| Path | Description |
+|------|-------------|
+| `configs/<jobname_format>/` | Hydra's snapshot: `config.yaml` (composed config), `hydra.yaml`, `overrides.yaml` (the CLI overrides for this run), and a copy of `effective_config.yaml` |
+| `<scenario_name>_<timestamp>.log` | Hydra's per-job log — the runner's Python logging output for this job, named after the Hydra job name |
+
+Both stay outside `output_dir`, so overriding `output_dir` moves the artifact
+table above but leaves these two where Hydra put them.
 
 `effective_config.yaml` (both copies) is written with every
 `api_key` masked as `**redacted**`, so a run directory stays shareable even when a
 key was set in config rather than the environment.
+
+### Run Manifest
+
+`run_manifest.json` is the run's self-describing index — the file `load_run`
+reads, and the one your own scripts should read instead of re-deriving the
+layout:
+
+| Field | Description |
+|-------|-------------|
+| `schema_version` | Manifest schema version (currently `1`) |
+| `status` | `"success"`, `"failed"`, or `"running"` while the run is in flight. **Not** a quality signal — see [Run Health](#run-health) |
+| `error` | Failure message when `status` is `"failed"`, else `null` |
+| `scenario`, `seed`, `num_agents`, `num_steps` | The resolved run parameters |
+| `llm_name` | The configured `sim.llm.name` — what the scenario *declared* |
+| `llm_provider` | The provider the run actually **used**. `sim.llm.disabled=true` reports `"disabled"`; `sim.llm.provider=scripted` reports `"scripted"` |
+| `game_masters` | One entry per GM: name, backend type and class path, database file, declared viewer capability, and event semantics |
+| `llm_usage` | Token/call totals, per model and per phase (`probe`/`action`/`other`) |
+| `health` | The run-health block — see [Run Health](#run-health) |
+| `artifacts` | Relative paths to every artifact this run wrote, including per-GM event logs and checkpoints |
+| `provenance` | Git commit/branch/dirty flag, Python version, platform, package version, and `uv.lock` hash |
+
+Read `llm_provider` before trusting `llm_name` for provenance: an offline
+`sim.llm.provider=scripted` run keeps whatever `sim.llm.name` the scenario
+declared (e.g. `gpt-4o-mini`), so `llm_name` alone reads as though a real model
+had been called. `llm_provider` is also mirrored into `sim_metrics.json` under
+`meta`.
 
 ### Run Health
 
@@ -567,12 +654,36 @@ raises and fails the run instead of being counted.
 | `harness_tool_failures` | Harness tool calls that failed inside a harness turn |
 | `recsys_update_failures` | Scheduled recommendation refreshes that failed (the run continued on the previous rows) |
 | `routing_fallbacks` | Branch routing calls that fell back to a default choice |
-| `silent_backends` | Backends that committed no action events (names in the manifest) |
 
-Zero on every counter is the only clean run; a non-zero count means results are
-partial in a specific, named way. The counter set lives in one registry
+Those nine are the whole registry
 (`silisocs.evaluations.vocabulary.HEALTH_COUNTERS`), so a new counter reaches the
-warning, the manifest, and the artifact loader together.
+warning, the manifest, and the artifact loader together. Zero on every counter is
+the only clean run; a non-zero count means results are partial in a specific,
+named way.
+
+The `health` block in `run_manifest.json` carries one extra key that is **not** a
+counter: `silent_backends` is a *list of names* — the game masters whose backend
+committed no structured action events at all, meaning analysis of that backend
+will show nothing it did. It gets its own `⚠ NO ACTION EVENTS` warning line at
+the end of the run, and `RunArtifact.health` synthesizes it into a count (the
+length of that list) so it sits alongside the counters when you read a run back.
+
+!!! warning "A degraded run still exits 0"
+    Health counters never change the process exit code and never change
+    `status`. A run in which **every** agent turn failed still finishes with
+    `status: "success"` in `run_manifest.json` and exit code `0` — `status`
+    only becomes `"failed"` when the run itself raised. The degraded-run
+    warning on stderr and the `health` block are the signals.
+
+    So CI and orchestration scripts must inspect manifest health, not `$?`:
+
+    ```python
+    from silisocs.evaluations.run_artifact import load_run
+
+    run = load_run(run_dir)
+    if any(run.health.values()):
+        raise SystemExit(f"degraded run: {run.health}")
+    ```
 
 Note the split for recommendations: a recsys type you configured that cannot be
 *initialized* (unsupported name, missing embedding dependency) is a config error
@@ -600,54 +711,175 @@ Each line in `action_events.jsonl` is a JSON object:
 }
 ```
 
-### Probe Events Format
+### Exposure Events Format
 
-Each line in `probe_events.jsonl`:
+Each line in `exposure_events.jsonl` records what one agent SAW on one turn:
 
 ```json
 {
-  "episode": 5,
-  "event_type": "probe",
-  "event_index": 0,
-  "data": {
-    "agent": "Alice Smith",
-    "probe_type": "NumericRatingProbe",
-    "question": "Rate your satisfaction 1-10",
-    "raw_response": "I'd say about a 7",
-    "probe_return": "7"
-  }
+  "agent": "Alex",
+  "timeline_mode": "hybrid_recsys_follower",
+  "recsys_type": "",
+  "posts": [
+    {"id": 127, "author": "blair", "source": "follower", "rank": 0},
+    {"id": 131, "author": "casey", "source": "recsys:tfidf", "rank": 1}
+  ],
+  "gm_name": "twitter_like_gm",
+  "backend_type": "twitter_like",
+  "episode": 0,
+  "event_type": "exposure",
+  "event_index": 0
 }
 ```
+
+`posts` is empty when the agent's timeline had nothing to show — normal on the
+first step, before anyone has posted.
+
+### Run Events Format
+
+`run_events.jsonl` is the live progress feed, appended as the run executes.
+Every row carries a schema version `v`, a wall-clock `ts`, and a `kind`:
+
+```json
+{"v": 1, "ts": 1786320088.844, "kind": "status", "status": "running"}
+{"v": 1, "ts": 1786320088.904, "kind": "step_started", "step": 0}
+{"v": 1, "ts": 1786320089.029, "kind": "step_finished", "step": 0}
+{"v": 1, "ts": 1786320089.159, "kind": "status", "status": "success", "error": null}
+```
+
+### Probe Events Format
+
+Each line in `probe_events.jsonl` shares the flat event envelope
+(`source_user`/`label`/`data`/`episode`/`event_type`/`event_index`) with
+`action_events.jsonl`, plus a probe-specific `anchor`:
+
+```json
+{
+  "source_user": "Alice",
+  "label": "believed_claim",
+  "data": {
+    "probe_type": "BelievedClaim",
+    "raw_response": "The claim about the water supply is unverified.",
+    "probe_return": "no",
+    "probe_mode": "single_structured_lines"
+  },
+  "anchor": "pre_step",
+  "episode": 1,
+  "event_type": "probe",
+  "event_index": 0
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `source_user` | The probed agent's name |
+| `label` | The probe's name — the same key you filter and aggregate on |
+| `data.probe_type` | The probe class that produced the row |
+| `data.raw_response` | The model text the probe parsed |
+| `data.probe_return` | The parsed answer, or `null` when the response could not be parsed into one |
+| `data.probe_mode` | How the answer was obtained: `single_structured_lines` (one batched multi-probe call), `single_probe` (one call per probe), or `single_probe_fallback` (batched parse failed, retried individually) |
+| `anchor` | The loop anchor the probe fired at: `pre_step`, `post_step`, or `run_end` |
+| `episode` | Step index the probe fired at (`run_end` rows carry the final step) |
+| `event_index` | Monotonic index within `probe_events.jsonl` |
+
+A `null` `probe_return` with a non-empty `raw_response` means the model answered
+but the probe could not parse it — count those before drawing conclusions from a
+probe series. See [Probes](probes.md) for the probe catalog and scheduling.
 
 ### Simulation Metrics
 
-`sim_metrics.json` provides structured data for analysis:
+`sim_metrics.json` provides structured data for analysis. It has exactly seven
+top-level keys — `system`, `meta`, `counters`, `total_sim_duration_s`,
+`phase_timings`, `episode_metrics`, and `resource_snapshots`:
 
 ```json
 {
-  "metadata": {
-    "num_agents": 10,
-    "num_steps": 5,
-    "world": "election",
-    "llm": {"name": "gpt-4o"},
-    "agent_names": ["Alice Smith", "Bob Jones", "..."]
+  "system": {
+    "platform": "Linux-5.14.0-x86_64-with-glibc2.34",
+    "python": "3.12.13",
+    "cpu_count_logical": 64,
+    "cpu_count_physical": 64,
+    "total_ram_mb": 257379.0
   },
-  "total_duration_s": 1234.5,
-  "episodes": [
+  "meta": {
+    "num_agents": 10,
+    "num_game_masters": 1,
+    "num_steps": 2,
+    "seed": 1,
+    "scenario": "default",
+    "llm_name": "gpt-4o-mini",
+    "llm_provider": "scripted",
+    "output_dir": "/abs/path/to/run",
+    "agent_names": ["Alex", "Blair", "..."],
+    "llm_usage": {
+      "per_model": [
+        {"model": "gpt-4o-mini", "prompt_tokens": 0, "completion_tokens": 0,
+         "total_tokens": 0, "calls_with_usage": 0, "calls_without_usage": 0}
+      ],
+      "totals": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
+                 "calls_with_usage": 0, "calls_without_usage": 0},
+      "by_phase": {"probe": {"...": 0}, "action": {"...": 0}, "other": {"...": 0}},
+      "pricing_applied": false
+    }
+  },
+  "counters": {},
+  "total_sim_duration_s": 0.488,
+  "phase_timings": [
+    {"phase": "config_validation", "duration_s": 0.0152},
+    {"phase": "build_game_masters", "duration_s": 0.0039},
+    {"phase": "build_agents", "duration_s": 0.0043},
+    {"phase": "model_creation", "duration_s": 0.0003},
+    {"phase": "runtime_construction", "duration_s": 0.0177},
+    {"phase": "engine_initialize", "duration_s": 0.0075},
+    {"phase": "engine_run_loop", "duration_s": 0.2525}
+  ],
+  "episode_metrics": [
     {
-      "episode": 1,
-      "duration_s": 6.2,
-      "active_agents": 145,
-      "worker_limit": 200,
-      "retry_count": 3
+      "episode": 0,
+      "duration_s": 0.124,
+      "total_agents": 10,
+      "active_agents": 10,
+      "skipped": false,
+      "degraded": false,
+      "failed_turns": [],
+      "game_master": "twitter_like_gm",
+      "worker_limit": 10,
+      "requested_workers": 10,
+      "configured_worker_cap": 1000,
+      "phase_timings": {"step_action": 0.0898},
+      "retry_telemetry": {
+        "model_count": 1, "retries_total": 0, "calls_total": 0,
+        "failed_calls_total": 0, "failure_ratio": 0.0,
+        "per_model": ["..."], "usage": {"...": 0}
+      },
+      "probe_phase": {"deployed": false, "total_agents": 10, "selected_agents": 0,
+                      "duration_s": 0.0, "worker_limit": 0, "retry": {"...": 0}},
+      "action_phase": {"active_agents": 10, "duration_s": 0.0898, "failed_turns": 0,
+                       "retry": {"...": 0}}
     }
   ],
-  "resources": {
-    "start": {"cpu_percent": 12.5, "memory_mb": 1024},
-    "end": {"cpu_percent": 45.2, "memory_mb": 3072}
-  }
+  "resource_snapshots": [
+    {
+      "label": "sim_start",
+      "timestamp": 1786320088.669,
+      "cpu_percent_process": 0.0,
+      "cpu_percent_system": 7.3,
+      "memory_rss_mb": 69.99,
+      "memory_vms_mb": 314.73,
+      "memory_percent": 0.027,
+      "system_memory_percent": 59.9,
+      "open_file_descriptors": 1,
+      "thread_count": 1,
+      "gpus": []
+    }
+  ]
 }
 ```
+
+`counters` holds the run-health counters ([Run Health](#run-health)) and is
+empty on a clean run. `resource_snapshots` is one row per labelled sample
+(`sim_start`, `episode_<n>_end`, ...), and `episode_metrics` is one row per
+step per game master.
 
 ### Visualizing Output
 

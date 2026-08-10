@@ -65,19 +65,27 @@ Core runtime layers:
 - To add custom policy: implement the relevant policy ABC and reference it via `class_path`
 
 ### 5. Backend Action Layer
-- `src/silisocs/environments/backends/base.py` — ActionCatalog, base app interface
+- `src/silisocs/environments/backends/base.py` — the `BackendApp` base app
+  interface, `ActionDescriptor` / `action_catalog()`, and `ActionResult`.
+  `SocialBackendApp` is a pure capability interface on top of it (timelines,
+  social state, recommendations); `PlatformBackedSocialApp` is the opt-in base
+  that implements those against a local platform engine (`self._platform`)
 - `src/silisocs/environments/backends/round_game.py` — SimultaneousRoundGame, the
   reusable referee base for simultaneous-move repeated games (hidden choice
   buffering, resolve-at-the-round-boundary, payoffs, checkpoint round-trip)
-- `src/silisocs/environments/backends/twitter_like/` — TwitterLikeApp with SQL backend
-- `src/silisocs/environments/backends/reddit_like/` — RedditLikeApp
-- `src/silisocs/environments/backends/mastodon/` — Real Mastodon server integration
-- `src/silisocs/environments/backends/public_goods/` — PublicGoodsApp, the
-  reference game-theoretic backend (subclasses SimultaneousRoundGame)
-- `src/silisocs/environments/backends/messaging/` — MessagingApp, the default
-  agent-to-agent direct-message/broadcast channel (`env=messaging`)
+- The seven built-in backend types (authoritative list: `_BUILTIN_BACKENDS` in
+  `environments/backends/factory.py`, exposed as `registered_backend_types()`):
+  - `twitter_like` — TwitterLikeApp, SQLite platform engine (`PlatformBackedSocialApp`)
+  - `reddit_like` — RedditLikeApp, SQLite platform engine (`PlatformBackedSocialApp`)
+  - `mastodon` — real Mastodon server integration (`SocialBackendApp` directly)
+  - `resource_market` — ResourceMarketApp, in-memory produce/list/buy/consume market
+  - `virtual_space` — VirtualSpaceApp, in-memory rooms agents move between and talk in
+  - `public_goods` — PublicGoodsApp, the reference game-theoretic backend
+    (subclasses SimultaneousRoundGame)
+  - `messaging` — MessagingApp, the default agent-to-agent
+    direct-message/broadcast channel (`env=messaging`)
 - Actions discovered via `@app_action(selectable_name=..., description=...)`
-- To add custom backend: subclass `SocialBackendApp`, implement action methods, register in app factory
+- To add custom backend: subclass `BackendApp` (or `SocialBackendApp` / `PlatformBackedSocialApp` for the social capability surface), implement action methods, and select it with `env.gm.backend.type: custom` + `class_path` — no factory edit
 
 ### 6. Runtime Orchestration
 - `src/silisocs/runtime/execution/session.py` — CLI entrypoint, Hydra config
@@ -406,7 +414,7 @@ their per-GM compatibility validation are in
 ### Adding a Custom LLM Provider
 
 Three routes, **none of which require a core edit**: a named preset
-(`OPENAI_COMPATIBLE_PRESETS` in `runtime/language_models/factory.py`), the
+(`OPENAI_COMPATIBLE_PRESETS` in `runtime/language_models/catalog.py`), the
 `@register_llm_provider("name")` registry decorator on a `LanguageModel`
 subclass (import the module before the run starts — the top-level `plugins:`
 config list, see docs/configuration.md → Plugins), or a
@@ -544,9 +552,10 @@ only here.
 canonical log of actions that committed a state change or performed a deliberate
 logged read. The invocation layer logs plain returns and
 `ActionResult(committed=True)` automatically; return
-`ActionResult(committed=False)` for rejected or idempotent calls. `log=False`
-disables logging for a deliberate read, `log_as` selects a stable label, and
-`data` supplies derived logged fields. `_log_action_event` remains for
+`ActionResult(committed=False)` for rejected or idempotent calls. On the
+`@app_action` decorator, `log=False` disables logging for a deliberate read and
+`log_as` selects a stable label; on the returned `ActionResult`, the `data`
+field supplies derived logged fields. `_log_action_event` remains for
 non-action commit points and direct dispatchers; calling it during an invoked
 action suppresses the automatic row. `invoke_action_detailed(name, kwargs) ->
 (committed, result)` reports the outcome to committed-counting policies.

@@ -46,9 +46,9 @@ concordia = [
 ]
 analysis = [
   "ipympl>=0.9.4,<0.10.0",
-  # `silisocs-report` (analysis/report.py) imports jinja2 at module scope to
-  # render the export through Studio's `_output.html` macro; it must not need
-  # the whole `studio` extra to run.
+  # `silisocs-report` (analysis/report.py) imports jinja2 lazily to render the
+  # export through Studio's `_output.html` macro (missing -> a one-line
+  # install hint); it must not need the whole `studio` extra to run.
   "jinja2>=3.1.4,<4.0.0",
   "matplotlib>=3.9.1,<4.0.0",
   # `EventFrame.to_pandas()` imports pandas lazily; this extra is what supplies it.

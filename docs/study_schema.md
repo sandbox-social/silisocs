@@ -10,18 +10,36 @@ the [Study Runner Reference](experiments.md).
 
 ## Directory Layout
 
+A study's **workspace** is not the directory its `study.yaml` sits in. It is
+derived, once, from the repo root and the study's `study_id` (which itself falls
+back to `study.name`):
+
+```text
+workspace  = <repo-root>/experiments/studies/<study_id>
+generated/ = <repo-root>/experiments/studies/<study_id>/generated
+```
+
+`<repo-root>` is the `--repo-root` option of `silisocs-study` (default: the
+current directory). `run`, `organize`, and `summary-append` all resolve from this
+one derivation, so a study cannot end up with two artifact trees. The practical
+consequence: the repository's `experiments/studies/study_template_v1/study.yaml`
+declares `study_id: recsys_behavior_sweep`, so *its* runs and generated files
+land under `experiments/studies/recsys_behavior_sweep/`. Keep the directory name
+and `study_id` identical unless you mean to split them.
+
 ```
 experiments/
   studies/
     study_template_v1/                   # Canonical study template (repository content)
-    {study_name}/
+    {study_id}/                          # Workspace: derived from study_id, not the study.yaml dir
       study.yaml                        # Study definition (authored, version-controlled)
       eval.py                           # Study-specific evaluation script (authored per study)
       notebook.ipynb                    # Results notebook (authored, version-controlled)
-      SUMMARY.md                        # Human-readable notes and findings
+      SUMMARY.md                        # Human-readable notes and findings (summary-append default)
       generated/                        # Reproducibility locks, eval copies, organized views
-        plan.json                       # Expanded run plan (written by `run`)
+        plan.json                       # Expanded run plan (written at the start of EVERY `run`)
         run_study.sh                    # The plan as a bash script (written by `run`)
+        summary_log.jsonl               # summary-append entries (default location)
         repro_lock.jsonl
         repro_lock.json
         study_index.json
@@ -85,8 +103,8 @@ What matters for the schema is which files each stage writes:
 
 | Stage | Writes |
 |---|---|
-| `plan` | nothing by default (prints the plan; `--output` writes it as JSON) |
-| `run` (start) | `generated/plan.json`, `generated/run_study.sh` |
+| `plan` | nothing by default (prints the plan; `--output` writes it as JSON). Also composes every unique condition config and exits 1 if any fails — see [Plan-time config check](experiments.md#plan-time-config-check) |
+| `run` (start) | `generated/plan.json`, `generated/run_study.sh` — written at the start of **every** `run` invocation, not only `--dry-run`, so a study directory always records what the last invocation was about to launch |
 | `run` | run directories (plus a `RUN_COMPLETE.json` marker per finished run), `generated/logs/` |
 | evaluate | `generated/eval/{hypothesis_id}/{condition_id}/{scenario}/seed_{seed}/{eval_id}/` |
 | record | `generated/repro_lock.jsonl`, `repro_lock.json`, `study_index.json`, `study_enriched.yaml` |
@@ -189,9 +207,20 @@ hypotheses:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `overrides` | dict | Hydra override map for this condition, for example `sim.llm.name: gpt-4o-mini`. |
+| `overrides` | dict | Hydra override map for this condition, for example `sim.llm.name: gpt-4o-mini`. A key inside a slot's `params` block that the base config leaves empty **must** be written with a `++` prefix (quoted, e.g. `"++sim.engine.turn_policy.params.max_actions": 3`) — see below. |
 | `execution.mode` | string | `run` or `reuse_existing`. |
 | `reuse.runs` | list | Existing run records used only when `execution.mode: reuse_existing`. |
+
+**Overrides of slot `params` need `++`.** Hydra struct-validates CLI overrides
+against the base config *before* a scenario's flat `sim.yaml` / `env.yaml` is
+merged, and every [slot](configuration.md#slots) defaults to an empty `params`
+map there. So `sim.engine.turn_policy.params.max_actions: 3` fails with
+`Could not override ... Key 'max_actions' is not in struct`, while
+`"++sim.engine.turn_policy.params.max_actions": 3` works. This applies to
+turn/step/loop policy params, GM component params, memory params, backend
+params, and checkpoint save/restore params. `silisocs-study ... plan` catches it
+before you spend anything — see
+[Overriding slot `params` needs `++`](experiments.md#slot-params-plus-plus).
 
 **`hypotheses.{id}.conditions.{name}.reuse.runs[]` fields:**
 
@@ -241,24 +270,45 @@ hypothesis and is the primary data source for per-hypothesis notebook sections.
   {
     "condition": "gpt4o-mini",
     "scenario": "ai_conference",
-    "checkpoint": "outputs/ai_conference/N30_T10_independent_run1/ai_conference_2026-02-06_23-50-55/checkpoints/step_10_checkpoint.json",
+    "seed": 42,
+    "run_id": "h1_model_capacity__gpt4o-mini__ai_conference__seed42",
+    "status": "success",
+    "run_dir": "experiments/studies/style_diversity/runs/h1_model_capacity/gpt4o-mini/ai_conference/seed_42/run",
+    "eval_paths": {
+      "action_metrics": "experiments/studies/style_diversity/generated/eval/h1_model_capacity/gpt4o-mini/ai_conference/seed_42/action_metrics/action_metrics_detailed.json"
+    },
     "agents": {
-      "Agent Name": { "self_bleu": 0.32, "lexical_diversity": 0.30, ... }
+      "Agent Name": { "self_bleu": 0.32, "lexical_diversity": 0.30 }
     },
     "aggregated": {
-      "self_bleu": 0.45, "lexical_diversity": 0.23, ..., "inter_agent_distinctiveness": 0.56
+      "self_bleu": 0.45, "lexical_diversity": 0.23, "inter_agent_distinctiveness": 0.56
     },
-    "summary": { "total_posts": 96, "agents": 9, "steps": 9, ... }
+    "aggregated_stats": { },
+    "summary": { "total_posts": 96, "agents": 9, "steps": 9 }
   },
   {
     "condition": "gpt4o",
     "scenario": "ai_conference",
-    ...
+    "seed": 42
   }
 ]
 ```
 
-Each entry is the contents of a single `eval.json` plus `condition` and `scenario` keys. One entry per run (multiple entries per condition if replicate runs exist).
+| Field | Description |
+|-------|-------------|
+| `condition` / `scenario` / `seed` | The run's coordinates in the grid |
+| `run_id` | The expanded run id (`{hypothesis}__{condition}__{scenario}__seed{seed}`) |
+| `status` | `success`, `reused`, `skipped_complete`, `failed`, or `timeout` |
+| `run_dir` | Absolute path to the simulation output directory (`null` if the run never produced one) |
+| `eval_paths` | `{eval_id: output path}` for every evaluator that produced an output |
+| `agents` / `aggregated` / `aggregated_stats` / `summary` | The run's merged evaluator payloads (see below) |
+
+One entry per run: replicate seeds of one condition appear as separate entries,
+distinguishable by `seed` and `run_id`. When a run has several evaluators, their
+payloads are **merged** into one entry — `aggregated` and `agents` metrics are
+averaged across the payloads and numeric `summary` keys are summed. There is no
+`checkpoint` key in a `runs.json` entry; use `run_dir` and read the run's
+`checkpoints/` directory if you need one.
 
 Each entry also carries an `aggregated_stats` map (empty when a run has fewer than two evaluator payloads). For every numeric metric that was averaged it reports replicate statistics:
 
@@ -371,15 +421,19 @@ Generated at the study level. Two sections: a flat `conditions` list for per-run
       "hypothesis": "h1_model_capacity",
       "condition": "gpt4o-mini",
       "scenario": "ai_conference",
-      "aggregated": { "self_bleu": 0.45, "lexical_diversity": 0.23, ... },
+      "seed": 42,
+      "run_id": "h1_model_capacity__gpt4o-mini__ai_conference__seed42",
+      "aggregated": { "self_bleu": 0.45, "lexical_diversity": 0.23 },
       "summary": { "total_posts": 96, "agents": 9, "steps": 9 }
     },
     {
       "hypothesis": "h1_model_capacity",
-      "condition": "gpt4o",
+      "condition": "gpt4o-mini",
       "scenario": "ai_conference",
-      "aggregated": { ... },
-      "summary": { ... }
+      "seed": 43,
+      "run_id": "h1_model_capacity__gpt4o-mini__ai_conference__seed43",
+      "aggregated": { },
+      "summary": { }
     }
   ],
   "metrics_by_condition": {
@@ -395,7 +449,24 @@ Generated at the study level. Two sections: a flat `conditions` list for per-run
 }
 ```
 
-`conditions` contains one entry per (hypothesis, condition, scenario) triple, identical in shape to a per-run `eval.json` entry but without per-agent detail. `metrics_by_condition` averages each metric across scenarios, nested by hypothesis so condition names that appear in multiple hypotheses don't collide.
+`conditions` contains **one entry per run**, not one per (hypothesis, condition,
+scenario) triple: replicate seeds of the same condition each get their own
+entry, and `seed` plus `run_id` are what tell them apart. Each entry carries
+`hypothesis`, `condition`, `scenario`, `seed`, `run_id`, and the run's merged
+`aggregated` and `summary` blocks (no per-agent detail — that stays in
+`runs.json`).
+
+`metrics_by_condition` is the reduction over those entries: for each
+`(hypothesis, condition)` it averages every `aggregated` metric across the
+entries that reported it — i.e. across scenarios *and* seed replicates —
+nested by hypothesis so condition names that appear in multiple hypotheses don't
+collide.
+
+**Only the `aggregated` block reaches this comparison surface.** An evaluator
+that emits nothing under `aggregated` contributes no comparable metrics, which
+is why a study running only `builtin.activity_summary` / `builtin.probe_summary`
+produces empty `metrics_by_condition` — see
+[Which presets produce comparable metrics](experiments.md#which-presets-produce-comparable-metrics).
 
 A parallel `metrics_stats_by_condition` section reports cross-replicate statistics for each averaged metric: `n`, `mean`, `stdev`, `ci95_low`, `ci95_high` (same field semantics as `aggregated_stats` in `runs.json`). `metrics_by_condition` keeps its plain-mean shape for backward compatibility; use `metrics_stats_by_condition` when you need error bars or confidence intervals across seed replicates.
 
@@ -408,12 +479,13 @@ invokes it automatically via the `builtin.study_eval` preset.
 ### Required CLI interface
 
 ```bash
-# Primary: called by the study runner for each run:
+# Primary: how the study runner invokes it for each run
+# (<python> is the study's resolved interpreter, cwd is the repo root):
 uv run python experiments/studies/{study_name}/eval.py \
     --run-dir <path/to/run_dir> \
     --output  <path/to/eval.json>
 
-# Optional: manual comparison across runs:
+# Optional convention, never used by the runner: manual comparison across runs
 uv run python experiments/studies/{study_name}/eval.py \
     --compare <run_dir1> <run_dir2> ...
 ```
@@ -426,10 +498,13 @@ uv run python experiments/studies/{study_name}/eval.py \
 
 ### Input files
 
-`eval.py` reads from the run directory, not a checkpoint file:
+`eval.py` reads from the run directory, not a checkpoint file. Locate the event
+logs with `resolve_action_event_files` / `load_run` rather than by path — a
+multi-GM run writes them per game master under `<run>/<gm_name>/`:
 
 | File | Required | Purpose |
 |------|----------|---------|
+| `run_manifest.json` | yes, for `load_run` | Run metadata and artifact index |
 | `action_events.jsonl` | yes | Post/reply/repost content: drives all text metrics |
 | `checkpoints/step_*_checkpoint.json` | no | Optional checkpoint state for evaluators that need it. Study runs enable per-step checkpoints by default for evaluator support; tune or disable this via `study.run_defaults.checkpoint_every_n_steps` (or override `sim.checkpoint.every_n_steps` directly in `study.run_defaults.overrides`) if a study does not need them. If absent, checkpoint-derived metrics should be `null` or omitted rather than crashing. |
 | `probe_events.jsonl` | no | Free-text probe responses for `probe_diversity` section |
@@ -474,14 +549,159 @@ The runner resolves `./eval.py` relative to the study directory and raises a cle
 
 ### Writing eval.py for a new study
 
-1. Accept `--run-dir` and `--output` (required) plus `--compare` (optional). See interface above.
-2. Use `load_run_dir(run_dir)` (or equivalent) to obtain posts and raw_log.
-3. Compute metrics; write output as `eval.json` in the schema format above.
-4. Return exit code 0 on success, non-zero on error.
+1. Accept `--run-dir` and `--output` (both required); `--compare` is an optional
+   convenience the runner never uses.
+2. Read the run through the supported loaders, not by rediscovering the file
+   layout:
+   - `silisocs.evaluations.run_artifact.load_run(run_dir) -> RunArtifact` reads
+     the run's required `run_manifest.json` (raising `FileNotFoundError` if it is
+     missing) and gives you `.iter_actions()`, `.iter_exposures()`,
+     `.iter_probes()`, `.iter_harness_events()`, the cached `.actions` /
+     `.exposures` / `.probes` lists, plus `.metrics`, `.status`, `.scenario`,
+     `.seed`, `.num_agents`, `.num_steps`, `.llm_name`, `.health`, and
+     `.provenance`.
+   - `silisocs.evaluations.action_events.resolve_action_event_files(run_dir)`
+     returns the run's action logs directly. **Use it (or `load_run`) rather than
+     opening `<run>/action_events.jsonl`:** a multi-GM run has no flat file — each
+     game master writes `<run>/<gm_name>/action_events.jsonl`, and the resolver
+     returns all of them. `resolve_exposure_event_files` /
+     `resolve_probe_event_files` / `resolve_harness_event_files` are the
+     equivalents for the other streams.
+   - `silisocs.evaluations.run_artifact.iter_jsonl(files)` is the tolerant reader
+     for those paths (it skips blank and malformed lines).
+3. Compute metrics; write `eval.json` in the schema format above.
+4. Exit 0 on success. **A non-zero exit is a loud failure:** the runner counts it,
+   prints `⚠ Evaluators failed: N/M` on stderr, and `run` itself returns 1 (see
+   [Exit status](experiments.md#exit-status-and-evaluator-reporting)). Do not
+   swallow errors to keep the exit code clean.
+
+**Only numeric values under the `aggregated` key reach the study comparison
+surface** — `generated/organized/summary.json`, `metrics_by_condition`, and
+`metrics_stats_by_condition`, which are what the notebooks and Studio's
+condition-comparison panel read. The `summary` and `agents` blocks are per-run
+artifacts only: they are preserved in `runs.json` and in each `conditions` entry,
+but nothing averages or compares them across conditions. Put every number you
+intend to compare in `aggregated`, keep it flat (no nesting), and use plain
+numbers or `null`.
+
+Your script runs under [the same interpreter as the runs it evaluates](experiments.md#the-interpreter-runs-and-evaluators-share)
+(`RUN_STUDY_PYTHON`, else the interpreter running `silisocs-study`), with the
+repo root as its working directory, so `import silisocs...` resolves exactly as
+it did during the run.
+
+#### The `action_events.jsonl` row schema
+
+Each line is one committed action. The fields:
+
+```json
+{
+  "source_user": "Alice",
+  "label": "post",
+  "data": {"content": "Beautiful morning in the neighborhood!", "post_id": 127},
+  "gm_name": "twitter_like_gm",
+  "backend_type": "twitter_like",
+  "episode": 3,
+  "event_type": "action",
+  "event_index": 42
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `source_user` | The acting agent's name (`system` for backend-initiated events) |
+| `label` | The action label, e.g. `post`, `reply`, `repost`, `like` |
+| `data` | Action-specific payload (content, ids, derived logged fields) |
+| `gm_name` / `backend_type` | Which game master and backend committed it |
+| `episode` | The simulation step, 1-based for agent actions |
+| `event_type` | `action` for these rows |
+| `event_index` | Monotonic index within the log |
+
+**Filter out the initialization rows.** World setup writes rows such as
+`init_create_user`, `init_follow`, and a `system`-sourced `initialize` — all at
+`episode: 0`. They describe the starting world, not agent behavior, and counting
+them inflates every action metric. Filter on `label` not starting with `init_`
+plus `source_user != "system"`, or simply take `episode > 0`, whichever matches
+what you are measuring.
+
+#### A complete `eval.py`
+
+Copy this, then replace the metrics. It is a trimmed version of the working
+`experiments/studies/misinformation_cta_demo/eval.py` — read that file for a
+fuller example that also reads probe events.
+
+```python
+#!/usr/bin/env python3
+"""Per-run evaluator: committed action mix for one run directory."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from collections import Counter, defaultdict
+from pathlib import Path
+from typing import Any
+
+from silisocs.evaluations.action_events import resolve_action_event_files
+from silisocs.evaluations.run_artifact import iter_jsonl
+
+CONTENT_LABELS = ("post", "reply", "repost", "like")
+
+
+def evaluate_run_dir(run_dir: Path) -> dict[str, Any]:
+    """Compute per-run scalars from the run's committed action events."""
+    rows = [
+        row
+        for row in iter_jsonl(resolve_action_event_files(run_dir))
+        if row.get("event_type") == "action"
+        and not str(row.get("label", "")).startswith("init_")
+    ]
+    counts = Counter(str(row.get("label")) for row in rows)
+    content_total = sum(counts[label] for label in CONTENT_LABELS)
+
+    per_agent: dict[str, dict[str, float]] = defaultdict(dict)
+    for row in rows:
+        agent, label = str(row.get("source_user") or ""), str(row.get("label"))
+        if agent and label in CONTENT_LABELS:
+            per_agent[agent][label] = per_agent[agent].get(label, 0.0) + 1.0
+
+    aggregated: dict[str, float | None] = {
+        f"{label}_count": float(counts[label]) for label in CONTENT_LABELS
+    }
+    aggregated["amplification_share"] = (
+        (counts["repost"] + counts["like"]) / content_total if content_total else None
+    )
+    # Only numbers under "aggregated" are compared across conditions.
+    return {
+        "source": str(run_dir),
+        "aggregated": aggregated,
+        "agents": dict(per_agent),
+        "summary": {"action_events": len(rows), "content_actions": content_total},
+    }
+
+
+def main() -> None:
+    """Parse --run-dir/--output and write the eval JSON."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run-dir", required=True)
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args()
+    out = Path(args.output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        json.dumps(evaluate_run_dir(Path(args.run_dir)), indent=2, default=str),
+        encoding="utf-8",
+    )
+
+
+if __name__ == "__main__":
+    main()
+```
 
 Studies that don't need custom metrics can omit `eval.py` and use only the
 `builtin.*` presets — see
-[Evaluator presets](experiments.md#evaluator-presets) for the full list.
+[Evaluator presets](experiments.md#evaluator-presets) for the full list, and
+[Which presets produce comparable metrics](experiments.md#which-presets-produce-comparable-metrics)
+for which of them fill `metrics_by_condition`.
 
 ## Notebook Structure
 
