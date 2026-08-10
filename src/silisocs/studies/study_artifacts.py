@@ -278,6 +278,9 @@ def build_summary(eval_results: list[dict[str, Any]]) -> dict[str, Any]:
                 "hypothesis": meta.get("hypothesis"),
                 "condition": meta.get("condition"),
                 "scenario": meta.get("scenario"),
+                # Per-run entries: seed/run_id keep replicates distinguishable.
+                "seed": meta.get("seed"),
+                "run_id": meta.get("run_id"),
                 "aggregated": result.get("aggregated", {}),
                 "summary": result.get("summary", {}),
             }
@@ -459,6 +462,10 @@ def organize_study_outputs(
                     "hypothesis": hyp_id,
                     "condition": cond_id,
                     "scenario": scenario,
+                    # Without these, replicate entries in summary.json are
+                    # byte-identical and cannot be told apart.
+                    "seed": seed,
+                    "run_id": record.get("run_id"),
                 }
                 hyp_rows.append(
                     {

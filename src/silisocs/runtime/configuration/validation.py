@@ -439,6 +439,7 @@ def validate_data_files(cfg: DictConfig, scenario_path: Path) -> None:
 def validate_runtime_structure(cfg: DictConfig) -> None:
     """Validate framework-owned config sections while leaving params open."""
     _reject_renamed_keys(cfg)
+    _reject_root_probes_block(cfg)
     _assert_allowed_keys(cfg, "agents.builder", {"class_path", "params"})
     _assert_allowed_keys(cfg, "agents.persona_pipeline", {"defaults", "classes"})
     _validate_persona_classes(cfg)
@@ -492,6 +493,7 @@ def validate_runtime_structure(cfg: DictConfig) -> None:
     # MODEL_FIELDS), so it must be allowed here without entering MODEL_FIELDS.
     _assert_allowed_keys(cfg, "sim.llm", set(MODEL_FIELDS) | {"pricing"})
     _assert_allowed_keys(cfg, "sim.llm.pricing", {"input_per_1m", "output_per_1m"})
+    _reject_no_op_model_under_tool_calling(cfg)
     provider = OmegaConf.select(cfg, "sim.llm.provider")
     if provider is not None:
         from silisocs.runtime.language_models.catalog import (
@@ -563,6 +565,78 @@ def _reject_renamed_keys(cfg: DictConfig) -> None:
             f"(and in any override you pass, e.g. '++{new_key}=<path>'). "
             f"'{old_key}' is no longer read by the runtime."
         )
+
+
+def _reject_root_probes_block(cfg: DictConfig) -> None:
+    """Fail on a ``probes:`` block at the CONFIG ROOT — nothing reads it.
+
+    Probes live at ``eval.probes``. A ``probes:`` block written into a scenario's
+    ``conf/world/default.yaml`` lands at the root instead, because that file
+    carries ``# @package _global_``; the run then completes normally and emits
+    ZERO probe events, silently dropping the scenario's measurement instrument.
+    Only the flat ``conf/eval.yaml`` (merged under ``eval``) reaches the deployer.
+    """
+    absent = object()
+    if OmegaConf.select(cfg, "probes", default=absent) is absent:
+        return
+    raise ValueError(
+        "Config error: a root-level `probes:` block is not read by anything.\n"
+        "Probes are configured at `eval.probes`, never at the config root.\n\n"
+        "Move the block into your scenario's flat conf/eval.yaml, whose top-level "
+        "keys are merged under `eval`:\n\n"
+        "  # <scenario>/conf/eval.yaml   (no @package directive)\n"
+        "  probes:\n"
+        "    deployment:\n"
+        "      enabled: true\n"
+        "      start_step: 1\n"
+        "      every_n_steps: 1\n"
+        "    probes:\n"
+        "      my_probe:\n"
+        "        probe_name: my_probe\n"
+        "        probe_type: BinaryProbe\n"
+        "        probe_data:\n"
+        "          name: MyProbe\n"
+        "          question: 'Answer yes or no.'\n\n"
+        "A `probes:` block in conf/world/default.yaml lands at the root because that "
+        "file declares `# @package _global_`, so the run would succeed with zero probe "
+        "events. See docs/configuration.md."
+    )
+
+
+def _reject_no_op_model_under_tool_calling(cfg: DictConfig) -> None:
+    """Fail when the no-op model is paired with tool-call parsing.
+
+    ``sim.llm.disabled=true`` (equivalently ``sim.llm.provider=disabled``) builds
+    :class:`NoLanguageModel`, whose ``sample_tool_calls`` returns an EMPTY list.
+    Under ``sim.tool_calling.mode: single|multi`` — the packaged default is
+    ``single`` — the agent layer raises on that empty result, so every agent turn
+    of the run fails and no action is ever committed. That is a config the run
+    cannot legitimately continue past, so it fails at build instead of producing a
+    100%-degraded run that looks like it worked.
+    """
+    disabled_flag = bool(OmegaConf.select(cfg, "sim.llm.disabled") or False)
+    provider = str(OmegaConf.select(cfg, "sim.llm.provider") or "").strip().lower()
+    if not disabled_flag and provider != "disabled":
+        return
+    mode = str(OmegaConf.select(cfg, "sim.tool_calling.mode") or "none").strip().lower()
+    if mode == "none":
+        return
+    selector = "sim.llm.disabled=true" if disabled_flag else "sim.llm.provider=disabled"
+    raise ValueError(
+        f"Config error: {selector} cannot be combined with sim.tool_calling.mode="
+        f"{mode!r}.\n"
+        "The disabled provider is a no-op model: it answers a tool-call action spec "
+        "with an empty tool-call list, which the agent layer rejects — so EVERY agent "
+        "turn would fail and the run would commit no actions.\n\n"
+        "Pick one:\n"
+        "  - sim.llm.provider=scripted  (deterministic offline model that DOES answer "
+        "tool calls; drop sim.llm.disabled) — use this for a smoke run\n"
+        "  - sim.tool_calling.mode=none (keep the no-op model; agents then emit plain "
+        "text that the parsed_action/generic_action resolve components read)\n\n"
+        "This check reads the top-level sim.tool_calling.mode only; a per-GM "
+        "env.gm.tool_calling.mode / env.gm_orchestration.gms.<name>.tool_calling.mode "
+        "override does not exempt it."
+    )
 
 
 def _validate_persona_classes(cfg: DictConfig) -> None:

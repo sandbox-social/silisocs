@@ -5,11 +5,10 @@ from __future__ import annotations
 import argparse
 import base64
 import html
+import importlib
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
-
-import jinja2
 
 from silisocs.analysis.views import View, build_view, load_view
 from silisocs.design.css import css_variables
@@ -25,7 +24,13 @@ def _output_macros() -> Any:
     Rendering the export through the same Jinja macro Studio uses keeps the two
     surfaces in lockstep by construction: a new output type or a layout fix (e.g.
     grid-of-markdown tiles) lands on both at once instead of drifting.
+
+    Imported lazily: jinja2 ships in the ``analysis`` extra, and a module-scope
+    import made the console script die on a raw traceback on a lean install
+    before ``main`` could print the install hint.
     """
+    import jinja2
+
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(str(_STUDIO_TEMPLATES)),
         autoescape=True,
@@ -123,6 +128,20 @@ _REPORT_CSS = (
 )
 
 
+def missing_analysis_extra() -> str | None:
+    """Return the install hint when the `analysis` extra is not importable.
+
+    ``silisocs-report`` renders through Studio's Jinja macro, so a lean install
+    reaches ``main`` and dies on a raw ``ModuleNotFoundError`` traceback. Mirrors
+    how ``silisocs-studio`` reports its own missing extra: one actionable line.
+    """
+    try:
+        importlib.import_module("jinja2")
+    except ImportError:
+        return 'silisocs-report requires: pip install "silisocs[analysis]"'
+    return None
+
+
 def main() -> int:
     """Run the report-export command."""
     parser = argparse.ArgumentParser(description="Render a Silisocs artifact analysis view")
@@ -131,6 +150,10 @@ def main() -> int:
     parser.add_argument("-o", "--output", default="report.html")
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
+    hint = missing_analysis_extra()
+    if hint is not None:
+        print(hint)
+        return 1
     document = render_report(args.artifact_dir, args.view)
     if not args.check:
         Path(args.output).write_text(document, encoding="utf-8")

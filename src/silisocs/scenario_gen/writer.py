@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from silisocs.scenario_gen.specs import ScenarioSpec, StudySpec
+from silisocs.scenario_gen.specs import ProbeSpec, ScenarioSpec, StudySpec
 
 # ---------------------------------------------------------------------------
 # YAML helpers
@@ -63,7 +63,7 @@ def write_scenario(spec: ScenarioSpec, root: Path | str) -> None:
     _write_scenario_yaml(spec, conf)
     _write_agents_yaml(spec, conf)
     _write_env_yaml(spec, conf)
-    _write_eval_yaml(conf)
+    _write_eval_yaml(spec, conf)
     _write_sim_yaml(spec, conf)
 
 
@@ -183,7 +183,12 @@ def _write_env_yaml(spec: ScenarioSpec, conf: Path) -> None:
                     "built_in": "timeline_every_turn",
                     "class_path": None,
                     "params": {
-                        "episode_observation_flow": "fixed_pre",
+                        # Plural list: `timeline_every_turn`
+                        # (social_media.observe.TimelineMakeObservation) takes
+                        # `episode_observation_flows`, and component params are
+                        # strict — the singular spelling belongs to the
+                        # `episode_only` built-in and fails at build here.
+                        "episode_observation_flows": ["fixed_pre"],
                         "timeline_mode": spec.backend.timeline_mode,
                     },
                 },
@@ -208,8 +213,44 @@ def _write_env_yaml(spec: ScenarioSpec, conf: Path) -> None:
     _write(conf / "env.yaml", _dump(data))
 
 
-def _write_eval_yaml(conf: Path) -> None:
-    """Write the eval.yaml probe deployment defaults."""
+def _probe_entry(probe: ProbeSpec) -> dict[str, Any]:
+    """Render one ProbeSpec as an ``eval.probes.probes`` entry."""
+    probe_data: dict[str, Any] = {
+        "name": probe.name or probe.id,
+        "question": probe.question,
+    }
+    if probe.context:
+        probe_data["context"] = probe.context
+    if probe.lo is not None:
+        probe_data["lo"] = probe.lo
+    if probe.hi is not None:
+        probe_data["hi"] = probe.hi
+
+    entry: dict[str, Any] = {
+        "probe_name": probe.id,
+        "probe_type": probe.probe_type,
+        "probe_data": probe_data,
+    }
+    if probe.deployment is not None:
+        # Only the fields the author actually set: an empty override block is
+        # ignored by the deployer, and a half-filled one would shadow the global
+        # deployment defaults with nulls.
+        override = {
+            key: value for key, value in probe.deployment.model_dump().items() if value is not None
+        }
+        if override:
+            entry["deployment"] = override
+    return entry
+
+
+def _write_eval_yaml(spec: ScenarioSpec, conf: Path) -> None:
+    """Write the eval.yaml probe deployment defaults and any declared probes.
+
+    This file is a FLAT scenario group file: it is merged under ``eval``, so its
+    top-level ``probes`` key lands at ``eval.probes``. A ``probes`` block placed
+    in ``world/default.yaml`` (``@package _global_``) instead would land at the
+    config ROOT and be ignored — the runtime rejects that at build time.
+    """
     data = {
         "probes": {
             "deployment": {
@@ -219,7 +260,7 @@ def _write_eval_yaml(conf: Path) -> None:
                 "include_agents": [],
                 "exclude_agents": [],
             },
-            "probes": {},
+            "probes": {probe.id: _probe_entry(probe) for probe in spec.probes},
         },
     }
     _write(conf / "eval.yaml", _dump(data))
@@ -243,7 +284,10 @@ def _write_sim_yaml(spec: ScenarioSpec, conf: Path) -> None:
             "simulation": {
                 "built_in": "seed_posts",
                 "class_path": None,
-                "params": {"type": "llm", "params": {}},
+                # Seed-post provider types are agent | csv | json | fallback |
+                # none (initialization/simulation/seed_posts.py). "agent" is what
+                # every shipped scenario uses: the agent writes its own opener.
+                "params": {"type": "agent", "params": {}},
             },
         },
         "engine": {

@@ -79,6 +79,42 @@ class BackendConfig(BaseModel):
     )
 
 
+class ProbeDeployment(BaseModel):
+    """Per-probe deployment overrides (mirrors ``eval.probes.deployment``).
+
+    Every field is optional; only the ones set are emitted, so an omitted field
+    inherits the scenario's global ``eval.probes.deployment`` block exactly as
+    the probe deployer resolves it.
+    """
+
+    enabled: bool | None = None
+    start_step: int | None = None
+    every_n_steps: int | None = None
+    include_agents: list[str] | None = None
+    exclude_agents: list[str] | None = None
+    include_flows: list[str] | None = None
+    exclude_flows: list[str] | None = None
+
+
+class ProbeSpec(BaseModel):
+    """One measurement instrument, rendered into ``eval.probes.probes.<id>``.
+
+    Mirrors the shipped scenarios' ``conf/eval.yaml`` probe shape: an id key, a
+    ``probe_type``, and a ``probe_data`` block carrying the question the agent
+    is asked. ``lo``/``hi`` are the rating bounds ``NumericRatingProbe`` reads
+    (and its ``{lo}``/``{hi}`` template slots); they are omitted when unset.
+    """
+
+    id: str
+    probe_type: str = "FreeTextProbe"
+    name: str = ""
+    question: str
+    context: str = ""
+    lo: int | None = None
+    hi: int | None = None
+    deployment: ProbeDeployment | None = None
+
+
 class ScenarioSpec(BaseModel):
     """ScenarioSpec."""
 
@@ -96,6 +132,10 @@ class ScenarioSpec(BaseModel):
     network: NetworkConfig = Field(default_factory=NetworkConfig)
     backend: BackendConfig = Field(default_factory=BackendConfig)
     custom_agent_stubs: list[str] = Field(default_factory=list)
+    # Optional: absent (the default) writes an empty `eval.probes.probes` block,
+    # exactly as before. Declaring probes here is the only scaffold path to the
+    # measurement instrument.
+    probes: list[ProbeSpec] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

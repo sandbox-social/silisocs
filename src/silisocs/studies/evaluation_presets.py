@@ -1,12 +1,23 @@
-"""Static evaluator presets shared by the study runner and visual composer."""
+"""Static evaluator presets shared by the study runner and visual composer.
+
+Preset commands start with the :data:`PYTHON_TOKEN` placeholder rather than a
+hard-coded launcher: :func:`silisocs.studies.plan._resolve_eval_spec` swaps it
+for the interpreter the study itself resolves (``RUN_STUDY_PYTHON`` or
+``sys.executable``), so evaluators run under the SAME interpreter as the runs
+they evaluate — including pip-installed, non-``uv`` environments. Custom study
+commands may use the same ``{python}`` token.
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
+#: Placeholder for the study's resolved Python interpreter.
+PYTHON_TOKEN = "{python}"
+
 BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
     "builtin.activity_summary": {
-        "command": ["uv", "run", "python", "-m", "silisocs.evaluations.activity_summary"],
+        "command": [PYTHON_TOKEN, "-m", "silisocs.evaluations.activity_summary"],
         "input_mode": "run_dir",
         "run_dir_arg": "--run-dir",
         "output_arg": "--output",
@@ -14,9 +25,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
     },
     "builtin.probe_summary": {
         "command": [
-            "uv",
-            "run",
-            "python",
+            PYTHON_TOKEN,
             "-m",
             "silisocs.evaluations.activity_summary",
             "--mode",
@@ -29,9 +38,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
     },
     "builtin.action_metrics_detailed": {
         "command": [
-            "uv",
-            "run",
-            "python",
+            PYTHON_TOKEN,
             "-m",
             "silisocs.evaluations.default_evaluators",
             "--mode",
@@ -44,9 +51,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
     },
     "builtin.probe_metrics_detailed": {
         "command": [
-            "uv",
-            "run",
-            "python",
+            PYTHON_TOKEN,
             "-m",
             "silisocs.evaluations.default_evaluators",
             "--mode",
@@ -59,9 +64,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
     },
     "builtin.probe_binary_detailed": {
         "command": [
-            "uv",
-            "run",
-            "python",
+            PYTHON_TOKEN,
             "-m",
             "silisocs.evaluations.default_evaluators",
             "--mode",
@@ -74,9 +77,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
     },
     "builtin.probe_numeric_detailed": {
         "command": [
-            "uv",
-            "run",
-            "python",
+            PYTHON_TOKEN,
             "-m",
             "silisocs.evaluations.default_evaluators",
             "--mode",
@@ -89,9 +90,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
     },
     "builtin.probe_choice_detailed": {
         "command": [
-            "uv",
-            "run",
-            "python",
+            PYTHON_TOKEN,
             "-m",
             "silisocs.evaluations.default_evaluators",
             "--mode",
@@ -104,9 +103,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
     },
     "builtin.probe_freetext_detailed": {
         "command": [
-            "uv",
-            "run",
-            "python",
+            PYTHON_TOKEN,
             "-m",
             "silisocs.evaluations.default_evaluators",
             "--mode",
@@ -118,7 +115,7 @@ BUILTIN_EVAL_PRESETS: dict[str, dict[str, Any]] = {
         "output_subpath": "probe_freetext_detailed.json",
     },
     "builtin.study_eval": {
-        "command": ["uv", "run", "python", "./eval.py"],
+        "command": [PYTHON_TOKEN, "./eval.py"],
         "input_mode": "run_dir",
         "run_dir_arg": "--run-dir",
         "output_arg": "--output",

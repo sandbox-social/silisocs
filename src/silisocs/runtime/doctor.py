@@ -102,8 +102,12 @@ def run_doctor(output_dir: str | Path | None = None) -> int:
         any_key = any_key or is_set
         _line(True if is_set else None, f"{provider}: {env_name} {'set' if is_set else 'unset'}")
     if not any_key:
+        # NOT sim.llm.disabled: the no-op model returns no tool calls, and the
+        # packaged sim.tool_calling.mode is `single`, so that flag fails every
+        # agent turn (and now fails at build). `scripted` answers tool calls.
         print(
-            "  ! no provider key set — runs need one, or sim.llm.disabled=true / a local api_base"
+            "  ! no provider key set — runs need one, or sim.llm.provider=scripted "
+            "(offline deterministic model) / a local api_base"
         )
 
     print("\nOutput directory:")

@@ -118,7 +118,12 @@ def test_config_dry_run_selects_matching_external_agent_and_env_groups(tmp_path)
     assert "env=resource_market" in command
     assert "++sim.llm.provider=scripted" in command
     assert "++sim.llm.name=scripted" in command
-    assert "++sim.llm.disabled=true" in command
+    # NOT sim.llm.disabled: the no-op model cannot answer a tool-call spec, and
+    # the config validator now rejects that pairing outright.
+    assert "++sim.llm.disabled=true" not in command
+    # Forcing `scripted` invalidates a scenario's provider-specific extra_kwargs
+    # (e.g. an HTTP provider's `extra_body`), so they are cleared with it.
+    assert "++sim.llm.extra_kwargs=null" in command
 
 
 def test_malformed_override_fails_instead_of_being_silently_dropped(tmp_path, monkeypatch) -> None:

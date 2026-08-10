@@ -187,6 +187,10 @@ def build_run_manifest(
         "num_agents": meta.get("num_agents"),
         "num_steps": meta.get("num_steps"),
         "llm_name": meta.get("llm_name"),
+        # The resolved provider, not just the model name: a `provider=scripted`
+        # (or `disabled`) run keeps the scenario's `sim.llm.name`, so llm_name
+        # alone reads as if a real model answered.
+        "llm_provider": meta.get("llm_provider"),
         "game_masters": [_game_master_record(gm, out) for gm in (game_masters or [])],
         "llm_usage": meta.get("llm_usage"),
         "health": {

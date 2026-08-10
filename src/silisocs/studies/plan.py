@@ -10,6 +10,9 @@ Every function here is pure: no subprocess, no filesystem writes, no argparse.
 Studio, tests, and analysis code can import this module to reason about what a
 study *would* run without pulling in the execution stack
 (:mod:`silisocs.studies.execute`) or the CLI (:mod:`silisocs.studies.cli`).
+The one function that touches the outside world is
+:func:`validate_condition_configs`, which READS scenario config files by
+composing each unique condition through Hydra (still no writes, no subprocess).
 """
 
 from __future__ import annotations
@@ -23,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from silisocs.evaluations.study_matrix import resolve_scenarios, resolve_seeds
-from silisocs.studies.evaluation_presets import BUILTIN_EVAL_PRESETS
+from silisocs.studies.evaluation_presets import BUILTIN_EVAL_PRESETS, PYTHON_TOKEN
 from silisocs.studies.study_artifacts import load_study_definition
 from silisocs.studies.study_schema import validate_schema
 from silisocs.studies.study_types import (
@@ -58,10 +61,26 @@ __all__ = [
     "planned_run_dir",
     "preflight_summary",
     "render_bash_script",
+    "resolve_runner_python",
     "resolve_summary_paths",
     "study_generated_dir",
+    "study_workspace_dir",
     "submitit_group_filters",
+    "unique_condition_configs",
+    "validate_condition_configs",
 ]
+
+
+def resolve_runner_python() -> str:
+    """Return the interpreter every study subprocess is launched with.
+
+    Defaults to the interpreter running this study (it already has silisocs
+    importable), which is correct for both ``uv run`` repo workflows and
+    pip-installed venvs. ``RUN_STUDY_PYTHON`` overrides it for explicit control.
+    Runs AND evaluators share this resolution — an evaluator launched with a
+    different interpreter than its run cannot import what the run imported.
+    """
+    return os.environ.get("RUN_STUDY_PYTHON", "").strip() or sys.executable
 
 
 def load_yaml(path: Path) -> dict[str, Any]:
@@ -86,6 +105,13 @@ def _normalize_override_value(value: Any) -> str:  # noqa: PLR0911
         if all(ch in safe for ch in value):
             return value
         return json.dumps(value)
+    # Hydra's override grammar, not JSON: dict keys are bare identifiers, so
+    # json.dumps output ({"k": ...}) is rejected with "no viable alternative".
+    if isinstance(value, dict):
+        items = ",".join(f"{k}:{_normalize_override_value(v)}" for k, v in value.items())
+        return "{" + items + "}"
+    if isinstance(value, (list, tuple)):
+        return "[" + ",".join(_normalize_override_value(v) for v in value) + "]"
     return json.dumps(value, separators=(",", ":"))
 
 
@@ -163,8 +189,13 @@ def _resolve_eval_spec(  # noqa: C901
         raise StudyConfigError(f"{source}.id must be non-empty")
 
     command = resolve_command_tokens(eval_item.get("command"), f"{source}.command")
+    runner_python = resolve_runner_python()
     resolved_cmd: list[str] = []
-    for token in command:
+    for raw_token in command:
+        # Evaluators run under the SAME interpreter as the runs (see
+        # resolve_runner_python): a hard-coded launcher breaks every non-uv
+        # environment with ModuleNotFoundError.
+        token = raw_token.replace(PYTHON_TOKEN, runner_python)
         if token.startswith("./"):
             resolved = (study_root / token).resolve()
             if not resolved.exists():
@@ -515,19 +546,9 @@ def expand_runs(  # noqa: C901, PLR0912, PLR0915
     return run_specs, global_eval_specs, study
 
 
-def build_run_command(spec: RunSpec) -> list[str]:
-    """Render the runner argv for one expanded run (or its ``command`` override)."""
-    if spec.command_override:
-        return list(spec.command_override)
-
-    # Default to the interpreter running this study (it already has silisocs
-    # importable), which is correct for both `uv run` repo workflows and
-    # pip-installed venvs. RUN_STUDY_PYTHON overrides it for explicit control.
-    runner_python = os.environ.get("RUN_STUDY_PYTHON", "").strip() or sys.executable
-    cmd = [runner_python, "-m", spec.runner_module]
-    if spec.config_path:
-        cmd.extend(["--config-path", spec.config_path])
-
+def runner_overrides(spec: RunSpec) -> list[str]:
+    """Render the Hydra override tokens one expanded run is launched with."""
+    cmd: list[str] = []
     cmd.append(f"seed={spec.seed}")
     cmd.append(f"run_name={_normalize_override_value(spec.run_name)}")
     if spec.output_dir:
@@ -546,6 +567,18 @@ def build_run_command(spec: RunSpec) -> list[str]:
             continue
         cmd.append(f"{key}={_normalize_override_value(spec.overrides[key])}")
 
+    return cmd
+
+
+def build_run_command(spec: RunSpec) -> list[str]:
+    """Render the runner argv for one expanded run (or its ``command`` override)."""
+    if spec.command_override:
+        return list(spec.command_override)
+
+    cmd = [resolve_runner_python(), "-m", spec.runner_module]
+    if spec.config_path:
+        cmd.extend(["--config-path", spec.config_path])
+    cmd.extend(runner_overrides(spec))
     return cmd
 
 
@@ -674,6 +707,85 @@ def preflight_summary(run_specs: list[RunSpec]) -> list[str]:
     return lines
 
 
+def unique_condition_configs(run_specs: list[RunSpec]) -> list[RunSpec]:
+    """Return one representative spec per unique (config_path, override set).
+
+    Replicate seeds of one condition compose identically, so the plan-time
+    config check only has to compose each distinct combination once. Runs with a
+    full ``command`` override (or ``reuse_existing`` mode) are not composed by
+    the runner at all and are skipped.
+    """
+    seen: set[tuple[Any, ...]] = set()
+    representatives: list[RunSpec] = []
+    for spec in run_specs:
+        if spec.execution_mode != "run" or spec.command_override:
+            continue
+        key = (
+            spec.config_path,
+            spec.working_directory,
+            tuple(sorted((name, repr(value)) for name, value in spec.overrides.items())),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        representatives.append(spec)
+    return representatives
+
+
+def _config_dir_for_check(spec: RunSpec, repo_root: Path) -> str | None:
+    """Resolve a spec's ``config_path`` the way the runner subprocess would.
+
+    The runner resolves ``--config-path`` against its own cwd (the run's
+    ``working_directory``, else the repo root); the plan check may run from
+    anywhere, so relative paths are re-anchored before composing. A value that
+    is not a directory is passed through untouched so scenario-name references
+    still resolve.
+    """
+    if not spec.config_path:
+        return None
+    candidate = Path(spec.config_path).expanduser()
+    if candidate.is_absolute():
+        return str(candidate)
+    base = repo_root
+    if spec.working_directory:
+        working_directory = Path(spec.working_directory).expanduser()
+        base = (
+            working_directory if working_directory.is_absolute() else repo_root / working_directory
+        )
+    resolved = base / candidate
+    return str(resolved) if resolved.is_dir() else spec.config_path
+
+
+def validate_condition_configs(run_specs: list[RunSpec], repo_root: Path) -> list[dict[str, str]]:
+    """Compose every unique condition and return one record per failure.
+
+    A study whose overrides do not compose loses 100% of its runs at startup,
+    with nothing in the plan to hint at it. Composing here (read-only, once per
+    unique combination, no run) surfaces the Hydra error while it is still
+    cheap to fix.
+    """
+    from silisocs.runtime.execution.session import compose_config
+
+    failures: list[dict[str, str]] = []
+    for spec in unique_condition_configs(run_specs):
+        overrides = runner_overrides(spec)
+        try:
+            compose_config(scenario=_config_dir_for_check(spec, repo_root), overrides=overrides)
+        except Exception as exc:
+            failures.append(
+                {
+                    "run_id": spec.run_id,
+                    "hypothesis": spec.hypothesis_id,
+                    "condition": spec.condition_id,
+                    "scenario": spec.scenario,
+                    "config_path": spec.config_path or "",
+                    "overrides": " ".join(overrides),
+                    "error": str(exc).strip(),
+                }
+            )
+    return failures
+
+
 def planned_run_dir(spec: RunSpec, repo_root: Path) -> Path | None:
     """Resolve the planned output directory the same way _run_one_spec does."""
     if not spec.output_dir:
@@ -684,39 +796,43 @@ def planned_run_dir(spec: RunSpec, repo_root: Path) -> Path | None:
     return planned
 
 
-def _study_workspace_dir(repo_root: Path, study: dict[str, Any]) -> Path:
+def study_workspace_dir(repo_root: Path, study: dict[str, Any]) -> Path:
+    """Return the study's workspace directory under the repo root.
+
+    Single source of truth for where a study's artifacts live. ``run``,
+    ``organize``, and ``summary-append`` all resolve from here, so a study kept
+    outside the repo root cannot end up with two artifact trees.
+    """
     study_id = resolve_study_id(study)
     return repo_root / "experiments" / "studies" / study_id
 
 
 def study_generated_dir(repo_root: Path, study: dict[str, Any]) -> Path:
     """Return the study's ``generated/`` directory under the repo workspace."""
-    return _study_workspace_dir(repo_root, study) / "generated"
+    return study_workspace_dir(repo_root, study) / "generated"
 
 
 def resolve_summary_paths(repo_root: Path, study_data: dict[str, Any]) -> tuple[Path, Path]:
-    """Return the study's (SUMMARY.md, summary_log.jsonl) absolute paths."""
+    """Return the study's (SUMMARY.md, summary_log.jsonl) absolute paths.
+
+    Both default into the SAME workspace/``generated`` tree ``run`` writes to
+    (:func:`study_workspace_dir`), rather than re-deriving the layout from
+    strings that can drift. ``study.study_summary_path`` /
+    ``study.summary_log_path`` still redirect them; a relative value is resolved
+    against the repo root, exactly like a run's ``output_dir``.
+    """
     study = ensure_mapping("study", study_data.get("study"))
-    study_id = resolve_study_id(study)
+    workspace = study_workspace_dir(repo_root, study)
+    generated = study_generated_dir(repo_root, study)
 
-    summary_md_raw = str(
-        study.get("study_summary_path", f"experiments/studies/{study_id}/SUMMARY.md")
-    )
-    summary_log_raw = str(
-        study.get(
-            "summary_log_path",
-            f"experiments/studies/{study_id}/generated/summary_log.jsonl",
-        )
-    )
+    def _resolve(raw: Any, default: Path) -> Path:
+        if raw is None:
+            return default
+        path = Path(str(raw))
+        return path if path.is_absolute() else (repo_root / path).resolve()
 
-    summary_md = Path(summary_md_raw)
-    if not summary_md.is_absolute():
-        summary_md = (repo_root / summary_md).resolve()
-
-    summary_log = Path(summary_log_raw)
-    if not summary_log.is_absolute():
-        summary_log = (repo_root / summary_log).resolve()
-
+    summary_md = _resolve(study.get("study_summary_path"), workspace / "SUMMARY.md")
+    summary_log = _resolve(study.get("summary_log_path"), generated / "summary_log.jsonl")
     return summary_md, summary_log
 
 

@@ -122,6 +122,19 @@ def _record_llm_usage_summary(cfg: Any, *, models: Any, metrics: Any) -> None:
         logging.getLogger(__name__).debug("failed to record llm usage summary", exc_info=True)
 
 
+def _resolved_llm_provider(cfg: Any) -> str:
+    """The provider string the run actually used, for run provenance.
+
+    ``llm_name`` alone is provenance-misleading: an offline ``provider=scripted``
+    run keeps whatever ``sim.llm.name`` the scenario declared (``gpt-4o-mini``),
+    so the manifest read as if a real model had been called. Mirrors the model
+    factory's own resolution, where ``sim.llm.disabled`` outranks ``provider``.
+    """
+    if bool(OmegaConf.select(cfg, "sim.llm.disabled") or False):
+        return "disabled"
+    return str(OmegaConf.select(cfg, "sim.llm.provider") or "").strip()
+
+
 def _initialize_runtime_environment() -> Path:
     """Apply runtime setup only when the simulation entrypoint is executed.
 
@@ -441,6 +454,7 @@ def run_simulation(cfg: DictConfig, *, output_dir: str | os.PathLike[str] | None
     metrics.set_meta("seed", SEED)
     metrics.set_meta("scenario", cfg.scenario_name)
     metrics.set_meta("llm_name", cfg.sim.llm.name)
+    metrics.set_meta("llm_provider", _resolved_llm_provider(cfg))
     metrics.set_meta("output_dir", output_dir)
     metrics.set_meta("agent_names", [inst.params["name"] for inst in agent_configs])
 

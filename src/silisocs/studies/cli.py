@@ -46,7 +46,10 @@ from silisocs.studies.plan import (
     render_bash_script,
     resolve_summary_paths,
     study_generated_dir,
+    study_workspace_dir,
     submitit_group_filters,
+    unique_condition_configs,
+    validate_condition_configs,
 )
 from silisocs.studies.study_artifacts import (
     organize_study_outputs,
@@ -92,6 +95,18 @@ def cmd_summary_append(args: argparse.Namespace) -> int:
 
     summary_md, summary_log = resolve_summary_paths(repo_root, study_data)
     study = ensure_mapping("study", study_data.get("study"))
+    workspace = study_workspace_dir(repo_root, study)
+    for label, path in (
+        ("study.study_summary_path", summary_md),
+        ("study.summary_log_path", summary_log),
+    ):
+        if not path.is_relative_to(workspace):
+            print(
+                f"⚠ {label} resolves to {path}, outside this study's workspace "
+                f"({workspace}) — `run` writes its generated/ tree there, so this "
+                "study's artifacts are split across two directories.",
+                file=sys.stderr,
+            )
     entry = {
         "created_at": now_iso(),
         "study_id": resolve_study_id(study),
@@ -131,9 +146,36 @@ def cmd_summary_append(args: argparse.Namespace) -> int:
     return 0
 
 
+def _report_config_failures(failures: list[dict[str, str]], checked: int) -> None:
+    """Print every condition that fails Hydra composition, loudly."""
+    print(
+        f"Condition config check: {checked - len(failures)}/{checked} "
+        "unique condition config(s) compose"
+    )
+    if not failures:
+        return
+    print(
+        f"\n✗ {len(failures)} of {checked} unique condition config(s) FAIL to compose. "
+        "Every run of an affected condition would die at startup:",
+        file=sys.stderr,
+    )
+    for failure in failures:
+        print(
+            f"\n- {failure['hypothesis']}/{failure['condition']} "
+            f"(scenario={failure['scenario']}, run_id={failure['run_id']})",
+            file=sys.stderr,
+        )
+        if failure["config_path"]:
+            print(f"  config_path: {failure['config_path']}", file=sys.stderr)
+        print(f"  overrides: {failure['overrides']}", file=sys.stderr)
+        for line in failure["error"].splitlines():
+            print(f"  {line}", file=sys.stderr)
+
+
 def cmd_plan(args: argparse.Namespace) -> int:
     """Validate and expand a study file into a deterministic run plan."""
     study_path = resolve_study_definition_path(Path(args.study).resolve())
+    repo_root = Path(args.repo_root).resolve()
     study_data = load_yaml(study_path)
     run_specs, eval_specs, study = expand_runs(study_path, study_data)
     run_specs = filter_run_specs(
@@ -165,7 +207,18 @@ def cmd_plan(args: argparse.Namespace) -> int:
         )
     if len(rows) > PLAN_PREVIEW_ROWS:
         print(f"... and {len(rows) - PLAN_PREVIEW_ROWS} more")
-    return 0
+
+    if args.skip_config_check:
+        print("Condition config check: skipped (--skip-config-check)")
+        return 0
+
+    # Compose each unique (config_path, override set) once — no run, no writes.
+    # A plan that "looks fine" while every run dies at Hydra composition is the
+    # exact failure this catches.
+    checkable = unique_condition_configs(run_specs)
+    failures = validate_condition_configs(run_specs, repo_root)
+    _report_config_failures(failures, len(checkable))
+    return 1 if failures else 0
 
 
 def cmd_generate_bash(args: argparse.Namespace) -> int:
@@ -192,6 +245,26 @@ def cmd_generate_bash(args: argparse.Namespace) -> int:
     print(f"Generated bash script for study '{study['name']}': {out}")
     print(f"Commands: {sum(1 for s in run_specs if s.execution_mode == 'run')}")
     return 0
+
+
+def _count_evaluator_outcomes(records: list[dict[str, Any]]) -> tuple[int, int]:
+    """Count (attempted, failed) evaluator invocations from THIS invocation.
+
+    Only evaluators actually launched now are counted: ``reused`` (relinked from
+    an earlier invocation) and ``disabled`` entries are neither attempts nor
+    failures.
+    """
+    attempted = 0
+    failed = 0
+    for record in records:
+        for evaluation in record.get("evaluations", []) or []:
+            status = str(evaluation.get("status", ""))
+            if status not in {"success", "failed"}:
+                continue
+            attempted += 1
+            if status == "failed":
+                failed += 1
+    return attempted, failed
 
 
 def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
@@ -221,6 +294,10 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
     bash_out = generated_dir / "run_study.sh"
     bash_out.write_text(render_bash_script(run_specs, repo_root), encoding="utf-8")
     os.chmod(bash_out, 0o755)
+
+    # Every run records what it was about to launch, not only --dry-run.
+    plan_json = generated_dir / "plan.json"
+    write_json(plan_json, {"schema_version": SCHEMA_VERSION, "plan": plan_rows(run_specs)})
 
     max_concurrent = int(args.max_concurrent)
     timeout_seconds = int(args.timeout_seconds) if args.timeout_seconds > 0 else None
@@ -260,10 +337,9 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
     else:
         print("GPU distribution: disabled (no RUN_STUDY_GPU_IDS/CUDA_VISIBLE_DEVICES set)")
     print(f"Generated artifacts directory: {generated_dir}")
+    print(f"Plan JSON: {plan_json}")
 
     if args.dry_run:
-        rows = plan_rows(run_specs)
-        write_json(generated_dir / "plan.json", {"schema_version": SCHEMA_VERSION, "plan": rows})
         print("Dry-run only. Wrote plan and bash script.")
         return 0
 
@@ -297,9 +373,20 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
         1 for r in records if r.get("status") in {"success", "reused", "skipped_complete"}
     )
     failed = sum(1 for r in records if r.get("status") in {"failed", "timeout"})
+    evals_attempted, evals_failed = _count_evaluator_outcomes(records)
     print("Run complete")
     print(f"Success/reused: {success}")
     print(f"Failed/timeout: {failed}")
+    if evals_attempted:
+        print(f"Evaluators run: {evals_attempted - evals_failed}/{evals_attempted} succeeded")
+    if evals_failed:
+        # A study whose evaluators all crash used to exit 0 with an empty
+        # summary.json, indistinguishable from a study with nothing to report.
+        print(
+            f"⚠ Evaluators failed: {evals_failed}/{evals_attempted} — "
+            f"see {generated_dir / 'eval'} (per-evaluator .log next to each output)",
+            file=sys.stderr,
+        )
     print(f"Skipped {len(skipped_records)} already-complete runs (use --force to re-run)")
     print(f"Repro lock JSONL: {lock_jsonl}")
     print(f"Repro lock JSON: {lock_json}")
@@ -314,7 +401,7 @@ def cmd_run(args: argparse.Namespace) -> int:  # noqa: PLR0915
     )
     print(f"Organized study tree: {organized_dir}")
 
-    return 1 if failed else 0
+    return 1 if (failed or evals_failed) else 0
 
 
 def cmd_organize(args: argparse.Namespace) -> int:
@@ -571,6 +658,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--only-run-id",
         default=None,
         help="Optional comma-separated expanded run IDs to include",
+    )
+    p_plan.add_argument(
+        "--skip-config-check",
+        action="store_true",
+        help=(
+            "Do not compose each unique condition config. Planning normally "
+            "fails when a condition's overrides do not compose."
+        ),
     )
     p_plan.set_defaults(func=cmd_plan)
 

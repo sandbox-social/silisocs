@@ -180,6 +180,7 @@ hypotheses:
         scenarios: [loose_social]
         seeds: [6001, 6002, 6003, 6004, 6005]
         overrides:
+          world: loose_social
           agents: loose_social
           echo_network_type: scale_free
           echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
@@ -193,6 +194,7 @@ hypotheses:
         scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
+          world: loose_social
           agents: loose_social
           echo_network_type: scale_free
           echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
@@ -211,6 +213,7 @@ hypotheses:
         scenarios: [loose_social]
         seeds: [6301, 6302, 6303, 6304, 6305]
         overrides:
+          world: loose_social
           agents: loose_social
           echo_network_type: scale_free
           echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
@@ -253,6 +256,7 @@ hypotheses:
         scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
+          world: loose_social
           agents: loose_social
           echo_network_type: scale_free
           echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
@@ -290,6 +294,7 @@ hypotheses:
         scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
+          world: loose_social
           agents: simple_social
           echo_network_type: scale_free
           echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
@@ -305,6 +310,7 @@ hypotheses:
         scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
+          world: loose_social
           agents: simple_social
           echo_network_type: scale_free
           echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
@@ -327,12 +333,13 @@ hypotheses:
         scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
+          world: loose_social
           agents: loose_social
           sim.llm.provider: openai_compatible
           sim.llm.name: qwen3.5-4b
           sim.llm.api_base: http://127.0.0.1:30000/v1
           sim.llm.api_key: local-api-key
-          sim.llm.extra_kwargs.extra_body.chat_template_kwargs.enable_thinking: false
+          ++sim.llm.extra_kwargs.extra_body.chat_template_kwargs.enable_thinking: false
           echo_network_type: scale_free
           echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
           echo_recommendation: similarity
@@ -347,12 +354,13 @@ hypotheses:
         scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
+          world: loose_social
           agents: loose_social
           sim.llm.provider: openai_compatible
           sim.llm.name: qwen3.5-4b
           sim.llm.api_base: http://127.0.0.1:30000/v1
           sim.llm.api_key: local-api-key
-          sim.llm.extra_kwargs.extra_body.chat_template_kwargs.enable_thinking: false
+          ++sim.llm.extra_kwargs.extra_body.chat_template_kwargs.enable_thinking: false
           echo_network_type: scale_free
           echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
           echo_recommendation: similarity
@@ -389,12 +397,13 @@ hypotheses:
         scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
+          world: loose_social
           agents: simple_social
           sim.llm.provider: openai_compatible
           sim.llm.name: qwen3.5-4b
           sim.llm.api_base: http://127.0.0.1:30000/v1
           sim.llm.api_key: local-api-key
-          sim.llm.extra_kwargs.extra_body.chat_template_kwargs.enable_thinking: false
+          ++sim.llm.extra_kwargs.extra_body.chat_template_kwargs.enable_thinking: false
           echo_network_type: scale_free
           echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
           echo_recommendation: similarity
@@ -424,12 +433,13 @@ hypotheses:
         scenarios: [loose_social]
         seeds: [6201, 6202, 6203, 6204, 6205]
         overrides:
+          world: loose_social
           agents: simple_social
           sim.llm.provider: openai_compatible
           sim.llm.name: qwen3.5-4b
           sim.llm.api_base: http://127.0.0.1:30000/v1
           sim.llm.api_key: local-api-key
-          sim.llm.extra_kwargs.extra_body.chat_template_kwargs.enable_thinking: false
+          ++sim.llm.extra_kwargs.extra_body.chat_template_kwargs.enable_thinking: false
           echo_network_type: scale_free
           echo_network_path: replications/echo_chambers/input/networks/scale_free_network_num_agents_50_seed_50.json
           echo_recommendation: similarity

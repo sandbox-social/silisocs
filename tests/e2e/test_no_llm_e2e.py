@@ -120,6 +120,15 @@ def test_scripted_model_runs_real_runner_engine_backend_path(tmp_path: Path) -> 
 
     metrics = json.loads((output_dir / "sim_metrics.json").read_text(encoding="utf-8"))
     assert metrics["meta"]["llm_name"] == "scripted"
+    assert metrics["meta"]["llm_provider"] == "scripted"
+
+    # Provenance: `llm_name` alone is misleading — a scripted run keeps whatever
+    # `sim.llm.name` the scenario declared, so the manifest read as if a real
+    # model had answered. The resolved provider is recorded alongside it.
+    manifest = json.loads((output_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["llm_name"] == "scripted"
+    assert manifest["llm_provider"] == "scripted"
+
     assert "Simulation complete: status=success" in (output_dir / "run_stats.log").read_text(
         encoding="utf-8"
     )

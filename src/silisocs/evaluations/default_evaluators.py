@@ -5,8 +5,13 @@ This module provides detailed, reproducible summaries over:
 - action events (overall, per-episode, per-agent, per-agent-per-episode, transitions)
 - probe events (overall, per-probe, per-type, with type-specific metrics)
 
-CLI usage:
-  uv run python -m silisocs.evaluations.default_evaluators \
+Every mode also emits a flat ``aggregated`` block of plain numbers: that is the
+only key study summaries compare across conditions (``metrics_by_condition`` /
+``metrics_stats_by_condition``), so a builtin-preset-only study still produces a
+comparable summary.
+
+CLI usage (studies invoke this with the interpreter running the study):
+  python -m silisocs.evaluations.default_evaluators \
     --run-dir <run_dir> --output <out.json> --mode action_metrics
 """
 
@@ -726,7 +731,47 @@ def _build_action_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
         "per_agent": per_agent_out,
         "per_agent_per_episode": per_agent_episode_out,
         "transition_counts": dict(transition_counts.most_common(200)),
+        "aggregated": _aggregated_action_metrics(
+            events=events,
+            action_rows=action_rows,
+            label_counts=label_counts,
+            per_episode_counts=per_episode_counts,
+            per_agent_counts=per_agent_counts,
+        ),
     }
+
+
+def _aggregated_action_metrics(
+    *,
+    events: list[dict[str, Any]],
+    action_rows: list[dict[str, Any]],
+    label_counts: Counter[str],
+    per_episode_counts: dict[int, Counter[str]],
+    per_agent_counts: dict[str, Counter[str]],
+) -> dict[str, float]:
+    """Flatten the action metrics into the study-comparable ``aggregated`` block.
+
+    ``aggregated`` is the ONLY key the study summary compares across conditions
+    (``metrics_by_condition`` / ``metrics_stats_by_condition``), and it must hold
+    plain numbers — the study layer averages them across replicate seeds. Nested
+    per-episode/per-agent detail stays in the rest of the payload.
+    """
+    aggregated: dict[str, float] = {
+        "total_events": float(len(events)),
+        "total_action_events": float(len(action_rows)),
+        "unique_action_labels": float(len(label_counts)),
+        "num_episodes": float(len(per_episode_counts)),
+        "num_active_agents": float(len(per_agent_counts)),
+        "actions_per_agent": (
+            len(action_rows) / len(per_agent_counts) if per_agent_counts else 0.0
+        ),
+        "actions_per_episode": (
+            len(action_rows) / len(per_episode_counts) if per_episode_counts else 0.0
+        ),
+    }
+    for label, count in label_counts.items():
+        aggregated[f"actions_{_slug(label)}"] = float(count)
+    return aggregated
 
 
 def _accumulate_typed_response(
@@ -737,6 +782,7 @@ def _accumulate_typed_response(
     per_type: dict[str, Counter[str]],
     numeric_values: dict[str, list[float]],
     choice_values: dict[str, Counter[str]],
+    binary_values: dict[str, Counter[str]],
     free_text_lengths: dict[str, list[float]],
     free_text_word_counts: dict[str, list[float]],
     free_text_tokens: dict[str, Counter[str]],
@@ -751,6 +797,9 @@ def _accumulate_typed_response(
         normalized = _normalize_binary(response)
         key = normalized if normalized is not None else "Other"
         per_type[probe_type][f"answer_{key}"] += 1
+        # Per-label copy: only used to derive the flat `aggregated` shares the
+        # study summary compares; the per_label payload is unchanged.
+        binary_values[label][key] += 1
     elif kind == "numeric":
         num = _safe_float(response)
         if num is not None:
@@ -820,6 +869,7 @@ class _ProbeAccumulation:
     free_text_word_counts: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
     free_text_tokens: dict[str, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
     choice_values: dict[str, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
+    binary_values: dict[str, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
     kept_rows: int = 0
     dropped_rows: int = 0
 
@@ -873,11 +923,56 @@ def _accumulate_probe_rows(
             per_type=acc.per_type,
             numeric_values=acc.numeric_values,
             choice_values=acc.choice_values,
+            binary_values=acc.binary_values,
             free_text_lengths=acc.free_text_lengths,
             free_text_word_counts=acc.free_text_word_counts,
             free_text_tokens=acc.free_text_tokens,
         )
     return acc
+
+
+def _aggregated_probe_metrics(acc: _ProbeAccumulation) -> dict[str, float]:
+    """Flatten probe answers into the study-comparable ``aggregated`` block.
+
+    Same contract as :func:`_aggregated_action_metrics`: flat numeric keys only,
+    because the study layer averages ``aggregated`` across replicate seeds and
+    nothing else reaches ``summary.json``. Per label: numeric mean, binary/choice
+    answer SHARES (comparable across conditions with different agent counts),
+    and free-text mean word count.
+    """
+    responses_present = sum(
+        int(counts.get("responses_present", 0)) for counts in acc.per_label_counts.values()
+    )
+    responses_missing = sum(
+        int(counts.get("responses_missing", 0)) for counts in acc.per_label_counts.values()
+    )
+    total = responses_present + responses_missing
+    aggregated: dict[str, float] = {
+        "total_probe_events": float(acc.kept_rows),
+        "probe_responses_present": float(responses_present),
+        "probe_responses_missing": float(responses_missing),
+        "probe_response_rate": (responses_present / total) if total else 0.0,
+    }
+
+    for label, values in acc.numeric_values.items():
+        if not values:
+            continue
+        aggregated[f"probe_{_slug(label)}_mean"] = statistics.fmean(values)
+        aggregated[f"probe_{_slug(label)}_n"] = float(len(values))
+
+    for source in (acc.binary_values, acc.choice_values):
+        for label, counter in source.items():
+            answered = sum(counter.values())
+            if not answered:
+                continue
+            for value, count in counter.items():
+                aggregated[f"probe_{_slug(label)}_share_{_slug(value)}"] = count / answered
+
+    for label, counts in acc.free_text_word_counts.items():
+        if counts:
+            aggregated[f"probe_{_slug(label)}_word_count_mean"] = statistics.fmean(counts)
+
+    return aggregated
 
 
 def _build_probe_metrics_with_context(
@@ -911,6 +1006,7 @@ def _build_probe_metrics_with_context(
     per_type_out = {ptype: dict(counter) for ptype, counter in sorted(acc.per_type.items())}
 
     return {
+        "aggregated": _aggregated_probe_metrics(acc),
         "summary_type": "probe_metrics",
         "filter_probe_type": probe_type_filter,
         "total_events": len(events),

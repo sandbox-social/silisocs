@@ -148,9 +148,15 @@ def _build_command(
     )
     command.extend(
         [
+            # `scripted`, never `sim.llm.disabled`: the no-op model cannot answer
+            # a tool-call spec, which the config validator now rejects outright
+            # under the packaged `sim.tool_calling.mode: single`.
             "++sim.llm.provider=scripted",
             "++sim.llm.name=scripted",
-            "++sim.llm.disabled=true",
+            # `extra_kwargs` are provider-specific (a real HTTP provider's
+            # `extra_body`, say); forcing `scripted` would make the scenario's own
+            # kwargs invalid constructor params for a provider it never chose.
+            "++sim.llm.extra_kwargs=null",
             "++num_steps=0",
             f"++output_dir={output_dir}",
             f"hydra.run.dir={hydra_dir}",
@@ -200,9 +206,31 @@ def _run_target(project_root: Path, target: DryRunTarget, run_root: Path) -> Dry
     )
 
 
-def run_dry_runs(project_root: Path) -> list[DryRunResult]:
-    """Run dry-run validation for all discovered external configs."""
-    targets = _discover_targets(project_root)
+def _single_config_targets(conf_dir: Path) -> list[DryRunTarget]:
+    """Discover the dry-run targets of ONE scenario config directory.
+
+    Same shape as the discovery path (`_discover_config_root_targets`), so a
+    single scenario is validated by exactly the checks the whole-repo sweep runs.
+    """
+    return _discover_config_root_targets(conf_dir=conf_dir, label_root=conf_dir.parent.name)
+
+
+def run_dry_runs(
+    project_root: Path,
+    *,
+    config_path: Path | None = None,
+) -> list[DryRunResult]:
+    """Run dry-run validation for external configs.
+
+    ``config_path`` restricts the sweep to one scenario config directory (the
+    authoring loop); omitted, every scenario and replication under
+    ``project_root`` is discovered and checked.
+    """
+    targets = (
+        _single_config_targets(config_path)
+        if config_path is not None
+        else _discover_targets(project_root)
+    )
     if not targets:
         return []
     with TemporaryDirectory(prefix="silisocs_config_dry_run_") as tmpdir:
@@ -223,12 +251,30 @@ def _format_failure(result: DryRunResult, max_lines: int = 40) -> str:
     )
 
 
+def _resolve_config_path(raw: str) -> Path:
+    """Resolve a ``--config-path`` argument to the directory holding ``world/``.
+
+    Accepts either the config dir itself (``scenarios/election/conf``) or the
+    scenario root (``scenarios/election``), because both are what users have in
+    hand while authoring.
+    """
+    directory = Path(raw).resolve()
+    if (directory / "world").is_dir():
+        return directory
+    nested = directory / "conf"
+    if (nested / "world").is_dir():
+        return nested
+    return directory
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint for config dry-run checks."""
     parser = argparse.ArgumentParser(
         description=(
-            "Dry-run all shipped scenario/replication configs through the real runtime "
-            "runner and report failures."
+            "Dry-run scenario/replication configs through the real runtime runner "
+            "(build the runtime, run zero steps) and report failures. Checks one "
+            "config directory with --config-path, or every scenario and replication "
+            "under a checkout with --project-root."
         )
     )
     parser.add_argument(
@@ -236,12 +282,41 @@ def main(argv: list[str] | None = None) -> int:
         default=".",
         help="Project root containing scenarios/ and replications/ (default: current dir).",
     )
+    parser.add_argument(
+        "--config-path",
+        default=None,
+        help=(
+            "Validate exactly ONE scenario config directory (e.g. "
+            "scenarios/election/conf, or the scenario root containing it) instead of "
+            "discovering every config under --project-root."
+        ),
+    )
     args = parser.parse_args(argv)
 
     project_root = Path(args.project_root).resolve()
-    results = run_dry_runs(project_root)
+    config_path = _resolve_config_path(args.config_path) if args.config_path else None
+    if config_path is not None and not config_path.is_dir():
+        print(
+            f"--config-path '{args.config_path}' is not a directory. Point it at a "
+            "scenario config directory containing world/*.yaml (e.g. "
+            "scenarios/election/conf)."
+        )
+        return 1
+
+    results = run_dry_runs(project_root, config_path=config_path)
     if not results:
-        print("No scenario/replication config targets discovered.")
+        if config_path is not None:
+            print(
+                f"No config targets found in {config_path}: a scenario config "
+                "directory must contain world/*.yaml (and optionally env/*.yaml). "
+                "Point --config-path at <scenario>/conf."
+            )
+        else:
+            print(
+                f"No scenario/replication config targets discovered under {project_root}. "
+                "Run this from a silisocs checkout, pass --project-root <checkout>, or "
+                "validate a single scenario with --config-path <scenario>/conf."
+            )
         return 1
 
     passed = sum(1 for r in results if r.ok and not r.skipped)
