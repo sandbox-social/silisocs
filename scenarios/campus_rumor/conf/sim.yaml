@@ -1,0 +1,9 @@
+llm:
+  pricing:
+    input_per_1m: 0.15
+    output_per_1m: 0.6
+initialization:
+  simulation:
+    built_in: seed_posts
+    params:
+      type: agent

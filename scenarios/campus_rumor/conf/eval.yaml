@@ -1,0 +1,26 @@
+probes:
+  deployment:
+    enabled: true
+    start_step: 1
+    every_n_steps: 1
+  probes:
+    believes_rumor:
+      probe_name: believes_rumor
+      probe_type: BinaryProbe
+      probe_data:
+        name: BelievesRumor
+        question: >-
+          Do you currently believe the main dining hall will close permanently at
+          the end of the month? Answer yes or no.
+        context: '{agentname} is asked whether they believe the closure rumor on the campus feed.'
+    rumor_confidence:
+      probe_name: rumor_confidence
+      probe_type: NumericRatingProbe
+      probe_data:
+        name: RumorConfidence
+        question: >-
+          Return a single number from {lo} to {hi} for how confident you are that
+          the closure rumor is true.
+        context: '{agentname} rates their confidence in the rumor, from {lo} (certainly false) to {hi} (certainly true).'
+        lo: 1
+        hi: 10

@@ -1,14 +1,17 @@
-# End-to-End Demo: CLI and Studio
+# End-to-End Product Demos
 
-A complete tour of silisocs on one bundled scenario — `misinformation`, a
-six-agent social network where a false health claim circulates. Two short
-videos mirror this page, and everything they show is reproducible from the
-commands below.
+Four focused tours cover the main Silisocs workflow: run a simulation, use the
+Studio workspace, author a scenario, and turn a question into a measured study.
+Everything shown is driven by the scripts and source examples in the repository.
+
+## CLI quickstart
 
 <video controls preload="metadata" style="max-width: 100%;"
        src="../../assets/videos/silisocs-cli-quickstart.mp4"></video>
 
 *CLI quickstart (69s): doctor → tutorial → a real run → the artifacts → a study plan.*
+
+## Studio tour
 
 <video controls preload="metadata" style="max-width: 100%;"
        src="../../assets/videos/silisocs-studio-tour.mp4"></video>
@@ -16,8 +19,24 @@ commands below.
 *Studio tour: scenario editor → preflight → interactive launch → platform
 viewer → analysis → study comparison.*
 
-Both videos are produced by the scripted pipeline in the repository's `demo/`
-directory, so they can be regenerated whenever the product changes.
+## Create a scenario
+
+<video controls preload="metadata" style="max-width: 100%;"
+       src="../../assets/videos/silisocs-create-scenario.mp4"></video>
+
+*Scenario authoring: blank workspace → scaffold → world, agents, simulation,
+and probes → preflight → live run → results.*
+
+## Design a study
+
+<video controls preload="metadata" style="max-width: 100%;"
+       src="../../assets/videos/silisocs-design-study.mp4"></video>
+
+*Study design: hypothesis and conditions → validated plan → four replicates →
+custom evaluation → cross-condition statistics.*
+
+All four videos are produced by the scripted pipeline in the repository's
+`demo/` directory, so they can be regenerated whenever the product changes.
 
 ## Part 1 — the command line
 
@@ -89,6 +108,36 @@ Open `http://127.0.0.1:8765` and follow the tour:
    replicates; Compare charts every `aggregated` metric per condition with
    95% confidence intervals across seeds.
 
+## Part 3 — author a scenario
+
+The authoring video starts from an empty disposable workspace and builds the
+committed
+[`campus_rumor`](https://github.com/sandbox-social/silisocs/tree/main/scenarios/campus_rumor)
+example through Studio. It edits the same five YAML surfaces used by the CLI:
+world, agents, simulation, environment, and evaluation. Preflight composes the
+result before a real four-agent run, and the declared probes appear in the
+finished run without any scenario-specific Studio code.
+
+Run the resulting example directly:
+
+```sh
+uv run silisocs --config-path scenarios/campus_rumor/conf
+```
+
+## Part 4 — design a study
+
+The study video uses
+[`rumor_pressure_demo`](https://github.com/sandbox-social/silisocs/tree/main/experiments/studies/rumor_pressure_demo),
+a two-condition by two-seed pilot over the bundled `misinformation` scenario.
+Its ordinary study YAML defines the hypothesis and action-budget conditions;
+its local `eval.py` follows the public evaluator contract and returns flat
+metrics under `aggregated`.
+
+```sh
+uv run silisocs-study --study experiments/studies/rumor_pressure_demo plan
+uv run silisocs-study --study experiments/studies/rumor_pressure_demo run --yes
+```
+
 ## What this demo exercises
 
 | Surface | Where |
@@ -97,6 +146,8 @@ Open `http://127.0.0.1:8765` and follow the tour:
 | Bundled analysis view | `conf/views/spread.yaml` |
 | Probes (binary / rating / free-text) | `conf/eval.yaml` |
 | Study fan-out + custom evaluator | `experiments/studies/misinformation_cta_demo/` |
+| Scenario creation + declared probes | `scenarios/campus_rumor/conf/` |
+| Study authoring + custom evaluation | `experiments/studies/rumor_pressure_demo/` |
 | Interactive run control | `sim.engine.control` (injected by Studio) |
 | HTTP control plane | `tests/e2e/test_studio_e2e_demo.py` drives the same flow headlessly |
 
@@ -108,5 +159,5 @@ tutorial drifts from reality, that test fails.
 ## Reproducing the videos
 
 See `demo/README.md`. The pipeline is fully scripted (pty capture + a styled
-terminal player + Playwright driving a live Studio server + ffmpeg assembly),
-so a coding agent can re-produce both videos after UI changes.
+terminal player + Playwright driving live Studio servers + ffmpeg assembly),
+so all four videos can be reproduced after UI changes.

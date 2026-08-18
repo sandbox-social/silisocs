@@ -1,0 +1,28 @@
+# @package _global_
+description: >-
+  A campus feed where an unsourced rumor about the dining hall closing spreads
+  between students and the residence staff who have to answer for it.
+scenario_name: campus_rumor
+jobname_format: "CampusRumor_N${num_agents}_T${num_steps}_${run_name}"
+num_agents: 4
+num_steps: 4
+seed: 11
+run_name: campus_rumor
+output_dir: ""
+
+setting:
+  name: Campus Social Feed
+  background:
+  - A small campus social network used by students, RAs, and dining staff.
+  - Posts travel fast during exam week, when everyone is online and anxious.
+  - Rumors about campus services usually surface here before any official notice.
+
+event:
+  name: Dining Hall Closure Rumor
+  context: >-
+    An unsourced post claims the main dining hall will close permanently at the
+    end of the month, and that meal plans will not be refunded. No official
+    notice exists. Some students amplify it, some ask for evidence, and the
+    residence staff have to decide what to say.
+
+data: {}

@@ -1,0 +1,55 @@
+schema_version: 1
+
+# The smallest complete study worth copying: one hypothesis, two conditions,
+# two seeds = 4 short gpt-4o-mini runs over the bundled misinformation
+# scenario (a few cents). Metrics come from a builtin preset plus ./eval.py.
+study:
+  name: rumor_pressure_demo
+  study_id: rumor_pressure_demo
+  study_version: v1
+  question: >-
+    Does letting agents act more per step accelerate misinformation spread?
+  scenarios:
+    - misinformation
+  study_summary_path: experiments/studies/rumor_pressure_demo/SUMMARY.md
+  summary_log_path: experiments/studies/rumor_pressure_demo/generated/summary_log.jsonl
+  run_defaults:
+    config_path: scenarios/misinformation/conf
+    runner_module: silisocs.runtime.runner
+    run_name_template: "{study_id}_{condition_id}_{scenario}_seed{seed}"
+    output_root_override: "experiments/studies/{study_id}/runs/{condition_id}/seed_{seed}/run"
+    # Seeds ARE the replicates: they give summary.json its mean/stdev/CI95.
+    seed_start: 11
+    seed_repeats: 2
+    checkpoint_every_n_steps: 1
+    overrides:
+      num_agents: 6              # scenario default, stated so `plan` can size it
+      num_steps: 4               # deliberately tiny: a demo, not a result
+      sim.llm.name: gpt-4o-mini
+
+evaluations:
+  - id: rumor_spread
+    preset: builtin.study_eval               # ./eval.py -- the custom metrics
+  - id: action_metrics
+    preset: builtin.action_metrics_detailed  # builtin action mix, no code
+hypotheses:
+  h1_action_pressure:
+    statement: >-
+      Raising the per-step action budget from one action to three accelerates
+      the spread of the false health claim within the same four steps.
+    independent_variable: sim.engine.turn_policy.params.max_actions
+    prediction: >-
+      high_pressure produces more spread actions per agent than low_pressure.
+    status: testing
+    overrides: {}
+    conditions:
+      # `++` is REQUIRED: Hydra struct-validates overrides against the BASE
+      # config, where every slot's `params` is an empty map, so a plain
+      # `...turn_policy.params.max_actions: 1` fails "not in struct". `plan`
+      # composes every condition and catches it before you spend anything.
+      low_pressure:
+        overrides:
+          "++sim.engine.turn_policy.params.max_actions": 1
+      high_pressure:
+        overrides:
+          "++sim.engine.turn_policy.params.max_actions": 3

@@ -772,4 +772,3 @@ const explorePageData = studioPageData();
 if (explorePageData.page === "explore_run") initExplore(explorePageData);
 if (explorePageData.page === "explore_study") initStudyExplore(explorePageData);
 if (explorePageData.page === "explore_compare") initExploreCompare(explorePageData);
-

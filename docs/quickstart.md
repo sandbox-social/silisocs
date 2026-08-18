@@ -167,7 +167,7 @@ packaged base config: omit `--config-path` entirely (see
 
 ## Next Steps
 
-- [End-to-End Demo](tutorials/studio_demo.md): CLI + Studio walkthrough with videos
+- [End-to-End Demos](tutorials/studio_demo.md): CLI, Studio, scenario authoring, and study videos
 - [Usage Overview](usage.md): Full end-to-end guide
 - [Configuration Reference](configuration.md): All config options
 - [Building Agents](building_agents.md): Create custom agent populations

@@ -127,7 +127,7 @@ nav:
     - Interop:
       - Concordia Bridge: concordia_bridge.md
   - Tutorials:
-    - End-to-End Demo (CLI + Studio): tutorials/studio_demo.md
+    - End-to-End Product Demos: tutorials/studio_demo.md
     - Election Scenario Walkthrough: tutorials/election.md
   - Development:
     - Contributing: contributing.md

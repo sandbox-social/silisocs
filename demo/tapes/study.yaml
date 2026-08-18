@@ -1,0 +1,57 @@
+# Tape for the "Design a study & custom eval" video (see capture_cli.py for the
+# format). Commands run for real; `display` is what the viewer sees typed. Step 5
+# launches four real gpt-4o-mini runs of scenarios/misinformation using the key
+# from .env (~cents). run_all.sh clears this demo's ignored outputs first.
+cols: 100
+rows: 28
+outro_hold: 3.5
+steps:
+  - caption: "A study turns one scenario into an experiment: conditions x seeds, with statistics."
+    cmd: "sed -n '6,28p' experiments/studies/rumor_pressure_demo/study.yaml"
+    prompt_delay: 2.2
+    hold: 14
+
+  - caption: "One hypothesis, two conditions, one knob — and slot params need the ++ prefix."
+    cmd: "sed -n '30,55p' experiments/studies/rumor_pressure_demo/study.yaml"
+    prompt_delay: 1.2
+    hold: 15
+
+  - caption: "The eval contract is one file: read the run, return numbers under 'aggregated'."
+    cmd: "sed -n '18,43p' experiments/studies/rumor_pressure_demo/eval.py"
+    prompt_delay: 1.2
+    hold: 15
+
+  - caption: "plan expands the grid and composes every condition config before anything runs."
+    cmd: "silisocs-study --study experiments/studies/rumor_pressure_demo plan"
+    display: "uv run silisocs-study --study experiments/studies/rumor_pressure_demo plan"
+    prompt_delay: 1.4
+    timescale: 2
+    hold: 9
+
+  - caption: "Four real runs — two conditions x two seeds — small enough to cost cents."
+    cmd: "silisocs-study --study experiments/studies/rumor_pressure_demo run --yes"
+    display: "uv run silisocs-study --study experiments/studies/rumor_pressure_demo run --yes"
+    prompt_delay: 1.4
+    timescale: 20
+    idle_limit: 2.5
+    hold: 8
+
+  - caption: "Cross-replicate statistics land in organized/summary.json, per condition."
+    cmd: "jq '.metrics_stats_by_condition.h1_action_pressure | map_values(.spread_actions_per_agent)' experiments/studies/rumor_pressure_demo/generated/organized/summary.json"
+    prompt_delay: 1.4
+    hold: 12
+
+  - caption: "SUMMARY.md appends a dated, reproducible record of every finding."
+    cmd: 'grep -Fq "high_pressure beat low_pressure" experiments/studies/rumor_pressure_demo/SUMMARY.md || silisocs-study --study experiments/studies/rumor_pressure_demo summary-append --author demo --note "high_pressure beat low_pressure on spread actions per agent (2x2 pilot)."'
+    display: 'uv run silisocs-study --study experiments/studies/rumor_pressure_demo summary-append --author demo --note "..."'
+    prompt_delay: 1.4
+    timescale: 2
+    hold: 3
+
+  - cmd: "head -14 experiments/studies/rumor_pressure_demo/SUMMARY.md"
+    prompt_delay: 1.0
+    hold: 10
+
+  - caption: "Compare conditions visually in Studio — see the Studio tour."
+    prompt_delay: 0.5
+    hold: 6

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import re
 import sys
 import tomllib
@@ -102,6 +103,24 @@ def test_concordia_is_optional_extra_not_default_dependency() -> None:
         "pandas>=2.2",
     ]
     assert not any(dep.startswith(("numpy", "pandas")) for dep in dependencies)
+
+
+def test_demo_tooling_is_not_a_library_dependency() -> None:
+    """Video production dependencies stay in the private demo workspace."""
+    data = _pyproject()["project"]
+    python_requirements = list(data["dependencies"])
+    for requirements in data["optional-dependencies"].values():
+        python_requirements.extend(requirements)
+
+    assert not any(
+        tool in requirement.lower()
+        for requirement in python_requirements
+        for tool in ("playwright", "xterm", "chromium", "ffmpeg")
+    )
+
+    demo_package = json.loads((PROJECT_ROOT / "demo" / "package.json").read_text())
+    assert demo_package["private"] is True
+    assert set(demo_package["dependencies"]) == {"@xterm/xterm", "playwright-core"}
 
 
 # --------------------------------------------------------------------------- #
