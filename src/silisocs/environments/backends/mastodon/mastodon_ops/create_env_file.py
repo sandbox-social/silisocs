@@ -170,11 +170,10 @@ def main() -> None:
 
     api_base_url = f"https://{args.domain}"
     try:
-        client_id, client_secret = create_app_and_env_if_not_exists(
+        create_app_and_env_if_not_exists(
             args.app_name, api_base_url, args.scopes, args.overwrite, args.email_prefix
         )
-        logger.debug(f"MASTODON_CLIENT_ID={client_id}")
-        logger.debug(f"MASTODON_CLIENT_SECRET={client_secret}")
+        logger.info("Mastodon app credentials are ready in the environment file")
     except Exception as e:
         logger.error(f"Failed to create Mastodon app or update .env file: {e}")
 
