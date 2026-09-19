@@ -2891,6 +2891,131 @@ tbody tr:hover {
   margin-top: var(--space-xl);
 }
 
+.branch-dialog {
+  width: min(560px, calc(100vw - 28px));
+}
+
+.branch-dialog textarea {
+  resize: vertical;
+}
+
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+  color: var(--ink);
+}
+
+.check-row input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
+.check-row b,
+.check-row small {
+  display: block;
+}
+
+.check-row small {
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.lineage-map {
+  margin-bottom: var(--space-lg);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.lineage-map > header,
+.lineage-node {
+  display: flex;
+  align-items: center;
+}
+
+.lineage-map > header {
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+
+.lineage-map h2,
+.lineage-map p {
+  margin: 0;
+}
+
+.lineage-map > header > small,
+.lineage-node small {
+  color: var(--muted);
+}
+
+.lineage-track {
+  display: grid;
+  gap: 4px;
+}
+
+.lineage-node {
+  position: relative;
+  min-height: 48px;
+  margin-left: calc(min(var(--lineage-depth), 6) * 24px);
+  padding: var(--space-sm) var(--space-md);
+  gap: var(--space-sm);
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+}
+
+.lineage-node:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-1);
+}
+
+.lineage-node.current {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-1));
+}
+
+.lineage-node > i {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: var(--surface-1);
+}
+
+.lineage-node.current > i {
+  background: var(--accent);
+}
+
+.lineage-node span {
+  display: block;
+  min-width: 0;
+}
+
+.lineage-node small,
+.lineage-node b {
+  display: block;
+}
+
+.lineage-node b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lineage-node em {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-style: normal;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .settings-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
@@ -3428,6 +3553,14 @@ tbody tr:hover {
 
   .composer-actions .button {
     flex: 1;
+  }
+
+  .lineage-map {
+    padding-inline: var(--space-md);
+  }
+
+  .lineage-node {
+    margin-left: calc(min(var(--lineage-depth), 3) * 12px);
   }
 
   .object-facts {

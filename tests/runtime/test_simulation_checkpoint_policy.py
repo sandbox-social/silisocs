@@ -112,6 +112,7 @@ def test_checkpoint_runtime_metadata_records_every_game_master() -> None:
             "sequence": 0,
             "action_events_file": "/tmp/run/action_events.jsonl",
             "output_dir": "/tmp/run",
+            "supports_checkpoint_branching": False,
         },
         {
             "name": "later_gm",
@@ -119,6 +120,7 @@ def test_checkpoint_runtime_metadata_records_every_game_master() -> None:
             "sequence": 1,
             "action_events_file": "/tmp/run/action_events.jsonl",
             "output_dir": "/tmp/run",
+            "supports_checkpoint_branching": False,
         },
     ]
 

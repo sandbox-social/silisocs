@@ -55,14 +55,17 @@ Core runtime layers:
   `build_engine` selects it from `sim.engine.step.built_in` — but *executed* by the
   engine's `SchedulingMixin` (`simulation_engines/scheduling.py`), which owns three
   shapes: `execute_batches`, `execute_chain_groups`, and `execute_staged_groups`.
-  Every shipped step strategy composes those, so adding a traversal usually means a
-  new step strategy and no engine change; a genuinely novel scheduling shape (a new
-  barrier/concurrency discipline) means adding a fourth execution shape to the mixin.
+  Every shipped step strategy composes those. Scenario/project code selects a custom
+  `StepStrategy` with `sim.engine.step.class_path`; if that is still too narrow, it
+  selects a custom whole engine with `sim.engine.class_path`. Add another
+  `SchedulingMixin` execution shape only when upstreaming a reusable built-in, never
+  merely to express one scenario or reproduction.
 - `src/silisocs/simulation_engines/policies/` — loop, step, and turn policies:
   - Turn policy: `single_action`, `fixed_count`, `open_ended`
   - Step policy: `base`, `sequential`, `flow`, `multi_gm`, `multi_gm_serial`, `multi_gm_staged`
   - Loop policy: default episode loop
-- To add custom policy: implement the relevant policy ABC and reference it via `class_path`
+- To add a custom policy: implement the relevant Protocol/ABC and reference it via
+  `class_path`
 
 ### 5. Backend Action Layer
 - `src/silisocs/environments/backends/base.py` — the `BackendApp` base app
@@ -196,10 +199,11 @@ What a contributor needs to know beyond the config reference:
 - **The agent→flow mapping is materialized once.** Scheduling, component routing,
   probe targeting, and checkpoint reconciliation all read the same
   `agent_flow_tags`; derive from it rather than re-deriving flows.
-- **New traversal = new step strategy.** Adding a traversal means writing a
-  `StepStrategy` that composes the `SchedulingMixin`'s execution shapes and
-  registering it, not adding a branch to an engine class (see §2 for the one case
-  that does touch the mixin).
+- **New traversal = custom step strategy first.** Select a `StepStrategy` with
+  `sim.engine.step.class_path`. It may compose the existing `SchedulingMixin`
+  execution shapes or implement project-local scheduling itself. Escalate to
+  `sim.engine.class_path` only when the whole lifecycle must change. Touch the mixin
+  only to upstream a generally reusable execution primitive, never for one scenario.
 - **A branch router is a plain callable**, not a subclass:
   `route(agents, gms, ctx) -> {agent name: chosen gm name}` (structural `Router`
   Protocol in `simulation_engines/policies/routers.py`, positional-only
@@ -686,6 +690,8 @@ agent-facing guides and guided workflows
 **Guided workflows** (interactive design workflows — readable by any coding agent):
 → [agent_docs/skills/new-scenario.md](agent_docs/skills/new-scenario.md) — Step-by-step scenario design assistant
 → [agent_docs/skills/new-study.md](agent_docs/skills/new-study.md) — Step-by-step study design assistant
+→ [.agents/skills/reproduce/SKILL.md](.agents/skills/reproduce/SKILL.md) — Map a
+paper or codebase into composable SiliSocs components, then recreate its experiments
 
 **Public documentation** (for end users) — one canonical home per topic:
 

@@ -8,17 +8,30 @@
 # is the contract the whole router surface relies on.
 
 import json
+import secrets
 from pathlib import Path
+from typing import Any
 
 import yaml
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from silisocs.studio.launch import ScenarioNotFoundError, prepare_launch, project_environment
-from silisocs.studio.routes.lookups import discover_all_runs
+from silisocs.studio.routes.lookups import discover_all_runs, record_or_404
 from silisocs.studio.state import studio_state
 
 router = APIRouter()
+
+
+def _branch_body(body: Any) -> int | None:
+    if not isinstance(body, dict):
+        raise ValueError("Branch request must be a JSON object")
+    checkpoint_step = body.get("checkpoint_step")
+    if checkpoint_step is not None and (
+        isinstance(checkpoint_step, bool) or not isinstance(checkpoint_step, int)
+    ):
+        raise ValueError("checkpoint_step must be an integer or null")
+    return checkpoint_step
 
 
 @router.get("/live", response_class=HTMLResponse)
@@ -120,6 +133,102 @@ async def api_launch(request: Request):
         control_path=spec.control_path,
     )
     return job.to_dict()
+
+
+@router.post("/api/runs/{run_id:path}/branches/plan")
+async def api_plan_branch(request: Request, run_id: str):
+    """Resolve a branch request without creating output or queueing a process."""
+    from silisocs.runtime.execution.branching import plan_checkpoint_branch  # noqa: PLC0415
+    from silisocs.studio.branches import find_parent_job  # noqa: PLC0415
+
+    state = studio_state(request)
+    record = record_or_404(state, run_id)
+    try:
+        body = await request.json()
+        checkpoint_step = _branch_body(body)
+        find_parent_job(state.jobs, record.path)
+        overrides = body.get("overrides") or []
+        if not isinstance(overrides, list) or not all(isinstance(item, str) for item in overrides):
+            raise ValueError("overrides must be a list of strings")
+        mode = str(body.get("mode") or "exact").strip().lower()
+        seed = body.get("continuation_seed")
+        if mode == "resample" and seed is None:
+            seed = secrets.randbelow(2**31 - 1) + 1
+        plan = plan_checkpoint_branch(
+            record.path,
+            checkpoint_step=checkpoint_step,
+            mode=mode,
+            continuation_seed=seed,
+            overrides=tuple(overrides),
+        )
+    except (ValueError, FileNotFoundError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "planned": True,
+        "runtime_validation": "on_launch",
+        "parent_run_id": run_id,
+        **plan.to_dict(),
+    }
+
+
+@router.post("/api/runs/{run_id:path}/branches")
+async def api_create_branches(request: Request, run_id: str):
+    """Plan a batch, then queue each child as an ordinary run."""
+    from silisocs.studio.branches import (  # noqa: PLC0415
+        find_parent_job,
+        prepare_branches,
+        submit_prepared_branches,
+    )
+
+    state = studio_state(request)
+    record = record_or_404(state, run_id)
+    try:
+        body = await request.json()
+        checkpoint_step = _branch_body(body)
+        interactive = body.get("interactive", True)
+        start_paused = body.get("start_paused", True)
+        if not isinstance(interactive, bool) or not isinstance(start_paused, bool):
+            raise ValueError("interactive and start_paused must be booleans")
+        branches = body.get("branches")
+        if branches is None:
+            branches = [
+                {
+                    "name": body.get("name"),
+                    "mode": body.get("mode"),
+                    "continuation_seed": body.get("continuation_seed"),
+                    "overrides": body.get("overrides"),
+                }
+            ]
+        if not isinstance(branches, list) or not all(isinstance(item, dict) for item in branches):
+            raise ValueError("branches must be a list of objects")
+        parent_job = find_parent_job(state.jobs, record.path)
+        group_id, prepared, cwd, env = prepare_branches(
+            parent_job=parent_job,
+            parent_run_id=run_id,
+            parent_run_path=record.path,
+            output_root=state.output_root,
+            requests=branches,
+            checkpoint_step=checkpoint_step,
+            interactive=interactive,
+            start_paused=start_paused,
+        )
+        jobs = submit_prepared_branches(
+            state.jobs,
+            prepared,
+            cwd=cwd,
+            env=env,
+            scenario=parent_job.scenario,
+        )
+    except (ValueError, FileNotFoundError, json.JSONDecodeError, yaml.YAMLError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "group_id": group_id,
+        "parent_run_id": run_id,
+        "items": [
+            {**job.to_dict(), "branch_id": item.id, "name": item.name, **item.plan.to_dict()}
+            for job, item in zip(jobs, prepared, strict=True)
+        ],
+    }
 
 
 @router.post("/api/jobs/{job_id}/control")

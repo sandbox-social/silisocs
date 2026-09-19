@@ -79,3 +79,31 @@ The framework is in good V1 shape when:
   assumptions.
 - `uv run pytest` and `uv run --group docs properdocs build --strict` pass in the contributor
   environment.
+
+## Checkpoint Branching Progress
+
+Implemented:
+
+- Exact historical checkpoint selection with `sim.checkpoint.source_step`.
+- Capability-based independent backend cloning (`supports_checkpoint_branching`).
+- Open configuration changes with compatibility derived from checkpoint-owned
+  object, backend, routing, and component-state contracts.
+- Exact and reseeded future trajectories, manifest lineage, Studio plan/launch
+  APIs (including batches), and a run-page branch workflow.
+- Same-class component retuning (stateful or stateless) and stateless component
+  replacement without feature-specific branch code.
+- A lightweight run-family lineage view for each branch group and its ancestors.
+
+Remaining advanced work:
+
+- Persist launch provenance in run artifacts so runs created outside the same
+  Studio state directory can be branched without reconstructing commands from
+  redacted `effective_config.yaml`.
+- Add a branch-group comparison shortcut; existing multi-run Explore remains the
+  comparison surface.
+- Compose a child's inherited pre-checkpoint events into lineage-aware analysis
+  views. Child artifacts currently store only their own continuation suffix;
+  the parent remains the authoritative source for shared history.
+- Define migration/transform contracts for advanced stateful component changes,
+  roster changes, backend swaps, GM topology edits, and external-world clone
+  providers. These stay rejected until each has an explicit compatibility plan.

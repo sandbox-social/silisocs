@@ -8,6 +8,8 @@ Verifies that:
 5. Prompt modifications maintain structure
 """
 
+from types import SimpleNamespace
+
 import pytest
 from omegaconf import OmegaConf
 
@@ -382,6 +384,21 @@ class TestNativeGMActionPromptBehavior:
         assert spec.prompt == "Base prompt"
         assert spec.output_type.value == "text"
         assert spec.extra_args == {}
+
+    def test_action_prompt_component_selects_agent_then_flow_template(self):
+        """Agent templates override flow templates, which override the default."""
+        component = DefaultActionPromptComponent(
+            context=SimpleNamespace(
+                agents=[], agent_flow_tags={"Alice": "researchers", "Carol": "researchers"}
+            ),
+            action_prompt_template="Default for {name}",
+            flow_prompt_templates={"researchers": "Research for {name}"},
+            agent_prompt_templates={"Alice": "Specific for {name}"},
+        )
+
+        assert component.action_prompt("Alice").prompt == "Specific for Alice"
+        assert component.action_prompt("Carol").prompt == "Research for Carol"
+        assert component.action_prompt("Bob").prompt == "Default for Bob"
 
 
 class TestPromptPipelineEndToEnd:

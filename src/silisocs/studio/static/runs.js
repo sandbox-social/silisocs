@@ -211,7 +211,50 @@ function initWatchStream(data, log) {
   return events;
 }
 
+/* ---- checkpoint branching ---------------------------------------------- */
+function initRunBranching(data) {
+  if (!data.branch) return;
+  const dialog = document.getElementById("branch-run-dialog");
+  const checkpointInput = document.getElementById("branch-checkpoint");
+  const totalInput = document.getElementById("branch-num-steps");
+  const syncMinimum = () => {
+    const minimum = Number(checkpointInput.value) + 1;
+    totalInput.min = minimum;
+    if (Number(totalInput.value) < minimum) totalInput.value = minimum;
+  };
+  checkpointInput.addEventListener("change", syncMinimum);
+  syncMinimum();
+  window.openBranchDialog = () => dialog?.showModal();
+  window.createRunBranch = event => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector("[data-branch-submit]");
+    return withBusy(button, async () => {
+      const checkpoint = Number(document.getElementById("branch-checkpoint").value);
+      const total = Number(document.getElementById("branch-num-steps").value);
+      const extra = document.getElementById("branch-overrides").value
+        .split("\n").map(line => line.trim()).filter(Boolean);
+      const response = await apiFetch(data.branch.url, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          checkpoint_step: checkpoint,
+          name: document.getElementById("branch-name").value,
+          mode: document.getElementById("branch-mode").value,
+          overrides: [`num_steps=${total}`, ...extra],
+          interactive: true,
+          start_paused: document.getElementById("branch-start-paused").checked,
+        }),
+      });
+      if (!response) return;
+      const result = await response.json();
+      const job = result.items?.[0];
+      if (job) location.href = `/live?job=${encodeURIComponent(job.id)}&autowatch=1`;
+    });
+  };
+}
+
 function initRunPage(data) {
+  initRunBranching(data);
   if (data.tab === "platform") initPlatformTab(data);
   const log = logView("run-log", "logs-follow");
   if (data.wireLog) log.hydrate();

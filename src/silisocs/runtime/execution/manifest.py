@@ -94,6 +94,9 @@ def _game_master_record(gm: Any, output_dir: Path) -> dict[str, Any]:
             if backend is not None
             else None
         ),
+        "supports_checkpoint_branching": bool(
+            getattr(backend, "supports_checkpoint_branching", False)
+        ),
         "database": relative_db,
         "visualizer": asdict(visualizer)
         if visualizer is not None and is_dataclass(visualizer)
@@ -148,6 +151,7 @@ def build_run_manifest(
     counters: dict[str, int] | None = None,
     game_masters: list[Any] | None = None,
     project_root: str | Path | None = None,
+    lineage: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble the manifest payload for a finished (or failed) run.
 
@@ -199,6 +203,7 @@ def build_run_manifest(
         },
         "artifacts": artifacts,
         "provenance": environment_provenance(Path(project_root) if project_root else out),
+        "lineage": dict(lineage) if lineage else None,
     }
 
 

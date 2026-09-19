@@ -29,6 +29,7 @@ class ResourceMarketApp(BackendApp):
     action_logger: Any = None
     # Authoritative checkpoint state: full in-memory market state round-trips.
     provides_checkpoint_state = True
+    supports_checkpoint_branching = True
     app_description: str = "A resource market environment."
     initial_cash: int = 20
     initial_inventory: dict[str, int] = field(default_factory=lambda: {"food": 1})

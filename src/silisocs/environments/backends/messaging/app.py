@@ -42,6 +42,7 @@ class MessagingApp(BackendApp):
 
     action_logger: Any = None
     provides_checkpoint_state = True
+    supports_checkpoint_branching = True
     app_description: str = "A direct-messaging channel between the participants."
     # How many delivered messages an observation shows (most recent first kept).
     history_window: int = 20

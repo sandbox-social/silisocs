@@ -69,6 +69,7 @@ from silisocs.runtime.construction.initialization_context import (
     populate_agent_data,
 )
 from silisocs.runtime.construction.models import build_deduped_models, build_global_llm_config
+from silisocs.runtime.execution.branching import validate_runtime_branch_compatibility
 from silisocs.runtime.execution.manifest import backend_committed_nothing, write_run_manifest
 from silisocs.runtime.execution.resume import plan_checkpoint_resume
 from silisocs.runtime.execution.run_events import RunEventLog
@@ -133,6 +134,38 @@ def _resolved_llm_provider(cfg: Any) -> str:
     if bool(OmegaConf.select(cfg, "sim.llm.disabled") or False):
         return "disabled"
     return str(OmegaConf.select(cfg, "sim.llm.provider") or "").strip()
+
+
+def _branch_lineage(cfg: Any) -> dict[str, Any] | None:
+    """Project internal branch config into portable run-manifest lineage."""
+    raw = OmegaConf.select(cfg, "sim.checkpoint.branch")
+    if isinstance(raw, DictConfig):
+        raw = OmegaConf.to_container(raw, resolve=True)
+    if not isinstance(raw, Mapping) or not raw.get("id"):
+        return None
+    return {
+        key: raw.get(key)
+        for key in (
+            "id",
+            "group_id",
+            "parent_run_id",
+            "checkpoint_step",
+            "mode",
+            "continuation_seed",
+        )
+    }
+
+
+def _apply_branch_seed(cfg: DictConfig) -> int | None:
+    """Use a resampled branch's seed for future construction and randomness."""
+    mode = str(OmegaConf.select(cfg, "sim.checkpoint.branch.mode") or "")
+    value = OmegaConf.select(cfg, "sim.checkpoint.branch.continuation_seed")
+    if mode != "resample":
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("A resampled branch requires an integer continuation_seed")
+    OmegaConf.update(cfg, "seed", value, merge=False)
+    return value
 
 
 def _initialize_runtime_environment() -> Path:
@@ -384,6 +417,7 @@ def run_simulation(cfg: DictConfig, *, output_dir: str | os.PathLike[str] | None
     :func:`silisocs.evaluations.run_artifact.load_run`.
     """
     cfg, metrics, logger = _setup_run_environment(cfg)
+    branch_seed = _apply_branch_seed(cfg)
     output_dir = _resolve_output_directory(cfg, metrics, logger, explicit_output_dir=output_dir)
     run_stats_path = os.path.join(output_dir, "run_stats.log")
 
@@ -585,6 +619,8 @@ def run_simulation(cfg: DictConfig, *, output_dir: str | os.PathLike[str] | None
                 initializer_model=model,
             )
             if checkpoint_data is not None:
+                if _branch_lineage(cfg) is not None:
+                    validate_runtime_branch_compatibility(runtime_objects, checkpoint_data)
                 load_checkpoint_into_runtime(
                     runtime_objects,
                     checkpoint_data,
@@ -609,6 +645,8 @@ def run_simulation(cfg: DictConfig, *, output_dir: str | os.PathLike[str] | None
                     )
             if checkpoint_data is not None:
                 restore_rng_state_from_metadata(checkpoint_meta)
+                if branch_seed is not None:
+                    random.seed(branch_seed)
         _log_startup_phase("engine_initialize", time.time() - t0)
 
         # Provisional manifest: the run becomes loadable (Studio run page, live
@@ -624,6 +662,7 @@ def run_simulation(cfg: DictConfig, *, output_dir: str | os.PathLike[str] | None
             counters=provisional_snapshot.get("counters"),
             game_masters=runtime_objects.game_masters_by_sequence(),
             project_root=_resolve_project_root(),
+            lineage=_branch_lineage(cfg),
         )
 
         t0 = time.time()
@@ -700,6 +739,7 @@ def run_simulation(cfg: DictConfig, *, output_dir: str | os.PathLike[str] | None
             counters=snapshot.get("counters"),
             game_masters=runtime_objects.game_masters_by_sequence(),
             project_root=_resolve_project_root(),
+            lineage=_branch_lineage(cfg),
         )
         if manifest_path is not None:
             logger.info("Wrote run manifest to: %s", manifest_path)

@@ -195,9 +195,11 @@ def test_backend_capability_flags():
     """Every shipped backend self-restores via set_state (provides_checkpoint_state)."""
     for cls in (TwitterLikeApp, RedditLikeApp, ResourceMarketApp, VirtualSpaceApp):
         assert cls.provides_checkpoint_state is True
+        assert cls.supports_checkpoint_branching is True
     # Mastodon now self-restores too: get_state embeds its action history and
     # set_state replays it, so it restores via the default set_state path.
     assert SocialNetworkApp.provides_checkpoint_state is True
+    assert SocialNetworkApp.supports_checkpoint_branching is False
     # Replay capability = a mapper registered for the backend_type (the mapping
     # lives with the replay strategy, not on the backend). twitter_like has one;
     # reddit_like does not (no valid microblog mapping; self-restores via snapshot).

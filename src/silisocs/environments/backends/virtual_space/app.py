@@ -30,6 +30,7 @@ class VirtualSpaceApp(BackendApp):
     action_logger: Any = None
     # Authoritative checkpoint state: full in-memory room state round-trips.
     provides_checkpoint_state = True
+    supports_checkpoint_branching = True
     app_description: str = "A virtual space where agents can move between rooms and talk."
     rooms: list[str] = field(default_factory=lambda: ["atrium", "garden", "workshop"])
     starting_room: str = "atrium"

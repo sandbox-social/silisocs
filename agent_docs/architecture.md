@@ -4,14 +4,17 @@
 
 **For designing experiments via configuration:** See [scenario_design.md](scenario_design.md)
 
-**For code extension points:** See [AGENTS.md](../AGENTS.md)
+**Before extending code:** Start with the shared
+[Workflow Context](README.md#workflow-context), then use
+[AGENTS.md](../AGENTS.md) for repository-wide contracts.
 
 ---
 
 ## Overview
 
-Silisocs is a configurable runtime for social simulations. The core runtime has
-four major pillars:
+Silisocs is a configurable runtime for general-purpose multi-agent simulations.
+Social platforms are one supported domain, not an architectural assumption. The
+core runtime has four major pillars:
 
 1. **Agents**: simulated actors that observe context and return typed actions.
 2. **Environment**: game masters and backends that expose the world agents act in.

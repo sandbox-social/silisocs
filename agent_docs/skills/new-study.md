@@ -4,13 +4,41 @@ A study is a **research question asked on top of a scenario**. It defines hypoth
 conditions (what you vary), evaluators (what you measure), and seed replication.
 Studies live in `experiments/studies/<study_id>/study.yaml` and are version-controlled.
 
-Scenarios are shared social scenarios — reusable across studies. Multiple researchers
+Scenarios are shared simulation worlds — reusable across studies. Multiple researchers
 can ask different questions on the same scenario.
 
 Studies are **living documents**: they grow as hypotheses are tested, findings recorded,
 and followup hypotheses added. Design with that lifecycle in mind.
 
 Work conversationally, one section at a time.
+
+## Context bootstrap
+
+Before proposing conditions or measurement code, read the shared
+[`Workflow Context`](../README.md#workflow-context), including its four core
+references, plus [`study_guide.md`](../../docs/study_guide.md). Follow the
+focused guide for every simulation or analysis owner the study touches. If
+custom code is needed, inspect that owner's live interface/base, factory, and
+one shipped implementation.
+
+## Mandatory extension discipline
+
+A study varies and measures a simulation; it must not become a second simulation
+runtime. Use the narrowest owner for every requested behavior:
+
+1. Express conditions as ordinary overrides of existing configuration first.
+2. Put new measurement logic in the narrowest probe/evaluator/panel extension; it
+   reads artifacts and never mutates simulation behavior.
+3. Put missing simulation behavior in the scenario's narrowest slot: backend,
+   individual GM component, agent, router, or intervention handler.
+4. Escalate only when those contracts are insufficient: turn/participation policy,
+   then step strategy, then loop strategy, and only finally the whole-engine slot.
+5. Before using a broader slot, document why each narrower slot cannot own the
+   behavior. Never add a study-, scenario-, backend-, or paper-specific core branch.
+
+If a condition needs custom runtime code, pause study authoring, implement and test
+that selectable scenario extension, then return here and reference it through
+configuration. Do not hide runtime behavior in a study evaluator or launch script.
 
 ---
 
@@ -135,7 +163,8 @@ Ask:
 > "What do you want to measure? And how many random seeds do you want to replicate over?"
 
 **Evaluators** — suggest defaults and let user add:
-- `builtin.action_metrics_detailed` — post/reply/like/repost counts (always recommended)
+- `builtin.action_metrics_detailed` — committed action counts by declared event
+  labels/semantics (recommended when the scenario records action events)
 - `builtin.probe_metrics_detailed` — probe responses over time (if probes are configured)
 - `builtin.probe_binary_detailed`, `builtin.probe_numeric_detailed`,
   `builtin.probe_choice_detailed`, `builtin.probe_freetext_detailed` — type-specific

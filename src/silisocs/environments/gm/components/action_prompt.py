@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from silisocs.agents.harness.bridge import ToolSurface
@@ -30,7 +31,7 @@ class DefaultActionPromptComponent(ActionPromptComponent):
     scenarios are unchanged.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - one config-backed component slot
         self,
         *,
         backend: Any | None = None,
@@ -38,6 +39,8 @@ class DefaultActionPromptComponent(ActionPromptComponent):
         action_prompt_template: str = "",
         action_prompt: str | None = None,
         output_style: str | None = None,
+        agent_prompt_templates: Mapping[str, str] | None = None,
+        flow_prompt_templates: Mapping[str, str] | None = None,
         enable_tool_calling: bool = False,
         tool_calling_mode: str = "single",
     ) -> None:
@@ -48,6 +51,13 @@ class DefaultActionPromptComponent(ActionPromptComponent):
             if output_style:
                 action_prompt_template = f"{action_prompt_template}\n\n{output_style}"
         self._action_prompt_template = str(action_prompt_template or "")
+        self._agent_prompt_templates = {
+            str(name): str(prompt) for name, prompt in dict(agent_prompt_templates or {}).items()
+        }
+        self._flow_prompt_templates = {
+            str(flow): str(prompt) for flow, prompt in dict(flow_prompt_templates or {}).items()
+        }
+        self._agent_flow_tags = dict(getattr(context, "agent_flow_tags", {}) or {})
         self._enable_tool_calling = bool(enable_tool_calling)
         self._tool_calling_mode = str(tool_calling_mode or "single").strip()
         # Agent objects (from the GM context) to look up whether an acting agent wants a
@@ -58,6 +68,12 @@ class DefaultActionPromptComponent(ActionPromptComponent):
             else {}
         )
 
+    def _prompt_template(self, agent_name: str) -> str:
+        if agent_name in self._agent_prompt_templates:
+            return self._agent_prompt_templates[agent_name]
+        flow = str(self._agent_flow_tags.get(agent_name, "default") or "default")
+        return self._flow_prompt_templates.get(flow, self._action_prompt_template)
+
     def _tool_surface_spec(self, agent_name: str) -> ActionSpec:
         surface = ToolSurface(
             backend=self._backend,
@@ -65,7 +81,7 @@ class DefaultActionPromptComponent(ActionPromptComponent):
             harness_logger=getattr(self._backend, "harness_logger", None),
         )
         return ActionSpec(
-            prompt=format_action_prompt(self._action_prompt_template, agent_name),
+            prompt=format_action_prompt(self._prompt_template(agent_name), agent_name),
             output_type=OutputType.TEXT,
             extra_args={"tool_surface": surface},
         )
@@ -91,7 +107,7 @@ class DefaultActionPromptComponent(ActionPromptComponent):
                 extra_args["tools"] = tool_schemas
                 extra_args["tool_mode"] = self._tool_calling_mode
         return ActionSpec(
-            prompt=format_action_prompt(self._action_prompt_template, agent_name),
+            prompt=format_action_prompt(self._prompt_template(agent_name), agent_name),
             output_type=OutputType.TOOL_CALLS if extra_args.get("tools") else OutputType.TEXT,
             extra_args=extra_args,
         )

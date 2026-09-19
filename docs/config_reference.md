@@ -92,7 +92,14 @@ files override these defaults via Hydra composition (see `AGENTS.md`).
 | `sim.checkpoint.every_n_steps` | `null` | null |
 | `sim.checkpoint.explicit_steps` | `[]` | list |
 | `sim.checkpoint.source_run` | `null` | null |
+| `sim.checkpoint.source_step` | `null` | null |
 | `sim.checkpoint.auto_resume` | `true` | bool |
+| `sim.checkpoint.branch.id` | `null` | null |
+| `sim.checkpoint.branch.group_id` | `null` | null |
+| `sim.checkpoint.branch.parent_run_id` | `null` | null |
+| `sim.checkpoint.branch.checkpoint_step` | `null` | null |
+| `sim.checkpoint.branch.mode` | `null` | null |
+| `sim.checkpoint.branch.continuation_seed` | `null` | null |
 | `sim.checkpoint.save.built_in` | `"monolithic_json"` | str |
 | `sim.checkpoint.save.class_path` | `null` | null |
 | `sim.checkpoint.save.params` | `{}` | dict |

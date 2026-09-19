@@ -525,6 +525,7 @@ to a single action:
 | Declaration | Type | Effect |
 |---|---|---|
 | `provides_checkpoint_state` | `ClassVar[bool]` | `get_state`/`set_state` are authoritative for restore. Declared on `BackendApp` with a `False` default, so every reader accesses it directly — you override it, you never have to define it |
+| `supports_checkpoint_branching` | `ClassVar[bool]` | Opt-in guarantee that restoring the authoritative snapshot creates an independent world. Keep the default `False` for live/shared external systems; set `True` for local state that can be cloned safely |
 | `visualizer` | `VisualizerSpec` | publishes a read-only platform viewer (Studio's Platform tab) |
 | `event_semantics` | `{"roles": ..., "fields": ..., "labels": ...}` | explicit aggregate semantics when decorator-local declarations are not suitable |
 

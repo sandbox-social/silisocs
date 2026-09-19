@@ -53,6 +53,7 @@ class TwitterLikeApp(PlatformBackedSocialApp):
     action_logger: Any = None
     # Authoritative checkpoint state: full SQLite snapshot + user mapping.
     provides_checkpoint_state = True
+    supports_checkpoint_branching = True
     # Self-described analysis semantics (custom-mode labels the decorators can't
     # see); decorator-declared tags on new actions merge in on top.
     event_semantics = social_event_semantics(

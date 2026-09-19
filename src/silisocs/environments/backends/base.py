@@ -425,6 +425,10 @@ class BackendApp(metaclass=abc.ABCMeta):
     # Declared on the base (not left to each subclass), so every read is a plain
     # attribute access: `backend.provides_checkpoint_state`, never a getattr default.
     provides_checkpoint_state: typing.ClassVar[bool] = False
+    # Opt-in guarantee that restoring a checkpoint creates an independent world
+    # instead of reconnecting to, mutating, or replaying into shared external
+    # state. Branch planners use this capability, not backend type names.
+    supports_checkpoint_branching: typing.ClassVar[bool] = False
     visualizer: typing.ClassVar[VisualizerSpec | None] = None
     # Optional aggregate semantics for shared or externally declared event
     # shapes: an EventSemantics instance or the portable {roles, fields, labels}

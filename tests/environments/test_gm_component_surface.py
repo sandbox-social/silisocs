@@ -55,6 +55,10 @@ class _App(BackendApp):
         return f"{agent_name} acted"
 
 
+class _OtherApp(_App):
+    pass
+
+
 @dataclass
 class _Ent:
     name: str
@@ -177,9 +181,22 @@ def test_checkpoint_skips_component_state_on_class_mismatch(tmp_path, monkeypatc
 
 
 def test_checkpoint_stateless_gm_has_no_component_classes_key(tmp_path, monkeypatch) -> None:
-    # A run with no stateful components keeps the exact legacy payload (additive key).
+    # Stateful restore metadata stays absent; branch identity metadata covers all slots.
     gm = _make_gm(tmp_path, monkeypatch)
-    assert "component_classes" not in gm.get_state()
+    state = gm.get_state()
+    assert "component_classes" not in state
+    assert set(state["component_types"]) == set(gm.components)
+
+
+def test_checkpoint_records_and_validates_backend_class(tmp_path, monkeypatch) -> None:
+    gm = _make_gm(tmp_path, monkeypatch)
+    gm.backend.provides_checkpoint_state = True
+    state = gm.get_state()
+    assert state["backend"]["backend_class"].endswith("._App")
+
+    gm.backend = _OtherApp()
+    with pytest.raises(ValueError, match="backend class"):
+        gm.set_state(state)
 
 
 def test_rebuild_component_targets_default_flow_key_on_multiflow(tmp_path, monkeypatch) -> None:

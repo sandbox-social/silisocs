@@ -274,7 +274,9 @@ live in `sim.llm`, and they have opposite rules:
 | `sim.checkpoint.every_n_steps` | `null` | Save checkpoints every N steps when set |
 | `sim.checkpoint.explicit_steps` | `[]` | Additional explicit checkpoint steps |
 | `sim.checkpoint.source_run` | `null` | Previous output directory to restore from (explicit resume) |
+| `sim.checkpoint.source_step` | `null` | Exact checkpoint step to restore from inside `source_run`; `null` selects the latest checkpoint |
 | `sim.checkpoint.auto_resume` | `true` | Resume from this run's own output directory if it already contains checkpoints; ignored when `source_run` is set |
+| `sim.checkpoint.branch.*` | `null` | Launcher-owned lineage metadata (`id`, `group_id`, `parent_run_id`, `checkpoint_step`, `mode`, `continuation_seed`). Studio writes it for checkpoint branches; ordinary resumes leave it unset |
 | `sim.checkpoint.save.built_in` | `monolithic_json` | On-disk checkpoint layout: `monolithic_json` (one JSON per step, the long-standing format) or `sharded` (a `step_N_checkpoint.json` manifest + NDJSON object shards + raw SQLite sidecar `.db` files with sha256; `params.objects_per_shard`, default 500). Restore reads both layouts transparently; `class_path` accepts a custom `CheckpointSaveStrategy` |
 | `sim.checkpoint.restore.built_in` | `social_action_event_replay` | Checkpoint restore strategy when `source_run` is set |
 | `sim.telemetry.record_active_agent_names` | `false` | Retain each episode's active-agent *name list* in `sim_metrics.json` (kept in memory for the whole run — O(active × steps)). Counts (`active_agents`) are always recorded |
@@ -1730,6 +1732,12 @@ env:
 - The whole compilation applies to `sim.action_mode: custom`. Under `generic`
   these params are unused: the prompt is generated from the backend's action
   catalog (headed by `app_description`) instead.
+- `agent_prompt_templates` and `flow_prompt_templates` optionally replace the
+  compiled template for one named agent or flow. Agent entries take precedence
+  over flow entries, then the compiled base prompt is the fallback. Values are
+  complete templates (including any response-format guidance they require), and
+  support the same `{name}` substitution. These maps provide scoped behavior
+  without requiring separate action-prompt component classes.
 
 ### How Action Prompts Are Constructed
 
@@ -1879,7 +1887,8 @@ uv run silisocs \
 ```
 
 Checkpoints are written to `.../outputs/.../checkpoints/step_<N>_checkpoint.json`.
-Restore selects the latest checkpoint in the source run, initializes the runtime
+Restore selects `sim.checkpoint.source_step` when set and otherwise selects the
+latest checkpoint in the source run, initializes the runtime
 object scaffolding, and then applies checkpointed agent, game-master, component,
 and backend state. Built-in local backends restore their world state directly
 from the checkpoint. `sim.checkpoint.restore` is still required for source runs
@@ -1887,6 +1896,35 @@ that need a restore strategy, such as older social runs that must rebuild backen
 state from `action_events.jsonl`.
 Checkpoint runtime metadata records artifact ownership for every Game Master
 rather than relying on one representative GM for the whole run.
+
+### Independent branches
+
+A branch is a new run restored from an explicit parent checkpoint. It writes to
+its own output directory, leaves the parent immutable, and records its parent,
+checkpoint, branch group, mode, and continuation seed in `run_manifest.json`.
+`exact` restores the checkpoint RNG state; `resample` preserves simulation state
+but reseeds future policy and Python-random decisions.
+
+Branching is capability-based. A backend must opt in with
+`supports_checkpoint_branching = True`, meaning its authoritative checkpoint
+state creates an independent world and never reconnects to shared external
+state. Custom local backends can opt in without a core registration change.
+Branch overrides are ordinary Hydra configuration changes; the planner does not
+maintain a feature-by-feature allowlist. Only launcher-owned fields (`output_dir`,
+the trajectory seed, checkpoint ancestry/lineage, Hydra output, and run control)
+are reserved. After composition, the child runtime is checked against the
+checkpoint's contracts: agent/GM identities and roster, backend type and
+implementation class, GM routing identity, and stateful component compatibility
+must still match. Parameters may change on an existing component, including a
+stateful one, because its checkpoint state is restored into the newly configured
+instance. A component class may be added, removed, or replaced only when the
+affected old and new components are
+stateless. Models, prompts, policies, interventions, evaluation, and custom
+configuration therefore need no branching-specific code.
+
+Configuration that originally initialized checkpoint-owned state does not rewrite
+history: the saved state remains authoritative. Advanced roster changes, backend
+type changes, and state migrations still require explicit future contracts.
 
 ### Backend checkpoint capability
 

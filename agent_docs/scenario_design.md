@@ -3,6 +3,11 @@
 This guide is for LLM agents helping design and create new scenarios using
 configuration (YAML) — without modifying code.
 
+Before adding custom behavior, read the shared
+[Workflow Context](README.md#workflow-context) and apply its extension order.
+This guide explains scenario configuration; the linked focused guides define
+the corresponding runtime extension contracts.
+
 ## 1) Scenario Design Workflow
 
 A complete scenario consists of:

@@ -54,7 +54,15 @@ checkpoint:
   every_n_steps: null          # int | null
   explicit_steps: []           # list[int]
   source_run: null             # optional previous output directory to restore from
+  source_step: null            # exact checkpoint step in source_run; null selects latest
   auto_resume: true            # resume from THIS run's own output dir if it already has checkpoints; ignored when source_run is set
+  branch:
+    id: null
+    group_id: null
+    parent_run_id: null
+    checkpoint_step: null
+    mode: null                 # exact | resample; set by branch launchers
+    continuation_seed: null
   save:
     # On-disk checkpoint layout: monolithic_json (one JSON per step, the
     # long-standing format) | sharded (manifest + NDJSON object shards + raw DB

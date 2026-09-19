@@ -82,6 +82,8 @@ ROUTE_SURFACE = [
     ("POST", "/api/preflight"),
     ("POST", "/api/repositories"),
     ("POST", "/api/repositories/refresh"),
+    ("POST", "/api/runs/{run_id:path}/branches"),
+    ("POST", "/api/runs/{run_id:path}/branches/plan"),
     ("POST", "/api/scenarios"),
     ("POST", "/api/studies/{study_id}"),
     ("POST", "/api/studies/{study_id}/compose"),
@@ -123,6 +125,11 @@ def test_no_route_is_registered_twice(tmp_path):
         ),
         (("GET", "/api/runs/{run_id:path}"), ("GET", "/api/runs/{run_id:path}/report")),
         (("GET", "/api/runs/{run_id:path}"), ("GET", "/api/runs/{run_id:path}/events/{stream}")),
+        (("GET", "/api/runs/{run_id:path}"), ("POST", "/api/runs/{run_id:path}/branches")),
+        (
+            ("GET", "/api/runs/{run_id:path}"),
+            ("POST", "/api/runs/{run_id:path}/branches/plan"),
+        ),
         (("GET", "/runs/{run_id:path}"), ("GET", "/runs")),
         # The /viewers mount matches by prefix, so it must come after everything.
         (("MOUNT", "/viewers"), ("POST", "/api/viewers/{run_id:path}/{backend_type}")),

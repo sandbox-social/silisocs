@@ -376,26 +376,42 @@ def load_checkpoint_file(path: str | Path) -> dict[str, Any]:
     return parsed
 
 
-def resolve_checkpoint_source(source_run: str | Path) -> Path:
-    """Return the latest checkpoint file path for a previous run.
-
-    Action logs are resolved separately via
-    :func:`silisocs.evaluations.action_events.resolve_action_event_files`, which
-    handles both the flat single-GM log and per-GM multi-GM subdirectory logs.
-    """
+def list_checkpoint_steps(source_run: str | Path) -> list[int]:
+    """Return the sorted checkpoint steps available in a run directory."""
     root = Path(source_run).expanduser()
     if not root.is_dir():
         raise FileNotFoundError(f"Checkpoint source_run directory not found: {root}")
     checkpoints_dir = root / "checkpoints"
     if not checkpoints_dir.is_dir():
         raise FileNotFoundError(f"Checkpoint directory not found in source_run: {checkpoints_dir}")
-    candidates = sorted(
-        checkpoints_dir.glob("step_*_checkpoint.json"),
-        key=lambda path: _checkpoint_step_from_name(path.name),
+    steps = sorted(
+        _checkpoint_step_from_name(path.name)
+        for path in checkpoints_dir.glob("step_*_checkpoint.json")
     )
-    if not candidates:
+    if not steps:
         raise FileNotFoundError(f"No checkpoint files found in {checkpoints_dir}")
-    return candidates[-1]
+    return steps
+
+
+def resolve_checkpoint_source(source_run: str | Path, step: int | None = None) -> Path:
+    """Return an exact or latest checkpoint file path for a previous run.
+
+    Action logs are resolved separately via
+    :func:`silisocs.evaluations.action_events.resolve_action_event_files`, which
+    handles both the flat single-GM log and per-GM multi-GM subdirectory logs.
+    """
+    root = Path(source_run).expanduser()
+    steps = list_checkpoint_steps(root)
+    if step is not None and (isinstance(step, bool) or not isinstance(step, int)):
+        raise TypeError("Checkpoint step must be an integer or None")
+    selected = steps[-1] if step is None else step
+    if selected not in steps:
+        available = ", ".join(str(value) for value in steps)
+        raise FileNotFoundError(
+            f"Checkpoint step {selected} not found in {root / 'checkpoints'} "
+            f"(available: {available})"
+        )
+    return root / "checkpoints" / f"step_{selected}_checkpoint.json"
 
 
 def latest_checkpoint_step(output_dir: str | Path) -> int:
@@ -499,6 +515,9 @@ def _runtime_metadata(runtime: RuntimeObjects) -> dict[str, Any]:
                 "sequence": sequence,
                 "action_events_file": action_events_file,
                 "output_dir": output_dir,
+                "supports_checkpoint_branching": bool(
+                    getattr(backend, "supports_checkpoint_branching", False)
+                ),
             }
         )
 

@@ -15,3 +15,5 @@ engine:
         news_account:
           inactive_to_active: 1
           active_to_inactive: 0
+llm:
+  provider: scripted

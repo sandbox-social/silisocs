@@ -69,6 +69,7 @@ class SimultaneousRoundGame(BackendApp):
     action_logger: Any = None
     # Round-game state is small and self-contained: subclasses snapshot it.
     provides_checkpoint_state = True
+    supports_checkpoint_branching = True
     # Verb used in the repeat-submission rejection ("Alex already {verb} this
     # round."); override so the agent-facing message speaks the game's language.
     choice_verb = "chose"

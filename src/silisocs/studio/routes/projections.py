@@ -33,6 +33,7 @@ def run_json(record: Any) -> dict[str, Any]:
         "llm_name": artifact.llm_name,
         "llm_usage": artifact.llm_usage,
         "health": artifact.health,
+        "lineage": artifact.lineage,
         "path": str(record.path),
         "modified": record.modified,
     }

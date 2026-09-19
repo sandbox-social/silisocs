@@ -12,6 +12,7 @@ catch-all, so it would shadow every suffix route (``/views/…``, ``/panels/…`
 # resolves handler annotations at registration time; keeping them real objects
 # is the contract the whole router surface relies on.
 
+import re
 import shlex
 from difflib import unified_diff
 from pathlib import Path
@@ -22,7 +23,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from silisocs.analysis.views import build_view
-from silisocs.studio.catalog import arrange_runs
+from silisocs.studio.catalog import arrange_runs, discover_runs
 from silisocs.studio.routes.lookups import (
     discover_all_runs,
     record_or_404,
@@ -36,6 +37,85 @@ from silisocs.studio.state import studio_state
 from silisocs.studio.viewers import find_backend_dbs
 
 router = APIRouter()
+
+
+def _lineage_graph(current: Any, records: list[Any]) -> list[dict[str, Any]]:
+    """Project manifest parent links into the current run's connected family."""
+    by_id = {record.id: record for record in records}
+    by_id.setdefault(current.id, current)
+    parents = {
+        record.id: str(record.artifact.lineage.get("parent_run_id") or "")
+        for record in by_id.values()
+    }
+    connected = {current.id}
+    changed = True
+    while changed:
+        changed = False
+        for run_id in tuple(connected):
+            parent_id = parents.get(run_id, "")
+            if parent_id in by_id and parent_id not in connected:
+                connected.add(parent_id)
+                changed = True
+        for run_id, parent_id in parents.items():
+            if run_id not in connected and parent_id in connected:
+                connected.add(run_id)
+                changed = True
+
+    children: dict[str, list[str]] = {run_id: [] for run_id in connected}
+    roots: list[str] = []
+    for run_id in connected:
+        parent_id = parents.get(run_id, "")
+        if parent_id in connected:
+            children[parent_id].append(run_id)
+        else:
+            roots.append(run_id)
+    for values in children.values():
+        values.sort(key=lambda run_id: (by_id[run_id].modified, run_id))
+    roots.sort(key=lambda run_id: (by_id[run_id].modified, run_id))
+
+    nodes: list[dict[str, Any]] = []
+    queue = [(run_id, 0) for run_id in roots]
+    while queue:
+        run_id, depth = queue.pop(0)
+        record = by_id[run_id]
+        lineage = record.artifact.lineage
+        nodes.append(
+            {
+                "id": run_id,
+                "label": str(lineage.get("id") or record.path.name),
+                "status": str(record.artifact.status or "unknown"),
+                "mode": str(lineage.get("mode") or "root"),
+                "checkpoint_step": lineage.get("checkpoint_step"),
+                "depth": depth,
+                "current": run_id == current.id,
+            }
+        )
+        queue.extend((child_id, depth + 1) for child_id in children[run_id])
+    return nodes if len(nodes) > 1 or bool(current.artifact.lineage) else []
+
+
+def _lineage_records(state: Any, current: Any) -> list[Any]:
+    """Load one branch group and its ancestors without scanning every run."""
+    lineage = current.artifact.lineage
+    if not lineage:
+        return [current]
+    records: dict[str, Any] = {current.id: current}
+    group_id = str(lineage.get("group_id") or "")
+    if re.fullmatch(r"[A-Za-z0-9_-]+", group_id):
+        for record in discover_runs(state.output_root, subtree=Path("branches") / group_id):
+            records[record.id] = record
+
+    parent_id = str(lineage.get("parent_run_id") or "")
+    seen: set[str] = set()
+    while parent_id and parent_id not in seen:
+        seen.add(parent_id)
+        try:
+            parent = record_or_404(state, parent_id)
+        except HTTPException:
+            break
+        records[parent.id] = parent
+        parent_id = str(parent.artifact.lineage.get("parent_run_id") or "")
+    return list(records.values())
 
 
 def _run_facets(artifact: Any) -> dict[str, Any]:
@@ -215,9 +295,12 @@ def run_page(
     view: str = "overview",
     tab: str | None = None,
 ):
+    from silisocs.runtime.checkpointing import list_checkpoint_steps  # noqa: PLC0415
+
     state = studio_state(request)
     studies = state.studies
     record = record_or_404(state, run_id)
+    lineage_graph = _lineage_graph(record, _lineage_records(state, record))
     related_job = next(
         (
             job
@@ -225,6 +308,14 @@ def run_page(
             if job.output_dir and Path(job.output_dir).resolve() == record.path.resolve()
         ),
         None,
+    )
+    try:
+        checkpoint_steps = list_checkpoint_steps(record.path)
+    except FileNotFoundError:
+        checkpoint_steps = []
+    game_masters = record.artifact.game_masters
+    backend_branchable = bool(game_masters) and all(
+        item.get("supports_checkpoint_branching") for item in game_masters
     )
     active_tab = tab or (
         "watch" if related_job and related_job.status in {"queued", "running"} else "overview"
@@ -299,6 +390,10 @@ def run_page(
             "tab": active_tab,
             "job": related_job,
             "interactive": bool(related_job and related_job.to_dict().get("interactive")),
+            "checkpoint_steps": checkpoint_steps,
+            "branchable": bool(related_job and checkpoint_steps and backend_branchable),
+            "lineage": record.artifact.lineage,
+            "lineage_graph": lineage_graph,
             "parent_study": parent_study,
             "viewer_backends": (
                 sorted({backend for backend, _ in find_backend_dbs(record.path)})

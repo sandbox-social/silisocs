@@ -118,6 +118,12 @@ class RunArtifact:
         provenance = self.manifest.get("provenance")
         return provenance if isinstance(provenance, dict) else {}
 
+    @property
+    def lineage(self) -> dict[str, Any]:
+        """Return checkpoint-branch ancestry, or an empty mapping for a root run."""
+        lineage = self.manifest.get("lineage")
+        return lineage if isinstance(lineage, dict) else {}
+
     # ---- event logs -------------------------------------------------------
 
     def _event_files(self, manifest_key: str) -> list[Path]:

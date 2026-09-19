@@ -50,6 +50,7 @@ def test_build_run_manifest_indexes_artifacts_and_layout(tmp_path: Path) -> None
             "name": "social",
             "backend_type": "twitter_like",
             "backend_class_path": None,
+            "supports_checkpoint_branching": False,
             "database": None,
             "visualizer": None,
             "event_semantics": None,
@@ -82,6 +83,24 @@ def test_write_run_manifest_writes_json_and_never_raises(tmp_path: Path) -> None
 
     # A broken target (missing directory) degrades to None instead of raising.
     assert write_run_manifest(output_dir=tmp_path / "missing" / "deep", status="x") is None
+
+
+def test_manifest_and_artifact_carry_branch_lineage(tmp_path: Path) -> None:
+    from silisocs.evaluations.run_artifact import load_run
+
+    lineage = {
+        "id": "alternate-a1",
+        "group_id": "group-1",
+        "parent_run_id": "demo/parent",
+        "checkpoint_step": 3,
+        "mode": "resample",
+        "continuation_seed": 91,
+    }
+    manifest = build_run_manifest(output_dir=tmp_path, status="success", lineage=lineage)
+    (tmp_path / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert manifest["lineage"] == lineage
+    assert load_run(tmp_path).lineage == lineage
 
 
 def test_manifest_carries_portable_custom_backend_capabilities(tmp_path: Path) -> None:

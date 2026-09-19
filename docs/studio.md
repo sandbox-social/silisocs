@@ -46,6 +46,10 @@ what they mean everywhere else; the [Glossary](glossary.md) defines each once
    export a self-contained report. The catalog also
    indexes study replicate runs (under `/runs/studies/...` ids), and a run that
    belongs to a study links back to it from its heading.
+   A Studio-managed run with checkpoints also offers **Branch from here**:
+   choose a historical checkpoint, preserve or reseed the future trajectory,
+   and apply ordinary Hydra configuration changes. The child is queued
+   as an ordinary run and carries a link back to its parent.
 5. **Studies**: author `study.yaml`, fan conditions and seeds through the same
    queue, watch the progress board, compare results, and inspect hypotheses.
    Completed board rows link to their replicate's run page, closing the
@@ -169,6 +173,34 @@ Because control acts at boundaries and every paused loop still checkpoints per
 step, a paused or ended interactive run is resume-stable. Studio launches remain
 backend-neutral: the control channel names no backend action and adds no
 scheduler branch — it only decides *whether* the next episode runs.
+
+### Checkpoint branches
+
+The run page's **Branch from here** dialog creates an independent child from any
+saved checkpoint. The parent can remain paused, continue running, or already be
+complete. The HTTP surface separates validation from launch:
+
+- `POST /api/runs/{run_id}/branches/plan` checks the source checkpoint, branch
+  mode, and override syntax without launching a process.
+- `POST /api/runs/{run_id}/branches` plans the complete batch, then queues one
+  or more children. A batch of up to 32 branches is accepted.
+
+Requests use `checkpoint_step`, `mode` (`exact` or `resample`), and Hydra
+`overrides`. The launch endpoint also accepts `branches: [...]`, `interactive`,
+and `start_paused`. Compatibility is expressed through checkpoint/component
+contracts and `BackendApp.supports_checkpoint_branching`, never backend names.
+
+The dialog accepts ordinary Hydra configuration changes rather than a
+feature-specific tuning language. Only launcher-owned paths are reserved. The
+child is composed normally and, before checkpoint restore, its object roster and
+classes, backend types and implementation classes, GM routing identity, and
+component states are checked against the checkpoint. Existing component
+parameters can change directly; component-class changes are accepted only when
+both sides are stateless. This makes new custom configuration branchable without
+editing Studio or the branch
+planner. This authoritative runtime check happens inside the child process after
+normal config composition. A branch run's Overview tab shows its parent,
+siblings, and current trajectory without scanning unrelated output directories.
 
 ### Analysis panels and views
 

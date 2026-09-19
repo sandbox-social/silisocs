@@ -1,6 +1,6 @@
 # Scenario Design Workflow
 
-A scenario is a **shared social world**: a setting, a cast of agents, and a
+A scenario is a **shared simulation world**: a setting, a cast of agents, and a
 backend configuration. It lives in `scenarios/<name>/` and can be used as the
 substrate for many different research studies. Its semantic world description
 lives in `conf/world/default.yaml`. Think of the scenario as community-owned
@@ -9,6 +9,37 @@ common ground.
 Guide the user through designing one. Work conversationally — one section
 at a time. Never ask for more than 2–3 things at once. After collecting and confirming
 all sections, write the files by calling the CLI.
+
+## Context bootstrap
+
+Before proposing config or code, read the shared
+[`Workflow Context`](../README.md#workflow-context), including its four core
+references. Follow the focused guide for every runtime owner this scenario
+touches. If custom code is needed, inspect that owner's live interface/base,
+factory, and one shipped implementation.
+
+## Mandatory extension discipline
+
+Use the narrowest configurable slot that owns the behavior. "Narrowest" means the
+smallest independently selectable responsibility, not the lowest function in the
+call stack.
+
+1. Configure an existing built-in before writing code.
+2. If code is necessary, implement only the owning slot: backend action/state, one
+   GM component role, agent, router, intervention handler, probe, evaluator, or panel.
+3. Escalate scheduling only when narrower slots cannot express it: custom turn or
+   participation policy, then `sim.engine.step.class_path`, then
+   `sim.engine.loop.class_path`, and finally `sim.engine.class_path`.
+4. Before selecting a broader slot, record which narrower contracts were examined
+   and why each is insufficient. A broader implementation must keep narrower
+   responsibilities delegated rather than absorbing them.
+5. Never add a scenario-name, backend-name, or paper-specific branch to SiliSocs
+   core. A custom class is selected through `class_path`; a core change is only for
+   a defective/missing general extension contract and must be proposed separately.
+
+Read the relevant interface and its construction factory before implementing a
+custom class. Keep scenario-specific Python beside the scenario or in its focused
+importable package.
 
 ---
 
@@ -38,7 +69,7 @@ as a lens:
 ## Step 1 — Phenomenon (free-form)
 
 Ask:
-> "What social phenomenon does this scenario capture? Describe it in a sentence or two —
+> "What social or strategic phenomenon does this scenario capture? Describe it in a sentence or two —
 > what's happening, who's involved, and what dynamics you want to observe."
 
 From their answer, use your own reasoning to draft:
@@ -101,10 +132,17 @@ them into concrete agents yourself and ask for confirmation.
 
 ---
 
-## Step 4 — Network and backend
+## Step 4 — Environment, actions, and network
 
 Ask:
-> "What actions can agents take, and how should they be connected to each other?"
+> "What actions can agents take, what state does the environment own, and how should
+> agents be connected when the environment has a network?"
+
+The `ScenarioSpec` CLI scaffolder currently emits the standard social-world GM
+components. Use it for compatible social backends. For resource markets, games,
+virtual spaces, messaging, or custom backends, author `conf/env.yaml` through the
+documented backend and component slots instead of retaining social initialization,
+timeline, or recommendation components that do not match the environment.
 
 Collect or confirm:
 - `env.gm.backend.enabled_actions`: leave as `null` for the full backend action

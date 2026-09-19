@@ -367,6 +367,12 @@ class ComponentGameMaster(BaseGameMaster):
         state: dict[str, Any] = {
             "initialized": self._initialized,
             "components": component_states,
+            # All component identities are branch-compatibility metadata. The
+            # restore path still uses component_classes below only for stateful
+            # swap handling; a branch planner needs to detect stateless swaps too.
+            "component_types": {
+                key: _class_id(component) for key, component in self._component_registry.items()
+            },
             # agent->flow tags are re-materialized from config on resume, not from
             # the checkpoint. Record a fingerprint so a config change that would
             # silently mis-route checkpoint replay (or diverge the second half of a
@@ -379,8 +385,7 @@ class ComponentGameMaster(BaseGameMaster):
         }
         # Record the class of each STATEFUL component so set_state can detect a
         # mid-run swap_component that replaced it and skip (not blind-apply) foreign
-        # state onto the wrong class. Only stateful entries need it, so a run with no
-        # swaps keeps the exact legacy payload (additive; old checkpoints lack the key).
+        # state onto the wrong class. Only stateful entries need it.
         stateful_classes = {
             key: _class_id(self._component_registry[key])
             for key, value in component_states.items()
@@ -396,6 +401,7 @@ class ComponentGameMaster(BaseGameMaster):
         if getattr(self.backend, "provides_checkpoint_state", False):
             state["backend"] = {
                 "backend_type": self.backend_type,
+                "backend_class": _class_id(self.backend),
                 "state": self.backend.get_state(),
             }
         return state
@@ -412,6 +418,12 @@ class ComponentGameMaster(BaseGameMaster):
                 raise ValueError(
                     f"Checkpoint backend type {backend_type!r} does not match "
                     f"game master backend type {self.backend_type!r}."
+                )
+            backend_class = str(backend_payload.get("backend_class") or "")
+            if backend_class != _class_id(self.backend):
+                raise ValueError(
+                    f"Checkpoint backend class {backend_class!r} does not match "
+                    f"game master backend class {_class_id(self.backend)!r}."
                 )
             backend_state = backend_payload.get("state")
             if not isinstance(backend_state, Mapping):

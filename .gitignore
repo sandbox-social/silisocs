@@ -255,6 +255,9 @@ v0 polish roadmap.md
 v1 v2 ambitious product roadmap.md
 
 #LLM-Coding files
-.claude
+.claude/*
+!.claude/commands/
+.claude/commands/*
+!.claude/commands/reproduce.md
 .codex
 .agentsbuild/

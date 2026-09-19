@@ -59,10 +59,12 @@ def plan_checkpoint_resume(
 ) -> ResumePlan:
     """Resolve the resume source and build the restore plan (see module docstring)."""
     source_run = None
+    source_step = None
     auto_resume = True
     restore_cfg = None
     if checkpoint_cfg is not None:
         source_run = getattr(checkpoint_cfg, "source_run", None)
+        source_step = getattr(checkpoint_cfg, "source_step", None)
         auto_resume = bool(getattr(checkpoint_cfg, "auto_resume", True))
         restore_cfg = getattr(checkpoint_cfg, "restore", None)
 
@@ -81,7 +83,7 @@ def plan_checkpoint_resume(
         return ResumePlan(initializer_context=initializer_context)
 
     is_auto_resume = not source_run
-    resume_path = resolve_checkpoint_source(source_path)
+    resume_path = resolve_checkpoint_source(source_path, source_step if source_run else None)
     action_event_files = resolve_action_event_files(source_path)
     checkpoint_restore = build_checkpoint_restore(restore_cfg)
 
